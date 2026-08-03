@@ -386,8 +386,8 @@ class WizardLoaderTest {
         when(documentService.listByPrefixCascade(
                 eq(TENANT), eq(HomeBootstrapService.TENANT_PROJECT_NAME), eq("_vance/wizards/")))
                 .thenReturn(Map.of(
-                        "_vance/wizards/create-project.yaml", new LookupResult(
-                                "_vance/wizards/create-project.yaml", eddieOnlyYaml,
+                        "_vance/wizards/create-project.eddie.yaml", new LookupResult(
+                                "_vance/wizards/create-project.eddie.yaml", eddieOnlyYaml,
                                 LookupResult.Source.RESOURCE, null),
                         "_vance/wizards/gremium.yaml", new LookupResult(
                                 "_vance/wizards/gremium.yaml", everywhereYaml,

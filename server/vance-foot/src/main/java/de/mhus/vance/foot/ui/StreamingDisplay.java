@@ -1,11 +1,15 @@
 package de.mhus.vance.foot.ui;
 
 import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.markdown.MarkdownRenderState;
 import de.mhus.vance.foot.session.SessionService;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jline.utils.AttributedString;
+import org.jline.utils.AttributedStringBuilder;
+import org.jline.utils.AttributedStyle;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
@@ -35,20 +39,105 @@ import org.springframework.stereotype.Component;
 @Component
 public class StreamingDisplay {
 
+    /** Dimmed grey for the reasoning stream, matching the end-of-turn
+     *  "💭 thoughts" block in {@code ChatMessageAppendedHandler}. */
+    private static final AttributedStyle THOUGHTS_STYLE = AttributedStyle.DEFAULT
+            .foreground(AttributedStyle.BRIGHT + AttributedStyle.BLACK);
+
     private final ChatTerminal terminal;
     private final PromptGate promptGate;
     private final SessionService sessions;
     private final MarkdownRenderState markdownState;
+    private final FootConfig config;
     private final Map<String, ProcessStream> streams = new ConcurrentHashMap<>();
+    private final Map<String, ThinkingStream> thinkingStreams = new ConcurrentHashMap<>();
 
     public StreamingDisplay(ChatTerminal terminal,
                             PromptGate promptGate,
                             SessionService sessions,
-                            MarkdownRenderState markdownState) {
+                            MarkdownRenderState markdownState,
+                            FootConfig config) {
         this.terminal = terminal;
         this.promptGate = promptGate;
         this.sessions = sessions;
         this.markdownState = markdownState;
+        this.config = config;
+    }
+
+    /**
+     * Append a delta to the per-process <em>reasoning</em> stream and
+     * render it live as dimmed, gutter-prefixed lines. Only the main
+     * process streams live (worker reasoning would clutter the
+     * side-channel); gated by {@code ui.showThoughts}. Deltas are not
+     * line-aligned, so complete lines are drained and emitted through
+     * {@link ChatTerminal#printlnStyled} (the prompt-safe {@code
+     * printAbove} path — safe whether or not the user is at the prompt).
+     * The trailing partial line is flushed by {@link #finalizeThinking}.
+     */
+    public void onThinkingChunk(
+            String processId,
+            @Nullable String processName,
+            @Nullable ChatRole role,
+            String delta) {
+        if (processId == null || delta == null || delta.isEmpty()) return;
+        if (!config.getUi().isShowThoughts()) return;
+        if (!isMainProcess(processName)) return;
+        ThinkingStream state = thinkingStreams.computeIfAbsent(
+                processId, k -> new ThinkingStream());
+        synchronized (state) {
+            state.streamedLive = true;
+            if (!state.headerEmitted) {
+                terminal.printlnStyled(Verbosity.INFO, dim("💭 thinking"));
+                state.headerEmitted = true;
+            }
+            state.lineBuf.append(delta);
+            int nl;
+            while ((nl = state.lineBuf.indexOf("\n")) >= 0) {
+                String line = state.lineBuf.substring(0, nl);
+                state.lineBuf.delete(0, nl + 1);
+                if (line.endsWith("\r")) line = line.substring(0, line.length() - 1);
+                terminal.printlnStyled(Verbosity.INFO, dim("│ " + line));
+            }
+        }
+    }
+
+    /**
+     * Flush the trailing partial reasoning line for a process, if any.
+     * Called when the answer starts streaming (to keep the two channels
+     * ordered) and again on commit. Idempotent — a flushed buffer stays
+     * empty. Does not remove the stream state (the {@code streamedLive}
+     * flag must survive until {@link #commitThinking}).
+     */
+    private void finalizeThinking(String processId) {
+        ThinkingStream state = thinkingStreams.get(processId);
+        if (state == null) return;
+        synchronized (state) {
+            if (state.lineBuf.length() > 0) {
+                String tail = state.lineBuf.toString();
+                state.lineBuf.setLength(0);
+                terminal.printlnStyled(Verbosity.INFO, dim("│ " + tail));
+            }
+        }
+    }
+
+    /**
+     * Closes the reasoning stream for a process. Returns {@code true}
+     * when reasoning was streamed live this turn — the caller then
+     * suppresses the end-of-turn "💭 thoughts" block to avoid showing
+     * the same reasoning twice.
+     */
+    public boolean commitThinking(String processId) {
+        if (processId == null) return false;
+        finalizeThinking(processId);
+        ThinkingStream state = thinkingStreams.remove(processId);
+        return state != null && state.streamedLive;
+    }
+
+    private static AttributedString dim(String text) {
+        return new AttributedStringBuilder()
+                .style(THOUGHTS_STYLE)
+                .append(text)
+                .toAttributedString();
     }
 
     /** Append a delta to the per-process stream. */
@@ -58,6 +147,10 @@ public class StreamingDisplay {
             @Nullable ChatRole role,
             String chunk) {
         if (processId == null || chunk == null || chunk.isEmpty()) return;
+        // The reasoning phase precedes the answer; close out any live
+        // reasoning line before the first answer chunk lands so the two
+        // don't fuse on one terminal line.
+        finalizeThinking(processId);
         ProcessStream state = streams.computeIfAbsent(
                 processId, k -> new ProcessStream(processName, role));
         synchronized (state) {
@@ -184,5 +277,12 @@ public class StreamingDisplay {
             this.processName = processName;
             this.role = role;
         }
+    }
+
+    /** Per-process reasoning-stream accumulation state. */
+    private static final class ThinkingStream {
+        boolean headerEmitted = false;
+        boolean streamedLive = false;
+        final StringBuilder lineBuf = new StringBuilder();
     }
 }

@@ -4,6 +4,7 @@ import de.mhus.vance.shared.metric.MetricService;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.chat.response.PartialThinking;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -56,6 +57,14 @@ public class LoggingStreamingChatModel implements StreamingChatModel {
             @Override
             public void onPartialResponse(String partial) {
                 handler.onPartialResponse(partial);
+            }
+
+            @Override
+            public void onPartialThinking(PartialThinking partialThinking) {
+                // Forward reasoning deltas; like content partials they
+                // are not trace-logged (reconstructible from the final
+                // aiMessage().thinking()).
+                handler.onPartialThinking(partialThinking);
             }
 
             @Override

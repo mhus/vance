@@ -30,10 +30,11 @@ const props = withDefaults(defineProps<{
   content: string;
   /**
    * The model's reasoning ("thinking") text for ASSISTANT messages
-   * (from {@code ChatMessageDto.thinking}). Rendered as a collapsed,
-   * expandable "thoughts" section above the answer. Absent for models
-   * without reasoning markup, for non-ASSISTANT roles, and for the
-   * still-streaming draft (which has no canonical message yet).
+   * (from {@code ChatMessageDto.thinking}, or the live-streamed
+   * reasoning side-channel on a draft). Rendered as a "thoughts"
+   * section above the answer — auto-expanded while {@code streaming},
+   * collapsed once committed. Absent for models without reasoning
+   * markup and for non-ASSISTANT roles.
    */
   thinking?: string | null;
   /** ISO string or epoch-millis number — both rendered as relative/local. */
@@ -138,9 +139,9 @@ const isAssistant = computed(() => props.role === 'ASSISTANT');
 const isSystem = computed(() => props.role === 'SYSTEM');
 
 /**
- * Reasoning ("thoughts") present on this bubble — only for ASSISTANT
- * messages that carried reasoning markup. The still-streaming draft
- * has no {@code thinking} yet, so this is naturally false mid-stream.
+ * Reasoning ("thoughts") present on this bubble — for ASSISTANT
+ * messages that carried reasoning markup, including the draft's
+ * live-streamed reasoning before the answer content arrives.
  */
 const hasThinking = computed<boolean>(() =>
   isAssistant.value && (props.thinking?.trim().length ?? 0) > 0,
@@ -366,7 +367,7 @@ async function onCopyMarkdown(): Promise<void> {
            (see web-ui.md §6.5) so it stays reviewable after the stream
            ends. Rendered verbatim (not Markdown) to preserve the raw
            thoughts exactly, including any <think> markup. -->
-      <details v-if="hasThinking" class="mb-thinking">
+      <details v-if="hasThinking" class="mb-thinking" :open="streaming">
         <summary class="mb-thinking-summary">
           💭 {{ _?.('chat.bubble.thoughts') ?? 'Gedanken' }}
         </summary>

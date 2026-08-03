@@ -83,12 +83,18 @@ public class ChatMessageAppendedHandler implements MessageHandler {
         if (data.getRole() == ChatRole.ASSISTANT) {
             audit.append(data);
         }
+        // Close out the live reasoning stream. When reasoning was
+        // streamed live this turn, suppress the end-of-turn thoughts
+        // block below — the user already watched it tick in.
+        boolean thinkingStreamed = streaming.commitThinking(data.getThinkProcessId());
         boolean wasStreamed = streaming.onCommit(data.getThinkProcessId());
         if (wasStreamed) {
             // Streamed turns already showed the answer live; thinking is
             // only carried on this canonical commit, so it lands right
-            // after the reply.
-            maybeRenderThoughts(data);
+            // after the reply (unless it was already streamed live).
+            if (!thinkingStreamed) {
+                maybeRenderThoughts(data);
+            }
             maybeUpdatePicker(data);
             return;
         }
@@ -118,7 +124,9 @@ public class ChatMessageAppendedHandler implements MessageHandler {
         // to the dimmed side-channel as a transparent audit trail —
         // the user can see what the workers are doing, but not as
         // primary conversation content.
-        maybeRenderThoughts(data);
+        if (!thinkingStreamed) {
+            maybeRenderThoughts(data);
+        }
         if (isMainProcess(data.getProcessName())) {
             terminal.chatMarkdown(header, content);
         } else {

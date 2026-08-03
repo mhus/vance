@@ -48,7 +48,10 @@ import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
+import de.mhus.vance.brain.thinkengine.action.ReasoningExtractor;
+import de.mhus.vance.brain.thinkengine.action.ThinkStreamSplitter;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.chat.response.PartialThinking;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import java.time.Instant;
 import java.util.ArrayDeque;
@@ -62,6 +65,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -458,11 +462,14 @@ public class FrankieEngine implements ThinkEngine {
                 // Accumulate the model's reasoning across the turn's
                 // iterations so persistAssistantReply can snapshot it into
                 // the assistant message's `thinking` field (surfaced by
-                // the client as "thoughts"). Mirrors Arthur/Eddie; append
-                // is null/blank-safe, so providers that don't return
-                // reasoning simply leave the buffer empty.
+                // the client as "thoughts"). Only genuine reasoning —
+                // reply.thinking() (reasoning_content) or <think> blocks —
+                // never the free-text answer (see ReasoningExtractor).
                 if (ctx.reasoning() != null) {
-                    ctx.reasoning().append(reply.thinking());
+                    String captured = ReasoningExtractor.extract(reply);
+                    if (!captured.isBlank()) {
+                        ctx.reasoning().append(captured);
+                    }
                 }
 
                 // Stop path: natural stop (no tool calls). Always
@@ -997,26 +1004,71 @@ public class FrankieEngine implements ThinkEngine {
                             .build();
                     events.publish(sessionId, MessageType.CHAT_MESSAGE_STREAM_CHUNK, data);
                 });
+        // Reasoning side-channel — GLM/DeepSeek stream reasoning_content
+        // via onPartialThinking; inline models put <think> in the answer
+        // stream (split out below). Published as CHAT_MESSAGE_THINKING_CHUNK
+        // so foot + web render live "thoughts".
+        ChunkBatcher thinkingBatcher = new ChunkBatcher(
+                streamingProperties.getChunkCharThreshold(),
+                streamingProperties.getChunkFlushMs(),
+                chunk -> {
+                    if (hidden) return;
+                    log.trace("Frankie thinking-chunk publish id='{}' chars={}",
+                            process.getId(), chunk == null ? 0 : chunk.length());
+                    ChatMessageChunkData data = ChatMessageChunkData.builder()
+                            .thinkProcessId(process.getId())
+                            .processName(process.getName())
+                            .role(ChatRole.ASSISTANT)
+                            .chunk(chunk)
+                            .build();
+                    events.publish(sessionId, MessageType.CHAT_MESSAGE_THINKING_CHUNK, data);
+                });
+        ThinkStreamSplitter splitter = new ThinkStreamSplitter();
+        Consumer<String> answerOut = answer -> {
+            if (answer.isEmpty()) return;
+            thinkingBatcher.flush();
+            try {
+                batcher.accept(answer);
+            } catch (RuntimeException e) {
+                log.warn("Frankie chunk-publish threw: {}", e.toString());
+            }
+        };
+        Consumer<String> thinkOut = think -> {
+            if (think.isEmpty()) return;
+            try {
+                thinkingBatcher.accept(think);
+            } catch (RuntimeException e) {
+                log.warn("Frankie thinking-chunk-publish threw: {}", e.toString());
+            }
+        };
 
         aiChat.streamingChatModel().chat(request, new StreamingChatResponseHandler() {
             @Override
+            public void onPartialThinking(PartialThinking partialThinking) {
+                if (partialThinking == null) return;
+                String delta = partialThinking.text();
+                if (delta == null || delta.isEmpty()) return;
+                thinkOut.accept(delta);
+            }
+
+            @Override
             public void onPartialResponse(String partial) {
                 if (partial == null || partial.isEmpty()) return;
-                try {
-                    batcher.accept(partial);
-                } catch (RuntimeException e) {
-                    log.warn("Frankie chunk-publish threw: {}", e.toString());
-                }
+                splitter.accept(partial, answerOut, thinkOut);
             }
 
             @Override
             public void onCompleteResponse(ChatResponse complete) {
+                splitter.flush(answerOut, thinkOut);
+                thinkingBatcher.flush();
                 batcher.flush();
                 done.complete(complete);
             }
 
             @Override
             public void onError(Throwable error) {
+                splitter.flush(answerOut, thinkOut);
+                thinkingBatcher.flush();
                 batcher.flush();
                 done.completeExceptionally(error);
             }

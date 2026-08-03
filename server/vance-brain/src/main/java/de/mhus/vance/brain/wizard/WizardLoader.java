@@ -267,6 +267,16 @@ public class WizardLoader {
         String stem = path.substring(
                 WIZARD_PATH_PREFIX.length(),
                 path.length() - WIZARD_PATH_SUFFIX.length());
+        if (stem.isBlank()) return null;
+        // The wizard name is the first dot-segment of the filename.
+        // Further segments are qualifiers (e.g. a target-engine hint
+        // like {@code create-project.eddie.yaml} → {@code create-project}):
+        // several engine-specific files can back the same wizard name.
+        // Wizard names themselves are kebab-case and never contain dots.
+        int dot = stem.indexOf('.');
+        if (dot >= 0) {
+            stem = stem.substring(0, dot);
+        }
         return stem.isBlank() ? null : stem;
     }
 

@@ -133,6 +133,13 @@ public class LmStudioProvider extends AbstractChatProvider {
                         .timeout(streamTimeout)
                         .logRequests(options.getLogRequests())
                         .logResponses(options.getLogRequests());
+        // Surface reasoning the same way OpenAiProvider does: local
+        // reasoning models loaded in LM Studio return their chain-of-
+        // thought in a separate `reasoning_content` field, which
+        // langchain4j only parses (into AiMessage.thinking()) when
+        // returnThinking is on. Harmless for non-reasoning models.
+        syncBuilder.returnThinking(true);
+        streamBuilder.returnThinking(true);
         ThinkingLevel effectiveLevel = OpenAiProvider.gateThinkingLevel(
                 options.getThinkingLevel(), modelInfo);
         String reasoningEffort = OpenAiProvider.mapReasoningEffort(effectiveLevel);

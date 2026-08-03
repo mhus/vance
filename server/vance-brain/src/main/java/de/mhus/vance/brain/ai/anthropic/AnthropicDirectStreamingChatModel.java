@@ -8,11 +8,13 @@ import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.RawContentBlockDeltaEvent;
 import com.anthropic.models.messages.RawMessageStreamEvent;
 import com.anthropic.models.messages.TextDelta;
+import com.anthropic.models.messages.ThinkingDelta;
 import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.chat.response.PartialThinking;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
@@ -62,7 +64,7 @@ public class AnthropicDirectStreamingChatModel implements StreamingChatModel {
                      client.messages().createStreaming(params)) {
             stream.stream().forEach(event -> {
                 accumulator.accumulate(event);
-                forwardTextDelta(event, handler);
+                forwardDelta(event, handler);
             });
         } catch (RuntimeException e) {
             log.warn("AnthropicDirectStreamingChatModel error: {}", e.toString());
@@ -80,31 +82,44 @@ public class AnthropicDirectStreamingChatModel implements StreamingChatModel {
     }
 
     /**
-     * Pull every text-delta out of the event stream and feed it to the
-     * caller's handler. Other event kinds (message_start, message_stop,
-     * content_block_start/stop, tool-use input deltas) are accumulated
-     * into the final {@link Message} but not surfaced as partials —
-     * langchain4j's streaming contract is "text tokens only".
+     * Pull text- and thinking-deltas out of the event stream and feed
+     * them to the caller's handler: text via {@code onPartialResponse},
+     * extended-thinking via {@code onPartialThinking}. Other event kinds
+     * (message_start, message_stop, content_block_start/stop, tool-use
+     * input deltas, signature deltas) are accumulated into the final
+     * {@link Message} but not surfaced as partials.
      */
-    private static void forwardTextDelta(
+    private static void forwardDelta(
             RawMessageStreamEvent event, StreamingChatResponseHandler handler) {
-        Optional<RawContentBlockDeltaEvent> delta = event.contentBlockDelta();
-        if (delta.isEmpty()) {
+        Optional<RawContentBlockDeltaEvent> deltaEvent = event.contentBlockDelta();
+        if (deltaEvent.isEmpty()) {
             return;
         }
-        Optional<TextDelta> text = delta.get().delta().text();
-        if (text.isEmpty()) {
+        var delta = deltaEvent.get().delta();
+        Optional<TextDelta> text = delta.text();
+        if (text.isPresent()) {
+            String token = text.get().text();
+            if (token != null && !token.isEmpty()) {
+                try {
+                    handler.onPartialResponse(token);
+                } catch (RuntimeException e) {
+                    log.warn("StreamingChatResponseHandler.onPartialResponse threw: {}",
+                            e.toString());
+                }
+            }
             return;
         }
-        String token = text.get().text();
-        if (token == null || token.isEmpty()) {
-            return;
-        }
-        try {
-            handler.onPartialResponse(token);
-        } catch (RuntimeException e) {
-            log.warn("StreamingChatResponseHandler.onPartialResponse threw: {}",
-                    e.toString());
+        Optional<ThinkingDelta> thinking = delta.thinking();
+        if (thinking.isPresent()) {
+            String token = thinking.get().thinking();
+            if (token != null && !token.isEmpty()) {
+                try {
+                    handler.onPartialThinking(new PartialThinking(token));
+                } catch (RuntimeException e) {
+                    log.warn("StreamingChatResponseHandler.onPartialThinking threw: {}",
+                            e.toString());
+                }
+            }
         }
     }
 }

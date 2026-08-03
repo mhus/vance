@@ -4,6 +4,7 @@ import de.mhus.vance.brain.ai.parser.MessageParser;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.chat.response.PartialThinking;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import org.jspecify.annotations.Nullable;
 
@@ -36,6 +37,13 @@ public class SanitizingStreamingChatModel implements StreamingChatModel {
             @Override
             public void onPartialResponse(String partial) {
                 handler.onPartialResponse(partial);
+            }
+
+            @Override
+            public void onPartialThinking(PartialThinking partialThinking) {
+                // Reasoning deltas pass through untouched — the parser
+                // only rewrites the aggregated final response.
+                handler.onPartialThinking(partialThinking);
             }
 
             @Override

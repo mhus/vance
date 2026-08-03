@@ -111,6 +111,13 @@ public class GeminiProvider extends AbstractChatProvider {
         if (thinking != null) {
             syncBuilder.thinkingConfig(thinking);
             streamBuilder.thinkingConfig(thinking);
+            // returnThinking makes langchain4j surface the thought
+            // summaries Gemini returns (includeThoughts, set in
+            // mapThinking) — as onPartialThinking deltas while streaming
+            // and on AiMessage.thinking() at completion. Without it the
+            // reasoning is produced but dropped.
+            syncBuilder.returnThinking(true);
+            streamBuilder.returnThinking(true);
         }
         log.debug("Built Gemini chat pair: model='{}', maxOutputTokens={}, "
                         + "temperature={}, thinkingLevel={}",
@@ -222,6 +229,11 @@ public class GeminiProvider extends AbstractChatProvider {
         };
         return GeminiThinkingConfig.builder()
                 .thinkingLevel(native_)
+                // Ask Gemini to return thought summaries (not just think
+                // internally); returnThinking on the model builder then
+                // surfaces them to the engine. Without this the thoughts
+                // never leave the model.
+                .includeThoughts(true)
                 .build();
     }
 }

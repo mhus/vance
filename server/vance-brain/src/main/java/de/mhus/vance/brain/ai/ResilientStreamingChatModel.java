@@ -4,6 +4,7 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.chat.response.PartialThinking;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -146,6 +147,17 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
                     emitted.set(true);
                 }
                 caller.onPartialResponse(partial);
+            }
+
+            @Override
+            public void onPartialThinking(PartialThinking partialThinking) {
+                // Forward reasoning deltas without flipping `emitted`:
+                // that flag guards against replaying answer *content* on
+                // retry. Reasoning is a dim side-channel, and an
+                // empty-after-reasoning completion is exactly a case we
+                // still want to retry — a re-streamed thought is a
+                // tolerable cosmetic duplicate.
+                caller.onPartialThinking(partialThinking);
             }
 
             @Override

@@ -5,6 +5,7 @@ import com.anthropic.models.messages.ContentBlock;
 import com.anthropic.models.messages.Message;
 import com.anthropic.models.messages.StopReason;
 import com.anthropic.models.messages.TextBlock;
+import com.anthropic.models.messages.ThinkingBlock;
 import com.anthropic.models.messages.ToolUseBlock;
 import com.anthropic.models.messages.Usage;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -53,6 +54,7 @@ final class AnthropicResponseMapper {
 
     private static AiMessage toAiMessage(Message message) {
         StringBuilder text = new StringBuilder();
+        StringBuilder thinking = new StringBuilder();
         List<ToolExecutionRequest> toolReqs = new ArrayList<>();
         for (ContentBlock block : message.content()) {
             Optional<TextBlock> textBlock = block.text();
@@ -66,18 +68,37 @@ final class AnthropicResponseMapper {
                 }
                 continue;
             }
+            // Extended-thinking blocks carry the model's reasoning.
+            // Surface it as AiMessage.thinking() so the engine can
+            // persist it and clients render the "thoughts" side-channel.
+            // (RedactedThinkingBlocks are encrypted and carry no readable
+            // text — skipped.)
+            Optional<ThinkingBlock> thinkingBlock = block.thinking();
+            if (thinkingBlock.isPresent()) {
+                String t = thinkingBlock.get().thinking();
+                if (t != null && !t.isEmpty()) {
+                    if (thinking.length() > 0) {
+                        thinking.append('\n');
+                    }
+                    thinking.append(t);
+                }
+                continue;
+            }
             Optional<ToolUseBlock> toolBlock = block.toolUse();
             if (toolBlock.isPresent()) {
                 toolReqs.add(toToolExecutionRequest(toolBlock.get()));
             }
         }
-        if (toolReqs.isEmpty()) {
-            return AiMessage.from(text.toString());
-        }
-        if (text.length() == 0) {
-            return AiMessage.from(toolReqs);
-        }
-        return AiMessage.from(text.toString(), toolReqs);
+        // Use the builder so thinking rides along with text + tool calls;
+        // the AiMessage.from(...) overloads can't carry thinking. Text
+        // stays a (possibly empty) string to match the prior
+        // from(text)/from(toolReqs) behaviour; thinking is null when
+        // absent so it stays off the wire for non-reasoning turns.
+        return AiMessage.builder()
+                .text(text.toString())
+                .thinking(thinking.length() == 0 ? null : thinking.toString())
+                .toolExecutionRequests(toolReqs)
+                .build();
     }
 
     private static ToolExecutionRequest toToolExecutionRequest(ToolUseBlock block) {

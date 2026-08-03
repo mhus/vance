@@ -25,6 +25,7 @@ import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.chat.response.PartialThinking;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -35,6 +36,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -334,17 +336,29 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                 bestFreeText = replyText;
             }
 
-            // Capture the model's raw streamed narration ("thoughts")
-            // for this iteration, verbatim — this is exactly the text the
-            // user saw stream live (reasoning models emit their
-            // <think>… monologue here). It is dropped from the final
-            // user-facing content (which comes from the structured action
-            // message), so we accumulate it per turn and persist it in
-            // the assistant message's `thinking` field to stay reviewable
-            // after the stream is replaced by the final answer.
+            // Capture the model's reasoning ("thoughts") for this
+            // iteration and persist it in the assistant message's
+            // `thinking` field so it stays reviewable after the live
+            // stream is replaced by the final structured answer.
+            //
+            // Reasoning is ONLY genuine reasoning — never the model's
+            // free-text answer. Two real sources:
+            //  - Separate-channel models return it via
+            //    AiMessage.thinking() (from reasoning_content).
+            //  - Inline models wrap it in <think>…</think> inside the
+            //    text; extract the inner content, drop the tags.
+            // Everything else (a plain free-text answer that skipped the
+            // action call, a correction echo, a stray </think>) is NOT
+            // reasoning and must stay out of the thoughts channel — else
+            // it duplicates the answer and leaks tag fragments.
             TurnReasoningBuffer reasoning = ctx.reasoning();
             if (reasoning != null) {
-                reasoning.append(replyText);
+                String captured = ReasoningExtractor.extract(reply);
+                if (!captured.isBlank()) {
+                    reasoning.append(captured);
+                    log.trace("{} id='{}' reasoning captured chars={}",
+                            name(), process.getId(), captured.length());
+                }
             }
 
             if (!reply.hasToolExecutionRequests()) {
@@ -1009,26 +1023,83 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                     events.publish(sessionId,
                             MessageType.CHAT_MESSAGE_STREAM_CHUNK, data);
                 });
+        // Second batcher for the reasoning side-channel. Reasoning models
+        // (GLM/DeepSeek-style) stream `reasoning_content` deltas via
+        // onPartialThinking before the answer streams; publish them as
+        // CHAT_MESSAGE_THINKING_CHUNK so clients can render "thoughts"
+        // live. The full reasoning still rides the final commit's
+        // `thinking` field, so no-op-thinking clients lose nothing.
+        ChunkBatcher thinkingBatcher = new ChunkBatcher(
+                streamingProperties.getChunkCharThreshold(),
+                streamingProperties.getChunkFlushMs(),
+                chunk -> {
+                    log.trace("{} thinking-chunk publish id='{}' session='{}' chars={}",
+                            name(), process.getId(), sessionId,
+                            chunk == null ? 0 : chunk.length());
+                    ChatMessageChunkData data = ChatMessageChunkData.builder()
+                            .thinkProcessId(process.getId())
+                            .processName(process.getName())
+                            .role(ChatRole.ASSISTANT)
+                            .chunk(chunk)
+                            .build();
+                    events.publish(sessionId,
+                            MessageType.CHAT_MESSAGE_THINKING_CHUNK, data);
+                });
+
+        // Splits inline <think>…</think> reasoning (Qwen3/DeepSeek-R1)
+        // out of the answer stream into the thinking channel, so the live
+        // answer bubble stays clean and reasoning shows once (not doubled
+        // with the committed thoughts block). No-op for separate-field
+        // models (GLM/Anthropic/Gemini) whose content carries no tags —
+        // they deliver reasoning via onPartialThinking instead.
+        ThinkStreamSplitter splitter = new ThinkStreamSplitter();
+        Consumer<String> answerOut = answer -> {
+            if (answer.isEmpty()) return;
+            // Keep channel order: flush any pending reasoning before the
+            // answer text it precedes.
+            thinkingBatcher.flush();
+            try {
+                batcher.accept(answer);
+            } catch (RuntimeException e) {
+                log.warn("{} chunk-publish threw: {}", name(), e.toString());
+            }
+        };
+        Consumer<String> thinkOut = think -> {
+            if (think.isEmpty()) return;
+            try {
+                thinkingBatcher.accept(think);
+            } catch (RuntimeException e) {
+                log.warn("{} thinking-chunk-publish threw: {}", name(), e.toString());
+            }
+        };
 
         aiChat.streamingChatModel().chat(request, new StreamingChatResponseHandler() {
             @Override
+            public void onPartialThinking(PartialThinking partialThinking) {
+                if (partialThinking == null) return;
+                String delta = partialThinking.text();
+                if (delta == null || delta.isEmpty()) return;
+                thinkOut.accept(delta);
+            }
+
+            @Override
             public void onPartialResponse(String partial) {
                 if (partial == null || partial.isEmpty()) return;
-                try {
-                    batcher.accept(partial);
-                } catch (RuntimeException e) {
-                    log.warn("{} chunk-publish threw: {}", name(), e.toString());
-                }
+                splitter.accept(partial, answerOut, thinkOut);
             }
 
             @Override
             public void onCompleteResponse(ChatResponse complete) {
+                splitter.flush(answerOut, thinkOut);
+                thinkingBatcher.flush();
                 batcher.flush();
                 done.complete(complete);
             }
 
             @Override
             public void onError(Throwable error) {
+                splitter.flush(answerOut, thinkOut);
+                thinkingBatcher.flush();
                 batcher.flush();
                 done.completeExceptionally(error);
             }

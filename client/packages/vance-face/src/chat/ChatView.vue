@@ -251,9 +251,12 @@ const liveMessages = ref<ChatMessageDto[]>([]);
  */
 const workerMessageIds = ref<Set<string>>(new Set());
 
-/** Per-process buffer of streaming chunks waiting for their commit frame. */
-const streamingDrafts = ref<Map<string, { role: ChatRole; content: string; processName: string }>>(
-  new Map());
+/** Per-process buffer of streaming chunks waiting for their commit frame.
+ *  `thinking` accumulates the reasoning side-channel, which streams before
+ *  the answer content. */
+const streamingDrafts = ref<
+  Map<string, { role: ChatRole; content: string; thinking: string; processName: string }>
+>(new Map());
 
 // ──────────────── Plan-Mode state (Arthur Plan-Mode flow) ────────────────
 
@@ -397,12 +400,14 @@ function onAcceptFollowUp(): void {
 const visibleDraft = computed(() => {
   if (!props.chatProcessName) return null;
   const entry = streamingDrafts.value.get(props.chatProcessName);
-  if (!entry || !entry.content) return null;
+  // Show as soon as either channel has data — reasoning streams in
+  // before the first answer chunk.
+  if (!entry || (!entry.content && !entry.thinking)) return null;
   return entry;
 });
 
 const visibleWorkerDrafts = computed(() => {
-  const out: Array<{ role: ChatRole; content: string; processName: string }> = [];
+  const out: Array<{ role: ChatRole; content: string; thinking: string; processName: string }> = [];
   for (const [name, entry] of streamingDrafts.value.entries()) {
     if (!entry.content) continue;
     if (name === props.chatProcessName) continue;
@@ -470,6 +475,31 @@ function appendChunk(data: ChatMessageChunkData): void {
     streamingDrafts.value.set(data.processName, {
       role: data.role,
       content: data.chunk,
+      thinking: '',
+      processName: data.processName,
+    });
+  }
+  // Trigger reactivity on the Map.
+  streamingDrafts.value = new Map(streamingDrafts.value);
+  scrollToBottom();
+}
+
+/**
+ * Accumulate a reasoning ("thinking") delta into the process draft. The
+ * reasoning side-channel streams before the answer content; the draft
+ * bubble shows it live in an expanded "thoughts" section, and the
+ * canonical {@code chat-message-appended} (with its verbatim `thinking`
+ * field) supersedes it on commit.
+ */
+function appendThinkingChunk(data: ChatMessageChunkData): void {
+  const existing = streamingDrafts.value.get(data.processName);
+  if (existing && existing.role === data.role) {
+    existing.thinking += data.chunk;
+  } else {
+    streamingDrafts.value.set(data.processName, {
+      role: data.role,
+      content: '',
+      thinking: data.chunk,
       processName: data.processName,
     });
   }
@@ -559,6 +589,7 @@ function subscribeToSocket(): void {
   subscriptions.push(
     props.socket.on<ChatMessageAppendedData>('chat-message-appended', appendMessageBubble),
     props.socket.on<ChatMessageChunkData>('chat-message-stream-chunk', appendChunk),
+    props.socket.on<ChatMessageChunkData>('chat-message-thinking-chunk', appendThinkingChunk),
     props.socket.on<ProcessModeChangedNotification>(
       'process-mode-changed', onProcessModeChanged),
     props.socket.on<TodosUpdatedNotification>('todos-updated', onTodosUpdated),
@@ -804,6 +835,7 @@ onBeforeUnmount(() => {
           v-if="visibleDraft"
           :role="String(visibleDraft.role)"
           :content="visibleDraft.content"
+          :thinking="visibleDraft.thinking"
           :streaming="true"
         />
 

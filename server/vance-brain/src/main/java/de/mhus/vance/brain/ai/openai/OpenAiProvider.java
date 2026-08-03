@@ -154,6 +154,16 @@ public class OpenAiProvider extends AbstractChatProvider {
             syncBuilder.customParameters(cacheParams);
             streamBuilder.customParameters(cacheParams);
         }
+        // Capture the model's reasoning. DeepSeek-style OpenAI gateways
+        // (GLM/Zhipu, cortecs, …) return the chain-of-thought in a
+        // separate `reasoning_content` field, never in the content
+        // stream. Without returnThinking, langchain4j only tallies the
+        // reasoning tokens from the usage block and drops the text, so
+        // AiMessage.thinking() stays null and Foot's "💭 thoughts" block
+        // never fills. Harmless for non-reasoning models — the parser
+        // just finds no such field. Client-side only, not a wire param.
+        syncBuilder.returnThinking(true);
+        streamBuilder.returnThinking(true);
         ThinkingLevel effectiveLevel = gateThinkingLevel(
                 options.getThinkingLevel(), modelInfo);
         String reasoningEffort = mapReasoningEffort(effectiveLevel);

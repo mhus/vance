@@ -121,6 +121,17 @@ public final class MessageType {
      */
     public static final String CHAT_MESSAGE_STREAM_CHUNK = "chat-message-stream-chunk";
 
+    /**
+     * Server-initiated notification: a progressive chunk of the assistant's
+     * reasoning ("thinking") for the current turn. Reuses
+     * {@link de.mhus.vance.api.chat.ChatMessageChunkData} — {@code chunk}
+     * carries a reasoning delta, not answer content. Emitted for reasoning
+     * models before the answer streams; the full reasoning is still carried
+     * on the {@link #CHAT_MESSAGE_APPENDED} commit ({@code thinking} field),
+     * so clients that ignore this type degrade to showing thoughts at the end.
+     */
+    public static final String CHAT_MESSAGE_THINKING_CHUNK = "chat-message-thinking-chunk";
+
     /** Client → brain: declare the tools this connection exposes for the current session. */
     public static final String CLIENT_TOOL_REGISTER = "client-tool-register";
 

@@ -28,6 +28,40 @@ public class VanceBrainProperties {
     /** Seconds between expected client pings. */
     private int pingIntervalSeconds = 30;
 
+    /**
+     * Seconds between server-initiated WebSocket PING control frames on the
+     * external endpoint. Browsers answer these transparently (they cannot send
+     * pings from JS), which both keeps a quiet connection alive through an idle
+     * proxy/middlebox and gives the server active liveness detection. {@code 0}
+     * disables the sweep. Keep this below the smallest idle timeout on the path
+     * (e.g. Caddy's write/idle timeout).
+     */
+    private int serverPingIntervalSeconds = 20;
+
+    /**
+     * Number of consecutive server pings a connection may miss (no PONG) before
+     * it is considered stale and closed — which releases its session bind so a
+     * reconnecting client resumes cleanly instead of hitting "bound elsewhere".
+     */
+    private int serverPingMaxMissed = 2;
+
+    /**
+     * Max milliseconds a single outbound frame may take to flush before the
+     * connection is treated as stale and closed. Backs the
+     * {@code ConcurrentWebSocketSessionDecorator} that fronts every external
+     * session so a dead/slow client cannot block a server thread (ping sweep,
+     * chat-streaming callback, notification push).
+     */
+    private int sendTimeLimitMs = 15_000;
+
+    /**
+     * Max bytes that may sit buffered for a single connection before it is
+     * closed. Must comfortably exceed the largest single frame (see
+     * {@code WebSocketConfig} max text buffer) so a legitimate large tool
+     * result is not mistaken for a backed-up client.
+     */
+    private int sendBufferSizeBytes = 32 * 1024 * 1024;
+
     /** Feature flags advertised to clients. */
     private List<String> capabilities = List.of();
 

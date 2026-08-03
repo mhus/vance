@@ -92,9 +92,7 @@ public class WebSocketSender {
                 ? new LiveEnvelope("session", currentSessionId(wsSession), envelope)
                 : envelope;
         String json = objectMapper.writeValueAsString(payload);
-        synchronized (wsSession) {
-            wsSession.sendMessage(new TextMessage(json));
-        }
+        write(wsSession, json);
     }
 
     /**
@@ -112,8 +110,28 @@ public class WebSocketSender {
             throws IOException {
         LiveEnvelope payload = new LiveEnvelope(channel, currentSessionId(wsSession), envelope);
         String json = objectMapper.writeValueAsString(payload);
-        synchronized (wsSession) {
-            wsSession.sendMessage(new TextMessage(json));
+        write(wsSession, json);
+    }
+
+    /**
+     * Single low-level write path. External Live-WS sessions carry a
+     * {@link org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator}
+     * ({@link LiveWebSocketHandler#ATTR_SEND_TARGET}) that is itself
+     * concurrency-safe and closes a slow/stale client on a buffer/time-limit
+     * breach — so we send through it <em>without</em> our own monitor, which
+     * would otherwise re-serialise writers and let one wedged socket block the
+     * rest. Undecorated sessions (internal chat tunnel) keep the per-session
+     * {@code synchronized} guard, since {@link WebSocketSession#sendMessage} is
+     * not thread-safe on its own.
+     */
+    private void write(WebSocketSession wsSession, String json) throws IOException {
+        WebSocketSession target = LiveWebSocketHandler.resolveSendTarget(wsSession);
+        if (target == wsSession) {
+            synchronized (wsSession) {
+                wsSession.sendMessage(new TextMessage(json));
+            }
+        } else {
+            target.sendMessage(new TextMessage(json));
         }
     }
 

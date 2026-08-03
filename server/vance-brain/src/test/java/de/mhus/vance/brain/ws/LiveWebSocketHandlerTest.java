@@ -64,11 +64,13 @@ class LiveWebSocketHandlerTest {
         // focused on the envelope-demux behaviour. Cross-pod routing has its
         // own dedicated tests.
         when(homePodLookup.resolve(any(), any(), any())).thenReturn(HomePodTarget.LOCAL);
+        WebSocketKeepAliveService keepAlive = mock(WebSocketKeepAliveService.class);
         handler = new LiveWebSocketHandler(
                 chatHandler, objectMapper, sender, homePodLookup, tunnelRegistry,
                 documentChannelHandler, documentSubscriberRegistry,
                 pointerChannelHandler, pointerBroadcaster,
-                signalChannelHandler, signalBroadcaster);
+                signalChannelHandler, signalBroadcaster,
+                keepAlive, new VanceBrainProperties());
 
         wsSession = mock(WebSocketSession.class);
         ctx = new ConnectionContext(

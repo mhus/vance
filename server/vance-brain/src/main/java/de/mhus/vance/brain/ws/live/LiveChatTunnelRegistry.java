@@ -145,10 +145,13 @@ public class LiveChatTunnelRegistry {
         LiveEnvelope live = new LiveEnvelope("session", sessionIdFromEnvelope(env), env);
         try {
             String json = objectMapper.writeValueAsString(live);
-            synchronized (externalWs) {
-                if (externalWs.isOpen()) {
-                    externalWs.sendMessage(new TextMessage(json));
-                }
+            // Route through the session's self-evicting decorator (if any) so a
+            // stale external client cannot block this tunnel-forward thread. The
+            // decorator is concurrency-safe, so no extra monitor is taken.
+            WebSocketSession target =
+                    de.mhus.vance.brain.ws.LiveWebSocketHandler.resolveSendTarget(externalWs);
+            if (target.isOpen()) {
+                target.sendMessage(new TextMessage(json));
             }
         } catch (Exception e) {
             log.warn("Tunnel → external WS forward failed: {}", e.toString());

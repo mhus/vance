@@ -16,8 +16,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.PongMessage;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 import tools.jackson.databind.ObjectMapper;
 
@@ -53,6 +55,16 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
      */
     public static final String ATTR_LIVE_PROTOCOL = "vance.live-protocol";
 
+    /**
+     * WebSocket-session attribute holding the {@link ConcurrentWebSocketSessionDecorator}
+     * that fronts this connection. Every outbound write must go through it (via
+     * {@link #resolveSendTarget}) so a slow/stale client is closed on a buffer/
+     * time-limit breach instead of blocking the writing thread. The decorator
+     * shares the delegate's attribute map, so it is reachable from either the
+     * raw session or the decorator.
+     */
+    public static final String ATTR_SEND_TARGET = "vance.ws.send-target";
+
     private static final String CHANNEL_SESSION = "session";
     private static final String CHANNEL_DOCUMENTS = "documents";
     private static final String CHANNEL_POINTERS = "pointers";
@@ -69,6 +81,8 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
     private final PointerBroadcaster pointerBroadcaster;
     private final SignalChannelHandler signalChannelHandler;
     private final SignalBroadcaster signalBroadcaster;
+    private final WebSocketKeepAliveService keepAlive;
+    private final VanceBrainProperties properties;
 
     @Override
     public void afterConnectionEstablished(WebSocketSession wsSession) throws Exception {
@@ -76,7 +90,35 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
         // LiveEnvelope. Must happen before chatHandler.afterConnectionEstablished
         // because that already sends the welcome through WebSocketSender.
         wsSession.getAttributes().put(ATTR_LIVE_PROTOCOL, Boolean.TRUE);
+        // Front every send with a concurrency-safe, self-evicting decorator so a
+        // slow/stale client is closed instead of blocking the writing thread
+        // (ping sweep, chat-streaming callback, notification push). Stashed in
+        // the shared attribute map; resolved by WebSocketSender on every write.
+        ConcurrentWebSocketSessionDecorator decorated = new ConcurrentWebSocketSessionDecorator(
+                wsSession, properties.getSendTimeLimitMs(), properties.getSendBufferSizeBytes());
+        wsSession.getAttributes().put(ATTR_SEND_TARGET, decorated);
+        // Register for server-side keep-alive pings + stale eviction.
+        keepAlive.register(decorated);
         chatHandler.afterConnectionEstablished(wsSession);
+    }
+
+    @Override
+    protected void handlePongMessage(WebSocketSession wsSession, PongMessage message) {
+        // Client answered a server keep-alive ping — mark it live so the
+        // eviction sweep leaves it alone.
+        keepAlive.recordPong(wsSession.getId());
+    }
+
+    /**
+     * Returns the send target for a connection: the self-evicting
+     * {@link ConcurrentWebSocketSessionDecorator} when present (all external
+     * Live-WS sessions), else the raw session (undecorated endpoints such as
+     * the internal chat tunnel). The decorator shares the raw session's
+     * attribute map, so this resolves correctly from either reference.
+     */
+    public static WebSocketSession resolveSendTarget(WebSocketSession wsSession) {
+        Object target = wsSession.getAttributes().get(ATTR_SEND_TARGET);
+        return target instanceof WebSocketSession decorated ? decorated : wsSession;
     }
 
     @Override
@@ -148,6 +190,7 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession wsSession, CloseStatus status) {
+        keepAlive.unregister(wsSession.getId());
         try {
             tunnelRegistry.closeFor(wsSession);
         } catch (RuntimeException e) {

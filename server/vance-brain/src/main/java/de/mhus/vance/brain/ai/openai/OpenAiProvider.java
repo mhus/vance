@@ -121,6 +121,10 @@ public class OpenAiProvider extends AbstractChatProvider {
                 .seed(seed)
                 .stop(options.getStopSequences())
                 .timeout(timeout)
+                // Strip assistant tool-call `content: null` so strict
+                // OpenAI-compatible gateways (GLM/Zhipu) don't 400 on it.
+                // See ToolCallContentHttpClient.
+                .httpClientBuilder(ToolCallContentHttpClientBuilder.wrappingDefault())
                 // Bound the retry storm on a persistent failure. The sync
                 // model backs LightLlm helpers (follow-up, judge,
                 // discovery) — a timeout is a persistent condition, so
@@ -143,6 +147,7 @@ public class OpenAiProvider extends AbstractChatProvider {
                         .seed(seed)
                         .stop(options.getStopSequences())
                         .timeout(streamTimeout)
+                        .httpClientBuilder(ToolCallContentHttpClientBuilder.wrappingDefault())
                         .logRequests(options.getLogRequests())
                         .logResponses(options.getLogRequests());
         if (!cacheParams.isEmpty()) {

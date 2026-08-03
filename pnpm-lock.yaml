@@ -176,8 +176,8 @@ importers:
         specifier: ^6.0.3
         version: 6.0.4(@capacitor/core@8.4.2)
       '@capacitor/splash-screen':
-        specifier: ^6.0.3
-        version: 6.0.4(@capacitor/core@8.4.2)
+        specifier: ^8.0.2
+        version: 8.0.2(@capacitor/core@8.4.2)
       '@capacitor/status-bar':
         specifier: ^6.0.2
         version: 6.0.3(@capacitor/core@8.4.2)
@@ -977,10 +977,10 @@ packages:
     peerDependencies:
       '@capacitor/core': ^6.0.0
 
-  '@capacitor/splash-screen@6.0.4':
-    resolution: {integrity: sha512-uJXR+28cdaie7zIIUBvgkWgHim6Gr1itJym9voIMTmrjXkOaPtejwxYJsdQWPJz9zgGnSbXuC1mNNibLgv3OpQ==}
+  '@capacitor/splash-screen@8.0.2':
+    resolution: {integrity: sha512-0C6rYScr13WfAE9nPl4ScOQynmjFv9NT3Th+RZkD4ezYHmER6mcl1/lDYsv7jg3Rj3FOvLrlTlmNkUrr83kZzQ==}
     peerDependencies:
-      '@capacitor/core': ^6.0.0
+      '@capacitor/core': '>=8.0.0'
 
   '@capacitor/status-bar@6.0.3':
     resolution: {integrity: sha512-nFlgSmtx6Zwaw0tEvZgQsWHBeOfWWB/AvEoCApopLT4mHkBVoSrwkLvy2PjZs5wxCbsmqvQczr3XCyTwaDZVQg==}
@@ -3410,7 +3410,7 @@ packages:
   git-raw-commits@2.0.11:
     resolution: {integrity: sha512-VnctFhw+xfj8Va1xtfEqCUD2XDrbAPSJx+hSrE5K7fGdjZruW7XV+QOrN7LF/RJyvspRiD2I0asWsxFp0ya26A==}
     engines: {node: '>=10'}
-    deprecated: This package is no longer maintained. For the JavaScript API, please use @conventional-changelog/git-client instead.
+    deprecated: Deprecated and no longer maintained. Use @conventional-changelog/git-client instead.
     hasBin: true
 
   git-remote-origin-url@2.0.0:
@@ -3420,7 +3420,7 @@ packages:
   git-semver-tags@4.1.1:
     resolution: {integrity: sha512-OWyMt5zBe7xFs8vglMmhM9lRQzCWL3WjHtxNNfJTMngGym7pC1kh8sP6jevfydJ6LP3ZvGxfb6ABYgPUM0mtsA==}
     engines: {node: '>=10'}
-    deprecated: This package is no longer maintained. For the JavaScript API, please use @conventional-changelog/git-client instead.
+    deprecated: Deprecated and no longer maintained. Use @conventional-changelog/git-client instead.
     hasBin: true
 
   gitconfiglocal@1.0.0:
@@ -5482,7 +5482,7 @@ snapshots:
     dependencies:
       '@capacitor/core': 8.4.2
 
-  '@capacitor/splash-screen@6.0.4(@capacitor/core@8.4.2)':
+  '@capacitor/splash-screen@8.0.2(@capacitor/core@8.4.2)':
     dependencies:
       '@capacitor/core': 8.4.2
 

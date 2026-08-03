@@ -28,6 +28,7 @@ public class FootConfig {
     private Ui ui = new Ui();
     private Ide ide = new Ide();
     private SleepGuard sleepGuard = new SleepGuard();
+    private ConversationAudit conversationAudit = new ConversationAudit();
 
     @Data
     public static class Brain {
@@ -424,6 +425,41 @@ public class FootConfig {
          * done, which is harmless.
          */
         private Duration linger = Duration.ofMinutes(5);
+    }
+
+    /**
+     * Conversation audit logging — appends every chat message (USER and
+     * ASSISTANT) as a JSON line to a per-session file, so the full
+     * conversation is persisted on disk as it happens. Similar to
+     * {@code .claude/exports/}, but written live instead of at session end.
+     *
+     * <p>Files land under {@code <baseDir>/<YYYY>-<MM>/<sessionId>.jsonl}.
+     * The year-month directory is derived from the wall-clock at write
+     * time, so a session spanning midnight lands in two files — that's
+     * intentional (keeps directories browsable by month).
+     *
+     * <p>Config sources (precedence: {@code application.yaml <
+     * .vancetope/config.yaml < CLI flags}):
+     * <ul>
+     *   <li>{@code vance.conversation-audit.enabled} in
+     *       {@code application.yaml}</li>
+     *   <li>{@code conversationAudit.enabled} in
+     *       {@code .vancetope/config.yaml} (applied by
+     *       {@link VanceProjectConfigApplier})</li>
+     *   <li>{@code --audit} / {@code --no-audit} CLI flags</li>
+     * </ul>
+     */
+    @Data
+    public static class ConversationAudit {
+        /** Master switch. When {@code false}, no audit files are written. */
+        private boolean enabled = false;
+        /**
+         * Base directory for audit files. Relative paths resolve against
+         * the active {@code .vancetope} directory (project-local or global
+         * home, whichever is active). {@code null} or blank defaults to
+         * {@code conversations} (i.e. {@code .vancetope/conversations/}).
+         */
+        private @Nullable String dir;
     }
 }
 

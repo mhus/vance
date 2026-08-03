@@ -42,6 +42,12 @@ vance:
       debug: "fg:bright-black"
       warn: "fg:yellow"
       error: "fg:red"
+  conversation-audit:
+    # Append every chat message to .vancetope/conversations/<YYYY>-<MM>/<sessionId>.jsonl
+    # Override per-project in .vancetope/config.yaml or with --audit / --no-audit.
+    enabled: false
+    # Sub-directory under the active .vancetope dir. Default: conversations
+    # dir: conversations
 
 logging:
   level:

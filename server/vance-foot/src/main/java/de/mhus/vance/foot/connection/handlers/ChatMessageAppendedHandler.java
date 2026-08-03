@@ -4,6 +4,7 @@ import de.mhus.vance.api.chat.ChatMessageAppendedData;
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.foot.audit.ConversationAuditService;
 import de.mhus.vance.foot.chat.PendingAskUserPicker;
 import de.mhus.vance.foot.connection.MessageHandler;
 import de.mhus.vance.foot.session.SessionService;
@@ -34,16 +35,19 @@ public class ChatMessageAppendedHandler implements MessageHandler {
     private final StreamingDisplay streaming;
     private final SessionService sessions;
     private final PendingAskUserPicker askUserPicker;
+    private final ConversationAuditService audit;
     private final ObjectMapper json = JsonMapper.builder().build();
 
     public ChatMessageAppendedHandler(ChatTerminal terminal,
                                       StreamingDisplay streaming,
                                       SessionService sessions,
-                                      PendingAskUserPicker askUserPicker) {
+                                      PendingAskUserPicker askUserPicker,
+                                      ConversationAuditService audit) {
         this.terminal = terminal;
         this.streaming = streaming;
         this.sessions = sessions;
         this.askUserPicker = askUserPicker;
+        this.audit = audit;
     }
 
     @Override
@@ -55,6 +59,13 @@ public class ChatMessageAppendedHandler implements MessageHandler {
     public void handle(WebSocketEnvelope envelope) {
         ChatMessageAppendedData data = json.convertValue(
                 envelope.getData(), ChatMessageAppendedData.class);
+        // Persist the message to the conversation audit log before
+        // rendering — the audit is best-effort and must never block
+        // the UI. Only USER and ASSISTANT roles are audited; SYSTEM
+        // notes are ephemeral and not part of the conversation.
+        if (data.getRole() == ChatRole.USER || data.getRole() == ChatRole.ASSISTANT) {
+            audit.append(data);
+        }
         boolean wasStreamed = streaming.onCommit(data.getThinkProcessId());
         if (wasStreamed) {
             maybeUpdatePicker(data);

@@ -6,6 +6,8 @@ import de.mhus.vance.foot.auth.ProjectBindingStore;
 import de.mhus.vance.foot.auth.SessionAnchorStore;
 import de.mhus.vance.foot.auth.VancePaths;
 import de.mhus.vance.foot.config.FootConfig;
+import de.mhus.vance.foot.config.VanceProjectConfigApplier;
+import de.mhus.vance.foot.config.VanceProjectConfigStore;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.ide.IdeBridgeService;
 import de.mhus.vance.foot.markdown.MarkdownRenderState;
@@ -132,6 +134,17 @@ public class VanceFootCommand implements Callable<Integer> {
                     + "Toggle at runtime with /markdown on|off.")
     boolean noMarkdown;
 
+    @Option(names = "--audit",
+            description = "Enable conversation audit logging: append every chat "
+                    + "message to .vancetope/conversations/<YYYY>-<MM>/<sessionId>.jsonl. "
+                    + "Overrides .vancetope/config.yaml and application.yaml defaults.")
+    boolean audit;
+
+    @Option(names = "--no-audit",
+            description = "Disable conversation audit logging for this run. "
+                    + "Overrides .vancetope/config.yaml and application.yaml defaults.")
+    boolean noAudit;
+
     @Option(names = "--profile",
             paramLabel = "<name>",
             description = "WebSocket profile sent on connect "
@@ -239,6 +252,8 @@ public class VanceFootCommand implements Callable<Integer> {
     private final ProjectBindingStore bindingStore;
     private final ProjectBindingApplier bindingApplier;
     private final SessionAnchorStore sessionAnchorStore;
+    private final VanceProjectConfigStore projectConfigStore;
+    private final VanceProjectConfigApplier projectConfigApplier;
 
     public VanceFootCommand(ChatRepl repl,
                             ConnectionService connection,
@@ -255,7 +270,9 @@ public class VanceFootCommand implements Callable<Integer> {
                             VancePaths vancePaths,
                             ProjectBindingStore bindingStore,
                             ProjectBindingApplier bindingApplier,
-                            SessionAnchorStore sessionAnchorStore) {
+                            SessionAnchorStore sessionAnchorStore,
+                            VanceProjectConfigStore projectConfigStore,
+                            VanceProjectConfigApplier projectConfigApplier) {
         this.repl = repl;
         this.connection = connection;
         this.terminal = terminal;
@@ -272,6 +289,8 @@ public class VanceFootCommand implements Callable<Integer> {
         this.bindingStore = bindingStore;
         this.bindingApplier = bindingApplier;
         this.sessionAnchorStore = sessionAnchorStore;
+        this.projectConfigStore = projectConfigStore;
+        this.projectConfigApplier = projectConfigApplier;
     }
 
     @Override
@@ -296,6 +315,7 @@ public class VanceFootCommand implements Callable<Integer> {
         // project also arms the welcome-time auto-bootstrap, so a directory with
         // a saved login boots straight into its project.
         applyLocalBinding();
+        applyProjectConfig();
 
         // Headless runs (daemon / --no-ui) have no user to answer a sandbox
         // prompt — set this before connect() so an early tool-invoke
@@ -395,6 +415,16 @@ public class VanceFootCommand implements Callable<Integer> {
             config.getUi().getMarkdown().setEnabled(false);
             markdownState.setEnabled(false);
         }
+        if (audit && noAudit) {
+            terminal.error("--audit and --no-audit are mutually exclusive.");
+            return 2;
+        }
+        if (audit) {
+            config.getConversationAudit().setEnabled(true);
+        }
+        if (noAudit) {
+            config.getConversationAudit().setEnabled(false);
+        }
         if (agentFile != null) {
             agentDoc.setOverridePath(agentFile);
         }
@@ -492,6 +522,20 @@ public class VanceFootCommand implements Callable<Integer> {
             profile = "web";
         }
         noTools = true;
+    }
+
+    /**
+     * Overlays {@code .vancetope/config.yaml} onto the running config,
+     * after the {@code project.yaml} binding and before CLI flags. This
+     * is the per-project config for non-credential settings (conversation
+     * audit, future recipe presets, …). Absent file = no-op.
+     */
+    private void applyProjectConfig() {
+        projectConfigStore.load(vancePaths.activeDir()).ifPresent(projectConfig -> {
+            projectConfigApplier.apply(projectConfig, config);
+            terminal.println(Verbosity.VERBOSE,
+                    "Applied .vancetope/config.yaml from %s.", vancePaths.activeDir());
+        });
     }
 
 }

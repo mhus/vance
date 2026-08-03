@@ -41,6 +41,7 @@ public class VancePaths {
     public static final String PROJECT_FILE = "project.yaml";
     public static final String ACCESS_FILE = "access.yaml";
     public static final String SESSION_FILE = "session.yaml";
+    public static final String CONFIG_FILE = "config.yaml";
 
     /** Test-only override for the project-local {@code .vance} directory. */
     private final @Nullable String localDirOverride;

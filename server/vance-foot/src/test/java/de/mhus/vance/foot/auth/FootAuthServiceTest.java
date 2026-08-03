@@ -143,7 +143,7 @@ class FootAuthServiceTest {
         assertThat(access).isPresent();
         assertThat(access.get().getAccessToken()).isEqualTo("acc");
         assertThat(access.get().getRefreshToken()).isEqualTo("ref");
-        // project.yaml written
+        // project.eddie.yaml written
         Optional<ProjectBinding> binding = new ProjectBindingStore().load(dir);
         assertThat(binding).isPresent();
         assertThat(binding.get().getProject()).isEqualTo("my-project");

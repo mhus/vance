@@ -10,14 +10,15 @@ import org.jspecify.annotations.Nullable;
  * {@link VanceProjectConfigApplier}.
  *
  * <p>This file is the home for per-project overrides that are <em>not</em>
- * credentials (those live in {@code project.yaml}). The first resident
- * is the {@link ConversationAudit} toggle + directory; future sections
+ * credentials (those live in {@code project.eddie.yaml}). The first resident
+ * is the {@link ConversationCapture} toggle + directory; future sections
  * (recipe presets, default profile, …) will be added here.
  */
 @Data
 public class VanceProjectConfig {
 
-    private ConversationAudit conversationAudit = new ConversationAudit();
+    private ConversationCapture conversationCapture = new ConversationCapture();
+    private Defaults defaults = new Defaults();
 
     /**
      * Conversation audit logging — appends every chat message (USER and
@@ -31,7 +32,7 @@ public class VanceProjectConfig {
      * intentional (keeps directories browsable by month).
      */
     @Data
-    public static class ConversationAudit {
+    public static class ConversationCapture {
         /** Master switch. When {@code false}, no audit files are written. */
         private boolean enabled = false;
         /**
@@ -41,5 +42,24 @@ public class VanceProjectConfig {
          * {@code conversations} (i.e. {@code .vancetope/conversations/}).
          */
         private @Nullable String dir;
+    }
+
+    /**
+     * Per-project default flags applied at startup, mirroring the
+     * corresponding CLI flags. Each field is {@code null}/{@code false}
+     * by default — only non-null/non-false values in the YAML override
+     * the CLI defaults. CLI flags always win over these values
+     * (precedence: {@code application.yaml < .vancetope/config.yaml < CLI}).
+     */
+    @Data
+    public static class Defaults {
+        /** Same as {@code --intellij-claude} — start the Claude IDE bridge. */
+        private boolean intellijClaude = false;
+        /** Same as {@code --intellij-mcp-default} — register the stock MCP endpoint. */
+        private boolean intellijMcpDefault = false;
+        /** Same as {@code --recipe <name>} — default session-chat recipe. */
+        private @Nullable String recipe;
+        /** Same as {@code --no-sandbox} — set to {@code false} to disable the file/exec sandbox. */
+        private boolean sandbox = true;
     }
 }

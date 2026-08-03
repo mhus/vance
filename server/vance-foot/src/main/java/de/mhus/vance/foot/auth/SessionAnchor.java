@@ -9,7 +9,7 @@ import org.jspecify.annotations.Nullable;
  * a working directory. Written whenever foot bootstraps into a session and
  * read back by {@code -c} / {@code --continue} to resume exactly that session.
  *
- * <p>Per directory (= per project, like the sibling {@code project.yaml} /
+ * <p>Per directory (= per project, like the sibling {@code project.eddie.yaml} /
  * {@code access.yaml}). It holds no secret — just the id of the session last
  * entered here — so it is not treated as a credential.
  */

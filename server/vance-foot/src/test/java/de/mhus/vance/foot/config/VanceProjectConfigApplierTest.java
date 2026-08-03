@@ -11,23 +11,23 @@ class VanceProjectConfigApplierTest {
     @Test
     void appliesEnabledFlag() {
         VanceProjectConfig project = new VanceProjectConfig();
-        project.getConversationAudit().setEnabled(true);
+        project.getConversationCapture().setEnabled(true);
         FootConfig config = new FootConfig();
 
         applier.apply(project, config);
 
-        assertThat(config.getConversationAudit().isEnabled()).isTrue();
+        assertThat(config.getConversationCapture().isEnabled()).isTrue();
     }
 
     @Test
     void appliesDirWhenPresent() {
         VanceProjectConfig project = new VanceProjectConfig();
-        project.getConversationAudit().setDir("custom-audit");
+        project.getConversationCapture().setDir("custom-audit");
         FootConfig config = new FootConfig();
 
         applier.apply(project, config);
 
-        assertThat(config.getConversationAudit().getDir()).isEqualTo("custom-audit");
+        assertThat(config.getConversationCapture().getDir()).isEqualTo("custom-audit");
     }
 
     @Test
@@ -35,47 +35,138 @@ class VanceProjectConfigApplierTest {
         VanceProjectConfig project = new VanceProjectConfig();
         // dir is null
         FootConfig config = new FootConfig();
-        config.getConversationAudit().setDir("pre-existing");
+        config.getConversationCapture().setDir("pre-existing");
 
         applier.apply(project, config);
 
-        assertThat(config.getConversationAudit().getDir()).isEqualTo("pre-existing");
+        assertThat(config.getConversationCapture().getDir()).isEqualTo("pre-existing");
     }
 
     @Test
     void doesNotOverrideDirWhenBlank() {
         VanceProjectConfig project = new VanceProjectConfig();
-        project.getConversationAudit().setDir("   ");
+        project.getConversationCapture().setDir("   ");
         FootConfig config = new FootConfig();
-        config.getConversationAudit().setDir("pre-existing");
+        config.getConversationCapture().setDir("pre-existing");
 
         applier.apply(project, config);
 
-        assertThat(config.getConversationAudit().getDir()).isEqualTo("pre-existing");
+        assertThat(config.getConversationCapture().getDir()).isEqualTo("pre-existing");
     }
 
     @Test
     void disabledFlagOverridesPreviouslyEnabled() {
         VanceProjectConfig project = new VanceProjectConfig();
-        project.getConversationAudit().setEnabled(false);
+        project.getConversationCapture().setEnabled(false);
         FootConfig config = new FootConfig();
-        config.getConversationAudit().setEnabled(true);
+        config.getConversationCapture().setEnabled(true);
 
         applier.apply(project, config);
 
-        assertThat(config.getConversationAudit().isEnabled()).isFalse();
+        assertThat(config.getConversationCapture().isEnabled()).isFalse();
     }
 
     @Test
-    void nullConversationAuditSection_isNoOp() {
+    void nullConversationCaptureSection_isNoOp() {
         VanceProjectConfig project = new VanceProjectConfig();
-        project.setConversationAudit(null);
+        project.setConversationCapture(null);
         FootConfig config = new FootConfig();
-        config.getConversationAudit().setEnabled(true);
+        config.getConversationCapture().setEnabled(true);
 
         applier.apply(project, config);
 
         // Unchanged
-        assertThat(config.getConversationAudit().isEnabled()).isTrue();
+        assertThat(config.getConversationCapture().isEnabled()).isTrue();
+    }
+
+    // --- Defaults ---
+
+    @Test
+    void defaultsIntellijClaude_enablesIdeClaude() {
+        VanceProjectConfig project = new VanceProjectConfig();
+        project.getDefaults().setIntellijClaude(true);
+        FootConfig config = new FootConfig();
+
+        applier.apply(project, config);
+
+        assertThat(config.getIde().getClaude().isEnabled()).isTrue();
+    }
+
+    @Test
+    void defaultsIntellijMcpDefault_setsMcpUrl() {
+        VanceProjectConfig project = new VanceProjectConfig();
+        project.getDefaults().setIntellijMcpDefault(true);
+        FootConfig config = new FootConfig();
+
+        applier.apply(project, config);
+
+        assertThat(config.getIde().getIntellijMcp().getUrl())
+                .isEqualTo(VanceProjectConfigApplier.DEFAULT_INTELLIJ_MCP_URL);
+    }
+
+    @Test
+    void defaultsRecipe_setsChatRecipe() {
+        VanceProjectConfig project = new VanceProjectConfig();
+        project.getDefaults().setRecipe("coding");
+        FootConfig config = new FootConfig();
+
+        applier.apply(project, config);
+
+        assertThat(config.getBootstrap().getChatRecipe()).isEqualTo("coding");
+    }
+
+    @Test
+    void defaultsRecipeBlank_doesNotOverride() {
+        VanceProjectConfig project = new VanceProjectConfig();
+        project.getDefaults().setRecipe("   ");
+        FootConfig config = new FootConfig();
+        config.getBootstrap().setChatRecipe("pre-existing");
+
+        applier.apply(project, config);
+
+        assertThat(config.getBootstrap().getChatRecipe()).isEqualTo("pre-existing");
+    }
+
+    @Test
+    void defaultsSandboxFalse_setsNoSandboxDefault() {
+        VanceProjectConfig project = new VanceProjectConfig();
+        project.getDefaults().setSandbox(false);
+        FootConfig config = new FootConfig();
+
+        applier.apply(project, config);
+
+        assertThat(config.getIde().isNoSandboxDefault()).isTrue();
+    }
+
+    @Test
+    void defaultsAllDefault_doesNotChangeConfig() {
+        VanceProjectConfig project = new VanceProjectConfig();
+        // defaults are all false/null by default, except sandbox=true
+        FootConfig config = new FootConfig();
+        config.getIde().getClaude().setEnabled(false);
+        config.getIde().getIntellijMcp().setUrl(null);
+        config.getBootstrap().setChatRecipe("pre-existing");
+        config.getIde().setNoSandboxDefault(false);
+
+        applier.apply(project, config);
+
+        assertThat(config.getIde().getClaude().isEnabled()).isFalse();
+        assertThat(config.getIde().getIntellijMcp().getUrl()).isNull();
+        assertThat(config.getBootstrap().getChatRecipe()).isEqualTo("pre-existing");
+        // sandbox defaults to true → noSandboxDefault stays false
+        assertThat(config.getIde().isNoSandboxDefault()).isFalse();
+    }
+
+    @Test
+    void nullDefaultsSection_isNoOp() {
+        VanceProjectConfig project = new VanceProjectConfig();
+        project.setDefaults(null);
+        FootConfig config = new FootConfig();
+        config.getIde().getClaude().setEnabled(true);
+
+        applier.apply(project, config);
+
+        // Unchanged
+        assertThat(config.getIde().getClaude().isEnabled()).isTrue();
     }
 }

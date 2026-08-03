@@ -28,7 +28,7 @@ public class FootConfig {
     private Ui ui = new Ui();
     private Ide ide = new Ide();
     private SleepGuard sleepGuard = new SleepGuard();
-    private ConversationAudit conversationAudit = new ConversationAudit();
+    private ConversationCapture conversationCapture = new ConversationCapture();
 
     @Data
     public static class Brain {
@@ -88,7 +88,7 @@ public class FootConfig {
     @Data
     public static class Auth {
         // No baked-in credentials: these are empty by default so a bare launch
-        // has no dev identity. The stored binding (.vancetope/project.yaml,
+        // has no dev identity. The stored binding (.vancetope/project.eddie.yaml,
         // overlaid by ProjectBindingApplier) or an explicit config file fills
         // them; /login prompts prefill from whatever ends up here, else blank.
         private String tenant = "";
@@ -353,7 +353,7 @@ public class FootConfig {
         private IntellijMcp intellijMcp = new IntellijMcp();
         /**
          * Set by {@link VanceProjectConfigApplier} when
-         * {@code defaults.noSandbox} is {@code true} in
+         * {@code defaults.sandbox} is {@code false} in
          * {@code .vancetope/config.yaml}. Read by {@code VanceFootCommand}
          * after {@code applyProjectConfig()} to call
          * {@code permissions.disableSandbox()} — unless the CLI
@@ -456,16 +456,16 @@ public class FootConfig {
      * <p>Config sources (precedence: {@code application.yaml <
      * .vancetope/config.yaml < CLI flags}):
      * <ul>
-     *   <li>{@code vance.conversation-audit.enabled} in
+     *   <li>{@code vance.conversation-capture.enabled} in
      *       {@code application.yaml}</li>
-     *   <li>{@code conversationAudit.enabled} in
+     *   <li>{@code conversationCapture.enabled} in
      *       {@code .vancetope/config.yaml} (applied by
      *       {@link VanceProjectConfigApplier})</li>
      *   <li>{@code --audit} / {@code --no-audit} CLI flags</li>
      * </ul>
      */
     @Data
-    public static class ConversationAudit {
+    public static class ConversationCapture {
         /** Master switch. When {@code false}, no audit files are written. */
         private boolean enabled = false;
         /**

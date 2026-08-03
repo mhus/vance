@@ -26,7 +26,7 @@ import org.springframework.stereotype.Component;
 /**
  * {@code /login [username [project [password]]]} — authenticate against the
  * brain, persist a renewable token to {@code .vancetope/access.yaml} plus a
- * {@code .vancetope/project.yaml} binding, keep the credential out of git, then
+ * {@code .vancetope/project.eddie.yaml} binding, keep the credential out of git, then
  * (re)connect and bootstrap the bound project.
  *
  * <p>Any field not given as an argument is resolved from the existing
@@ -103,46 +103,56 @@ public class LoginSlashCommand implements SlashCommand {
         });
     }
 
-    private void runLogin(List<String> args) throws Exception {
+    // Package-private so the interactive prompt-with-defaults flow can be
+    // exercised directly by unit tests without going through the worker thread.
+    void runLogin(List<String> args) throws Exception {
         Optional<ProjectBinding> existing = loadExistingBinding();
         Defaults def = computeDefaults(args, existing.orElse(null), config);
 
-        String username = def.username() != null
-                ? def.username()
-                : requireField("Username", config.getAuth().getUsername(), false);
-        if (username == null) {
-            return; // cancelled / timed out
-        }
-
-        String httpBase;
-        String wsBase;
-        String tenant;
-        if (def.hadBinding()) {
-            httpBase = def.httpBase();
-            wsBase = def.wsBase();
-            tenant = def.tenant();
+        // Every field is prompted with the resolved default (from the
+        // existing binding or config) offered as a prefill — a stored
+        // binding is no longer taken silently. The user sees exactly what
+        // they're logging in as and can confirm each value with Enter or
+        // change it. Fields supplied as explicit CLI arguments skip their
+        // prompt so scripted logins stay non-interactive.
+        String username;
+        if (!args.isEmpty() && !args.get(0).isBlank()) {
+            username = args.get(0).trim();
         } else {
-            // Fresh login: confirm where and against which tenant to authenticate.
-            String url = requireField("Brain URL", def.httpBase(), false);
-            if (url == null) {
-                return;
+            String defaultUser = def.username() != null
+                    ? def.username() : config.getAuth().getUsername();
+            username = requireField("Username", defaultUser, false);
+            if (username == null) {
+                return; // cancelled / timed out
             }
-            httpBase = url;
-            wsBase = deriveWsBase(url);
-            String t = requireField("Tenant", def.tenant(), false);
-            if (t == null) {
-                return;
-            }
-            tenant = t;
         }
 
-        String project = def.project();
-        if (project == null && args.size() < 2) {
-            project = optionalField("Project (blank for none)", existingProject(existing.orElse(null)));
+        // Brain URL and tenant have no CLI args — always prompt with the
+        // resolved default so a re-login against a different brain/tenant
+        // is possible without editing project.yaml first.
+        String url = requireField("Brain URL", def.httpBase(), false);
+        if (url == null) {
+            return;
+        }
+        String httpBase = url;
+        String wsBase = deriveWsBase(url);
+
+        String tenant = requireField("Tenant", def.tenant(), false);
+        if (tenant == null) {
+            return;
         }
 
-        String password = def.password();
-        if (password == null) {
+        String project;
+        if (args.size() >= 2 && !args.get(1).isBlank()) {
+            project = args.get(1).trim();
+        } else {
+            project = optionalField("Project (blank for none)", def.project());
+        }
+
+        String password;
+        if (args.size() >= 3 && args.get(2) != null && !args.get(2).isEmpty()) {
+            password = args.get(2);
+        } else {
             password = requireField("Password", null, true);
             if (password == null) {
                 return;
@@ -230,10 +240,6 @@ public class LoginSlashCommand implements SlashCommand {
         } catch (Exception e) {
             terminal.error("Connect after login failed: " + e.getMessage());
         }
-    }
-
-    private static @Nullable String existingProject(@Nullable ProjectBinding binding) {
-        return binding == null ? null : binding.getProject();
     }
 
     /**

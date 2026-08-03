@@ -18,7 +18,7 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
  * stays trivially testable.
  *
  * <p>Mirrors the pattern of {@code ProjectBindingStore} for
- * {@code project.yaml}: absent file → empty Optional, broken file →
+ * {@code project.eddie.yaml}: absent file → empty Optional, broken file →
  * {@link AccessStoreException}.
  */
 @Component

@@ -54,7 +54,7 @@ class ConversationAuditServiceTest {
     @Test
     void disabled_doesNothing() {
         FootConfig config = new FootConfig();
-        config.getConversationAudit().setEnabled(false);
+        config.getConversationCapture().setEnabled(false);
         SessionService sessions = sessionsWith("sess-123", "proj-1");
         ConversationAuditService svc = new ConversationAuditService(
                 config, vancePathsMock(), sessions);
@@ -67,7 +67,7 @@ class ConversationAuditServiceTest {
     @Test
     void noSessionBound_doesNothing() {
         FootConfig config = new FootConfig();
-        config.getConversationAudit().setEnabled(true);
+        config.getConversationCapture().setEnabled(true);
         SessionService sessions = mock(SessionService.class);
         when(sessions.current()).thenReturn(null);
         ConversationAuditService svc = new ConversationAuditService(
@@ -81,7 +81,7 @@ class ConversationAuditServiceTest {
     @Test
     void appendsUserAndAssistantMessagesToJsonl() throws Exception {
         FootConfig config = new FootConfig();
-        config.getConversationAudit().setEnabled(true);
+        config.getConversationCapture().setEnabled(true);
         SessionService sessions = sessionsWith("sess-123", "proj-1");
         Clock fixedClock = Clock.fixed(
                 Instant.parse("2026-08-03T10:30:00Z"), ZoneId.systemDefault());
@@ -110,7 +110,7 @@ class ConversationAuditServiceTest {
     @Test
     void createsMonthDirectoryFromClock() throws Exception {
         FootConfig config = new FootConfig();
-        config.getConversationAudit().setEnabled(true);
+        config.getConversationCapture().setEnabled(true);
         SessionService sessions = sessionsWith("sess-456", "proj-1");
         Clock fixedClock = Clock.fixed(
                 Instant.parse("2026-12-15T08:00:00Z"), ZoneId.systemDefault());
@@ -126,8 +126,8 @@ class ConversationAuditServiceTest {
     @Test
     void customDirOverridesDefault() throws Exception {
         FootConfig config = new FootConfig();
-        config.getConversationAudit().setEnabled(true);
-        config.getConversationAudit().setDir("chat-logs");
+        config.getConversationCapture().setEnabled(true);
+        config.getConversationCapture().setDir("chat-logs");
         SessionService sessions = sessionsWith("sess-789", "proj-1");
         ConversationAuditService svc = new ConversationAuditService(
                 config, vancePathsMock(), sessions);
@@ -142,7 +142,7 @@ class ConversationAuditServiceTest {
     @Test
     void includesSenderMetadataWhenPresent() throws Exception {
         FootConfig config = new FootConfig();
-        config.getConversationAudit().setEnabled(true);
+        config.getConversationCapture().setEnabled(true);
         SessionService sessions = sessionsWith("sess-meta", "proj-1");
         ConversationAuditService svc = new ConversationAuditService(
                 config, vancePathsMock(), sessions);
@@ -172,19 +172,19 @@ class ConversationAuditServiceTest {
     @Test
     void isEnabled_reflectsConfig() {
         FootConfig config = new FootConfig();
-        config.getConversationAudit().setEnabled(true);
+        config.getConversationCapture().setEnabled(true);
         ConversationAuditService svc = new ConversationAuditService(
                 config, vancePathsMock(), mock(SessionService.class));
         assertThat(svc.isEnabled()).isTrue();
 
-        config.getConversationAudit().setEnabled(false);
+        config.getConversationCapture().setEnabled(false);
         assertThat(svc.isEnabled()).isFalse();
     }
 
     @Test
     void multipleAppendsAccumulateInSameFile() throws Exception {
         FootConfig config = new FootConfig();
-        config.getConversationAudit().setEnabled(true);
+        config.getConversationCapture().setEnabled(true);
         SessionService sessions = sessionsWith("sess-multi", "proj-1");
         Clock fixedClock = Clock.fixed(
                 Instant.parse("2026-08-03T10:00:00Z"), ZoneId.systemDefault());
@@ -200,5 +200,81 @@ class ConversationAuditServiceTest {
         assertThat(lines).hasSize(5);
         assertThat(lines.get(0)).contains("msg-0");
         assertThat(lines.get(4)).contains("msg-4");
+    }
+
+    @Test
+    void appendUserInput_writesUserLineAtSendTime() throws Exception {
+        // Regression: the server does not echo a chat-message-appended
+        // for USER turns in solo sessions, so append() on the inbound
+        // path never sees them. appendUserInput captures the user's
+        // input locally at send time instead.
+        FootConfig config = new FootConfig();
+        config.getConversationCapture().setEnabled(true);
+        SessionService sessions = sessionsWith("sess-usr", "proj-1");
+        Clock fixedClock = Clock.fixed(
+                Instant.parse("2026-08-03T10:30:00Z"), ZoneId.systemDefault());
+        ConversationAuditService svc = new ConversationAuditService(
+                config, vancePathsMock(), sessions, fixedClock);
+
+        svc.appendUserInput("arthur", "what is 2+2?", false);
+
+        Path file = tempDir.resolve("conversations/2026-08/sess-usr.jsonl");
+        List<String> lines = Files.readAllLines(file);
+        assertThat(lines).hasSize(1);
+        assertThat(lines.get(0)).contains("\"role\":\"user\"");
+        assertThat(lines.get(0)).contains("\"content\":\"what is 2+2?\"");
+        assertThat(lines.get(0)).contains("\"processName\":\"arthur\"");
+        assertThat(lines.get(0)).contains("\"sessionId\":\"sess-usr\"");
+        // No server-assigned fields — foot doesn't know them locally
+        assertThat(lines.get(0)).doesNotContain("chatMessageId");
+        assertThat(lines.get(0)).doesNotContain("thinkProcessId");
+        assertThat(lines.get(0)).doesNotContain("createdAt");
+        // voiceMode omitted when false
+        assertThat(lines.get(0)).doesNotContain("voiceMode");
+    }
+
+    @Test
+    void appendUserInput_marksVoiceModeWhenTrue() throws Exception {
+        FootConfig config = new FootConfig();
+        config.getConversationCapture().setEnabled(true);
+        SessionService sessions = sessionsWith("sess-voice", "proj-1");
+        Clock fixedClock = Clock.fixed(
+                Instant.parse("2026-08-03T10:30:00Z"), ZoneId.systemDefault());
+        ConversationAuditService svc = new ConversationAuditService(
+                config, vancePathsMock(), sessions, fixedClock);
+
+        svc.appendUserInput("arthur", "speak this", true);
+
+        Path file = tempDir.resolve("conversations/2026-08/sess-voice.jsonl");
+        List<String> lines = Files.readAllLines(file);
+        assertThat(lines).hasSize(1);
+        assertThat(lines.get(0)).contains("\"voiceMode\":true");
+    }
+
+    @Test
+    void appendUserInput_disabledDoesNothing() {
+        FootConfig config = new FootConfig();
+        config.getConversationCapture().setEnabled(false);
+        SessionService sessions = sessionsWith("sess-dis", "proj-1");
+        ConversationAuditService svc = new ConversationAuditService(
+                config, vancePathsMock(), sessions);
+
+        svc.appendUserInput("arthur", "hello", false);
+
+        assertThat(Files.exists(tempDir.resolve("conversations"))).isFalse();
+    }
+
+    @Test
+    void appendUserInput_noSessionBoundDoesNothing() {
+        FootConfig config = new FootConfig();
+        config.getConversationCapture().setEnabled(true);
+        SessionService sessions = mock(SessionService.class);
+        when(sessions.current()).thenReturn(null);
+        ConversationAuditService svc = new ConversationAuditService(
+                config, vancePathsMock(), sessions);
+
+        svc.appendUserInput("arthur", "hello", false);
+
+        assertThat(Files.exists(tempDir.resolve("conversations"))).isFalse();
     }
 }

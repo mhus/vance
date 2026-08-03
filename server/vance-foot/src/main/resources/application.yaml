@@ -3,7 +3,7 @@ vance:
     http-base: http://localhost:9990
     ws-base: ws://localhost:9990
   # No baked-in credentials — a bare launch has no dev identity. The stored
-  # binding (.vancetope/project.yaml) or an explicit --config fills these;
+  # binding (.vancetope/project.eddie.yaml) or an explicit --config fills these;
   # /login prompts prefill from whatever ends up here, else blank.
   auth:
     tenant: ""
@@ -42,7 +42,7 @@ vance:
       debug: "fg:bright-black"
       warn: "fg:yellow"
       error: "fg:red"
-  conversation-audit:
+  conversation-capture:
     # Append every chat message to .vancetope/conversations/<YYYY>-<MM>/<sessionId>.jsonl
     # Override per-project in .vancetope/config.yaml or with --audit / --no-audit.
     enabled: false

@@ -91,7 +91,7 @@ The `vancetope` terminal client connects to a running Brain. Three ways to get i
 ```bash
 # Homebrew (macOS + Linux) — brings its own OpenJDK 25, no system Java needed
 brew install mhus/vancetope/vancetope
-vancetope chat
+vancetope
 
 # Self-contained bundle — embedded Java, no install; pick your platform asset
 #   vancetope-<version>-{macos-arm64,macos-x64,linux-x64,windows-x64}.{tar.gz,zip}

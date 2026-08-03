@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Single source of truth for locating the {@code .vance} directory that
- * holds this run's local configuration ({@code project.yaml}) and
+ * holds this run's local configuration ({@code project.eddie.yaml}) and
  * credentials ({@code access.yaml}).
  *
  * <p><b>Resolution — "project wins, else global".</b>
@@ -38,7 +38,7 @@ import org.springframework.stereotype.Component;
 public class VancePaths {
 
     public static final String DIR_NAME = ".vancetope";
-    public static final String PROJECT_FILE = "project.yaml";
+    public static final String PROJECT_FILE = "project.eddie.yaml";
     public static final String ACCESS_FILE = "access.yaml";
     public static final String SESSION_FILE = "session.yaml";
     public static final String CONFIG_FILE = "config.yaml";

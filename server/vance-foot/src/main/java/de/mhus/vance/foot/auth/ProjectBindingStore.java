@@ -10,7 +10,7 @@ import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
- * Reads and writes {@code .vancetope/project.yaml} ({@link ProjectBinding}).
+ * Reads and writes {@code .vancetope/project.eddie.yaml} ({@link ProjectBinding}).
  * Pure file I/O over an explicit directory — callers pass the directory
  * resolved by {@link VancePaths} so the store stays trivially testable.
  */
@@ -22,13 +22,13 @@ public class ProjectBindingStore {
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .build();
 
-    /** The {@code project.yaml} path inside {@code dir}. */
+    /** The {@code project.eddie.yaml} path inside {@code dir}. */
     public Path file(Path dir) {
         return dir.resolve(VancePaths.PROJECT_FILE);
     }
 
     /**
-     * Loads the binding from {@code dir/project.yaml}, or empty when the
+     * Loads the binding from {@code dir/project.eddie.yaml}, or empty when the
      * file is absent. A present-but-broken file raises {@link AccessStoreException}.
      */
     public Optional<ProjectBinding> load(Path dir) {
@@ -45,7 +45,7 @@ public class ProjectBindingStore {
         }
     }
 
-    /** Writes the binding to {@code dir/project.yaml}, creating {@code dir} if needed. */
+    /** Writes the binding to {@code dir/project.eddie.yaml}, creating {@code dir} if needed. */
     public void save(Path dir, ProjectBinding binding) {
         Path file = file(dir);
         try {

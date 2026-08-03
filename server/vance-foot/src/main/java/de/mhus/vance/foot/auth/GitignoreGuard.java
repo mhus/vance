@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
  * {@code .gitignore}.
  *
  * <p>Deliberately narrow: it protects the credential file, not the whole
- * {@code .vancetope/} directory, so an intentionally-shared {@code project.yaml}
+ * {@code .vancetope/} directory, so an intentionally-shared {@code project.eddie.yaml}
  * binding stays committable (the two-file split). It scans the repo-root
  * {@code .gitignore} for the common forms — a global excludes file or a
  * nested ignore is not consulted (a re-add is harmless: git already ignores

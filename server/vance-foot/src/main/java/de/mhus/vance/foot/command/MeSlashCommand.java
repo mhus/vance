@@ -25,7 +25,7 @@ import org.springframework.stereotype.Component;
  *       open connection (from the WELCOME frame), plus the bound
  *       project/session and the live token expiry.</li>
  *   <li><b>Stored login config</b> — the persisted binding
- *       ({@code project.yaml}) and credential cache ({@code access.yaml}) in
+ *       ({@code project.eddie.yaml}) and credential cache ({@code access.yaml}) in
  *       the active {@code .vancetope} directory.</li>
  * </ol>
  *

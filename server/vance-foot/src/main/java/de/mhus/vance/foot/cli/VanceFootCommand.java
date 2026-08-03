@@ -6,6 +6,7 @@ import de.mhus.vance.foot.auth.ProjectBindingStore;
 import de.mhus.vance.foot.auth.SessionAnchorStore;
 import de.mhus.vance.foot.auth.VancePaths;
 import de.mhus.vance.foot.config.FootConfig;
+import de.mhus.vance.foot.config.VanceProjectConfig;
 import de.mhus.vance.foot.config.VanceProjectConfigApplier;
 import de.mhus.vance.foot.config.VanceProjectConfigStore;
 import de.mhus.vance.foot.connection.ConnectionService;
@@ -23,6 +24,7 @@ import de.mhus.vance.foot.ui.WindowTitleService;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +47,9 @@ import picocli.CommandLine.Option;
  *       SIGTERM/SIGINT. Used for headless daemons.</li>
  *   <li>{@code --no-connect} — skip the auto-connect on startup; the
  *       {@code /connect} slash-command is the manual trigger.</li>
+ *   <li>{@code --no-login} — skip the auto-connect with stored credentials
+ *       on startup so a fresh {@code /login} can be run (re-authenticate as
+ *       a different user / tenant without deleting {@code access.yaml}).</li>
  *   <li>{@code --no-bootstrap} — skip the {@code vance.bootstrap}
  *       auto-bootstrap after the welcome frame.</li>
  *   <li>{@code --no-tools} — disable everything that exposes local
@@ -98,6 +103,13 @@ public class VanceFootCommand implements Callable<Integer> {
     @Option(names = "--no-connect",
             description = "Do not open the WebSocket on startup; use /connect later.")
     boolean noConnect;
+
+    @Option(names = "--no-login",
+            description = "Skip the auto-connect with stored credentials on startup so "
+                    + "a fresh /login can be run. Maps to --no-connect for the connect "
+                    + "step, but signals the intent to re-authenticate rather than just "
+                    + "connect later.")
+    boolean noLogin;
 
     @Option(names = "--no-bootstrap",
             description = "Skip the auto-bootstrap from vance.bootstrap config after welcome.")
@@ -309,19 +321,32 @@ public class VanceFootCommand implements Callable<Integer> {
         applyDaemonShortcut();
         applyWebShortcut();
 
-        // Overlay a project-local (or global-home) .vancetope/project.yaml binding
+        // Overlay a project-local (or global-home) .vancetope/project.eddie.yaml binding
         // onto the config BEFORE the CLI-flag overrides below, so precedence is
-        // application.yaml < project.yaml < flags. A stored binding that sets a
+        // application.yaml < project.eddie.yaml < flags. A stored binding that sets a
         // project also arms the welcome-time auto-bootstrap, so a directory with
         // a saved login boots straight into its project.
         applyLocalBinding();
-        applyProjectConfig();
+        Optional<VanceProjectConfig> projectConfig = applyProjectConfig();
 
         // Headless runs (daemon / --no-ui) have no user to answer a sandbox
         // prompt — set this before connect() so an early tool-invoke
         // auto-denies instead of blocking on input that never comes.
         if (noUi) {
             permissions.setInteractive(false);
+        }
+
+        // --no-login skips the auto-connect with stored credentials. Every
+        // resume / continue / explicit-session path needs a live connection,
+        // so combining --no-login with any of them is a contradiction —
+        // reject early with a clear message instead of letting the resume
+        // flow fail later with a cryptic "no token" error.
+        if (noLogin && (resume || last || eddie || continueSession
+                || (sessionId != null && !sessionId.isBlank()))) {
+            terminal.error("--no-login is mutually exclusive with "
+                    + "--resume / --last / --eddie / --session / --continue "
+                    + "(all require an auto-connect).");
+            return 2;
         }
 
         // -c/--continue: resume this directory's last session. The anchor
@@ -404,8 +429,16 @@ public class VanceFootCommand implements Callable<Integer> {
             clientTools.setSuppressed(true);
             agentDoc.setSuppressed(true);
             transfers.setSuppressed(true);
+            // Clear any IDE defaults that config.yaml may have set —
+            // --no-tools is a hard override.
+            config.getIde().getClaude().setEnabled(false);
+            config.getIde().getIntellijMcp().setUrl(null);
         }
         if (noSandbox) {
+            permissions.disableSandbox();
+        } else if (config.getIde().isNoSandboxDefault()) {
+            // defaults.sandbox=false from .vancetope/config.yaml — CLI --no-sandbox
+            // already handled above; this is the config.yaml path.
             permissions.disableSandbox();
         }
         if (noToolOutput) {
@@ -420,16 +453,23 @@ public class VanceFootCommand implements Callable<Integer> {
             return 2;
         }
         if (audit) {
-            config.getConversationAudit().setEnabled(true);
+            config.getConversationCapture().setEnabled(true);
         }
         if (noAudit) {
-            config.getConversationAudit().setEnabled(false);
+            config.getConversationCapture().setEnabled(false);
         }
         if (agentFile != null) {
             agentDoc.setOverridePath(agentFile);
         }
         if (intellijClaude && !noTools) {
             config.getIde().getClaude().setEnabled(true);
+            ideBridge.start(Paths.get("").toAbsolutePath());
+        } else if (projectConfig.isPresent()
+                && projectConfig.get().getDefaults() != null
+                && projectConfig.get().getDefaults().isIntellijClaude()
+                && !noTools) {
+            // defaults.intellijClaude from .vancetope/config.yaml — CLI flag
+            // already handled above; this is the config.yaml path.
             ideBridge.start(Paths.get("").toAbsolutePath());
         }
         if (intellijMcpUrl != null && !intellijMcpUrl.isBlank()) {
@@ -443,7 +483,19 @@ public class VanceFootCommand implements Callable<Integer> {
         } else if (intellijMcpDefault && !noTools) {
             config.getIde().getIntellijMcp().setUrl(INTELLIJ_MCP_DEFAULT_URL);
         }
+        // defaults.intellijMcpDefault from config.yaml was already applied to
+        // config.getIde().getIntellijMcp().setUrl() by the applier — no
+        // additional side-effect needed here.
 
+        // --no-login: the user wants to re-authenticate, so we must not
+        // auto-connect with the stored access.yaml credentials. Maps to
+        // --no-connect for the connect step, plus a hint pointing at /login
+        // (not /connect) since the intent is a fresh login, not a reconnect
+        // with the same stored token.
+        if (noLogin) {
+            noConnect = true;
+            terminal.info("Skipping auto-login — run /login to authenticate.");
+        }
         if (!noConnect) {
             windowTitle.setConnection("connecting…");
             try {
@@ -492,7 +544,7 @@ public class VanceFootCommand implements Callable<Integer> {
         bindingStore.load(vancePaths.activeDir()).ifPresent(binding -> {
             bindingApplier.apply(binding, config);
             terminal.println(Verbosity.VERBOSE,
-                    "Applied .vancetope/project.yaml from %s.", vancePaths.activeDir());
+                    "Applied .vancetope/project.eddie.yaml from %s.", vancePaths.activeDir());
         });
     }
 
@@ -526,16 +578,23 @@ public class VanceFootCommand implements Callable<Integer> {
 
     /**
      * Overlays {@code .vancetope/config.yaml} onto the running config,
-     * after the {@code project.yaml} binding and before CLI flags. This
+     * after the {@code project.eddie.yaml} binding and before CLI flags. This
      * is the per-project config for non-credential settings (conversation
-     * audit, future recipe presets, …). Absent file = no-op.
+     * audit, default flags, future recipe presets, …). Absent file = no-op.
+     *
+     * @return the loaded project config, or empty if no file was present.
+     *         The caller uses this to wire side-effects (ideBridge.start,
+     *         permissions.disableSandbox) that can't be done inside the
+     *         applier because they depend on other CLI flags (noTools, etc.).
      */
-    private void applyProjectConfig() {
-        projectConfigStore.load(vancePaths.activeDir()).ifPresent(projectConfig -> {
+    private Optional<VanceProjectConfig> applyProjectConfig() {
+        Optional<VanceProjectConfig> loaded = projectConfigStore.load(vancePaths.activeDir());
+        loaded.ifPresent(projectConfig -> {
             projectConfigApplier.apply(projectConfig, config);
             terminal.println(Verbosity.VERBOSE,
                     "Applied .vancetope/config.yaml from %s.", vancePaths.activeDir());
         });
+        return loaded;
     }
 
 }

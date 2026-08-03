@@ -22,35 +22,43 @@ class VanceProjectConfigStoreTest {
     @Test
     void saveThenLoad_roundTrips() {
         VanceProjectConfig config = new VanceProjectConfig();
-        config.getConversationAudit().setEnabled(true);
-        config.getConversationAudit().setDir("my-logs");
+        config.getConversationCapture().setEnabled(true);
+        config.getConversationCapture().setDir("my-logs");
+        config.getDefaults().setIntellijClaude(true);
+        config.getDefaults().setIntellijMcpDefault(true);
+        config.getDefaults().setRecipe("coding");
+        config.getDefaults().setSandbox(false);
 
         store.save(tempDir, config);
         assertThat(Files.exists(tempDir.resolve(VanceProjectConfigStore.CONFIG_FILE))).isTrue();
 
         var loaded = store.load(tempDir);
         assertThat(loaded).isPresent();
-        assertThat(loaded.get().getConversationAudit().isEnabled()).isTrue();
-        assertThat(loaded.get().getConversationAudit().getDir()).isEqualTo("my-logs");
+        assertThat(loaded.get().getConversationCapture().isEnabled()).isTrue();
+        assertThat(loaded.get().getConversationCapture().getDir()).isEqualTo("my-logs");
+        assertThat(loaded.get().getDefaults().isIntellijClaude()).isTrue();
+        assertThat(loaded.get().getDefaults().isIntellijMcpDefault()).isTrue();
+        assertThat(loaded.get().getDefaults().getRecipe()).isEqualTo("coding");
+        assertThat(loaded.get().getDefaults().isSandbox()).isFalse();
     }
 
     @Test
     void load_partialYaml_keepsDefaultsForAbsentFields() throws Exception {
         // A config.yaml with only the enabled flag set — dir should
         // default to null (which the service resolves to "conversations").
-        String yaml = "conversationAudit:\n  enabled: true\n";
+        String yaml = "conversationCapture:\n  enabled: true\n";
         Path file = tempDir.resolve(VanceProjectConfigStore.CONFIG_FILE);
         Files.writeString(file, yaml);
 
         var loaded = store.load(tempDir);
         assertThat(loaded).isPresent();
-        assertThat(loaded.get().getConversationAudit().isEnabled()).isTrue();
-        assertThat(loaded.get().getConversationAudit().getDir()).isNull();
+        assertThat(loaded.get().getConversationCapture().isEnabled()).isTrue();
+        assertThat(loaded.get().getConversationCapture().getDir()).isNull();
     }
 
     @Test
     void load_unknownFieldsIgnored() throws Exception {
-        String yaml = "conversationAudit:\n  enabled: true\n"
+        String yaml = "conversationCapture:\n  enabled: true\n"
                 + "futureField: hello\n"
                 + "anotherSection:\n  foo: bar\n";
         Path file = tempDir.resolve(VanceProjectConfigStore.CONFIG_FILE);
@@ -58,7 +66,26 @@ class VanceProjectConfigStoreTest {
 
         var loaded = store.load(tempDir);
         assertThat(loaded).isPresent();
-        assertThat(loaded.get().getConversationAudit().isEnabled()).isTrue();
+        assertThat(loaded.get().getConversationCapture().isEnabled()).isTrue();
+    }
+
+    @Test
+    void load_defaultsSection_roundTrips() throws Exception {
+        String yaml = "conversationCapture:\n  enabled: true\n"
+                + "defaults:\n"
+                + "  intellijClaude: true\n"
+                + "  intellijMcpDefault: true\n"
+                + "  recipe: coding\n"
+                + "  sandbox: false\n";
+        Path file = tempDir.resolve(VanceProjectConfigStore.CONFIG_FILE);
+        Files.writeString(file, yaml);
+
+        var loaded = store.load(tempDir);
+        assertThat(loaded).isPresent();
+        assertThat(loaded.get().getDefaults().isIntellijClaude()).isTrue();
+        assertThat(loaded.get().getDefaults().isIntellijMcpDefault()).isTrue();
+        assertThat(loaded.get().getDefaults().getRecipe()).isEqualTo("coding");
+        assertThat(loaded.get().getDefaults().isSandbox()).isFalse();
     }
 
     @Test

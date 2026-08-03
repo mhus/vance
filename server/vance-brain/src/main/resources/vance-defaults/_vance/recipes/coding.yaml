@@ -96,7 +96,7 @@ params:
   # Default work-target when the LLM doesn't switch explicitly.
   # Default profile (web / API) targets the Brain-server workspace
   # RootDir. The 'foot' profile below overrides to CLIENT so a user
-  # running 'vance-foot chat' edits their own files.
+  # running 'vance-foot' edits their own files.
   workTarget:
     kind: WORK
   promptPrefix: |

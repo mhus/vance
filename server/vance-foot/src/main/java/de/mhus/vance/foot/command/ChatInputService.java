@@ -5,6 +5,7 @@ import de.mhus.vance.api.thinkprocess.ProcessSteerRequest;
 import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
 import de.mhus.vance.api.thinkprocess.ProcessStopRequest;
 import de.mhus.vance.api.ws.MessageType;
+import de.mhus.vance.foot.audit.ConversationAuditService;
 import de.mhus.vance.foot.chat.PendingAskUserPicker;
 import de.mhus.vance.foot.connection.BrainException;
 import de.mhus.vance.foot.connection.ConnectionService;
@@ -80,6 +81,7 @@ public class ChatInputService {
             });
 
     private final AutoAiService autoAi;
+    private final ConversationAuditService audit;
 
     public ChatInputService(CommandService commandService,
                             ConnectionService connection,
@@ -91,7 +93,8 @@ public class ChatInputService {
                             PendingAskUserPicker askUserPicker,
                             PendingPermissionPrompt pendingPermission,
                             PendingLinePrompt pendingLine,
-                            AutoAiService autoAi) {
+                            AutoAiService autoAi,
+                            ConversationAuditService audit) {
         this.commandService = commandService;
         this.connection = connection;
         this.sessions = sessions;
@@ -103,6 +106,7 @@ public class ChatInputService {
         this.pendingPermission = pendingPermission;
         this.pendingLine = pendingLine;
         this.autoAi = autoAi;
+        this.audit = audit;
     }
 
     /**
@@ -343,6 +347,12 @@ public class ChatInputService {
             // Strips a leading @no escape, otherwise prepends @ai when
             // auto-mode is on. Applied just before the wire-send.
             String wireLine = autoAi.apply(line);
+            // Audit the user input locally at send time. The server
+            // does not echo a chat-message-appended for USER turns in
+            // solo sessions, so the inbound handler would never see
+            // them — auditing here guarantees every user message lands
+            // in the .jsonl regardless of session topology.
+            audit.appendUserInput(process, wireLine, voiceMode);
             ProcessSteerRequest steer = ProcessSteerRequest.builder()
                     .processName(process)
                     .content(wireLine)

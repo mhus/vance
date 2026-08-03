@@ -5,11 +5,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * Overlays a {@link ProjectBinding} (from {@code .vancetope/project.yaml}) onto
+ * Overlays a {@link ProjectBinding} (from {@code .vancetope/project.eddie.yaml}) onto
  * the running {@link FootConfig}. Every non-blank field wins over the
  * {@code application.yaml} default; blank/absent fields are left untouched.
  *
- * <p>Precedence at start-up is {@code application.yaml < project.yaml < CLI
+ * <p>Precedence at start-up is {@code application.yaml < project.eddie.yaml < CLI
  * flags} — this applier runs before the flag overrides in
  * {@code VanceFootCommand}. Used both on start-up and right after a
  * {@code /login} rewrites the binding.

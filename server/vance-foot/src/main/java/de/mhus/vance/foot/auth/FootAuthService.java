@@ -29,7 +29,7 @@ import org.springframework.stereotype.Service;
  *
  * <p><b>Interactive login</b> ({@link #login(LoginRequest)}) always mints
  * with a password, requests a refresh token, writes both
- * {@code access.yaml} (secret) and {@code project.yaml} (binding) to the
+ * {@code access.yaml} (secret) and {@code project.eddie.yaml} (binding) to the
  * login target directory, and applies the binding to the running config.
  */
 @Service
@@ -122,7 +122,7 @@ public class FootAuthService {
 
     /**
      * Performs an interactive password login: mints with a refresh token,
-     * writes {@code access.yaml} + {@code project.yaml} to the login target
+     * writes {@code access.yaml} + {@code project.eddie.yaml} to the login target
      * directory, and overlays the binding onto the running config.
      */
     public LoginResult login(LoginRequest request) throws Exception {

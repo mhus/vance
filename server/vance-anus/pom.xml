@@ -88,6 +88,17 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- Embedded MongoDB (flapdoodle) for the context-boot smoke test:
+             an in-process mongod (no Docker, no external server) so the full
+             context boots against a real empty DB. The spring4x variant carries
+             the Spring Boot 4 auto-configuration. -->
+        <dependency>
+            <groupId>de.flapdoodle.embed</groupId>
+            <artifactId>de.flapdoodle.embed.mongo.spring4x</artifactId>
+            <version>4.33.0</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

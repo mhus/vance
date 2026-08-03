@@ -6,14 +6,17 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.SortedSet;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
  * Dispatcher for slash commands. Built from all {@link SlashCommand} beans
- * found in the application context. Names must be unique — collisions fail
- * the boot.
+ * found in the application context. Every command is registered under its
+ * {@link SlashCommand#name()} plus each of its {@link SlashCommand#aliases()};
+ * all these names must be globally unique — a collision fails the boot.
  *
  * <p>The REPL passes the raw line including the leading slash to
  * {@link #execute(String)}; the service strips the slash, splits on whitespace,
@@ -29,21 +32,39 @@ public class CommandService {
         this.terminal = terminal;
         Map<String, SlashCommand> registry = new HashMap<>();
         for (SlashCommand command : commandBeans) {
-            String name = command.name();
-            SlashCommand previous = registry.put(name, command);
-            if (previous != null) {
-                throw new IllegalStateException(
-                        "Duplicate SlashCommand for name '" + name + "': "
-                                + previous.getClass().getName() + " and "
-                                + command.getClass().getName());
+            register(registry, command.name(), command);
+            for (String alias : command.aliases()) {
+                register(registry, alias, command);
             }
         }
         this.commands = Map.copyOf(registry);
     }
 
-    /** Returns commands sorted by name — useful for {@code /help}. */
+    private static void register(Map<String, SlashCommand> registry, String name, SlashCommand command) {
+        SlashCommand previous = registry.put(name, command);
+        if (previous != null && previous != command) {
+            throw new IllegalStateException(
+                    "Duplicate SlashCommand name/alias '" + name + "': "
+                            + previous.getClass().getName() + " and "
+                            + command.getClass().getName());
+        }
+    }
+
+    /**
+     * Distinct commands sorted by canonical name — useful for {@code /help}.
+     * Aliases share their command instance, so each command appears once.
+     */
     public Collection<SlashCommand> all() {
-        return new TreeMap<>(commands).values();
+        Map<String, SlashCommand> byName = new TreeMap<>();
+        for (SlashCommand command : commands.values()) {
+            byName.putIfAbsent(command.name(), command);
+        }
+        return byName.values();
+    }
+
+    /** Every invocable name (canonical names + aliases), sorted — for tab-completion. */
+    public SortedSet<String> names() {
+        return new TreeSet<>(commands.keySet());
     }
 
     /** Lookup by canonical name (no leading slash, lower-case). */

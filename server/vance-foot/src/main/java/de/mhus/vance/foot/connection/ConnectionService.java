@@ -8,6 +8,7 @@ import de.mhus.vance.api.ws.PingData;
 import de.mhus.vance.api.ws.PongData;
 import de.mhus.vance.api.ws.ClientContext;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.api.ws.WelcomeData;
 import de.mhus.vance.foot.auth.FootAuthService;
 import de.mhus.vance.foot.auth.TransportGuard;
 import de.mhus.vance.foot.config.FootConfig;
@@ -58,6 +59,8 @@ public class ConnectionService {
     private final ObjectMapper json = JsonMapper.builder().build();
     /** Most recent JWT minted during {@link #connect()}; reused for REST GETs. */
     private volatile @Nullable AccessTokenResponse currentToken;
+    /** Identity the Brain reported in the WELCOME frame of the live connection. */
+    private volatile @Nullable WelcomeData lastWelcome;
 
     private final AtomicReference<State> state = new AtomicReference<>(State.DISCONNECTED);
     private final AtomicReference<@Nullable VanceWebSocketClient> clientRef = new AtomicReference<>();
@@ -147,6 +150,7 @@ public class ConnectionService {
         stopKeepAlive();
         sessions.clear();
         currentToken = null;
+        lastWelcome = null;
         windowTitle.setConnection("disconnected");
         if (client != null && client.isOpen()) {
             client.close(1000, reason);
@@ -163,6 +167,27 @@ public class ConnectionService {
     public @Nullable String currentJwt() {
         AccessTokenResponse t = currentToken;
         return t == null ? null : t.getToken();
+    }
+
+    /** Unix-millis expiry of the live access token, or {@code null} when not connected. */
+    public @Nullable Long currentTokenExpiry() {
+        AccessTokenResponse t = currentToken;
+        return (t == null || t.getExpiresAtTimestamp() == 0L) ? null : t.getExpiresAtTimestamp();
+    }
+
+    /**
+     * Identity the Brain announced in the WELCOME frame of the current
+     * connection ({@code null} when disconnected). Captured by
+     * {@code WelcomeHandler}; used by {@code /me} to show who we are actually
+     * authenticated as — which can differ from the stored login config.
+     */
+    public @Nullable WelcomeData lastWelcome() {
+        return lastWelcome;
+    }
+
+    /** Records the WELCOME identity for the live connection. Called by {@code WelcomeHandler}. */
+    public void setLastWelcome(WelcomeData welcome) {
+        this.lastWelcome = welcome;
     }
 
     /**

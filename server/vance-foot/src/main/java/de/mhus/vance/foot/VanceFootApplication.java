@@ -20,10 +20,11 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
  * shim mirrors a Spring property:
  *
  * <ul>
- *   <li>{@code --config <path>} / {@code -c <path>} / {@code --config=<path>}
+ *   <li>{@code --config <path>} / {@code --config=<path>}
  *       → {@code spring.config.additional-location=file:<path>}. Multiple
  *       allowed; later wins on key collisions. {@code --config-only} reset
- *       not implemented — we always merge.</li>
+ *       not implemented — we always merge. (No {@code -c} short form: that
+ *       flag is Picocli's {@code -c}/{@code --continue}.)</li>
  *   <li>{@code --log-file <path>} / {@code --log-file=<path>} →
  *       {@code logging.file.name=<path>}. Spring's default file appender
  *       writes there. Without the flag, {@code logback-spring.xml} drives
@@ -52,13 +53,16 @@ public class VanceFootApplication {
      * matching system property, and returns the remaining args for
      * Picocli to parse. Order of multiple {@code --config} flags is
      * preserved (Spring's later-wins semantics).
+     *
+     * <p>{@code --config} has no {@code -c} short form on purpose — {@code -c}
+     * is Picocli's {@code --continue} (resume the last session).
      */
     private static String[] applyArgShims(String[] args) {
         List<String> out = new ArrayList<>(args.length);
         List<String> configPaths = new ArrayList<>();
         for (int i = 0; i < args.length; i++) {
             String arg = args[i];
-            if ("--config".equals(arg) || "-c".equals(arg)) {
+            if ("--config".equals(arg)) {
                 if (i + 1 >= args.length) {
                     System.err.println("Error: " + arg + " requires a path argument.");
                     System.exit(2);

@@ -122,17 +122,58 @@ class CommandServiceTest {
                 .containsExactly("alpha", "mike", "zebra");
     }
 
+    @Test
+    void execute_dispatchesViaAlias_toSameCommand() {
+        FakeCommand quit = new FakeCommand("quit", "exit");
+        CommandService svc = new CommandService(List.of(quit), mock(ChatTerminal.class));
+
+        assertThat(svc.execute("/exit")).isTrue();
+        assertThat(svc.find("exit")).isSameAs(quit);
+        assertThat(quit.invocations).isEqualTo(1);
+    }
+
+    @Test
+    void all_listsAliasedCommandOnce() {
+        FakeCommand quit = new FakeCommand("quit", "exit");
+        CommandService svc = new CommandService(List.of(quit), mock(ChatTerminal.class));
+
+        assertThat(svc.all()).containsExactly(quit);
+    }
+
+    @Test
+    void names_includeCanonicalNamesAndAliases() {
+        CommandService svc = new CommandService(
+                List.of(new FakeCommand("quit", "exit"), new FakeCommand("help")),
+                mock(ChatTerminal.class));
+
+        assertThat(svc.names()).containsExactly("exit", "help", "quit");
+    }
+
+    @Test
+    void constructor_failsFast_whenAliasCollidesWithAnotherName() {
+        FakeCommand quit = new FakeCommand("quit", "exit");
+        FakeCommand other = new FakeCommand("exit");
+
+        assertThatThrownBy(() ->
+                new CommandService(List.of(quit, other), mock(ChatTerminal.class)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("exit");
+    }
+
     private static class FakeCommand implements SlashCommand {
         private final String name;
+        private final List<String> aliases;
         List<String> lastArgs = List.of();
         int invocations = 0;
 
-        FakeCommand(String name) {
+        FakeCommand(String name, String... aliases) {
             this.name = name;
+            this.aliases = List.of(aliases);
         }
 
         @Override public String name() { return name; }
         @Override public String description() { return "fake " + name; }
+        @Override public List<String> aliases() { return aliases; }
         @Override public void execute(List<String> args) {
             invocations++;
             lastArgs = new ArrayList<>(args);

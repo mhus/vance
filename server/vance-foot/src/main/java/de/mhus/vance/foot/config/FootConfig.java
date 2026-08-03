@@ -61,9 +61,13 @@ public class FootConfig {
 
     @Data
     public static class Auth {
-        private String tenant = "acme";
-        private String username = "wile.coyote";
-        private String password = "acme-rocket";
+        // No baked-in credentials: these are empty by default so a bare launch
+        // has no dev identity. The stored binding (.vancetope/project.yaml,
+        // overlaid by ProjectBindingApplier) or an explicit config file fills
+        // them; /login prompts prefill from whatever ends up here, else blank.
+        private String tenant = "";
+        private String username = "";
+        private String password = "";
     }
 
     @Data

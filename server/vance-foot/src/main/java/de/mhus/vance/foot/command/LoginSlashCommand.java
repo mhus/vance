@@ -116,17 +116,24 @@ public class LoginSlashCommand implements SlashCommand {
 
         String httpBase;
         String wsBase;
+        String tenant;
         if (def.hadBinding()) {
             httpBase = def.httpBase();
             wsBase = def.wsBase();
+            tenant = def.tenant();
         } else {
-            // Fresh login: confirm where to authenticate.
+            // Fresh login: confirm where and against which tenant to authenticate.
             String url = requireField("Brain URL", def.httpBase(), false);
             if (url == null) {
                 return;
             }
             httpBase = url;
             wsBase = deriveWsBase(url);
+            String t = requireField("Tenant", def.tenant(), false);
+            if (t == null) {
+                return;
+            }
+            tenant = t;
         }
 
         String project = def.project();
@@ -144,7 +151,7 @@ public class LoginSlashCommand implements SlashCommand {
 
         terminal.info("Logging in as " + username + " @ " + httpBase + " …");
         LoginResult result = auth.login(new LoginRequest(
-                httpBase, wsBase, def.tenant(), username, project, password));
+                httpBase, wsBase, tenant, username, project, password));
 
         reportGitignore(result.dir());
         reportSuccess(result);

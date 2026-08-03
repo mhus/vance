@@ -36,7 +36,19 @@ public class HelpCommand implements SlashCommand {
     public void execute(List<String> args) {
         terminal.println(Verbosity.INFO, "Available commands:");
         for (SlashCommand cmd : commandService.all()) {
-            terminal.println(Verbosity.INFO, "  /%-12s %s", cmd.name(), cmd.description());
+            StringBuilder line = new StringBuilder(
+                    String.format("  /%-12s %s", cmd.name(), cmd.description()));
+            if (!cmd.aliases().isEmpty()) {
+                StringBuilder aliases = new StringBuilder();
+                for (String alias : cmd.aliases()) {
+                    if (aliases.length() > 0) aliases.append(", ");
+                    aliases.append('/').append(alias);
+                }
+                line.append("  (alias: ").append(aliases).append(')');
+            }
+            // Pass as a pre-formatted message (not a format string) so a '%'
+            // in any description can't blow up String.format.
+            terminal.println(Verbosity.INFO, line.toString());
         }
     }
 }

@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 /**
- * {@code /quit} — leaves the REPL. The REPL loop checks
+ * {@code /quit} (alias {@code /exit}) — leaves the REPL. The REPL loop checks
  * {@link ChatRepl#isStopRequested()} after every command and exits cleanly
  * when set; the Spring {@code @PreDestroy} chain then closes the WebSocket.
  */
@@ -27,6 +27,11 @@ public class QuitCommand implements SlashCommand {
     @Override
     public String description() {
         return "Exit the REPL.";
+    }
+
+    @Override
+    public List<String> aliases() {
+        return List.of("exit");
     }
 
     @Override

@@ -89,6 +89,17 @@ public class LiveRegion {
      */
     private volatile boolean maskInput = false;
 
+    /**
+     * When set, the input row is rendered with this label as its prefix
+     * (e.g. {@code "Username: "}) in place of the usual {@code ❯ }, so a
+     * line-prompt reads inline as {@code label + typed answer}. While set,
+     * the submitted line is neither added to the ↑/↓ history nor offered as
+     * ghost-text — a {@code /login} answer (incl. a masked password) must
+     * not leak into history or autosuggestion. Toggled around a line-prompt
+     * by {@link PendingLinePrompt}.
+     */
+    private volatile @Nullable String promptLabel = null;
+
     /** Newest-last list of submitted lines for ↑/↓ history navigation. */
     private final java.util.List<String> history = new java.util.ArrayList<>();
     private int historyIdx = 0;
@@ -185,6 +196,12 @@ public class LiveRegion {
         if (history.isEmpty() || !history.get(history.size() - 1).equals(line)) {
             history.add(line);
         }
+        historyIdx = history.size();
+        pendingInput = "";
+    }
+
+    /** Resets the ↑/↓ navigation cursor without recording a line. */
+    private synchronized void skipHistory() {
         historyIdx = history.size();
         pendingInput = "";
     }
@@ -567,7 +584,13 @@ public class LiveRegion {
                     }
                 } else if (b == 13 || b == 10) {  // Enter
                     String submitted = inputText;
-                    addToHistory(submitted);
+                    if (promptLabel == null) {
+                        addToHistory(submitted);
+                    } else {
+                        // Line-prompt answer (e.g. /login) — never record it
+                        // in the ↑/↓ history; just reset the nav cursor.
+                        skipHistory();
+                    }
                     inputText = "";
                     cursorIdx = 0;
                     inputViewportTop = 0;
@@ -1028,7 +1051,12 @@ public class LiveRegion {
         int cursorLineInViewport = Math.max(0,
                 Math.min(cl[0] - inputViewportTop, inputCount - 1));
         int cursorCol = cl[1];
-        int caretVisibleCol = INPUT_PREFIX + cursorCol;
+        // The first input line carries the prompt label (if any) as its
+        // prefix; continuation lines keep the plain 3-column indent.
+        String label = promptLabel;
+        int firstPrefixLen = label != null ? visibleLength(label) : INPUT_PREFIX;
+        int prefixWidth = (cl[0] == 0) ? firstPrefixLen : INPUT_PREFIX;
+        int caretVisibleCol = prefixWidth + cursorCol;
         int caretRowOffsetInLine = caretVisibleCol / width;
         int caretPhysicalCol = (caretVisibleCol % width) + 1;
         int caretRowFromTop = 0;
@@ -1063,6 +1091,10 @@ public class LiveRegion {
         String status = statusBar.buildStatusLine(width, frame.get());
         String hints = statusBar.buildHintsRow(width);
 
+        String label = promptLabel;
+        String firstPrefix = label != null ? label : "❯  ";
+        int firstPrefixLen = visibleLength(firstPrefix);
+
         String source = maskInput ? maskLine(inputText) : inputText;
         String[] inputSegs = source.split("\n", -1);
         int totalLines = inputSegs.length;
@@ -1075,21 +1107,23 @@ public class LiveRegion {
         if (inputViewportTop > Math.max(0, totalLines - 1)) {
             inputViewportTop = Math.max(0, totalLines - 1);
         }
-        int visibleCount = countLinesThatFit(inputSegs, inputViewportTop, width, maxInputRows);
+        int visibleCount = countLinesThatFit(inputSegs, inputViewportTop, width, maxInputRows, firstPrefixLen);
         while (cursorLine >= inputViewportTop + visibleCount && inputViewportTop < totalLines - 1) {
             inputViewportTop++;
-            visibleCount = countLinesThatFit(inputSegs, inputViewportTop, width, maxInputRows);
+            visibleCount = countLinesThatFit(inputSegs, inputViewportTop, width, maxInputRows, firstPrefixLen);
         }
         int viewportEnd = Math.min(totalLines, inputViewportTop + visibleCount);
         boolean overflowAbove = inputViewportTop > 0;
         boolean overflowBelow = viewportEnd < totalLines;
 
-        String ghost = maskInput ? "" : currentSuggestion();
+        // A line-prompt (label set) never shows ghost-text — its answer must
+        // not draw autosuggestions from the chat history.
+        String ghost = (maskInput || label != null) ? "" : currentSuggestion();
         java.util.List<String> assembled = new java.util.ArrayList<>(visibleCount + 3);
         assembled.add(status);
         assembled.add("");
         for (int i = inputViewportTop; i < viewportEnd; i++) {
-            String prefix = (i == 0) ? "❯  " : "   ";
+            String prefix = (i == 0) ? firstPrefix : "   ";
             String row = prefix + inputSegs[i];
             if (!ghost.isEmpty() && i == cursorLine) {
                 row = row + ESC + "[2m" + ghost + ESC + "[0m";
@@ -1108,12 +1142,12 @@ public class LiveRegion {
         return assembled.toArray(new String[0]);
     }
 
-    private static int countLinesThatFit(String[] segs, int top, int width, int maxRows) {
+    private static int countLinesThatFit(String[] segs, int top, int width, int maxRows, int firstPrefixLen) {
         int rows = 0;
         int count = 0;
         for (int i = top; i < segs.length; i++) {
-            String prefix = (i == 0) ? "❯  " : "   ";
-            int visible = prefix.length() + segs[i].length();
+            int prefixLen = (i == 0) ? firstPrefixLen : 3;
+            int visible = prefixLen + segs[i].length();
             int phys = visible == 0 ? 1 : (visible + width - 1) / width;
             if (count > 0 && rows + phys > maxRows) break;
             rows += phys;
@@ -1182,6 +1216,18 @@ public class LiveRegion {
     /** Whether input is currently echoed masked. */
     public boolean isMaskInput() {
         return maskInput;
+    }
+
+    /**
+     * Sets an inline prompt label (e.g. {@code "Username: "}) rendered as
+     * the input line's prefix in place of the usual {@code ❯ }. While set,
+     * the submitted line is kept out of the ↑/↓ history and ghost-text is
+     * suppressed. Pass {@code null} to restore the normal chat prompt.
+     * Repaints. See {@link #promptLabel}.
+     */
+    public void setPromptLabel(@Nullable String label) {
+        this.promptLabel = label;
+        refresh();
     }
 
     private void writeRaw(String s) {

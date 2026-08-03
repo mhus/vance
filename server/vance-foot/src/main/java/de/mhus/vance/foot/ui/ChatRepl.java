@@ -3,7 +3,6 @@ package de.mhus.vance.foot.ui;
 import de.mhus.vance.foot.command.AutoAiService;
 import de.mhus.vance.foot.command.ChatInputService;
 import de.mhus.vance.foot.command.CommandService;
-import de.mhus.vance.foot.command.SlashCommand;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.ide.IdeSelectionState;
 import jakarta.annotation.PreDestroy;
@@ -206,8 +205,8 @@ public class ChatRepl {
         String word = input.substring(lineBegin, caret);
         if (word.contains(" ")) return List.of();
         List<String> out = new ArrayList<>();
-        for (SlashCommand cmd : commandService.all()) {
-            String full = "/" + cmd.name();
+        for (String cmdName : commandService.names()) {
+            String full = "/" + cmdName;
             if (full.startsWith(word)) {
                 out.add(full);
             }

@@ -63,6 +63,7 @@ public class WelcomeHandler implements MessageHandler {
     @Override
     public void handle(WebSocketEnvelope envelope) {
         WelcomeData data = json.convertValue(envelope.getData(), WelcomeData.class);
+        connection.setLastWelcome(data);
         terminal.info("Welcome: tenant=" + data.getTenantId()
                 + " user=" + data.getUserId()
                 + (data.getDisplayName() == null ? "" : " (" + data.getDisplayName() + ")")

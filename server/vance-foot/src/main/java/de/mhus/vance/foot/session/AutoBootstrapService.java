@@ -7,6 +7,9 @@ import de.mhus.vance.api.thinkprocess.SessionBootstrapRequest;
 import de.mhus.vance.api.thinkprocess.SessionBootstrapResponse;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.foot.config.FootConfig;
+import de.mhus.vance.foot.auth.SessionAnchor;
+import de.mhus.vance.foot.auth.SessionAnchorStore;
+import de.mhus.vance.foot.auth.VancePaths;
 import de.mhus.vance.foot.connection.BrainException;
 import de.mhus.vance.foot.connection.BrainRestClientService;
 import de.mhus.vance.foot.connection.ConnectionService;
@@ -63,6 +66,8 @@ public class AutoBootstrapService {
     private final BrainRestClientService rest;
     private final SessionService sessions;
     private final ChatTerminal terminal;
+    private final VancePaths paths;
+    private final SessionAnchorStore anchorStore;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "vance-foot-bootstrap");
@@ -83,12 +88,16 @@ public class AutoBootstrapService {
                                 @Lazy ConnectionService connection,
                                 @Lazy BrainRestClientService rest,
                                 SessionService sessions,
-                                ChatTerminal terminal) {
+                                ChatTerminal terminal,
+                                VancePaths paths,
+                                SessionAnchorStore anchorStore) {
         this.config = config;
         this.connection = connection;
         this.rest = rest;
         this.sessions = sessions;
         this.terminal = terminal;
+        this.paths = paths;
+        this.anchorStore = anchorStore;
     }
 
     /**
@@ -169,6 +178,7 @@ public class AutoBootstrapService {
         }
 
         sessions.bind(response.getSessionId(), response.getProjectId());
+        persistSessionAnchor(response.getSessionId(), response.getProjectId());
         terminal.info((response.isSessionCreated() ? "Bootstrap → session created: " : "Bootstrap → session resumed: ")
                 + response.getSessionId() + " (project=" + response.getProjectId() + ")");
         if (response.getChatProcessName() != null) {
@@ -214,6 +224,26 @@ public class AutoBootstrapService {
         // history on chat-editor mount, just with a tighter cap.
         if (!response.isSessionCreated() && response.getSteeredProcessName() == null) {
             renderRecentHistory(response.getSessionId(), response.getChatProcessName());
+        }
+    }
+
+    /**
+     * Records the session we just bootstrapped into as this directory's
+     * "last session" anchor ({@code .vancetope/session.yaml}), so a later
+     * {@code -c} / {@code --continue} resumes exactly it. Best-effort — a
+     * write failure is logged verbose and swallowed; it must never break an
+     * otherwise-successful bootstrap.
+     */
+    private void persistSessionAnchor(String sessionId, @Nullable String projectId) {
+        try {
+            SessionAnchor anchor = new SessionAnchor();
+            anchor.setSessionId(sessionId);
+            anchor.setProjectId(projectId);
+            anchor.setUpdatedAt(System.currentTimeMillis());
+            anchorStore.save(paths.activeDir(), anchor);
+            terminal.verbose("Session anchor updated → " + anchorStore.file(paths.activeDir()));
+        } catch (RuntimeException e) {
+            terminal.verbose("Could not write session anchor: " + e.getMessage());
         }
     }
 

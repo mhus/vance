@@ -15,6 +15,16 @@ public interface SlashCommand {
     String description();
 
     /**
+     * Alternative names that invoke this same command (e.g. {@code "exit"}
+     * as an alias for {@code /quit}). Default is none. Each alias is
+     * registered alongside {@link #name()} and must be globally unique —
+     * a clash with any other command's name or alias fails the boot.
+     */
+    default List<String> aliases() {
+        return List.of();
+    }
+
+    /**
      * Positional argument specification used by tab-completion. Default
      * is empty — the command takes no arguments, or its arguments are
      * free-form and don't benefit from completion. Override to return a

@@ -3,6 +3,7 @@ package de.mhus.vance.foot.cli;
 import de.mhus.vance.foot.agent.ClientAgentDocService;
 import de.mhus.vance.foot.auth.ProjectBindingApplier;
 import de.mhus.vance.foot.auth.ProjectBindingStore;
+import de.mhus.vance.foot.auth.SessionAnchorStore;
 import de.mhus.vance.foot.auth.VancePaths;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.ConnectionService;
@@ -67,8 +68,9 @@ import picocli.CommandLine.Option;
  * <h2>App-level shims (parsed in {@code VanceFootApplication.main})</h2>
  *
  * Stripped from {@code args} before Picocli sees them:
- * {@code --config <path>} / {@code -c}, {@code --log-file <path>},
- * {@code --rest-api}.
+ * {@code --config <path>}, {@code --log-file <path>}, {@code --rest-api}.
+ * ({@code --config} has no {@code -c} short form — {@code -c} is
+ * {@code --continue} below.)
  */
 @Component
 @Slf4j
@@ -80,7 +82,7 @@ import picocli.CommandLine.Option;
                 "Spring-based CLI client for the Vance Brain.",
                 "",
                 "App-level flags (intercepted before Picocli):",
-                "  --config <path>  / -c <path>   merge YAML on top of defaults",
+                "  --config <path>                merge YAML on top of defaults",
                 "                                 (multiple allowed; later wins)",
                 "  --log-file <path>              write the application log here",
                 "                                 (default: vance-foot.log)",
@@ -198,6 +200,13 @@ public class VanceFootCommand implements Callable<Integer> {
                     + "Mutually exclusive with -d.")
     boolean webShortcut;
 
+    @Option(names = {"-c", "--continue"},
+            description = "Resume the last session bootstrapped from this directory "
+                    + "(stored in .vancetope/session.yaml). If none is stored, fall "
+                    + "back to the most recent matching session on the server. "
+                    + "Mutually exclusive with --session / --resume / --last / --eddie.")
+    boolean continueSession;
+
     @Option(names = "--resume",
             description = "Skip auto-bootstrap and show a session picker. "
                     + "Combine with --project to filter, --eddie for Eddie sessions, "
@@ -229,6 +238,7 @@ public class VanceFootCommand implements Callable<Integer> {
     private final VancePaths vancePaths;
     private final ProjectBindingStore bindingStore;
     private final ProjectBindingApplier bindingApplier;
+    private final SessionAnchorStore sessionAnchorStore;
 
     public VanceFootCommand(ChatRepl repl,
                             ConnectionService connection,
@@ -244,7 +254,8 @@ public class VanceFootCommand implements Callable<Integer> {
                             PermissionService permissions,
                             VancePaths vancePaths,
                             ProjectBindingStore bindingStore,
-                            ProjectBindingApplier bindingApplier) {
+                            ProjectBindingApplier bindingApplier,
+                            SessionAnchorStore sessionAnchorStore) {
         this.repl = repl;
         this.connection = connection;
         this.terminal = terminal;
@@ -260,6 +271,7 @@ public class VanceFootCommand implements Callable<Integer> {
         this.vancePaths = vancePaths;
         this.bindingStore = bindingStore;
         this.bindingApplier = bindingApplier;
+        this.sessionAnchorStore = sessionAnchorStore;
     }
 
     @Override
@@ -290,6 +302,30 @@ public class VanceFootCommand implements Callable<Integer> {
         // auto-denies instead of blocking on input that never comes.
         if (noUi) {
             permissions.setInteractive(false);
+        }
+
+        // -c/--continue: resume this directory's last session. The anchor
+        // (.vancetope/session.yaml) is written on every bootstrap, so it is
+        // the newest session entered from here. Resolve it into the existing
+        // selectors: a stored id behaves like --session=<id>; a missing
+        // anchor falls back to --resume --last (newest from the server).
+        if (continueSession) {
+            if ((sessionId != null && !sessionId.isBlank()) || resume || last || eddie) {
+                terminal.error("--continue is mutually exclusive with "
+                        + "--session / --resume / --last / --eddie.");
+                return 2;
+            }
+            String storedId = sessionAnchorStore.loadSessionId(vancePaths.activeDir());
+            if (storedId != null) {
+                sessionId = storedId;
+                terminal.info("Continuing last session " + storedId
+                        + " (" + sessionAnchorStore.file(vancePaths.activeDir()) + ").");
+            } else {
+                resume = true;
+                last = true;
+                terminal.info("No stored session for this directory — "
+                        + "resuming the most recent from the server.");
+            }
         }
 
         // --resume validation. --last and --eddie imply --resume; --eddie

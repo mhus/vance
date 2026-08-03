@@ -44,11 +44,14 @@ public class PendingLinePrompt {
     }
 
     /**
-     * Prints {@code label} and blocks until the user submits a line or
-     * {@code timeoutMs} elapses. When {@code masked}, the input row is
-     * echoed as bullets and the answer is neither echoed nor written to
-     * history. Returns the raw submitted line (possibly empty), or
-     * {@code null} on timeout / interruption / failure to acquire the slot.
+     * Shows {@code label} as an inline input prompt (rendered as the live
+     * input-line prefix on a PTY, or a static line on a dumb terminal) and
+     * blocks until the user submits a line or {@code timeoutMs} elapses.
+     * The answer is never written to the ↑/↓ history; when {@code masked}
+     * the input row is echoed as bullets. On completion the prompt plus its
+     * answer are committed to the scrollback (masked → bullets). Returns the
+     * raw submitted line (possibly empty), or {@code null} on timeout /
+     * interruption / failure to acquire the slot.
      */
     public @Nullable String ask(String label, boolean masked, long timeoutMs) {
         boolean locked;
@@ -64,22 +67,41 @@ public class PendingLinePrompt {
         }
         BlockingQueue<String> queue = new ArrayBlockingQueue<>(1);
         active.set(queue);
+        // On a real PTY the label is rendered inline as the input-line prefix
+        // (so it reads as "label + typed answer"); on a dumb / REST-driven
+        // terminal there is no live input line, so print it as a static line.
+        boolean live = liveRegion.isAttached();
+        String answer = null;
         try {
-            terminal.info(label);
+            if (live) {
+                liveRegion.setPromptLabel(label);
+            } else {
+                terminal.info(label);
+            }
             if (masked) {
                 liveRegion.setMaskInput(true);
             }
-            return queue.poll(timeoutMs, TimeUnit.MILLISECONDS);
+            answer = queue.poll(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return null;
         } finally {
             if (masked) {
                 liveRegion.setMaskInput(false);
             }
+            if (live) {
+                liveRegion.setPromptLabel(null);
+            }
             active.set(null);
             promptLock.unlock();
         }
+        // Persist the completed prompt to the scrollback so it stays visible
+        // after the live prompt line is cleared. Masked answers are shown as
+        // fixed bullets so a password's length is not revealed.
+        if (live && answer != null) {
+            String shown = masked ? (answer.isEmpty() ? "" : "••••") : answer;
+            terminal.info(label + shown);
+        }
+        return answer;
     }
 
     /**

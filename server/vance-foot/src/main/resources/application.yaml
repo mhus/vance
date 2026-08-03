@@ -2,10 +2,13 @@ vance:
   brain:
     http-base: http://localhost:9990
     ws-base: ws://localhost:9990
+  # No baked-in credentials — a bare launch has no dev identity. The stored
+  # binding (.vancetope/project.yaml) or an explicit --config fills these;
+  # /login prompts prefill from whatever ends up here, else blank.
   auth:
-    tenant: acme
-    username: wile.coyote
-    password: acme-rocket
+    tenant: ""
+    username: ""
+    password: ""
   # Build stamp — filled by Maven resource filtering (@…@ delimiter) from the
   # reactor version. Drives the client handshake version and `--version`.
   # Falls back to 'dev' / empty on an unfiltered classpath.

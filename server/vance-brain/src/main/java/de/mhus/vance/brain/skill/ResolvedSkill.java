@@ -4,6 +4,7 @@ import de.mhus.vance.api.skills.ScriptTarget;
 import de.mhus.vance.api.skills.SkillReferenceDocLoadMode;
 import de.mhus.vance.api.skills.SkillScope;
 import de.mhus.vance.api.skills.SkillTriggerType;
+import de.mhus.vance.brain.command.EngineCommand;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
@@ -26,7 +27,36 @@ public record ResolvedSkill(
         List<Script> scripts,
         List<String> tags,
         boolean enabled,
-        SkillScope source) {
+        SkillScope source,
+        /** Engine commands fired on activation — see planning/engine-commands.md §4. */
+        List<EngineCommand> activate,
+        /** Engine commands fired on clear (cleanup); never fired for {@link SkillLifecycle#SHOT}. */
+        List<EngineCommand> deactivate,
+        SkillLifecycle lifecycle) {
+
+    /**
+     * Backward-compatible constructor for call sites that predate
+     * engine-command skills — no {@code activate}/{@code deactivate}
+     * sequences, {@link SkillLifecycle#STICKY} lifecycle.
+     */
+    public ResolvedSkill(
+            String name,
+            String title,
+            String description,
+            String version,
+            List<Trigger> triggers,
+            @Nullable String promptExtension,
+            List<String> tools,
+            List<String> manualPaths,
+            List<ReferenceDoc> referenceDocs,
+            List<Script> scripts,
+            List<String> tags,
+            boolean enabled,
+            SkillScope source) {
+        this(name, title, description, version, triggers, promptExtension,
+                tools, manualPaths, referenceDocs, scripts, tags, enabled, source,
+                List.of(), List.of(), SkillLifecycle.STICKY);
+    }
 
     public record Trigger(
             SkillTriggerType type,

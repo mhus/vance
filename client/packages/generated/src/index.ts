@@ -14,6 +14,10 @@ export * from './addon/ChecksumStatus';
 
 export * from './attachment/AttachmentRef';
 
+export * from './command/EngineCommandOutcome';
+export * from './command/ProcessCommandRequest';
+export * from './command/ProcessCommandResponse';
+
 export * from './geocode/GeocodeResult';
 
 export * from './profile/ProfileDto';
@@ -187,6 +191,10 @@ export * from './projects/TenantProjectsResponse';
 export * from './projects/WorkspaceNodeType';
 export * from './projects/WorkspaceTreeNodeDto';
 
+export * from './skills/ActiveSkillRefDto';
+export * from './skills/ProcessSkillCommand';
+export * from './skills/ProcessSkillRequest';
+export * from './skills/ProcessSkillResponse';
 export * from './skills/SkillReferenceDocDto';
 export * from './skills/SkillReferenceDocLoadMode';
 export * from './skills/SkillScope';

@@ -7,6 +7,7 @@ import de.mhus.vance.api.skills.ProcessSkillResponse;
 import de.mhus.vance.api.skills.SkillSummaryDto;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.skill.ResolvedSkill;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.skill.SkillSteerProcessor;
@@ -51,6 +52,7 @@ public class ProcessSkillHandler implements WsHandler {
     private final ThinkProcessService thinkProcessService;
     private final SkillSteerProcessor skillSteerProcessor;
     private final RequestAuthority authority;
+    private final LaneScheduler laneScheduler;
 
     @Override
     public String type() {
@@ -110,23 +112,54 @@ public class ProcessSkillHandler implements WsHandler {
             }
         }
 
+        if (command == ProcessSkillCommand.LIST) {
+            // Read-only — no lane needed.
+            applyAndReply(wsSession, envelope, process, request, command);
+            return;
+        }
+
+        // ACTIVATE / CLEAR / CLEAR_ALL may fire a skill's activate/deactivate
+        // engine-command sequence → run on the process lane so a command
+        // can't race an in-flight turn (planning/engine-commands.md §4.2).
+        String processId = process.getId();
+        laneScheduler.submit(processId, () -> {
+            ThinkProcessDocument fresh = processId == null
+                    ? null
+                    : thinkProcessService.findById(processId).orElse(null);
+            if (fresh == null) {
+                trySendError(wsSession, envelope, 404,
+                        "Think-process '" + request.getProcessName()
+                                + "' disappeared before skill op");
+                return;
+            }
+            applyAndReply(wsSession, envelope, fresh, request, command);
+        });
+    }
+
+    /**
+     * Runs the skill mutation and ships the reply (or an error frame).
+     * Never throws — an {@link IOException} on send is logged.
+     */
+    private void applyAndReply(
+            WebSocketSession wsSession,
+            WebSocketEnvelope envelope,
+            ThinkProcessDocument process,
+            ProcessSkillRequest request,
+            ProcessSkillCommand command) {
         List<ActiveSkillRefEmbedded> active;
         try {
             active = skillSteerProcessor.apply(
-                    process,
-                    command,
-                    request.getSkillName(),
-                    request.isOneShot());
+                    process, command, request.getSkillName(), request.isOneShot());
         } catch (UnknownSkillException e) {
-            sender.sendError(wsSession, envelope, 404, e.getMessage());
+            trySendError(wsSession, envelope, 404, e.getMessage());
             return;
         } catch (IllegalArgumentException e) {
-            sender.sendError(wsSession, envelope, 400, e.getMessage());
+            trySendError(wsSession, envelope, 400, e.getMessage());
             return;
         } catch (RuntimeException e) {
-            log.warn("process-skill failed tenant='{}' session='{}' process='{}' cmd={}",
-                    tenantId, sessionId, request.getProcessName(), command, e);
-            sender.sendError(wsSession, envelope, 500,
+            log.warn("process-skill failed process='{}' cmd={}",
+                    request.getProcessName(), command, e);
+            trySendError(wsSession, envelope, 500,
                     "Skill operation failed: " + e.getMessage());
             return;
         }
@@ -144,7 +177,21 @@ public class ProcessSkillHandler implements WsHandler {
             responseBuilder.availableSkills(available);
         }
 
-        sender.sendReply(wsSession, envelope, MessageType.PROCESS_SKILL, responseBuilder.build());
+        try {
+            sender.sendReply(wsSession, envelope, MessageType.PROCESS_SKILL,
+                    responseBuilder.build());
+        } catch (IOException e) {
+            log.warn("Failed to ship process-skill reply: {}", e.toString());
+        }
+    }
+
+    private void trySendError(
+            WebSocketSession wsSession, WebSocketEnvelope envelope, int code, String message) {
+        try {
+            sender.sendError(wsSession, envelope, code, message);
+        } catch (IOException e) {
+            log.warn("Failed to send process-skill error: {}", e.toString());
+        }
     }
 
     private static List<ActiveSkillRefDto> toActiveDtoList(List<ActiveSkillRefEmbedded> active) {

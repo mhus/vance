@@ -3,6 +3,7 @@ package de.mhus.vance.brain.skill;
 import de.mhus.vance.api.skills.SkillReferenceDocLoadMode;
 import de.mhus.vance.api.skills.SkillScope;
 import de.mhus.vance.api.skills.SkillTriggerType;
+import de.mhus.vance.brain.command.EngineCommand;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
@@ -13,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -305,11 +307,59 @@ public class SkillLoader {
                 parseReferenceDocs(spec.get("referenceDocs"), stem, skillFolderStem, siblings);
         List<ResolvedSkill.Script> scripts =
                 parseScripts(spec.get("scripts"), stem, skillFolderStem, siblings);
+        List<EngineCommand> activate = parseCommandList(spec.get("activate"), stem, "activate");
+        List<EngineCommand> deactivate = parseCommandList(spec.get("deactivate"), stem, "deactivate");
+        SkillLifecycle lifecycle = parseLifecycle(spec.get("lifecycle"), stem);
 
         return new ResolvedSkill(
                 name, title, description, version,
                 triggers, promptExtension, tools, manualPaths, refDocs, scripts,
-                tags, enabled, scope);
+                tags, enabled, scope, activate, deactivate, lifecycle);
+    }
+
+    /**
+     * Parses an {@code activate:} / {@code deactivate:} frontmatter list
+     * — each entry a command string ({@code verb [args]}) in the shared
+     * grammar. See {@code planning/engine-commands.md} §4.
+     */
+    private static List<EngineCommand> parseCommandList(Object raw, String stem, String field) {
+        if (raw == null) {
+            return List.of();
+        }
+        if (!(raw instanceof List<?> list)) {
+            throw new IllegalStateException(
+                    "skill '" + stem + "': '" + field + "' must be a list of command strings");
+        }
+        List<EngineCommand> out = new ArrayList<>(list.size());
+        for (int i = 0; i < list.size(); i++) {
+            Object item = list.get(i);
+            if (!(item instanceof String str) || str.isBlank()) {
+                throw new IllegalStateException("skill '" + stem + "': " + field + "[" + i
+                        + "] must be a non-blank command string");
+            }
+            try {
+                out.add(EngineCommand.parse(str));
+            } catch (IllegalArgumentException e) {
+                throw new IllegalStateException("skill '" + stem + "': " + field + "[" + i
+                        + "] invalid command: " + e.getMessage());
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private static SkillLifecycle parseLifecycle(Object raw, String stem) {
+        if (raw == null) {
+            return SkillLifecycle.STICKY;
+        }
+        if (!(raw instanceof String s)) {
+            throw new IllegalStateException("skill '" + stem + "': 'lifecycle' must be a string");
+        }
+        return switch (s.trim().toLowerCase(Locale.ROOT)) {
+            case "sticky" -> SkillLifecycle.STICKY;
+            case "shot" -> SkillLifecycle.SHOT;
+            default -> throw new IllegalStateException(
+                    "skill '" + stem + "': unknown lifecycle '" + s + "' (expected sticky|shot)");
+        };
     }
 
     /**

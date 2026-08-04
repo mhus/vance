@@ -115,9 +115,10 @@ const currentUserId = computed<string | null>(() => getUsername());
  */
 interface ActivityEvent {
   id: string;
-  kind: 'joined' | 'left' | 'who';
+  kind: 'joined' | 'left' | 'who' | 'command';
   /** Single display name for joined/left, full participant list (joined as
-   *  comma-separated string) for 'who'. */
+   *  comma-separated string) for 'who', pre-rendered result line for
+   *  'command' (the `//verb` engine-command feedback). */
   displayName: string;
   at: Date;
   /** Message after which this event should render — snapshotted to the
@@ -229,6 +230,22 @@ function pushWhoActivity(names: string[]): void {
     id: `act-${++activitySeq}`,
     kind: 'who',
     displayName: names.join(', '),
+    at: new Date(),
+    afterMessageId: lastMessageIdSnapshot(),
+  });
+}
+
+/**
+ * Pushes a {@code //verb} engine-command result as an ephemeral line —
+ * called by the parent (ChatApp) after a {@code process-command} reply.
+ * The {@code line} is pre-rendered (e.g. {@code "// echo → ok: …"}).
+ * Exposed via {@link defineExpose} below.
+ */
+function pushCommandActivity(line: string): void {
+  activityEvents.value.push({
+    id: `act-${++activitySeq}`,
+    kind: 'command',
+    displayName: line,
     at: new Date(),
     afterMessageId: lastMessageIdSnapshot(),
   });
@@ -560,7 +577,7 @@ function rollbackLocalEcho(messageId: string): void {
   if (idx >= 0) liveMessages.value.splice(idx, 1);
 }
 
-defineExpose({ appendLocalEcho, rollbackLocalEcho, pushWhoActivity });
+defineExpose({ appendLocalEcho, rollbackLocalEcho, pushWhoActivity, pushCommandActivity });
 
 // ──────────────── Wizard deep-link plumbing ────────────────
 //
@@ -776,6 +793,7 @@ onBeforeUnmount(() => {
             <span class="ml-1">{{ _('chat.activity.whoHeader') }}</span>
             <span class="font-medium ml-1">{{ evt.displayName }}</span>
           </span>
+          <span v-else-if="evt.kind === 'command'" class="font-mono">{{ evt.displayName }}</span>
           <span v-else>
             <span aria-hidden="true">👥</span>
             <span class="font-medium ml-1">{{ evt.displayName }}</span>
@@ -818,6 +836,7 @@ onBeforeUnmount(() => {
               <span class="ml-1">{{ _('chat.activity.whoHeader') }}</span>
               <span class="font-medium ml-1">{{ evt.displayName }}</span>
             </span>
+            <span v-else-if="evt.kind === 'command'" class="font-mono">{{ evt.displayName }}</span>
             <span v-else>
               <span aria-hidden="true">👥</span>
               <span class="font-medium ml-1">{{ evt.displayName }}</span>

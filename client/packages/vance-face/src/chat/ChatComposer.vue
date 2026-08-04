@@ -135,6 +135,15 @@ const emit = defineEmits<{
   (e: 'hub'): void;
   /** User typed {@code /who} — parent triggers the session-who lookup. */
   (e: 'who'): void;
+  /** User typed {@code //verb [args]} — a direct engine command. Parent
+   *  round-trips a {@code process-command} WS request and renders the
+   *  outcome as an ephemeral activity line. See
+   *  planning/engine-commands.md §2. */
+  (e: 'engine-command', line: string): void;
+  /** User typed {@code /skill …} (or {@code /skill-list} / {@code /skill-clear})
+   *  — skill activate/clear/list. Parent round-trips a {@code process-skill}
+   *  WS request and renders the outcome. Mirrors the foot slash commands. */
+  (e: 'skill-command', line: string): void;
   /** Optimistic local echo — composer pushed a temp user bubble. Parent
    *  appends to its live messages and will dedup later when the
    *  canonical server frame arrives (matched by id-prefix + role + content). */
@@ -777,6 +786,35 @@ async function send(): Promise<void> {
   ) {
     composerText.value = '';
     handleAutoAiCmd(text.length === 3 ? null : text.slice(4));
+    return;
+  }
+
+  // `//verb [args]` — direct engine command (see
+  // planning/engine-commands.md §2). Frontend-only interception: never
+  // sent to the engine as chat input (a leading `//` would otherwise be
+  // steered and the LLM would just interpret it). The parent round-trips
+  // a {@code process-command} WS request and renders the outcome.
+  if (
+    text.startsWith('//')
+    && filesSnapshot.length === 0
+    && docsSnapshot.length === 0
+  ) {
+    composerText.value = '';
+    emit('engine-command', text);
+    return;
+  }
+
+  // `/skill …` (+ /skill-list, /skill-clear) — skill activate/clear/list,
+  // mirroring the foot slash commands. Frontend-only interception: the
+  // parent round-trips process-skill; never sent to the engine as chat.
+  const skillHead = text.split(/\s+/)[0];
+  if (
+    (skillHead === '/skill' || skillHead === '/skill-list' || skillHead === '/skill-clear')
+    && filesSnapshot.length === 0
+    && docsSnapshot.length === 0
+  ) {
+    composerText.value = '';
+    emit('skill-command', text);
     return;
   }
 

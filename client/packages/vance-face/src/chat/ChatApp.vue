@@ -9,12 +9,17 @@ import {
 import type {
   ChatMessageDto,
   DocumentDto,
+  ProcessCommandRequest,
+  ProcessCommandResponse,
+  ProcessSkillRequest,
+  ProcessSkillResponse,
   ProcessProgressNotification,
   SessionListRequest,
   SessionListResponse,
   SessionRosterData,
   SwitchToNotification,
 } from '@vance/generated';
+import { EngineCommandOutcome, ProcessSkillCommand } from '@vance/generated';
 import {
   bindSession,
   ensureBound as wsEnsureBound,
@@ -304,6 +309,135 @@ async function onWhoFromComposer(): Promise<void> {
     console.warn('[chat] /who lookup failed', e);
     chatViewRef.value?.pushWhoActivity([t('chat.activity.whoFailed')]);
   }
+}
+
+/**
+ * Handles a {@code //verb [args]} engine command from the composer.
+ * Round-trips a {@code process-command} WS request and renders the
+ * outcome as an ephemeral activity line. See planning/engine-commands.md §2.
+ */
+async function onEngineCommandFromComposer(line: string): Promise<void> {
+  const sock = socket.value;
+  if (!sock) return;
+  const process = chatProcessName.value;
+  if (!process) {
+    chatViewRef.value?.pushCommandActivity(`${line} → no active process`);
+    return;
+  }
+  const body = line.replace(/^\/\//, '').trim();
+  if (!body) return;
+  const sp = body.search(/\s/);
+  const verb = sp < 0 ? body : body.slice(0, sp);
+  const rest = sp < 0 ? '' : body.slice(sp + 1).trim();
+  // v1 arg grammar: raw remainder rides as a single `text` param
+  // (planning/engine-commands.md §5).
+  const params = rest ? { text: rest } : undefined;
+  try {
+    const reply = await sock.send<ProcessCommandRequest, ProcessCommandResponse>(
+      'process-command',
+      { processName: process, command: verb, params },
+    );
+    chatViewRef.value?.pushCommandActivity(renderEngineCommand(reply));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    chatViewRef.value?.pushCommandActivity(`// ${verb} → error: ${msg}`);
+  }
+}
+
+function renderEngineCommand(r: ProcessCommandResponse): string {
+  const label = `// ${r.command}`;
+  const detail = r.message ? `: ${r.message}` : '';
+  if (r.outcome === EngineCommandOutcome.OK) {
+    let valueSuffix = '';
+    if (r.value != null) {
+      const v = typeof r.value === 'string' ? r.value : JSON.stringify(r.value);
+      valueSuffix = `  ${v}`;
+    }
+    return `${label} → ok${detail}${valueSuffix}`;
+  }
+  if (r.outcome === EngineCommandOutcome.UNKNOWN) {
+    return `${label} → unknown command${detail}`;
+  }
+  return `${label} → error${detail}`;
+}
+
+/**
+ * Handles a {@code /skill …} (or {@code /skill-list} / {@code /skill-clear})
+ * command from the composer — the web equivalent of foot's skill slash
+ * commands. Round-trips a {@code process-skill} WS request and renders the
+ * outcome as an ephemeral activity line. See planning/engine-commands.md §4.
+ */
+async function onSkillCommandFromComposer(line: string): Promise<void> {
+  const sock = socket.value;
+  if (!sock) return;
+  const process = chatProcessName.value;
+  if (!process) {
+    chatViewRef.value?.pushCommandActivity(`${line} → no active process`);
+    return;
+  }
+  const parts = line.trim().split(/\s+/).filter(Boolean);
+  const head = parts[0];
+
+  let command: ProcessSkillCommand;
+  let skillName: string | undefined;
+  let oneShot = false;
+
+  if (head === '/skill-list') {
+    command = ProcessSkillCommand.LIST;
+  } else if (head === '/skill-clear') {
+    command = parts[1] ? ProcessSkillCommand.CLEAR : ProcessSkillCommand.CLEAR_ALL;
+    skillName = parts[1];
+  } else {
+    // head === '/skill'
+    const sub = parts[1];
+    if (!sub) {
+      chatViewRef.value?.pushCommandActivity(
+        '/skill → usage: /skill list | clear [name] | <name> [--once]');
+      return;
+    }
+    if (sub === 'list') {
+      command = ProcessSkillCommand.LIST;
+    } else if (sub === 'clear') {
+      command = parts[2] ? ProcessSkillCommand.CLEAR : ProcessSkillCommand.CLEAR_ALL;
+      skillName = parts[2];
+    } else {
+      command = ProcessSkillCommand.ACTIVATE;
+      skillName = sub;
+      oneShot = parts.includes('--once');
+    }
+  }
+
+  try {
+    const reply = await sock.send<ProcessSkillRequest, ProcessSkillResponse>('process-skill', {
+      processName: process,
+      command,
+      skillName,
+      oneShot,
+    });
+    chatViewRef.value?.pushCommandActivity(renderSkillReply(command, skillName, reply));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    chatViewRef.value?.pushCommandActivity(`/skill → error: ${msg}`);
+  }
+}
+
+function renderSkillReply(
+  command: ProcessSkillCommand,
+  skillName: string | undefined,
+  r: ProcessSkillResponse,
+): string {
+  if (command === ProcessSkillCommand.LIST) {
+    const active = r.activeSkills.map((a) => a.name).join(', ') || '—';
+    const available = (r.availableSkills ?? []).map((s) => s.name).join(', ') || '—';
+    return `/skill list → active: ${active}  ·  available: ${available}`;
+  }
+  if (command === ProcessSkillCommand.CLEAR) {
+    return `/skill → cleared ${skillName}`;
+  }
+  if (command === ProcessSkillCommand.CLEAR_ALL) {
+    return '/skill → cleared all';
+  }
+  return `/skill → activated ${skillName}`;
 }
 function onWizardDeepLinkFromView(detail: { name: string; prefill: Record<string, string> }): void {
   rightPanelRef.value?.openWizard(detail.name, detail.prefill);
@@ -853,6 +987,8 @@ function openInCortex(): void {
         :draft-key="activeSessionId ?? undefined"
         @hub="backToHub"
         @who="onWhoFromComposer"
+        @engine-command="onEngineCommandFromComposer"
+        @skill-command="onSkillCommandFromComposer"
         @local-echo="onLocalEchoFromComposer"
         @rollback-echo="onRollbackEchoFromComposer"
         @text-changed="onComposerTextChanged"

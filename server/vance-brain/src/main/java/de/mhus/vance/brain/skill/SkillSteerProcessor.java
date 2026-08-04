@@ -35,6 +35,7 @@ public class SkillSteerProcessor {
     private final ThinkProcessService thinkProcessService;
     private final SessionService sessionService;
     private final SkillResolver skillResolver;
+    private final SkillCommandRunner skillCommandRunner;
 
     public ActivationResult activate(
             ThinkProcessDocument process, String skillName, boolean oneShot) {
@@ -48,6 +49,16 @@ public class SkillSteerProcessor {
         SkillScopeContext scope = scopeFor(process);
         ResolvedSkill skill = skillResolver.resolve(scope, skillName)
                 .orElseThrow(() -> new UnknownSkillException(skillName));
+
+        if (skill.lifecycle() == SkillLifecycle.SHOT) {
+            // Pure-configuration macro: fire the activate sequence once,
+            // never persist, no deactivate. See planning/engine-commands.md §4.3.
+            skillCommandRunner.run(process, skill.activate(), "activate", skill.name());
+            log.info("Skill activate id='{}' name='{}' lifecycle=shot "
+                            + "(fired {} command(s), not persisted)",
+                    process.getId(), skill.name(), skill.activate().size());
+            return new ActivationResult(skill, true, mutableActive(process));
+        }
 
         List<ActiveSkillRefEmbedded> active = mutableActive(process);
         Optional<ActiveSkillRefEmbedded> existing = active.stream()
@@ -76,6 +87,9 @@ public class SkillSteerProcessor {
         persist(process, active);
         log.info("Skill activate id='{}' name='{}' source={} oneShot={}",
                 process.getId(), skill.name(), skill.source(), oneShot);
+        // Fire the activate sequence only on a fresh activation — an
+        // already-active skill (handled above) must not re-fire.
+        skillCommandRunner.run(process, skill.activate(), "activate", skill.name());
         return new ActivationResult(skill, true, active);
     }
 
@@ -96,6 +110,7 @@ public class SkillSteerProcessor {
         if (removed) {
             persist(process, active);
             log.info("Skill clear id='{}' name='{}'", process.getId(), skillName);
+            fireDeactivate(process, skillName);
         }
         return active;
     }
@@ -103,17 +118,40 @@ public class SkillSteerProcessor {
     public List<ActiveSkillRefEmbedded> clearAll(ThinkProcessDocument process) {
         List<ActiveSkillRefEmbedded> active = mutableActive(process);
         List<ActiveSkillRefEmbedded> kept = new ArrayList<>();
+        List<String> removedNames = new ArrayList<>();
         for (ActiveSkillRefEmbedded ref : active) {
             if (ref.isFromRecipe()) {
                 kept.add(ref);
+            } else if (ref.getName() != null) {
+                removedNames.add(ref.getName());
             }
         }
         if (kept.size() != active.size()) {
             persist(process, kept);
             log.info("Skill clearAll id='{}' kept={} (recipe-bound)",
                     process.getId(), kept.size());
+            for (String name : removedNames) {
+                fireDeactivate(process, name);
+            }
         }
         return kept;
+    }
+
+    /**
+     * Fires a cleared skill's {@code deactivate:} sequence. Best-effort:
+     * a skill that vanished from the cascade (deleted, moved out of
+     * scope) just skips its cleanup — the removal from {@code activeSkills}
+     * already happened.
+     */
+    private void fireDeactivate(ThinkProcessDocument process, String skillName) {
+        try {
+            skillResolver.resolve(scopeFor(process), skillName).ifPresent(skill ->
+                    skillCommandRunner.run(
+                            process, skill.deactivate(), "deactivate", skill.name()));
+        } catch (RuntimeException e) {
+            log.warn("Skill deactivate id='{}' name='{}' resolve failed: {}",
+                    process.getId(), skillName, e.toString());
+        }
     }
 
     public List<ResolvedSkill> listAvailable(ThinkProcessDocument process) {

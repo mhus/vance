@@ -1,5 +1,8 @@
 package de.mhus.vance.foot.command;
 
+import de.mhus.vance.api.command.EngineCommandOutcome;
+import de.mhus.vance.api.command.ProcessCommandRequest;
+import de.mhus.vance.api.command.ProcessCommandResponse;
 import de.mhus.vance.api.thinkprocess.ProcessPauseRequest;
 import de.mhus.vance.api.thinkprocess.ProcessSteerRequest;
 import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
@@ -18,6 +21,7 @@ import de.mhus.vance.foot.ui.PendingLinePrompt;
 import de.mhus.vance.foot.ui.PromptGate;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.jspecify.annotations.Nullable;
@@ -56,6 +60,9 @@ public class ChatInputService {
 
     /** Timeout for fire-and-forget pause requests. Short — pause is a side-channel. */
     public static final Duration PAUSE_TIMEOUT = Duration.ofSeconds(10);
+
+    /** Timeout for a control-plane engine command round-trip. Short — commands are cheap. */
+    public static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(30);
 
     private final CommandService commandService;
     private final ConnectionService connection;
@@ -135,6 +142,11 @@ public class ChatInputService {
         }
         promptGate.enterExclusive();
         try {
+            // "//verb" is a direct engine command — checked before the
+            // single-slash branch since "//" also startsWith "/".
+            if (trimmed.startsWith("//")) {
+                return sendEngineCommandLocked(trimmed);
+            }
             if (trimmed.startsWith("/")) {
                 boolean matched = commandService.execute(trimmed);
                 return InputResult.command(trimmed, matched, null);
@@ -406,6 +418,91 @@ public class ChatInputService {
         } finally {
             busyIndicator.exit("chat-roundtrip");
         }
+    }
+
+    /**
+     * Handles a {@code //verb [args]} line — a direct control-plane
+     * command to the active think-process's engine. Sent synchronously
+     * via {@code process-command}; the reply's outcome is rendered
+     * inline. An unknown verb comes back as a defined no-op, not a hard
+     * failure. Must run inside the prompt gate (called from
+     * {@link #submit}). See {@code planning/engine-commands.md} §2.
+     */
+    private InputResult sendEngineCommandLocked(String trimmed) {
+        String body = trimmed.substring(2).trim(); // strip the leading "//"
+        if (body.isEmpty()) {
+            chatTerminal.error("Usage: //<command> [args]");
+            return InputResult.command(trimmed, false, "empty command");
+        }
+        int sp = indexOfWhitespace(body);
+        String verb = sp < 0 ? body : body.substring(0, sp);
+        String rest = sp < 0 ? "" : body.substring(sp + 1).trim();
+
+        SessionService.BoundSession bound = sessions.current();
+        if (bound == null) {
+            String msg = "No bound session — /connect, then /session-resume or /session-create.";
+            chatTerminal.error(msg);
+            return InputResult.command(trimmed, false, msg);
+        }
+        String process = sessions.activeProcess();
+        if (process == null) {
+            String msg = "No active process — /process <name> first.";
+            chatTerminal.error(msg);
+            return InputResult.command(trimmed, false, msg);
+        }
+
+        // v1 argument grammar: the raw remainder rides as a single
+        // `text` param. A structured `key=value` grammar is an open
+        // decision (planning/engine-commands.md §5).
+        Map<String, Object> params = rest.isEmpty() ? Map.of() : Map.of("text", rest);
+        ProcessCommandRequest req = ProcessCommandRequest.builder()
+                .processName(process)
+                .command(verb)
+                .params(params)
+                .build();
+
+        busyIndicator.enter("engine-command");
+        try {
+            ProcessCommandResponse resp = connection.request(
+                    MessageType.PROCESS_COMMAND, req, ProcessCommandResponse.class, COMMAND_TIMEOUT);
+            renderCommandResult(resp);
+            boolean ok = resp.getOutcome() == EngineCommandOutcome.OK;
+            return InputResult.command(trimmed, ok, ok ? null : resp.getMessage());
+        } catch (BrainException e) {
+            chatTerminal.error(e.getMessage());
+            return InputResult.command(trimmed, false, e.getMessage());
+        } catch (Exception e) {
+            String detail = e.getMessage();
+            if (detail == null || detail.isBlank()) {
+                detail = e.getClass().getSimpleName();
+            }
+            String msg = "Command failed: " + detail;
+            chatTerminal.error(msg);
+            return InputResult.command(trimmed, false, msg);
+        } finally {
+            busyIndicator.exit("engine-command");
+        }
+    }
+
+    private void renderCommandResult(ProcessCommandResponse resp) {
+        String label = "// " + resp.getCommand();
+        String detail = resp.getMessage() == null ? "" : ": " + resp.getMessage();
+        Object value = resp.getValue();
+        String valueSuffix = value == null ? "" : "  " + value;
+        switch (resp.getOutcome()) {
+            case OK -> chatTerminal.info(label + " → ok" + detail + valueSuffix);
+            case UNKNOWN -> chatTerminal.error(label + " → unknown command" + detail);
+            case ERROR -> chatTerminal.error(label + " → error" + detail);
+        }
+    }
+
+    private static int indexOfWhitespace(String s) {
+        for (int i = 0; i < s.length(); i++) {
+            if (Character.isWhitespace(s.charAt(i))) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /** Discriminator for which path {@link #submit(String)} took. */

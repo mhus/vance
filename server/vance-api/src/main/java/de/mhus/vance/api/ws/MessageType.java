@@ -108,6 +108,16 @@ public final class MessageType {
      */
     public static final String PROCESS_SKILL = "process-skill";
 
+    /**
+     * Direct control-plane command to a think-process's engine — the
+     * {@code //verb} client surface. Dispatched on the process lane to
+     * the engine-command handler registry; an unknown verb is a defined
+     * no-op. Unlike {@code process-steer} it does <b>not</b> feed the
+     * LLM. The reply carries the command outcome. See
+     * {@code planning/engine-commands.md} §2.
+     */
+    public static final String PROCESS_COMMAND = "process-command";
+
     /** Compound command: session create/resume + processes + optional initial message. */
     public static final String SESSION_BOOTSTRAP = "session-bootstrap";
 

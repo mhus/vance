@@ -6,11 +6,13 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.foot.connection.MessageHandler;
 import de.mhus.vance.foot.ui.ChatTerminal;
+import de.mhus.vance.foot.ui.ColorResolver;
 import de.mhus.vance.foot.ui.StreamingDisplay;
 import de.mhus.vance.foot.ui.Verbosity;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -30,11 +32,13 @@ public class NotifyHandler implements MessageHandler {
 
     private final ChatTerminal terminal;
     private final StreamingDisplay streaming;
+    private final ColorResolver colorResolver;
     private final ObjectMapper json = JsonMapper.builder().build();
 
-    public NotifyHandler(ChatTerminal terminal, StreamingDisplay streaming) {
+    public NotifyHandler(ChatTerminal terminal, StreamingDisplay streaming, ColorResolver colorResolver) {
         this.terminal = terminal;
         this.streaming = streaming;
+        this.colorResolver = colorResolver;
     }
 
     @Override
@@ -60,7 +64,7 @@ public class NotifyHandler implements MessageHandler {
         terminal.printlnStyled(Verbosity.INFO, render(severity, dto));
     }
 
-    private static AttributedString render(NotificationSeverity severity, NotificationDto dto) {
+    private AttributedString render(NotificationSeverity severity, NotificationDto dto) {
         AttributedStringBuilder sb = new AttributedStringBuilder();
         AttributedStyle headerStyle = headerStyleFor(severity);
         sb.style(headerStyle)
@@ -71,9 +75,9 @@ public class NotifyHandler implements MessageHandler {
                 .append(' ');
         String src = formatSource(dto);
         if (!src.isEmpty()) {
-            sb.style(AttributedStyle.DEFAULT
-                            .foreground(AttributedStyle.BRIGHT + AttributedStyle.BLACK))
-                    .append(src)
+            AttributedStyle dimStyle = colorResolver.dim();
+            if (dimStyle != null) sb.style(dimStyle);
+            sb.append(src)
                     .append(" · ")
                     .style(AttributedStyle.DEFAULT);
         }
@@ -81,12 +85,14 @@ public class NotifyHandler implements MessageHandler {
         return sb.toAttributedString();
     }
 
-    private static AttributedStyle headerStyleFor(NotificationSeverity severity) {
-        return switch (severity) {
-            case INFO -> AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN).bold();
-            case WARN -> AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW).bold();
-            case ERROR -> AttributedStyle.DEFAULT.foreground(AttributedStyle.RED).bold();
+    private AttributedStyle headerStyleFor(NotificationSeverity severity) {
+        AttributedStyle base = colorResolver.notifyInfo();
+        AttributedStyle s = switch (severity) {
+            case INFO -> colorResolver.notifyInfo();
+            case WARN -> colorResolver.notifyWarn();
+            case ERROR -> colorResolver.notifyError();
         };
+        return s != null ? s : AttributedStyle.DEFAULT;
     }
 
     private static String formatSource(NotificationDto dto) {

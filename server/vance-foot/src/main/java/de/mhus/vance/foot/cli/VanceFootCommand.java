@@ -19,6 +19,7 @@ import de.mhus.vance.foot.tools.ClientToolService;
 import de.mhus.vance.foot.transfer.FootTransferService;
 import de.mhus.vance.foot.ui.ChatRepl;
 import de.mhus.vance.foot.ui.ChatTerminal;
+import de.mhus.vance.foot.ui.ColorResolver;
 import de.mhus.vance.foot.ui.Verbosity;
 import de.mhus.vance.foot.ui.WindowTitleService;
 import java.nio.file.Path;
@@ -266,6 +267,7 @@ public class VanceFootCommand implements Callable<Integer> {
     private final SessionAnchorStore sessionAnchorStore;
     private final VanceProjectConfigStore projectConfigStore;
     private final VanceProjectConfigApplier projectConfigApplier;
+    private final ColorResolver colorResolver;
 
     public VanceFootCommand(ChatRepl repl,
                             ConnectionService connection,
@@ -284,7 +286,8 @@ public class VanceFootCommand implements Callable<Integer> {
                             ProjectBindingApplier bindingApplier,
                             SessionAnchorStore sessionAnchorStore,
                             VanceProjectConfigStore projectConfigStore,
-                            VanceProjectConfigApplier projectConfigApplier) {
+                            VanceProjectConfigApplier projectConfigApplier,
+                            ColorResolver colorResolver) {
         this.repl = repl;
         this.connection = connection;
         this.terminal = terminal;
@@ -303,6 +306,7 @@ public class VanceFootCommand implements Callable<Integer> {
         this.sessionAnchorStore = sessionAnchorStore;
         this.projectConfigStore = projectConfigStore;
         this.projectConfigApplier = projectConfigApplier;
+        this.colorResolver = colorResolver;
     }
 
     @Override
@@ -517,9 +521,11 @@ public class VanceFootCommand implements Callable<Integer> {
             }
         }
         if (!permissions.isSandboxEnabled()) {
+            AttributedStyle sandboxStyle = colorResolver.sandboxWarn();
+            if (sandboxStyle == null) sandboxStyle = AttributedStyle.DEFAULT;
             terminal.printBoxed(
                     Verbosity.WARN,
-                    AttributedStyle.DEFAULT.foreground(AttributedStyle.RED).bold(),
+                    sandboxStyle,
                     List.of("⚠  SANDBOX DISABLED — all file & exec commands run unrestricted."));
         }
 

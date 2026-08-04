@@ -51,6 +51,7 @@ public class LiveRegion {
 
     private final StatusBar statusBar;
     private final FootConfig config;
+    private final ColorResolver colorResolver;
 
     private final Object writeLock = new Object();
     private final AtomicBoolean stopRequested = new AtomicBoolean();
@@ -129,9 +130,10 @@ public class LiveRegion {
         java.util.List<String> complete(String input, int cursorIdx);
     }
 
-    public LiveRegion(StatusBar statusBar, FootConfig config) {
+    public LiveRegion(StatusBar statusBar, FootConfig config, ColorResolver colorResolver) {
         this.statusBar = statusBar;
         this.config = config;
+        this.colorResolver = colorResolver;
     }
 
     /**
@@ -852,7 +854,7 @@ public class LiveRegion {
             paintLive();
             return;
         }
-        emitStatic(ESC + "[34m  " + String.join("   ", cands) + ESC + "[0m");
+        emitStatic(ColorResolver.toAnsi(colorResolver.completion()) + "  " + String.join("   ", cands) + ColorResolver.ANSI_RESET);
     }
 
     private static String commonPrefix(java.util.List<String> ss) {
@@ -1146,7 +1148,7 @@ public class LiveRegion {
             String prefix = (i == 0) ? firstPrefix : "   ";
             String row = prefix + inputSegs[i];
             if (!ghost.isEmpty() && i == cursorLine) {
-                row = row + ESC + "[2m" + ghost + ESC + "[0m";
+                row = row + ColorResolver.toAnsi(colorResolver.ghostText()) + ghost + ColorResolver.ANSI_RESET;
             }
             boolean isFirstVisible = (i == inputViewportTop);
             boolean isLastVisible = (i == viewportEnd - 1);

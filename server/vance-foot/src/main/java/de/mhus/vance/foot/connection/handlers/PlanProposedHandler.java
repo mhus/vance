@@ -5,6 +5,7 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.foot.connection.MessageHandler;
 import de.mhus.vance.foot.ui.ChatTerminal;
+import de.mhus.vance.foot.ui.ColorResolver;
 import de.mhus.vance.foot.ui.StreamingDisplay;
 import de.mhus.vance.foot.ui.Verbosity;
 import java.util.ArrayList;
@@ -12,6 +13,7 @@ import java.util.List;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -42,23 +44,15 @@ public class PlanProposedHandler implements MessageHandler {
     private static final String APPROVAL_HINT =
             "antworte mit \"ok\"/\"mach so\" für Approval, oder mit Korrekturen";
 
-    private static final AttributedStyle BORDER_STYLE = AttributedStyle.DEFAULT
-            .foreground(AttributedStyle.CYAN)
-            .bold();
-
-    private static final AttributedStyle CONTENT_STYLE = AttributedStyle.DEFAULT
-            .foreground(AttributedStyle.CYAN);
-
-    private static final AttributedStyle DIM_STYLE = AttributedStyle.DEFAULT
-            .foreground(AttributedStyle.BRIGHT + AttributedStyle.BLACK);
-
     private final ChatTerminal terminal;
     private final StreamingDisplay streaming;
+    private final ColorResolver colorResolver;
     private final ObjectMapper json = JsonMapper.builder().build();
 
-    public PlanProposedHandler(ChatTerminal terminal, StreamingDisplay streaming) {
+    public PlanProposedHandler(ChatTerminal terminal, StreamingDisplay streaming, ColorResolver colorResolver) {
         this.terminal = terminal;
         this.streaming = streaming;
+        this.colorResolver = colorResolver;
     }
 
     @Override
@@ -82,12 +76,12 @@ public class PlanProposedHandler implements MessageHandler {
         terminal.printlnStyled(Verbosity.INFO, topLine(header, width));
         if (msg.getSummary() != null && !msg.getSummary().isBlank()) {
             for (String line : wrap(msg.getSummary(), inner)) {
-                terminal.printlnStyled(Verbosity.INFO, contentLine(line, inner, CONTENT_STYLE));
+                terminal.printlnStyled(Verbosity.INFO, contentLine(line, inner, colorResolver.planContent()));
             }
-            terminal.printlnStyled(Verbosity.INFO, contentLine("", inner, CONTENT_STYLE));
+            terminal.printlnStyled(Verbosity.INFO, contentLine("", inner, colorResolver.planContent()));
         }
         for (String line : wrap(APPROVAL_HINT, inner)) {
-            terminal.printlnStyled(Verbosity.INFO, contentLine(line, inner, DIM_STYLE));
+            terminal.printlnStyled(Verbosity.INFO, contentLine(line, inner, colorResolver.planDim()));
         }
         terminal.printlnStyled(Verbosity.INFO, bottomLine(width));
     }
@@ -98,36 +92,46 @@ public class PlanProposedHandler implements MessageHandler {
         return requested;
     }
 
-    private static AttributedString topLine(String header, int width) {
+    private AttributedString topLine(String header, int width) {
         // ╔═══ <header> ═...═╗
         String prefix = "╔═══ " + header + " ";
         int fillCount = Math.max(1, width - prefix.length() - 1);
+        AttributedStyle borderStyle = resolveBorder();
         AttributedStringBuilder sb = new AttributedStringBuilder();
-        sb.style(BORDER_STYLE);
+        if (borderStyle != null) sb.style(borderStyle);
         sb.append(prefix);
         sb.append("═".repeat(fillCount));
         sb.append("╗");
         return sb.toAttributedString();
     }
 
-    private static AttributedString bottomLine(int width) {
+    private AttributedString bottomLine(int width) {
+        AttributedStyle borderStyle = resolveBorder();
         AttributedStringBuilder sb = new AttributedStringBuilder();
-        sb.style(BORDER_STYLE);
+        if (borderStyle != null) sb.style(borderStyle);
         sb.append("╚");
         sb.append("═".repeat(Math.max(0, width - 2)));
         sb.append("╝");
         return sb.toAttributedString();
     }
 
-    private static AttributedString contentLine(String text, int inner, AttributedStyle textStyle) {
+    private AttributedString contentLine(String text, int inner, @Nullable AttributedStyle textStyle) {
         String padded = text.length() >= inner
                 ? text.substring(0, inner)
                 : text + " ".repeat(inner - text.length());
+        AttributedStyle borderStyle = resolveBorder();
         AttributedStringBuilder sb = new AttributedStringBuilder();
-        sb.style(BORDER_STYLE).append("║ ");
-        sb.style(textStyle).append(padded);
-        sb.style(BORDER_STYLE).append(" ║");
+        if (borderStyle != null) sb.style(borderStyle);
+        sb.append("║ ");
+        if (textStyle != null) sb.style(textStyle);
+        sb.append(padded);
+        if (borderStyle != null) sb.style(borderStyle);
+        sb.append(" ║");
         return sb.toAttributedString();
+    }
+
+    private @Nullable AttributedStyle resolveBorder() {
+        return colorResolver.planBorder();
     }
 
     /**

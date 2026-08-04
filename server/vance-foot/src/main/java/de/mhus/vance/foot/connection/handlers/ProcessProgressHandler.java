@@ -13,6 +13,7 @@ import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.foot.connection.MessageHandler;
 import de.mhus.vance.foot.ui.BusyIndicator;
 import de.mhus.vance.foot.ui.ChatTerminal;
+import de.mhus.vance.foot.ui.ColorResolver;
 import de.mhus.vance.foot.ui.LiveUsageState;
 import de.mhus.vance.foot.ui.StreamingDisplay;
 import de.mhus.vance.foot.ui.Verbosity;
@@ -47,13 +48,8 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 public class ProcessProgressHandler implements MessageHandler {
 
-    /**
-     * Bright-black ("gray") — the "side-channel" tone. One notch
-     * brighter than {@code bright-black + faint}, which read as
-     * almost-invisible on most modern terminals.
-     */
-    private static final AttributedStyle DIM_STYLE = AttributedStyle.DEFAULT
-            .foreground(AttributedStyle.BRIGHT + AttributedStyle.BLACK);
+    /** Configurable dim style, resolved from vance.ui.colors.dim. */
+    private final @Nullable AttributedStyle dimStyle;
 
     private final ChatTerminal terminal;
     private final StreamingDisplay streaming;
@@ -84,11 +80,13 @@ public class ProcessProgressHandler implements MessageHandler {
             ChatTerminal terminal,
             StreamingDisplay streaming,
             BusyIndicator busyIndicator,
-            LiveUsageState liveUsageState) {
+            LiveUsageState liveUsageState,
+            ColorResolver colorResolver) {
         this.terminal = terminal;
         this.streaming = streaming;
         this.busyIndicator = busyIndicator;
         this.liveUsageState = liveUsageState;
+        this.dimStyle = colorResolver.dim();
     }
 
     @Override
@@ -352,9 +350,8 @@ public class ProcessProgressHandler implements MessageHandler {
         return String.format("%.2f¢", euros * 100);
     }
 
-    private static AttributedString dim(String text) {
-        return new AttributedStringBuilder()
-                .style(DIM_STYLE)
+    private AttributedString dim(String text) {
+        return ColorResolver.styled(dimStyle)
                 .append(text)
                 .toAttributedString();
     }

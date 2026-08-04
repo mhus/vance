@@ -49,6 +49,7 @@ public class ChatRepl {
     private final IdeSelectionState ideSelection;
     private final PendingLinePrompt linePrompt;
     private final ThinkingVisibility thinkingVisibility;
+    private final ColorResolver colorResolver;
 
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
     private @Nullable Terminal terminal;
@@ -63,7 +64,8 @@ public class ChatRepl {
                     AutoAiService autoAi,
                     IdeSelectionState ideSelection,
                     PendingLinePrompt linePrompt,
-                    ThinkingVisibility thinkingVisibility) {
+                    ThinkingVisibility thinkingVisibility,
+                    ColorResolver colorResolver) {
         this.input = input;
         this.chatTerminal = chatTerminal;
         this.interfaceService = interfaceService;
@@ -74,6 +76,7 @@ public class ChatRepl {
         this.ideSelection = ideSelection;
         this.linePrompt = linePrompt;
         this.thinkingVisibility = thinkingVisibility;
+        this.colorResolver = colorResolver;
     }
 
     public void requestStop() {
@@ -189,9 +192,8 @@ public class ChatRepl {
      * separately is the safe layout.
      */
     private void echoSubmitted(String line) {
-        String esc = "\u001b";
         for (String segment : line.split("\n", -1)) {
-            liveRegion.emitStatic(esc + "[7m ❯ " + segment + " " + esc + "[0m");
+            liveRegion.emitStatic(ColorResolver.wrap(colorResolver.userEcho(), " ❯ " + segment + " "));
         }
     }
 

@@ -10,6 +10,7 @@ import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.MessageHandler;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
+import de.mhus.vance.foot.ui.ColorResolver;
 import de.mhus.vance.foot.ui.StreamingDisplay;
 import de.mhus.vance.foot.ui.ThinkingVisibility;
 import de.mhus.vance.foot.ui.Verbosity;
@@ -18,6 +19,7 @@ import java.util.Objects;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -37,9 +39,8 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 public class ChatMessageAppendedHandler implements MessageHandler {
 
-    /** Dimmed grey for the reasoning block so it reads as a side-channel. */
-    private static final AttributedStyle THOUGHTS_STYLE = AttributedStyle.DEFAULT
-            .foreground(AttributedStyle.BRIGHT + AttributedStyle.BLACK);
+    /** Configurable thoughts style, resolved from vance.ui.colors.thoughts. */
+    private final @Nullable AttributedStyle thoughtsStyle;
 
     private final ChatTerminal terminal;
     private final StreamingDisplay streaming;
@@ -56,7 +57,8 @@ public class ChatMessageAppendedHandler implements MessageHandler {
                                       PendingAskUserPicker askUserPicker,
                                       ConversationAuditService audit,
                                       FootConfig config,
-                                      ThinkingVisibility thinkingVisibility) {
+                                      ThinkingVisibility thinkingVisibility,
+                                      ColorResolver colorResolver) {
         this.terminal = terminal;
         this.streaming = streaming;
         this.sessions = sessions;
@@ -64,6 +66,7 @@ public class ChatMessageAppendedHandler implements MessageHandler {
         this.audit = audit;
         this.config = config;
         this.thinkingVisibility = thinkingVisibility;
+        this.thoughtsStyle = colorResolver.thoughts();
     }
 
     @Override
@@ -158,9 +161,8 @@ public class ChatMessageAppendedHandler implements MessageHandler {
         }
     }
 
-    private static AttributedString dim(String text) {
-        return new AttributedStringBuilder()
-                .style(THOUGHTS_STYLE)
+    private AttributedString dim(String text) {
+        return ColorResolver.styled(thoughtsStyle)
                 .append(text)
                 .toAttributedString();
     }

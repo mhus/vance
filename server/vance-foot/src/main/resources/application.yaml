@@ -45,6 +45,30 @@ vance:
       debug: "fg:bright-black"
       warn: "fg:yellow"
       error: "fg:red"
+      # Reasoning / thoughts blocks (dimmed grey side-channel)
+      thoughts: "fg:bright-black"
+      # Process-progress HUD lines and mode-change hints (dimmed grey)
+      dim: "fg:bright-black"
+      # Notification toast severity headers
+      notify-info: "fg:cyan,bold"
+      notify-warn: "fg:yellow,bold"
+      notify-error: "fg:red,bold"
+      # Plan-proposed and todo box rendering
+      plan-border: "fg:cyan,bold"
+      plan-content: "fg:cyan"
+      plan-dim: "fg:bright-black"
+      # Warning boxes (sandbox-disabled, permission-required)
+      sandbox-warn: "fg:red,bold"
+      permission-warn: "fg:yellow,bold"
+      # Status bar
+      status-busy: "fg:yellow"
+      status-dim: "fg:bright-black,faint"
+      status-context: "fg:cyan"
+      # Input / prompt area
+      user-echo: "inverse"
+      completion: "fg:blue"
+      ghost-text: "fg:bright-black,faint"
+      system-message: "fg:bright-black,faint"
   conversation-capture:
     # Append every chat message to .vancetope/conversations/<YYYY>-<MM>/<sessionId>.jsonl
     # Override per-project in .vancetope/config.yaml or with --audit / --no-audit.

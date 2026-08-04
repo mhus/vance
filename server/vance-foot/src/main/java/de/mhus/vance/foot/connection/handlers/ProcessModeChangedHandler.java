@@ -5,12 +5,14 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.foot.connection.MessageHandler;
 import de.mhus.vance.foot.ui.ChatTerminal;
+import de.mhus.vance.foot.ui.ColorResolver;
 import de.mhus.vance.foot.ui.PlanModeState;
 import de.mhus.vance.foot.ui.StreamingDisplay;
 import de.mhus.vance.foot.ui.Verbosity;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -28,8 +30,8 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 public class ProcessModeChangedHandler implements MessageHandler {
 
-    private static final AttributedStyle DIM_STYLE = AttributedStyle.DEFAULT
-            .foreground(AttributedStyle.BRIGHT + AttributedStyle.BLACK);
+    /** Configurable dim style, resolved from vance.ui.colors.dim. */
+    private final @Nullable AttributedStyle dimStyle;
 
     private final ChatTerminal terminal;
     private final StreamingDisplay streaming;
@@ -38,10 +40,12 @@ public class ProcessModeChangedHandler implements MessageHandler {
 
     public ProcessModeChangedHandler(ChatTerminal terminal,
                                      StreamingDisplay streaming,
-                                     PlanModeState planMode) {
+                                     PlanModeState planMode,
+                                     ColorResolver colorResolver) {
         this.terminal = terminal;
         this.streaming = streaming;
         this.planMode = planMode;
+        this.dimStyle = colorResolver.dim();
     }
 
     @Override
@@ -73,9 +77,8 @@ public class ProcessModeChangedHandler implements MessageHandler {
         terminal.printlnStyled(Verbosity.INFO, dim(text));
     }
 
-    private static AttributedString dim(String text) {
-        return new AttributedStringBuilder()
-                .style(DIM_STYLE)
+    private AttributedString dim(String text) {
+        return ColorResolver.styled(dimStyle)
                 .append(text)
                 .toAttributedString();
     }

@@ -33,7 +33,7 @@ class StreamingDisplayTest {
         when(promptGate.isExclusive()).thenReturn(false);
         when(sessions.activeProcess()).thenReturn("chat");
         return new StreamingDisplay(terminal, promptGate, sessions, markdown, config,
-                mock(ThinkingVisibility.class));
+                mock(ThinkingVisibility.class), mock(ColorResolver.class));
     }
 
     @Test

@@ -39,10 +39,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class StreamingDisplay {
 
-    /** Dimmed grey for the reasoning stream, matching the end-of-turn
-     *  "💭 thoughts" block in {@code ChatMessageAppendedHandler}. */
-    private static final AttributedStyle THOUGHTS_STYLE = AttributedStyle.DEFAULT
-            .foreground(AttributedStyle.BRIGHT + AttributedStyle.BLACK);
+    /** Configurable thoughts style, resolved from vance.ui.colors.thoughts. */
+    private final @Nullable AttributedStyle thoughtsStyle;
 
     private final ChatTerminal terminal;
     private final PromptGate promptGate;
@@ -58,13 +56,15 @@ public class StreamingDisplay {
                             SessionService sessions,
                             MarkdownRenderState markdownState,
                             FootConfig config,
-                            ThinkingVisibility thinkingVisibility) {
+                            ThinkingVisibility thinkingVisibility,
+                            ColorResolver colorResolver) {
         this.terminal = terminal;
         this.promptGate = promptGate;
         this.sessions = sessions;
         this.markdownState = markdownState;
         this.config = config;
         this.thinkingVisibility = thinkingVisibility;
+        this.thoughtsStyle = colorResolver.thoughts();
     }
 
     /**
@@ -137,9 +137,8 @@ public class StreamingDisplay {
         return state != null && state.streamedLive;
     }
 
-    private static AttributedString dim(String text) {
-        return new AttributedStringBuilder()
-                .style(THOUGHTS_STYLE)
+    private AttributedString dim(String text) {
+        return ColorResolver.styled(thoughtsStyle)
                 .append(text)
                 .toAttributedString();
     }

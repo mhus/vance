@@ -7,6 +7,7 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.foot.connection.MessageHandler;
 import de.mhus.vance.foot.ui.ChatTerminal;
+import de.mhus.vance.foot.ui.ColorResolver;
 import de.mhus.vance.foot.ui.PlanModeState;
 import de.mhus.vance.foot.ui.StreamingDisplay;
 import de.mhus.vance.foot.ui.Verbosity;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jline.utils.AttributedStyle;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -40,12 +42,10 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 public class TodosUpdatedHandler implements MessageHandler {
 
-    private static final AttributedStyle BOX_STYLE = AttributedStyle.DEFAULT
-            .foreground(AttributedStyle.CYAN);
-
     private final PlanModeState planMode;
     private final ChatTerminal terminal;
     private final StreamingDisplay streaming;
+    private final ColorResolver colorResolver;
     private final ObjectMapper json = JsonMapper.builder().build();
 
     /** Last rendered signature per process — dedup against redundant frames. */
@@ -53,10 +53,12 @@ public class TodosUpdatedHandler implements MessageHandler {
 
     public TodosUpdatedHandler(PlanModeState planMode,
                                ChatTerminal terminal,
-                               StreamingDisplay streaming) {
+                               StreamingDisplay streaming,
+                               ColorResolver colorResolver) {
         this.planMode = planMode;
         this.terminal = terminal;
         this.streaming = streaming;
+        this.colorResolver = colorResolver;
     }
 
     @Override
@@ -90,7 +92,11 @@ public class TodosUpdatedHandler implements MessageHandler {
         lastRendered.put(name, signature);
 
         streaming.suspend();
-        terminal.printBoxed(Verbosity.INFO, BOX_STYLE, renderLines(name, todos));
+        terminal.printBoxed(Verbosity.INFO, resolveBoxStyle(), renderLines(name, todos));
+    }
+
+    private @Nullable AttributedStyle resolveBoxStyle() {
+        return colorResolver.planBorder();
     }
 
     static List<String> renderLines(String name, List<TodoItem> todos) {

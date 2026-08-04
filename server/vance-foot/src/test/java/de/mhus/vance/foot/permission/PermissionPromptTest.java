@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.foot.ui.ChatTerminal;
+import de.mhus.vance.foot.ui.ColorResolver;
 import de.mhus.vance.foot.ui.LiveRegion;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
@@ -30,7 +31,8 @@ class PermissionPromptTest {
         PermissionService permissions = new PermissionService(loader);
         PendingPermissionPrompt pending = new PendingPermissionPrompt(terminal);
         PermissionPrompt prompt =
-                new PermissionPrompt(pending, terminal, liveRegion, loader, permissions);
+                new PermissionPrompt(pending, terminal, liveRegion, loader, permissions,
+                        mock(ColorResolver.class));
         return new Stack(prompt, pending, loader, permissions);
     }
 

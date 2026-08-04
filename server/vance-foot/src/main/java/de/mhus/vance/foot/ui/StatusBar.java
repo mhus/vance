@@ -55,6 +55,7 @@ public class StatusBar {
     private final ObjectProvider<IdeSelectionState> ideSelection;
     private final FootConfig config;
     private final LiveUsageState liveUsage;
+    private final ColorResolver colorResolver;
 
     /** Wall-clock millis when the current busy cycle started, or {@code -1} when idle. */
     private volatile long busyStartedMillis = -1;
@@ -72,13 +73,15 @@ public class StatusBar {
                      ThinkingPhrases phrases,
                      ObjectProvider<IdeSelectionState> ideSelection,
                      FootConfig config,
-                     LiveUsageState liveUsage) {
+                     LiveUsageState liveUsage,
+                     ColorResolver colorResolver) {
         this.sessions = sessions;
         this.busy = busy;
         this.phrases = phrases;
         this.ideSelection = ideSelection;
         this.config = config;
         this.liveUsage = liveUsage;
+        this.colorResolver = colorResolver;
     }
 
     /**
@@ -116,10 +119,12 @@ public class StatusBar {
             long elapsed = (System.currentTimeMillis() - busyStartedMillis) / 1000;
             String usage = formatUsage();
             String attribution = currentAuthor == null ? "" : " — " + currentAuthor + " ⸮";
-            String line = ESC + "[33m· " + ESC + "[3m„" + currentPhrase + "“" + ESC + "[23m"
+            String busyAnsi = ColorResolver.toAnsi(colorResolver.statusBusy());
+            String dimAnsi = ColorResolver.toAnsi(colorResolver.statusDim());
+            String line = busyAnsi + "· " + ESC + "[3m„" + currentPhrase + "“" + ESC + "[23m"
                     + attribution + " " + marker
-                    + ESC + "[0m  " + ESC + "[2m(" + elapsed + "s"
-                    + usage + ")" + ESC + "[0m";
+                    + ColorResolver.ANSI_RESET + "  " + dimAnsi + "(" + elapsed + "s"
+                    + usage + ")" + ColorResolver.ANSI_RESET;
             return clamp(line, width, true);
         }
         return "";
@@ -135,16 +140,18 @@ public class StatusBar {
         String rightPlain = buildRightContext();
         int leftLen = leftPlain.length();
         int rightLen = rightPlain.length();
+        String dimAnsi = ColorResolver.toAnsi(colorResolver.statusDim());
+        String ctxAnsi = ColorResolver.toAnsi(colorResolver.statusContext());
         if (leftLen + rightLen + 1 > width) {
             // Doesn't fit — drop one side.
             if (rightLen <= width) {
-                return ESC + "[36m" + rightPlain + ESC + "[0m";
+                return ctxAnsi + rightPlain + ColorResolver.ANSI_RESET;
             }
-            return ESC + "[2m" + clamp(leftPlain, width, false) + ESC + "[0m";
+            return dimAnsi + clamp(leftPlain, width, false) + ColorResolver.ANSI_RESET;
         }
         int pad = width - leftLen - rightLen;
-        return ESC + "[2m" + leftPlain + repeat(' ', pad)
-                + ESC + "[0m" + ESC + "[36m" + rightPlain + ESC + "[0m";
+        return dimAnsi + leftPlain + repeat(' ', pad)
+                + ColorResolver.ANSI_RESET + ctxAnsi + rightPlain + ColorResolver.ANSI_RESET;
     }
 
     private String buildLeftHints() {

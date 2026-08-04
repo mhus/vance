@@ -1,12 +1,14 @@
 package de.mhus.vance.foot.permission;
 
 import de.mhus.vance.foot.ui.ChatTerminal;
+import de.mhus.vance.foot.ui.ColorResolver;
 import de.mhus.vance.foot.ui.LiveRegion;
 import de.mhus.vance.foot.ui.Verbosity;
 import java.util.List;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.jline.utils.AttributedStyle;
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
@@ -33,17 +35,20 @@ public class PermissionPrompt implements InteractivePermissionResolver {
     private final LiveRegion liveRegion;
     private final PermissionConfigLoader loader;
     private final PermissionService permissions;
+    private final ColorResolver colorResolver;
 
     public PermissionPrompt(PendingPermissionPrompt pending,
                             ChatTerminal terminal,
                             @Lazy LiveRegion liveRegion,
                             PermissionConfigLoader loader,
-                            PermissionService permissions) {
+                            PermissionService permissions,
+                            ColorResolver colorResolver) {
         this.pending = pending;
         this.terminal = terminal;
         this.liveRegion = liveRegion;
         this.loader = loader;
         this.permissions = permissions;
+        this.colorResolver = colorResolver;
     }
 
     /**
@@ -86,9 +91,11 @@ public class PermissionPrompt implements InteractivePermissionResolver {
 
     private void printMenu(String toolName, PermissionDomain domain, String subject) {
         String label = domain == PermissionDomain.COMMANDS ? "command" : "path";
+        AttributedStyle warnStyle = colorResolver.permissionWarn();
+        if (warnStyle == null) warnStyle = AttributedStyle.DEFAULT;
         terminal.printBoxed(
                 Verbosity.WARN,
-                AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW).bold(),
+                warnStyle,
                 List.of(
                         "🔒 Permission required: " + toolName,
                         "   " + label + ": " + subject,

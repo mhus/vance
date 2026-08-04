@@ -10,6 +10,7 @@ import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.BrainRestClientService;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
+import de.mhus.vance.foot.ui.ColorResolver;
 import de.mhus.vance.foot.ui.InterfaceService;
 import de.mhus.vance.foot.ui.Verbosity;
 import java.time.Duration;
@@ -41,19 +42,22 @@ public class SessionResumeFlow {
     private final FootConfig config;
     private final AutoBootstrapService bootstrap;
     private final BrainRestClientService rest;
+    private final ColorResolver colorResolver;
 
     public SessionResumeFlow(ConnectionService connection,
                              ChatTerminal terminal,
                              InterfaceService interfaceService,
                              FootConfig config,
                              AutoBootstrapService bootstrap,
-                             BrainRestClientService rest) {
+                             BrainRestClientService rest,
+                             ColorResolver colorResolver) {
         this.connection = connection;
         this.terminal = terminal;
         this.interfaceService = interfaceService;
         this.config = config;
         this.bootstrap = bootstrap;
         this.rest = rest;
+        this.colorResolver = colorResolver;
     }
 
     /**
@@ -188,15 +192,20 @@ public class SessionResumeFlow {
                 // Same inverse-video shape ChatRepl uses for live submits.
                 for (String segment : content.split("\n", -1)) {
                     terminal.println(Verbosity.INFO,
-                            "\u001b[7m ❯ %s \u001b[0m", segment);
+                            "%s ❯ %s %s",
+                            ColorResolver.toAnsi(colorResolver.userEcho()),
+                            segment,
+                            ColorResolver.ANSI_RESET);
                 }
             } else if (role == ChatRole.ASSISTANT) {
                 terminal.chat(content);
             } else {
                 terminal.println(Verbosity.INFO,
-                        "\u001b[2m[%s] %s\u001b[0m",
+                        "%s[%s] %s%s",
+                        ColorResolver.toAnsi(colorResolver.systemMessage()),
                         role == null ? "system" : role.name().toLowerCase(),
-                        content);
+                        content,
+                        ColorResolver.ANSI_RESET);
             }
         }
         terminal.println(Verbosity.INFO, "── end of recent chat ──");

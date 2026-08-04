@@ -329,12 +329,20 @@ public class FootConfig {
     }
 
     /**
-     * Per-channel style overrides. Defaults match the original built-in
-     * palette (grey side-channel, green worker, yellow warn, red error,
-     * white/default for the main chat reply).
+     * Per-channel style overrides. Each value follows the JLine
+     * style-expression grammar parsed by {@link de.mhus.vance.foot.ui.StyleParser}:
+     * comma-separated tokens like {@code fg:red,bold} or
+     * {@code fg:bright-black,italic}. Empty / blank means "no styling"
+     * (terminal default — typically white).
+     *
+     * <p>Defaults match the original built-in palette (grey side-channel,
+     * green worker, yellow warn, red error, cyan for plan/todo boxes,
+     * white/default for the main chat reply). All previously hardcoded
+     * colours are now configurable here.
      */
     @Data
     public static class Colors {
+        // --- Core chat channels ---
         private String chat = "";
         private String worker = "fg:green";
         private String info = "fg:bright-black";
@@ -342,6 +350,54 @@ public class FootConfig {
         private String debug = "fg:bright-black";
         private String warn = "fg:yellow";
         private String error = "fg:red";
+
+        // --- Reasoning / thoughts (dimmed grey side-channel) ---
+        /** Style for the "thinking" / "thoughts" reasoning blocks. */
+        private String thoughts = "fg:bright-black";
+
+        // --- Progress / mode side-channel ---
+        /** Dimmed grey for process-progress HUD lines and mode-change hints. */
+        private String dim = "fg:bright-black";
+
+        // --- Notification toast severity colours ---
+        /** Style for INFO-severity notification toast headers. */
+        private String notifyInfo = "fg:cyan,bold";
+        /** Style for WARN-severity notification toast headers. */
+        private String notifyWarn = "fg:yellow,bold";
+        /** Style for ERROR-severity notification toast headers. */
+        private String notifyError = "fg:red,bold";
+
+        // --- Plan / todo box rendering ---
+        /** Border style for the plan-proposed and todo boxes. */
+        private String planBorder = "fg:cyan,bold";
+        /** Content style for the plan-proposed box body. */
+        private String planContent = "fg:cyan";
+        /** Dimmed style for the plan-proposed approval hint line. */
+        private String planDim = "fg:bright-black";
+
+        // --- Warning boxes ---
+        /** Style for the sandbox-disabled warning box border. */
+        private String sandboxWarn = "fg:red,bold";
+        /** Style for the permission-required prompt box border. */
+        private String permissionWarn = "fg:yellow,bold";
+
+        // --- Status bar ---
+        /** Style for the busy-phrase text in the status line (default yellow). */
+        private String statusBusy = "fg:yellow";
+        /** Dimmed style for elapsed time, usage counters and keyboard hints (default faint grey). */
+        private String statusDim = "fg:bright-black,faint";
+        /** Style for the session/project/process context on the right side of the hints row (default cyan). */
+        private String statusContext = "fg:cyan";
+
+        // --- Input / prompt area ---
+        /** Style for the user's submitted input echoed into scrollback (default inverse video). */
+        private String userEcho = "inverse";
+        /** Style for tab-completion candidates shown inline (default blue). */
+        private String completion = "fg:blue";
+        /** Style for the ghost-text autosuggestion trailing the cursor (default faint grey). */
+        private String ghostText = "fg:bright-black,faint";
+        /** Style for system-role chat messages in replay (default faint grey). */
+        private String systemMessage = "fg:bright-black,faint";
     }
 
     /**

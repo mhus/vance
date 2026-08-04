@@ -442,6 +442,26 @@ public class ThinkProcessDocument {
      */
     private @Nullable String postCompletionHookGoalOverride;
 
+    /**
+     * Number of completion-guard injections fired for this process —
+     * capped against each guard's {@code maxRounds}. Engine-internal
+     * state (like {@link #postCompletionHookRounds}), atomically
+     * {@code $inc}-remented before injection. See
+     * {@code planning/completion-guard.md} §2.3.
+     */
+    private int guardRounds = 0;
+
+    /**
+     * Runtime completion-guard override — judge query. Set/cleared live
+     * via the {@code guard} engine command. Becomes an additive guard
+     * only together with {@link #guardPromptOverride}. {@code null} =
+     * no runtime guard. See {@code planning/completion-guard.md} §3.
+     */
+    private @Nullable String guardJudgeOverride;
+
+    /** Runtime completion-guard override — follow-up prompt. See {@link #guardJudgeOverride}. */
+    private @Nullable String guardPromptOverride;
+
     @Version
     private @Nullable Long version;
 

@@ -48,7 +48,8 @@ class FrankieTodoBlockTest {
                 mock(de.mhus.vance.brain.memory.MemoryContextLoader.class),
                 mock(de.mhus.vance.brain.ai.ModelCatalog.class),
                 mock(de.mhus.vance.brain.memory.MemoryCompactionService.class),
-                mock(FrankiePostCompletionHookHandler.class));
+                mock(FrankiePostCompletionHookHandler.class),
+                mock(de.mhus.vance.brain.guard.CompletionGuardService.class));
     }
 
     @Test

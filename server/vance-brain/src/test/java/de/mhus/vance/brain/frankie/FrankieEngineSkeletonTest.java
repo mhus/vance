@@ -148,6 +148,10 @@ class FrankieEngineSkeletonTest {
                 mock(FrankiePostCompletionHookHandler.class);
         lenient().when(hookHandler.maybeSpawn(any(), any(), any(), anyBoolean()))
                 .thenReturn(false);
+        de.mhus.vance.brain.guard.CompletionGuardService completionGuard =
+                mock(de.mhus.vance.brain.guard.CompletionGuardService.class);
+        lenient().when(completionGuard.evaluate(any(), any(), anyBoolean()))
+                .thenReturn(new de.mhus.vance.brain.guard.GuardEvaluation(false, null, null));
         engine = new FrankieEngine(
                 thinkProcessService, properties, engineChatFactory,
                 llmCallTracker, streaming, objectMapper,
@@ -156,7 +160,7 @@ class FrankieEngineSkeletonTest {
                 mock(de.mhus.vance.brain.context.PromptDateContextResolver.class),
                 memoryContextLoader,
                 modelCatalog, memoryCompactionService,
-                hookHandler);
+                hookHandler, completionGuard);
 
         process = new ThinkProcessDocument();
         process.setId(PROC_ID);

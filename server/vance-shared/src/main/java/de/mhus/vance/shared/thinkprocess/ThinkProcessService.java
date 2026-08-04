@@ -557,6 +557,38 @@ public class ThinkProcessService {
     }
 
     /**
+     * Atomically increments the completion-guard round counter and
+     * returns the new value (or {@code -1} when the process is gone).
+     * Mirrors {@link #incrementPostCompletionHookRounds}.
+     */
+    public int incrementGuardRounds(String id) {
+        Query query = new Query(Criteria.where("_id").is(id));
+        Update update = new Update().inc("guardRounds", 1);
+        ThinkProcessDocument updated = mongoTemplate.findAndModify(
+                query, update,
+                new org.springframework.data.mongodb.core.FindAndModifyOptions().returnNew(true),
+                ThinkProcessDocument.class);
+        return updated == null ? -1 : updated.getGuardRounds();
+    }
+
+    /**
+     * Sets or (on {@code null}) clears the runtime completion-guard
+     * override — {@code field} is {@code "guardJudgeOverride"} or
+     * {@code "guardPromptOverride"}. Atomic {@code $set}/{@code $unset}.
+     */
+    public boolean setGuardOverride(String id, String field, @Nullable String value) {
+        if (!"guardJudgeOverride".equals(field) && !"guardPromptOverride".equals(field)) {
+            throw new IllegalArgumentException("unknown guard override field: " + field);
+        }
+        Query query = new Query(Criteria.where("_id").is(id));
+        Update update = value == null
+                ? new Update().unset(field)
+                : new Update().set(field, value);
+        return mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class)
+                .getMatchedCount() > 0;
+    }
+
+    /**
      * Atomically advances {@code lastPrakAt} <em>forward only</em> to the given
      * timestamp. Used by {@code PrakPeriodicTrigger} after a successful periodic
      * pass; the next pass reads from this cursor to find unrated messages.

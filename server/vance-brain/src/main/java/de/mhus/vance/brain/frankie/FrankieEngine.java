@@ -224,6 +224,7 @@ public class FrankieEngine implements ThinkEngine {
     private final ModelCatalog modelCatalog;
     private final MemoryCompactionService memoryCompactionService;
     private final FrankiePostCompletionHookHandler postCompletionHookHandler;
+    private final de.mhus.vance.brain.guard.CompletionGuardService completionGuardService;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -505,14 +506,26 @@ public class FrankieEngine implements ThinkEngine {
                     persistAssistantReply(process, chatLog, ctx, finalText, drained, tools, toolsThisTurn);
                     log.info("Frankie id='{}' natural stop — awaiting follow-up ({} chars)",
                             process.getId(), finalText.length());
-                    // Post-completion hook: optionally spawn a follow-up
-                    // process (review / summary / verify / …) before
-                    // releasing the worker to IDLE. Gates: recipe-config
-                    // present, trigger matches naturalStop, round-cap
-                    // not yet reached, inbox not already carrying a
-                    // hook outcome. See planning/frankie-post-completion-hook.md.
-                    postCompletionHookHandler.maybeSpawn(
-                            process, finalText, drained, /*naturalStop*/ true);
+                    // Completion guard first: judge the completion and, on
+                    // fire, inject a follow-up prompt + schedule a turn so
+                    // the worker continues. Only when the guard passes does
+                    // the post-completion hook get a chance (guard-first).
+                    // See planning/completion-guard.md.
+                    boolean guardFired = completionGuardService
+                            .evaluate(process, finalText, /*naturalStop*/ true).fired();
+                    if (guardFired) {
+                        log.info("Frankie id='{}' natural stop — completion guard fired, continuing",
+                                process.getId());
+                    } else {
+                        // Post-completion hook: optionally spawn a follow-up
+                        // process (review / summary / verify / …) before
+                        // releasing the worker to IDLE. Gates: recipe-config
+                        // present, trigger matches naturalStop, round-cap
+                        // not yet reached, inbox not already carrying a
+                        // hook outcome. See planning/frankie-post-completion-hook.md.
+                        postCompletionHookHandler.maybeSpawn(
+                                process, finalText, drained, /*naturalStop*/ true);
+                    }
                     exitStatus = ThinkProcessStatus.IDLE;
                     return;
                 }
@@ -554,6 +567,17 @@ public class FrankieEngine implements ThinkEngine {
                         reply.toolExecutionRequests(), tools, messages, process.getId());
 
                 if (terminate) {
+                    // Completion guard first (only guards with trigger
+                    // terminate/both apply here): if it fires, it injected
+                    // a follow-up + scheduled a turn — stay IDLE and let
+                    // the worker address it instead of closing.
+                    if (completionGuardService.evaluate(
+                            process, /*finalOutput*/ "", /*naturalStop*/ false).fired()) {
+                        log.info("Frankie id='{}' tool-terminate — completion guard fired, staying IDLE",
+                                process.getId());
+                        exitStatus = ThinkProcessStatus.IDLE;
+                        return;
+                    }
                     // Post-completion hook on terminate: only fires
                     // when the recipe explicitly opts in (trigger:
                     // terminate or both). For workers, suppress when

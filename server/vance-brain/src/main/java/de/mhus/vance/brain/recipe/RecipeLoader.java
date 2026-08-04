@@ -211,6 +211,7 @@ public class RecipeLoader {
         List<String> tags = stringList(spec.get("tags"), "tags");
         PostCompletionHookConfig postCompletionHook =
                 parsePostCompletionHook(spec.get("postCompletionHook"), renderer);
+        List<GuardConfig> guards = parseGuards(spec.get("guard"));
 
         return new ResolvedRecipe(
                 name, description, engine, params,
@@ -220,8 +221,53 @@ public class RecipeLoader {
                 defaultActiveSkills, allowedSkills,
                 triggerKeywords,
                 locked, internal, listed, title, tags,
-                postCompletionHook,
+                postCompletionHook, guards,
                 mapSource(hit.source()));
+    }
+
+    /**
+     * Parses the optional {@code guard:} block — a list of completion
+     * guards ({@code judge} + {@code prompt} + optional {@code trigger} /
+     * {@code maxRounds}). See {@code planning/completion-guard.md} §3.
+     */
+    @SuppressWarnings("unchecked")
+    private static List<GuardConfig> parseGuards(@Nullable Object raw) {
+        if (raw == null) return List.of();
+        if (!(raw instanceof List<?> list)) {
+            throw new IllegalStateException("'guard' must be a list of guard entries");
+        }
+        List<GuardConfig> out = new java.util.ArrayList<>(list.size());
+        for (int i = 0; i < list.size(); i++) {
+            Object item = list.get(i);
+            if (!(item instanceof Map<?, ?> rawMap)) {
+                throw new IllegalStateException("'guard[" + i + "]' must be a map");
+            }
+            Map<String, Object> m = (Map<String, Object>) rawMap;
+            String judge = stringOrNull(m.get("judge"));
+            String prompt = stringOrNull(m.get("prompt"));
+            if (judge == null || prompt == null) {
+                throw new IllegalStateException(
+                        "'guard[" + i + "]' requires non-blank 'judge' and 'prompt'");
+            }
+            GuardTrigger trigger = parseGuardTrigger(m.get("trigger"), i);
+            int maxRounds = m.get("maxRounds") == null ? 2 : parseMaxRounds(m.get("maxRounds"));
+            out.add(new GuardConfig(judge, prompt, trigger, maxRounds));
+        }
+        return List.copyOf(out);
+    }
+
+    private static GuardTrigger parseGuardTrigger(@Nullable Object raw, int idx) {
+        if (raw == null) return GuardTrigger.STOP;
+        if (!(raw instanceof String s)) {
+            throw new IllegalStateException("'guard[" + idx + "].trigger' must be a string");
+        }
+        return switch (s.trim().toLowerCase(java.util.Locale.ROOT)) {
+            case "stop", "naturalstop", "natural_stop" -> GuardTrigger.STOP;
+            case "terminate" -> GuardTrigger.TERMINATE;
+            case "both" -> GuardTrigger.BOTH;
+            default -> throw new IllegalStateException(
+                    "unknown guard[" + idx + "].trigger '" + s + "' (stop | terminate | both)");
+        };
     }
 
     /**

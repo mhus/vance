@@ -24,6 +24,8 @@ import LinkCard from './LinkCard.vue';
 import { hasRenderer } from '@/kindRenderers/registry';
 import { parseFenceLang } from '@/kindRenderers/parseFenceLang';
 import { isVanceUri, parseVanceUri, type EmbedRef } from '@/kindRenderers/parseVanceUri';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
 
 /**
  * Kinds that get an EmbeddedKindBox preview card appended underneath
@@ -179,6 +181,83 @@ marked.use({
 });
 
 /**
+ * KaTeX math rendering for Markdown.
+ *
+ * Registers two custom marked token types that intercept the four
+ * standard LaTeX math delimiters and render them through KaTeX:
+ *
+ *   - {@code $$...$$} and {@code \[...\]} → display math (block-level)
+ *   - {@code $...$}     and {@code \(...\)} → inline math
+ *
+ * The {@code \(...\)} / {@code \[...\]} forms are the canonical LaTeX
+ * escape sequences and the primary target — LLM chat output
+ * predominantly uses these. The {@code $...$} form is supported as a
+ * secondary delimiter; escaped dollar signs ({@code \$}) are safe
+ * because marked's built-in escape tokeniser runs before extension
+ * tokenisers and consumes {@code \$} as a literal before the math
+ * matcher ever sees it.
+ *
+ * {@code throwOnError: false} makes malformed formulas degrade to a
+ * red error span instead of crashing the entire Markdown render.
+ */
+interface MathToken extends Tokens.Generic {
+  text: string;
+  displayMode: boolean;
+}
+
+function renderKatex(token: MathToken): string {
+  try {
+    return katex.renderToString(token.text, {
+      displayMode: token.displayMode,
+      throwOnError: false,
+      strict: 'ignore',
+    });
+  } catch {
+    return token.text;
+  }
+}
+
+marked.use({
+  extensions: [
+    {
+      name: 'mathBlock',
+      level: 'block',
+      tokenizer(src: string): MathToken | undefined {
+        // $$...$$ (display)
+        const m = src.match(/^\$\$([\s\S]+?)\$\$(?:\n|$)/);
+        if (m) return { type: 'mathBlock', raw: m[0], text: m[1].trim(), displayMode: true };
+        // \[...\] (display)
+        const m2 = src.match(/^\\\[([\s\S]+?)\\\](?:\n|$)/);
+        if (m2) return { type: 'mathBlock', raw: m2[0], text: m2[1].trim(), displayMode: true };
+        return undefined;
+      },
+      renderer(token: Tokens.Generic): string {
+        return renderKatex(token as MathToken);
+      },
+    },
+    {
+      name: 'mathInline',
+      level: 'inline',
+      tokenizer(src: string): MathToken | undefined {
+        // $...$ (inline) — reject if the content starts or ends with
+        // whitespace to avoid false positives like "$ 5 off".
+        const m = src.match(/^\$([^\$\n]+?)\$/);
+        if (m && !m[1].startsWith(' ') && !m[1].endsWith(' ')) {
+          return { type: 'mathInline', raw: m[0], text: m[1].trim(), displayMode: false };
+        }
+        // \(...\) (inline)
+        const m2 = src.match(/^\\\(([\s\S]+?)\\\)/);
+        if (m2) return { type: 'mathInline', raw: m2[0], text: m2[1].trim(), displayMode: false };
+        return undefined;
+      },
+      renderer(token: Tokens.Generic): string {
+        return renderKatex(token as MathToken);
+      },
+    },
+  ],
+});
+
+/**
  * Walks the token tree and rewrites relative-style hrefs on
  * `link`/`image` tokens via {@link rewriteHrefIfRelative}. Normalising
  * at the token layer means the {@link isVanceLinkParagraph} /
@@ -237,7 +316,7 @@ const ALLOWED_URI_REGEXP =
   /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|vance):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;
 
 const SANITIZE_CONFIG = {
-  USE_PROFILES: { html: true },
+  USE_PROFILES: { html: true, mathMl: true },
   ALLOWED_URI_REGEXP,
 } as const;
 

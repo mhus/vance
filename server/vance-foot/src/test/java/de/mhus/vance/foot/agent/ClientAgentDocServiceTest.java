@@ -43,12 +43,12 @@ class ClientAgentDocServiceTest {
 
     @Test
     void resolveIn_picksAgentMdWhenPresent(@TempDir Path tmp) throws IOException {
-        Files.writeString(tmp.resolve("agent.md"), "# agent");
+        Files.writeString(tmp.resolve("AGENT.md"), "# agent");
         Files.writeString(tmp.resolve("CLAUDE.md"), "# claude");
 
         assertThat(service.resolveIn(tmp))
                 .isNotNull()
-                .satisfies(p -> assertThat(p.getFileName().toString()).isEqualTo("agent.md"));
+                .satisfies(p -> assertThat(p.getFileName().toString()).isEqualTo("AGENT.md"));
     }
 
     @Test
@@ -62,7 +62,7 @@ class ClientAgentDocServiceTest {
 
     @Test
     void overridePath_winsOverDefaults(@TempDir Path tmp) throws IOException {
-        Files.writeString(tmp.resolve("agent.md"), "# agent");
+        Files.writeString(tmp.resolve("AGENT.md"), "# agent");
         Path custom = tmp.resolve("custom.md");
         Files.writeString(custom, "# custom");
         service.setOverridePath(custom);
@@ -74,7 +74,7 @@ class ClientAgentDocServiceTest {
 
     @Test
     void overridePath_missingFile_returnsNullWithoutFallback(@TempDir Path tmp) throws IOException {
-        Files.writeString(tmp.resolve("agent.md"), "# agent");
+        Files.writeString(tmp.resolve("AGENT.md"), "# agent");
         service.setOverridePath(tmp.resolve("does-not-exist.md"));
 
         assertThat(service.resolveIn(tmp)).isNull();
@@ -104,12 +104,12 @@ class ClientAgentDocServiceTest {
     @Test
     void uploadIfPresent_smallFile_emitsPlainInfoLine(@TempDir Path tmp) throws Exception {
         Harness h = new Harness(tmp, 60_000, 100_000);
-        Files.writeString(tmp.resolve("agent.md"), "x".repeat(1000));
+        Files.writeString(tmp.resolve("AGENT.md"), "x".repeat(1000));
 
         boolean ok = h.service.uploadIfPresent();
 
         assertThat(ok).isTrue();
-        verify(h.terminal).info(contains("agent doc: uploaded agent.md (1000 chars)"));
+        verify(h.terminal).info(contains("agent doc: uploaded AGENT.md (1000 chars)"));
         verify(h.terminal, never()).warn(any());
         // Content sent verbatim, no truncation marker.
         assertThat(h.captureSentContent()).hasSize(1000).doesNotContain("[truncated]");
@@ -119,7 +119,7 @@ class ClientAgentDocServiceTest {
     void uploadIfPresent_overWarnButUnderTruncate_uploadsFullAndWarns(@TempDir Path tmp)
             throws Exception {
         Harness h = new Harness(tmp, 1000, 5000);
-        Files.writeString(tmp.resolve("agent.md"), "x".repeat(2500));
+        Files.writeString(tmp.resolve("AGENT.md"), "x".repeat(2500));
 
         boolean ok = h.service.uploadIfPresent();
 
@@ -133,7 +133,7 @@ class ClientAgentDocServiceTest {
     @Test
     void uploadIfPresent_overTruncate_truncatesAndWarns(@TempDir Path tmp) throws Exception {
         Harness h = new Harness(tmp, 1000, 2000);
-        Files.writeString(tmp.resolve("agent.md"), "x".repeat(5000));
+        Files.writeString(tmp.resolve("AGENT.md"), "x".repeat(5000));
 
         boolean ok = h.service.uploadIfPresent();
 
@@ -151,7 +151,7 @@ class ClientAgentDocServiceTest {
     @Test
     void uploadIfPresent_zeroTruncateDisablesTruncation(@TempDir Path tmp) throws Exception {
         Harness h = new Harness(tmp, 1000, 0);
-        Files.writeString(tmp.resolve("agent.md"), "x".repeat(50_000));
+        Files.writeString(tmp.resolve("AGENT.md"), "x".repeat(50_000));
 
         boolean ok = h.service.uploadIfPresent();
 
@@ -189,7 +189,7 @@ class ClientAgentDocServiceTest {
             service = new ClientAgentDocService(connProv, termProv, props);
             // Pin override so resolution lands on cwd-relative agent.md
             // regardless of where the JVM cwd happens to be.
-            service.setOverridePath(cwd.resolve("agent.md"));
+            service.setOverridePath(cwd.resolve("AGENT.md"));
         }
 
         String captureSentContent() throws Exception {

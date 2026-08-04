@@ -11,6 +11,8 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
@@ -67,6 +69,15 @@ public class ClientAgentDocService {
     private final ObjectProvider<ChatTerminal> terminalProvider;
     private final ClientAgentDocProperties properties;
     private final AtomicReference<@Nullable Path> overridePath = new AtomicReference<>();
+    /**
+     * -- SETTER --
+     *  Hard kill-switch from
+     * . Once on,
+     *
+     *  returns immediately without reading
+     *  or sending — the brain never sees a client agent doc.
+     */
+    @Setter
     private volatile boolean suppressed = false;
 
     public ClientAgentDocService(ObjectProvider<ConnectionService> connectionProvider,
@@ -84,15 +95,6 @@ public class ClientAgentDocService {
      */
     public void setOverridePath(@Nullable Path path) {
         overridePath.set(path == null ? null : path.toAbsolutePath().normalize());
-    }
-
-    /**
-     * Hard kill-switch from {@code --no-tools}. Once on,
-     * {@link #uploadIfPresent()} returns immediately without reading
-     * or sending — the brain never sees a client agent doc.
-     */
-    public void setSuppressed(boolean suppressed) {
-        this.suppressed = suppressed;
     }
 
     /**
@@ -118,7 +120,7 @@ public class ClientAgentDocService {
                 log.warn("--agent-file points at {} which does not exist — nothing uploaded", override);
                 terminalInfo("agent doc: --agent-file=" + override + " not found — nothing uploaded");
             } else {
-                log.debug("No agent.md or CLAUDE.md in cwd — skipping client-agent-upload");
+                log.debug("No VANCETOPE.md, AGENT.md or CLAUDE.md in cwd — skipping client-agent-upload");
             }
             return false;
         }

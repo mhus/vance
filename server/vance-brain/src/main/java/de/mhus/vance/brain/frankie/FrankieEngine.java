@@ -376,6 +376,19 @@ public class FrankieEngine implements ThinkEngine {
                 messages = buildPromptMessages(
                         process, chatLog, extras, activeSkills, modelInfo);
             }
+
+            // Context-scaled streaming timeout: rebuild the chat model with
+            // the per-turn input-token estimate so a large coding context
+            // gets a proportionally longer streaming budget instead of the
+            // fixed 300s floor (which slow providers exceed on big prompts).
+            // Floored at 300s in ModelInfo#scaledStreamTimeoutSeconds, so
+            // this can only lengthen the budget. See planning/completion-guard.md.
+            int estInputTokens = memoryCompactionService.estimateTokens(messages);
+            aiChat = engineChatFactory.forProcess(process, ctx, NAME,
+                    de.mhus.vance.brain.ai.AiChatOptions.builder()
+                            .estInputTokens(estInputTokens).build()).chat();
+            log.trace("Frankie id='{}' scaled stream timeout for est={} tokens",
+                    process.getId(), estInputTokens);
             // Anchor = index where the persisted-history prefix ends. The
             // Pi-style loop appends AiMessage replies + tool results past
             // this boundary in-memory only (Frankie persists only the
@@ -397,6 +410,10 @@ public class FrankieEngine implements ThinkEngine {
             // tool-call iterations, not just the last batch.
             java.util.Set<String> toolsThisTurn = new java.util.LinkedHashSet<>();
 
+            // Progressive poll-throttle: consecutive status-only batches
+            // back off (step, 2·step, … capped). Resets on real work.
+            int consecutivePolls = 0;
+
             while (true) {
                 // External interrupt — graceful exit between turns.
                 // PAUSED is treated the same as SUSPENDED here: the
@@ -413,6 +430,20 @@ public class FrankieEngine implements ThinkEngine {
                     log.info("Frankie id='{}' external interrupt (status={}) — exiting loop",
                             process.getId(), current);
                     exitStatus = null;
+                    return;
+                }
+
+                // Halt flag (ESC / stop). Some interrupt paths set the
+                // out-of-band haltRequested flag without flipping the
+                // status — checking status alone would then let a runaway
+                // tool-loop grind on. Honour the flag here so ESC always
+                // breaks the loop: clear it and park PAUSED so the user's
+                // next message auto-resumes (ProcessSteerHandler).
+                if (thinkProcessService.isHaltRequested(process.getId())) {
+                    log.info("Frankie id='{}' halt requested — exiting loop (PAUSED)",
+                            process.getId());
+                    thinkProcessService.clearHalt(process.getId());
+                    exitStatus = ThinkProcessStatus.PAUSED;
                     return;
                 }
 
@@ -531,12 +562,21 @@ public class FrankieEngine implements ThinkEngine {
                 }
 
                 // Idle-stuck safety net (over consecutive batches).
-                String batchHash = hashToolCalls(reply.toolExecutionRequests());
-                if (isIdleStuck(recentToolHashes, batchHash)) {
-                    log.warn("Frankie id='{}' idle-stuck on '{}' — BLOCKED",
-                            process.getId(), batchHash);
-                    exitStatus = ThinkProcessStatus.BLOCKED;
-                    return;
+                // Exempt status-polling batches: repeatedly polling
+                // exec_status while a long background job (build / test
+                // suite) is RUNNING is legitimate progress-waiting, not a
+                // stuck loop — otherwise a normal poll cadence trips the
+                // net and BLOCKs the worker mid-build. The wallclock net
+                // (above) and the halt check still bound a genuinely
+                // hung poll loop.
+                if (!isPollingOnlyBatch(reply.toolExecutionRequests())) {
+                    String batchHash = hashToolCalls(reply.toolExecutionRequests());
+                    if (isIdleStuck(recentToolHashes, batchHash)) {
+                        log.warn("Frankie id='{}' idle-stuck on '{}' — BLOCKED",
+                                process.getId(), batchHash);
+                        exitStatus = ThinkProcessStatus.BLOCKED;
+                        return;
+                    }
                 }
 
                 // Track every tool name the LLM asked for in this batch
@@ -617,6 +657,20 @@ public class FrankieEngine implements ThinkEngine {
                         exitStatus = ThinkProcessStatus.IDLE;
                     }
                     return;
+                }
+
+                // Poll-throttle: when this batch only polled a running
+                // background job, pause before the next LLM round so
+                // Frankie doesn't hammer exec_status in a tight loop (each
+                // poll is a full model call — tokens + latency). The model
+                // never asked for it; it just experiences time passing
+                // between polls. The loop head re-checks halt/status right
+                // after, so ESC latency stays bounded by the interval.
+                if (isPollingOnlyBatch(reply.toolExecutionRequests())) {
+                    consecutivePolls++;
+                    throttlePoll(process, consecutivePolls);
+                } else {
+                    consecutivePolls = 0;
                 }
 
                 // Loop continues: next iteration's LLM call will see the tool results.
@@ -1210,6 +1264,58 @@ public class FrankieEngine implements ThinkEngine {
             if (!h.equals(batchHash)) return false;
         }
         return true;
+    }
+
+    /**
+     * Tool names that merely poll the status of a running background job.
+     * Batches made up only of these are exempt from the idle-stuck net —
+     * polling a long exec is legitimate waiting, not a stuck loop.
+     */
+    private static final java.util.Set<String> POLLING_TOOLS = java.util.Set.of(
+            "exec_status", "client_exec_status", "work_exec_status");
+
+    private static boolean isPollingOnlyBatch(List<ToolExecutionRequest> calls) {
+        if (calls == null || calls.isEmpty()) {
+            return false;
+        }
+        for (ToolExecutionRequest c : calls) {
+            if (!POLLING_TOOLS.contains(c.name())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Server-side throttle between status polls (see {@code
+     * pollThrottleStepMs} / {@code pollThrottleMaxMs}). The wait grows with
+     * the number of consecutive status-only batches and is capped, so a
+     * fast job is noticed quickly while a long build backs off. The sleep
+     * is chunked and bails on a halt request so ESC latency stays ~1s.
+     */
+    private void throttlePoll(ThinkProcessDocument process, int consecutivePolls) {
+        long step = properties.getPollThrottleStepMs();
+        if (step <= 0) {
+            return;
+        }
+        long max = Math.max(step, properties.getPollThrottleMaxMs());
+        long ms = Math.min(step * consecutivePolls, max);
+        log.trace("Frankie id='{}' poll throttle #{} — sleeping {}ms",
+                process.getId(), consecutivePolls, ms);
+        long slept = 0;
+        while (slept < ms) {
+            if (thinkProcessService.isHaltRequested(process.getId())) {
+                return; // loop head will pick up the halt and park
+            }
+            long chunk = Math.min(1000, ms - slept);
+            try {
+                Thread.sleep(chunk);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            slept += chunk;
+        }
     }
 
     private String hashToolCalls(List<ToolExecutionRequest> calls) {

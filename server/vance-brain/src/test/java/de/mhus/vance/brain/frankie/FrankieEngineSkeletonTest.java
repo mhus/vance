@@ -98,6 +98,10 @@ class FrankieEngineSkeletonTest {
         EngineChatFactory.EngineChatBundle bundle =
                 new EngineChatFactory.EngineChatBundle(aiChat, behavior);
         lenient().when(engineChatFactory.forProcess(any(), any(), any())).thenReturn(bundle);
+        // 4-arg overload: Frankie rebuilds the chat with the est-scaled
+        // stream timeout after turn-start compaction.
+        lenient().when(engineChatFactory.forProcess(any(), any(), any(), any()))
+                .thenReturn(bundle);
 
         lenient().when(tools.primaryAsLc4j()).thenReturn(List.of());
         // Skills add no extra tools by default — the per-turn allow-set
@@ -296,6 +300,25 @@ class FrankieEngineSkeletonTest {
     }
 
     @Test
+    void haltRequested_breaksLoopAndParksPaused() {
+        // Status stays RUNNING (the halt path sets only the out-of-band
+        // flag, not the status) — the loop must still exit via the halt
+        // check instead of grinding on into an LLM call.
+        ThinkProcessDocument current = new ThinkProcessDocument();
+        current.setId(PROC_ID);
+        current.setStatus(ThinkProcessStatus.RUNNING);
+        when(thinkProcessService.findById(PROC_ID)).thenReturn(Optional.of(current));
+        when(thinkProcessService.isHaltRequested(PROC_ID)).thenReturn(true);
+
+        engine.runTurn(process, ctx);
+
+        assertThat(chatModel.callCount()).isEqualTo(0);
+        verify(thinkProcessService).clearHalt(PROC_ID);
+        verify(thinkProcessService).updateStatus(PROC_ID, ThinkProcessStatus.PAUSED);
+        verify(thinkProcessService, never()).closeProcess(eq(PROC_ID), any());
+    }
+
+    @Test
     void externalInterrupt_closedMidLoop_exitsAfterStatusChange() {
         // First iter: LLM asks for a tool call. Before second iter, status flips to CLOSED.
         ToolExecutionRequest call = ToolExecutionRequest.builder()
@@ -353,6 +376,32 @@ class FrankieEngineSkeletonTest {
 
         verify(thinkProcessService).updateStatus(PROC_ID, ThinkProcessStatus.BLOCKED);
         verify(thinkProcessService, never()).closeProcess(eq(PROC_ID), any());
+    }
+
+    @Test
+    void idleStuck_pollingBatchesExempt_notBlocked() {
+        // Repeatedly polling exec_status while a long job runs is legitimate
+        // waiting, not a stuck loop — it must NOT trip the idle-stuck net.
+        properties.setIdleStuckThreshold(2);
+        properties.setPollThrottleStepMs(0); // no real sleeps in the unit test
+        ToolExecutionRequest poll = ToolExecutionRequest.builder()
+                .id("call-P")
+                .name("exec_status")
+                .arguments("{\"id\":\"job-1\"}")
+                .build();
+        // 3 identical polls (> threshold) then a natural stop.
+        chatModel.script(AiMessage.from("", List.of(poll)));
+        chatModel.script(AiMessage.from("", List.of(poll)));
+        chatModel.script(AiMessage.from("", List.of(poll)));
+        chatModel.script(AiMessage.from("Build still running — will keep polling."));
+        when(tools.invoke(eq("exec_status"), any()))
+                .thenReturn(java.util.Map.of("id", "job-1", "status", "RUNNING"));
+
+        engine.runTurn(process, ctx);
+
+        verify(thinkProcessService, never())
+                .updateStatus(PROC_ID, ThinkProcessStatus.BLOCKED);
+        verify(thinkProcessService).updateStatus(PROC_ID, ThinkProcessStatus.IDLE);
     }
 
     // ─── Metadata + lifecycle smoke ─────────────────────────────────────

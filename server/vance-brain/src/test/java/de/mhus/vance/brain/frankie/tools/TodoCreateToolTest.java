@@ -153,6 +153,42 @@ class TodoCreateToolTest {
                 .hasMessageContaining("items");
     }
 
+    @Test
+    void dedup_existingContent_isSkippedNotAppended() {
+        when(thinkProcessService.findById(PROC_ID)).thenReturn(Optional.of(withTodos(
+                TodoItem.builder().id("1").status(TodoStatus.PENDING)
+                        .content("Add toAnsi() helper").build())));
+
+        Map<String, Object> out = tool.invoke(
+                Map.of("items", List.of(Map.of("content", "Add toAnsi() helper"))),
+                ctxFor(PROC_ID));
+
+        assertThat(out).containsEntry("created", List.of());
+        assertThat(out).containsEntry("skipped", 1);
+        verify(thinkProcessService, never()).addTodos(any(), any());
+    }
+
+    @Test
+    void dedup_wholePlanResend_appendsNothing() {
+        // The TodoWrite habit: model re-sends the whole plan (incl. a
+        // COMPLETED item) every update. Dedup must match all statuses so
+        // nothing is re-appended.
+        when(thinkProcessService.findById(PROC_ID)).thenReturn(Optional.of(withTodos(
+                TodoItem.builder().id("1").status(TodoStatus.PENDING)
+                        .content("Refactor StatusBar").build(),
+                TodoItem.builder().id("2").status(TodoStatus.COMPLETED)
+                        .content("Write tests").build())));
+
+        Map<String, Object> out = tool.invoke(
+                Map.of("items", List.of(
+                        Map.of("content", "Refactor StatusBar"),
+                        Map.of("content", "Write tests"))),
+                ctxFor(PROC_ID));
+
+        assertThat(out).containsEntry("skipped", 2);
+        verify(thinkProcessService, never()).addTodos(any(), any());
+    }
+
     private static ThinkProcessDocument withTodos(TodoItem... items) {
         ThinkProcessDocument doc = new ThinkProcessDocument();
         doc.setId(PROC_ID);

@@ -6,9 +6,12 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
@@ -109,11 +112,47 @@ public class TodoCreateTool implements Tool {
             return out;
         }
 
-        boolean wasEmptyBefore = thinkProcessService.findById(processId)
-                .map(p -> p.getTodos() == null || p.getTodos().isEmpty())
-                .orElse(true);
+        List<TodoItem> existing = thinkProcessService.findById(processId)
+                .map(ThinkProcessDocument::getTodos)
+                .orElse(List.of());
+        boolean wasEmptyBefore = existing == null || existing.isEmpty();
 
-        List<TodoItem> assigned = thinkProcessService.addTodos(processId, input);
+        // Dedup-on-append: skip items whose content already exists in the
+        // plan (any status). Models trained on the TodoWrite pattern
+        // re-send the *whole* updated plan on every progress update;
+        // without dedup that appends a duplicate copy of the plan each
+        // turn, which snowballs into a runaway re-planning loop. Matching
+        // against all statuses means "re-send the full list" becomes a
+        // no-op instead of duplicating. See planning discussion.
+        Set<String> seen = new HashSet<>();
+        if (existing != null) {
+            for (TodoItem t : existing) {
+                seen.add(contentKey(t.getContent()));
+            }
+        }
+        List<TodoItem> toAdd = new ArrayList<>();
+        int skipped = 0;
+        for (TodoItem t : input) {
+            if (seen.add(contentKey(t.getContent()))) {
+                toAdd.add(t);
+            } else {
+                skipped++;
+            }
+        }
+        if (toAdd.isEmpty()) {
+            log.info("todo_create process='{}' all {} item(s) already in plan — skipped",
+                    processId, skipped);
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("ok", true);
+            out.put("created", List.of());
+            out.put("skipped", skipped);
+            out.put("note", "all items already in the plan (deduped) — nothing created. "
+                    + "Use todo_update to change status or todo_remove to drop items; "
+                    + "do NOT re-send the whole plan.");
+            return out;
+        }
+
+        List<TodoItem> assigned = thinkProcessService.addTodos(processId, toAdd);
         if (assigned == null) {
             throw new ToolException("process not found or write conflict: " + processId);
         }
@@ -134,7 +173,15 @@ public class TodoCreateTool implements Tool {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("created", assigned.stream().map(TodoCreateTool::shapeItem).toList());
+        if (skipped > 0) {
+            out.put("skipped", skipped);
+        }
         return out;
+    }
+
+    /** Normalises todo content for duplicate detection (trim + lowercase). */
+    private static String contentKey(String content) {
+        return content == null ? "" : content.strip().toLowerCase(Locale.ROOT);
     }
 
     @SuppressWarnings("unchecked")

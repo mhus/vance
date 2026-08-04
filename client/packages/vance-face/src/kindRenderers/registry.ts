@@ -67,6 +67,7 @@ const XlsxView    = defineAsyncComponent(() => import('@/kindViews/XlsxView.vue'
 const AudioView   = defineAsyncComponent(() => import('@/kindViews/AudioView.vue'));
 const VideoView   = defineAsyncComponent(() => import('@/kindViews/VideoView.vue'));
 const YouTubeView = defineAsyncComponent(() => import('@/kindViews/YouTubeView.vue'));
+const FormulaView  = defineAsyncComponent(() => import('@/kindViews/FormulaView.vue'));
 
 /**
  * Registry of Vance-specific rich-content renderers. ONLY Vance kinds
@@ -122,6 +123,10 @@ export const kindRegistry: Record<string, KindRenderer> = {
   // External-source embeds — inline-only (no Document load).
   // The fence body carries the URL or video ID.
   youtube: { inline: YouTubeView, label: 'YouTube', icon: '▶' },
+
+  // Math / chemistry formulas — KaTeX + mhchem. Body is raw LaTeX
+  // (display mode by default; `mixed=true` for delimiter parsing).
+  formula: { inline: FormulaView, embedded: FormulaView, label: 'Formula', icon: 'ƒ' },
 
   // Sheet: embedded-only data card (read-only mini-grid) with a
   // "Bearbeiten" dialog that opens the full SheetView editor — mirrors

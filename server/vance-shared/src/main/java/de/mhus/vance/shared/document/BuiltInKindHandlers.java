@@ -25,6 +25,7 @@ public class BuiltInKindHandlers {
     @Bean public KindHandler schemaKindHandler() { return () -> "schema"; }
     @Bean public KindHandler applicationKindHandler() { return () -> "application"; }
     @Bean public KindHandler composeKindHandler() { return () -> "compose"; }
+    @Bean public KindHandler formulaKindHandler() { return () -> "formula"; }
 
     // Codec-backed kinds (sheet, chart, graph, diagram, tree, list, checklist,
     // mindmap, data) now register in CodecKindHandlers with a parse-validate().

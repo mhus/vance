@@ -60,6 +60,21 @@ export function registerBuiltInKinds(): void {
     ),
   });
 
+  // ── Formula: KaTeX+mhchem code-preview toggle ──────────────────
+  // `.formula` files get the same View/Edit toggle as `.tex`, but
+  // use FormulaView (with mhchem support) instead of TexPreview.
+  // Kind-based match so `kind: formula` documents resolve here even
+  // without a specific MIME type.
+  registerKind({
+    id: 'formula',
+    matches: (kind, mime) =>
+      (kind ?? '').toLowerCase() === 'formula' ||
+      mime === 'text/x-formula',
+    codePreview: defineAsyncComponent(
+      () => import('@/kindViews/FormulaView.vue'),
+    ),
+  });
+
   // ── Compose (Damogran): kind-registry view with a raw-YAML Edit tab ──
   // A `compose` document is YAML, identified by *kind* (not mime), so it
   // needs the kind-registry `view` path (kind-aware) rather than a

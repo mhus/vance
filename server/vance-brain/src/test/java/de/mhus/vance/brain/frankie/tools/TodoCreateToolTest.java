@@ -68,13 +68,15 @@ class TodoCreateToolTest {
         assertThat(created.get(0)).containsEntry("id", "1").containsEntry("content", "a");
         assertThat(created.get(1)).containsEntry("id", "2").containsEntry("content", "b");
 
-        // todos-updated AND plan-proposed (first-time-empty hint)
+        // Only todos-updated — never plan-proposed. That frame carries
+        // Arthur/Eddie approval semantics (Foot renders an "answer ok to
+        // approve" banner on it) which is wrong for Frankie's TodoList.
         verify(emitter).emitTodosUpdated(any(), any());
-        verify(emitter).emitPlanProposed(any(), eq(null), eq(1));
+        verify(emitter, never()).emitPlanProposed(any(), any(), any(Integer.class));
     }
 
     @Test
-    void create_intoNonEmptyList_skipsPlanProposed() {
+    void create_intoNonEmptyList_emitsOnlyTodosUpdated() {
         ThinkProcessDocument existing = withTodos(
                 TodoItem.builder().id("1").status(TodoStatus.PENDING).content("a").build());
         when(thinkProcessService.findById(PROC_ID))

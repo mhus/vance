@@ -115,7 +115,6 @@ public class TodoCreateTool implements Tool {
         List<TodoItem> existing = thinkProcessService.findById(processId)
                 .map(ThinkProcessDocument::getTodos)
                 .orElse(List.of());
-        boolean wasEmptyBefore = existing == null || existing.isEmpty();
 
         // Dedup-on-append: skip items whose content already exists in the
         // plan (any status). Models trained on the TodoWrite pattern
@@ -157,16 +156,14 @@ public class TodoCreateTool implements Tool {
             throw new ToolException("process not found or write conflict: " + processId);
         }
 
-        thinkProcessService.findById(processId).ifPresent(refreshed -> {
-            planModeEventEmitter.emitTodosUpdated(refreshed, refreshed.getTodos());
-            if (wasEmptyBefore) {
-                // First items in the list — drop the "plan exists now" hint
-                // so Foot / Web-UI can show the banner. planVersion stays
-                // at 1 since Frankie doesn't track revisions.
-                planModeEventEmitter.emitPlanProposed(
-                        refreshed, /*summary*/ null, /*planVersion*/ 1);
-            }
-        });
+        // Only emit todos-updated — the TodoList box in Foot / Web-UI is
+        // driven entirely by that frame. Frankie deliberately does NOT emit
+        // plan-proposed: that frame carries Arthur/Eddie Plan-Mode approval
+        // semantics (Foot renders an "answer ok to approve" banner on it,
+        // unconditionally), which is wrong for Frankie's CRUD-style TodoList
+        // where no approval exists. See specification/public/frankie-engine.md §9.
+        thinkProcessService.findById(processId).ifPresent(refreshed ->
+                planModeEventEmitter.emitTodosUpdated(refreshed, refreshed.getTodos()));
 
         log.info("todo_create process='{}' added={}", processId, assigned.size());
 

@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 /**
  * Decision-shape tests for {@link ActionLoopJudgeService}. The LLM
  * call is mocked; what we verify is how the service interprets the
- * reply: extend vs. synthesize, the {@code extensionsLeft==0} override,
+ * reply: extend vs. synthesize (no fixed extension ceiling any more)
  * and the failure-fallback behaviour that keeps the engine from
  * deadlocking when the judge itself is broken.
  */
@@ -38,7 +38,7 @@ class ActionLoopJudgeServiceTest {
                 "answer", "Hier ist meine Synthese.",
                 "reason", "Looped on the same fetch twice"));
 
-        ActionLoopJudgeService.Judgment j = judge.judge(req(/*extLeft*/ 1, "gathered"));
+        ActionLoopJudgeService.Judgment j = judge.judge(req("gathered"));
 
         assertThat(j.extend()).isFalse();
         assertThat(j.synthesizedAnswer()).isEqualTo("Hier ist meine Synthese.");
@@ -46,28 +46,15 @@ class ActionLoopJudgeServiceTest {
     }
 
     @Test
-    void extend_decision_isExtendWhenBudgetLeft() {
+    void extend_decision_isExtend() {
         when(lightLlm.callForJson(any())).thenReturn(Map.of(
                 "decision", "extend",
                 "reason", "Each fetch surfaced new material"));
 
-        ActionLoopJudgeService.Judgment j = judge.judge(req(/*extLeft*/ 1, "gathered"));
+        ActionLoopJudgeService.Judgment j = judge.judge(req("gathered"));
 
         assertThat(j.extend()).isTrue();
         assertThat(j.synthesizedAnswer()).isNull();
-    }
-
-    @Test
-    void extend_forbidden_whenExtensionsExhausted() {
-        when(lightLlm.callForJson(any())).thenReturn(Map.of(
-                "decision", "extend",
-                "answer", "fallback answer",
-                "reason", "still progressing"));
-
-        ActionLoopJudgeService.Judgment j = judge.judge(req(/*extLeft*/ 0, "gathered"));
-
-        assertThat(j.extend()).isFalse();
-        assertThat(j.synthesizedAnswer()).isEqualTo("fallback answer");
     }
 
     @Test
@@ -77,7 +64,7 @@ class ActionLoopJudgeServiceTest {
                 "reason", "looped"));
 
         ActionLoopJudgeService.Judgment j = judge.judge(
-                req(1, "Best free text the model emitted so far."));
+                req("Best free text the model emitted so far."));
 
         assertThat(j.extend()).isFalse();
         assertThat(j.synthesizedAnswer()).isEqualTo("Best free text the model emitted so far.");
@@ -88,7 +75,7 @@ class ActionLoopJudgeServiceTest {
         when(lightLlm.callForJson(any()))
                 .thenThrow(new LightLlmException("provider exhausted"));
 
-        ActionLoopJudgeService.Judgment j = judge.judge(req(1, "what we gathered"));
+        ActionLoopJudgeService.Judgment j = judge.judge(req("what we gathered"));
 
         assertThat(j.extend()).isFalse();
         assertThat(j.synthesizedAnswer()).isEqualTo("what we gathered");
@@ -100,7 +87,7 @@ class ActionLoopJudgeServiceTest {
         when(lightLlm.callForJson(any()))
                 .thenThrow(new LightLlmException("provider exhausted"));
 
-        ActionLoopJudgeService.Judgment j = judge.judge(req(1, ""));
+        ActionLoopJudgeService.Judgment j = judge.judge(req(""));
 
         assertThat(j.extend()).isFalse();
         assertThat(j.synthesizedAnswer()).isNotBlank();
@@ -114,13 +101,13 @@ class ActionLoopJudgeServiceTest {
                 "answer", "best effort",
                 "reason", "model confused"));
 
-        ActionLoopJudgeService.Judgment j = judge.judge(req(1, "gathered"));
+        ActionLoopJudgeService.Judgment j = judge.judge(req("gathered"));
 
         assertThat(j.extend()).isFalse();
         assertThat(j.synthesizedAnswer()).isEqualTo("best effort");
     }
 
-    private static ActionLoopJudgeService.JudgeRequest req(int extLeft, String gathered) {
+    private static ActionLoopJudgeService.JudgeRequest req(String gathered) {
         ThinkProcessDocument process = ThinkProcessDocument.builder()
                 .id("proc-1")
                 .tenantId("mhus")
@@ -132,7 +119,6 @@ class ActionLoopJudgeServiceTest {
                 "Wie macht pi das?",
                 gathered,
                 List.of("research_search(query=pi)", "web_fetch(url=...)"),
-                12,
-                extLeft);
+                12);
     }
 }

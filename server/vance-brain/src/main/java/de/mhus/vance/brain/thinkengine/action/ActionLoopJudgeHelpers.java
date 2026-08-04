@@ -19,15 +19,19 @@ import java.util.List;
 public final class ActionLoopJudgeHelpers {
 
     /**
-     * Maximum number of action-loop extensions the judge may grant
-     * after the initial {@code maxIters} budget is exhausted.
-     */
-    public static final int JUDGE_MAX_EXTENSIONS = 1;
-
-    /**
      * Iteration budget granted on each judge-approved extension. Kept
-     * deliberately smaller than typical {@code maxIters} defaults so a
-     * runaway loop can't repeatedly buy a full budget.
+     * deliberately small (a fraction of typical {@code maxIters}
+     * defaults) so the judge re-evaluates the loop's health after a
+     * short round rather than handing out a full fresh budget each time.
+     *
+     * <p>There is deliberately <b>no</b> absolute extension ceiling: as
+     * long as the judge keeps deciding {@code extend} (i.e. it still
+     * judges the loop healthy / progressing) the engine keeps granting
+     * these rounds without end. The bound on a genuinely stuck run is
+     * the judge flipping to {@code synthesize}; the bounds on a runaway
+     * are the user pressing ESC / {@code /pause} (honoured mid-loop by
+     * {@link StructuredActionEngine#runStructuredActionLoop}) and the
+     * per-turn wallclock safety net.
      */
     public static final int JUDGE_EXTENSION_ITERS = 6;
 

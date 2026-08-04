@@ -16,10 +16,6 @@ description: |
     toolsUsed      — newline-separated list of tool calls made this
                      turn, in order. Each line is "name(arg-preview)".
     iterations     — how many iterations have been consumed so far
-    extensionsLeft — how many more budget extensions the engine is
-                     willing to grant after this judgment (0 = this
-                     is the last call; must synthesise unless really
-                     making progress)
 
   Output: ONE JSON object, no markdown fences, no prose around it.
 engine: jeltz
@@ -51,20 +47,29 @@ promptPrefix: |
   ## Budget status
 
   - iterations consumed: {{ iterations }}
-  - extensions still available after this decision: {{ extensionsLeft }}
 
   ## Rules
 
-  - "extend" means the model is making genuine progress (each tool
-    call is gathering new, relevant material — not re-fetching the
-    same URL, not searching the same query repeatedly) AND it has a
-    plausible path to an answer within one more budget round.
-  - "synthesize" means either (a) the model is looping — same/
-    similar tool calls repeated, no new information — or (b) enough
-    material has been gathered that a useful answer can be written
-    now. When in doubt, prefer "synthesize" — the user is waiting,
-    and a partial answer beats another silent round.
-  - When `extensionsLeft == 0`, you MUST choose "synthesize".
+  - "extend" means the model is still doing real work toward the goal
+    and just needs another short round. Choose it when EITHER:
+      (a) recent tool calls gathered new, relevant material (not the
+          same fetch / query repeated), OR
+      (b) the model's latest free text announces a concrete next
+          action it has NOT yet performed (write a file, delegate to a
+          worker, run a specific tool) — it was about to act, not about
+          to answer. Do NOT synthesise a "here's what I'll do next"
+          promise on the model's behalf; let it actually do the work.
+    There is no extension budget to run out — extend as often as the
+    loop stays healthy.
+  - "synthesize" means the loop is genuinely stuck or already done:
+    (a) the model is looping — same / similar tool calls repeated with
+    no new information and no concrete new plan — or (b) enough
+    material has been gathered that a useful answer can be written now
+    and the model is only circling.
+  - Note: this engine usually DELEGATES to workers rather than calling
+    many tools itself, so a short tool-call list is normal and is NOT
+    by itself evidence of looping. Judge by whether the goal is
+    advancing, not by tool-call volume.
   - The synthesized `answer` must:
     - be written in the same language as the user's request,
     - address the user's request directly using ONLY the material

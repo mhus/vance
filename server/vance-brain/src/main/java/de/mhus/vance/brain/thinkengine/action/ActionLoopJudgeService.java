@@ -20,9 +20,10 @@ import org.springframework.stereotype.Service;
  * <p>Two outcomes:
  * <ul>
  *   <li>{@link Judgment#extend(String) extend} — the model is making
- *       genuine progress; the engine should re-invoke the loop with a
- *       fresh smaller budget. The engine is responsible for capping
- *       the total number of extensions.</li>
+ *       genuine progress; the engine re-invokes the loop with a fresh
+ *       smaller budget. There is no fixed extension ceiling — the judge
+ *       may keep extending while it judges the loop healthy; a runaway
+ *       is bounded by ESC / {@code /pause} and the wallclock net.</li>
  *   <li>{@link Judgment#synthesize(String, String) synthesize} — the
  *       model is looping or has gathered enough; the judge returns a
  *       user-facing answer text that the engine uses as the
@@ -57,7 +58,6 @@ public class ActionLoopJudgeService {
         vars.put("gatheredText", req.gatheredText() == null ? "" : req.gatheredText());
         vars.put("toolsUsed", formatToolsUsed(req.toolsUsed()));
         vars.put("iterations", req.iterations());
-        vars.put("extensionsLeft", req.extensionsLeft());
 
         ThinkProcessDocument process = req.process();
         Map<String, Object> raw;
@@ -82,13 +82,14 @@ public class ActionLoopJudgeService {
 
         String decision = stringOrNull(raw.get("decision"));
         String reason = stringOrNull(raw.get("reason"));
-        if ("extend".equalsIgnoreCase(decision) && req.extensionsLeft() > 0) {
+        if ("extend".equalsIgnoreCase(decision)) {
             log.info("ActionLoopJudge id='{}' decision=extend reason='{}'",
                     process.getId(), reason);
             return Judgment.extend(reason);
         }
-        // synthesize, or "extend" forbidden (extensionsLeft==0), or
-        // any unexpected decision string — collapse to synthesize.
+        // synthesize, or any unexpected decision string — collapse to
+        // synthesize (the loop health gate has no fixed extension budget;
+        // a runaway is bounded by ESC / the wallclock net, not here).
         String answer = stringOrNull(raw.get("answer"));
         if (answer == null || answer.isBlank()) {
             answer = safeFallback(req);
@@ -136,8 +137,7 @@ public class ActionLoopJudgeService {
             String userGoal,
             String gatheredText,
             List<String> toolsUsed,
-            int iterations,
-            int extensionsLeft) {}
+            int iterations) {}
 
     /**
      * Decision the engine acts on. {@link #extend()} returns

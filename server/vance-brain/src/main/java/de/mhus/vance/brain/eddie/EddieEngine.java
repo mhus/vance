@@ -211,7 +211,6 @@ public class EddieEngine extends StructuredActionEngine {
 
     // ──────────────────── Dependencies ────────────────────
 
-    private final ThinkProcessService thinkProcessService;
     private final ModelCatalog modelCatalog;
     private final EngineChatFactory engineChatFactory;
     private final EnginePromptResolver enginePromptResolver;
@@ -236,8 +235,6 @@ public class EddieEngine extends StructuredActionEngine {
     private final de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver;
     private final de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver;
     private final ObjectMapper objectMapper;
-    private final de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService
-            actionLoopJudgeService;
     private final de.mhus.vance.brain.notification.NotificationService notificationService;
 
     /**
@@ -295,8 +292,8 @@ public class EddieEngine extends StructuredActionEngine {
             de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver,
             de.mhus.vance.brain.notification.NotificationService notificationService,
             de.mhus.vance.brain.guard.CompletionGuardService completionGuardService) {
-        super(streamingProperties, llmCallTracker, objectMapper, composer, completionGuardService);
-        this.thinkProcessService = thinkProcessService;
+        super(streamingProperties, llmCallTracker, objectMapper, composer,
+                completionGuardService, actionLoopJudgeService, thinkProcessService);
         this.modelCatalog = modelCatalog;
         this.engineChatFactory = engineChatFactory;
         this.enginePromptResolver = enginePromptResolver;
@@ -320,7 +317,6 @@ public class EddieEngine extends StructuredActionEngine {
         this.collabContextResolver = collabContextResolver;
         this.activeAppPromptResolver = activeAppPromptResolver;
         this.objectMapper = objectMapper;
-        this.actionLoopJudgeService = actionLoopJudgeService;
         this.promptDateContextResolver = promptDateContextResolver;
         this.notificationService = notificationService;
     }
@@ -864,6 +860,11 @@ public class EddieEngine extends StructuredActionEngine {
         // guard's own follow-up injections don't.
         resetGuardBudgetForUserTurn(process, inbox);
         boolean awaitingUserInput = false;
+        // Set when the action loop bailed on a mid-loop interrupt (ESC /
+        // /pause): no fake reply, and the finally leaves the interrupt
+        // status as-is (or parks PAUSED for the halt-flag path).
+        boolean interrupted = false;
+        boolean interruptForcePause = false;
         try {
             ChatMessageService chatLog = ctx.chatMessageService();
 
@@ -923,58 +924,21 @@ public class EddieEngine extends StructuredActionEngine {
             // inbox_post are reached from action handlers via
             // tools.invokeInternal() — same dispatch pool, just
             // bypassing the LLM-visibility gate.
-            ActionLoopResult loopResult = runStructuredActionLoop(
+            ActionLoopResult loopResult = runActionLoopWithJudge(
                     aiChat, ContextToolsApi::primaryAsLc4j,
                     messages, ctx, process, maxIters, modelAlias,
-                    modelInfo.actionLoopCorrections());
+                    modelInfo.actionLoopCorrections(), inbox);
 
-            // Action-loop judge: same wiring as in ArthurEngine — when
-            // the loop max-iters out and isn't in the plan-mode-yield
-            // case, ask the judge whether to extend or synthesise from
-            // what's already gathered. See ActionLoopJudgeService.
-            int extensionsLeft = de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
-                    .JUDGE_MAX_EXTENSIONS;
-            while ("max-iters".equals(loopResult.fallbackReason())
-                    && !de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
-                            .isPlanModeYieldCase(process, loopResult)) {
-                de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService.JudgeRequest req =
-                        new de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService.JudgeRequest(
-                                process,
-                                de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
-                                        .lastUserGoal(inbox, process),
-                                loopResult.fallbackText() == null
-                                        ? "" : loopResult.fallbackText(),
-                                de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
-                                        .extractToolCallNames(messages),
-                                loopResult.toolInvocations(),
-                                extensionsLeft);
-                de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService.Judgment j =
-                        actionLoopJudgeService.judge(req);
-                if (j.extend() && extensionsLeft > 0) {
-                    log.info("Eddie.turn id='{}' judge extends action loop "
-                                    + "(+{} iters, {} extension(s) left after this, reason='{}')",
-                            process.getId(),
-                            de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
-                                    .JUDGE_EXTENSION_ITERS,
-                            extensionsLeft - 1, j.reason());
-                    extensionsLeft--;
-                    loopResult = runStructuredActionLoop(
-                            aiChat, ContextToolsApi::primaryAsLc4j,
-                            messages, ctx, process,
-                            de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
-                                    .JUDGE_EXTENSION_ITERS,
-                            modelAlias, modelInfo.actionLoopCorrections());
-                    continue;
-                }
-                log.info("Eddie.turn id='{}' judge synthesises "
-                                + "(answer-chars={}, reason='{}')",
-                        process.getId(),
-                        j.synthesizedAnswer() == null ? 0 : j.synthesizedAnswer().length(),
-                        j.reason());
-                loopResult = new ActionLoopResult(
-                        null, j.synthesizedAnswer(),
-                        "judge-synthesize", null, loopResult.toolInvocations());
-                break;
+            // Mid-loop interrupt (ESC / /pause): stop before a terminal
+            // action, surface no answer, drop buffered history tags, and
+            // let the finally honour the interrupt status.
+            if (loopResult.isInterrupted()) {
+                interrupted = true;
+                interruptForcePause = loopResult.interruptForcesPause();
+                ctx.historyTagSink().discard();
+                log.info("Eddie.turn id='{}' interrupted (forcePause={}) — parking, no answer surfaced",
+                        process.getId(), interruptForcePause);
+                return new TurnSignal(false, loopResult.madeProgress());
             }
 
             ActionTurnOutcome outcome;
@@ -1111,10 +1075,20 @@ public class EddieEngine extends StructuredActionEngine {
         } finally {
             currentTurnHadUserInput.remove(process.getId());
             currentTurnEventsByRef.remove(process.getId());
-            ThinkProcessStatus exitStatus = awaitingUserInput
-                    ? ThinkProcessStatus.BLOCKED
-                    : ThinkProcessStatus.IDLE;
-            thinkProcessService.updateStatus(process.getId(), exitStatus);
+            if (interrupted) {
+                // ESC / /pause bailed the loop. Halt-flag path parks
+                // PAUSED (user's next message auto-resumes); status-flip
+                // path leaves the terminal status the pause handler set.
+                if (interruptForcePause) {
+                    thinkProcessService.updateStatus(
+                            process.getId(), ThinkProcessStatus.PAUSED);
+                }
+            } else {
+                ThinkProcessStatus exitStatus = awaitingUserInput
+                        ? ThinkProcessStatus.BLOCKED
+                        : ThinkProcessStatus.IDLE;
+                thinkProcessService.updateStatus(process.getId(), exitStatus);
+            }
         }
     }
 

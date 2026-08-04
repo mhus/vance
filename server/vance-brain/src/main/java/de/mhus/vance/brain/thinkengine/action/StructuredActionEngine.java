@@ -2,6 +2,7 @@ package de.mhus.vance.brain.thinkengine.action;
 
 import de.mhus.vance.api.chat.ChatMessageChunkData;
 import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatException;
@@ -19,6 +20,7 @@ import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.Lc4jSchema;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
@@ -112,6 +114,19 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      */
     private static final long STREAM_TIMEOUT_MINUTES = 20;
 
+    /**
+     * Per-turn wallclock safety net for the action loop, spanning the
+     * initial budget plus every judge-approved extension. Because the
+     * judge may extend without a fixed ceiling (as long as it judges the
+     * loop healthy), this is the automatic backstop against a runaway —
+     * a judge that keeps mis-deciding "extend" — for headless turns where
+     * no human is present to press ESC. Generous by design: a healthy
+     * interactive turn never approaches it; it only bounds a pathological
+     * loop. Mirrors {@code FrankieProperties.maxWallclockMinutes} (60),
+     * kept a touch tighter for the interactive single-action engines.
+     */
+    private static final long TURN_WALLCLOCK_MINUTES = 30;
+
     private final StreamingProperties streamingProperties;
     private final LlmCallTracker llmCallTracker;
     private final ObjectMapper objectMapper;
@@ -132,17 +147,37 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      */
     private final CompletionGuardService completionGuardService;
 
+    /**
+     * Action-loop judge, shared by every single-action engine. Consulted
+     * by {@link #runActionLoopWithJudge} when the loop max-iters out
+     * without a terminal action — previously wired identically in each
+     * subclass, now owned here.
+     */
+    protected final ActionLoopJudgeService actionLoopJudgeService;
+
+    /**
+     * Process store, shared by every single-action engine. Used by the
+     * action loop to honour mid-loop interrupts (ESC / {@code /pause} —
+     * status flip or out-of-band halt flag) so a running tool loop stops
+     * promptly instead of grinding through more LLM calls.
+     */
+    protected final ThinkProcessService thinkProcessService;
+
     protected StructuredActionEngine(
             StreamingProperties streamingProperties,
             LlmCallTracker llmCallTracker,
             ObjectMapper objectMapper,
             SystemPromptComposer composer,
-            CompletionGuardService completionGuardService) {
+            CompletionGuardService completionGuardService,
+            ActionLoopJudgeService actionLoopJudgeService,
+            ThinkProcessService thinkProcessService) {
         this.streamingProperties = streamingProperties;
         this.llmCallTracker = llmCallTracker;
         this.objectMapper = objectMapper;
         this.composer = composer;
         this.completionGuardService = completionGuardService;
+        this.actionLoopJudgeService = actionLoopJudgeService;
+        this.thinkProcessService = thinkProcessService;
     }
 
     /**
@@ -335,6 +370,13 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      *                      {@link de.mhus.vance.brain.ai.ModelInfo#DEFAULT_ACTION_LOOP_CORRECTIONS})
      *                      so chatty / silent-prone models get more
      *                      head-room.
+     * @param deadlineMs    absolute wallclock deadline
+     *                      ({@code System.currentTimeMillis()} epoch) for
+     *                      the whole turn — computed once by
+     *                      {@link #runActionLoopWithJudge} so it spans the
+     *                      initial budget plus every judge extension. When
+     *                      exceeded the loop returns a {@code max-wallclock}
+     *                      fallback instead of grinding on.
      * @return the parsed action plus enough conversation context for
      *         the subclass to synthesise its chat message and status
      */
@@ -346,7 +388,8 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             ThinkProcessDocument process,
             int maxIters,
             String modelAlias,
-            int maxCorrections) {
+            int maxCorrections,
+            long deadlineMs) {
 
         // Fresh tools + spec list per loop. Refreshed after any
         // iteration that called read tools so describe_tool
@@ -360,6 +403,41 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         String bestFreeText = "";
 
         for (int iter = 0; iter < maxIters; iter++) {
+            // Mid-loop interrupt — checked before the next LLM call so
+            // ESC / /pause stops a running tool loop promptly instead of
+            // grinding through another round. Mirrors FrankieEngine's
+            // loop-head guard. Two paths: (a) the pause handler flipped
+            // the status (SUSPENDED/PAUSED/CLOSED) — bail and leave the
+            // status as-is; (b) an out-of-band halt flag was set without
+            // a status flip — clear it and signal the engine to park
+            // PAUSED so the user's next message auto-resumes.
+            ThinkProcessStatus liveStatus = currentStatus(process);
+            if (liveStatus == ThinkProcessStatus.SUSPENDED
+                    || liveStatus == ThinkProcessStatus.PAUSED
+                    || liveStatus == ThinkProcessStatus.CLOSED) {
+                log.info("{} id='{}' action-loop interrupt (status={}) — exiting",
+                        name(), process.getId(), liveStatus);
+                return ActionLoopResult.interrupted(false, toolInvocations);
+            }
+            if (thinkProcessService.isHaltRequested(process.getId())) {
+                log.info("{} id='{}' action-loop halt requested — exiting (PAUSED)",
+                        name(), process.getId());
+                thinkProcessService.clearHalt(process.getId());
+                return ActionLoopResult.interrupted(true, toolInvocations);
+            }
+
+            // Wallclock safety net — the automatic backstop for a runaway
+            // judge that keeps extending. Spans the whole turn (the same
+            // deadlineMs rides every extension round). Surfaces the best
+            // free-text as a terminal fallback; deliberately NOT
+            // "max-iters", so it does not re-trigger the judge.
+            if (System.currentTimeMillis() >= deadlineMs) {
+                log.warn("{} id='{}' action-loop wallclock exceeded ({} min) — falling back (toolInvocations={})",
+                        name(), process.getId(), TURN_WALLCLOCK_MINUTES, toolInvocations);
+                return ActionLoopResult.fallback(
+                        bestFreeText, "max-wallclock", null, toolInvocations);
+            }
+
             ChatRequest req = ChatRequest.builder()
                     .messages(messages)
                     .toolSpecifications(allSpecs)
@@ -634,10 +712,107 @@ public abstract class StructuredActionEngine implements ThinkEngine {
     }
 
     /**
+     * Runs {@link #runStructuredActionLoop} and, when it max-iters out
+     * without a terminal action, consults the
+     * {@link ActionLoopJudgeService} to decide between extending the loop
+     * (another budget round) and synthesising an answer from what was
+     * gathered. Shared by every single-action engine (Arthur, Eddie) —
+     * previously duplicated verbatim in each subclass.
+     *
+     * <p>Plan-mode-yield turns (see
+     * {@link ActionLoopJudgeHelpers#isPlanModeYieldCase}) are returned
+     * unchanged: the engine's own multi-turn continuation handles their
+     * overrun, so the judge stays out of it.
+     *
+     * @param inbox the current turn's inbox — used only to recover the
+     *              user's goal for the judge prompt
+     * @return the final loop result: a terminal action, a
+     *         {@code judge-synthesize} fallback, or the untouched
+     *         plan-mode {@code max-iters} fallback
+     */
+    protected ActionLoopResult runActionLoopWithJudge(
+            AiChat aiChat,
+            Function<ContextToolsApi, List<ToolSpecification>> readToolSpecsFactory,
+            List<ChatMessage> messages,
+            ThinkEngineContext ctx,
+            ThinkProcessDocument process,
+            int maxIters,
+            String modelAlias,
+            int maxCorrections,
+            List<SteerMessage> inbox) {
+        // One deadline for the whole turn — initial budget plus every
+        // judge extension share it, so the wallclock net actually bounds
+        // the turn instead of resetting each extension round.
+        long deadlineMs = System.currentTimeMillis()
+                + TURN_WALLCLOCK_MINUTES * 60_000L;
+        ActionLoopResult loopResult = runStructuredActionLoop(
+                aiChat, readToolSpecsFactory, messages, ctx, process,
+                maxIters, modelAlias, maxCorrections, deadlineMs);
+
+        // When the loop max-iters out (and isn't a plan-mode-yield case,
+        // which the engine's own continuation handles), consult the judge
+        // to decide between extending the budget or synthesising an
+        // answer from what's already gathered. Without this the legacy
+        // fallback surfaces the LLM's most recent free-text — typically a
+        // mid-research "let me look that up" placeholder — as the reply.
+        //
+        // The judge may extend WITHOUT a fixed ceiling: as long as it
+        // keeps deciding the loop is healthy, we keep granting short
+        // rounds. A genuinely stuck loop is bounded by the judge flipping
+        // to synthesize; a runaway is bounded by ESC and the per-turn
+        // wallclock net (both honoured inside runStructuredActionLoop,
+        // which returns an interrupted / max-wallclock result that ends
+        // this while).
+        while ("max-iters".equals(loopResult.fallbackReason())
+                && !ActionLoopJudgeHelpers.isPlanModeYieldCase(process, loopResult)) {
+            ActionLoopJudgeService.JudgeRequest req =
+                    new ActionLoopJudgeService.JudgeRequest(
+                            process,
+                            ActionLoopJudgeHelpers.lastUserGoal(inbox, process),
+                            loopResult.fallbackText() == null
+                                    ? "" : loopResult.fallbackText(),
+                            ActionLoopJudgeHelpers.extractToolCallNames(messages),
+                            loopResult.toolInvocations());
+            ActionLoopJudgeService.Judgment j = actionLoopJudgeService.judge(req);
+            if (j.extend()) {
+                log.info("{} id='{}' judge extends action loop (+{} iters, reason='{}')",
+                        name(), process.getId(),
+                        ActionLoopJudgeHelpers.JUDGE_EXTENSION_ITERS, j.reason());
+                loopResult = runStructuredActionLoop(
+                        aiChat, readToolSpecsFactory, messages, ctx, process,
+                        ActionLoopJudgeHelpers.JUDGE_EXTENSION_ITERS,
+                        modelAlias, maxCorrections, deadlineMs);
+                continue;
+            }
+            log.info("{} id='{}' judge synthesises (answer-chars={}, reason='{}')",
+                    name(), process.getId(),
+                    j.synthesizedAnswer() == null ? 0 : j.synthesizedAnswer().length(),
+                    j.reason());
+            loopResult = new ActionLoopResult(
+                    null, j.synthesizedAnswer(),
+                    "judge-synthesize", null, loopResult.toolInvocations());
+            break;
+        }
+        return loopResult;
+    }
+
+    /**
+     * Live status of the process from the store, falling back to the
+     * in-memory copy if the read misses. Cheap per-iteration probe used
+     * by the action loop to detect a mid-loop interrupt.
+     */
+    private ThinkProcessStatus currentStatus(ThinkProcessDocument process) {
+        return thinkProcessService.findById(process.getId())
+                .map(ThinkProcessDocument::getStatus)
+                .orElse(process.getStatus());
+    }
+
+    /**
      * Result of the action loop. Either the LLM produced a valid
      * action ({@link #action()} non-null), or we exhausted retries
      * and fell back to the best free-text we could see ({@link
-     * #fallbackText()} non-null).
+     * #fallbackText()} non-null), or the turn was interrupted mid-loop
+     * ({@link #isInterrupted()}).
      */
     public record ActionLoopResult(
             @Nullable EngineAction action,
@@ -645,6 +820,11 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             @Nullable String fallbackReason,
             @Nullable Throwable cause,
             int toolInvocations) {
+
+        /** Loop bailed on a status-flip interrupt (leave status as-is). */
+        static final String REASON_INTERRUPTED = "interrupted";
+        /** Loop bailed on an out-of-band halt flag (engine parks PAUSED). */
+        static final String REASON_INTERRUPTED_HALT = "interrupted-halt";
 
         static ActionLoopResult action(EngineAction a, int toolInvocations) {
             return new ActionLoopResult(a, null, null, null, toolInvocations);
@@ -657,12 +837,39 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                     cause, toolInvocations);
         }
 
+        /**
+         * The loop stopped because the turn was interrupted (ESC /
+         * {@code /pause}). {@code forcePause} distinguishes the halt-flag
+         * path (engine must park PAUSED) from the status-flip path (the
+         * pause handler already set the terminal status; leave it alone).
+         */
+        static ActionLoopResult interrupted(boolean forcePause, int toolInvocations) {
+            return new ActionLoopResult(null, "",
+                    forcePause ? REASON_INTERRUPTED_HALT : REASON_INTERRUPTED,
+                    null, toolInvocations);
+        }
+
         public boolean isAction() {
             return action != null;
         }
 
         public boolean isFallback() {
-            return action == null;
+            return action == null && !isInterrupted();
+        }
+
+        /** True when the loop bailed on a mid-loop interrupt. */
+        public boolean isInterrupted() {
+            return REASON_INTERRUPTED.equals(fallbackReason)
+                    || REASON_INTERRUPTED_HALT.equals(fallbackReason);
+        }
+
+        /**
+         * True when the interrupt was an out-of-band halt flag — the
+         * engine should park the process PAUSED. False for a status-flip
+         * interrupt, where the pause handler already set the status.
+         */
+        public boolean interruptForcesPause() {
+            return REASON_INTERRUPTED_HALT.equals(fallbackReason);
         }
 
         /**

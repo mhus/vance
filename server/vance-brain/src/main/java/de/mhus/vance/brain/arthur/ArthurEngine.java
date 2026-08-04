@@ -194,7 +194,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      */
     private static final String DEFAULT_PROMPT_PATH = "_vance/prompts/arthur-prompt.md";
 
-    private final ThinkProcessService thinkProcessService;
     private final de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver;
     private final ArthurProperties arthurProperties;
     private final RecipeLoader recipeLoader;
@@ -226,8 +225,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver;
     private final de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver;
     private final ObjectMapper objectMapper;
-    private final de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService
-            actionLoopJudgeService;
 
     /**
      * Per-process flag tracking whether the in-flight turn was triggered
@@ -309,8 +306,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver,
             de.mhus.vance.brain.notification.NotificationService notificationService,
             de.mhus.vance.brain.guard.CompletionGuardService completionGuardService) {
-        super(streamingProperties, llmCallTracker, objectMapper, composer, completionGuardService);
-        this.thinkProcessService = thinkProcessService;
+        super(streamingProperties, llmCallTracker, objectMapper, composer,
+                completionGuardService, actionLoopJudgeService, thinkProcessService);
         this.arthurProperties = arthurProperties;
         this.recipeLoader = recipeLoader;
         this.modelCatalog = modelCatalog;
@@ -333,7 +330,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.collabContextResolver = collabContextResolver;
         this.activeAppPromptResolver = activeAppPromptResolver;
         this.objectMapper = objectMapper;
-        this.actionLoopJudgeService = actionLoopJudgeService;
         this.promptDateContextResolver = promptDateContextResolver;
         this.notificationService = notificationService;
     }
@@ -743,6 +739,12 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // that gave up would close DONE and the parent would relay a stale
         // progress note as if it were the answer (Ford had the same bug).
         boolean workerGaveUp = false;
+        // Set when the action loop bailed on a mid-loop interrupt (ESC /
+        // /pause). Suppresses the normal answer + status finalisation: no
+        // fake reply is surfaced, and the finally leaves the status the
+        // interrupt source set (or parks PAUSED for the halt-flag path).
+        boolean interrupted = false;
+        boolean interruptForcePause = false;
         try {
             ChatMessageService chatLog = ctx.chatMessageService();
 
@@ -848,67 +850,21 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             // ContextToolsApi.primaryAsLc4j() returns. The action loop
             // re-derives this on every iteration so describe_tool
             // activations propagate within the turn.
-            ActionLoopResult loopResult = runStructuredActionLoop(
+            ActionLoopResult loopResult = runActionLoopWithJudge(
                     aiChat, ContextToolsApi::primaryAsLc4j,
                     messages, ctx, process, maxIters, modelAlias,
-                    modelInfo.actionLoopCorrections());
+                    modelInfo.actionLoopCorrections(), inbox);
 
-            // Action-loop judge: when the loop max-iters out (and the
-            // plan-mode-yield path below isn't applicable), consult the
-            // judge to decide between extending the budget or
-            // synthesising an answer from what's already gathered.
-            // Without this, the legacy fallback surfaces the LLM's most
-            // recent free-text — typically a mid-research "let me look
-            // that up" placeholder — as the user-facing reply.
-            //
-            // The extension is capped to keep cost bounded: at most
-            // {@code JUDGE_MAX_EXTENSIONS} extra rounds of
-            // {@code JUDGE_EXTENSION_ITERS} iterations each. Plan-mode
-            // turns are skipped because the engine's own multi-turn
-            // continuation already handles their iteration overrun.
-            int extensionsLeft = de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
-                    .JUDGE_MAX_EXTENSIONS;
-            while ("max-iters".equals(loopResult.fallbackReason())
-                    && !de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
-                            .isPlanModeYieldCase(process, loopResult)) {
-                de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService.JudgeRequest req =
-                        new de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService.JudgeRequest(
-                                process,
-                                de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
-                                        .lastUserGoal(inbox, process),
-                                loopResult.fallbackText() == null
-                                        ? "" : loopResult.fallbackText(),
-                                de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
-                                        .extractToolCallNames(messages),
-                                loopResult.toolInvocations(),
-                                extensionsLeft);
-                de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService.Judgment j =
-                        actionLoopJudgeService.judge(req);
-                if (j.extend() && extensionsLeft > 0) {
-                    log.info("Arthur.turn id='{}' judge extends action loop "
-                                    + "(+{} iters, {} extension(s) left after this, reason='{}')",
-                            process.getId(),
-                            de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
-                                    .JUDGE_EXTENSION_ITERS,
-                            extensionsLeft - 1, j.reason());
-                    extensionsLeft--;
-                    loopResult = runStructuredActionLoop(
-                            aiChat, ContextToolsApi::primaryAsLc4j,
-                            messages, ctx, process,
-                            de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
-                                    .JUDGE_EXTENSION_ITERS,
-                            modelAlias, modelInfo.actionLoopCorrections());
-                    continue;
-                }
-                log.info("Arthur.turn id='{}' judge synthesises "
-                                + "(answer-chars={}, reason='{}')",
-                        process.getId(),
-                        j.synthesizedAnswer() == null ? 0 : j.synthesizedAnswer().length(),
-                        j.reason());
-                loopResult = new ActionLoopResult(
-                        null, j.synthesizedAnswer(),
-                        "judge-synthesize", null, loopResult.toolInvocations());
-                break;
+            // Mid-loop interrupt (ESC / /pause): the loop stopped before a
+            // terminal action. Surface no answer, drop buffered history
+            // tags, and let the finally honour the interrupt status.
+            if (loopResult.isInterrupted()) {
+                interrupted = true;
+                interruptForcePause = loopResult.interruptForcesPause();
+                ctx.historyTagSink().discard();
+                log.info("Arthur.turn id='{}' interrupted (forcePause={}) — parking, no answer surfaced",
+                        process.getId(), interruptForcePause);
+                return new TurnSignal(false, loopResult.madeProgress());
             }
 
             ActionTurnOutcome outcome;
@@ -1052,7 +1008,16 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         } finally {
             currentTurnHadUserInput.remove(process.getId());
             currentTurnEventsByRef.remove(process.getId());
-            if (actionLoopFallback && awaitingUserInput
+            if (interrupted) {
+                // ESC / /pause bailed the loop. For the halt-flag path park
+                // PAUSED so the user's next message auto-resumes; for the
+                // status-flip path leave the terminal status the pause
+                // handler already set (SUSPENDED / PAUSED / CLOSED).
+                if (interruptForcePause) {
+                    thinkProcessService.updateStatus(
+                            process.getId(), ThinkProcessStatus.PAUSED);
+                }
+            } else if (actionLoopFallback && awaitingUserInput
                     && process.getParentProcessId() != null) {
                 // Sub-process worker fell out of the action loop. The best
                 // reply has already been appended to chat history; close

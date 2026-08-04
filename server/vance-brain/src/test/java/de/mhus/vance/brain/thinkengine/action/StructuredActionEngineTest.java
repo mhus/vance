@@ -19,12 +19,24 @@ class StructuredActionEngineTest {
     }
 
     @Test
-    void whenProseWasStreamed_returnsNull() {
+    void whenProseContainsMessage_returnsNull() {
         // Normal case: the model streamed the answer as prose already —
         // re-emitting it would double the reply.
         String out = StructuredActionEngine.unstreamedTerminalMessage(
                 "Here is the answer.", answer("Here is the answer."));
         assertThat(out).isNull();
+    }
+
+    @Test
+    void whenProseIsOnlyAPreamble_returnsActionMessage() {
+        // glm-5.2 case: the model streamed a short preamble as content
+        // but packed the real answer into the action message. The prose
+        // does not contain the answer, so it must still be streamed —
+        // otherwise the client shows only the preamble.
+        String out = StructuredActionEngine.unstreamedTerminalMessage(
+                "Here is the summary:",
+                answer("## Result\n\nThe full answer body."));
+        assertThat(out).isEqualTo("## Result\n\nThe full answer body.");
     }
 
     @Test

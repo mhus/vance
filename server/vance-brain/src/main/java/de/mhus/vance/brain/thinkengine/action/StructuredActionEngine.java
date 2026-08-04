@@ -1063,18 +1063,30 @@ public abstract class StructuredActionEngine implements ThinkEngine {
     /**
      * The user-facing message that must still be streamed to the client
      * for a terminal action, or {@code null} when nothing extra is
-     * needed. Returns {@code null} when the model streamed prose this
-     * iteration ({@code replyText} non-blank) — the answer was already
-     * delivered live — or when the action carries no {@code message}.
-     * Pure so it can be unit-tested without the streaming stack.
+     * needed. Returns {@code null} when the streamed prose already
+     * contains the action's {@code message} — the answer was delivered
+     * live and re-emitting would double it — or when the action carries
+     * no {@code message}.
+     *
+     * <p>Note the guard is <em>containment</em>, not merely "any prose
+     * streamed": reasoning models (glm-5.2 style) sometimes stream a
+     * short preamble ("Here is the summary:") as {@code content} and pack
+     * the real answer into the structured action's {@code message}. In
+     * that case {@code replyText} is non-blank but does <em>not</em>
+     * contain the answer, so the message must still be streamed — else
+     * the client shows only the preamble. Pure so it can be unit-tested
+     * without the streaming stack.
      */
     static @Nullable String unstreamedTerminalMessage(
             @Nullable String replyText, EngineAction action) {
-        if (replyText != null && !replyText.isBlank()) {
+        String message = action.stringParam("message");
+        if (message == null || message.isBlank()) {
             return null;
         }
-        String message = action.stringParam("message");
-        return message == null || message.isBlank() ? null : message;
+        if (replyText != null && replyText.strip().contains(message.strip())) {
+            return null;
+        }
+        return message;
     }
 
     /**

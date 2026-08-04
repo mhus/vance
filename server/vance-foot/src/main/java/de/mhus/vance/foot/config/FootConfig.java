@@ -202,6 +202,8 @@ public class FootConfig {
          * Render the model's reasoning ("thoughts") for assistant turns
          * as a dimmed block alongside the answer. On by default; set
          * {@code false} to hide the reasoning and show only the reply.
+         * At runtime, press Ctrl+T to toggle visibility for the session
+         * (the toggle starts from this configured default).
          */
         private boolean showThoughts = true;
     }

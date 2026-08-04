@@ -11,6 +11,7 @@ import de.mhus.vance.foot.connection.MessageHandler;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.StreamingDisplay;
+import de.mhus.vance.foot.ui.ThinkingVisibility;
 import de.mhus.vance.foot.ui.Verbosity;
 import java.util.List;
 import java.util.Objects;
@@ -46,6 +47,7 @@ public class ChatMessageAppendedHandler implements MessageHandler {
     private final PendingAskUserPicker askUserPicker;
     private final ConversationAuditService audit;
     private final FootConfig config;
+    private final ThinkingVisibility thinkingVisibility;
     private final ObjectMapper json = JsonMapper.builder().build();
 
     public ChatMessageAppendedHandler(ChatTerminal terminal,
@@ -53,13 +55,15 @@ public class ChatMessageAppendedHandler implements MessageHandler {
                                       SessionService sessions,
                                       PendingAskUserPicker askUserPicker,
                                       ConversationAuditService audit,
-                                      FootConfig config) {
+                                      FootConfig config,
+                                      ThinkingVisibility thinkingVisibility) {
         this.terminal = terminal;
         this.streaming = streaming;
         this.sessions = sessions;
         this.askUserPicker = askUserPicker;
         this.audit = audit;
         this.config = config;
+        this.thinkingVisibility = thinkingVisibility;
     }
 
     @Override
@@ -137,13 +141,13 @@ public class ChatMessageAppendedHandler implements MessageHandler {
 
     /**
      * Renders the assistant's reasoning ("thoughts") as a dimmed,
-     * gutter-prefixed block at INFO level so it shows by default (see
-     * {@code FootConfig.Ui#showThoughts}). Only for main-process
-     * ASSISTANT turns — worker reasoning would just clutter the
-     * side-channel. No-op when the toggle is off or there is no thinking.
+     * gutter-prefixed block at INFO level so it shows by default. Only
+     * for main-process ASSISTANT turns — worker reasoning would just
+     * clutter the side-channel. No-op when the runtime toggle is off
+     * (Ctrl+T) or there is no thinking.
      */
     private void maybeRenderThoughts(ChatMessageAppendedData data) {
-        if (!config.getUi().isShowThoughts()) return;
+        if (!thinkingVisibility.isShowing()) return;
         if (data.getRole() != ChatRole.ASSISTANT) return;
         if (!isMainProcess(data.getProcessName())) return;
         String thinking = data.getThinking();

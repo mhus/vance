@@ -29,6 +29,9 @@ vance:
     # Side-channel grey/green lines (info, verbose, debug, worker) are
     # truncated to this many characters. Set to 0 to disable.
     line-max-chars: 140
+    # Show the model's reasoning ("thoughts") as a dimmed block alongside
+    # the answer. Default true. Toggle at runtime with Ctrl+T.
+    show-thoughts: true
     # JLine style expressions per output channel. Comma-separated tokens:
     #   fg:<color>  bg:<color>  bold  faint  italic  underline
     #   blink  inverse  conceal  crossed-out

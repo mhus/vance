@@ -29,7 +29,8 @@ import org.springframework.stereotype.Service;
  *       error: nothing is uploaded and a warning is logged. We do
  *       <em>not</em> silently fall through to the defaults, because the
  *       user explicitly asked for that file.</li>
- *   <li>{@code ./agent.md}</li>
+ *   <li>{@code ./VANCETOPE.md}</li>
+ *   <li>{@code ./AGENT.md}</li>
  *   <li>{@code ./CLAUDE.md} — convenience fallback so projects already
  *       documented for Claude Code feed straight into Vance.</li>
  * </ol>
@@ -43,7 +44,7 @@ import org.springframework.stereotype.Service;
  * </ol>
  *
  * <p>Failure modes are quiet by design: file missing is the common case
- * (most cwds have neither {@code agent.md} nor {@code CLAUDE.md}) and just
+ * (most cwds have neither {@code AGENT.md} nor {@code CLAUDE.md}) and just
  * results in no upload. Read errors and oversize files log a warning but
  * never crash the connect or REPL.
  *
@@ -56,7 +57,7 @@ import org.springframework.stereotype.Service;
 public class ClientAgentDocService {
 
     /** Default file names tried in order when no override is set. */
-    public static final List<String> DEFAULT_DOC_FILENAMES = List.of("agent.md", "CLAUDE.md");
+    public static final List<String> DEFAULT_DOC_FILENAMES = List.of("VANCETOPE.md", "AGENT.md", "CLAUDE.md");
 
     /** Marker appended to truncated uploads — both visible in the LLM
      *  prompt and recognisable in logs / network captures. */

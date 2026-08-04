@@ -109,6 +109,7 @@ public class LiveRegion {
     private volatile @Nullable Runnable interruptListener;
     private volatile @Nullable Runnable quitListener;
     private volatile @Nullable Runnable f4Listener;
+    private volatile @Nullable Runnable ctrlTListener;
     private volatile @Nullable LiveCompleter completer;
 
     /**
@@ -156,6 +157,14 @@ public class LiveRegion {
      */
     public void setF4Listener(@Nullable Runnable listener) {
         this.f4Listener = listener;
+    }
+
+    /**
+     * Callback invoked on Ctrl+T. Used by ChatRepl to toggle the
+     * thinking/reasoning output visibility at runtime.
+     */
+    public void setCtrlTListener(@Nullable Runnable listener) {
+        this.ctrlTListener = listener;
     }
 
     public void setQuitListener(@Nullable Runnable listener) {
@@ -512,6 +521,10 @@ public class LiveRegion {
                 if (b == 3 || b == 4) {  // Ctrl-C / Ctrl-D
                     fireQuit();
                     return;
+                }
+                if (b == 20) {  // Ctrl-T — toggle thinking output
+                    fireCtrlT();
+                    continue;
                 }
                 if (b == 27) {
                     int next;
@@ -925,6 +938,13 @@ public class LiveRegion {
 
     private void fireF4() {
         Runnable r = f4Listener;
+        if (r != null) {
+            try { r.run(); } catch (RuntimeException ignored) { /* keep the input loop alive */ }
+        }
+    }
+
+    private void fireCtrlT() {
+        Runnable r = ctrlTListener;
         if (r != null) {
             try { r.run(); } catch (RuntimeException ignored) { /* keep the input loop alive */ }
         }

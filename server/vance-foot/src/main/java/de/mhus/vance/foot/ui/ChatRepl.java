@@ -48,6 +48,7 @@ public class ChatRepl {
     private final AutoAiService autoAi;
     private final IdeSelectionState ideSelection;
     private final PendingLinePrompt linePrompt;
+    private final ThinkingVisibility thinkingVisibility;
 
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
     private @Nullable Terminal terminal;
@@ -61,7 +62,8 @@ public class ChatRepl {
                     @Lazy CommandService commandService,
                     AutoAiService autoAi,
                     IdeSelectionState ideSelection,
-                    PendingLinePrompt linePrompt) {
+                    PendingLinePrompt linePrompt,
+                    ThinkingVisibility thinkingVisibility) {
         this.input = input;
         this.chatTerminal = chatTerminal;
         this.interfaceService = interfaceService;
@@ -71,6 +73,7 @@ public class ChatRepl {
         this.autoAi = autoAi;
         this.ideSelection = ideSelection;
         this.linePrompt = linePrompt;
+        this.thinkingVisibility = thinkingVisibility;
     }
 
     public void requestStop() {
@@ -111,6 +114,13 @@ public class ChatRepl {
             chatTerminal.info(autoAi.isOn()
                     ? "Auto-AI: ON — every message goes to the AI (escape with @no)."
                     : "Auto-AI: OFF — type @ai to address the agent.");
+        });
+        // Ctrl+T — toggle thinking/reasoning output visibility.
+        liveRegion.setCtrlTListener(() -> {
+            boolean now = thinkingVisibility.toggle();
+            chatTerminal.info(now
+                    ? "Thinking output: ON"
+                    : "Thinking output: OFF");
         });
         // IDE selection events fire on the bridge WS thread; without a
         // repaint hook the status bar only refreshes on the 10 s idle

@@ -123,6 +123,17 @@ public class ProcessProgressHandler implements MessageHandler {
         if (!terminal.threshold().shows(verbosityFor(msg.getKind()))) {
             return;
         }
+        // Before a tool line lands, flush any buffered narration so the
+        // prose that preceded the tool call interleaves with it instead
+        // of piling up in one block at turn-commit (markdown mode buffers
+        // per-turn — see StreamingDisplay#flushBuffered). Gated to
+        // TOOL_START only: metrics / status pings fire per-second and
+        // would otherwise fragment the narration into per-ping blocks.
+        if (msg.getKind() == ProgressKind.STATUS && msg.getStatus() != null
+                && msg.getStatus().getTag() == StatusTag.TOOL_START
+                && msg.getProcessId() != null) {
+            streaming.flushBuffered(msg.getProcessId());
+        }
         // Terminate any in-flight chat stream first so the side-channel
         // line lands on its own line. The next chat chunk re-emits its
         // role header on a fresh line.

@@ -148,7 +148,7 @@ public class StatusBar {
     }
 
     private String buildLeftHints() {
-        return "  Ctrl-D to quit · Enter to send";
+        return "  Ctrl-D quit · Ctrl-T thinking · Enter send";
     }
 
     private String buildRightContext() {

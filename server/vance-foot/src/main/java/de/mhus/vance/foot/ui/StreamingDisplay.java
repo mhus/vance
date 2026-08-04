@@ -49,6 +49,7 @@ public class StreamingDisplay {
     private final SessionService sessions;
     private final MarkdownRenderState markdownState;
     private final FootConfig config;
+    private final ThinkingVisibility thinkingVisibility;
     private final Map<String, ProcessStream> streams = new ConcurrentHashMap<>();
     private final Map<String, ThinkingStream> thinkingStreams = new ConcurrentHashMap<>();
 
@@ -56,19 +57,22 @@ public class StreamingDisplay {
                             PromptGate promptGate,
                             SessionService sessions,
                             MarkdownRenderState markdownState,
-                            FootConfig config) {
+                            FootConfig config,
+                            ThinkingVisibility thinkingVisibility) {
         this.terminal = terminal;
         this.promptGate = promptGate;
         this.sessions = sessions;
         this.markdownState = markdownState;
         this.config = config;
+        this.thinkingVisibility = thinkingVisibility;
     }
 
     /**
      * Append a delta to the per-process <em>reasoning</em> stream and
      * render it live as dimmed, gutter-prefixed lines. Only the main
      * process streams live (worker reasoning would clutter the
-     * side-channel); gated by {@code ui.showThoughts}. Deltas are not
+     * side-channel); gated by the runtime thinking-visibility toggle
+     * (Ctrl+T, initialised from {@code ui.showThoughts}). Deltas are not
      * line-aligned, so complete lines are drained and emitted through
      * {@link ChatTerminal#printlnStyled} (the prompt-safe {@code
      * printAbove} path — safe whether or not the user is at the prompt).
@@ -80,7 +84,7 @@ public class StreamingDisplay {
             @Nullable ChatRole role,
             String delta) {
         if (processId == null || delta == null || delta.isEmpty()) return;
-        if (!config.getUi().isShowThoughts()) return;
+        if (!thinkingVisibility.isShowing()) return;
         if (!isMainProcess(processName)) return;
         ThinkingStream state = thinkingStreams.computeIfAbsent(
                 processId, k -> new ThinkingStream());
@@ -257,6 +261,40 @@ public class StreamingDisplay {
                 return true;
             }
             return false;
+        }
+    }
+
+    /**
+     * Flushes any buffered chat content for a process <em>mid-turn</em>
+     * without closing the stream. Called just before a tool line lands
+     * (see {@code ProcessProgressHandler}) so the narration that
+     * preceded a tool call interleaves with it, instead of the whole
+     * turn's prose piling up in one block at {@link #onCommit} (markdown
+     * mode buffers per-turn, and an action loop spans many tool
+     * iterations).
+     *
+     * <p>No-op for the inline exclusive path — that content already
+     * reached the terminal live; {@link #suspend()} handles its newline.
+     * The {@link ProcessStream} state survives so later chunks accumulate
+     * a fresh segment; a subsequent flush / commit renders that.
+     */
+    public void flushBuffered(String processId) {
+        if (processId == null) return;
+        ProcessStream state = streams.get(processId);
+        if (state == null) return;
+        synchronized (state) {
+            if (state.headerEmitted || state.buffered.length() == 0) {
+                // Inline stream (handled by suspend) or nothing pending.
+                return;
+            }
+            String head = header(state.processName, state.role);
+            String body = state.buffered.toString();
+            if (isMainProcess(state.processName)) {
+                terminal.chatMarkdown(head, body);
+            } else {
+                terminal.worker(head + body);
+            }
+            state.buffered.setLength(0);
         }
     }
 

@@ -99,7 +99,7 @@ public class LmStudioProvider extends AbstractChatProvider {
         // Streaming gets a generous total-request budget so a healthy
         // long generation is not cut off at the sync timeout.
         Duration streamTimeout = Duration.ofSeconds(
-                modelInfo.effectiveStreamTimeoutSeconds(options.getTimeoutSeconds()));
+                modelInfo.scaledStreamTimeoutSeconds(options.getTimeoutSeconds(), options.getEstInputTokens()));
         Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();
         // Per-tenant override (custom LM Studio host) wins over the Spring
         // boot-time default. Empty / unset falls back to vance.ai.lmstudio.base-url.

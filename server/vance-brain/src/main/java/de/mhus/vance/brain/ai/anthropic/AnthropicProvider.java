@@ -105,7 +105,7 @@ public class AnthropicProvider extends AbstractChatProvider {
         // call timeout caps the whole response, so streaming needs its
         // own client with the larger budget.
         Duration streamTimeout = Duration.ofSeconds(
-                modelInfo.effectiveStreamTimeoutSeconds(effective.getTimeoutSeconds()));
+                modelInfo.scaledStreamTimeoutSeconds(effective.getTimeoutSeconds(), effective.getEstInputTokens()));
         AnthropicClient client = AnthropicOkHttpClient.builder()
                 .apiKey(config.apiKey())
                 .timeout(timeout)

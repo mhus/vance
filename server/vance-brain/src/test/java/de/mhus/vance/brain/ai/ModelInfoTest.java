@@ -22,6 +22,43 @@ class ModelInfoTest {
     }
 
     @Test
+    void scaledStreamTimeout_noEstimate_fallsBackToFloor() {
+        ModelInfo model = modelWithTimeout(60);
+
+        assertThat(model.scaledStreamTimeoutSeconds(null, null))
+                .isEqualTo(ModelInfo.DEFAULT_STREAM_TIMEOUT_SECONDS);
+        assertThat(model.scaledStreamTimeoutSeconds(null, 0))
+                .isEqualTo(ModelInfo.DEFAULT_STREAM_TIMEOUT_SECONDS);
+    }
+
+    @Test
+    void scaledStreamTimeout_smallContext_staysAtFloor() {
+        // 60 + 5000*4/1000 = 80 → floored to 300 (never a regression).
+        assertThat(modelWithTimeout(60).scaledStreamTimeoutSeconds(null, 5_000))
+                .isEqualTo(ModelInfo.DEFAULT_STREAM_TIMEOUT_SECONDS);
+    }
+
+    @Test
+    void scaledStreamTimeout_largeContext_scalesUp() {
+        // 60 + 70000*4/1000 = 340.
+        assertThat(modelWithTimeout(60).scaledStreamTimeoutSeconds(null, 70_000))
+                .isEqualTo(340);
+    }
+
+    @Test
+    void scaledStreamTimeout_hugeContext_cappedAtMax() {
+        assertThat(modelWithTimeout(60).scaledStreamTimeoutSeconds(null, 1_000_000))
+                .isEqualTo(ModelInfo.MAX_STREAM_TIMEOUT_SECONDS);
+    }
+
+    @Test
+    void scaledStreamTimeout_callerOverride_wins() {
+        // Explicit override wins and ignores the estimate (floored at 300).
+        assertThat(modelWithTimeout(60).scaledStreamTimeoutSeconds(600, 70_000))
+                .isEqualTo(600);
+    }
+
+    @Test
     void effectiveMaxOutputTokens_noCallerOverride_usesCatalogDefault() {
         assertThat(model(8192).effectiveMaxOutputTokens(null)).isEqualTo(8192);
     }

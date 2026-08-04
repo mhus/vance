@@ -75,7 +75,7 @@ public class GeminiProvider extends AbstractChatProvider {
         // Streaming gets a generous total-request budget so a healthy
         // long generation is not cut off at the sync timeout.
         Duration streamTimeout = Duration.ofSeconds(
-                modelInfo.effectiveStreamTimeoutSeconds(options.getTimeoutSeconds()));
+                modelInfo.scaledStreamTimeoutSeconds(options.getTimeoutSeconds(), options.getEstInputTokens()));
         ThinkingLevel effectiveLevel = gateThinkingLevel(
                 options.getThinkingLevel(), modelInfo);
         @Nullable GeminiThinkingConfig thinking = mapThinking(effectiveLevel);

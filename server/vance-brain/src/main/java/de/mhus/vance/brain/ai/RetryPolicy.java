@@ -40,6 +40,14 @@ public record RetryPolicy(
                     "high demand", "overloaded",
                     "RESOURCE_EXHAUSTED", "UNAVAILABLE",
                     "quota", "rate limit", "rate-limit",
+                    // A request/read timeout is transient — the provider
+                    // was slow or the connection stalled. Retry (ideally
+                    // with a context-scaled timeout, see ModelInfo
+                    // #scaledStreamTimeoutSeconds) rather than immediately
+                    // exhausting the chain. Matches
+                    // java.net.http.HttpTimeoutException ("request timed
+                    // out") and langchain4j's TimeoutException.
+                    "timed out", "timeout",
                     // Gemini occasionally returns an empty response with
                     // neither text nor a tool-call — langchain4j surfaces
                     // it as this exact phrase. It's transient; retrying

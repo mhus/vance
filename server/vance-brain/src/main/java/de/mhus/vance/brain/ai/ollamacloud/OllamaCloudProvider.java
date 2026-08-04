@@ -95,7 +95,7 @@ public class OllamaCloudProvider extends AbstractChatProvider {
         // Streaming gets a generous total-request budget so a healthy
         // long generation is not cut off at the sync timeout.
         Duration streamTimeout = Duration.ofSeconds(
-                modelInfo.effectiveStreamTimeoutSeconds(options.getTimeoutSeconds()));
+                modelInfo.scaledStreamTimeoutSeconds(options.getTimeoutSeconds(), options.getEstInputTokens()));
         Map<String, String> authHeader = Map.of("Authorization", "Bearer " + config.apiKey());
         boolean think = options.getThinkingLevel() != ThinkingLevel.OFF;
         Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();

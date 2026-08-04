@@ -146,6 +146,52 @@ public record ModelInfo(
     }
 
     /**
+     * Per-token slope for context-scaled streaming timeouts. ~4ms per
+     * estimated input token — a slow provider needs proportionally more
+     * time to ingest a large prompt before the first streamed token.
+     */
+    private static final double STREAM_TIMEOUT_MS_PER_TOKEN = 4.0;
+
+    /** Hard ceiling for the scaled streaming timeout. */
+    public static final int MAX_STREAM_TIMEOUT_SECONDS = 900;
+
+    /**
+     * Context-scaled variant of {@link #effectiveStreamTimeoutSeconds}:
+     * a large request legitimately needs a longer budget than a small
+     * one, so the streaming timeout grows with the estimated input-token
+     * count. See {@code planning/completion-guard.md} discussion / the
+     * timeout-scaling design.
+     *
+     * <p>Semantics:
+     * <ul>
+     *   <li>an explicit {@code callerOverride} still wins (floored at
+     *       {@link #DEFAULT_STREAM_TIMEOUT_SECONDS} as before);</li>
+     *   <li>no estimate ({@code null}/{@code <= 0}) → the unscaled
+     *       {@link #effectiveStreamTimeoutSeconds} — fully
+     *       backward-compatible;</li>
+     *   <li>otherwise {@code clamp(base + perToken·est,
+     *       DEFAULT_STREAM_TIMEOUT_SECONDS, MAX_STREAM_TIMEOUT_SECONDS)}.
+     *       The lower clamp is the existing 300s floor, so scaling can
+     *       only ever <em>lengthen</em> the budget — never a regression.</li>
+     * </ul>
+     */
+    public int scaledStreamTimeoutSeconds(
+            @org.jspecify.annotations.Nullable Integer callerOverride,
+            @org.jspecify.annotations.Nullable Integer estInputTokens) {
+        if (callerOverride != null && callerOverride > 0) {
+            return effectiveStreamTimeoutSeconds(callerOverride);
+        }
+        if (estInputTokens == null || estInputTokens <= 0) {
+            return effectiveStreamTimeoutSeconds(null);
+        }
+        long scaled = timeoutSeconds
+                + Math.round(estInputTokens * STREAM_TIMEOUT_MS_PER_TOKEN / 1000.0);
+        long clamped = Math.max(DEFAULT_STREAM_TIMEOUT_SECONDS,
+                Math.min(MAX_STREAM_TIMEOUT_SECONDS, scaled));
+        return (int) clamped;
+    }
+
+    /**
      * Resolve the per-call output-token cap that providers should send
      * as {@code max_tokens}. A caller-set value wins when not
      * {@code null}; otherwise the model-level {@link

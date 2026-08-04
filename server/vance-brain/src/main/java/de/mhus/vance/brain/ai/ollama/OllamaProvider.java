@@ -105,7 +105,7 @@ public class OllamaProvider extends AbstractChatProvider {
         // Streaming gets a generous total-request budget so a healthy
         // long generation is not cut off at the sync timeout.
         Duration streamTimeout = Duration.ofSeconds(
-                modelInfo.effectiveStreamTimeoutSeconds(options.getTimeoutSeconds()));
+                modelInfo.scaledStreamTimeoutSeconds(options.getTimeoutSeconds(), options.getEstInputTokens()));
         boolean think = options.getThinkingLevel() != ThinkingLevel.OFF;
         Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();
         // Ollama defaults num_ctx=4096 unless overridden — that's far

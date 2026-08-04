@@ -103,7 +103,7 @@ public class OpenAiProvider extends AbstractChatProvider {
         // streamed generation runs far longer than a single sync
         // response and must not be cut off at the sync timeout.
         Duration streamTimeout = Duration.ofSeconds(
-                modelInfo.effectiveStreamTimeoutSeconds(options.getTimeoutSeconds()));
+                modelInfo.scaledStreamTimeoutSeconds(options.getTimeoutSeconds(), options.getEstInputTokens()));
         Map<String, Object> cacheParams = buildCacheParameters(config, options, cacheEnabled);
         Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();
         // Per-tenant override (cortecs / OpenRouter / vLLM) wins over the Spring

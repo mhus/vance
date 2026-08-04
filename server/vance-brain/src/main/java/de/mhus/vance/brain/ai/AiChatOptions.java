@@ -96,6 +96,15 @@ public class AiChatOptions {
      */
     private @Nullable Integer timeoutSeconds;
 
+    /**
+     * Estimated input-token count for this call. When set, providers use
+     * {@link ModelInfo#scaledStreamTimeoutSeconds} so a large prompt gets
+     * a proportionally longer streaming budget. {@code null} → the
+     * unscaled 300s floor (backward-compatible). Engines set this from
+     * their per-turn context estimate.
+     */
+    private @Nullable Integer estInputTokens;
+
     /** Prepended as a system message if non-null/blank. */
     private @Nullable String systemMessage;
 

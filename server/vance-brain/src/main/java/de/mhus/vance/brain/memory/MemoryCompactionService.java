@@ -101,6 +101,16 @@ public class MemoryCompactionService {
     private final de.mhus.vance.shared.settings.LanguageResolver languageResolver;
 
     /**
+     * Estimated input-token count for {@code messages} — the same
+     * heuristic used for the compaction trigger. Exposed so engines can
+     * feed a per-turn estimate into {@code AiChatOptions.estInputTokens}
+     * for the context-scaled streaming timeout.
+     */
+    public int estimateTokens(java.util.List<dev.langchain4j.data.message.ChatMessage> messages) {
+        return compactionTriggerService.estimateTokens(messages);
+    }
+
+    /**
      * Compacts older history of {@code process}. Resolves the
      * summarizer model from tenant settings (same provider/model the
      * engine itself uses). Idempotent on a too-short history (returns

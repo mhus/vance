@@ -432,6 +432,16 @@ public class ThinkProcessDocument {
      */
     private int postCompletionHookRounds = 0;
 
+    /**
+     * Runtime override for the Frankie post-completion hook's goal
+     * template (the {@code goalTemplate} that a recipe otherwise
+     * supplies). Set/cleared live via the {@code frankie.hook} engine
+     * command; {@code null} falls back to the recipe template, then the
+     * built-in default. See {@code planning/engine-commands.md} §4 and
+     * {@code specification/frankie-engine.md} §14.
+     */
+    private @Nullable String postCompletionHookGoalOverride;
+
     @Version
     private @Nullable Long version;
 

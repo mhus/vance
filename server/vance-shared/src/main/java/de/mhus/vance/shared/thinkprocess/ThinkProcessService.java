@@ -542,6 +542,21 @@ public class ThinkProcessService {
     }
 
     /**
+     * Sets (or, when {@code template} is {@code null}, clears) the
+     * runtime override for the Frankie post-completion hook goal
+     * template. Atomic {@code $set}/{@code $unset}. Returns {@code true}
+     * when the process existed.
+     */
+    public boolean setPostCompletionHookGoalOverride(String id, @Nullable String template) {
+        Query query = new Query(Criteria.where("_id").is(id));
+        Update update = template == null
+                ? new Update().unset("postCompletionHookGoalOverride")
+                : new Update().set("postCompletionHookGoalOverride", template);
+        return mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class)
+                .getMatchedCount() > 0;
+    }
+
+    /**
      * Atomically advances {@code lastPrakAt} <em>forward only</em> to the given
      * timestamp. Used by {@code PrakPeriodicTrigger} after a successful periodic
      * pass; the next pass reads from this cursor to find unrated messages.

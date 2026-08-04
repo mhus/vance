@@ -230,14 +230,38 @@ public class FrankiePostCompletionHookHandler {
         return false;
     }
 
+    /**
+     * Effective goal template for a worker's post-completion hook,
+     * following the runtime-override → recipe → built-in-default
+     * cascade. Used by the {@code frankie.hook} engine command.
+     */
+    public String resolveEffectiveGoalTemplate(ThinkProcessDocument worker) {
+        return effectiveTemplate(worker, resolveHookConfig(worker));
+    }
+
+    /** {@code true} when the worker's recipe declares a post-completion hook. */
+    public boolean hasPostCompletionHook(ThinkProcessDocument worker) {
+        return resolveHookConfig(worker) != null;
+    }
+
+    private String effectiveTemplate(
+            ThinkProcessDocument worker, @Nullable PostCompletionHookConfig config) {
+        String override = worker.getPostCompletionHookGoalOverride();
+        if (override != null && !override.isBlank()) {
+            return override;
+        }
+        if (config != null && config.goalTemplate() != null) {
+            return config.goalTemplate();
+        }
+        return defaultGoalTemplate();
+    }
+
     private String renderGoal(
             PostCompletionHookConfig config,
             ThinkProcessDocument worker,
             String finalText,
             int roundIndex) {
-        String template = config.goalTemplate() != null
-                ? config.goalTemplate()
-                : defaultGoalTemplate();
+        String template = effectiveTemplate(worker, config);
         Map<String, Object> vars = new LinkedHashMap<>();
         vars.put("finalText", finalText == null ? "" : finalText);
         vars.put("originalGoal", firstUserInput(worker));

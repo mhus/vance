@@ -66,6 +66,9 @@ public class ConnectionService {
     private final AtomicReference<State> state = new AtomicReference<>(State.DISCONNECTED);
     private final AtomicReference<@Nullable VanceWebSocketClient> clientRef = new AtomicReference<>();
     private final AtomicReference<@Nullable ScheduledExecutorService> keepAliveRef = new AtomicReference<>();
+    /** Keep-alive interval in ms — doubles as the quiet threshold for the
+     *  liveness-aware ping (see {@link #sendKeepAlivePing}). */
+    private volatile long keepAliveIntervalMs;
     /** Set while a {@code /disconnect} or shutdown is in effect so a resulting close does NOT auto-reconnect. */
     private final AtomicBoolean intentionalClose = new AtomicBoolean(false);
     /** Holds the single active reconnect campaign, {@code null} when none is running. */
@@ -239,6 +242,7 @@ public class ConnectionService {
         if (intervalSeconds <= 0) {
             return;
         }
+        keepAliveIntervalMs = intervalSeconds * 1000L;
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "vance-foot-keepalive");
             t.setDaemon(true);
@@ -386,6 +390,18 @@ public class ConnectionService {
 
     private void sendKeepAlivePing() {
         if (!isOpen()) {
+            return;
+        }
+        // Liveness-aware: recent inbound traffic (streamed chat chunks,
+        // tool results, PONGs, …) proves the connection is alive, so skip
+        // the ping. The ping — and its dead-detection — only fires after a
+        // full quiet interval with no inbound, so a heavy streaming turn
+        // can no longer trip a false "connection looks dead" reconnect
+        // while data is actively flowing.
+        long sinceInboundMs = System.currentTimeMillis() - dispatcher.lastInboundAtMs();
+        if (keepAliveIntervalMs > 0 && sinceInboundMs < keepAliveIntervalMs) {
+            terminal.println(Verbosity.DEBUG,
+                    "keepalive skipped — inbound %dms ago (connection alive)", sinceInboundMs);
             return;
         }
         long sent = System.currentTimeMillis();

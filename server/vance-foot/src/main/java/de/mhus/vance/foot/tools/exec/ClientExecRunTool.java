@@ -19,6 +19,20 @@ public class ClientExecRunTool implements ClientTool {
 
     private static final long DEFAULT_WAIT_MS = 15_000;
 
+    /**
+     * Hard cap on the inline wait, kept safely below the brain's
+     * client-tool invocation timeout
+     * ({@code ClientToolSource.INVOCATION_TIMEOUT_SECONDS} = 30s, plus
+     * WS round-trip headroom). A caller that passes a build-length
+     * {@code waitMs} would otherwise block past that timeout — the brain
+     * then fails the call and never receives the job id to poll. Capping
+     * forces the intended async hand-off: long commands come back as
+     * {@code status=RUNNING} + a job id well within the window, and
+     * {@code client_exec_status} polls to completion (the job keeps
+     * running in the background regardless of the inline wait).
+     */
+    private static final long MAX_WAIT_MS = 20_000;
+
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
             "properties", Map.of(
@@ -32,8 +46,14 @@ public class ClientExecRunTool implements ClientTool {
                     "waitMs", Map.of(
                             "type", "integer",
                             "description",
-                                    "Milliseconds to wait for completion before returning. "
-                                            + "Default 15 000."),
+                                    "Milliseconds to wait INLINE for completion before "
+                                            + "returning. Default 15 000, capped at ~20 000. "
+                                            + "This is only the inline wait — a longer command "
+                                            + "(build, test suite) is NOT cut off: it keeps "
+                                            + "running in the background and the call returns "
+                                            + "status=RUNNING with a job id. Poll "
+                                            + "client_exec_status(id) until it finishes. Do NOT "
+                                            + "pass a huge waitMs to 'wait out' a long command."),
                     "deadlineSeconds", Map.of(
                             "type", "integer",
                             "description",
@@ -102,6 +122,9 @@ public class ClientExecRunTool implements ClientTool {
         if (rawWait instanceof Number n && n.longValue() >= 0) {
             waitMs = n.longValue();
         }
+        // Never block inline past the brain's tool timeout — background
+        // long commands and let client_exec_status poll (see MAX_WAIT_MS).
+        waitMs = Math.min(waitMs, MAX_WAIT_MS);
         java.time.Instant deadline = null;
         Object rawDeadline = params == null ? null : params.get("deadlineSeconds");
         if (rawDeadline instanceof Number d && d.longValue() > 0) {

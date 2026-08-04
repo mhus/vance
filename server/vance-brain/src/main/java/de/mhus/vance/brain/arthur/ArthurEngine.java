@@ -307,8 +307,9 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver,
             de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService actionLoopJudgeService,
             de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver,
-            de.mhus.vance.brain.notification.NotificationService notificationService) {
-        super(streamingProperties, llmCallTracker, objectMapper, composer);
+            de.mhus.vance.brain.notification.NotificationService notificationService,
+            de.mhus.vance.brain.guard.CompletionGuardService completionGuardService) {
+        super(streamingProperties, llmCallTracker, objectMapper, composer, completionGuardService);
         this.thinkProcessService = thinkProcessService;
         this.arthurProperties = arthurProperties;
         this.recipeLoader = recipeLoader;
@@ -711,6 +712,10 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         }
         currentTurnHadUserInput.put(process.getId(), hadUserInput);
         currentTurnEventsByRef.put(process.getId(), eventsByRef);
+        // Genuine user input restarts the completion-guard budget (see
+        // StructuredActionEngine#resetGuardBudgetForUserTurn) — the
+        // guard's own follow-up injections don't.
+        resetGuardBudgetForUserTurn(process, inbox);
 
         // Reconcile workerLinks against the inbox: REPLY/PROGRESS-style
         // events refresh lastSeen + workerStatus; terminal events
@@ -1037,6 +1042,12 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             // and ended awaiting user input, re-arm the pointer so
             // the user's next reply auto-routes to the worker.
             updateDelegationPointer(process, inbox, awaitingUserInput);
+            // Completion guard: at a natural chat completion (produced a
+            // reply, not waiting on the user) let any recipe/skill-configured
+            // guard judge whether the task is really done; on fire it injects
+            // a follow-up prompt + schedules a turn so Arthur continues.
+            // No-op unless a guard is configured. See completion-guard.md.
+            runCompletionGuard(process, chatMessage, appendedChat, awaitingUserInput);
             return new TurnSignal(appendedChat, loopResult.madeProgress());
         } finally {
             currentTurnHadUserInput.remove(process.getId());

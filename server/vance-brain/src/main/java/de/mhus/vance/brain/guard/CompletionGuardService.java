@@ -127,6 +127,30 @@ public class CompletionGuardService {
     }
 
     /**
+     * Resets the per-process guard round budget when {@code inbox} carries
+     * genuine (non-guard-injected) user input. A single-action chat engine
+     * (Arthur, Eddie) is long-lived, so without this the lifetime round
+     * counter would climb across user turns and permanently disable the
+     * guard after {@code maxRounds} fires. Each fresh user request restarts
+     * the "are you really done?" negotiation with a full budget. No-op when
+     * the counter is already zero or the turn is the guard's own follow-up.
+     */
+    public void resetIfUserTurn(ThinkProcessDocument process, List<SteerMessage> inbox) {
+        if (process.getGuardRounds() <= 0 || inbox == null) {
+            return;
+        }
+        for (SteerMessage m : inbox) {
+            if (m instanceof SteerMessage.UserChatInput uci
+                    && uci.content() != null && !uci.content().isBlank()
+                    && !INJECT_SENDER.equals(uci.fromUser())) {
+                thinkProcessService.resetGuardRounds(process.getId());
+                log.trace("Guard rounds reset id='{}' — genuine user turn", process.getId());
+                return;
+            }
+        }
+    }
+
+    /**
      * The effective guards for a process: recipe {@code guard:} block plus
      * the additive runtime override (active only when both override fields
      * are set). Also used by the {@code guard} command's {@code get}.

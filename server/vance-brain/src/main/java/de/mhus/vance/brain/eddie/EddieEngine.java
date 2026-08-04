@@ -293,8 +293,9 @@ public class EddieEngine extends StructuredActionEngine {
             de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver,
             de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService actionLoopJudgeService,
             de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver,
-            de.mhus.vance.brain.notification.NotificationService notificationService) {
-        super(streamingProperties, llmCallTracker, objectMapper, composer);
+            de.mhus.vance.brain.notification.NotificationService notificationService,
+            de.mhus.vance.brain.guard.CompletionGuardService completionGuardService) {
+        super(streamingProperties, llmCallTracker, objectMapper, composer, completionGuardService);
         this.thinkProcessService = thinkProcessService;
         this.modelCatalog = modelCatalog;
         this.engineChatFactory = engineChatFactory;
@@ -858,6 +859,10 @@ public class EddieEngine extends StructuredActionEngine {
         }
         currentTurnHadUserInput.put(process.getId(), hadUserInput);
         currentTurnEventsByRef.put(process.getId(), eventsByRef);
+        // Genuine user input restarts the completion-guard budget (see
+        // StructuredActionEngine#resetGuardBudgetForUserTurn) — the
+        // guard's own follow-up injections don't.
+        resetGuardBudgetForUserTurn(process, inbox);
         boolean awaitingUserInput = false;
         try {
             ChatMessageService chatLog = ctx.chatMessageService();
@@ -1096,6 +1101,12 @@ public class EddieEngine extends StructuredActionEngine {
                 log.info("Eddie.turn id='{}' awaiting={} (silent — no chat append)",
                         process.getId(), awaitingUserInput);
             }
+            // Completion guard: at a natural chat completion (produced a
+            // reply, not waiting on the user) let any recipe/skill-configured
+            // guard judge whether the task is really done; on fire it injects
+            // a follow-up prompt + schedules a turn so Eddie continues.
+            // No-op unless a guard is configured. See completion-guard.md.
+            runCompletionGuard(process, chatMessage, appendedChat, awaitingUserInput);
             return new TurnSignal(appendedChat, loopResult.madeProgress());
         } finally {
             currentTurnHadUserInput.remove(process.getId());

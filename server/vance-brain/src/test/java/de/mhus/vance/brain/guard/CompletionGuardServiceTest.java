@@ -11,12 +11,14 @@ import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
+import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -128,5 +130,37 @@ class CompletionGuardServiceTest {
 
         assertThat(result.fired()).isFalse();
         verify(lightLlm, never()).callForJson(any());
+    }
+
+    @Test
+    void resetIfUserTurn_genuineUserInput_resetsRounds() {
+        SteerMessage userMsg = new SteerMessage.UserChatInput(
+                Instant.now(), null, "alice", "please also fix the login bug");
+
+        service.resetIfUserTurn(guarded(2), List.of(userMsg));
+
+        verify(thinkProcessService).resetGuardRounds("p1");
+    }
+
+    @Test
+    void resetIfUserTurn_onlyGuardInjection_doesNotReset() {
+        // The guard's own follow-up must not refill its own budget.
+        SteerMessage injected = new SteerMessage.UserChatInput(
+                Instant.now(), null, CompletionGuardService.INJECT_SENDER,
+                "[completion-guard] Did you build?");
+
+        service.resetIfUserTurn(guarded(2), List.of(injected));
+
+        verify(thinkProcessService, never()).resetGuardRounds(anyString());
+    }
+
+    @Test
+    void resetIfUserTurn_zeroRounds_shortCircuits() {
+        SteerMessage userMsg = new SteerMessage.UserChatInput(
+                Instant.now(), null, "alice", "hi");
+
+        service.resetIfUserTurn(guarded(0), List.of(userMsg));
+
+        verify(thinkProcessService, never()).resetGuardRounds(anyString());
     }
 }

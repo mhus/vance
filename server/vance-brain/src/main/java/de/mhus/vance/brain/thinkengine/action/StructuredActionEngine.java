@@ -9,7 +9,9 @@ import de.mhus.vance.brain.history.TurnReasoningBuffer;
 import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
+import de.mhus.vance.brain.guard.CompletionGuardService;
 import de.mhus.vance.brain.progress.LlmCallTracker;
+import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
@@ -122,15 +124,63 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      */
     protected final SystemPromptComposer composer;
 
+    /**
+     * Engine-agnostic completion guard, shared by every single-action
+     * engine (Arthur, Eddie). Evaluated at a turn's natural yield point
+     * via {@link #runCompletionGuard}; no-op unless a guard is configured
+     * on the recipe or as a per-process runtime override.
+     */
+    private final CompletionGuardService completionGuardService;
+
     protected StructuredActionEngine(
             StreamingProperties streamingProperties,
             LlmCallTracker llmCallTracker,
             ObjectMapper objectMapper,
-            SystemPromptComposer composer) {
+            SystemPromptComposer composer,
+            CompletionGuardService completionGuardService) {
         this.streamingProperties = streamingProperties;
         this.llmCallTracker = llmCallTracker;
         this.objectMapper = objectMapper;
         this.composer = composer;
+        this.completionGuardService = completionGuardService;
+    }
+
+    /**
+     * Runs the completion guard at a turn's natural yield point. A
+     * "completion" for a single-action engine is a turn that produced an
+     * assistant reply and is going IDLE (not awaiting the user). On a
+     * firing guard the service injects a follow-up prompt and schedules a
+     * turn, so the process continues instead of parking IDLE. No-op when
+     * the turn appended nothing, is awaiting user input, or no guard is
+     * configured. Never propagates — a guard failure must not break the
+     * engine turn. See {@code planning/completion-guard.md}.
+     */
+    protected void runCompletionGuard(
+            ThinkProcessDocument process,
+            @Nullable String finalOutput,
+            boolean appendedChat,
+            boolean awaitingUserInput) {
+        if (!appendedChat || awaitingUserInput) {
+            return;
+        }
+        try {
+            completionGuardService.evaluate(process, finalOutput, /*naturalStop*/ true);
+        } catch (RuntimeException e) {
+            log.warn("Completion guard evaluation failed id='{}' — ignoring: {}",
+                    process.getId(), e.toString());
+        }
+    }
+
+    /**
+     * Resets the completion-guard round budget when {@code inbox} carries
+     * genuine user input — see
+     * {@link CompletionGuardService#resetIfUserTurn}. Call at turn start
+     * (after draining the inbox) so each fresh user request gets a full
+     * guard budget in a long-lived chat session.
+     */
+    protected void resetGuardBudgetForUserTurn(
+            ThinkProcessDocument process, List<SteerMessage> inbox) {
+        completionGuardService.resetIfUserTurn(process, inbox);
     }
 
     // ─────────────────────────────────────────────

@@ -572,6 +572,18 @@ public class ThinkProcessService {
     }
 
     /**
+     * Resets the completion-guard round counter to zero. Called when a
+     * turn is triggered by genuine user input so each fresh user request
+     * gets a full guard budget — without this, the lifetime counter would
+     * permanently disable the guard in a long-lived chat session.
+     */
+    public void resetGuardRounds(String id) {
+        Query query = new Query(Criteria.where("_id").is(id));
+        Update update = new Update().set("guardRounds", 0);
+        mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
+    }
+
+    /**
      * Sets or (on {@code null}) clears the runtime completion-guard
      * override — {@code field} is {@code "guardJudgeOverride"} or
      * {@code "guardPromptOverride"}. Atomic {@code $set}/{@code $unset}.

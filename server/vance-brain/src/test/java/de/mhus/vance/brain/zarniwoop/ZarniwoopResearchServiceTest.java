@@ -45,7 +45,10 @@ class ZarniwoopResearchServiceTest {
         zarniwoopService = mock(ZarniwoopService.class);
         factory = mock(SearchProviderFactory.class);
         when(factory.assemble(any())).thenReturn(List.of());
-        service = new ZarniwoopResearchService(lightLlm, zarniwoopService, factory);
+        service = new ZarniwoopResearchService(lightLlm, zarniwoopService, factory,
+                new de.mhus.vance.brain.tools.ToolInterruptChecker(
+                        org.mockito.Mockito.mock(
+                                de.mhus.vance.shared.thinkprocess.ThinkProcessService.class)));
     }
 
     @Test

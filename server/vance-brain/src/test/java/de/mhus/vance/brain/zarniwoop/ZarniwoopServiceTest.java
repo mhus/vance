@@ -67,7 +67,10 @@ class ZarniwoopServiceTest {
         gate = mock(ZarniwoopGateService.class);
         when(gate.isEnabled(any(), anyString())).thenReturn(true);
         service = new ZarniwoopService(factory, settings, healthService,
-                agrajagProvider, quotaCache, new ZarniwoopUsageCounter(), gate);
+                agrajagProvider, quotaCache, new ZarniwoopUsageCounter(), gate,
+                new de.mhus.vance.brain.tools.ToolInterruptChecker(
+                        org.mockito.Mockito.mock(
+                                de.mhus.vance.shared.thinkprocess.ThinkProcessService.class)));
     }
 
     @Test

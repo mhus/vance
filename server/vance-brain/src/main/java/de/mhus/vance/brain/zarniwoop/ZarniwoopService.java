@@ -54,6 +54,7 @@ public class ZarniwoopService {
     private final QuotaCache quotaCache;
     private final ZarniwoopUsageCounter usageCounter;
     private final ZarniwoopGateService gate;
+    private final de.mhus.vance.brain.tools.ToolInterruptChecker interruptChecker;
 
     public ZarniwoopService(
             SearchProviderFactory factory,
@@ -62,7 +63,8 @@ public class ZarniwoopService {
             ObjectProvider<AgrajagChecker> agrajagProvider,
             QuotaCache quotaCache,
             ZarniwoopUsageCounter usageCounter,
-            ZarniwoopGateService gate) {
+            ZarniwoopGateService gate,
+            de.mhus.vance.brain.tools.ToolInterruptChecker interruptChecker) {
         this.factory = factory;
         this.settings = settings;
         this.healthService = healthService;
@@ -70,6 +72,7 @@ public class ZarniwoopService {
         this.quotaCache = quotaCache;
         this.usageCounter = usageCounter;
         this.gate = gate;
+        this.interruptChecker = interruptChecker;
     }
 
     /**
@@ -77,6 +80,10 @@ public class ZarniwoopService {
      * hard failures so cooldowns are tenant/project/user scoped.
      */
     public SearchResult search(SearchRequest req, SearchScope scope, ToolInvocationContext ctx) {
+        // Mid-operation interrupt: bail on ESC / /pause before hitting a
+        // provider. Covers direct research_search / research_rich and each
+        // parallel search dispatched by research_investigate.
+        interruptChecker.throwIfHalted(ctx == null ? null : ctx.processId());
         if (req == null) {
             throw new ZarniwoopException("request is required");
         }

@@ -80,6 +80,7 @@ public class ZarniwoopResearchService {
     private final LightLlmService lightLlm;
     private final ZarniwoopService zarniwoopService;
     private final SearchProviderFactory factory;
+    private final de.mhus.vance.brain.tools.ToolInterruptChecker interruptChecker;
 
     /**
      * Run the full pipeline for one question. The {@code ctx} is
@@ -94,6 +95,13 @@ public class ZarniwoopResearchService {
             throw new ZarniwoopException("research_investigate requires a project scope");
         }
 
+        // Mid-pipeline interrupt: ESC / /pause aborts at each stage
+        // boundary — most importantly BEFORE the second (evaluate) LLM
+        // call — instead of the whole pipeline running to completion while
+        // the engine waits to bail at its next loop-head check.
+        String pid = ctx == null ? null : ctx.processId();
+        interruptChecker.throwIfHalted(pid);
+
         // 1. PLAN ────────────────────────────────────────────────────
         ResearchPlan plan = plan(question, scope);
         log.debug("Zarniwoop research: plan for '{}' → {} step(s), affinity={}",
@@ -107,6 +115,7 @@ public class ZarniwoopResearchService {
         }
 
         // 2. EXECUTE ─────────────────────────────────────────────────
+        interruptChecker.throwIfHalted(pid);
         ExecuteOutcome executed = executeAll(plan, scope, ctx);
         if (executed.hits().isEmpty()) {
             return new RankedHitSet(
@@ -116,6 +125,7 @@ public class ZarniwoopResearchService {
         }
 
         // 3. EVALUATE ────────────────────────────────────────────────
+        interruptChecker.throwIfHalted(pid);
         EvaluateOutcome evaluated = evaluate(question, executed.hits(), scope);
 
         // 4. RANK ────────────────────────────────────────────────────

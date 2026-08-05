@@ -455,10 +455,19 @@ public class ThinkProcessDocument {
      * Runtime completion-guard override — guard script path (document
      * cascade). Set/cleared live via {@code //guard script <path>}. One
      * script drives judge + action via the {@code vance.guard.*} surface.
-     * {@code null} = no runtime guard. Additive to any recipe
+     * {@code null} = no path override. Additive to any recipe
      * {@code guard:} entries. See {@code planning/completion-guard.md} v2.9.
      */
     private @Nullable String guardScriptOverride;
+
+    /**
+     * Runtime completion-guard override — inline guard script body. Set
+     * live via {@code //guard inline <script>} (mutually exclusive with
+     * {@link #guardScriptOverride} — setting one clears the other). When
+     * present it wins over the path override. {@code null} = no inline
+     * override.
+     */
+    private @Nullable String guardScriptBodyOverride;
 
     /**
      * Runtime overlay over the spawn-static recipe {@code engineParams},

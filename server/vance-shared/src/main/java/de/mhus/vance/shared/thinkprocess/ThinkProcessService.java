@@ -584,14 +584,25 @@ public class ThinkProcessService {
     }
 
     /**
-     * Sets or (on {@code null}) clears the runtime completion-guard
-     * override — the guard-script path. Atomic {@code $set}/{@code $unset}.
+     * Sets the runtime completion-guard override in one atomic update:
+     * a guard-script {@code scriptPath} <em>or</em> an inline
+     * {@code scriptBody} (mutually exclusive — a non-null value sets its
+     * field and unsets the other; both {@code null} clears the override).
      */
-    public boolean setGuardScriptOverride(String id, @Nullable String scriptPath) {
+    public boolean setGuardOverride(
+            String id, @Nullable String scriptPath, @Nullable String scriptBody) {
         Query query = new Query(Criteria.where("_id").is(id));
-        Update update = scriptPath == null
-                ? new Update().unset("guardScriptOverride")
-                : new Update().set("guardScriptOverride", scriptPath);
+        Update update = new Update();
+        if (scriptPath == null) {
+            update.unset("guardScriptOverride");
+        } else {
+            update.set("guardScriptOverride", scriptPath);
+        }
+        if (scriptBody == null) {
+            update.unset("guardScriptBodyOverride");
+        } else {
+            update.set("guardScriptBodyOverride", scriptBody);
+        }
         return mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class)
                 .getMatchedCount() > 0;
     }

@@ -281,15 +281,64 @@ public class CompletionGuardService {
             }
         }
         int recipeGuards = out.size();
-        String scriptOverride = process.getGuardScriptOverride();
-        boolean runtimeActive = StringUtils.isNotBlank(scriptOverride);
-        if (runtimeActive) {
+        String bodyOverride = process.getGuardScriptBodyOverride();
+        String pathOverride = process.getGuardScriptOverride();
+        boolean runtimeActive = true;
+        if (StringUtils.isNotBlank(bodyOverride)) {
+            out.add(GuardConfig.scriptBody(
+                    bodyOverride, false, GuardTrigger.STOP, RUNTIME_MAX_ROUNDS));
+        } else if (StringUtils.isNotBlank(pathOverride)) {
             out.add(GuardConfig.scriptPath(
-                    scriptOverride, false, GuardTrigger.STOP, RUNTIME_MAX_ROUNDS));
+                    pathOverride, false, GuardTrigger.STOP, RUNTIME_MAX_ROUNDS));
+        } else {
+            runtimeActive = false;
         }
         log.trace("Guard resolveGuards id='{}' recipe='{}' recipeGuards={} runtimeOverride={}",
                 process.getId(), process.getRecipeName(), recipeGuards, runtimeActive);
         return out;
+    }
+
+    // ──────────── Runtime scratch inspection (//guard status) ────────────
+
+    /** Snapshot of a process's loop scratch (empty if none yet). */
+    public Map<String, Object> loopScratchView(ThinkProcessDocument process) {
+        Map<String, Object> m = loopScratch.get(process.getId());
+        return m == null ? Map.of() : new LinkedHashMap<>(m);
+    }
+
+    /** Snapshot of a process's session scratch (empty if none / no session). */
+    public Map<String, Object> sessionScratchView(ThinkProcessDocument process) {
+        String sid = process.getSessionId();
+        Map<String, Object> m = sid == null ? null : sessionScratch.get(sid);
+        return m == null ? Map.of() : new LinkedHashMap<>(m);
+    }
+
+    /**
+     * Sets a scratch value from the runtime command. Stored into the same
+     * backing a guard script reads, so the value is visible to the script
+     * (as a String — command args are untyped; scripts use truthy checks).
+     */
+    public void putScratch(ThinkProcessDocument process, boolean session, String key, String value) {
+        (session ? sessionStore(process) : loopStore(process)).put(key, value);
+    }
+
+    /** Removes a scratch key; returns {@code true} if it was present. */
+    public boolean removeScratch(ThinkProcessDocument process, boolean session, String key) {
+        Map<String, Object> m = session
+                ? (process.getSessionId() == null ? null : sessionScratch.get(process.getSessionId()))
+                : loopScratch.get(process.getId());
+        return m != null && m.remove(key) != null;
+    }
+
+    /** Clears a whole scratch scope. */
+    public void clearScratch(ThinkProcessDocument process, boolean session) {
+        if (session) {
+            if (process.getSessionId() != null) {
+                sessionScratch.remove(process.getSessionId());
+            }
+        } else {
+            loopScratch.remove(process.getId());
+        }
     }
 
     // ──────────────────── Helpers ────────────────────

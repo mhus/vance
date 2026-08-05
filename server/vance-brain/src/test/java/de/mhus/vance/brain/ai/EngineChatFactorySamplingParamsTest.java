@@ -144,6 +144,31 @@ class EngineChatFactorySamplingParamsTest {
         assertThat(options.getStopSequences()).containsExactly("ENDE");
     }
 
+    @Test
+    void runtimeOverride_winsOverRecipeParam() {
+        // //llm temperature 0.2 overlays the recipe's temperature: 0.9
+        AiChatOptions options = AiChatOptions.builder().build();
+        ThinkProcessDocument process = newProcess(Map.of("temperature", 0.9, "topK", 40));
+        process.setEngineParamOverrides(new HashMap<>(Map.of("temperature", 0.2)));
+
+        EngineChatFactory.applySamplingParams(options, process);
+
+        assertThat(options.getTemperature()).isEqualTo(0.2);
+        // untouched recipe param still applies through the merged view
+        assertThat(options.getTopK()).isEqualTo(40);
+    }
+
+    @Test
+    void runtimeOverride_addsParamAbsentFromRecipe() {
+        AiChatOptions options = AiChatOptions.builder().build();
+        ThinkProcessDocument process = newProcess(Map.of("temperature", 0.7));
+        process.setEngineParamOverrides(new HashMap<>(Map.of("topP", 0.5)));
+
+        EngineChatFactory.applySamplingParams(options, process);
+
+        assertThat(options.getTopP()).isEqualTo(0.5);
+    }
+
     private static ThinkProcessDocument newProcess(Map<String, Object> params) {
         ThinkProcessDocument process = new ThinkProcessDocument();
         if (params != null) {

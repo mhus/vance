@@ -74,6 +74,33 @@ class EngineChatFactoryThinkingParamTest {
                 .isEqualTo(ThinkingLevel.OFF);
     }
 
+    @Test
+    void runtimeOverride_winsOverRecipeParam() {
+        ThinkProcessDocument process = newProcess(Map.of("thinking", "low"));
+        process.setEngineParamOverrides(new HashMap<>(Map.of("thinking", "high")));
+
+        assertThat(EngineChatFactory.readThinkingLevel(process))
+                .isEqualTo(ThinkingLevel.HIGH);
+    }
+
+    @Test
+    void runtimeOverrideOff_winsOverRecipeHigh() {
+        ThinkProcessDocument process = newProcess(Map.of("thinking", "high"));
+        process.setEngineParamOverrides(new HashMap<>(Map.of("thinking", "off")));
+
+        assertThat(EngineChatFactory.readThinkingLevel(process))
+                .isEqualTo(ThinkingLevel.OFF);
+    }
+
+    @Test
+    void invalidRuntimeOverride_returnsOff() {
+        ThinkProcessDocument process = newProcess(Map.of("thinking", "high"));
+        process.setEngineParamOverrides(new HashMap<>(Map.of("thinking", "bogus")));
+
+        assertThat(EngineChatFactory.readThinkingLevel(process))
+                .isEqualTo(ThinkingLevel.OFF);
+    }
+
     private static ThinkProcessDocument newProcess(Map<String, Object> params) {
         ThinkProcessDocument process = new ThinkProcessDocument();
         process.setEngineParams(new HashMap<>(params));

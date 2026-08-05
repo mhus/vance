@@ -462,6 +462,19 @@ public class ThinkProcessDocument {
     /** Runtime completion-guard override — follow-up prompt. See {@link #guardJudgeOverride}. */
     private @Nullable String guardPromptOverride;
 
+    /**
+     * Runtime overlay over the spawn-static recipe {@code engineParams},
+     * set/cleared live via the {@code //llm} and {@code //thinking} engine
+     * commands. Keys mirror {@code engineParams} ({@code temperature},
+     * {@code topP}, {@code topK}, {@code maxTokens}, {@code seed},
+     * {@code frequencyPenalty}, {@code presencePenalty}, {@code thinking});
+     * a present key wins over the recipe on every subsequent turn, an
+     * absent key falls back to the recipe default. Merged in front of
+     * {@code engineParams} by {@code EngineChatFactory.effectiveParams}.
+     * See {@code specification/public/engine-commands.md} §9.
+     */
+    private @Nullable Map<String, Object> engineParamOverrides;
+
     @Version
     private @Nullable Long version;
 

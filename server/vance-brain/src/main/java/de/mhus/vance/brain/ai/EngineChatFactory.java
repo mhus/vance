@@ -9,6 +9,7 @@ import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -220,8 +221,8 @@ public class EngineChatFactory {
             // without flipping the entire recipe.
             return;
         }
-        Map<String, Object> params = process.getEngineParams();
-        if (params == null || params.isEmpty()) {
+        Map<String, Object> params = effectiveParams(process);
+        if (params.isEmpty()) {
             return;
         }
         Double temperature = readDouble(params, "temperature");
@@ -344,19 +345,36 @@ public class EngineChatFactory {
     }
 
     /**
-     * Read {@code params.thinking} from the process's engine params and
-     * resolve to a {@link ThinkingLevel}. Tolerant of casing and
-     * whitespace; unknown values fall back to {@link ThinkingLevel#OFF}
-     * with a one-time warning rather than blowing up the spawn.
+     * The process's engine params with the live runtime overlay
+     * ({@code engineParamOverrides}) merged in front. A present override
+     * key wins over the recipe default; an absent one falls back. Read
+     * fresh every turn, so a mid-conversation {@code //llm temperature 0.2}
+     * or {@code //thinking high} takes effect on the next turn without a
+     * respawn.
      *
-     * <p>Package-private + static so the unit test can pin the recipe-
-     * to-enum mapping without standing the bean up.
+     * <p>Public + static so both {@code applyDefaults} and the {@code //llm}
+     * / {@code //thinking} engine commands read the same effective view.
      */
-    static ThinkingLevel readThinkingLevel(ThinkProcessDocument process) {
-        Map<String, Object> params = process.getEngineParams();
-        if (params == null) {
-            return ThinkingLevel.OFF;
+    public static Map<String, Object> effectiveParams(ThinkProcessDocument process) {
+        Map<String, Object> base = process.getEngineParams();
+        Map<String, Object> overrides = process.getEngineParamOverrides();
+        if (overrides == null || overrides.isEmpty()) {
+            return base == null ? Map.of() : base;
         }
+        Map<String, Object> merged = new HashMap<>(base == null ? Map.of() : base);
+        merged.putAll(overrides);
+        return merged;
+    }
+
+    /**
+     * Resolve the effective {@link ThinkingLevel} for this process from
+     * {@link #effectiveParams} (override {@code thinking} wins over the
+     * recipe {@code params.thinking}). Tolerant of casing and whitespace;
+     * unknown values fall back to {@link ThinkingLevel#OFF} with a warning
+     * rather than blowing up the spawn.
+     */
+    public static ThinkingLevel readThinkingLevel(ThinkProcessDocument process) {
+        Map<String, Object> params = effectiveParams(process);
         Object v = params.get("thinking");
         if (v == null) {
             return ThinkingLevel.OFF;
@@ -377,10 +395,7 @@ public class EngineChatFactory {
     }
 
     private static boolean recipeDisablesCache(ThinkProcessDocument process) {
-        Map<String, Object> params = process.getEngineParams();
-        if (params == null) {
-            return false;
-        }
+        Map<String, Object> params = effectiveParams(process);
         Object v = params.get("disableCache");
         if (v instanceof Boolean b) {
             return b;

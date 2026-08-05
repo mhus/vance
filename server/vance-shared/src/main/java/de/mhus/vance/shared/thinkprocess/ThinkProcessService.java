@@ -601,6 +601,30 @@ public class ThinkProcessService {
     }
 
     /**
+     * Sets or (on {@code null}) clears a single runtime engine-param
+     * override ({@code engineParamOverrides.<key>}), the live overlay over
+     * the spawn-static recipe {@code engineParams}. Set/cleared via the
+     * {@code //llm} and {@code //thinking} engine commands. Atomic
+     * {@code $set}/{@code $unset} on the nested key. Returns {@code true}
+     * when the process existed.
+     *
+     * @param key must not contain a {@code '.'} — Mongo reads dots as a
+     *            path separator, so a dotted key would corrupt the map.
+     */
+    public boolean setEngineParamOverride(String id, String key, @Nullable Object value) {
+        if (key.isBlank() || key.indexOf('.') >= 0) {
+            throw new IllegalArgumentException("illegal engine-param override key: '" + key + "'");
+        }
+        Query query = new Query(Criteria.where("_id").is(id));
+        String path = "engineParamOverrides." + key;
+        Update update = value == null
+                ? new Update().unset(path)
+                : new Update().set(path, value);
+        return mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class)
+                .getMatchedCount() > 0;
+    }
+
+    /**
      * Atomically advances {@code lastPrakAt} <em>forward only</em> to the given
      * timestamp. Used by {@code PrakPeriodicTrigger} after a successful periodic
      * pass; the next pass reads from this cursor to find unrated messages.

@@ -52,42 +52,50 @@ render.
 
 ### Stored document — raw JSON or YAML, NO fence
 
-When the user wants to *save* the chart to a file via
-`doc_write(kind="chart", path="<…>.json"` or `.yaml`,
-`body=<raw schema>)`, **the body must NOT be wrapped in a
-```` ```chart ```` fence** — that's the inline-only form. Markdown
-bodies are rejected for stored charts: the codec stores the file
+To *save* the chart, pass the **same payload without the fence** to
+`doc_write(kind="chart", path="<…>.yaml", body=<raw schema>)`. The
+fence is the inline-only wrapper: fence-wrapped stored bodies parse,
 but the Web-UI falls back to the Raw editor and never renders the
-chart tab. Always use `.json` or `.yaml` as the path extension.
-
-YAML body example (paste as-is into the `body=` arg):
-
-```yaml
-$meta:
-  kind: chart
-chart:
-  chartType: bar
-  title: Sales Q1
-xAxis: { type: category }
-yAxis: { type: value }
-series:
-  - name: Revenue
-    data:
-      - { x: Jan, y: 12000 }
-      - { x: Feb, y: 14500 }
-      - { x: Mar, y: 13200 }
-```
-
-JSON body is equivalent — same keys, just `{}`/`[]` instead of
-indented YAML. Pick YAML for readability, JSON when the body is
-generated programmatically or needs to be embedded somewhere
-strict.
+chart tab. Path extension must be `.json` or `.yaml` — Markdown is
+rejected for stored charts. JSON is equivalent, same keys.
 
 ## Shared schema
 
-Top-level keys: `$meta`, `chart`, `xAxis`, `yAxis`, `series`.
+Top-level keys: `$meta`, `chart`, `xAxis`, `yAxis`, `series`,
+`echartsOptionOverride`.
 `chartType` is one of `line`, `bar`, `area`, `scatter`, `pie`,
 `donut`, `candlestick`, `heatmap`.
+
+`chart`: `chartType` (required), `title`, `subtitle`, `legend`,
+`stacked`, `smooth`.
+
+### Axis keys — this is a CLOSED list
+
+`xAxis` / `yAxis` accept **exactly** `type`, `label`, `min`, `max`,
+`categories` — nothing else:
+
+| Key | Meaning |
+|---|---|
+| `type` | `category`, `value`, `time`, `log` |
+| `label` | axis title — **not** `name` |
+| `min` / `max` | force a bound (omit for auto) |
+| `categories` | `type: category` only — explicit tick order |
+
+**This is the Vance schema, not raw ECharts.** Any other axis key is
+dropped silently by the codec — it is not passed through to `extra`,
+so there is no warning and no render. The two that get written out of
+ECharts habit and always vanish:
+
+- `name` → the field is `label`. (ECharts calls it `name`; Vance does
+  not.)
+- `axisLabel`, `data`, `splitLine`, `boundaryGap`, … → not in the
+  schema. If you genuinely need them, put them under top-level
+  `echartsOptionOverride`, e.g. rotated tick labels:
+
+  ```yaml
+  echartsOptionOverride:
+    xAxis: { axisLabel: { rotate: 45 } }
+  ```
 
 ## Data-point shape per `chartType`
 
@@ -101,31 +109,80 @@ Top-level keys: `$meta`, `chart`, `xAxis`, `yAxis`, `series`.
 Pie/donut have no axes — omit `xAxis`/`yAxis` (the codec drops them
 anyway).
 
+## Multiple series on a category axis — `categories` is MANDATORY
+
+Without an explicit `xAxis.categories`, the renderer infers the tick
+list **from the first series only**. Every point of every later series
+whose `x` is not in that inferred list has no slot on the axis and
+**does not render** — silently, no codec error.
+
+So the moment two series don't share the identical `x` set (split a
+ranking by group, colour a subset differently, series with gaps), list
+**every** `x` from **all** series in `xAxis.categories`, in the order
+you want them drawn. Add `chart.stacked: true` so each category keeps
+one full-width bar instead of splitting its slot across all series:
+
+```yaml
+chart: { chartType: bar, title: Score by licence, stacked: true }
+xAxis:
+  type: category
+  label: Model
+  categories: ["Alpha", "Beta", "Gamma", "Delta"]   # all 4, ranked
+yAxis: { type: value, label: Score }
+series:
+  - name: Proprietary
+    color: "#3b82f6"
+    data: [{ x: "Alpha", y: 57.2 }, { x: "Gamma", y: 52.7 }]
+  - name: Open weight
+    color: "#10b981"
+    data: [{ x: "Beta", y: 55.4 }, { x: "Delta", y: 46.8 }]
+```
+
+Per-**point** colour (`{ x, y, color }`) is **not** supported on
+`bar`/`line`/`area`/`scatter` — the renderer maps those to `[x, y]` and
+drops everything else. Only `pie`/`donut` honour a per-point `color`.
+Colour-coding a bar ranking therefore means one series per colour plus
+the shared `categories` list above — that is the only way.
+
 ## When to use this
 
-User wants to *see* a numerical comparison or trend right now:
-"plot the revenue", "show the distribution", "compare these numbers as
-a chart". The data is small enough to embed inline.
-
-When the user asks to **save** or **create a chart document** —
-"save this as a chart doc", "create a chart document", any
-phrasing that implies persistence — use the stored form via
-`doc_write`.
+User wants to *see* a numerical comparison or trend right now: "plot
+the revenue", "show the distribution". Any phrasing that implies
+persistence — "save this as a chart doc" — takes the stored form via
+`doc_write` instead.
 
 ## Anti-patterns
 
-- **Wrapping the stored body in a ```` ```chart ```` fence.** That
-  is the inline-chat form. When you save via `doc_write`, the
-  body must be raw JSON or YAML — no fence. The codec will accept a
-  fence-wrapped body (kind discrimination still works), but the
-  Web-UI falls back to the Raw editor — no chart-tab, no render.
-  Symptom: user gets a saved doc that opens as plain text instead of
-  a chart.
-- **Saving as `.md`.** Markdown is explicitly rejected for stored
-  chart documents — use `.json` or `.yaml` as the path extension.
+- **Fence-wrapping a stored body, or saving as `.md`.** Both parse but
+  open in the Raw editor — no chart tab, no render. Stored bodies are
+  raw JSON/YAML at `.json`/`.yaml`; the fence is inline-chat only.
 - **Raw ECharts options.** `dataset.source`, bare `series[].type`
   without `name` and `data` — the codec rejects them. Use the Vance
-  schema above. The codec error tells you the expected shape.
+  schema above. The codec error tells you the expected shape. On axes
+  the failure is worse than a rejection: `xAxis.name`, `axisLabel`,
+  `data` are dropped **silently** (see the closed axis-key list above).
+  Symptom: the chart renders but has no axis titles.
+
+- **`min` on a bar chart.** Bars encode magnitude by length, so the
+  baseline must be zero — `yAxis: { min: 40 }` on `bar`/`area` makes a
+  46.8-vs-57.2 gap (real factor 1.22) look like factor 2.5. That is a
+  misleading chart, not a styling choice. To show small differences
+  between large values, keep the zero baseline and switch to
+  `line`/`scatter`, or plot the differences themselves. `min`/`max` are
+  legitimate on `line`/`scatter`, where position — not length — carries
+  the value.
+
+- **Claiming an ordering the chart doesn't show.** If the prose says
+  "X ranks 5th, ahead of Y", the bars must actually sit in that order —
+  which on a category axis means `categories` is listed in rank order
+  (see above). Sorting the data inside each series is not enough.
+
+- **Unsourced numbers.** A chart states facts. Name the benchmark or
+  source in `chart.subtitle` when the data is not the user's own, and
+  do not invent decimals for numbers you did not look up — use
+  `research_search` first. A plausible-looking axis of fabricated
+  scores is the most expensive failure mode here, because it renders
+  perfectly.
 - **Mismatched data shape.** Points that don't match the per-
   `chartType` shape are **silently dropped**, not coerced. Modes:
   - *Some* points in a series wrong → series renders with the rest

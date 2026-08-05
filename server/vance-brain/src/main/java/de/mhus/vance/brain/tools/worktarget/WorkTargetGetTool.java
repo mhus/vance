@@ -59,7 +59,7 @@ public class WorkTargetGetTool implements Tool {
     public boolean primary() {
         // Not primary — the work target is set per-spawn from the
         // recipe and rarely needs LLM-side inspection. Available via
-        // find_tools / describe_tool when the LLM genuinely needs it.
+        // tool_list / tool_description when the LLM genuinely needs it.
         return false;
     }
 
@@ -76,7 +76,7 @@ public class WorkTargetGetTool implements Tool {
         // the LLM which backend its file_*/exec_* calls hit, so shipping
         // this tool's schema every turn just baits an unnecessary
         // round-trip ("let me check work_target_get just to be sure").
-        // Still reachable via find_tools / describe_tool for the rare
+        // Still reachable via tool_list / tool_description for the rare
         // case the LLM really needs to introspect.
         return true;
     }

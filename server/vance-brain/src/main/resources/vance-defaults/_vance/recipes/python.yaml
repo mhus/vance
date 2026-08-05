@@ -2,7 +2,7 @@ description: |
   Python worker — manages a Python workspace RootDir with a local
   venv, installs packages with pip, runs scripts. The python_*
   tools are promoted to primary so they sit in the default tool
-  catalog without find_tools discovery.
+  catalog without tool_list discovery.
 engine: ford
 # High-precision execution-intent phrases only. The recipe NAME is NOT a
 # routing signal (that would hijack any goal that merely mentions Python

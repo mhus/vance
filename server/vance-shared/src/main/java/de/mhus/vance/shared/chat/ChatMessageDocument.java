@@ -86,7 +86,7 @@ public class ChatMessageDocument {
      * {@code PrakPeriodicListener} skips the side-channel analyser for
      * this message — set by engines when every tool invoked in the
      * producing turn has {@code Tool.contributesPrak() == false} (todo
-     * tracking, find_tools, manual_read, etc.). Absent / {@code false}
+     * tracking, tool_list, manual_read, etc.). Absent / {@code false}
      * leaves the listener's normal cheap-path filter in charge.
      */
     public static final String META_PRAK_SKIP = "prakSkip";

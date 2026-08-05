@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
  * compose {@code secrets:} / tool templates via {@code {{secret:vault:<key>}}}
  * without the model ever seeing the value.
  *
- * <p>{@code deferred} + non-primary: sensitive, opt-in via {@code describe_tool}
+ * <p>{@code deferred} + non-primary: sensitive, opt-in via {@code tool_description}
  * or a recipe's {@code allowedToolsAdd}.
  */
 @Component

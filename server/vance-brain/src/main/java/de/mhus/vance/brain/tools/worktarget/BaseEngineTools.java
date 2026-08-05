@@ -26,7 +26,7 @@ public final class BaseEngineTools {
      *       — these the LLM sees in the per-turn manifest.</li>
      *   <li>2 work-target meta tools ({@code work_target_get},
      *       {@code work_target_set}) — non-primary, reachable via
-     *       {@code find_tools} when an exotic backend switch is
+     *       {@code tool_list} when an exotic backend switch is
      *       needed.</li>
      *   <li>The dispatch backends themselves ({@code client_*},
      *       {@code work_file_*}, {@code work_exec_*}). The wrappers
@@ -68,7 +68,7 @@ public final class BaseEngineTools {
             "client_exec_tail",
             "client_exec_kill",
             // Brain-server-side backends (deferred — primary=true on
-            // the tool itself for direct power-user access via find_tools)
+            // the tool itself for direct power-user access via tool_list)
             "work_file_read",
             "work_file_write",
             "work_file_edit",

@@ -24,7 +24,7 @@ public record ResolvedRecipe(
         /**
          * Recipe-base demotion list: tools listed here are moved to the
          * deferred bucket (LLM sees them only via the discovery block,
-         * activated through {@code describe_tool}). Profile and per-mode
+         * activated through {@code tool_description}). Profile and per-mode
          * overlays can promote individual entries back to primary via
          * {@code allowedToolsAdd}. See {@code planning/tool-schema-deferral.md} §4 / §14.
          */

@@ -66,7 +66,7 @@ dataRelayCorrection: |
 # fallback, `default` is expected to actually author content (the
 # prompt above tells the worker to "save it as a Document via
 # doc_write") and to build the workspace pages / apps a user asks
-# for. Without these the worker finds the tools via find_tools but
+# for. Without these the worker finds the tools via tool_list but
 # every call hard-fails "not available to this engine" (observed
 # 2026-07-01: a delegated worker looped on workpage_create / doc_write
 # and then hallucinated success). Entry-points stay visible; the

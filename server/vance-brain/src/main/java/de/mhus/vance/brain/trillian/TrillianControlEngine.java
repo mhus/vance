@@ -113,8 +113,8 @@ public class TrillianControlEngine implements ThinkEngine {
         base.add("whoami");
         base.add("manual_read");
         base.add("manual_list");
-        base.add("find_tools");
-        base.add("describe_tool");
+        base.add("tool_list");
+        base.add("tool_description");
         base.add("recipe_describe");
         base.add("how_do_i");
         base.add("vance_notify");

@@ -22,7 +22,7 @@ worker does the actual work and reports back asynchronously.
   worker's attributes.
 
 Basic helpers also available: `current_time`, `whoami`,
-`manual_read`, `manual_list`, `find_tools`, `describe_tool`,
+`manual_read`, `manual_list`, `tool_list`, `tool_description`,
 `how_do_i`, `recipe_describe`, `inbox_post`, `vance_notify`.
 
 ## How a turn flows

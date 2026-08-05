@@ -8,7 +8,7 @@
  * separately.
  *
  * <p>All tools are <em>secondary</em> by design — the LLM finds
- * them via {@code find_tools} when it needs them and they stay
+ * them via {@code tool_list} when it needs them and they stay
  * out of the prompt otherwise.
  */
 @NullMarked

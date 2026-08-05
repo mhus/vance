@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 /**
  * Invokes any tool the caller's engine is allowed to use, by name. Lets
  * the LLM reach a secondary tool in one hop after it has been discovered
- * with {@code find_tools} / {@code describe_tool}, without needing a
+ * with {@code tool_list} / {@code tool_description}, without needing a
  * dedicated tool binding on the LLM side for every tool.
  *
  * <p>Calling a primary tool through here is allowed but pointless — the
@@ -54,7 +54,7 @@ public class InvokeToolTool implements Tool {
     public String description() {
         return "Invokes any tool your engine is allowed to use, by name, with "
                 + "a parameter object. Use this to call a tool discovered "
-                + "through find_tools.";
+                + "through tool_list.";
     }
 
     @Override

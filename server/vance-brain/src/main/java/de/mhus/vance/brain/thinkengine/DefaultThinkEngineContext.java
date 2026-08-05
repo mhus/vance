@@ -124,7 +124,7 @@ record DefaultThinkEngineContext(
      * Reads the {@code activatedDeferredTools} map fresh from Mongo and
      * applies the TTL decay filter. Sourcing this from the DB (not from
      * the in-memory {@code process} snapshot) lets within-turn
-     * activations from {@code describe_tool} take effect on the very
+     * activations from {@code tool_description} take effect on the very
      * next {@link #tools()} call — the action-loop refreshes its
      * {@link ContextToolsApi} after each iteration that invoked read
      * tools. Stale entries (timestamp older than now − ttl) are

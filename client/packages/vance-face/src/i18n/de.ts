@@ -1079,7 +1079,7 @@ export default {
       primary: 'Primär (in jeder Runde angekündigt)',
       defaultDeferred: 'Standardmäßig deferred',
       defaultDeferredHelp:
-        'Pack-weiter Default für Tool.deferred(). Bei true erscheinen Sub-Tools nur im Discovery-Block, bis das LLM sie über describe_tool aktiviert — empfohlen für Packs mit vielen Endpunkten.',
+        'Pack-weiter Default für Tool.deferred(). Bei true erscheinen Sub-Tools nur im Discovery-Block, bis das LLM sie über tool_description aktiviert — empfohlen für Packs mit vielen Endpunkten.',
       disabledSubTools: 'Deaktivierte Sub-Tools',
       disabledSubToolsHelp:
         'Ein Sub-Tool-Name pro Zeile. Nur lokale Namen (ohne <pack>__-Präfix). Leer bedeutet: alle Sub-Tools aktiv.',

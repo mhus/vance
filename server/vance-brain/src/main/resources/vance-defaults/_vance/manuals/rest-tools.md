@@ -128,7 +128,7 @@ has connected their account. Now expose the API's REST surface:
 type: rest_api
 description: "<one short line — what this pack offers>"
 labels: [<service>, external, rest]
-primary: false                                       # 99% of cases — let find_tools handle it
+primary: false                                       # 99% of cases — let tool_list handle it
 defaultDeferred: false
 parameters:
   specUrl: "<official-openapi-spec-url>"
@@ -144,7 +144,7 @@ parameters:
   timeoutSeconds: 30
 promptHint: |
   ## <Service name>
-  Discovery: `find_tools(query="<service>")`.
+  Discovery: `tool_list(prefix="<pack>")`.
   Call via: `invoke_tool({name:"<pack>__<op>", params:{...}})`.
   <Pack-specific quirks — e.g. "the cloudId is auto-injected, don't
   set it yourself", "this API rate-limits at 60 req/min", etc.>

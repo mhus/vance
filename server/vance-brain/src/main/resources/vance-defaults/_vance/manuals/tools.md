@@ -1,6 +1,6 @@
 ---
-triggers: tools, find_tools, describe_tool, server tools, client tools, client_*, RAG tools, rag_*, memory_search, search memory, project memory, scratchpad, exec, sandbox, tool discovery, what tools are there
-summary: Tool catalogue overview — server vs. client tools, find_tools / describe_tool discovery, scratch + exec sandboxes, RAG + memory_search, tagging.
+triggers: tools, tool_list, tool_description, server tools, client tools, client_*, RAG tools, rag_*, memory_search, search memory, project memory, scratchpad, exec, sandbox, tool discovery, what tools are there
+summary: Tool catalogue overview — server vs. client tools, tool_list / tool_description discovery, scratch + exec sandboxes, RAG + memory_search, tagging.
 ---
 # Tools catalogue and composition
 
@@ -10,8 +10,10 @@ Two universes of tools share the same dispatcher:
 - **Client tools** (prefix `client_*`) — run on the user's foot
   client when one is connected. Act on the user's machine.
 
-Use `find_tools query=<keyword>` and `describe_tool name=<x>` to
-explore beyond the primary set advertised every turn.
+Use `tool_list()` for the full name inventory (names only — optional
+`prefix` filter) and `tool_description(names=["a", "b"])` for the
+schemas of the candidates you picked. Batch the names: one call for
+every tool you are weighing, not one call per tool.
 
 ## Server-side scratch + exec
 
@@ -95,7 +97,7 @@ transparently before expiry. The user has to have connected the
 provider once via Web-UI → Connected Accounts; if they haven't, tool
 calls fail with a clear "user must connect provider X" message.
 
-See `doc_oauth_tools` (auto-discoverable via `find_tools`) for the
+See `doc_oauth_tools` (auto-discoverable via `tool_list`) for the
 full recipe — including the `{{secret:user:oauth.…}}` syntax, what to
 do when the connect / refresh path fails, and how to label the
 resulting tools so recipes can include/exclude external providers

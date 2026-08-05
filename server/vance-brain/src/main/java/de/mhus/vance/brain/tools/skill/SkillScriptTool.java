@@ -87,7 +87,7 @@ public final class SkillScriptTool implements Tool {
         // The LLM only sees this tool when the parent skill is active,
         // and the skill body explains when to invoke it — make it
         // first-class in the listing so the LLM doesn't have to dig
-        // through find_tools.
+        // through tool_list.
         return true;
     }
 

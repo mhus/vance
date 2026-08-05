@@ -382,7 +382,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      *                      once at loop start and again after any
      *                      iteration that invoked read tools, so
      *                      tools activated mid-loop via
-     *                      {@code describe_tool} become visible to
+     *                      {@code tool_description} become visible to
      *                      the next iteration. The action tool is
      *                      appended by the base class — the factory
      *                      does NOT include it.
@@ -425,7 +425,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             long deadlineMs) {
 
         // Fresh tools + spec list per loop. Refreshed after any
-        // iteration that called read tools so describe_tool
+        // iteration that called read tools so tool_description
         // activations take effect on the very next iteration.
         ContextToolsApi tools = ctx.tools();
         List<ToolSpecification> allSpecs = new ArrayList<>(readToolSpecsFactory.apply(tools));
@@ -606,7 +606,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             }
 
             // Refresh tool view after any read-tool dispatch so a
-            // describe_tool activation in this iteration is visible
+            // tool_description activation in this iteration is visible
             // to the next one — DefaultThinkEngineContext.tools()
             // re-reads activatedDeferredTools from Mongo each call.
             if (!readCalls.isEmpty()) {

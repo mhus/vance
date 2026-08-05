@@ -104,7 +104,7 @@ directly — `research_rich`'s text bucket is intentionally capped.
 `research_search_expert query=<text> modality=<...> instance=<endpoint-id> site=<host> filetype=<ext> dateFrom=<yyyy-MM-dd> dateTo=<yyyy-MM-dd> domain=<...> locale=<tag> num=<1..10>`
 
 Deferred (not in the default tool manifest) — activate via
-`describe_tool` when the user explicitly asks for finer control:
+`tool_description` when the user explicitly asks for finer control:
 
 - **Pin a specific endpoint** (`instance=wiki-de` to force the
   German Wikipedia mirror, `instance=serper-eu` to force a

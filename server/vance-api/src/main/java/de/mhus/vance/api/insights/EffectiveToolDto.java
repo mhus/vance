@@ -34,13 +34,13 @@ public class EffectiveToolDto {
 
     private String description;
 
-    /** Advertised to the LLM on every turn vs. discoverable only via {@code find_tools}. */
+    /** Advertised to the LLM on every turn vs. discoverable only via {@code tool_list}. */
     private boolean primary;
 
     /**
      * Mirrors the materialised {@code Tool.deferred()}: when {@code true}
      * the tool is hidden from the LLM tool manifest and surfaces only
-     * via the discovery block until activated by {@code describe_tool}.
+     * via the discovery block until activated by {@code tool_description}.
      * Disabled inner-layer entries report {@code false}.
      */
     private boolean deferred;

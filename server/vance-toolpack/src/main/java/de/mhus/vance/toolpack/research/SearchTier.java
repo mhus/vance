@@ -10,7 +10,7 @@ package de.mhus.vance.toolpack.research;
  *       (site, filetype, dateRange, instance-pin). Used by
  *       {@code research_search_expert} which is held back as a deferred
  *       tool so the LLM only sees the extra fields when it asked for
- *       them via {@code describe_tool}.</li>
+ *       them via {@code tool_description}.</li>
  * </ul>
  */
 public enum SearchTier {

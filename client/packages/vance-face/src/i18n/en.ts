@@ -1078,7 +1078,7 @@ export default {
       primary: 'Primary (advertised on every turn)',
       defaultDeferred: 'Default to deferred',
       defaultDeferredHelp:
-        'Pack-wide default for Tool.deferred(). When true, sub-tools surface only via the discovery block until the LLM activates them with describe_tool — recommended for packs with many endpoints.',
+        'Pack-wide default for Tool.deferred(). When true, sub-tools surface only via the discovery block until the LLM activates them with tool_description — recommended for packs with many endpoints.',
       disabledSubTools: 'Disabled sub-tools',
       disabledSubToolsHelp:
         'One sub-tool name per line. Local names only (without the <pack>__ prefix). Empty means all sub-tools active.',

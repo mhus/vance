@@ -58,7 +58,7 @@ public class ServerToolDto {
      * with many sub-tools (e.g. a 50-endpoint REST pack) should default
      * to {@code true} so the LLM doesn't get flooded with schemas;
      * sub-tools surface only via the discovery block until activated by
-     * {@code describe_tool}. Singleton packs (e.g. {@code doc_lookup})
+     * {@code tool_description}. Singleton packs (e.g. {@code doc_lookup})
      * ignore this — the factory's classification wins.
      */
     private boolean defaultDeferred;

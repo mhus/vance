@@ -435,7 +435,7 @@ class FrankieEngineSkeletonTest {
         var set = engine.allowedTools();
         assertThat(set).isNotEmpty();
         // Discovery + intro essentials
-        assertThat(set).contains("find_tools", "describe_tool", "how_do_i",
+        assertThat(set).contains("tool_list", "tool_description", "how_do_i",
                 "manual_read", "tool_result_read");
         // Sub-worker spawn — Frankie's escape hatch
         assertThat(set).contains("process_spawn");

@@ -78,7 +78,7 @@ public class WorkTargetSetTool implements Tool {
     @Override
     public boolean primary() {
         // Not primary — the work target normally comes from the recipe
-        // and the LLM doesn't switch live. Reachable via find_tools
+        // and the LLM doesn't switch live. Reachable via tool_list
         // when an exotic switch is genuinely needed.
         return false;
     }
@@ -94,7 +94,7 @@ public class WorkTargetSetTool implements Tool {
         // Same rationale as WorkTargetGetTool#deferred: stay out of the
         // classified-engine primary manifest. The recipe owns the
         // initial target; explicit mid-task switches are rare enough to
-        // earn the find_tools / describe_tool detour.
+        // earn the tool_list / tool_description detour.
         return true;
     }
 

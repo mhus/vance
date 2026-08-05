@@ -37,7 +37,7 @@ import java.util.Set;
  *       {@code ChatRequest}.</li>
  *   <li><b>Deferred</b> — tools the LLM only sees as
  *       {@code (name, searchHint)} in the system-prompt discovery block.
- *       The LLM activates one by calling {@code describe_tool(name)}.
+ *       The LLM activates one by calling {@code tool_description(names)}.
  *       Activation is tracked on the process via
  *       {@link de.mhus.vance.shared.thinkprocess.ThinkProcessDocument#getActivatedDeferredTools()}.
  *       {@link #listDeferredForDiscovery()} returns the entries that
@@ -56,6 +56,44 @@ import java.util.Set;
  * de.mhus.vance.brain.recipe.RecipeResolver.ToolFilter, java.util.Set)}.
  */
 public final class ContextToolsApi implements ToolBus {
+
+    /**
+     * Capability floor — tools that {@link #classify} forces into the
+     * primary bucket for <em>every</em> engine, immune to
+     * {@code allowedToolsRemove}, {@code allowedToolsDefer} and to an
+     * engine {@code allowedTools()} that simply forgets them.
+     *
+     * <p>Rationale: these two are the escape hatch out of a slim
+     * manifest. A recipe (or a new engine's allow-set) that drops them
+     * doesn't produce an error — it produces a model that answers "I
+     * can't do that" while the tool sits right there in the dispatcher.
+     * That failure mode is invisible in logs and expensive in trust, and
+     * the floor costs two small schemas (~150 tokens).
+     *
+     * <p><b>The floor grants discovery, not access.</b> {@code tool_list}
+     * and {@code tool_description} are both scoped to
+     * {@link #invocableToolNames()}, so a narrowly caged engine sees
+     * exactly its own cage — the allow-set stays the authority on what
+     * may be invoked.
+     *
+     * <p>Deliberately <em>not</em> in the floor: {@code invoke_tool}
+     * (deferred tools are directly callable, so it is convenience, and
+     * its presence tempts models to wrap every call), {@code how_do_i}
+     * (needs a recipe + LLM credentials, may legitimately be absent) and
+     * {@code manual_read} (depends on manuals existing). Extending this
+     * set is a policy decision — {@code ContextToolsApiClassifyTest}
+     * pins the exact membership so it can't drift in silently.
+     *
+     * <p>Engines may still list these names in their own
+     * {@code allowedTools()} (Ford, Frankie, Trillian do): that set is
+     * also read as a plain declaration — {@code RecipeResolver} derives
+     * {@code (engineDefault ∪ add) ∖ remove} from it and the Magrathea
+     * controller surfaces it — so dropping them there would make the
+     * declared surface under-report what the engine actually gets. The
+     * floor makes the declaration optional, not wrong.
+     */
+    public static final Set<String> MANDATORY_TOOLS =
+            Set.of("tool_list", "tool_description");
 
     private final ToolDispatcher dispatcher;
     private final ToolInvocationContext ctx;
@@ -297,7 +335,9 @@ public final class ContextToolsApi implements ToolBus {
                         + "are kept out of the manifest to save tokens). You can "
                         + "call them directly — the engine activates them on first "
                         + "use. If you need the full parameter schema first, call "
-                        + "`describe_tool(name=\"<name>\")`.\n");
+                        + "`tool_description(names=[\"<name>\", ...])` — pass every "
+                        + "candidate in one call. `tool_list` shows the complete "
+                        + "name inventory including anything omitted here.\n");
 
         // Group by pack-prefix (substring before the first "__").
         // Insertion order = sort order = stable for prompt-cache markers.
@@ -356,7 +396,7 @@ public final class ContextToolsApi implements ToolBus {
      *       auto-activated on the spot (Mongo stamp via
      *       {@code activationRefresh}) and then dispatched. The
      *       discovery block already told the LLM the tool exists;
-     *       insisting on a separate {@code describe_tool} round-trip
+     *       insisting on a separate {@code tool_description} round-trip
      *       is pure ceremony for tools the model can call by name.
      *       Activation persists for the session (subject to TTL
      *       decay), so subsequent {@link #tools()} snapshots will
@@ -908,7 +948,7 @@ public final class ContextToolsApi implements ToolBus {
             // Expand the base to every dispatchable tool so add/remove/defer
             // can operate. Without this expansion, allowedToolsAdd in a
             // Ford-style recipe would collapse to "ONLY the added tools",
-            // hiding workspace_*, find_tools, describe_tool, etc.
+            // hiding workspace_*, tool_list, tool_description, etc.
             Set<String> all = new java.util.LinkedHashSet<>();
             for (ToolDispatcher.Resolved r : dispatcher.resolveAll(ctx)) {
                 all.add(r.tool().name());
@@ -970,6 +1010,16 @@ public final class ContextToolsApi implements ToolBus {
             if (isDeferred) deferred.add(name);
             else primary.add(name);
         }
+        // Capability floor — see MANDATORY_TOOLS. Applied last so it
+        // survives the role gate, the profile gate, allowedToolsRemove
+        // and allowedToolsDefer alike.
+        for (String name : MANDATORY_TOOLS) {
+            if (dispatcher.resolve(name, ctx).isEmpty()) continue;
+            effective.add(name);
+            deferred.remove(name);
+            primary.add(name);
+        }
+
         Set<String> activated = activatedDeferred == null
                 ? Set.of()
                 : activatedDeferred.stream()

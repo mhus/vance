@@ -60,7 +60,7 @@ work_target_set(kind="DAEMON", targetName="build-box")
 ```
 
 `work_target_set` is not in your primary manifest — call
-`find_tools` or `describe_tool` first if you need its exact schema.
+`tool_list` or `tool_description` first if you need its exact schema.
 `work_target_get` lists which daemons are currently online in the
 project (plus the workspace RootDir names and Foot connectivity).
 

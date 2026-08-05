@@ -325,7 +325,7 @@ public class ThinkProcessDocument {
     private @Nullable String workingProjectId;
 
     /**
-     * Tools that the LLM has activated by calling {@code describe_tool}
+     * Tools that the LLM has activated by calling {@code tool_description}
      * on a {@link de.mhus.vance.toolpack.Tool#deferred()}-marked tool.
      * Map value is the activation timestamp (refreshed on every
      * subsequent invocation through {@code ContextToolsApi}); the

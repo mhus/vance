@@ -1488,7 +1488,7 @@ public class ThinkProcessService {
      * Reads the live {@code activatedDeferredTools} map from Mongo for
      * the given process — bypasses any caller-side {@link ThinkProcessDocument}
      * snapshot. Used by the engine context so within-turn activations
-     * (via {@code describe_tool}) become visible to the next
+     * (via {@code tool_description}) become visible to the next
      * action-loop iteration without reloading the entire process doc.
      *
      * @return the activation map (possibly empty); empty map if the

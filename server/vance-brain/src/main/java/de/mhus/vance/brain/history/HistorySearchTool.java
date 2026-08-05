@@ -29,7 +29,7 @@ import org.springframework.stereotype.Component;
  * and only explicitly requested turns pay the recall token cost.
  *
  * <p>Deferred — only listed in the discovery block, activated via
- * {@code describe_tool}. See {@code planning/process-history-search.md}
+ * {@code tool_description}. See {@code planning/process-history-search.md}
  * §7.1.
  */
 @Component

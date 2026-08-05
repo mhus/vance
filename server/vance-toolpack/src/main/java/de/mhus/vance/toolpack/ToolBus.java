@@ -38,7 +38,7 @@ public interface ToolBus {
     /**
      * Names of the tools this bus can actually invoke in the current
      * engine scope — i.e. calling {@link #invoke(String, Map)} with any
-     * other name is expected to fail. Discovery tools ({@code find_tools})
+     * other name is expected to fail. Discovery tools ({@code tool_list})
      * use this to avoid advertising tools the engine would reject.
      *
      * <p>An <b>empty</b> set means "no restriction known" — either an

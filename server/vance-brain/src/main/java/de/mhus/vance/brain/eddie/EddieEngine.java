@@ -137,7 +137,7 @@ public class EddieEngine extends StructuredActionEngine {
      * Aligned with Arthur's recipe (6) — Eddie's "self-work" path
      * (web_search → web_fetch → doc_write → ANSWER) already
      * eats 4 iterations; with Plan-Mode actions now in her schema
-     * and the occasional discovery tool (find_tools / describe_tool)
+     * and the occasional discovery tool (tool_list / tool_description)
      * pre-amble, 4 leaves no slack for the final ANSWER and the
      * action-loop trips "max-iters" with no user-facing output. Six
      * is generous for the typical hub-turn (most are 1-2 iterations

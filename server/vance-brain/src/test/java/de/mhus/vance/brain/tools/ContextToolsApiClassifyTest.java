@@ -214,6 +214,99 @@ class ContextToolsApiClassifyTest {
         assertThat(c.primary()).containsExactly("client_file_read");
     }
 
+    // ─── capability floor (MANDATORY_TOOLS) ───
+
+    @Test
+    void mandatoryTools_membershipIsPinned() {
+        // Extending the floor is a policy decision, not a drive-by edit:
+        // every member is force-primary for every engine and cannot be
+        // configured away. Change this list only deliberately.
+        assertThat(ContextToolsApi.MANDATORY_TOOLS)
+                .containsExactlyInAnyOrder("tool_list", "tool_description");
+    }
+
+    @Test
+    void mandatoryTools_surviveFilterRemove() {
+        stubResolve("tool_list", false);
+        stubResolve("tool_description", false);
+        stubResolve("doc_read", false);
+
+        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
+                List.of("tool_list", "tool_description"), List.of(), List.of());
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx,
+                Set.of("tool_list", "tool_description", "doc_read"), filter, Set.of());
+
+        assertThat(c.allowed()).contains("tool_list", "tool_description");
+        assertThat(c.primary()).contains("tool_list", "tool_description");
+    }
+
+    @Test
+    void mandatoryTools_cannotBeDeferred() {
+        stubResolve("tool_list", true); // even a deferred default is overridden
+        stubResolve("tool_description", false);
+
+        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
+                List.of(), List.of(), List.of("tool_list", "tool_description"));
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx,
+                Set.of("tool_list", "tool_description"), filter, Set.of());
+
+        assertThat(c.primary()).containsExactlyInAnyOrder("tool_list", "tool_description");
+        assertThat(c.deferred()).isEmpty();
+    }
+
+    @Test
+    void mandatoryTools_areAddedToAnEngineBaseThatOmitsThem() {
+        // The failure mode the floor exists for: a new engine's allow-set
+        // forgets the discovery pair and the model quietly answers
+        // "I can't do that" instead of looking.
+        stubResolve("tool_list", false);
+        stubResolve("tool_description", false);
+        stubResolve("doc_write", false);
+
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx, Set.of("doc_write"),
+                RecipeResolver.ToolFilter.EMPTY, Set.of());
+
+        assertThat(c.allowed()).containsExactlyInAnyOrder(
+                "doc_write", "tool_list", "tool_description");
+        assertThat(c.primary()).contains("tool_list", "tool_description");
+    }
+
+    @Test
+    void mandatoryTools_areSkippedWhenNotDispatchableInThisContext() {
+        // Foot-side / stripped-down dispatchers may not carry them at
+        // all — the floor must not invent names the dispatcher can't
+        // resolve (that would hard-fail the manifest builder).
+        stubResolve("doc_write", false);
+        when(dispatcher.resolve(eq("tool_list"), any())).thenReturn(Optional.empty());
+        when(dispatcher.resolve(eq("tool_description"), any())).thenReturn(Optional.empty());
+
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx, Set.of("doc_write"),
+                RecipeResolver.ToolFilter.EMPTY, Set.of());
+
+        assertThat(c.allowed()).containsExactly("doc_write");
+    }
+
+    @Test
+    void mandatoryTools_surviveTheProfileGate() {
+        // A profile-gated floor tool would still be a configured-away
+        // floor. Gate runs before, floor is applied after.
+        stubResolve("tool_list", false, Set.of("user"));
+        stubResolve("tool_description", false, Set.of("user"));
+
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx,
+                Set.of("tool_list", "tool_description"),
+                RecipeResolver.ToolFilter.EMPTY,
+                Set.of(),
+                "eddie");
+
+        assertThat(c.primary()).containsExactlyInAnyOrder("tool_list", "tool_description");
+    }
+
     private void stubResolve(String name, boolean deferred) {
         when(dispatcher.resolve(eq(name), any())).thenReturn(Optional.of(resolved(name, deferred)));
     }

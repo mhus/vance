@@ -23,7 +23,7 @@ import org.springframework.stereotype.Component;
  * the value. This tool exists for the honest case where the value is already known
  * in-conversation (e.g. the user pasted it).
  *
- * <p>{@code deferred} + non-primary: sensitive, opt-in via {@code describe_tool}
+ * <p>{@code deferred} + non-primary: sensitive, opt-in via {@code tool_description}
  * or a recipe's {@code allowedToolsAdd}.
  */
 @Component

@@ -7,7 +7,7 @@
  *
  * <p>All four tools are <em>secondary</em> by design — they exist for
  * engines that take notes (Arthur, future planners). The LLM
- * discovers them via {@code find_tools} when it needs them and they
+ * discovers them via {@code tool_list} when it needs them and they
  * stay out of the prompt otherwise.
  */
 @NullMarked

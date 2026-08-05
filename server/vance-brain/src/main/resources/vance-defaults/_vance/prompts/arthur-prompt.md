@@ -397,7 +397,7 @@ approval **before** doing any operational work. See "When to use
 plan mode" below for the exact trigger criteria.
 
 In EXPLORING mode you can only call read-only tools (`web_search`,
-`doc_read`, `recipe_list`, `find_tools`, …) — write/delegate tools
+`doc_read`, `recipe_list`, `tool_list`, …) — write/delegate tools
 are removed from your action vocabulary. The next turn will use
 the EXPLORING prompt; once you have enough context you'll emit
 `PROPOSE_PLAN`.
@@ -778,7 +778,7 @@ order, picking the FIRST branch that fits:
    final ANSWER?** → do it directly. The deferred-tools discovery
    block lists what's available (`doc_write`, `doc_edit`,
    `scratchpad_set`, `list_append`, `tree_add_child`, …) — calling
-   them activates the schema; no `describe_tool` round-trip
+   them activates the schema; no `tool_description` round-trip
    required.
 
    This includes **bounded research**:

@@ -31,7 +31,7 @@ public interface Tool {
 
     /**
      * {@code true} — advertised to the LLM on every turn.
-     * {@code false} — only discoverable via {@code find_tools}.
+     * {@code false} — only discoverable via {@code tool_list}.
      */
     boolean primary();
 
@@ -113,7 +113,7 @@ public interface Tool {
      * message when this tool is reachable for the turn. Multi-tool packs
      * (REST, MCP) share one hint across all sub-tools and the engine
      * deduplicates — the goal is one short note per pack ("cloudId is
-     * auto-injected for the Jira pack, call {@code find_tools(query='jira')}
+     * auto-injected for the Jira pack, call {@code tool_list(prefix='jira')}
      * to enumerate") rather than per sub-tool.
      *
      * <p>Empty string (the default) means "no extra hint" — the engine
@@ -127,7 +127,7 @@ public interface Tool {
      * If {@code true}, the tool is held back from the default LLM
      * tool-manifest. The discovery block in the system prompt advertises
      * it by name and {@link #searchHint()} only; the LLM activates it
-     * by calling {@code describe_tool(name)} (see specification
+     * by calling {@code tool_description(names)} (see specification
      * {@code planning/tool-schema-deferral.md}).
      *
      * <p>Default {@code false}: tool ships in every turn's tool list as
@@ -153,8 +153,8 @@ public interface Tool {
      *
      * <p>Set to {@code false} only for purely mechanical tools whose
      * post-call text is structurally an acknowledgement: plan tracking
-     * ({@code todo_*}), discovery / introspection ({@code find_tools},
-     * {@code describe_tool}, {@code manual_*}, {@code how_do_i},
+     * ({@code todo_*}), discovery / introspection ({@code tool_list},
+     * {@code tool_description}, {@code manual_*}, {@code how_do_i},
      * {@code recipe_describe}, {@code tool_result_read}), trivial
      * lookups ({@code current_time}, {@code whoami}), work-target meta
      * ({@code work_target_*}), and read-only listings whose output is
@@ -244,7 +244,7 @@ public interface Tool {
     /**
      * 5–15-word relevance hint surfaced in the discovery block when
      * {@link #deferred()} is {@code true}. Should give the LLM enough
-     * signal to know when calling {@code describe_tool} is worthwhile.
+     * signal to know when calling {@code tool_description} is worthwhile.
      * Empty string for non-deferred tools.
      */
     default String searchHint() {

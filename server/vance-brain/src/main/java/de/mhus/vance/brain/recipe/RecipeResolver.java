@@ -174,7 +174,7 @@ public class RecipeResolver {
 
         // Spawn-time dispatcher pool: recipe + profile-base lists fold in
         // here. Defer-listed tools count as "add to dispatch" — they need
-        // to be invokable so the LLM can activate them via describe_tool;
+        // to be invokable so the LLM can activate them via tool_description;
         // the per-turn ToolFilter handles the primary-vs-deferred split.
         // Per-mode mode-block lists are NOT folded here; the per-turn
         // toolFilterFor() applies them live.
@@ -302,7 +302,7 @@ public class RecipeResolver {
      * restriction" signal — Ford and friends), an {@code add} list at
      * the recipe layer must NOT collapse the allow-set to just the
      * added entries. That would hide the rest of the catalog
-     * ({@code workspace_*}, {@code find_tools}, {@code describe_tool},
+     * ({@code workspace_*}, {@code tool_list}, {@code tool_description},
      * …) and brick the worker. The per-turn {@code ToolFilter} still
      * carries the add list and uses it for primary-vs-deferred
      * classification, which is the actual intent of

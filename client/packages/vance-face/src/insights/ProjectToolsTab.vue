@@ -278,7 +278,7 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
                 </div>
               </td>
               <td class="text-xs">
-                <span v-if="t.deferred" class="badge-deferred" title="Hidden from manifest until describe_tool activates it">deferred</span>
+                <span v-if="t.deferred" class="badge-deferred" title="Hidden from manifest until tool_description activates it">deferred</span>
                 <span v-else-if="t.primary" class="text-success">primary</span>
                 <span v-else class="opacity-50">on demand</span>
               </td>

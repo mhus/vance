@@ -27,7 +27,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>{@link #primary} controls visibility to the LLM. Primary tools are
  * listed up-front in every turn; secondary tools are only shown when the
- * LLM asks via the {@code find_tools} meta-tool.
+ * LLM asks via the {@code tool_list} meta-tool.
  */
 @Data
 @Builder
@@ -45,7 +45,7 @@ public class ToolSpec {
 
     /**
      * {@code true} — tool is advertised to the LLM on every turn.
-     * {@code false} — tool is only discoverable via {@code find_tools}.
+     * {@code false} — tool is only discoverable via {@code tool_list}.
      */
     private boolean primary;
 
@@ -95,7 +95,7 @@ public class ToolSpec {
     /**
      * Wire-mirror of {@code Tool.deferred()}. {@code true} means the
      * tool is held back from the default LLM tool-manifest and only
-     * surfaces through the discovery-block + {@code describe_tool}
+     * surfaces through the discovery-block + {@code tool_description}
      * activation. See {@code planning/tool-schema-deferral.md} §4.
      */
     @Builder.Default

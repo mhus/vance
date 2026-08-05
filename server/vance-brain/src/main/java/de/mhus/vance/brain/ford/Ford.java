@@ -221,8 +221,8 @@ public class Ford implements ThinkEngine {
     static {
         java.util.LinkedHashSet<String> base = new java.util.LinkedHashSet<>();
         // Discovery / introspection — Ford's bread-and-butter loop
-        base.add("find_tools");
-        base.add("describe_tool");
+        base.add("tool_list");
+        base.add("tool_description");
         base.add("how_do_i");
         base.add("manual_read");
         base.add("manual_list");

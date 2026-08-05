@@ -685,7 +685,7 @@ and only then write the confirmation.
 This project has a Python environment (RootDir with local venv).
 When you delegate Python work to a worker, say so explicitly in the
 `prompt` — or use the `python` recipe directly so
-the worker has `python_install` / `python_run` at hand without `find_tools`.
+the worker has `python_install` / `python_run` at hand without `tool_list`.
 `python_create` is idempotent, calling it twice is safe.
 
 {% endif %}

@@ -28,7 +28,7 @@ tool_template_apply(name, projectId, inputs, token?)
 ```
 
 All three are deferred-by-default (`@tool-template` label). Find them
-via `find_tools(query="tool_template")`. Promote with `invoke_tool` once
+via `tool_list(prefix="tool_template")`. Promote with `invoke_tool` once
 the user has confirmed a direction.
 
 ## Canonical flow
@@ -37,7 +37,7 @@ the user has confirmed a direction.
 1. user: "set up Jira"  /  "set up Atlassian"
 
 2. agent:
-   find_tools(query="tool_template")
+   tool_list(prefix="tool_template")
    → confirms the three tools exist
 
 3. agent:
@@ -196,7 +196,7 @@ the build host" / "give me a remote shell tool":
 2. ASK_USER for `daemonName`, short `description`, optional timeout
 3. `tool_template_apply(name="foot-daemon", projectId=<project>, inputs={...})`
 4. Relay the `postInstall.message` (kind=notice) — the user starts the
-   daemon process, you confirm the tools are visible via `find_tools`.
+   daemon process, you confirm the tools are visible via `tool_list`.
 
 ## Catalog discovery for the user
 

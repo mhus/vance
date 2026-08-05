@@ -139,8 +139,8 @@ public class FrankieEngine implements ThinkEngine {
     static {
         java.util.LinkedHashSet<String> base = new java.util.LinkedHashSet<>();
         // discovery / introspection
-        base.add("find_tools");
-        base.add("describe_tool");
+        base.add("tool_list");
+        base.add("tool_description");
         base.add("how_do_i");
         base.add("manual_read");
         base.add("manual_list");
@@ -404,7 +404,7 @@ public class FrankieEngine implements ThinkEngine {
 
             // Track every tool the LLM actually invoked this turn. At
             // persist-time we check whether the whole set is mechanical
-            // (todo_*, find_tools, manual_*, …) and stamp META_PRAK_SKIP
+            // (todo_*, tool_list, manual_*, …) and stamp META_PRAK_SKIP
             // on the assistant message so the side-channel analyser
             // doesn't burn an LLM call on a no-content turn. The
             // collector lives outside the loop so it accumulates across
@@ -769,7 +769,7 @@ public class FrankieEngine implements ThinkEngine {
             java.util.Set<String> toolsThisTurn) {
         if (finalText.isBlank()) return;
         // Stamp META_PRAK_SKIP when every tool invoked in this turn is
-        // mechanical (todo_*, find_tools, manual_*, work_target_*, …).
+        // mechanical (todo_*, tool_list, manual_*, work_target_*, …).
         // PrakPeriodicListener sees the flag and drops the LLM-driven
         // side-channel analyser for this message — no point burning a
         // round-trip on "I called todo_write, plan ready". 0-tool turns

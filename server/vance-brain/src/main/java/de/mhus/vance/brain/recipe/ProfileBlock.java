@@ -22,7 +22,7 @@ import org.jspecify.annotations.Nullable;
  * — worker spawns ignore it.
  *
  * <p>{@code allowedToolsDefer} demotes tools to the deferred bucket
- * (LLM sees them only via the discovery block + {@code describe_tool}
+ * (LLM sees them only via the discovery block + {@code tool_description}
  * activation). {@code modes} carries per-mode overlays — keyed by
  * the engine's mode names (Arthur: {@code EXPLORING}, {@code PLANNING},
  * {@code EXECUTING}, {@code NORMAL}; the literal {@code default} key

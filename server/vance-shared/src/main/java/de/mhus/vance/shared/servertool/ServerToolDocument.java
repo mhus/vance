@@ -57,7 +57,7 @@ public class ServerToolDocument {
     /** {@code false} hides the tool from the cascade — used to disable a system tool per-project. */
     private boolean enabled = true;
 
-    /** {@code true} advertises the tool to the LLM up-front; {@code false} requires {@code find_tools}. */
+    /** {@code true} advertises the tool to the LLM up-front; {@code false} requires {@code tool_list}. */
     private boolean primary = false;
 
     /**
@@ -81,7 +81,7 @@ public class ServerToolDocument {
      * explain pack-specific calling conventions, sub-tool naming, or
      * "do-not-set-this-arg" rules that are not obvious from the
      * sub-tool descriptions — e.g. "cloudId is auto-injected, call
-     * {@code find_tools(query='jira')} to enumerate".
+     * {@code tool_list(prefix='jira')} to enumerate".
      *
      * <p>Empty (the default) means "no extra hint". Multi-line markdown
      * is fine — the engine just concatenates active hints under a

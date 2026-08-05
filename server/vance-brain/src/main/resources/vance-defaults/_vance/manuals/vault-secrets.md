@@ -41,7 +41,7 @@ exact injected value is masked from the log.
 
 ## 3. Provision or store a secret (write)
 
-These two tools are **deferred** — activate with `describe_tool` first. Both need
+These two tools are **deferred** — activate with `tool_description` first. Both need
 a bound vault and project-scope write permission.
 
 - **`vault_secret_generate(key, [format], [length])`** — the safe choice.

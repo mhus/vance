@@ -95,7 +95,7 @@ counterpart in a future iteration.
 
 Sending mail is a write/side-effect tool. Conversational engines
 (Eddie) defer `@side-effect` to the discovery block by default — so
-the model has to deliberately call `find_tools(query="send")` and
+the model has to deliberately call `tool_list(prefix="smtp")` and
 then `invoke_tool` to use it. That's intentional: the model doesn't
 accidentally send mail just because it's chatty.
 

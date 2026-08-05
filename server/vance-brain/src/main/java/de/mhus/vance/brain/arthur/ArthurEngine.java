@@ -850,7 +850,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             // Arthur's bundled recipe pins per-mode allowedToolsRemove /
             // Defer; the resulting primary set is what
             // ContextToolsApi.primaryAsLc4j() returns. The action loop
-            // re-derives this on every iteration so describe_tool
+            // re-derives this on every iteration so tool_description
             // activations propagate within the turn.
             ActionLoopResult loopResult = runActionLoopWithJudge(
                     aiChat, ContextToolsApi::primaryAsLc4j,

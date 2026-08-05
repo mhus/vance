@@ -9,7 +9,7 @@ five tools to drive it. The default `label` is `python`, so the
 RootDir's `dirName` is normally `python` (or `python-2` etc. when
 the worker created a custom-labeled one alongside it).
 
-Tools — all currently deferred, so `find_tools` / `describe_tool`
+Tools — all currently deferred, so `tool_list` / `tool_description`
 surface them unless your recipe promotes them (the bundled `python`
 recipe does):
 

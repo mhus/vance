@@ -118,8 +118,18 @@ public class ClientToolService {
      * to publish the same list as {@link #registerAll} would, but to a
      * different message type ({@code daemon-register}) outside the
      * session model.
+     *
+     * <p>Honours the {@code --no-tools} kill-switch exactly like
+     * {@link #registerAll}: when suppressed this returns an empty list so
+     * the daemon announces nothing. Otherwise {@code dispatch} would
+     * reject every invocation anyway, but the brain (and the LLM) would
+     * still see the full local capability inventory — defeating the hard
+     * switch and leaking the tool list.
      */
     public List<ToolSpec> manifestSnapshot() {
+        if (suppressed.get()) {
+            return List.of();
+        }
         List<ToolSpec> specs = new java.util.ArrayList<>(beanByName.size() + packByName.size());
         for (ClientTool t : beanByName.values()) specs.add(t.toSpec());
         for (Tool t : packByName.values()) specs.add(t.toSpec("client"));

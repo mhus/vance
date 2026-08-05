@@ -92,4 +92,18 @@ class ClientToolServiceScriptGateTest {
                 .hasMessageContaining("disabled");
         assertThat(toolRan).isFalse();
     }
+
+    @Test
+    void manifestSnapshot_notSuppressed_listsTools() {
+        assertThat(service.manifestSnapshot()).hasSize(1);
+    }
+
+    @Test
+    void manifestSnapshot_suppressed_isEmpty() {
+        service.setSuppressed(true);
+
+        // --no-tools must keep the daemon-register flow from announcing any
+        // local tool to the brain, mirroring registerAll's no-op behaviour.
+        assertThat(service.manifestSnapshot()).isEmpty();
+    }
 }

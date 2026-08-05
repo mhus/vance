@@ -37,6 +37,11 @@ import org.springframework.stereotype.Component;
  * scrollback above the live region. Async writers from other threads
  * must hold {@link #writeLock()} for any direct terminal output, so
  * their bytes don't interleave with ours.
+ *
+ * <p>While {@link #pause()} has handed the TTY to someone else (a
+ * Lanterna excursion), we are also the output gate: nothing is written
+ * to the terminal, static content goes into a {@link DeferredOutput}
+ * backlog and is replayed by {@link #resume()}.
  */
 @Component
 public class LiveRegion {
@@ -57,6 +62,8 @@ public class LiveRegion {
     private final AtomicBoolean stopRequested = new AtomicBoolean();
     /** True while a Lanterna excursion (or similar) owns the TTY and we must keep our threads idle. */
     private final AtomicBoolean paused = new AtomicBoolean();
+    /** Static output captured while {@link #paused}; replayed by {@link #resume()}. */
+    private final DeferredOutput deferred = new DeferredOutput();
     private final AtomicInteger frame = new AtomicInteger();
 
     private volatile @Nullable Terminal terminal;
@@ -221,6 +228,16 @@ public class LiveRegion {
         return terminal != null;
     }
 
+    /**
+     * True while the terminal is on loan (see {@link #pause()}). Output
+     * must not touch the TTY in that state — callers either route
+     * through {@link #emitStatic(String)}, which buffers, or stay
+     * silent.
+     */
+    public boolean isPaused() {
+        return paused.get();
+    }
+
     public int width() {
         Terminal t = terminal;
         if (t == null) return 80;
@@ -342,11 +359,16 @@ public class LiveRegion {
      * disables bracketed paste, restores the terminal attributes so
      * the other consumer can configure them freely, and erases the
      * live region. Call {@link #resume()} when the excursion is done.
+     *
+     * <p>The {@link #paused} flag is set even when we're not attached
+     * (status bar off, dumb terminal): it gates <em>all</em> output, and
+     * {@link ChatTerminal}'s no-region fallback would otherwise write
+     * straight into the borrowed screen.
      */
     public synchronized void pause() {
-        if (!isAttached() || paused.get()) return;
-        paused.set(true);
+        if (paused.getAndSet(true)) return;
         Terminal t = terminal;
+        if (t == null) return;   // nothing to tear down — the flag alone gates output
 
         ScheduledExecutorService anim = animator;
         if (anim != null) {
@@ -380,14 +402,16 @@ public class LiveRegion {
 
     /**
      * Reclaim the TTY after a {@link #pause()}. Re-applies our soft-raw
-     * attributes, re-enables bracketed paste, repaints the live region,
-     * and restarts the animator + input threads.
+     * attributes, re-enables bracketed paste, replays whatever arrived
+     * while we were paused, repaints the live region, and restarts the
+     * animator + input threads.
      */
     public synchronized void resume() {
         if (!paused.get()) return;
         Terminal t = terminal;
         if (t == null) {
             paused.set(false);
+            flushDeferred();
             return;
         }
         // Re-apply soft-raw attributes (ICANON / ECHO off, OPOST left on).
@@ -403,6 +427,10 @@ public class LiveRegion {
             writeRaw(ESC + "[?2004h");   // re-enable bracketed paste
         }
         paused.set(false);
+        // Backlog first, live region second — the replayed lines have to
+        // land in the scrollback *above* the pinned block, exactly where
+        // they would have gone had the excursion never happened.
+        flushDeferred();
         paintLive();
 
         ScheduledExecutorService anim = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -430,9 +458,17 @@ public class LiveRegion {
      * characters are honoured — each segment becomes its own scrollback
      * line. The live region is erased, the text is written (terminal
      * auto-scrolls if at the bottom), then the live region is redrawn.
+     *
+     * <p>While the TTY is on loan ({@link #pause()}) the text is held in
+     * the deferred backlog instead — a write here would corrupt the
+     * borrowed screen.
      */
     public void emitStatic(String text) {
         if (text == null || text.isEmpty()) return;
+        if (paused.get()) {
+            deferred.add(text);
+            return;
+        }
         if (terminal == null) {
             // No live region active — fall back to plain stdout-ish write.
             System.out.println(text);
@@ -440,11 +476,41 @@ public class LiveRegion {
         }
         synchronized (writeLock) {
             eraseLive();
-            writeRaw(text);
-            if (!text.endsWith("\n") && !text.endsWith("\r\n")) {
-                writeRaw("\n");
-            }
+            writeStatic(text);
             paintLiveInner();
+        }
+    }
+
+    /** Writes one static entry, terminating it with a newline if it lacks one. */
+    private void writeStatic(String text) {
+        writeRaw(text);
+        if (!text.endsWith("\n") && !text.endsWith("\r\n")) {
+            writeRaw("\n");
+        }
+    }
+
+    /**
+     * Replays the backlog captured during {@link #pause()}, headed by a
+     * dim marker line so the jump in the scrollback is explained. Caller
+     * repaints the live region afterwards.
+     */
+    private void flushDeferred() {
+        DeferredOutput.Batch batch = deferred.drain();
+        if (batch.isEmpty()) return;
+        String marker = DeferredOutput.marker(batch.entries().size(), batch.dropped());
+        if (terminal == null) {
+            System.out.println(marker);
+            for (String text : batch.entries()) {
+                System.out.println(text);
+            }
+            return;
+        }
+        synchronized (writeLock) {
+            eraseLive();
+            writeStatic(ESC + "[2m" + marker + ESC + "[0m");
+            for (String text : batch.entries()) {
+                writeStatic(text);
+            }
         }
     }
 
@@ -453,6 +519,12 @@ public class LiveRegion {
      * then redraws the live region. Used by the {@code /clear} command.
      */
     public void clearScreen() {
+        if (paused.get()) {
+            // The screen belongs to someone else — all we own is the
+            // backlog, and a clear means the user doesn't want it.
+            deferred.clear();
+            return;
+        }
         if (terminal == null) return;
         synchronized (writeLock) {
             // Reset state — we're going to redraw from scratch.
@@ -1024,7 +1096,10 @@ public class LiveRegion {
     // ─── Painting ──────────────────────────────────────────────────
 
     private void paintLive() {
-        if (terminal == null) return;
+        // paused: the TTY is on loan — a repaint would stamp our status
+        // bar and prompt into the borrowed screen. Reachable from
+        // refresh(), setPromptLabel() and setMaskInput().
+        if (terminal == null || paused.get()) return;
         synchronized (writeLock) {
             eraseLive();
             paintLiveInner();

@@ -15,6 +15,11 @@ import org.springframework.stereotype.Service;
  * time. {@code runFullscreen} pauses JLine, runs the supplied Lanterna
  * interaction in the alternate screen buffer, and resumes JLine on return —
  * even on exception or interrupt.
+ *
+ * <p>Exactly one of the two surfaces is live, and that includes output:
+ * while the excursion runs, background text (chat turns pushed by the
+ * brain, worker echoes) is buffered by {@link LiveRegion#pause()} and
+ * becomes visible when the REPL takes the terminal back.
  */
 @Service
 public class InterfaceService {
@@ -60,10 +65,14 @@ public class InterfaceService {
         // threads. Tell it to pause before we hand the TTY to Lanterna,
         // otherwise our reader keeps eating bytes that Lanterna needs to
         // initialise its own terminal (typical symptom: EOFException).
-        boolean liveWasAttached = liveRegion.isAttached();
-        if (liveWasAttached) {
-            liveRegion.pause();
-        }
+        //
+        // Unconditional, also when the region isn't attached: pause()
+        // doubles as the output gate. Everything the brain pushes at us
+        // during the excursion (chat turns, worker echoes, streaming
+        // chunks) is buffered there and replayed by resume() — a write
+        // into Lanterna's alternate screen buffer would corrupt it for
+        // good, since Lanterna only ever repaints deltas.
+        liveRegion.pause();
         // pause(true) joins JLine's input pump thread before Lanterna
         // takes over System.in — without the join JLine keeps pumping
         // bytes into its NonBlockingReader's char buffer, leaving it
@@ -75,7 +84,7 @@ public class InterfaceService {
             t.pause(true);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
-            if (liveWasAttached) liveRegion.resume();
+            liveRegion.resume();
             mode.set(UiMode.CHAT);
             throw new IOException("Interrupted while pausing JLine for fullscreen excursion", ie);
         }
@@ -83,9 +92,7 @@ public class InterfaceService {
             excursion.run(session);
         } finally {
             t.resume();
-            if (liveWasAttached) {
-                liveRegion.resume();
-            }
+            liveRegion.resume();
             mode.set(UiMode.CHAT);
         }
     }

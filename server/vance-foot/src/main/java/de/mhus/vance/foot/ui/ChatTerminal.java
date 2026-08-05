@@ -29,7 +29,10 @@ import org.springframework.stereotype.Component;
  * surface: while a {@link LiveRegion} is attached, all output is
  * routed through {@link LiveRegion#emitStatic(String)} so it slides
  * into the terminal scrollback above the pinned UI block. Without an
- * active region, output falls back to plain {@code stdout}.
+ * active region, output falls back to plain {@code stdout} — except
+ * while a Lanterna excursion holds the TTY, where the region buffers
+ * everything and replays it once JLine is back (see
+ * {@link LiveRegion#pause()}).
  *
  * <p>Streaming (partial chat chunks) is handled by {@link #streamRaw}:
  * incoming fragments are buffered until a {@code \n} arrives, then the
@@ -310,22 +313,31 @@ public class ChatTerminal {
         return message.substring(0, cut) + "...";
     }
 
+    /**
+     * Whether output has to go through {@link LiveRegion#emitStatic}
+     * instead of straight to the terminal: either the region owns the
+     * bottom rows, or the TTY is on loan to a fullscreen excursion and
+     * the region has to hold the text back until JLine returns.
+     */
+    private boolean routeThroughRegion() {
+        return liveRegion.isAttached() || liveRegion.isPaused();
+    }
+
     private void emitStyled(AttributedString styled) {
-        if (liveRegion.isAttached()) {
-            Terminal t = jlineTerminal.get();
+        Terminal t = jlineTerminal.get();
+        if (routeThroughRegion()) {
             String ansi = t != null ? styled.toAnsi(t) : styled.toAnsi();
             liveRegion.emitStatic(ansi);
             return;
         }
         // Fallback: no live region — write directly via stdout.
-        Terminal t = jlineTerminal.get();
         PrintWriter w = writer();
         w.println(t != null ? styled.toAnsi(t) : styled.toAnsi());
         w.flush();
     }
 
     private void emit(String line) {
-        if (liveRegion.isAttached()) {
+        if (routeThroughRegion()) {
             liveRegion.emitStatic(line);
             return;
         }
@@ -347,7 +359,7 @@ public class ChatTerminal {
         // Server-/LLM-supplied stream: strip terminal control chars so
         // embedded ANSI/OSC cannot spoof the screen (code-review F3).
         text = TerminalSanitizer.sanitizeContent(text);
-        if (!liveRegion.isAttached()) {
+        if (!routeThroughRegion()) {
             PrintWriter w = writer();
             w.print(text);
             w.flush();
@@ -387,7 +399,7 @@ public class ChatTerminal {
         synchronized (bufferLock) {
             buffer.clear();
         }
-        if (liveRegion.isAttached()) {
+        if (routeThroughRegion()) {
             liveRegion.clearScreen();
             return;
         }

@@ -5,14 +5,17 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Compact status snapshot of a client-side exec job — no inline output
- * bodies. Mirror of the brain's {@code ExecStat}.
+ * bodies. Mirror of the brain's {@code ExecStat}. Public because it is
+ * the only view outside consumers (the {@code /ui-exec} browser, the
+ * {@code client_exec_stat} tool) get on a job; the mutable
+ * {@link ClientExecJob} itself stays package-private.
  */
-record ClientExecStat(
+public record ClientExecStat(
         String id,
         String command,
         @Nullable String sessionId,
         @Nullable String projectId,
-        ClientExecJob.Status status,
+        ClientExecStatus status,
         Instant startedAt,
         Instant lastOutputAt,
         @Nullable Instant finishedAt,
@@ -23,4 +26,5 @@ record ClientExecStat(
         long stdoutMtimeMillis,
         long stderrMtimeMillis,
         String stdoutPath,
-        String stderrPath) {}
+        String stderrPath,
+        boolean timedOut) {}

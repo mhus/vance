@@ -95,6 +95,9 @@ public class ClientExecStatTool implements ClientTool {
         }
         out.put("stdoutPath", s.stdoutPath());
         out.put("stderrPath", s.stderrPath());
+        if (s.timedOut()) {
+            out.put("timedOut", true);
+        }
         return out;
     }
 }

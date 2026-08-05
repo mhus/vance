@@ -40,7 +40,7 @@ class ClientExecutorTailTest {
 
         assertThat(s.id()).isEqualTo("id-1");
         assertThat(s.command()).isEqualTo("true");
-        assertThat(s.status()).isEqualTo(ClientExecJob.Status.RUNNING);
+        assertThat(s.status()).isEqualTo(ClientExecStatus.RUNNING);
         assertThat(s.lastOutputAt()).isAfterOrEqualTo(s.startedAt());
         assertThat(s.exitCode()).isNull();
     }

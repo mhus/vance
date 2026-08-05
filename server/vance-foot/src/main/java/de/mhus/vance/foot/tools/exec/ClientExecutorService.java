@@ -16,6 +16,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -168,15 +169,25 @@ public class ClientExecutorService {
         return Optional.ofNullable(jobs.get(id));
     }
 
-    public Collection<ClientExecJob> list() {
-        synchronized (jobs) {
-            return new java.util.ArrayList<>(jobs.values());
-        }
-    }
-
     /** Compact status snapshot — no stdout/stderr bodies. */
     public Optional<ClientExecStat> stat(String id) {
         return get(id).map(ClientExecutorService::toStat);
+    }
+
+    /**
+     * Snapshot of every job this foot still tracks, newest start first.
+     * Only local jobs exist here — the index is per-foot-process, so
+     * there is nothing remote to filter out.
+     */
+    public List<ClientExecStat> statAll() {
+        List<ClientExecJob> all;
+        synchronized (jobs) {
+            all = new ArrayList<>(jobs.values());
+        }
+        return all.stream()
+                .map(ClientExecutorService::toStat)
+                .sorted(Comparator.comparing(ClientExecStat::startedAt).reversed())
+                .toList();
     }
 
     static ClientExecStat toStat(ClientExecJob job) {
@@ -197,7 +208,8 @@ public class ClientExecutorService {
                 fileMtime(job.stdoutFile()),
                 fileMtime(job.stderrFile()),
                 job.stdoutFile().toString(),
-                job.stderrFile().toString());
+                job.stderrFile().toString(),
+                job.timedOut());
     }
 
     /**
@@ -254,7 +266,7 @@ public class ClientExecutorService {
         if (job == null || job.isTerminal()) return false;
         Process p = job.process();
         if (p == null) return false;
-        job.status(ClientExecJob.Status.KILLED);
+        job.status(ClientExecStatus.KILLED);
         job.finishedAt(Instant.now());
         terminateTree(p);
         cancelWatchdog(id);
@@ -377,15 +389,15 @@ public class ClientExecutorService {
             err.join();
 
             job.exitCode(code);
-            if (job.status() != ClientExecJob.Status.KILLED) {
-                job.status(code == 0 ? ClientExecJob.Status.COMPLETED
-                        : ClientExecJob.Status.FAILED);
+            if (job.status() != ClientExecStatus.KILLED) {
+                job.status(code == 0 ? ClientExecStatus.COMPLETED
+                        : ClientExecStatus.FAILED);
             }
         } catch (Exception e) {
             log.warn("Client exec job '{}' failed: {}", job.id(), e.toString());
             job.appendStderr("ERROR: "
                     + e.getClass().getSimpleName() + ": " + e.getMessage());
-            job.status(ClientExecJob.Status.FAILED);
+            job.status(ClientExecStatus.FAILED);
         } finally {
             job.finishedAt(Instant.now());
             cancelWatchdog(job.id());

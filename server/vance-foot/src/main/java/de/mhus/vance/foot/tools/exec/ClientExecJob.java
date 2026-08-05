@@ -12,8 +12,6 @@ import org.jspecify.annotations.Nullable;
  */
 final class ClientExecJob {
 
-    enum Status { RUNNING, COMPLETED, FAILED, KILLED }
-
     private final String id;
     private final String command;
     private final Path stdoutFile;
@@ -25,7 +23,7 @@ final class ClientExecJob {
     private final StringBuilder stdout = new StringBuilder();
     private final StringBuilder stderr = new StringBuilder();
 
-    private volatile Status status = Status.RUNNING;
+    private volatile ClientExecStatus status = ClientExecStatus.RUNNING;
     private volatile @Nullable Integer exitCode;
     private volatile @Nullable Instant finishedAt;
     private volatile @Nullable Process process;
@@ -61,8 +59,8 @@ final class ClientExecJob {
     @Nullable Instant finishedAt() { return finishedAt; }
     void finishedAt(Instant t) { this.finishedAt = t; }
 
-    Status status() { return status; }
-    void status(Status s) { this.status = s; }
+    ClientExecStatus status() { return status; }
+    void status(ClientExecStatus s) { this.status = s; }
 
     @Nullable Integer exitCode() { return exitCode; }
     void exitCode(@Nullable Integer c) { this.exitCode = c; }
@@ -93,7 +91,7 @@ final class ClientExecJob {
     }
 
     boolean isTerminal() {
-        return status != Status.RUNNING;
+        return status != ClientExecStatus.RUNNING;
     }
 
     @Nullable Instant deadline() { return deadline; }
@@ -108,10 +106,10 @@ final class ClientExecJob {
      * Returns {@code true} when this caller claimed the kill.
      */
     synchronized boolean attemptWatchdogKill() {
-        if (status != Status.RUNNING) {
+        if (status != ClientExecStatus.RUNNING) {
             return false;
         }
-        status = Status.KILLED;
+        status = ClientExecStatus.KILLED;
         timedOut = true;
         finishedAt = Instant.now();
         return true;

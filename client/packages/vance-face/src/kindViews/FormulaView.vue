@@ -47,9 +47,7 @@ const source = computed<string>(() => {
   return props.content ?? '';
 });
 
-const mixedMode = computed<boolean>(() =>
-  props.meta.mixed === 'true' || props.meta.mixed === true,
-);
+const mixedMode = computed<boolean>(() => props.meta.mixed === 'true');
 
 interface MathSegment {
   html: string;

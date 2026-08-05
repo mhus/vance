@@ -209,6 +209,43 @@ class DiscoveryServiceTest {
     }
 
     @Test
+    void discover_returns_tool_verbatim_when_manual_typed_pick_has_no_body() {
+        // Regression: how_do_i must resolve a TOOL that the discovery LLM
+        // mis-labels as "manual". hook_set is a real tool with no manual
+        // file at _vance/manuals/hook_set.md — the old code retried the
+        // manual load three times and collapsed to a useless hint, so the
+        // hook intent never resolved (and the delegated worker got stuck
+        // in the same loop). Now the catalog section (Tools) overrides the
+        // LLM's wrong type: return the tool verbatim, no retry.
+        when(catalogService.renderForTenant(any(), any())).thenReturn("""
+                ## Tools
+
+                ### hook_set
+
+                Create or update an event hook.
+                """);
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
+                "loaded", Map.of(
+                        "type", "manual",
+                        "name", "hook_set",
+                        "source", "engine",
+                        "summary", "Create or update an event hook.")));
+        when(documentService.lookupCascade(eq(TENANT), any(), eq("_vance/manuals/hook_set.md")))
+                .thenReturn(Optional.empty());
+
+        DiscoveryResult r = service.discover(
+                "automate on inbox.item.created", TENANT, null, null);
+
+        assertThat(r.getLoaded()).isNotNull();
+        assertThat(r.getLoaded().getName()).isEqualTo("hook_set");
+        assertThat(r.getLoaded().getType()).isEqualTo("tool");
+        assertThat(r.getLoaded().getContent()).isNull();
+        assertThat(r.getHint()).isNull();
+        // No retry: the tool section wins immediately.
+        verify(lightLlm, times(1)).callForJson(any(LightLlmRequest.class));
+    }
+
+    @Test
     void discover_downgrades_to_hint_when_all_attempts_hallucinate() {
         // Every attempt picks a name that isn't in the catalog. After
         // MAX_DISCOVERY_ATTEMPTS retries the service gives up with a

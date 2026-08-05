@@ -187,8 +187,27 @@ public class DiscoveryService {
                 if (body.isPresent()) {
                     return withInlinedContent(result, loaded, body.get());
                 }
+                // No manual body resolved. normalise() already validated
+                // the name as a known catalog capability, so check WHICH
+                // section it actually lives under. If the catalog files it
+                // as a tool/skill, the LLM simply mis-typed a bodiless
+                // capability (e.g. hook_set — a tool with no manual file)
+                // as "manual": retype it and pass it through so the caller
+                // can invoke it directly, instead of burning retries on a
+                // manual that will never exist and then collapsing to a
+                // useless hint.
+                String realType = capabilityType(loaded.getName(), catalog);
+                if (!"manual".equals(realType)) {
+                    log.debug("DiscoveryService: pick '{}' labelled manual but is a "
+                                    + "{} with no manuals/{}.md body — returning as {} match",
+                            loaded.getName(), realType, loaded.getName(), realType);
+                    return relabelMatch(result, loaded, realType);
+                }
+                // Genuinely a manuals-section entry whose body didn't load
+                // — an odd soft-hallucination (catalog and body come from
+                // the same cascade). Retry for a loadable pick.
                 log.info("DiscoveryService: attempt {}/{} picked '{}' which is "
-                                + "in the catalog header but not loadable as "
+                                + "in the manuals section but not loadable as "
                                 + "_vance/manuals/{}.md — retrying",
                         attempt, MAX_DISCOVERY_ATTEMPTS, loaded.getName(), loaded.getName());
                 badPicks.add(loaded.getName());
@@ -258,6 +277,51 @@ public class DiscoveryService {
                 .alternatives(result.getAlternatives())
                 .hint(result.getHint())
                 .build();
+    }
+
+    /** Rebuild {@code result} with the loaded match retyped (no inlined
+     *  body) — used when the LLM mis-typed a bodiless tool/skill
+     *  capability as a {@code "manual"}. */
+    private static DiscoveryResult relabelMatch(
+            DiscoveryResult result, DiscoveryResult.Match loaded, String type) {
+        DiscoveryResult.Match retyped = DiscoveryResult.Match.builder()
+                .type(type)
+                .name(loaded.getName())
+                .source(loaded.getSource())
+                .summary(loaded.getSummary())
+                .score(loaded.getScore())
+                .build();
+        return DiscoveryResult.builder()
+                .intent(result.getIntent())
+                .loaded(retyped)
+                .alternatives(result.getAlternatives())
+                .hint(result.getHint())
+                .build();
+    }
+
+    /**
+     * Determine a capability's real type from the catalog by finding
+     * which {@code ## <Section>} block its {@code ### <name>} header sits
+     * under. {@link SourceCatalogBuilder} renders exactly three sections
+     * — Manuals, Skills, Tools. Defaults to {@code "tool"} when the name
+     * isn't found under a recognised section (the name was already
+     * validated as a known capability, so an executable default is safe).
+     */
+    static String capabilityType(String name, String catalog) {
+        String section = "";
+        for (String line : catalog.split("\n", -1)) {
+            String trimmed = line.strip();
+            if (trimmed.startsWith("## ")) {
+                section = trimmed.substring(3).strip().toLowerCase();
+            } else if (trimmed.startsWith("### ")) {
+                if (name.equals(trimmed.substring(4).strip())) {
+                    if (section.startsWith("manual")) return "manual";
+                    if (section.startsWith("skill")) return "skill";
+                    return "tool";
+                }
+            }
+        }
+        return "tool";
     }
 
     // ──────────────────── Reply normalisation ────────────────────

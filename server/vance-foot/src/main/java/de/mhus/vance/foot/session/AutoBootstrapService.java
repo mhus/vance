@@ -14,6 +14,7 @@ import de.mhus.vance.foot.auth.VancePaths;
 import de.mhus.vance.foot.connection.BrainException;
 import de.mhus.vance.foot.connection.BrainRestClientService;
 import de.mhus.vance.foot.connection.ConnectionService;
+import de.mhus.vance.foot.session.RandomSessionNameGenerator;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
@@ -69,6 +70,7 @@ public class AutoBootstrapService {
     private final ChatTerminal terminal;
     private final VancePaths paths;
     private final SessionAnchorStore anchorStore;
+    private final RandomSessionNameGenerator nameGenerator;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "vance-foot-bootstrap");
@@ -91,7 +93,8 @@ public class AutoBootstrapService {
                                 SessionService sessions,
                                 ChatTerminal terminal,
                                 VancePaths paths,
-                                SessionAnchorStore anchorStore) {
+                                SessionAnchorStore anchorStore,
+                                RandomSessionNameGenerator nameGenerator) {
         this.config = config;
         this.connection = connection;
         this.rest = rest;
@@ -99,6 +102,7 @@ public class AutoBootstrapService {
         this.terminal = terminal;
         this.paths = paths;
         this.anchorStore = anchorStore;
+        this.nameGenerator = nameGenerator;
     }
 
     /**
@@ -175,7 +179,8 @@ public class AutoBootstrapService {
             return;
         }
         sessions.bind(response.getSessionId(), response.getProjectId());
-        persistSessionAnchor(response.getSessionId(), response.getProjectId());
+        String clientName = resolveClientName();
+        persistSessionAnchor(response.getSessionId(), response.getProjectId(), clientName);
         // Restore the process the user was steering; fall back to the session
         // chat orchestrator the resume reports.
         String active = target.activeProcess() != null && !target.activeProcess().isBlank()
@@ -185,7 +190,7 @@ public class AutoBootstrapService {
             sessions.setActiveProcess(active);
         }
         terminal.info("Reconnected → session re-adopted: " + response.getSessionId()
-                + " (project=" + response.getProjectId() + ")");
+                + " (project=" + response.getProjectId() + ", name=" + clientName + ")");
     }
 
     private void runBootstrap(FootConfig.Bootstrap b) {
@@ -231,9 +236,11 @@ public class AutoBootstrapService {
         }
 
         sessions.bind(response.getSessionId(), response.getProjectId());
-        persistSessionAnchor(response.getSessionId(), response.getProjectId());
+        String clientName = resolveClientName();
+        persistSessionAnchor(response.getSessionId(), response.getProjectId(), clientName);
         terminal.info((response.isSessionCreated() ? "Bootstrap → session created: " : "Bootstrap → session resumed: ")
-                + response.getSessionId() + " (project=" + response.getProjectId() + ")");
+                + response.getSessionId() + " (project=" + response.getProjectId()
+                + ", name=" + clientName + ")");
         if (response.getChatProcessName() != null) {
             terminal.info("  ° session chat: " + response.getChatProcessName()
                     + " (engine=" + response.getChatEngine() + ")");
@@ -281,6 +288,22 @@ public class AutoBootstrapService {
     }
 
     /**
+     * Resolves the human-readable client name for this run: the explicit
+     * {@code --name} / {@code vance.client.name} value when set, otherwise
+     * a freshly generated random two-word name. The same resolved value
+     * is used for the startup announcement and the persisted anchor entry
+     * so both stay consistent within one bootstrap (a separate
+     * {@code nameGenerator.generate()} call would yield a different name).
+     */
+    private String resolveClientName() {
+        String clientName = config.getClient().getName();
+        if (clientName == null || clientName.isBlank()) {
+            clientName = nameGenerator.generate();
+        }
+        return clientName;
+    }
+
+    /**
      * Records the session we just bootstrapped into as this directory's
      * session anchor ({@code .vancetope/session.yaml}), so a later
      * {@code -c} / {@code --continue} resumes exactly it. The entry is
@@ -290,9 +313,8 @@ public class AutoBootstrapService {
      * verbose and swallowed; it must never break an otherwise-successful
      * bootstrap.
      */
-    private void persistSessionAnchor(String sessionId, @Nullable String projectId) {
+    private void persistSessionAnchor(String sessionId, @Nullable String projectId, String clientName) {
         try {
-            String clientName = config.getClient().getName();
             anchorStore.upsertSession(paths.activeDir(), sessionId, projectId, clientName);
             terminal.verbose("Session anchor updated → " + anchorStore.file(paths.activeDir()));
         } catch (RuntimeException e) {

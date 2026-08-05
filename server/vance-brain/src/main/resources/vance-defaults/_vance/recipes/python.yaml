@@ -4,6 +4,19 @@ description: |
   tools are promoted to primary so they sit in the default tool
   catalog without find_tools discovery.
 engine: ford
+# High-precision execution-intent phrases only. The recipe NAME is NOT a
+# routing signal (that would hijack any goal that merely mentions Python
+# as content, e.g. "a mindmap about Python"); routing is by these curated
+# phrases or by the semantic LLM stage. See RecipeSelectorService.
+triggers:
+  keywords:
+    - run python
+    - execute python
+    - führe python
+    - python ausführen
+    - python skript
+    - python-skript
+
 params:
   model: default:python,default:code
   validation: true

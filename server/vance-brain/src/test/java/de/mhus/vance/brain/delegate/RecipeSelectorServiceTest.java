@@ -25,12 +25,13 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 /**
- * Unit tests for the trigger-gated {@link RecipeSelectorService}. The
- * service runs a deterministic pre-check (recipe-name word-boundary +
- * trigger-keyword substring) BEFORE any LLM call. The LLM stage —
- * now routed through {@link LightLlmService} with the
- * {@code recipe-selector} internal recipe — only fires when multiple
- * trigger-matched candidates need disambiguation.
+ * Unit tests for {@link RecipeSelectorService}. Routing has two stages:
+ * a single trigger-keyword hit routes deterministically (no LLM); zero
+ * or multiple hits fall through to a semantic LLM call (via
+ * {@link LightLlmService} with the {@code recipe-selector} recipe) over
+ * the full inventory. There is deliberately NO blind recipe-name match —
+ * a content word equal to a recipe name (e.g. "python" in "a mindmap
+ * about python") must not hijack routing.
  */
 class RecipeSelectorServiceTest {
 
@@ -75,49 +76,53 @@ class RecipeSelectorServiceTest {
     }
 
     @Test
-    void goalContainsRecipeName_directMatchNoLlm() {
+    void goalNamesRecipeAsIntent_noTrigger_routesToLlm() {
+        // "nutze Marvin" reads like a routing intent, but the recipes
+        // carry no trigger keywords — so there is no cheap deterministic
+        // signal and the semantic LLM stage decides. The old blind
+        // recipe-NAME match is gone: naming a recipe no longer short-
+        // circuits routing.
         when(recipeLoader.listAll(anyString(), any())).thenReturn(List.of(
                 stub("marvin", "marvin"),
                 stub("essay-pipeline", "marvin")));
+        whenLlmReturns(Map.of(
+                "decision", "MATCH",
+                "recipe", "marvin",
+                "rationale", "user explicitly asked for marvin"));
 
         RecipeSelectorService.Result r = selector.select(caller,
                 "nutze Marvin um die Notizen zu sortieren");
 
         assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.MATCH);
         assertThat(r.recipeName()).isEqualTo("marvin");
-        assertThat(r.engineName()).isEqualTo("marvin");
-        verify(lightLlm, never()).callForJson(any());
+        verify(lightLlm).callForJson(any()); // routed through the LLM, not a blind name match
     }
 
     @Test
-    void longerRecipeNameWinsOverShorter() {
-        // Both "analyze" and "deep-analyze" appear as recipes; the
-        // goal contains the longer phrase. Longest-match must win
-        // so the specific recipe gets picked.
+    void contentWordMatchingRecipeName_doesNotHijackRouting() {
+        // The mindmap bug: a goal that MENTIONS "python" as subject
+        // content ("a mindmap about python, java, scala") must NOT route
+        // to the `python` recipe by a blind name match. With that match
+        // gone, the semantic LLM decides — here it picks a document-
+        // authoring recipe, and the python recipe is never auto-selected
+        // from the content word.
         when(recipeLoader.listAll(anyString(), any())).thenReturn(List.of(
-                stub("analyze", "ford"),
-                stub("deep-analyze", "marvin")));
+                stub("python", "ford"),
+                stub("creator", "ford"),
+                stub("default", "ford")));
+        whenLlmReturns(Map.of(
+                "decision", "MATCH",
+                "recipe", "creator",
+                "rationale", "authoring a mindmap document, not python execution"));
 
         RecipeSelectorService.Result r = selector.select(caller,
-                "please run a deep-analyze on this code");
+                "erstelle eine mindmap über programmiersprachen: python, java, scala");
 
         assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.MATCH);
-        assertThat(r.recipeName()).isEqualTo("deep-analyze");
-        verify(lightLlm, never()).callForJson(any());
-    }
-
-    @Test
-    void recipeNameMatchRequiresWordBoundary() {
-        // Recipe "ford" must NOT match the substring inside "effort".
-        when(recipeLoader.listAll(anyString(), any())).thenReturn(List.of(
-                stub("ford", "ford")));
-
-        RecipeSelectorService.Result r = selector.select(caller,
-                "considerable effort required");
-
-        // No recipe-name match, no trigger keywords on ford stub → NONE.
-        assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.NONE);
-        verify(lightLlm, never()).callForJson(any());
+        assertThat(r.recipeName())
+                .as("content word 'python' must not blind-route to the python recipe")
+                .isEqualTo("creator");
+        verify(lightLlm).callForJson(any());
     }
 
     @Test
@@ -135,23 +140,46 @@ class RecipeSelectorServiceTest {
     }
 
     @Test
-    void goalWithoutTrigger_returnsNoneWithoutLlm() {
+    void noTrigger_routesToLlm_matchUsed() {
+        // Zero trigger hits no longer short-circuits to NONE — the
+        // semantic stage runs over the full inventory and a MATCH is used.
         when(recipeLoader.listAll(anyString(), any())).thenReturn(List.of(
-                stubWithTriggers("marvin", "marvin",
-                        List.of("marvin", "deep think")),
-                stubWithTriggers("hactar", "hactar",
-                        List.of("hactar", "javascript"))));
+                stubWithTriggers("marvin", "marvin", List.of("deep think")),
+                stub("summary", "ford")));
+        whenLlmReturns(Map.of(
+                "decision", "MATCH",
+                "recipe", "summary",
+                "rationale", "a plain summary — general worker fits"));
+
+        RecipeSelectorService.Result r = selector.select(caller,
+                "schreib mir eine zusammenfassung");
+
+        assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.MATCH);
+        assertThat(r.recipeName()).isEqualTo("summary");
+        verify(lightLlm).callForJson(any());
+    }
+
+    @Test
+    void noTrigger_llmReturnsNone_triggerObservedFalse() {
+        // No trigger fired and the LLM finds no fitting recipe. The NONE
+        // must carry triggerObserved=false so the caller falls back to the
+        // `default` recipe (which has doc_write), not routing.fallback.recipe.
+        when(recipeLoader.listAll(anyString(), any())).thenReturn(List.of(
+                stubWithTriggers("marvin", "marvin", List.of("deep think")),
+                stub("summary", "ford")));
+        whenLlmReturns(Map.of(
+                "decision", "NONE",
+                "recipe", "",
+                "rationale", "no existing recipe fits"));
 
         RecipeSelectorService.Result r = selector.select(caller,
                 "schreib mir eine zusammenfassung");
 
         assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.NONE);
-        assertThat(r.rationale()).contains("no trigger detected");
         assertThat(r.triggerObserved())
-                .as("no trigger keyword fired → caller should fall through "
-                        + "to the default recipe, not the configurable fallback")
+                .as("no trigger fired → NONE routes to the default recipe fallback")
                 .isFalse();
-        verify(lightLlm, never()).callForJson(any());
+        verify(lightLlm).callForJson(any());
     }
 
     @Test
@@ -302,18 +330,6 @@ class RecipeSelectorServiceTest {
                 (List<Map<String, String>>) req.getPebbleVars().get("candidates");
         assertThat(cands).extracting(m -> m.get("name"))
                 .containsExactly("essay-a", "essay-b");
-    }
-
-    // ──────────────────── word-boundary helper ────────────────────
-
-    @Test
-    void containsAsWord_matchesAtBoundary() {
-        assertThat(RecipeSelectorService.containsAsWord("use marvin now", "marvin")).isTrue();
-        assertThat(RecipeSelectorService.containsAsWord("marvin", "marvin")).isTrue();
-        assertThat(RecipeSelectorService.containsAsWord("Marvin!".toLowerCase(), "marvin")).isTrue();
-        assertThat(RecipeSelectorService.containsAsWord("quick-lookup is fast", "quick-lookup")).isTrue();
-        assertThat(RecipeSelectorService.containsAsWord("considerable effort", "ford")).isFalse();
-        assertThat(RecipeSelectorService.containsAsWord("marvinify", "marvin")).isFalse();
     }
 
     // ──────────────────── helpers ────────────────────

@@ -18,47 +18,44 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
- * Picks a project recipe for a free-text task description. Trigger-
- * gated: a deterministic pre-check (recipe-name word-boundary + trigger-
- * keyword substring) runs first. The LLM call only fires when multiple
- * recipes match the same trigger and need disambiguation. Without any
- * trigger the selector returns {@code NONE} immediately — caller falls
- * back to its default recipe (typically {@code default} → ford).
+ * Picks a project recipe for a free-text task description. This is the
+ * <em>no-preset</em> path: the delegating engine (e.g. Arthur) may name
+ * a recipe explicitly via {@code preset}, in which case the selector is
+ * never consulted. When it doesn't, this service decides.
  *
  * <p>See {@code specification/recipe-routing.md} for the full design.
  *
- * <h2>Pre-check stages</h2>
+ * <h2>Stages</h2>
  * <ol>
- *   <li><b>Recipe-name word-boundary match.</b> Any recipe name that
- *       appears as a word in the goal text is a direct match — no LLM,
- *       no ambiguity. Longest-match wins when two recipe names overlap
- *       (e.g. {@code analyze} vs {@code deep-analyze}).</li>
- *   <li><b>Trigger-keyword substring match.</b> Recipes declare phrases
- *       via {@code triggers.keywords:} in their YAML. Substring match
- *       on the lower-cased goal. Multiple matches → only-matched
- *       candidates feed the LLM for disambiguation; single match →
- *       deterministic.</li>
- *   <li><b>No trigger.</b> Return {@code NONE} with a rationale.
- *       The caller spawns its default recipe (no Slart fallback —
- *       see {@code routing.fallback.recipe} setting).</li>
+ *   <li><b>Trigger-keyword fast-path.</b> Recipes declare curated intent
+ *       phrases via {@code triggers.keywords:} in their YAML (substring
+ *       match on the lower-cased goal). A <em>single</em> hit routes
+ *       deterministically — no LLM call. Curated phrases are collision-
+ *       safe: {@code "run python"} matches a real python intent but not
+ *       {@code "a diagram about python"}.</li>
+ *   <li><b>Semantic LLM routing.</b> Zero or multiple trigger hits →
+ *       one {@link LightLlmService} call over the <em>full</em> routable
+ *       inventory (names + descriptions), using the bundled
+ *       {@code recipe-selector} recipe. It returns a concrete recipe or
+ *       {@code NONE}. A NONE / failure verdict falls back to
+ *       {@code default} (no trigger fired) or {@code routing.fallback.recipe}
+ *       (a trigger fired), tracked by {@code triggerObserved}.</li>
  * </ol>
  *
- * <h2>Why deterministic comes first</h2>
+ * <h2>Why a blind recipe-name match is NOT used</h2>
  *
- * Magical LLM-routing on every empty-recipe spawn was the source of
- * the worst routing failures we saw in field testing: the selector
- * picked specialist engines (Marvin, Vogon) for trivial tasks, or
- * the opposite. Forcing the user to <em>opt in</em> by naming the
- * engine / recipe / category keyword turns the selector into a clear
- * escalation gate.
- *
- * <h2>LLM disambiguation</h2>
- *
- * When the deterministic pre-check finds multiple candidates, the
- * tie-break runs through {@link LightLlmService} using the bundled
- * {@code recipe-selector} recipe (config profile,
- * {@code internal: true}). Tenants override the recipe to bias the
- * disambiguation prompt or swap the model — no Java change required.
+ * An earlier version added a deterministic stage that matched any recipe
+ * name appearing as a word in the goal. It could not tell a routing
+ * intent ("do python work") from subject content ("a mindmap ABOUT
+ * python"): the content word {@code python} routed to the {@code python}
+ * recipe, whose worker then lacked {@code doc_write}. Intent-vs-content
+ * is a semantic distinction a string matcher cannot make — so it now
+ * belongs to the model ({@code preset}), to curated trigger phrases, or
+ * to the semantic LLM stage. The LLM call is deliberately accepted here
+ * for routing correctness; it is gated behind the preset and single-
+ * trigger fast-paths, and produces structured output with a {@code NONE}
+ * safety net, so it is not the "magical routing on every spawn" that
+ * earlier field-testing found unreliable.
  */
 @Service
 @RequiredArgsConstructor
@@ -117,23 +114,11 @@ public class RecipeSelectorService {
 
         String lower = taskDescription.toLowerCase(Locale.ROOT);
 
-        // Stage 1: deterministic recipe-name match.
-        ResolvedRecipe byName = matchByRecipeName(inventory, lower);
-        if (byName != null) {
-            log.debug("RecipeSelector: deterministic recipe-name match recipe='{}' engine='{}'",
-                    byName.name(), byName.engine());
-            return Result.match(byName.name(), byName.engine(),
-                    "Recipe name '" + byName.name()
-                            + "' detected in goal (deterministic, no LLM call).");
-        }
-
-        // Stage 2: trigger-keyword pre-filter.
+        // Stage 1: trigger-keyword fast-path. Curated intent phrases
+        // (a recipe's triggers.keywords) are collision-safe — "run python"
+        // matches a genuine python intent but not "a diagram about python".
+        // A single hit routes deterministically with no LLM call.
         List<ResolvedRecipe> triggered = matchByTriggerKeywords(inventory, lower);
-        if (triggered.isEmpty()) {
-            return Result.noneWithoutTrigger(
-                    "no trigger detected in goal — caller falls back to "
-                            + "default recipe (no LLM call made).");
-        }
         if (triggered.size() == 1) {
             ResolvedRecipe r = triggered.get(0);
             log.debug("RecipeSelector: single trigger-keyword match recipe='{}' engine='{}'",
@@ -143,35 +128,30 @@ public class RecipeSelectorService {
                             + "' matched the goal (deterministic, no LLM call).");
         }
 
-        // Stage 3: multiple candidates → ask the LLM for disambiguation.
-        log.debug("RecipeSelector: {} candidates triggered, running LLM disambiguation",
-                triggered.size());
-        return runLlmDisambiguation(caller, triggered, taskDescription);
+        // Stage 2: semantic routing over the FULL inventory. No cheap
+        // deterministic signal resolved the recipe (the delegating engine
+        // set no explicit preset, and zero or multiple trigger keywords
+        // fired), so the LLM reads the goal against the whole recipe
+        // catalogue and decides — a concrete recipe or NONE.
+        //
+        // This replaces the former blind recipe-NAME word-match, which
+        // could not tell a routing intent ("do python work") from subject
+        // content ("a mindmap ABOUT python") and wrongly routed the latter
+        // to the python recipe (whose worker then lacked doc_write). We
+        // deliberately accept one LightLlm call here for a core-routing
+        // correctness win: it only runs when neither an explicit preset nor
+        // a single trigger already resolved the recipe. The triggerObserved
+        // flag is preserved so a NONE verdict still falls back correctly —
+        // to `default` when no trigger fired, to routing.fallback.recipe
+        // when one did.
+        boolean triggerObserved = !triggered.isEmpty();
+        log.debug("RecipeSelector: no single trigger match ({} hit(s)) — "
+                        + "semantic LLM routing over {} recipe(s)",
+                triggered.size(), inventory.size());
+        return runLlmDisambiguation(caller, inventory, taskDescription, triggerObserved);
     }
 
-    // ──────────────────── deterministic matchers ────────────────────
-
-    /**
-     * Walks the full inventory and returns the recipe whose name
-     * appears as a stand-alone word in the goal text. Word boundary
-     * counts {@code a-z 0-9 _ -} as word characters so hyphenated
-     * names like {@code quick-lookup} stay intact. Longest match
-     * wins to avoid {@code analyze} stealing from {@code deep-analyze}.
-     */
-    private static @Nullable ResolvedRecipe matchByRecipeName(
-            List<ResolvedRecipe> inventory, String lowerGoal) {
-        ResolvedRecipe best = null;
-        int bestLen = 0;
-        for (ResolvedRecipe r : inventory) {
-            String n = r.name().toLowerCase(Locale.ROOT);
-            if (n.isEmpty() || n.length() <= bestLen) continue;
-            if (containsAsWord(lowerGoal, n)) {
-                best = r;
-                bestLen = n.length();
-            }
-        }
-        return best;
-    }
+    // ──────────────────── trigger pre-filter ────────────────────
 
     /**
      * Returns every recipe whose {@code triggerKeywords} contains a
@@ -194,30 +174,6 @@ public class RecipeSelectorService {
             }
         }
         return hits;
-    }
-
-    /**
-     * Word-boundary {@link String#contains}. We hand-roll instead of
-     * using a regex because we walk the inventory for every spawn
-     * and want the allocation profile flat.
-     */
-    static boolean containsAsWord(String haystack, String needle) {
-        if (needle.isEmpty() || needle.length() > haystack.length()) return false;
-        int idx = 0;
-        while ((idx = haystack.indexOf(needle, idx)) >= 0) {
-            char before = idx == 0 ? ' ' : haystack.charAt(idx - 1);
-            int after = idx + needle.length();
-            char afterC = after >= haystack.length() ? ' ' : haystack.charAt(after);
-            if (!isWordChar(before) && !isWordChar(afterC)) return true;
-            idx++;
-        }
-        return false;
-    }
-
-    private static boolean isWordChar(char c) {
-        return (c >= 'a' && c <= 'z')
-                || (c >= '0' && c <= '9')
-                || c == '_' || c == '-';
     }
 
     // ──────────────────── inventory ────────────────────
@@ -262,17 +218,22 @@ public class RecipeSelectorService {
     // ──────────────────── LLM disambiguation ────────────────────
 
     /**
-     * Runs the LightLlm-backed disambiguation only over the trigger-
-     * matched candidates. The {@code recipe-selector} recipe handles
-     * the system prompt, schema-retry budget, and model alias; we
-     * supply only the candidates and the task description as Pebble
-     * vars and cross-check the returned name against the candidate
-     * list afterwards.
+     * Runs the LightLlm-backed semantic router over {@code candidates}
+     * (the full routable inventory). The {@code recipe-selector} recipe
+     * handles the system prompt, schema-retry budget, and model alias; we
+     * supply the candidates and the task description as Pebble vars and
+     * cross-check the returned name against the candidate list afterwards.
+     *
+     * @param triggerObserved whether any trigger keyword fired for this
+     *        goal. Threaded into every NONE / failure verdict so the
+     *        caller falls back to {@code default} (no trigger) vs
+     *        {@code routing.fallback.recipe} (trigger seen) correctly.
      */
     private Result runLlmDisambiguation(
             ThinkProcessDocument caller,
             List<ResolvedRecipe> candidates,
-            String taskDescription) {
+            String taskDescription,
+            boolean triggerObserved) {
         Map<String, Object> raw;
         try {
             raw = lightLlm.callForJson(LightLlmRequest.builder()
@@ -289,15 +250,24 @@ public class RecipeSelectorService {
         } catch (SchemaValidationException e) {
             log.warn("RecipeSelector: schema budget exhausted attempts={} last='{}'",
                     e.getAttempts(), e.getLastError());
-            return Result.noneAfterTrigger(
+            return none(triggerObserved,
                     "LLM could not produce a valid reply within "
                             + e.getAttempts() + " attempts");
         } catch (LightLlmException e) {
             log.warn("RecipeSelector: LLM call failed: {}", e.toString());
-            return Result.noneAfterTrigger("LLM call failed: " + e.getMessage());
+            return none(triggerObserved, "LLM call failed: " + e.getMessage());
         }
 
-        return parseResult(raw, candidates);
+        return parseResult(raw, candidates, triggerObserved);
+    }
+
+    /** NONE verdict routed to the fallback bucket the caller expects:
+     *  {@code default} when no trigger fired, {@code routing.fallback.recipe}
+     *  when one did. */
+    private static Result none(boolean triggerObserved, String rationale) {
+        return triggerObserved
+                ? Result.noneAfterTrigger(rationale)
+                : Result.noneWithoutTrigger(rationale);
     }
 
     /**
@@ -324,29 +294,29 @@ public class RecipeSelectorService {
     // ──────────────────── response parsing ────────────────────
 
     /**
-     * All NONE / failure paths here come from the LLM-disambiguation
-     * stage, which only runs when the trigger pre-check matched ≥1
-     * candidate. They are therefore {@link Result#noneAfterTrigger}
-     * cases — caller should consult {@code routing.fallback.recipe},
-     * not the default recipe.
+     * Parses the semantic router's reply. A NONE / failure verdict is
+     * routed to the caller's expected fallback via {@link #none} using
+     * {@code triggerObserved}: {@code default} when no trigger fired,
+     * {@code routing.fallback.recipe} when one did.
      */
-    private Result parseResult(Map<String, Object> raw, List<ResolvedRecipe> candidates) {
+    private Result parseResult(Map<String, Object> raw,
+            List<ResolvedRecipe> candidates, boolean triggerObserved) {
         Object decisionRaw = raw.get(FIELD_DECISION);
         if (!(decisionRaw instanceof String decision)) {
-            return Result.noneAfterTrigger("LLM reply missing 'decision' field");
+            return none(triggerObserved, "LLM reply missing 'decision' field");
         }
         String rationale = raw.get(FIELD_RATIONALE) instanceof String s ? s : "";
         if ("NONE".equalsIgnoreCase(decision)) {
-            return Result.noneAfterTrigger(orFallback(rationale,
+            return none(triggerObserved, orFallback(rationale,
                     "LLM returned NONE without rationale"));
         }
         if (!"MATCH".equalsIgnoreCase(decision)) {
-            return Result.noneAfterTrigger(
+            return none(triggerObserved,
                     "LLM returned unrecognised decision: " + decision);
         }
         Object pickedRaw = raw.get(FIELD_RECIPE);
         if (!(pickedRaw instanceof String picked) || picked.isBlank()) {
-            return Result.noneAfterTrigger("LLM returned MATCH without a recipe name");
+            return none(triggerObserved, "LLM returned MATCH without a recipe name");
         }
         String pickedTrim = picked.trim();
         for (ResolvedRecipe r : candidates) {
@@ -354,7 +324,7 @@ public class RecipeSelectorService {
                 return Result.match(pickedTrim, r.engine(), orFallback(rationale, ""));
             }
         }
-        return Result.noneAfterTrigger(
+        return none(triggerObserved,
                 "LLM returned unknown recipe '" + pickedTrim + "' — not in candidate list");
     }
 

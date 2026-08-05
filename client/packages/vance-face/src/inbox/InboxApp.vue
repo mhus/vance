@@ -899,11 +899,11 @@ const breadcrumbs = computed<string[]>(() => {
   width: 100%;
 }
 .sidebar-item:hover {
-  background: oklch(var(--bc) / 0.08);
+  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
 }
 .sidebar-item--active {
-  background: oklch(var(--p) / 0.15);
-  color: oklch(var(--p));
+  background: color-mix(in oklab, var(--color-primary) 15%, transparent);
+  color: var(--color-primary);
   font-weight: 600;
 }
 .sidebar-item--child {
@@ -918,10 +918,10 @@ const breadcrumbs = computed<string[]>(() => {
   border: 1px solid transparent;
 }
 .list-row:hover {
-  background: oklch(var(--bc) / 0.04);
+  background: color-mix(in oklab, var(--color-base-content) 4%, transparent);
 }
 .list-row--active {
-  background: oklch(var(--p) / 0.08);
-  border-color: oklch(var(--p) / 0.4);
+  background: color-mix(in oklab, var(--color-primary) 8%, transparent);
+  border-color: color-mix(in oklab, var(--color-primary) 40%, transparent);
 }
 </style>

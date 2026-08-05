@@ -57,9 +57,9 @@ watch(() => props.src, update, { immediate: true });
 .block-view__image-missing {
   display: inline-block;
   padding: 0.25em 0.5em;
-  border: 1px dashed oklch(var(--bc) / 0.4);
+  border: 1px dashed color-mix(in oklab, var(--color-base-content) 40%, transparent);
   border-radius: 0.375rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   font-size: 0.85em;
 }
 </style>

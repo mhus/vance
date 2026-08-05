@@ -227,8 +227,8 @@ onBeforeUnmount(() => { destroyEditor(); });
   flex-direction: column;
   height: 65vh;
   min-height: 480px;
-  background: oklch(var(--b1));
-  border: 1px solid oklch(var(--bc) / 0.15);
+  background: var(--color-base-100);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
   border-radius: 0.5rem;
   overflow: hidden;
 }
@@ -249,7 +249,7 @@ onBeforeUnmount(() => { destroyEditor(); });
   font-size: 0.9rem;
 }
 .office-state--err {
-  color: oklch(var(--er));
+  color: var(--color-error);
 }
 .office-state--info p {
   max-width: 32rem;
@@ -259,7 +259,7 @@ onBeforeUnmount(() => { destroyEditor(); });
 .office-error-msg {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
   font-size: 0.8125rem;
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
   padding: 0.6rem 0.8rem;
   border-radius: 0.25rem;
   white-space: pre-wrap;

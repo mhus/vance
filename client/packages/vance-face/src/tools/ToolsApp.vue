@@ -630,30 +630,30 @@ function sourceBadgeClass(source: string | undefined): string {
   width: 100%;
   border: 1px solid transparent;
 }
-.tool-item:hover { background: oklch(var(--bc) / 0.06); }
+.tool-item:hover { background: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
 .tool-item--active {
-  background: oklch(var(--p) / 0.12);
-  border-color: oklch(var(--p) / 0.3);
+  background: color-mix(in oklab, var(--color-primary) 12%, transparent);
+  border-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
 }
 .badge-type {
-  background: oklch(var(--in) / 0.18);
-  color: oklch(var(--inc));
+  background: color-mix(in oklab, var(--color-info) 18%, transparent);
+  color: var(--color-info-content);
 }
 .badge-primary {
-  background: oklch(var(--su) / 0.18);
-  color: oklch(var(--suc));
+  background: color-mix(in oklab, var(--color-success) 18%, transparent);
+  color: var(--color-success-content);
   padding: 0 0.4rem;
   border-radius: 0.25rem;
 }
 .badge-disabled {
-  background: oklch(var(--bc) / 0.1);
-  color: oklch(var(--bc) / 0.6);
+  background: color-mix(in oklab, var(--color-base-content) 10%, transparent);
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
   padding: 0 0.4rem;
   border-radius: 0.25rem;
 }
 .badge-deferred {
-  background: oklch(var(--wa) / 0.18);
-  color: oklch(var(--wac));
+  background: color-mix(in oklab, var(--color-warning) 18%, transparent);
+  color: var(--color-warning-content);
   padding: 0 0.4rem;
   border-radius: 0.25rem;
 }
@@ -669,18 +669,18 @@ function sourceBadgeClass(source: string | undefined): string {
   white-space: nowrap;
 }
 .badge-source--project {
-  background: oklch(var(--su) / 0.18);
-  color: oklch(var(--suc));
-  border-color: oklch(var(--su) / 0.35);
+  background: color-mix(in oklab, var(--color-success) 18%, transparent);
+  color: var(--color-success-content);
+  border-color: color-mix(in oklab, var(--color-success) 35%, transparent);
 }
 .badge-source--tenant {
-  background: oklch(var(--in) / 0.18);
-  color: oklch(var(--inc));
-  border-color: oklch(var(--in) / 0.35);
+  background: color-mix(in oklab, var(--color-info) 18%, transparent);
+  color: var(--color-info-content);
+  border-color: color-mix(in oklab, var(--color-info) 35%, transparent);
 }
 .badge-source--bundled {
-  background: oklch(var(--bc) / 0.08);
-  color: oklch(var(--bc) / 0.65);
-  border-color: oklch(var(--bc) / 0.2);
+  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+  border-color: color-mix(in oklab, var(--color-base-content) 20%, transparent);
 }
 </style>

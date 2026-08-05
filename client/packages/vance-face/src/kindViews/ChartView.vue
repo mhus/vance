@@ -745,7 +745,7 @@ const showsAxes = computed(() => !isNamedValueShaped(localHeader.value.chartType
   flex-direction: column;
   gap: 1rem;
   padding-left: 0.75rem;
-  border-left: 1px solid oklch(var(--bc) / 0.1);
+  border-left: 1px solid color-mix(in oklab, var(--color-base-content) 10%, transparent);
 }
 
 .chart-sidebar > section {
@@ -758,22 +758,22 @@ const showsAxes = computed(() => !isNamedValueShaped(localHeader.value.chartType
   font-size: 0.875rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  color: oklch(var(--bc) / 0.7);
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
 }
 
 .chart-sidebar-hint {
   font-size: 0.75rem;
-  color: oklch(var(--bc) / 0.55);
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
 }
 
 .chart-sidebar-error {
   font-size: 0.75rem;
-  color: oklch(var(--er));
+  color: var(--color-error);
 }
 
 /* DaisyUI 5 variable names. The `--er`/`--bc` shorthands used elsewhere
    in this file are DaisyUI 3/4 and resolve to nothing under the
-   installed v5 — `oklch(var(--er))` is an invalid declaration, so the
+   installed v5 — `var(--color-error)` is an invalid declaration, so the
    text silently inherits base-content instead of turning red. */
 .chart-parse-error {
   flex: none;
@@ -809,14 +809,14 @@ const showsAxes = computed(() => !isNamedValueShaped(localHeader.value.chartType
 .chart-series-color {
   width: 2.5rem;
   height: 1.5rem;
-  border: 1px solid oklch(var(--bc) / 0.15);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
   border-radius: 0.25rem;
   cursor: pointer;
 }
 
 .chart-data-hint {
   font-size: 0.75rem;
-  color: oklch(var(--bc) / 0.55);
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
   text-align: right;
 }
 </style>

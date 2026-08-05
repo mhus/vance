@@ -589,7 +589,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
  *  stay visually coherent. */
 function colorFor(ev: CalendarEvent): string {
   const c = ev.color?.trim().toLowerCase();
-  if (!c) return 'hsl(var(--p))';
+  if (!c) return 'var(--color-primary)';
   switch (c) {
     case 'blue':   return '#3b82f6';
     case 'green':  return '#10b981';
@@ -601,7 +601,7 @@ function colorFor(ev: CalendarEvent): string {
     case 'teal':   return '#14b8a6';
     case 'gray':
     case 'grey':   return '#6b7280';
-    default:       return ev.color ?? 'hsl(var(--p))';
+    default:       return ev.color ?? 'var(--color-primary)';
   }
 }
 </script>
@@ -746,7 +746,7 @@ function colorFor(ev: CalendarEvent): string {
 .cal-views { display: flex; gap: 0.2rem; }
 .cal-view-btn {
   background: transparent;
-  border: 1px solid hsl(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.25rem;
   padding: 0.25rem 0.6rem;
   font: inherit;
@@ -754,15 +754,15 @@ function colorFor(ev: CalendarEvent): string {
   color: inherit;
   cursor: pointer;
 }
-.cal-view-btn:hover { background: hsl(var(--bc) / 0.06); }
+.cal-view-btn:hover { background: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
 .cal-view-btn--active {
-  background: hsl(var(--p) / 0.15);
-  border-color: hsl(var(--p) / 0.4);
+  background: color-mix(in oklab, var(--color-primary) 15%, transparent);
+  border-color: color-mix(in oklab, var(--color-primary) 40%, transparent);
 }
 .cal-nav { display: flex; align-items: center; gap: 0.3rem; }
 .cal-nav-btn {
   background: transparent;
-  border: 1px solid hsl(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.25rem;
   padding: 0.2rem 0.55rem;
   font: inherit;
@@ -770,7 +770,7 @@ function colorFor(ev: CalendarEvent): string {
   cursor: pointer;
   color: inherit;
 }
-.cal-nav-btn:hover { background: hsl(var(--bc) / 0.06); }
+.cal-nav-btn:hover { background: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
 .cal-today-btn { font-size: 0.78rem; }
 .cal-month-label {
   margin-left: 0.4rem;
@@ -784,7 +784,7 @@ function colorFor(ev: CalendarEvent): string {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
 }
-.cal-month-header { border-bottom: 1px solid hsl(var(--bc) / 0.15); }
+.cal-month-header { border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent); }
 .cal-weekday {
   padding: 0.4rem 0.5rem;
   font-size: 0.75rem;
@@ -795,8 +795,8 @@ function colorFor(ev: CalendarEvent): string {
   text-align: center;
 }
 .cal-month-cell {
-  border-right: 1px solid hsl(var(--bc) / 0.08);
-  border-bottom: 1px solid hsl(var(--bc) / 0.08);
+  border-right: 1px solid color-mix(in oklab, var(--color-base-content) 8%, transparent);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 8%, transparent);
   min-height: 5.6rem;
   padding: 0.25rem;
   display: flex;
@@ -807,14 +807,14 @@ function colorFor(ev: CalendarEvent): string {
 .cal-month-cell:nth-child(7n) { border-right: none; }
 .cal-month-cell--out {
   opacity: 0.4;
-  background: hsl(var(--bc) / 0.03);
+  background: color-mix(in oklab, var(--color-base-content) 3%, transparent);
 }
 .cal-month-cell--today {
-  background: hsl(var(--p) / 0.07);
+  background: color-mix(in oklab, var(--color-primary) 7%, transparent);
 }
 .cal-month-cell--today .cal-month-date {
-  background: hsl(var(--p));
-  color: hsl(var(--pc));
+  background: var(--color-primary);
+  color: var(--color-primary-content);
   border-radius: 50%;
   width: 1.6rem;
   height: 1.6rem;
@@ -841,8 +841,8 @@ function colorFor(ev: CalendarEvent): string {
   gap: 0.25rem;
   font-size: 0.72rem;
   padding: 0.05rem 0.3rem;
-  border-left: 3px solid hsl(var(--p));
-  background: hsl(var(--bc) / 0.05);
+  border-left: 3px solid var(--color-primary);
+  background: color-mix(in oklab, var(--color-base-content) 5%, transparent);
   border-radius: 0.15rem;
   white-space: nowrap;
   overflow: hidden;
@@ -868,11 +868,11 @@ function colorFor(ev: CalendarEvent): string {
 .cal-agenda-day-header {
   position: sticky;
   top: 0;
-  background: hsl(var(--b2));
+  background: var(--color-base-200);
   font-weight: 600;
   font-size: 0.85rem;
   padding: 0.35rem 0.5rem;
-  border-bottom: 1px solid hsl(var(--bc) / 0.1);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 10%, transparent);
   margin-bottom: 0.3rem;
 }
 .cal-agenda-items {
@@ -888,8 +888,8 @@ function colorFor(ev: CalendarEvent): string {
   grid-template-columns: 7.5rem 1fr;
   gap: 0.6rem;
   padding: 0.4rem 0.5rem;
-  border-left: 3px solid hsl(var(--p));
-  background: hsl(var(--bc) / 0.04);
+  border-left: 3px solid var(--color-primary);
+  background: color-mix(in oklab, var(--color-base-content) 4%, transparent);
   border-radius: 0.25rem;
 }
 .cal-agenda-time {
@@ -927,18 +927,18 @@ function colorFor(ev: CalendarEvent): string {
 }
 .cal-add-btn:hover {
   opacity: 1;
-  background: hsl(var(--bc) / 0.06);
-  border-color: hsl(var(--bc) / 0.15);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
+  border-color: color-mix(in oklab, var(--color-base-content) 15%, transparent);
 }
 .cal-add-menu {
   position: absolute;
   right: 0;
   top: calc(100% + 0.2rem);
   z-index: 4;
-  background: hsl(var(--b1));
-  border: 1px solid hsl(var(--bc) / 0.2);
+  background: var(--color-base-100);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.3rem;
-  box-shadow: 0 4px 14px hsl(var(--bc) / 0.18);
+  box-shadow: 0 4px 14px color-mix(in oklab, var(--color-base-content) 18%, transparent);
   display: flex;
   flex-direction: column;
   min-width: 9rem;
@@ -953,7 +953,7 @@ function colorFor(ev: CalendarEvent): string {
   white-space: nowrap;
 }
 .cal-add-menu-item:hover {
-  background: hsl(var(--p) / 0.1);
+  background: color-mix(in oklab, var(--color-primary) 10%, transparent);
 }
 .cal-agenda-meta {
   font-size: 0.78rem;
@@ -975,7 +975,7 @@ function colorFor(ev: CalendarEvent): string {
 .cal-tag {
   font-size: 0.7rem;
   padding: 0.05rem 0.4rem;
-  background: hsl(var(--bc) / 0.1);
+  background: color-mix(in oklab, var(--color-base-content) 10%, transparent);
   border-radius: 999px;
   opacity: 0.8;
 }

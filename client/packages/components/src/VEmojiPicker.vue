@@ -99,7 +99,7 @@ function applyCustom(): void {
           <input
             v-model="custom"
             type="text"
-            class="input input-sm input-bordered flex-1 text-lg"
+            class="input input-sm flex-1 text-lg"
             placeholder="🎲 …"
             maxlength="8"
             @keyup.enter="applyCustom"

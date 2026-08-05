@@ -179,7 +179,7 @@ const segments = computed<MathSegment[]>(() => {
 }
 
 :deep(.formula-error) {
-  color: var(--er, #ef4444);
+  color: var(--color-error);
   background: rgba(239, 68, 68, 0.08);
   border-radius: 2px;
   padding: 0 2px;

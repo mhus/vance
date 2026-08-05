@@ -443,7 +443,7 @@ function autoGrow(event: Event): void {
   gap: 0.5rem;
   align-items: start;
   padding: 0.4rem 0.25rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.08);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 8%, transparent);
   background: transparent;
 }
 .row:last-child {
@@ -463,15 +463,15 @@ function autoGrow(event: Event): void {
 /* Source row visual while it's being dragged. */
 .row--ghost {
   opacity: 0.35;
-  background: oklch(var(--p) / 0.08);
+  background: color-mix(in oklab, var(--color-primary) 8%, transparent);
 }
 .row--chosen {
-  background: oklch(var(--bc) / 0.04);
+  background: color-mix(in oklab, var(--color-base-content) 4%, transparent);
 }
 .row--drag {
   opacity: 0.95;
-  background: oklch(var(--b1));
-  box-shadow: 0 4px 14px oklch(var(--bc) / 0.15);
+  background: var(--color-base-100);
+  box-shadow: 0 4px 14px color-mix(in oklab, var(--color-base-content) 15%, transparent);
 }
 .text {
   text-align: left;
@@ -484,8 +484,8 @@ function autoGrow(event: Event): void {
   width: 100%;
 }
 .text:hover {
-  border-color: oklch(var(--bc) / 0.15);
-  background: oklch(var(--bc) / 0.04);
+  border-color: color-mix(in oklab, var(--color-base-content) 15%, transparent);
+  background: color-mix(in oklab, var(--color-base-content) 4%, transparent);
 }
 .text-content {
   white-space: pre-wrap;
@@ -497,7 +497,7 @@ function autoGrow(event: Event): void {
 }
 .edit-input {
   background: transparent;
-  border: 1px solid oklch(var(--p) / 0.4);
+  border: 1px solid color-mix(in oklab, var(--color-primary) 40%, transparent);
   border-radius: 0.25rem;
   padding: 0.25rem 0.5rem;
   font: inherit;
@@ -509,8 +509,8 @@ function autoGrow(event: Event): void {
   min-height: 1.6rem;
 }
 .edit-input:focus {
-  border-color: oklch(var(--p));
-  box-shadow: 0 0 0 2px oklch(var(--p) / 0.2);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary) 20%, transparent);
 }
 .row-delete {
   background: transparent;
@@ -524,8 +524,8 @@ function autoGrow(event: Event): void {
 }
 .row-delete:hover {
   opacity: 1;
-  background: oklch(var(--er) / 0.15);
-  color: oklch(var(--er));
+  background: color-mix(in oklab, var(--color-error) 15%, transparent);
+  color: var(--color-error);
 }
 .add-row {
   margin-top: 0.5rem;
@@ -544,8 +544,8 @@ function autoGrow(event: Event): void {
   padding: 0.4rem 0.6rem;
   margin-bottom: 0.4rem;
   border-radius: 0.375rem;
-  background: oklch(var(--p) / 0.1);
-  border: 1px solid oklch(var(--p) / 0.3);
+  background: color-mix(in oklab, var(--color-primary) 10%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-primary) 30%, transparent);
   font-size: 0.85rem;
 }
 .bulk-count {
@@ -558,7 +558,7 @@ function autoGrow(event: Event): void {
 /* Selected row highlight — left-rule + tint, distinct from the
    chosen-class state vue-draggable applies during a drag. */
 .row--selected {
-  background: oklch(var(--p) / 0.08);
-  box-shadow: inset 3px 0 0 oklch(var(--p));
+  background: color-mix(in oklab, var(--color-primary) 8%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 </style>

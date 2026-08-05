@@ -176,7 +176,7 @@ onBeforeUnmount(() => {
           ref="inputRef"
           v-model="query"
           type="search"
-          class="input input-bordered flex-1"
+          class="input flex-1"
           :placeholder="t('chat.search.placeholder')"
           @keyup.enter="runSearch"
         />

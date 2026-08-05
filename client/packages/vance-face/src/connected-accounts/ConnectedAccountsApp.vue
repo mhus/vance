@@ -123,20 +123,20 @@ async function onDisconnect(providerId: string): Promise<void> {
 
 <style scoped>
 .badge-type {
-  background: oklch(var(--in) / 0.18);
-  color: oklch(var(--inc));
+  background: color-mix(in oklab, var(--color-info) 18%, transparent);
+  color: var(--color-info-content);
   padding: 0 0.4rem;
   border-radius: 0.25rem;
 }
 .badge-connected {
-  background: oklch(var(--su) / 0.18);
-  color: oklch(var(--suc));
+  background: color-mix(in oklab, var(--color-success) 18%, transparent);
+  color: var(--color-success-content);
   padding: 0 0.4rem;
   border-radius: 0.25rem;
 }
 .badge-unconnected {
-  background: oklch(var(--bc) / 0.1);
-  color: oklch(var(--bc) / 0.6);
+  background: color-mix(in oklab, var(--color-base-content) 10%, transparent);
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
   padding: 0 0.4rem;
   border-radius: 0.25rem;
 }

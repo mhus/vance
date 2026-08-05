@@ -123,24 +123,24 @@ function onHref(e: Event) {
   border: none;
   background: transparent;
   font-size: 0.9em;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   outline: none;
 }
 .vance-link-card__href-input {
   border: none;
   background: transparent;
   font-size: 0.8em;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   outline: none;
   font-family: monospace;
 }
 .vance-link-card__title-input::placeholder,
 .vance-link-card__description-input::placeholder,
 .vance-link-card__href-input::placeholder {
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
 }
 .vance-link-card--selected {
-  box-shadow: 0 0 0 2px oklch(var(--p));
+  box-shadow: 0 0 0 2px var(--color-primary);
 }
 
 /* Read-only rendered card (work mode) */
@@ -149,28 +149,28 @@ function onHref(e: Event) {
   flex-direction: column;
   gap: 0.15em;
   padding: 0.6em 0.8em;
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.5rem;
   text-decoration: none;
   color: inherit;
-  background: oklch(var(--bc) / 0.04);
+  background: color-mix(in oklab, var(--color-base-content) 4%, transparent);
   transition: border-color 0.15s ease, background 0.15s ease;
   cursor: pointer;
 }
 .vance-link-card__link:hover {
-  border-color: oklch(var(--p));
-  background: oklch(var(--bc) / 0.07);
+  border-color: var(--color-primary);
+  background: color-mix(in oklab, var(--color-base-content) 7%, transparent);
 }
 .vance-link-card__title-text {
   font-weight: 600;
 }
 .vance-link-card__desc-text {
   font-size: 0.9em;
-  color: oklch(var(--bc) / 0.7);
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
 }
 .vance-link-card__url-text {
   font-size: 0.78em;
-  color: oklch(var(--bc) / 0.55);
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
   font-family: monospace;
   overflow: hidden;
   text-overflow: ellipsis;

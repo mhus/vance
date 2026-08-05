@@ -117,10 +117,10 @@ function onScript(e: Event) {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  border: 1px dashed oklch(var(--bc) / 0.3);
+  border: 1px dashed color-mix(in oklab, var(--color-base-content) 30%, transparent);
   border-radius: 0.5rem;
   padding: 0.6rem 0.75rem;
-  background: oklch(var(--bc) / 0.03);
+  background: color-mix(in oklab, var(--color-base-content) 3%, transparent);
 }
 .vance-button__row {
   display: flex;
@@ -128,12 +128,12 @@ function onScript(e: Event) {
   align-items: center;
 }
 .vance-button__inp {
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.25rem;
   padding: 0.3rem 0.5rem;
   font: inherit;
   font-size: 0.85rem;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
   color: inherit;
   box-sizing: border-box;
 }
@@ -143,9 +143,9 @@ function onScript(e: Event) {
   gap: 0.5rem;
 }
 .vance-button__btn {
-  border: 1px solid oklch(var(--p));
-  background: oklch(var(--p));
-  color: oklch(var(--pc));
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-primary-content);
   border-radius: 0.35rem;
   padding: 0.4rem 1rem;
   font-size: 0.9rem;
@@ -153,9 +153,9 @@ function onScript(e: Event) {
   cursor: pointer;
 }
 .vance-button__btn:disabled { opacity: 0.55; cursor: default; }
-.vance-button__ok { color: oklch(var(--su)); font-size: 0.9rem; }
+.vance-button__ok { color: var(--color-success); font-size: 0.9rem; }
 .vance-button__error {
-  color: oklch(var(--er));
+  color: var(--color-error);
   font-size: 0.8rem;
 }
 </style>

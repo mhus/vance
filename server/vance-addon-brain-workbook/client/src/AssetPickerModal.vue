@@ -359,7 +359,7 @@ onMounted(() => {
   padding: 2rem;
 }
 .asset-picker__panel {
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
   border-radius: 0.5rem;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
   width: 100%;
@@ -375,7 +375,7 @@ onMounted(() => {
   align-items: center;
   padding: 0.75rem 1rem;
   font-weight: 600;
-  border-bottom: 1px solid oklch(var(--bc) / 0.18);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
 }
 .asset-picker__close {
   background: none;
@@ -383,15 +383,15 @@ onMounted(() => {
   font-size: 1.4rem;
   line-height: 1;
   cursor: pointer;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   padding: 0 0.25rem;
 }
 .asset-picker__tabs {
   display: flex;
   gap: 0.25rem;
   padding: 0.25rem 0.5rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.18);
-  background: oklch(var(--bc) / 0.06);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
 .asset-picker__tab {
   background: none;
@@ -400,25 +400,25 @@ onMounted(() => {
   border-radius: 0.25rem;
   cursor: pointer;
   font-size: 0.85rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
 }
-.asset-picker__tab:hover { color: oklch(var(--bc)); }
+.asset-picker__tab:hover { color: var(--color-base-content); }
 .asset-picker__tab--active {
-  background: oklch(var(--b1));
-  color: oklch(var(--bc));
+  background: var(--color-base-100);
+  color: var(--color-base-content);
   font-weight: 600;
 }
 .asset-picker__actions {
   display: flex;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.18);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
 }
 .asset-picker__upload-btn {
   padding: 0.3rem 0.8rem;
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.25rem;
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
   cursor: pointer;
 }
 .asset-picker__upload-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -426,21 +426,21 @@ onMounted(() => {
   flex: 1;
   padding: 0.3rem 0.5rem;
   font-size: 0.9rem;
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.25rem;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
 }
 .asset-picker__file-input { display: none; }
 .asset-picker__error {
-  background: oklch(var(--er) / 0.12);
-  color: oklch(var(--er));
+  background: color-mix(in oklab, var(--color-error) 12%, transparent);
+  color: var(--color-error);
   font-size: 0.85rem;
   padding: 0.5rem 1rem;
 }
 .asset-picker__loading,
 .asset-picker__empty {
   padding: 2rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   text-align: center;
   font-size: 0.9rem;
 }
@@ -451,9 +451,9 @@ onMounted(() => {
 .asset-picker__truncated {
   padding: 0.5rem 1rem;
   font-size: 0.75rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   text-align: center;
-  border-top: 1px solid oklch(var(--bc) / 0.18);
+  border-top: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
 }
 .asset-picker__grid {
   flex: 1;
@@ -464,9 +464,9 @@ onMounted(() => {
   gap: 0.75rem;
 }
 .asset-picker__item {
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.375rem;
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
   cursor: pointer;
   padding: 0;
   display: flex;
@@ -482,7 +482,7 @@ onMounted(() => {
   width: 100%;
   height: 7rem;
   object-fit: cover;
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
 .asset-picker__item-name {
   padding: 0.4rem 0.5rem 0;
@@ -490,7 +490,7 @@ onMounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   font-family: monospace;
 }
 .asset-picker__item-path {
@@ -499,7 +499,7 @@ onMounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   font-family: monospace;
 }
 </style>

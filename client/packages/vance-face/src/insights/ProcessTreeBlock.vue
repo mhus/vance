@@ -134,10 +134,10 @@ function chatRoleClass(label: string): string {
 
 <style scoped>
 .tp-block {
-  border: 1px solid oklch(var(--bc) / 0.12);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 12%, transparent);
   border-radius: 0.5rem;
   padding: 0.5rem 0.75rem;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
 }
 .tp-header {
   display: flex;
@@ -158,7 +158,7 @@ function chatRoleClass(label: string): string {
   font-weight: 600;
   font-size: 0.95rem;
   text-decoration: underline;
-  color: oklch(var(--p));
+  color: var(--color-primary);
 }
 .tp-engine { font-size: 0.75rem; opacity: 0.7; }
 .tp-status { font-size: 0.75rem; opacity: 0.6; }
@@ -169,7 +169,7 @@ function chatRoleClass(label: string): string {
   list-style: none;
   padding: 0.25rem 0 0 1.5rem;
   margin: 0;
-  border-left: 2px solid oklch(var(--bc) / 0.12);
+  border-left: 2px solid color-mix(in oklab, var(--color-base-content) 12%, transparent);
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
@@ -186,7 +186,7 @@ function chatRoleClass(label: string): string {
   background: transparent;
   cursor: pointer;
 }
-.tp-event-row:hover { background: oklch(var(--bc) / 0.05); }
+.tp-event-row:hover { background: color-mix(in oklab, var(--color-base-content) 5%, transparent); }
 .tp-event-chev { font-size: 0.7rem; opacity: 0.6; width: 0.7rem; }
 .tp-event-time {
   font-family: ui-monospace, monospace;
@@ -199,18 +199,18 @@ function chatRoleClass(label: string): string {
   font-size: 0.7rem;
   padding: 0 0.4rem;
   border-radius: 0.25rem;
-  background: oklch(var(--bc) / 0.08);
+  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
   min-width: 4rem;
   text-align: center;
 }
-.kind-chat    { background: oklch(var(--p)  / 0.15); color: oklch(var(--p)); }
-.kind-memory  { background: oklch(var(--in) / 0.15); color: oklch(var(--inc)); }
-.kind-marvin  { background: oklch(var(--su) / 0.15); color: oklch(var(--suc)); }
-.kind-pending { background: oklch(var(--wa) / 0.15); color: oklch(var(--wac)); }
-.kind-spawn   { background: oklch(var(--bc) / 0.1);  color: oklch(var(--bc) / 0.7); }
-.badge-user      { outline: 1px solid oklch(var(--p)); }
-.badge-assistant { outline: 1px solid oklch(var(--su)); }
-.badge-system    { outline: 1px solid oklch(var(--wa)); }
+.kind-chat    { background: color-mix(in oklab, var(--color-primary) 15%, transparent); color: var(--color-primary); }
+.kind-memory  { background: color-mix(in oklab, var(--color-info) 15%, transparent); color: var(--color-info-content); }
+.kind-marvin  { background: color-mix(in oklab, var(--color-success) 15%, transparent); color: var(--color-success-content); }
+.kind-pending { background: color-mix(in oklab, var(--color-warning) 15%, transparent); color: var(--color-warning-content); }
+.kind-spawn   { background: color-mix(in oklab, var(--color-base-content) 10%, transparent);  color: color-mix(in oklab, var(--color-base-content) 70%, transparent); }
+.badge-user      { outline: 1px solid var(--color-primary); }
+.badge-assistant { outline: 1px solid var(--color-success); }
+.badge-system    { outline: 1px solid var(--color-warning); }
 .tp-event-label {
   flex: 1 1 auto;
   font-size: 0.85rem;
@@ -228,7 +228,7 @@ function chatRoleClass(label: string): string {
   padding: 0.4rem 0.5rem 0.5rem 2.6rem;
 }
 .tp-event-json {
-  background: oklch(var(--bc) / 0.05);
+  background: color-mix(in oklab, var(--color-base-content) 5%, transparent);
   padding: 0.5rem 0.75rem;
   border-radius: 0.375rem;
   font-size: 0.75rem;

@@ -146,20 +146,20 @@ function closeLightbox(): void {
   gap: 0.45rem;
   align-self: flex-start;
   padding: 0.4rem 0.85rem;
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.375rem;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .pdf-view__open-btn:hover {
-  background: oklch(var(--bc) / 0.08);
-  border-color: oklch(var(--bc) / 0.35);
+  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+  border-color: color-mix(in oklab, var(--color-base-content) 35%, transparent);
 }
 .pdf-view__open-btn:focus-visible {
-  outline: 2px solid oklch(var(--p));
+  outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
 .pdf-view__open-icon {
@@ -180,7 +180,7 @@ function closeLightbox(): void {
   padding: 2rem;
 }
 .pdf-view__lightbox-inner {
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
   border-radius: 0.5rem;
   padding: 1rem;
   max-width: min(1100px, calc(100vw - 4rem));

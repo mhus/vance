@@ -608,7 +608,7 @@ function pathsEqual(a: number[], b: number[]): boolean {
 .tree-edit-nested {
   /* Nested levels indent and get a left border to mark hierarchy. */
   padding-left: 1.5rem;
-  border-left: 1px dashed oklch(var(--bc) / 0.15);
+  border-left: 1px dashed color-mix(in oklab, var(--color-base-content) 15%, transparent);
 }
 .tree-rows {
   list-style: none;
@@ -624,7 +624,7 @@ function pathsEqual(a: number[], b: number[]): boolean {
   gap: 0.4rem;
   align-items: start;
   padding: 0.3rem 0.25rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.06);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
 .drag-handle {
   cursor: grab;
@@ -664,8 +664,8 @@ function pathsEqual(a: number[], b: number[]): boolean {
   width: 100%;
 }
 .text:hover {
-  border-color: oklch(var(--bc) / 0.15);
-  background: oklch(var(--bc) / 0.04);
+  border-color: color-mix(in oklab, var(--color-base-content) 15%, transparent);
+  background: color-mix(in oklab, var(--color-base-content) 4%, transparent);
 }
 .text-content {
   white-space: pre-wrap;
@@ -677,7 +677,7 @@ function pathsEqual(a: number[], b: number[]): boolean {
 }
 .edit-input {
   background: transparent;
-  border: 1px solid oklch(var(--p) / 0.4);
+  border: 1px solid color-mix(in oklab, var(--color-primary) 40%, transparent);
   border-radius: 0.25rem;
   padding: 0.25rem 0.5rem;
   font: inherit;
@@ -689,8 +689,8 @@ function pathsEqual(a: number[], b: number[]): boolean {
   min-height: 1.6rem;
 }
 .edit-input:focus {
-  border-color: oklch(var(--p));
-  box-shadow: 0 0 0 2px oklch(var(--p) / 0.2);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary) 20%, transparent);
 }
 .row-action {
   background: transparent;
@@ -702,10 +702,10 @@ function pathsEqual(a: number[], b: number[]): boolean {
   font-size: 0.85rem;
   line-height: 1;
 }
-.row-action:hover { opacity: 1; background: oklch(var(--bc) / 0.06); }
+.row-action:hover { opacity: 1; background: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
 .row-delete:hover {
-  background: oklch(var(--er) / 0.15);
-  color: oklch(var(--er));
+  background: color-mix(in oklab, var(--color-error) 15%, transparent);
+  color: var(--color-error);
 }
 .add-row {
   margin-top: 0.5rem;
@@ -722,13 +722,13 @@ function pathsEqual(a: number[], b: number[]): boolean {
 }
 .add-root:hover {
   opacity: 1;
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
-.row--ghost { opacity: 0.35; background: oklch(var(--p) / 0.08); }
-.row--chosen { background: oklch(var(--bc) / 0.04); }
+.row--ghost { opacity: 0.35; background: color-mix(in oklab, var(--color-primary) 8%, transparent); }
+.row--chosen { background: color-mix(in oklab, var(--color-base-content) 4%, transparent); }
 .row--drag {
   opacity: 0.95;
-  background: oklch(var(--b1));
-  box-shadow: 0 4px 14px oklch(var(--bc) / 0.15);
+  background: var(--color-base-100);
+  box-shadow: 0 4px 14px color-mix(in oklab, var(--color-base-content) 15%, transparent);
 }
 </style>

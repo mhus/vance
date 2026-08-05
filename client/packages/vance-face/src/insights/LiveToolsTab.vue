@@ -86,19 +86,19 @@ function paramNames(schema: Record<string, unknown> | undefined): string[] {
 
 <style scoped>
 .badge-bound {
-  background: oklch(var(--su) / 0.18);
-  color: oklch(var(--su));
+  background: color-mix(in oklab, var(--color-success) 18%, transparent);
+  color: var(--color-success);
 }
 .badge-unbound {
-  background: oklch(var(--b3));
-  color: oklch(var(--bc) / 0.6);
+  background: var(--color-base-300);
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
 }
 .badge-primary-tool {
   display: inline-block;
   padding: 0.05rem 0.4rem;
   border-radius: 0.25rem;
-  background: oklch(var(--p) / 0.18);
-  color: oklch(var(--p));
+  background: color-mix(in oklab, var(--color-primary) 18%, transparent);
+  color: var(--color-primary);
   font-size: 0.7rem;
 }
 </style>

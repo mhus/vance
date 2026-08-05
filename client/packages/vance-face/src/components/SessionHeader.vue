@@ -237,7 +237,7 @@ async function onDelete(): Promise<void> {
         v-if="editingTitle"
         v-model="titleDraft"
         type="text"
-        class="input input-sm input-bordered flex-1 min-w-0"
+        class="input input-sm flex-1 min-w-0"
         :placeholder="t('chat.sessionHeader.editTitlePlaceholder')"
         autofocus
         @keyup.enter="commitTitle"

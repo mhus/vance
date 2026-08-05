@@ -232,7 +232,7 @@ function mimeForKind(kind: string): string {
   opacity: 0.7;
 }
 .kbx-act:hover {
-  background: oklch(var(--bc) / 0.1);
+  background: color-mix(in oklab, var(--color-base-content) 10%, transparent);
   opacity: 1;
 }
 .kbx-act:disabled {
@@ -246,16 +246,16 @@ function mimeForKind(kind: string): string {
   margin-bottom: 0.4rem;
 }
 .kbx-status--ok {
-  background: oklch(var(--su) / 0.12);
-  color: oklch(var(--su));
+  background: color-mix(in oklab, var(--color-success) 12%, transparent);
+  color: var(--color-success);
 }
 .kbx-status--err {
-  background: oklch(var(--er) / 0.12);
-  color: oklch(var(--er));
+  background: color-mix(in oklab, var(--color-error) 12%, transparent);
+  color: var(--color-error);
 }
 .kbx-raw {
   margin: 0;
-  background: oklch(var(--bc) / 0.05);
+  background: color-mix(in oklab, var(--color-base-content) 5%, transparent);
   padding: 0.5em 0.75em;
   border-radius: 0.25rem;
   overflow-x: auto;

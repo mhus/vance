@@ -53,13 +53,13 @@ const cover = computed(() => parsed.value.cover);
 .canvas-kind {
   height: 100%;
   overflow-y: auto;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
 }
 .canvas-kind__header {
   max-width: 760px;
   margin: 0 auto;
   padding: 1.5rem 2rem 0;
-  border-bottom: 1px solid oklch(var(--bc) / 0.18);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   margin-bottom: 1rem;
 }
 .canvas-kind__cover {
@@ -67,7 +67,7 @@ const cover = computed(() => parsed.value.cover);
   width: 100%;
   max-height: 12rem;
   object-fit: cover;
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
 .canvas-kind__title {
   font-size: 1.875rem;
@@ -82,7 +82,7 @@ const cover = computed(() => parsed.value.cover);
   line-height: 1;
 }
 .canvas-kind__description {
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   margin: 0 0 1rem;
 }
 </style>

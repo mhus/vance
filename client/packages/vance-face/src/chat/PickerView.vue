@@ -1094,8 +1094,8 @@ onBeforeUnmount(stopAutoScroll);
     right: 0.5rem;
     z-index: 20;
     padding: 0.75rem;
-    background-color: var(--fallback-b1, oklch(var(--b1) / 1));
-    border: 1px solid var(--fallback-b3, oklch(var(--b3) / 1));
+    background-color: var(--color-base-100);
+    border: 1px solid var(--color-base-300);
     border-radius: 0.5rem;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }

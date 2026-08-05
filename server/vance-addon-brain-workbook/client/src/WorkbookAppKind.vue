@@ -1930,23 +1930,23 @@ onBeforeUnmount(() => {
   grid-template-columns: 260px 1fr;
   height: 100%;
   min-height: 0;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
 }
 .workbook-app__sidebar {
-  border-right: 1px solid oklch(var(--bc) / 0.18);
+  border-right: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   padding: 0.75rem 0.5rem;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0.125rem;
-  background: oklch(var(--b2));
+  background: var(--color-base-200);
 }
 .workbook-app__title {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 0.5rem 0.75rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.18);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   margin-bottom: 0.5rem;
 }
 .workbook-app__title-text {
@@ -1967,20 +1967,20 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.25rem;
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
   cursor: pointer;
   flex-shrink: 0;
   line-height: 1;
 }
 .workbook-app__icon-btn:hover:not(:disabled) {
-  background: oklch(var(--bc) / 0.1);
+  background: color-mix(in oklab, var(--color-base-content) 10%, transparent);
 }
 .workbook-app__icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .workbook-app__icon-btn--active {
-  background: oklch(var(--p) / 0.18);
-  color: oklch(var(--p));
+  background: color-mix(in oklab, var(--color-primary) 18%, transparent);
+  color: var(--color-primary);
 }
 
 .workbook-app__search {
@@ -1990,15 +1990,15 @@ onBeforeUnmount(() => {
   width: 100%;
   padding: 0.3rem 0.5rem;
   font-size: 0.85rem;
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.25rem;
-  background: oklch(var(--b1));
-  color: oklch(var(--bc));
+  background: var(--color-base-100);
+  color: var(--color-base-content);
   box-sizing: border-box;
 }
 .workbook-app__search-input:focus {
   outline: none;
-  border-color: oklch(var(--p));
+  border-color: var(--color-primary);
 }
 
 .workbook-app__new-page {
@@ -2007,16 +2007,16 @@ onBeforeUnmount(() => {
   gap: 0.375rem;
   margin: 0 0.25rem 0.5rem;
   padding: 0.5rem;
-  background: oklch(var(--bc) / 0.06);
-  border: 1px solid oklch(var(--bc) / 0.18);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.375rem;
 }
 .workbook-app__new-page-input {
   padding: 0.25rem 0.5rem;
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.25rem;
   font-size: 0.85rem;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
 }
 .workbook-app__new-page-actions {
   display: flex;
@@ -2025,24 +2025,24 @@ onBeforeUnmount(() => {
 }
 .workbook-app__new-page-btn {
   padding: 0.25rem 0.625rem;
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.25rem;
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
   cursor: pointer;
   font-size: 0.85rem;
 }
 .workbook-app__new-page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .workbook-app__new-page-btn--primary {
-  background: oklch(var(--p) / 0.15);
-  color: oklch(var(--pc));
-  border-color: oklch(var(--p) / 0.15);
+  background: color-mix(in oklab, var(--color-primary) 15%, transparent);
+  color: var(--color-primary-content);
+  border-color: color-mix(in oklab, var(--color-primary) 15%, transparent);
 }
 .workbook-app__new-page-btn--primary:hover:not(:disabled) {
   filter: brightness(0.95);
 }
 .workbook-app__error {
-  background: oklch(var(--er) / 0.12);
-  color: oklch(var(--er));
+  background: color-mix(in oklab, var(--color-error) 12%, transparent);
+  color: var(--color-error);
   font-size: 0.85rem;
   padding: 0.5rem;
   border-radius: 0.25rem;
@@ -2057,7 +2057,7 @@ onBeforeUnmount(() => {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   padding: 0.5rem 0.25rem 0.25rem 0.5rem;
   display: flex;
   align-items: center;
@@ -2074,7 +2074,7 @@ onBeforeUnmount(() => {
 .workbook-app__section-menu {
   background: none;
   border: 0;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   cursor: pointer;
   padding: 0 0.35rem;
   font-size: 1rem;
@@ -2087,8 +2087,8 @@ onBeforeUnmount(() => {
   opacity: 1;
 }
 .workbook-app__section-menu:hover {
-  background: oklch(var(--bc) / 0.18);
-  color: oklch(var(--bc));
+  background: color-mix(in oklab, var(--color-base-content) 18%, transparent);
+  color: var(--color-base-content);
 }
 .workbook-app__page-row {
   position: relative;
@@ -2106,7 +2106,7 @@ onBeforeUnmount(() => {
   left: 0;
   right: 0;
   height: 2px;
-  background: oklch(var(--p));
+  background: var(--color-primary);
   pointer-events: none;
 }
 .workbook-app__page-row--drop-before::before { top: -1px; }
@@ -2121,17 +2121,17 @@ onBeforeUnmount(() => {
   letter-spacing: 0.05em;
   width: 100%;
   padding: 0.125rem 0.25rem;
-  border: 1px solid oklch(var(--p));
+  border: 1px solid var(--color-primary);
   border-radius: 3px;
-  background: oklch(var(--b1));
-  color: oklch(var(--bc));
+  background: var(--color-base-100);
+  color: var(--color-base-content);
   font-family: inherit;
 }
 .workbook-app__page-row:hover {
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
 .workbook-app__page-row--active {
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
 .workbook-app__page-link {
   text-align: left;
@@ -2151,7 +2151,7 @@ onBeforeUnmount(() => {
 .workbook-app__page-row-menu {
   background: none;
   border: 0;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   cursor: pointer;
   padding: 0 0.5rem;
   font-size: 1rem;
@@ -2164,8 +2164,8 @@ onBeforeUnmount(() => {
   opacity: 1;
 }
 .workbook-app__page-row-menu:hover {
-  background: oklch(var(--bc) / 0.18);
-  color: oklch(var(--bc));
+  background: color-mix(in oklab, var(--color-base-content) 18%, transparent);
+  color: var(--color-base-content);
 }
 .workbook-app__ctx-backdrop {
   position: fixed;
@@ -2174,8 +2174,8 @@ onBeforeUnmount(() => {
 }
 .workbook-app__ctx-menu {
   position: fixed;
-  background: oklch(var(--b1));
-  border: 1px solid oklch(var(--bc) / 0.18);
+  background: var(--color-base-100);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   min-width: 180px;
@@ -2190,16 +2190,16 @@ onBeforeUnmount(() => {
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
   cursor: pointer;
-  color: oklch(var(--bc));
+  color: var(--color-base-content);
 }
 .workbook-app__ctx-item:hover {
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
 .workbook-app__ctx-item--danger {
-  color: oklch(var(--er));
+  color: var(--color-error);
 }
 .workbook-app__ctx-item--danger:hover {
-  background: oklch(var(--er) / 0.1);
+  background: color-mix(in oklab, var(--color-error) 10%, transparent);
 }
 .workbook-app__modal-backdrop {
   position: fixed;
@@ -2211,7 +2211,7 @@ onBeforeUnmount(() => {
   z-index: 1000;
 }
 .workbook-app__modal {
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
   border-radius: 8px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
   padding: 1rem;
@@ -2223,22 +2223,22 @@ onBeforeUnmount(() => {
 .workbook-app__modal-header {
   font-size: 1rem;
   font-weight: 600;
-  color: oklch(var(--bc));
+  color: var(--color-base-content);
 }
 .workbook-app__modal-label {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
   font-size: 0.8rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
 }
 .workbook-app__modal-input {
   font-size: 0.95rem;
   padding: 0.4rem 0.5rem;
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 4px;
-  background: oklch(var(--b1));
-  color: oklch(var(--bc));
+  background: var(--color-base-100);
+  color: var(--color-base-content);
 }
 .workbook-app__modal-actions {
   display: flex;
@@ -2247,8 +2247,8 @@ onBeforeUnmount(() => {
   margin-top: 0.5rem;
 }
 .workbook-app__page-link--active {
-  background: oklch(var(--p) / 0.15);
-  color: oklch(var(--p));
+  background: color-mix(in oklab, var(--color-primary) 15%, transparent);
+  color: var(--color-primary);
   font-weight: 500;
 }
 .workbook-app__page-link-icon {
@@ -2275,7 +2275,7 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 .workbook-app__empty {
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   font-size: 0.85rem;
   padding: 0.5rem;
 }
@@ -2344,7 +2344,7 @@ onBeforeUnmount(() => {
   border-radius: 4px 4px 4px 0;
 }
 .workbook-app__main-empty {
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   font-style: italic;
   padding: 2rem;
 }
@@ -2372,7 +2372,7 @@ onBeforeUnmount(() => {
   width: 100%;
   max-height: 14rem;
   object-fit: cover;
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
 .workbook-app__page-cover-actions {
   position: absolute;
@@ -2385,7 +2385,7 @@ onBeforeUnmount(() => {
 }
 .workbook-app__page-cover-btn {
   background: rgba(0, 0, 0, 0.55);
-  color: oklch(var(--pc));
+  color: var(--color-primary-content);
   border: 0;
   border-radius: 4px;
   font-size: 0.75rem;
@@ -2403,15 +2403,15 @@ onBeforeUnmount(() => {
 .workbook-app__page-add-btn {
   background: transparent;
   border: 0;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   font-size: 0.85rem;
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
   cursor: pointer;
 }
 .workbook-app__page-add-btn:hover {
-  background: oklch(var(--bc) / 0.06);
-  color: oklch(var(--bc));
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
+  color: var(--color-base-content);
 }
 .workbook-app__page-icon {
   font-size: 1.2em;
@@ -2446,11 +2446,11 @@ onBeforeUnmount(() => {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   margin-bottom: 0.25rem;
 }
 .workbook-app__page-description {
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   margin: 0 0 1rem;
 }
 .workbook-app__save-status {
@@ -2460,19 +2460,19 @@ onBeforeUnmount(() => {
   font-weight: 500;
 }
 .workbook-app__save-status--dirty {
-  background: oklch(var(--bc) / 0.06);
-  color: oklch(var(--wa));
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
+  color: var(--color-warning);
 }
 .workbook-app__save-status--saving {
-  background: oklch(var(--bc) / 0.06);
-  color: oklch(var(--in));
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
+  color: var(--color-info);
 }
 .workbook-app__save-status--saved {
-  background: oklch(var(--bc) / 0.06);
-  color: oklch(var(--su));
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
+  color: var(--color-success);
 }
 .workbook-app__save-status--error {
-  background: oklch(var(--er) / 0.15);
-  color: oklch(var(--er));
+  background: color-mix(in oklab, var(--color-error) 15%, transparent);
+  color: var(--color-error);
 }
 </style>

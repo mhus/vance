@@ -327,7 +327,7 @@ const editor = useEditor({
       // Disable the StarterKit's plain code-block — we wire in the
       // lowlight-powered variant below for syntax highlighting.
       codeBlock: false,
-      dropcursor: { color: 'oklch(var(--p))', width: 3 },
+      dropcursor: { color: 'var(--color-primary)', width: 3 },
       // Tiptap 3's StarterKit bundles Link; disable it here so our custom
       // Link (per-link target attribute + vance: protocol) is the only one.
       link: false,
@@ -1249,7 +1249,7 @@ defineExpose({
 .ProseMirror .is-active-block {
   /* Theme-aware neutral: base-content is dark on light themes, light on dark
      → dark-grey ring in light mode, light-grey in dark mode. */
-  outline: 2px solid oklch(var(--bc) / 0.5);
+  outline: 2px solid color-mix(in oklab, var(--color-base-content) 50%, transparent);
   outline-offset: 4px;
   border-radius: 4px;
 }
@@ -1258,19 +1258,19 @@ defineExpose({
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
 }
 .canvas-editor__toolbar {
   display: flex;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.18);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
 }
 .canvas-editor__btn {
   padding: 0.25rem 0.75rem;
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.375rem;
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
   cursor: pointer;
 }
 .canvas-editor__btn:disabled {
@@ -1284,9 +1284,9 @@ defineExpose({
   width: 3.4rem;
   height: 3.4rem;
   border-radius: 50%;
-  background: oklch(var(--er) / 0.18);
-  border: 2px dashed oklch(var(--er) / 0.6);
-  color: oklch(var(--er));
+  background: color-mix(in oklab, var(--color-error) 18%, transparent);
+  border: 2px dashed color-mix(in oklab, var(--color-error) 60%, transparent);
+  color: var(--color-error);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1298,8 +1298,8 @@ defineExpose({
   user-select: none;
 }
 .canvas-editor__trash--over {
-  background: oklch(var(--er));
-  color: oklch(var(--erc, var(--b1)));
+  background: var(--color-error);
+  color: var(--color-error-content);
   transform: scale(1.15);
   border-style: solid;
 }
@@ -1338,13 +1338,13 @@ defineExpose({
   padding: 0;
 }
 .canvas-editor__body .ProseMirror blockquote {
-  border-left: 3px solid oklch(var(--bc) / 0.18);
+  border-left: 3px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   padding-left: 1em;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   margin: 0.75em 0;
 }
 .canvas-editor__body .ProseMirror pre {
-  background: oklch(var(--bc) / 0.08);
+  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
   border-radius: 0.375rem;
   padding: 0.75em 1em;
   font-family: monospace;
@@ -1352,7 +1352,7 @@ defineExpose({
   white-space: pre-wrap;
 }
 .canvas-editor__body .ProseMirror code {
-  background: oklch(var(--bc) / 0.08);
+  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
   padding: 0.1em 0.3em;
   border-radius: 0.2em;
   font-size: 0.9em;
@@ -1362,7 +1362,7 @@ defineExpose({
   padding: 0;
 }
 .canvas-editor__body .ProseMirror a {
-  color: oklch(var(--p));
+  color: var(--color-primary);
   text-decoration: underline;
 }
 .canvas-editor__body .ProseMirror ul[data-type='taskList'] > li {
@@ -1372,7 +1372,7 @@ defineExpose({
 }
 .canvas-editor__body .ProseMirror hr {
   border: none;
-  border-top: 1px solid oklch(var(--bc) / 0.18);
+  border-top: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   margin: 1.25em 0;
 }
 
@@ -1383,7 +1383,7 @@ defineExpose({
 .canvas-editor__body .ProseMirror h2.is-empty::before,
 .canvas-editor__body .ProseMirror h3.is-empty::before {
   content: attr(data-placeholder);
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   float: left;
   height: 0;
   pointer-events: none;
@@ -1394,15 +1394,15 @@ defineExpose({
   display: flex;
   gap: 0.125rem;
   padding: 0.25rem;
-  background: oklch(var(--b1));
-  color: oklch(var(--pc));
+  background: var(--color-base-100);
+  color: var(--color-primary-content);
   border-radius: 0.375rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 .canvas-editor__bubble-btn {
   background: transparent;
   border: none;
-  color: oklch(var(--pc));
+  color: var(--color-primary-content);
   padding: 0.25rem 0.5rem;
   border-radius: 0.25rem;
   cursor: pointer;
@@ -1470,7 +1470,7 @@ defineExpose({
 .ProseMirror-dropcursor,
 .prosemirror-dropcursor-block,
 .prosemirror-dropcursor-inline {
-  background: oklch(var(--p)) !important;
+  background: var(--color-primary) !important;
   border: none !important;
 }
 
@@ -1503,7 +1503,7 @@ defineExpose({
    above). The visual cue is in the cursor on modifier hover, plus a
    `title` injection on render so the browser tooltip says so. */
 .ProseMirror a {
-  color: oklch(var(--p));
+  color: var(--color-primary);
   text-decoration: underline;
   cursor: text;
 }
@@ -1537,7 +1537,7 @@ defineExpose({
   cursor: pointer;
   padding: 0 0.3em;
   font-size: 0.7em;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   opacity: 0;
   transition: opacity 0.15s ease, color 0.15s ease;
   font-family: inherit;
@@ -1550,10 +1550,10 @@ h3:hover > .heading-anchor-btn {
   opacity: 1;
 }
 .heading-anchor-btn:hover {
-  color: oklch(var(--p));
+  color: var(--color-primary);
 }
 .heading-anchor-btn--copied {
-  color: oklch(var(--su)) !important;
+  color: var(--color-success) !important;
   opacity: 1 !important;
 }
 
@@ -1562,21 +1562,21 @@ h3:hover > .heading-anchor-btn {
    covers the dragging-target visuals. */
 
 .vance-callout {
-  border-left: 3px solid var(--vance-callout-color, oklch(var(--in)));
-  background: var(--vance-callout-bg, oklch(var(--in) / 0.12));
+  border-left: 3px solid var(--vance-callout-color, var(--color-info));
+  background: var(--vance-callout-bg, color-mix(in oklab, var(--color-info) 12%, transparent));
   border-radius: 0.375rem;
   padding: 0.75em 1em;
   margin: 0.75em 0;
 }
-.vance-callout--warn { --vance-callout-color: oklch(var(--wa)); --vance-callout-bg: oklch(var(--wa) / 0.12); }
-.vance-callout--error { --vance-callout-color: oklch(var(--er)); --vance-callout-bg: oklch(var(--er) / 0.12); }
-.vance-callout--success { --vance-callout-color: oklch(var(--su)); --vance-callout-bg: oklch(var(--su) / 0.12); }
-.vance-callout--note { --vance-callout-color: oklch(var(--bc) / 0.55); --vance-callout-bg: oklch(var(--bc) / 0.06); }
+.vance-callout--warn { --vance-callout-color: var(--color-warning); --vance-callout-bg: color-mix(in oklab, var(--color-warning) 12%, transparent); }
+.vance-callout--error { --vance-callout-color: var(--color-error); --vance-callout-bg: color-mix(in oklab, var(--color-error) 12%, transparent); }
+.vance-callout--success { --vance-callout-color: var(--color-success); --vance-callout-bg: color-mix(in oklab, var(--color-success) 12%, transparent); }
+.vance-callout--note { --vance-callout-color: color-mix(in oklab, var(--color-base-content) 55%, transparent); --vance-callout-bg: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
 .vance-callout__title { font-weight: 600; margin-bottom: 0.25em; }
 .vance-callout__body { white-space: pre-wrap; }
 
 .vance-toggle {
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.375rem;
   padding: 0.5em 0.75em;
   margin: 0.5em 0;
@@ -1586,31 +1586,31 @@ h3:hover > .heading-anchor-btn {
 
 .vance-link-card {
   display: block;
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.5rem;
   padding: 0.75em 1em;
   margin: 0.5em 0;
   text-decoration: none;
   color: inherit;
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
 .vance-link-card__title { font-weight: 600; }
-.vance-link-card__description { font-size: 0.9em; color: oklch(var(--bc) / 0.65); }
+.vance-link-card__description { font-size: 0.9em; color: color-mix(in oklab, var(--color-base-content) 65%, transparent); }
 
 .vance-dataview-stub {
-  border: 1px dashed oklch(var(--bc) / 0.18);
+  border: 1px dashed color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.375rem;
   padding: 0.75em 1em;
   margin: 0.75em 0;
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
-.vance-dataview-stub__label { font-weight: 600; font-size: 0.85em; color: oklch(var(--bc) / 0.65); }
+.vance-dataview-stub__label { font-weight: 600; font-size: 0.85em; color: color-mix(in oklab, var(--color-base-content) 65%, transparent); }
 .vance-dataview-stub__source { display: block; font-family: monospace; margin: 0.25em 0; }
-.vance-dataview-stub__hint { font-size: 0.85em; color: oklch(var(--bc) / 0.65); }
+.vance-dataview-stub__hint { font-size: 0.85em; color: color-mix(in oklab, var(--color-base-content) 65%, transparent); }
 
 .vance-unknown-fence {
-  background: oklch(var(--er) / 0.12);
-  border: 1px solid oklch(var(--er) / 0.5);
+  background: color-mix(in oklab, var(--color-error) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-error) 50%, transparent);
   border-radius: 0.375rem;
   padding: 0.5em 0.75em;
   margin: 0.5em 0;
@@ -1618,5 +1618,5 @@ h3:hover > .heading-anchor-btn {
   font-family: monospace;
   font-size: 0.85em;
 }
-.vance-unknown-fence__label { font-weight: 600; margin-bottom: 0.25em; color: oklch(var(--er)); }
+.vance-unknown-fence__label { font-weight: 600; margin-bottom: 0.25em; color: var(--color-error); }
 </style>

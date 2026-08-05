@@ -303,8 +303,8 @@ onBeforeUnmount(() => {
 .diagram-view {
   position: relative;
   width: 100%;
-  background: oklch(var(--b1));
-  border: 1px solid oklch(var(--bc) / 0.15);
+  background: var(--color-base-100);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
   border-radius: 0.5rem;
   outline: none;
   overflow: hidden;
@@ -369,7 +369,7 @@ onBeforeUnmount(() => {
   white-space: pre-wrap;
   margin: 0;
   padding: 0.5rem;
-  background: oklch(var(--b2));
+  background: var(--color-base-200);
   border-radius: 0.25rem;
 }
 .diagram-error-source {
@@ -379,7 +379,7 @@ onBeforeUnmount(() => {
 .diagram-error-source pre {
   margin: 0.5rem 0 0;
   padding: 0.5rem;
-  background: oklch(var(--b2));
+  background: var(--color-base-200);
   border-radius: 0.25rem;
   font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", monospace;
   font-size: 0.8125rem;
@@ -398,22 +398,22 @@ onBeforeUnmount(() => {
 .diagram-tool-btn {
   min-width: 2rem;
   height: 2rem;
-  border: 1px solid oklch(var(--bc) / 0.2);
-  background: oklch(var(--b1) / 0.9);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
+  background: color-mix(in oklab, var(--color-base-100) 90%, transparent);
   backdrop-filter: blur(4px);
   border-radius: 0.375rem;
   padding: 0 0.5rem;
   font-size: 0.95rem;
   line-height: 1;
   cursor: pointer;
-  color: oklch(var(--bc));
+  color: var(--color-base-content);
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 .diagram-tool-btn:hover {
-  background: oklch(var(--b2));
-  border-color: oklch(var(--bc) / 0.35);
+  background: var(--color-base-200);
+  border-color: color-mix(in oklab, var(--color-base-content) 35%, transparent);
 }
 .diagram-tool-btn--text {
   font-size: 0.8125rem;

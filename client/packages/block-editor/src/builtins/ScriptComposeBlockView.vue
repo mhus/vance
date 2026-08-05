@@ -64,10 +64,10 @@ const description = computed<string | undefined>(() =>
 <style scoped>
 .scv {
   margin: 0.6em 0;
-  border: 1px solid oklch(var(--bc) / 0.15);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
   border-radius: 0.5rem;
   padding: 0.6rem 0.75rem;
-  background: oklch(var(--bc) / 0.03);
+  background: color-mix(in oklab, var(--color-base-content) 3%, transparent);
 }
 .scv__title { font-weight: 600; }
 .scv__desc { font-size: 0.82rem; opacity: 0.7; white-space: pre-line; }

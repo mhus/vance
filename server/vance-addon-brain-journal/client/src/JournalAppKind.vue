@@ -597,25 +597,25 @@ function humanDate(iso: string): string {
 .jr__topbar {
   display: flex; align-items: center; gap: 0.5rem;
   padding: 0.4rem 0.75rem;
-  border-bottom: 1px solid hsl(var(--bc) / 0.15);
-  background: hsl(var(--b1));
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
+  background: var(--color-base-100);
 }
 .jr__brand { font-weight: 700; font-size: 0.95rem; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .jr__search { position: relative; display: flex; align-items: center; gap: 0.25rem; }
 .jr__search-input {
-  border: 1px solid hsl(var(--bc) / 0.2); border-radius: 6px; background: transparent;
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent); border-radius: 6px; background: transparent;
   padding: 0.2rem 0.5rem; font-size: 0.8rem; width: 12rem;
 }
 .jr__search-results {
   position: absolute; top: 100%; left: 0; margin-top: 0.25rem; min-width: 22rem; max-height: 22rem;
-  overflow-y: auto; padding: 0.25rem; background: hsl(var(--b1));
-  border: 1px solid hsl(var(--bc) / 0.2); border-radius: 8px;
+  overflow-y: auto; padding: 0.25rem; background: var(--color-base-100);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent); border-radius: 8px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); z-index: 50;
 }
 .jr__search-list { list-style: none; margin: 0; padding: 0; }
 .jr__search-empty { padding: 0.6rem; font-size: 0.8rem; opacity: 0.6; }
 .jr__search-row { display: flex; flex-direction: column; padding: 0.35rem 0.5rem; border-radius: 6px; cursor: pointer; }
-.jr__search-row:hover { background: hsl(var(--bc) / 0.08); }
+.jr__search-row:hover { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
 .jr__search-title { font-size: 0.85rem; font-weight: 600; }
 .jr__search-snippet { font-size: 0.72rem; opacity: 0.6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .jr__spacer { flex: 1; }
@@ -623,10 +623,10 @@ function humanDate(iso: string): string {
 .jr__save--error { color: #d33; opacity: 1; }
 .jr__save--saved { color: #2a8; }
 .jr__btn {
-  border: 1px solid hsl(var(--bc) / 0.2); border-radius: 6px; background: transparent;
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent); border-radius: 6px; background: transparent;
   padding: 0.2rem 0.55rem; font-size: 0.8rem; cursor: pointer; white-space: nowrap;
 }
-.jr__btn:hover:not(:disabled) { background: hsl(var(--bc) / 0.08); }
+.jr__btn:hover:not(:disabled) { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
 .jr__btn:disabled { opacity: 0.5; cursor: default; }
 .jr__btn--sm { padding: 0.1rem 0.45rem; }
 .jr__btn--danger:hover:not(:disabled) { background: rgba(221, 51, 51, 0.12); }
@@ -635,7 +635,7 @@ function humanDate(iso: string): string {
 .jr__body { flex: 1; display: flex; min-height: 0; }
 .jr__cal {
   width: 260px; flex-shrink: 0; padding: 0.75rem;
-  border-right: 1px solid hsl(var(--bc) / 0.15); overflow-y: auto;
+  border-right: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent); overflow-y: auto;
 }
 .jr__cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
 .jr__cal-label { font-weight: 600; font-size: 0.85rem; }
@@ -646,39 +646,39 @@ function humanDate(iso: string): string {
   font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
 }
 .jr__cal-cell--empty { cursor: default; }
-.jr__cal-cell:hover:not(.jr__cal-cell--empty) { background: hsl(var(--bc) / 0.08); }
-.jr__cal-cell--today { outline: 1px solid hsl(var(--p) / 0.5); }
-.jr__cal-cell--sel { background: hsl(var(--p) / 0.18); font-weight: 700; }
+.jr__cal-cell:hover:not(.jr__cal-cell--empty) { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
+.jr__cal-cell--today { outline: 1px solid color-mix(in oklab, var(--color-primary) 50%, transparent); }
+.jr__cal-cell--sel { background: color-mix(in oklab, var(--color-primary) 18%, transparent); font-weight: 700; }
 .jr__cal-dot {
   position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%);
-  width: 4px; height: 4px; border-radius: 50%; background: hsl(var(--p));
+  width: 4px; height: 4px; border-radius: 50%; background: var(--color-primary);
 }
 .jr__stats { display: flex; gap: 0.5rem; margin-top: 1rem; }
-.jr__stat { flex: 1; text-align: center; padding: 0.4rem; border: 1px solid hsl(var(--bc) / 0.12); border-radius: 8px; }
+.jr__stat { flex: 1; text-align: center; padding: 0.4rem; border: 1px solid color-mix(in oklab, var(--color-base-content) 12%, transparent); border-radius: 8px; }
 .jr__stat b { display: block; font-size: 1.1rem; }
 .jr__stat span { font-size: 0.62rem; opacity: 0.6; }
 .jr__main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow-y: auto; }
 .jr__entryhead { display: flex; align-items: center; gap: 0.6rem; padding: 0.75rem 1.5rem 0.25rem; }
 .jr__entrytitle { font-size: 1.3rem; font-weight: 700; }
-.jr__badge { font-size: 0.62rem; padding: 0.1rem 0.4rem; border-radius: 4px; background: hsl(var(--bc) / 0.1); opacity: 0.8; }
+.jr__badge { font-size: 0.62rem; padding: 0.1rem 0.4rem; border-radius: 4px; background: color-mix(in oklab, var(--color-base-content) 10%, transparent); opacity: 0.8; }
 .jr__mood-select {
-  border: 1px solid hsl(var(--bc) / 0.2); border-radius: 6px; background: transparent;
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent); border-radius: 6px; background: transparent;
   padding: 0.2rem 0.5rem; font-size: 0.8rem;
 }
 .jr__tags { padding: 0 1.5rem 0.4rem; }
 .jr__tags-input {
-  border: 1px solid hsl(var(--bc) / 0.2); border-radius: 6px; background: transparent;
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent); border-radius: 6px; background: transparent;
   padding: 0.2rem 0.5rem; font-size: 0.78rem; width: 100%; max-width: 28rem;
 }
 .jr__right {
-  width: 260px; flex-shrink: 0; border-left: 1px solid hsl(var(--bc) / 0.15);
-  padding: 0.75rem; overflow-y: auto; background: hsl(var(--b1));
+  width: 260px; flex-shrink: 0; border-left: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
+  padding: 0.75rem; overflow-y: auto; background: var(--color-base-100);
 }
 .jr__right-head { font-weight: 600; font-size: 0.8rem; margin-bottom: 0.5rem; }
 .jr__right-empty { font-size: 0.78rem; opacity: 0.55; }
 .jr__otd-list { list-style: none; margin: 0; padding: 0; }
 .jr__otd-row { display: flex; flex-direction: column; padding: 0.4rem 0.3rem; border-radius: 6px; cursor: pointer; }
-.jr__otd-row:hover { background: hsl(var(--bc) / 0.08); }
+.jr__otd-row:hover { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
 .jr__otd-date { font-size: 0.72rem; opacity: 0.6; }
 .jr__otd-title { font-size: 0.85rem; }
 </style>

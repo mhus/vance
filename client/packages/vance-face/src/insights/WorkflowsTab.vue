@@ -515,10 +515,10 @@ function processSelectHandler(run: MagratheaProcessDto): void {
   cursor: pointer;
   border: 1px solid transparent;
 }
-.wf-row:hover { background: oklch(var(--bc) / 0.06); }
+.wf-row:hover { background: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
 .wf-row--active {
-  background: oklch(var(--p) / 0.12);
-  border-color: oklch(var(--p) / 0.3);
+  background: color-mix(in oklab, var(--color-primary) 12%, transparent);
+  border-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
 }
 
 .badge-source {
@@ -527,18 +527,18 @@ function processSelectHandler(run: MagratheaProcessDto): void {
   font-family: ui-monospace, monospace;
 }
 .badge-source--project {
-  background: oklch(var(--p) / 0.18);
-  color: oklch(var(--p));
+  background: color-mix(in oklab, var(--color-primary) 18%, transparent);
+  color: var(--color-primary);
 }
 .badge-source--vance {
-  background: oklch(var(--bc) / 0.12);
-  color: oklch(var(--bc) / 0.7);
+  background: color-mix(in oklab, var(--color-base-content) 12%, transparent);
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
 }
 
 .sub-tab-bar {
   display: flex;
   gap: 0.25rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.15);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
   padding-bottom: 0.25rem;
 }
 .sub-tab {
@@ -549,10 +549,10 @@ function processSelectHandler(run: MagratheaProcessDto): void {
   font-size: 0.85rem;
   cursor: pointer;
 }
-.sub-tab:hover { background: oklch(var(--bc) / 0.06); }
+.sub-tab:hover { background: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
 .sub-tab--active {
-  background: oklch(var(--p) / 0.12);
-  border-color: oklch(var(--p) / 0.3);
+  background: color-mix(in oklab, var(--color-primary) 12%, transparent);
+  border-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
   font-weight: 600;
 }
 
@@ -561,14 +561,14 @@ function processSelectHandler(run: MagratheaProcessDto): void {
   border-radius: 0.25rem;
   font-family: ui-monospace, monospace;
 }
-.badge-run--running    { background: oklch(var(--in) / 0.18); color: oklch(var(--in)); }
-.badge-run--done       { background: oklch(var(--su) / 0.18); color: oklch(var(--su)); }
-.badge-run--failed     { background: oklch(var(--er) / 0.18); color: oklch(var(--er)); }
-.badge-run--terminated { background: oklch(var(--bc) / 0.12); color: oklch(var(--bc) / 0.7); }
-.badge-run--paused     { background: oklch(var(--wa) / 0.18); color: oklch(var(--wa)); }
+.badge-run--running    { background: color-mix(in oklab, var(--color-info) 18%, transparent); color: var(--color-info); }
+.badge-run--done       { background: color-mix(in oklab, var(--color-success) 18%, transparent); color: var(--color-success); }
+.badge-run--failed     { background: color-mix(in oklab, var(--color-error) 18%, transparent); color: var(--color-error); }
+.badge-run--terminated { background: color-mix(in oklab, var(--color-base-content) 12%, transparent); color: color-mix(in oklab, var(--color-base-content) 70%, transparent); }
+.badge-run--paused     { background: color-mix(in oklab, var(--color-warning) 18%, transparent); color: var(--color-warning); }
 
 .json-block {
-  background: oklch(var(--bc) / 0.05);
+  background: color-mix(in oklab, var(--color-base-content) 5%, transparent);
   padding: 0.5rem 0.75rem;
   border-radius: 0.375rem;
   font-size: 0.8125rem;
@@ -578,7 +578,7 @@ function processSelectHandler(run: MagratheaProcessDto): void {
 }
 
 .link {
-  color: oklch(var(--p));
+  color: var(--color-primary);
   text-decoration: underline;
   background: transparent;
   cursor: pointer;

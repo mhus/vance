@@ -50,14 +50,13 @@ function groupedOptions(options: Option<T>[]): Section[] {
 </script>
 
 <template>
-  <label class="form-control w-full">
-    <div v-if="label" class="label">
-      <span class="label-text">{{ label }}</span>
-    </div>
+  <!-- See VInput for the `v-field*` hook-class convention. -->
+  <label class="v-field flex flex-col gap-1 w-full">
+    <span v-if="label" class="v-field-label text-sm">{{ label }}</span>
     <select
       :value="modelValue ?? ''"
       :disabled="disabled"
-      :class="['select', 'select-bordered', 'w-full', { 'select-error': !!error }]"
+      :class="['select', 'w-full', { 'select-error': !!error }]"
       @change="onChange"
     >
       <option v-if="placeholder" value="" disabled>{{ placeholder }}</option>
@@ -82,10 +81,8 @@ function groupedOptions(options: Option<T>[]): Section[] {
         </option>
       </template>
     </select>
-    <div v-if="error || help" class="label">
-      <span :class="['label-text-alt', error ? 'text-error' : 'opacity-70']">
-        {{ error || help }}
-      </span>
-    </div>
+    <span v-if="error || help" :class="['v-field-hint', 'text-xs', error ? 'text-error' : 'opacity-70']">
+      {{ error || help }}
+    </span>
   </label>
 </template>

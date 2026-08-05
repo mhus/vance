@@ -116,16 +116,16 @@ function onPick(label: string): void {
   transition: background-color 0.12s, border-color 0.12s, opacity 0.12s;
 }
 .question-canvas__option.is-actionable {
-  border-color: oklch(var(--p) / 0.4);
-  background: oklch(var(--p) / 0.08);
+  border-color: color-mix(in oklab, var(--color-primary) 40%, transparent);
+  background: color-mix(in oklab, var(--color-primary) 8%, transparent);
 }
 .question-canvas__option.is-actionable:hover {
-  background: oklch(var(--p) / 0.18);
-  border-color: oklch(var(--p) / 0.6);
+  background: color-mix(in oklab, var(--color-primary) 18%, transparent);
+  border-color: color-mix(in oklab, var(--color-primary) 60%, transparent);
 }
 .question-canvas__option.is-stale {
-  border-color: oklch(var(--bc) / 0.18);
-  background: oklch(var(--bc) / 0.06);
+  border-color: color-mix(in oklab, var(--color-base-content) 18%, transparent);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
   cursor: default;
   opacity: 0.55;
 }

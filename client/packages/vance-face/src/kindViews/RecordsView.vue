@@ -698,17 +698,17 @@ const hasOverflow = computed(() =>
 }
 .records-read__th,
 .records-read__td {
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   padding: 0.3em 0.6em;
   text-align: left;
   vertical-align: top;
 }
 .records-read__th {
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
   font-weight: 600;
 }
 .records-read__tr:nth-child(even) .records-read__td {
-  background: oklch(var(--bc) / 0.03);
+  background: color-mix(in oklab, var(--color-base-content) 3%, transparent);
 }
 .records-read__empty {
   padding: 0.6rem;
@@ -727,12 +727,12 @@ const hasOverflow = computed(() =>
   padding-bottom: 0.4rem;
 }
 .schema-error {
-  color: oklch(var(--er));
+  color: var(--color-error);
   font-size: 0.8rem;
 }
 .records-edit--schema .header-row {
-  background: oklch(var(--p) / 0.06);
-  border-bottom-color: oklch(var(--p) / 0.4);
+  background: color-mix(in oklab, var(--color-primary) 6%, transparent);
+  border-bottom-color: color-mix(in oklab, var(--color-primary) 40%, transparent);
 }
 .header-row,
 .row {
@@ -740,14 +740,14 @@ const hasOverflow = computed(() =>
   gap: 0.4rem;
   align-items: stretch;
   padding: 0.3rem 0.25rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.08);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 8%, transparent);
 }
 .header-row {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: oklch(var(--b2));
-  border-bottom: 1px solid oklch(var(--bc) / 0.18);
+  background: var(--color-base-200);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   padding: 0.45rem 0.25rem;
 }
 .header-cell {
@@ -790,8 +790,8 @@ const hasOverflow = computed(() =>
   white-space: nowrap;
 }
 .cell:hover {
-  border-color: oklch(var(--bc) / 0.15);
-  background: oklch(var(--bc) / 0.04);
+  border-color: color-mix(in oklab, var(--color-base-content) 15%, transparent);
+  background: color-mix(in oklab, var(--color-base-content) 4%, transparent);
 }
 .cell-content {
   display: inline-block;
@@ -807,7 +807,7 @@ const hasOverflow = computed(() =>
 }
 .cell-input {
   background: transparent;
-  border: 1px solid oklch(var(--p) / 0.4);
+  border: 1px solid color-mix(in oklab, var(--color-primary) 40%, transparent);
   border-radius: 0.25rem;
   padding: 0.25rem 0.5rem;
   font: inherit;
@@ -817,8 +817,8 @@ const hasOverflow = computed(() =>
   min-height: 1.6rem;
 }
 .cell-input:focus {
-  border-color: oklch(var(--p));
-  box-shadow: 0 0 0 2px oklch(var(--p) / 0.2);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary) 20%, transparent);
 }
 .row-delete {
   background: transparent;
@@ -832,8 +832,8 @@ const hasOverflow = computed(() =>
 }
 .row-delete:hover {
   opacity: 1;
-  background: oklch(var(--er) / 0.15);
-  color: oklch(var(--er));
+  background: color-mix(in oklab, var(--color-error) 15%, transparent);
+  color: var(--color-error);
 }
 .add-row {
   margin-top: 0.5rem;
@@ -849,22 +849,22 @@ const hasOverflow = computed(() =>
   padding: 0.4rem 0.6rem;
   margin-bottom: 0.4rem;
   border-radius: 0.375rem;
-  background: oklch(var(--p) / 0.1);
-  border: 1px solid oklch(var(--p) / 0.3);
+  background: color-mix(in oklab, var(--color-primary) 10%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-primary) 30%, transparent);
   font-size: 0.85rem;
 }
 .bulk-count { font-weight: 600; }
 .grow { flex: 1 1 auto; }
-.row--ghost { opacity: 0.35; background: oklch(var(--p) / 0.08); }
-.row--chosen { background: oklch(var(--bc) / 0.04); }
+.row--ghost { opacity: 0.35; background: color-mix(in oklab, var(--color-primary) 8%, transparent); }
+.row--chosen { background: color-mix(in oklab, var(--color-base-content) 4%, transparent); }
 .row--drag {
   opacity: 0.95;
-  background: oklch(var(--b1));
-  box-shadow: 0 4px 14px oklch(var(--bc) / 0.15);
+  background: var(--color-base-100);
+  box-shadow: 0 4px 14px color-mix(in oklab, var(--color-base-content) 15%, transparent);
 }
 .row--selected {
-  background: oklch(var(--p) / 0.08);
-  box-shadow: inset 3px 0 0 oklch(var(--p));
+  background: color-mix(in oklab, var(--color-primary) 8%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 /* Body rows while schema-edit mode is active — visible but muted so
    the user notices the cells aren't editable. The drag handle and
@@ -902,7 +902,7 @@ const hasOverflow = computed(() =>
 .schema-remove,
 .schema-add {
   background: transparent;
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.25rem;
   cursor: pointer;
   padding: 0 0.4rem;
@@ -913,7 +913,7 @@ const hasOverflow = computed(() =>
 .schema-arrow:hover,
 .schema-remove:hover,
 .schema-add:hover {
-  background: oklch(var(--bc) / 0.08);
+  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
 }
 .schema-arrow:disabled,
 .schema-remove:disabled {
@@ -921,9 +921,9 @@ const hasOverflow = computed(() =>
   cursor: not-allowed;
 }
 .schema-remove:hover:not(:disabled) {
-  background: oklch(var(--er) / 0.15);
-  color: oklch(var(--er));
-  border-color: oklch(var(--er) / 0.4);
+  background: color-mix(in oklab, var(--color-error) 15%, transparent);
+  color: var(--color-error);
+  border-color: color-mix(in oklab, var(--color-error) 40%, transparent);
 }
 .schema-add {
   font-size: 1rem;
@@ -931,7 +931,7 @@ const hasOverflow = computed(() =>
 }
 .schema-name-input {
   background: transparent;
-  border: 1px solid oklch(var(--bc) / 0.25);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 25%, transparent);
   border-radius: 0.25rem;
   padding: 0.2rem 0.4rem;
   font: inherit;
@@ -942,8 +942,8 @@ const hasOverflow = computed(() =>
   outline: none;
 }
 .schema-name-input:focus {
-  border-color: oklch(var(--p));
-  box-shadow: 0 0 0 2px oklch(var(--p) / 0.2);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary) 20%, transparent);
 }
 .row-delete-spacer {
   width: 1.5rem;

@@ -655,7 +655,7 @@ const ALL_STATUSES: ChecklistStatus[] = [
   margin-bottom: 0.5rem;
   padding: 0.3rem 0.1rem;
   font-size: 0.85rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.08);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 8%, transparent);
 }
 .aggregate-total {
   font-weight: 600;
@@ -668,18 +668,18 @@ const ALL_STATUSES: ChecklistStatus[] = [
   gap: 0.25rem;
   padding: 0.1rem 0.45rem;
   border-radius: 999px;
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
   border: 1px solid transparent;
   font-size: 0.8rem;
   cursor: pointer;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .aggregate-pill:hover {
-  background: oklch(var(--bc) / 0.12);
+  background: color-mix(in oklab, var(--color-base-content) 12%, transparent);
 }
 .aggregate-pill--active {
   border-color: currentColor;
-  background: oklch(var(--bc) / 0.16);
+  background: color-mix(in oklab, var(--color-base-content) 16%, transparent);
 }
 .aggregate-glyph {
   display: inline-block;
@@ -720,7 +720,7 @@ const ALL_STATUSES: ChecklistStatus[] = [
   gap: 0.5rem;
   align-items: start;
   padding: 0.4rem 0.25rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.08);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 8%, transparent);
   background: transparent;
 }
 .row:last-child {
@@ -738,12 +738,12 @@ const ALL_STATUSES: ChecklistStatus[] = [
 .drag-handle:hover { opacity: 0.7; }
 .drag-handle:active { cursor: grabbing; }
 
-.row--ghost { opacity: 0.35; background: oklch(var(--p) / 0.08); }
-.row--chosen { background: oklch(var(--bc) / 0.04); }
+.row--ghost { opacity: 0.35; background: color-mix(in oklab, var(--color-primary) 8%, transparent); }
+.row--chosen { background: color-mix(in oklab, var(--color-base-content) 4%, transparent); }
 .row--drag {
   opacity: 0.95;
-  background: oklch(var(--b1));
-  box-shadow: 0 4px 14px oklch(var(--bc) / 0.15);
+  background: var(--color-base-100);
+  box-shadow: 0 4px 14px color-mix(in oklab, var(--color-base-content) 15%, transparent);
 }
 
 /* Status cell */
@@ -767,8 +767,8 @@ const ALL_STATUSES: ChecklistStatus[] = [
   min-width: 2.5rem;
 }
 .status-box:hover {
-  background: oklch(var(--bc) / 0.06);
-  border-color: oklch(var(--bc) / 0.15);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
+  border-color: color-mix(in oklab, var(--color-base-content) 15%, transparent);
 }
 .status-glyph {
   display: inline-block;
@@ -787,7 +787,7 @@ const ALL_STATUSES: ChecklistStatus[] = [
 }
 .status-dropdown-trigger:hover {
   opacity: 0.9;
-  background: oklch(var(--bc) / 0.08);
+  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
 }
 
 /* Status dropdown menu */
@@ -798,10 +798,10 @@ const ALL_STATUSES: ChecklistStatus[] = [
   z-index: 10;
   display: flex;
   flex-direction: column;
-  background: oklch(var(--b1));
-  border: 1px solid oklch(var(--bc) / 0.18);
+  background: var(--color-base-100);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.375rem;
-  box-shadow: 0 4px 14px oklch(var(--bc) / 0.18);
+  box-shadow: 0 4px 14px color-mix(in oklab, var(--color-base-content) 18%, transparent);
   padding: 0.25rem 0;
   min-width: 12rem;
 }
@@ -817,10 +817,10 @@ const ALL_STATUSES: ChecklistStatus[] = [
   font-size: 0.85rem;
 }
 .status-menu__option:hover {
-  background: oklch(var(--bc) / 0.08);
+  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
 }
 .status-menu__option--active {
-  background: oklch(var(--p) / 0.12);
+  background: color-mix(in oklab, var(--color-primary) 12%, transparent);
   font-weight: 600;
 }
 .status-menu__glyph {
@@ -831,15 +831,15 @@ const ALL_STATUSES: ChecklistStatus[] = [
 .status-menu__label { flex: 1 1 auto; }
 
 /* Status colour tokens — DaisyUI semantic vars */
-.status--open { color: oklch(var(--bc) / 0.55); }
-.status--done { color: oklch(var(--su)); }
-.status--in_progress { color: oklch(var(--in)); }
-.status--review { color: oklch(var(--a)); }
-.status--blocked { color: oklch(var(--er)); }
-.status--needs_info { color: oklch(var(--wa)); }
-.status--deferred { color: oklch(var(--bc) / 0.6); }
-.status--delegated { color: oklch(var(--s)); }
-.status--waiting { color: oklch(var(--bc) / 0.6); font-style: italic; }
+.status--open { color: color-mix(in oklab, var(--color-base-content) 55%, transparent); }
+.status--done { color: var(--color-success); }
+.status--in_progress { color: var(--color-info); }
+.status--review { color: var(--color-accent); }
+.status--blocked { color: var(--color-error); }
+.status--needs_info { color: var(--color-warning); }
+.status--deferred { color: color-mix(in oklab, var(--color-base-content) 60%, transparent); }
+.status--delegated { color: var(--color-secondary); }
+.status--waiting { color: color-mix(in oklab, var(--color-base-content) 60%, transparent); font-style: italic; }
 
 /* Text / edit input */
 .text {
@@ -853,8 +853,8 @@ const ALL_STATUSES: ChecklistStatus[] = [
   width: 100%;
 }
 .text:hover {
-  border-color: oklch(var(--bc) / 0.15);
-  background: oklch(var(--bc) / 0.04);
+  border-color: color-mix(in oklab, var(--color-base-content) 15%, transparent);
+  background: color-mix(in oklab, var(--color-base-content) 4%, transparent);
 }
 .text-content {
   white-space: pre-wrap;
@@ -866,7 +866,7 @@ const ALL_STATUSES: ChecklistStatus[] = [
 }
 .edit-input {
   background: transparent;
-  border: 1px solid oklch(var(--p) / 0.4);
+  border: 1px solid color-mix(in oklab, var(--color-primary) 40%, transparent);
   border-radius: 0.25rem;
   padding: 0.25rem 0.5rem;
   font: inherit;
@@ -878,8 +878,8 @@ const ALL_STATUSES: ChecklistStatus[] = [
   min-height: 1.6rem;
 }
 .edit-input:focus {
-  border-color: oklch(var(--p));
-  box-shadow: 0 0 0 2px oklch(var(--p) / 0.2);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary) 20%, transparent);
 }
 
 /* Priority toggle */
@@ -894,14 +894,14 @@ const ALL_STATUSES: ChecklistStatus[] = [
   min-width: 1.5rem;
 }
 .prio-toggle:hover {
-  border-color: oklch(var(--bc) / 0.15);
+  border-color: color-mix(in oklab, var(--color-base-content) 15%, transparent);
 }
 .prio-toggle--high {
-  color: oklch(var(--er));
+  color: var(--color-error);
   font-weight: 700;
 }
 .prio-toggle--low {
-  color: oklch(var(--bc) / 0.4);
+  color: color-mix(in oklab, var(--color-base-content) 40%, transparent);
 }
 .prio-toggle--none .prio-toggle__placeholder {
   opacity: 0.25;
@@ -912,8 +912,8 @@ const ALL_STATUSES: ChecklistStatus[] = [
   margin-left: 0.2rem;
   border-radius: 0.2rem;
 }
-.prio-badge--high { color: oklch(var(--er)); font-weight: 700; }
-.prio-badge--low { color: oklch(var(--bc) / 0.5); }
+.prio-badge--high { color: var(--color-error); font-weight: 700; }
+.prio-badge--low { color: color-mix(in oklab, var(--color-base-content) 50%, transparent); }
 
 /* Row delete */
 .row-delete {
@@ -928,8 +928,8 @@ const ALL_STATUSES: ChecklistStatus[] = [
 }
 .row-delete:hover {
   opacity: 1;
-  background: oklch(var(--er) / 0.15);
-  color: oklch(var(--er));
+  background: color-mix(in oklab, var(--color-error) 15%, transparent);
+  color: var(--color-error);
 }
 
 .add-row {
@@ -948,15 +948,15 @@ const ALL_STATUSES: ChecklistStatus[] = [
   padding: 0.4rem 0.6rem;
   margin-bottom: 0.4rem;
   border-radius: 0.375rem;
-  background: oklch(var(--p) / 0.1);
-  border: 1px solid oklch(var(--p) / 0.3);
+  background: color-mix(in oklab, var(--color-primary) 10%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-primary) 30%, transparent);
   font-size: 0.85rem;
 }
 .bulk-count { font-weight: 600; }
 .grow { flex: 1 1 auto; }
 
 .row--selected {
-  background: oklch(var(--p) / 0.08);
-  box-shadow: inset 3px 0 0 oklch(var(--p));
+  background: color-mix(in oklab, var(--color-primary) 8%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 </style>

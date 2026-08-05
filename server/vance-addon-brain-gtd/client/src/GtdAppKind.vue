@@ -575,23 +575,23 @@ function isCurrentBucket(b: BucketId): boolean {
 .gtd { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .gtd__topbar {
   display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.75rem;
-  border-bottom: 1px solid hsl(var(--bc) / 0.15); background: hsl(var(--b1));
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent); background: var(--color-base-100);
 }
 .gtd__brand { font-weight: 700; font-size: 0.95rem; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gtd__search { position: relative; display: flex; align-items: center; gap: 0.25rem; }
 .gtd__input {
-  border: 1px solid hsl(var(--bc) / 0.2); border-radius: 6px; background: transparent;
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent); border-radius: 6px; background: transparent;
   padding: 0.25rem 0.5rem; font-size: 0.82rem;
 }
 .gtd__search .gtd__input { width: 12rem; }
 .gtd__search-results {
   position: absolute; top: 100%; left: 0; margin-top: 0.25rem; min-width: 22rem; max-height: 22rem;
-  overflow-y: auto; padding: 0.25rem; background: hsl(var(--b1)); border: 1px solid hsl(var(--bc) / 0.2);
+  overflow-y: auto; padding: 0.25rem; background: var(--color-base-100); border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); z-index: 50;
 }
 .gtd__search-list { list-style: none; margin: 0; padding: 0; }
 .gtd__search-row { display: flex; flex-direction: column; padding: 0.35rem 0.5rem; border-radius: 6px; cursor: pointer; }
-.gtd__search-row:hover { background: hsl(var(--bc) / 0.08); }
+.gtd__search-row:hover { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
 .gtd__search-title { font-size: 0.85rem; font-weight: 600; }
 .gtd__search-snippet { font-size: 0.72rem; opacity: 0.6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gtd__search-empty { padding: 0.6rem; font-size: 0.8rem; opacity: 0.6; }
@@ -600,10 +600,10 @@ function isCurrentBucket(b: BucketId): boolean {
 .gtd__save--error { color: #d33; opacity: 1; }
 .gtd__save--saved { color: #2a8; }
 .gtd__btn {
-  border: 1px solid hsl(var(--bc) / 0.2); border-radius: 6px; background: transparent;
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent); border-radius: 6px; background: transparent;
   padding: 0.2rem 0.55rem; font-size: 0.8rem; cursor: pointer; white-space: nowrap;
 }
-.gtd__btn:hover:not(:disabled) { background: hsl(var(--bc) / 0.08); }
+.gtd__btn:hover:not(:disabled) { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
 .gtd__btn:disabled { opacity: 0.5; cursor: default; }
 .gtd__btn--danger:hover { background: rgba(221, 51, 51, 0.12); }
 .gtd__error { padding: 0.5rem 0.75rem; color: #d33; font-size: 0.82rem; }
@@ -611,7 +611,7 @@ function isCurrentBucket(b: BucketId): boolean {
 .gtd__body { flex: 1; display: flex; min-height: 0; }
 .gtd__nav {
   width: 220px; flex-shrink: 0; padding: 0.5rem; overflow-y: auto;
-  border-right: 1px solid hsl(var(--bc) / 0.15);
+  border-right: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
 }
 .gtd__nav-group { margin-bottom: 1rem; }
 .gtd__nav-head { font-size: 0.68rem; text-transform: uppercase; opacity: 0.5; padding: 0.25rem 0.5rem; }
@@ -620,32 +620,32 @@ function isCurrentBucket(b: BucketId): boolean {
   border: none; background: transparent; border-radius: 6px; padding: 0.35rem 0.5rem;
   font-size: 0.85rem; cursor: pointer; text-align: left;
 }
-.gtd__nav-item:hover { background: hsl(var(--bc) / 0.08); }
-.gtd__nav-item--active { background: hsl(var(--p) / 0.16); font-weight: 600; }
+.gtd__nav-item:hover { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
+.gtd__nav-item--active { background: color-mix(in oklab, var(--color-primary) 16%, transparent); font-weight: 600; }
 .gtd__badge { font-size: 0.68rem; opacity: 0.6; }
 .gtd__chips { display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0 0.4rem; }
 .gtd__chip {
-  border: 1px solid hsl(var(--bc) / 0.2); border-radius: 999px; background: transparent;
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent); border-radius: 999px; background: transparent;
   padding: 0.1rem 0.5rem; font-size: 0.72rem; cursor: pointer;
 }
-.gtd__chip--active { background: hsl(var(--p) / 0.18); }
+.gtd__chip--active { background: color-mix(in oklab, var(--color-primary) 18%, transparent); }
 .gtd__list { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow-y: auto; }
-.gtd__capture { padding: 0.5rem 0.75rem; border-bottom: 1px solid hsl(var(--bc) / 0.1); }
+.gtd__capture { padding: 0.5rem 0.75rem; border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 10%, transparent); }
 .gtd__capture-input { width: 100%; }
 .gtd__actions { list-style: none; margin: 0; padding: 0.25rem; }
 .gtd__action {
   display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.5rem; border-radius: 6px; cursor: pointer;
 }
-.gtd__action:hover { background: hsl(var(--bc) / 0.06); }
-.gtd__action--sel { background: hsl(var(--p) / 0.12); }
+.gtd__action:hover { background: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
+.gtd__action--sel { background: color-mix(in oklab, var(--color-primary) 12%, transparent); }
 .gtd__action--overdue .gtd__action-title { color: #d33; }
 .gtd__action-title { flex: 1; font-size: 0.88rem; }
 .gtd__when, .gtd__deadline, .gtd__ctx {
-  font-size: 0.7rem; opacity: 0.7; padding: 0.05rem 0.35rem; border-radius: 4px; background: hsl(var(--bc) / 0.08);
+  font-size: 0.7rem; opacity: 0.7; padding: 0.05rem 0.35rem; border-radius: 4px; background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
 }
 .gtd__detail {
-  width: 340px; flex-shrink: 0; border-left: 1px solid hsl(var(--bc) / 0.15);
-  padding: 0.75rem; overflow-y: auto; background: hsl(var(--b1)); display: flex; flex-direction: column;
+  width: 340px; flex-shrink: 0; border-left: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
+  padding: 0.75rem; overflow-y: auto; background: var(--color-base-100); display: flex; flex-direction: column;
 }
 .gtd__detail-title { font-size: 1.1rem; font-weight: 700; border: none; background: transparent; width: 100%; margin-bottom: 0.5rem; }
 .gtd__field { margin-bottom: 0.75rem; display: flex; flex-direction: column; gap: 0.3rem; }
@@ -654,9 +654,9 @@ function isCurrentBucket(b: BucketId): boolean {
 .gtd__label { font-size: 0.7rem; text-transform: uppercase; opacity: 0.55; }
 .gtd__when-picker { display: flex; flex-wrap: wrap; gap: 0.25rem; }
 .gtd__when-btn {
-  border: 1px solid hsl(var(--bc) / 0.2); border-radius: 6px; background: transparent;
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent); border-radius: 6px; background: transparent;
   padding: 0.15rem 0.5rem; font-size: 0.75rem; cursor: pointer;
 }
-.gtd__when-btn--active { background: hsl(var(--p) / 0.18); font-weight: 600; }
+.gtd__when-btn--active { background: color-mix(in oklab, var(--color-primary) 18%, transparent); font-weight: 600; }
 .gtd__when-hint { font-size: 0.7rem; opacity: 0.6; }
 </style>

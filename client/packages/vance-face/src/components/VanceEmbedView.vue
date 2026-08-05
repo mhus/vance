@@ -34,7 +34,7 @@ const parsed = computed(() => {
 .vance-embed-view__invalid {
   padding: 0.5rem;
   font-size: 0.85rem;
-  color: oklch(var(--er));
+  color: var(--color-error);
   font-family: monospace;
 }
 </style>

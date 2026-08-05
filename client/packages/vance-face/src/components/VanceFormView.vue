@@ -367,15 +367,15 @@ onMounted(load);
 
 <style scoped>
 .vance-form-view {
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.5rem;
   padding: 0.85rem 1rem;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
 }
-.vance-form-view__status { color: oklch(var(--bc) / 0.65); font-size: 0.9rem; padding: 0.5rem 0; }
+.vance-form-view__status { color: color-mix(in oklab, var(--color-base-content) 65%, transparent); font-size: 0.9rem; padding: 0.5rem 0; }
 .vance-form-view__error {
-  background: oklch(var(--er) / 0.12);
-  color: oklch(var(--er));
+  background: color-mix(in oklab, var(--color-error) 12%, transparent);
+  color: var(--color-error);
   font-size: 0.85rem;
   padding: 0.5rem 0.75rem;
   border-radius: 0.25rem;
@@ -383,12 +383,12 @@ onMounted(load);
 }
 .vance-form-view__design-hint {
   font-size: 0.8rem;
-  color: oklch(var(--bc) / 0.6);
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
   margin-bottom: 0.6rem;
 }
 .vance-form-view__design-hint code {
   font-family: monospace;
-  background: oklch(var(--bc) / 0.1);
+  background: color-mix(in oklab, var(--color-base-content) 10%, transparent);
   padding: 0 0.25em;
   border-radius: 0.2em;
 }
@@ -398,11 +398,11 @@ onMounted(load);
   gap: 0.9rem;
   margin-bottom: 0.7rem;
   padding-bottom: 0.6rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.12);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 12%, transparent);
   font-size: 0.82rem;
 }
 .vance-form-view__record-card {
-  border: 1px solid oklch(var(--bc) / 0.15);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
   border-radius: 0.4rem;
   padding: 0.6rem 0.75rem;
   margin-bottom: 0.6rem;
@@ -413,44 +413,44 @@ onMounted(load);
   align-items: center;
   margin-bottom: 0.4rem;
 }
-.vance-form-view__record-idx { font-size: 0.75rem; font-weight: 600; color: oklch(var(--bc) / 0.55); }
+.vance-form-view__record-idx { font-size: 0.75rem; font-weight: 600; color: color-mix(in oklab, var(--color-base-content) 55%, transparent); }
 .vance-form-view__field-row {
-  border: 1px solid oklch(var(--bc) / 0.12);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 12%, transparent);
   border-radius: 0.35rem;
   padding: 0.4rem 0.5rem;
   margin-bottom: 0.45rem;
 }
 .vance-form-view__field-main { display: flex; gap: 0.4rem; align-items: center; }
 .vance-form-view__inp {
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.25rem;
   padding: 0.25rem 0.4rem;
   font-size: 0.85rem;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
 }
 .vance-form-view__req {
   font-size: 0.78rem;
-  color: oklch(var(--bc) / 0.7);
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
   display: flex;
   align-items: center;
   gap: 0.2rem;
   white-space: nowrap;
 }
 .vance-form-view__mini {
-  border: 1px solid oklch(var(--bc) / 0.2);
-  background: oklch(var(--b1));
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
+  background: var(--color-base-100);
   border-radius: 0.25rem;
   width: 1.6rem;
   height: 1.6rem;
   cursor: pointer;
   font-size: 0.8rem;
-  color: oklch(var(--bc) / 0.7);
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
 }
-.vance-form-view__mini:hover { background: oklch(var(--bc) / 0.08); }
+.vance-form-view__mini:hover { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
 .vance-form-view__choices {
   width: 100%;
   margin-top: 0.35rem;
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.25rem;
   padding: 0.3rem 0.4rem;
   font-size: 0.8rem;
@@ -463,24 +463,24 @@ onMounted(load);
   gap: 0.5rem;
   margin-top: 0.85rem;
   padding-top: 0.75rem;
-  border-top: 1px solid oklch(var(--bc) / 0.12);
+  border-top: 1px solid color-mix(in oklab, var(--color-base-content) 12%, transparent);
 }
 .vance-form-view__spacer { flex: 1; }
-.vance-form-view__saved { color: oklch(var(--su)); font-size: 0.8rem; }
-.vance-form-view__dirty { color: oklch(var(--bc) / 0.6); font-size: 0.8rem; }
+.vance-form-view__saved { color: var(--color-success); font-size: 0.8rem; }
+.vance-form-view__dirty { color: color-mix(in oklab, var(--color-base-content) 60%, transparent); font-size: 0.8rem; }
 .vance-form-view__btn {
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.3rem;
   padding: 0.3rem 0.9rem;
   font-size: 0.85rem;
-  background: oklch(var(--b1));
-  color: oklch(var(--bc));
+  background: var(--color-base-100);
+  color: var(--color-base-content);
   cursor: pointer;
 }
 .vance-form-view__btn:disabled { opacity: 0.5; cursor: default; }
 .vance-form-view__btn--primary {
-  background: oklch(var(--p));
-  color: oklch(var(--pc));
-  border-color: oklch(var(--p));
+  background: var(--color-primary);
+  color: var(--color-primary-content);
+  border-color: var(--color-primary);
 }
 </style>

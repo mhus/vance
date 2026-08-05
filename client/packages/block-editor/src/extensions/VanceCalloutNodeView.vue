@@ -125,7 +125,7 @@ function onBody(e: Event) {
 }
 .vance-callout__severity {
   background: transparent;
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.25rem;
   padding: 0.15em 0.4em;
   font-size: 0.8em;
@@ -156,10 +156,10 @@ function onBody(e: Event) {
 }
 .vance-callout__title::placeholder,
 .vance-callout__body::placeholder {
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
 }
 .vance-callout--selected {
-  box-shadow: 0 0 0 2px oklch(var(--p));
+  box-shadow: 0 0 0 2px var(--color-primary);
 }
 
 /* Read-only rendered callout (work mode) */

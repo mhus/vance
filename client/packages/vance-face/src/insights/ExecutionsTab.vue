@@ -261,11 +261,11 @@ function shortId(id: string): string {
   font-weight: 500;
   text-transform: lowercase;
 }
-.badge-status--running   { background: oklch(var(--in) / 0.18); color: oklch(var(--in)); }
-.badge-status--completed { background: oklch(var(--su) / 0.18); color: oklch(var(--su)); }
-.badge-status--failed    { background: oklch(var(--er) / 0.18); color: oklch(var(--er)); }
-.badge-status--killed    { background: oklch(var(--wa) / 0.18); color: oklch(var(--wa)); }
-.badge-status--orphaned  { background: oklch(var(--bc) / 0.10); color: oklch(var(--bc) / 0.7); }
+.badge-status--running   { background: color-mix(in oklab, var(--color-info) 18%, transparent); color: var(--color-info); }
+.badge-status--completed { background: color-mix(in oklab, var(--color-success) 18%, transparent); color: var(--color-success); }
+.badge-status--failed    { background: color-mix(in oklab, var(--color-error) 18%, transparent); color: var(--color-error); }
+.badge-status--killed    { background: color-mix(in oklab, var(--color-warning) 18%, transparent); color: var(--color-warning); }
+.badge-status--orphaned  { background: color-mix(in oklab, var(--color-base-content) 10%, transparent); color: color-mix(in oklab, var(--color-base-content) 70%, transparent); }
 
 .stream-btn {
   padding: 0.15rem 0.55rem;
@@ -275,16 +275,16 @@ function shortId(id: string): string {
   font-family: ui-monospace, monospace;
   cursor: pointer;
 }
-.stream-btn:hover { background: oklch(var(--bc) / 0.06); }
+.stream-btn:hover { background: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
 .stream-btn--active {
-  background: oklch(var(--p) / 0.12);
-  border-color: oklch(var(--p) / 0.3);
+  background: color-mix(in oklab, var(--color-primary) 12%, transparent);
+  border-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
   font-weight: 600;
 }
 
 .output-pane {
-  background: oklch(var(--n) / 0.05);
-  border: 1px solid oklch(var(--bc) / 0.1);
+  background: color-mix(in oklab, var(--color-neutral) 5%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 10%, transparent);
   border-radius: 0.375rem;
   padding: 0.5rem 0.75rem;
   font-size: 0.75rem;

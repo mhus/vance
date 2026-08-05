@@ -117,7 +117,7 @@ function when(ms: number): string {
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid hsl(var(--bc) / 0.15);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
 }
 .wiki-versions__title { font-size: 0.85rem; font-weight: 600; }
 .wiki-versions__count { font-size: 0.75rem; opacity: 0.6; }
@@ -141,7 +141,7 @@ function when(ms: number): string {
   align-items: center;
   gap: 0.5rem;
   padding: 0.4rem 0.5rem;
-  border-bottom: 1px solid hsl(var(--bc) / 0.08);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 8%, transparent);
 }
 .wiki-versions__meta {
   display: flex;
@@ -152,13 +152,13 @@ function when(ms: number): string {
 .wiki-versions__ts { font-size: 0.78rem; }
 .wiki-versions__by { font-size: 0.7rem; opacity: 0.6; }
 .wiki-versions__restore {
-  border: 1px solid hsl(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 4px;
   background: transparent;
   cursor: pointer;
   font-size: 0.75rem;
   padding: 0.15rem 0.5rem;
 }
-.wiki-versions__restore:hover:not(:disabled) { background: hsl(var(--bc) / 0.08); }
+.wiki-versions__restore:hover:not(:disabled) { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
 .wiki-versions__restore:disabled { opacity: 0.5; cursor: default; }
 </style>

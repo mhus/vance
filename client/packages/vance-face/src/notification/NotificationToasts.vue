@@ -81,22 +81,18 @@ function sourceLine(n: { sourceProcessTitle?: string; sourceProcessName?: string
 .notify-toast {
   pointer-events: auto;
   cursor: pointer;
-  border: 1px solid var(--fallback-bc, oklch(var(--bc) / 0.18));
-  border-left: 4px solid var(--fallback-in, oklch(var(--in) / 1));
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
+  border-left: 4px solid var(--color-info);
   border-radius: 0.5rem;
   padding: 0.6rem 0.75rem;
-  /* Solid base-100 background. DaisyUI 4.x stores theme colors as
-   * OKLCH channel triples in CSS vars, so the value lookup must wrap
-   * in `oklch(... / 1)` — `oklch(var(--b1))` would emit invalid CSS and
-   * the browser falls back to transparent (which is what made the
-   * card see-through). Same fallback-var convention as EditorShell. */
-  background-color: var(--fallback-b1, oklch(var(--b1) / 1));
-  color: var(--fallback-bc, oklch(var(--bc) / 1));
+  /* Solid base-100 background — the toast must never be see-through. */
+  background-color: var(--color-base-100);
+  color: var(--color-base-content);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
 }
-.notify-toast--info  { border-left-color: var(--fallback-in, oklch(var(--in) / 1)); }
-.notify-toast--warn  { border-left-color: var(--fallback-wa, oklch(var(--wa) / 1)); }
-.notify-toast--error { border-left-color: var(--fallback-er, oklch(var(--er) / 1)); }
+.notify-toast--info  { border-left-color: var(--color-info); }
+.notify-toast--warn  { border-left-color: var(--color-warning); }
+.notify-toast--error { border-left-color: var(--color-error); }
 .notify-toast-enter-from {
   opacity: 0;
   transform: translateX(20px);

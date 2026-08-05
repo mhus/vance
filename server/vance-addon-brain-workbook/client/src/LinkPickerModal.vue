@@ -246,7 +246,7 @@ watch(tab, async (next) => {
   padding: 2rem;
 }
 .link-picker__panel {
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
   border-radius: 0.5rem;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
   width: 100%;
@@ -262,7 +262,7 @@ watch(tab, async (next) => {
   align-items: center;
   padding: 0.75rem 1rem;
   font-weight: 600;
-  border-bottom: 1px solid oklch(var(--bc) / 0.18);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
 }
 .link-picker__close {
   background: none;
@@ -270,15 +270,15 @@ watch(tab, async (next) => {
   font-size: 1.4rem;
   line-height: 1;
   cursor: pointer;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   padding: 0 0.25rem;
 }
 .link-picker__tabs {
   display: flex;
   gap: 0.25rem;
   padding: 0.25rem 0.5rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.18);
-  background: oklch(var(--bc) / 0.06);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
 .link-picker__tab {
   background: none;
@@ -287,47 +287,47 @@ watch(tab, async (next) => {
   border-radius: 0.25rem;
   cursor: pointer;
   font-size: 0.85rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
 }
-.link-picker__tab:hover { color: oklch(var(--bc)); }
+.link-picker__tab:hover { color: var(--color-base-content); }
 .link-picker__tab--active {
-  background: oklch(var(--b1));
-  color: oklch(var(--bc));
+  background: var(--color-base-100);
+  color: var(--color-base-content);
   font-weight: 600;
 }
 .link-picker__actions {
   padding: 0.5rem 1rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.18);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
 }
 .link-picker__search-input,
 .link-picker__url-input {
   width: 100%;
   padding: 0.4rem 0.6rem;
   font-size: 0.9rem;
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.25rem;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
   box-sizing: border-box;
 }
 .link-picker__error {
-  background: oklch(var(--er) / 0.12);
-  color: oklch(var(--er));
+  background: color-mix(in oklab, var(--color-error) 12%, transparent);
+  color: var(--color-error);
   font-size: 0.85rem;
   padding: 0.5rem 1rem;
 }
 .link-picker__loading,
 .link-picker__empty {
   padding: 2rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   text-align: center;
   font-size: 0.9rem;
 }
 .link-picker__truncated {
   padding: 0.5rem 1rem;
   font-size: 0.75rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   text-align: center;
-  border-top: 1px solid oklch(var(--bc) / 0.18);
+  border-top: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
 }
 .link-picker__list {
   flex: 1;
@@ -345,10 +345,10 @@ watch(tab, async (next) => {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
-  color: oklch(var(--bc));
+  color: var(--color-base-content);
 }
 .link-picker__list-item:hover {
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
 .link-picker__list-title {
   font-size: 0.9rem;
@@ -362,11 +362,11 @@ watch(tab, async (next) => {
   gap: 0.5rem;
   align-items: center;
   font-size: 0.7rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
 }
 .link-picker__list-kind {
-  background: oklch(var(--bc) / 0.18);
-  color: oklch(var(--bc));
+  background: color-mix(in oklab, var(--color-base-content) 18%, transparent);
+  color: var(--color-base-content);
   border-radius: 999px;
   padding: 0 0.4rem;
   font-family: monospace;
@@ -388,7 +388,7 @@ watch(tab, async (next) => {
   align-items: center;
   gap: 0.5rem;
   font-size: 0.85rem;
-  color: oklch(var(--bc));
+  color: var(--color-base-content);
   cursor: pointer;
 }
 .link-picker__url-actions {
@@ -399,31 +399,31 @@ watch(tab, async (next) => {
 .link-picker__url-spacer { flex: 1; }
 .link-picker__btn {
   padding: 0.4rem 0.9rem;
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.25rem;
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
   cursor: pointer;
   font-size: 0.85rem;
-  color: oklch(var(--bc));
+  color: var(--color-base-content);
 }
 .link-picker__btn:hover:not(:disabled) {
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
 }
 .link-picker__btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .link-picker__btn--primary {
-  background: oklch(var(--p));
-  color: oklch(var(--pc));
-  border-color: oklch(var(--p));
+  background: var(--color-primary);
+  color: var(--color-primary-content);
+  border-color: var(--color-primary);
 }
 .link-picker__btn--primary:hover:not(:disabled) {
-  background: oklch(var(--p) / 0.85);
+  background: color-mix(in oklab, var(--color-primary) 85%, transparent);
 }
 .link-picker__btn--danger {
   background: transparent;
-  color: oklch(var(--er));
-  border-color: oklch(var(--er));
+  color: var(--color-error);
+  border-color: var(--color-error);
 }
 .link-picker__btn--danger:hover {
-  background: oklch(var(--er) / 0.12);
+  background: color-mix(in oklab, var(--color-error) 12%, transparent);
 }
 </style>

@@ -338,7 +338,7 @@ function formatTimestamp(value?: Date | string | null): string {
           <span class="text-sm font-semibold">{{ t('ursahooks.nameLabel') }}</span>
           <input
             v-model="newName"
-            class="input input-bordered w-full mt-1"
+            class="input w-full mt-1"
             :placeholder="t('ursahooks.namePlaceholder')"
             @keyup.enter="createHook"
           />

@@ -341,10 +341,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <label class="form-control w-full">
-    <div v-if="label" class="label">
-      <span class="label-text">{{ label }}</span>
-    </div>
+  <!-- See VInput for the `v-field*` hook-class convention. -->
+  <label class="v-field flex flex-col gap-1 w-full">
+    <span v-if="label" class="v-field-label text-sm">{{ label }}</span>
     <div
       ref="host"
       class="code-editor"
@@ -356,10 +355,10 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .code-editor {
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.5rem;
   overflow: hidden;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
 }
 
 .code-editor :deep(.cm-editor) {

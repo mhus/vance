@@ -131,8 +131,8 @@ onBeforeUnmount(() => {
 .mindmap-view {
   position: relative;
   width: 100%;
-  background: oklch(var(--b1));
-  border: 1px solid oklch(var(--bc) / 0.15);
+  background: var(--color-base-100);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
   border-radius: 0.5rem;
   overflow: hidden;
 }

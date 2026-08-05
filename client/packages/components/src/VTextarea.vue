@@ -20,23 +20,20 @@ defineEmits<{ (e: 'update:modelValue', value: string): void }>();
 </script>
 
 <template>
-  <label class="form-control w-full">
-    <div v-if="label" class="label">
-      <span class="label-text">{{ label }}</span>
-    </div>
+  <!-- See VInput for the `v-field*` hook-class convention. -->
+  <label class="v-field flex flex-col gap-1 w-full">
+    <span v-if="label" class="v-field-label text-sm">{{ label }}</span>
     <textarea
       :value="modelValue"
       :placeholder="placeholder"
       :rows="rows"
       :required="required"
       :disabled="disabled"
-      :class="['textarea', 'textarea-bordered', 'w-full', 'font-mono', { 'textarea-error': !!error }]"
+      :class="['textarea', 'w-full', 'font-mono', { 'textarea-error': !!error }]"
       @input="(e) => $emit('update:modelValue', (e.target as HTMLTextAreaElement).value)"
     />
-    <div v-if="error || help" class="label">
-      <span :class="['label-text-alt', error ? 'text-error' : 'opacity-70']">
-        {{ error || help }}
-      </span>
-    </div>
+    <span v-if="error || help" :class="['v-field-hint', 'text-xs', error ? 'text-error' : 'opacity-70']">
+      {{ error || help }}
+    </span>
   </label>
 </template>

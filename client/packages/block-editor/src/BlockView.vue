@@ -386,12 +386,12 @@ const items = computed(() => props.blocks ?? []);
   font-size: 0.65em;
   opacity: 0;
   text-decoration: none;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   vertical-align: middle;
   transition: opacity 0.15s ease;
 }
 .block-view__heading:hover .block-view__anchor { opacity: 1; }
-.block-view__anchor:hover { color: oklch(var(--p)); }
+.block-view__anchor:hover { color: var(--color-primary); }
 .block-view__paragraph { margin: 0.5em 0; white-space: pre-wrap; }
 .block-view__bullet-list {
   list-style-type: disc;
@@ -407,14 +407,14 @@ const items = computed(() => props.blocks ?? []);
 .block-view__todo-item { display: flex; gap: 0.5em; align-items: flex-start; }
 .block-view__todo-text--done { text-decoration: line-through; opacity: 0.6; }
 .block-view__quote {
-  border-left: 3px solid oklch(var(--bc) / 0.18);
+  border-left: 3px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   padding-left: 1em;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   margin: 0.75em 0;
   font-style: italic;
 }
 .block-view__code {
-  background: oklch(var(--bc) / 0.08);
+  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
   border-radius: 0.375rem;
   padding: 0.75em 1em;
   font-family: monospace;
@@ -424,7 +424,7 @@ const items = computed(() => props.blocks ?? []);
 }
 .block-view__divider {
   border: none;
-  border-top: 1px solid oklch(var(--bc) / 0.18);
+  border-top: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   margin: 1.25em 0;
 }
 .block-view__image-wrap { text-align: center; margin: 1em 0; }
@@ -436,31 +436,31 @@ const items = computed(() => props.blocks ?? []);
 }
 .block-view__table th,
 .block-view__table td {
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   padding: 0.4em 0.75em;
   text-align: left;
 }
 .block-view__table th {
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
   font-weight: 600;
 }
 
 .vance-callout {
-  border-left: 3px solid var(--vance-callout-color, oklch(var(--in)));
-  background: var(--vance-callout-bg, oklch(var(--in) / 0.12));
+  border-left: 3px solid var(--vance-callout-color, var(--color-info));
+  background: var(--vance-callout-bg, color-mix(in oklab, var(--color-info) 12%, transparent));
   border-radius: 0.375rem;
   padding: 0.75em 1em;
   margin: 0.75em 0;
 }
-.vance-callout--warn { --vance-callout-color: oklch(var(--wa)); --vance-callout-bg: oklch(var(--wa) / 0.12); }
-.vance-callout--error { --vance-callout-color: oklch(var(--er)); --vance-callout-bg: oklch(var(--er) / 0.12); }
-.vance-callout--success { --vance-callout-color: oklch(var(--su)); --vance-callout-bg: oklch(var(--su) / 0.12); }
-.vance-callout--note { --vance-callout-color: oklch(var(--bc) / 0.55); --vance-callout-bg: oklch(var(--bc) / 0.06); }
+.vance-callout--warn { --vance-callout-color: var(--color-warning); --vance-callout-bg: color-mix(in oklab, var(--color-warning) 12%, transparent); }
+.vance-callout--error { --vance-callout-color: var(--color-error); --vance-callout-bg: color-mix(in oklab, var(--color-error) 12%, transparent); }
+.vance-callout--success { --vance-callout-color: var(--color-success); --vance-callout-bg: color-mix(in oklab, var(--color-success) 12%, transparent); }
+.vance-callout--note { --vance-callout-color: color-mix(in oklab, var(--color-base-content) 55%, transparent); --vance-callout-bg: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
 .vance-callout__title { font-weight: 600; margin-bottom: 0.25em; }
 .vance-callout__body { white-space: pre-wrap; }
 
 .vance-toggle {
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.375rem;
   padding: 0.5em 0.75em;
   margin: 0.5em 0;
@@ -470,38 +470,38 @@ const items = computed(() => props.blocks ?? []);
 
 .vance-link-card {
   display: block;
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.5rem;
   padding: 0.75em 1em;
   margin: 0.5em 0;
   text-decoration: none;
   color: inherit;
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
 .vance-link-card__title { font-weight: 600; }
 .vance-link-card__description {
   font-size: 0.9em;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   margin-top: 0.25em;
 }
 .vance-link-card__href {
   font-size: 0.8em;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   margin-top: 0.25em;
   word-break: break-all;
 }
 
 .vance-dataview-stub {
-  border: 1px dashed oklch(var(--bc) / 0.18);
+  border: 1px dashed color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.375rem;
   padding: 0.75em 1em;
   margin: 0.75em 0;
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
 .vance-dataview-stub__label {
   font-weight: 600;
   font-size: 0.85em;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
 }
 .vance-dataview-stub__source {
   display: block;
@@ -510,7 +510,7 @@ const items = computed(() => props.blocks ?? []);
 }
 .vance-dataview-stub__hint {
   font-size: 0.85em;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
 }
 
 /* BlockView-only column layout — namespaced under `.block-view` so it
@@ -536,8 +536,8 @@ const items = computed(() => props.blocks ?? []);
 }
 
 .vance-unknown-fence {
-  background: oklch(var(--er) / 0.12);
-  border: 1px solid oklch(var(--er) / 0.5);
+  background: color-mix(in oklab, var(--color-error) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-error) 50%, transparent);
   border-radius: 0.375rem;
   padding: 0.5em 0.75em;
   margin: 0.5em 0;
@@ -545,19 +545,19 @@ const items = computed(() => props.blocks ?? []);
   font-family: monospace;
   font-size: 0.85em;
 }
-.vance-unknown-fence__label { font-weight: 600; margin-bottom: 0.25em; color: oklch(var(--er)); }
+.vance-unknown-fence__label { font-weight: 600; margin-bottom: 0.25em; color: var(--color-error); }
 
 .vance-block-card {
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.5rem;
   padding: 0.6em 0.8em;
   margin: 0.5em 0;
-  background: oklch(var(--b2) / 0.4);
+  background: color-mix(in oklab, var(--color-base-200) 40%, transparent);
 }
 .vance-block-card__label { font-weight: 600; margin-bottom: 0.15em; }
 .vance-block-card__hint {
   font-size: 0.85em;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   word-break: break-all;
 }
 </style>

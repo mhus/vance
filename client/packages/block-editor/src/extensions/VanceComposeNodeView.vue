@@ -465,10 +465,10 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  border: 1px solid oklch(var(--bc) / 0.15);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
   border-radius: 0.5rem;
   padding: 0.6rem 0.75rem;
-  background: oklch(var(--bc) / 0.03);
+  background: color-mix(in oklab, var(--color-base-content) 3%, transparent);
 }
 .vance-compose__meta {
   display: flex;
@@ -487,10 +487,10 @@ onBeforeUnmount(() => {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.82rem;
   line-height: 1.4;
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.35rem;
   padding: 0.5rem 0.6rem;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
   color: inherit;
   resize: none;
   white-space: pre;
@@ -514,18 +514,18 @@ onBeforeUnmount(() => {
   justify-content: center;
   width: 2rem;
   height: 2rem;
-  border: 1px solid oklch(var(--p));
-  background: oklch(var(--p));
-  color: oklch(var(--pc));
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-primary-content);
   border-radius: 0.35rem;
   font-size: 0.9rem;
   line-height: 1;
   cursor: pointer;
 }
 .vance-compose__run--stop {
-  border-color: oklch(var(--er));
-  background: oklch(var(--er));
-  color: oklch(var(--erc, var(--pc)));
+  border-color: var(--color-error);
+  background: var(--color-error);
+  color: var(--color-error-content);
 }
 .vance-compose__run:disabled { opacity: 0.55; cursor: default; }
 .vance-compose__menu-wrap { position: relative; }
@@ -535,7 +535,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   width: 2rem;
   height: 2rem;
-  border: 1px solid oklch(var(--bc) / 0.25);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 25%, transparent);
   background: transparent;
   color: inherit;
   border-radius: 0.35rem;
@@ -543,7 +543,7 @@ onBeforeUnmount(() => {
   line-height: 1;
   cursor: pointer;
 }
-.vance-compose__menu-btn:hover { background: oklch(var(--bc) / 0.08); }
+.vance-compose__menu-btn:hover { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
 .vance-compose__menu {
   position: absolute;
   top: calc(100% + 0.25rem);
@@ -553,9 +553,9 @@ onBeforeUnmount(() => {
   flex-direction: column;
   min-width: 11rem;
   padding: 0.25rem;
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.4rem;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
   box-shadow: 0 6px 20px oklch(0% 0 0 / 0.18);
 }
 .vance-compose__menu-item {
@@ -568,7 +568,7 @@ onBeforeUnmount(() => {
   font-size: 0.85rem;
   cursor: pointer;
 }
-.vance-compose__menu-item:hover:not(:disabled) { background: oklch(var(--bc) / 0.1); }
+.vance-compose__menu-item:hover:not(:disabled) { background: color-mix(in oklab, var(--color-base-content) 10%, transparent); }
 .vance-compose__menu-item:disabled { opacity: 0.45; cursor: default; }
 .vance-compose__status { font-size: 0.8rem; opacity: 0.7; }
 .vance-compose__out {
@@ -592,7 +592,7 @@ onBeforeUnmount(() => {
   opacity: 0.85;
 }
 .vance-compose__error {
-  color: oklch(var(--er));
+  color: var(--color-error);
   font-size: 0.82rem;
 }
 </style>

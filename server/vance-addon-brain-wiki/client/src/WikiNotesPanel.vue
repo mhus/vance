@@ -181,21 +181,21 @@ function onTextInput(note: DocumentNoteDto, e: Event): void {
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid hsl(var(--bc) / 0.15);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
 }
 .wiki-notes__title { font-size: 0.85rem; font-weight: 600; }
 .wiki-notes__count { font-size: 0.75rem; opacity: 0.6; }
 .wiki-notes__spacer { flex: 1; }
 .wiki-notes__add,
 .wiki-notes__del {
-  border: 1px solid hsl(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 4px;
   background: transparent;
   cursor: pointer;
   padding: 0 0.4rem;
   line-height: 1.4rem;
 }
-.wiki-notes__add:hover { background: hsl(var(--bc) / 0.08); }
+.wiki-notes__add:hover { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
 .wiki-notes__del { border: none; opacity: 0.5; }
 .wiki-notes__del:hover { opacity: 1; color: #d33; }
 .wiki-notes__hint,

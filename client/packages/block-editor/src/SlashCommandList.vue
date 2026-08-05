@@ -78,8 +78,8 @@ defineExpose({ onKeyDown });
 
 <style>
 .slash-list {
-  background: oklch(var(--b1));
-  border: 1px solid oklch(var(--bc) / 0.18);
+  background: var(--color-base-100);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.5rem;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
   padding: 0.25rem;
@@ -89,7 +89,7 @@ defineExpose({ onKeyDown });
 }
 .slash-list__empty {
   padding: 0.5rem 0.75rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   font-size: 0.85rem;
   font-style: italic;
 }
@@ -105,8 +105,8 @@ defineExpose({ onKeyDown });
   color: inherit;
 }
 .slash-list__item--selected {
-  background: oklch(var(--p) / 0.15);
-  color: oklch(var(--p));
+  background: color-mix(in oklab, var(--color-primary) 15%, transparent);
+  color: var(--color-primary);
 }
 .slash-list__title {
   font-weight: 500;
@@ -114,7 +114,7 @@ defineExpose({ onKeyDown });
 }
 .slash-list__hint {
   font-size: 0.78rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
 }
 .slash-list__item--selected .slash-list__hint {
   color: inherit;

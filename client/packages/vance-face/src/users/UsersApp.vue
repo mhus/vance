@@ -897,13 +897,13 @@ function fmt(value: unknown): string {
   border: 1px solid transparent;
   margin-bottom: 0.15rem;
 }
-.row-item:hover { background: oklch(var(--bc) / 0.06); }
+.row-item:hover { background: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
 .row-item--active {
-  background: oklch(var(--p) / 0.12);
-  border-color: oklch(var(--p) / 0.3);
+  background: color-mix(in oklab, var(--color-primary) 12%, transparent);
+  border-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
 }
 
-.badge-active   { background: oklch(var(--su) / 0.18); color: oklch(var(--suc)); }
-.badge-disabled { background: oklch(var(--bc) / 0.1);  color: oklch(var(--bc) / 0.6); }
-.badge-pending  { background: oklch(var(--wa) / 0.18); color: oklch(var(--wac)); }
+.badge-active   { background: color-mix(in oklab, var(--color-success) 18%, transparent); color: var(--color-success-content); }
+.badge-disabled { background: color-mix(in oklab, var(--color-base-content) 10%, transparent);  color: color-mix(in oklab, var(--color-base-content) 60%, transparent); }
+.badge-pending  { background: color-mix(in oklab, var(--color-warning) 18%, transparent); color: var(--color-warning-content); }
 </style>

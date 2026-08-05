@@ -232,15 +232,15 @@ const filteredRecipes = computed<EffectiveRecipeDto[]>(() => {
   text-transform: lowercase;
 }
 .badge-source--project {
-  background: oklch(var(--p) / 0.18);
-  color: oklch(var(--p));
+  background: color-mix(in oklab, var(--color-primary) 18%, transparent);
+  color: var(--color-primary);
 }
 .badge-source--vance {
-  background: oklch(var(--s) / 0.18);
-  color: oklch(var(--s));
+  background: color-mix(in oklab, var(--color-secondary) 18%, transparent);
+  color: var(--color-secondary);
 }
 .badge-source--resource {
-  background: oklch(var(--b3));
-  color: oklch(var(--bc) / 0.7);
+  background: var(--color-base-300);
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
 }
 </style>

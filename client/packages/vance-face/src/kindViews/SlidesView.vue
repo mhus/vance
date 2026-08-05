@@ -424,8 +424,8 @@ onBeforeUnmount(() => {
 .slides-view {
   position: relative;
   width: 100%;
-  background: oklch(var(--b1));
-  border: 1px solid oklch(var(--bc) / 0.15);
+  background: var(--color-base-100);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
   border-radius: 0.5rem;
   outline: none;
   overflow: hidden;
@@ -474,7 +474,7 @@ onBeforeUnmount(() => {
   border-radius: 0.5rem;
 }
 .slides-stage--single :deep(svg[data-marpit-svg]) {
-  box-shadow: 0 0.5rem 1.5rem oklch(var(--bc) / 0.15);
+  box-shadow: 0 0.5rem 1.5rem color-mix(in oklab, var(--color-base-content) 15%, transparent);
 }
 .slides-stage--stream {
   flex-direction: column;
@@ -482,7 +482,7 @@ onBeforeUnmount(() => {
   gap: 1.5rem;
 }
 .slides-stage--stream :deep(svg[data-marpit-svg]) {
-  box-shadow: 0 0.25rem 0.75rem oklch(var(--bc) / 0.1);
+  box-shadow: 0 0.25rem 0.75rem color-mix(in oklab, var(--color-base-content) 10%, transparent);
 }
 
 .slides-nav {
@@ -491,19 +491,19 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 0.75rem;
   padding: 0.5rem;
-  border-top: 1px solid oklch(var(--bc) / 0.1);
-  background: oklch(var(--b2) / 0.5);
+  border-top: 1px solid color-mix(in oklab, var(--color-base-content) 10%, transparent);
+  background: color-mix(in oklab, var(--color-base-200) 50%, transparent);
 }
 .slides-nav-btn,
 .slides-nav-toggle,
 .slides-nav-present {
-  border: 1px solid oklch(var(--bc) / 0.2);
-  background: oklch(var(--b1));
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
+  background: var(--color-base-100);
   border-radius: 0.375rem;
   padding: 0.25rem 0.75rem;
   font-size: 0.875rem;
   cursor: pointer;
-  color: oklch(var(--bc));
+  color: var(--color-base-content);
 }
 .slides-nav-btn:disabled {
   opacity: 0.35;
@@ -512,17 +512,17 @@ onBeforeUnmount(() => {
 .slides-nav-btn:hover:not(:disabled),
 .slides-nav-toggle:hover,
 .slides-nav-present:hover {
-  background: oklch(var(--b2));
+  background: var(--color-base-200);
 }
 .slides-nav-present {
   margin-left: 0.5rem;
-  background: oklch(var(--p) / 0.15);
-  border-color: oklch(var(--p) / 0.4);
-  color: oklch(var(--p));
+  background: color-mix(in oklab, var(--color-primary) 15%, transparent);
+  border-color: color-mix(in oklab, var(--color-primary) 40%, transparent);
+  color: var(--color-primary);
   font-weight: 500;
 }
 .slides-nav-present:hover {
-  background: oklch(var(--p) / 0.25);
+  background: color-mix(in oklab, var(--color-primary) 25%, transparent);
 }
 .slides-nav-index {
   font-variant-numeric: tabular-nums;

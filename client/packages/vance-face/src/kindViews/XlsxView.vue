@@ -125,8 +125,8 @@ watch(() => url.value, () => { void loadXlsx(); });
 
 <style scoped>
 .xlsx-view {
-  background: oklch(var(--b1));
-  border: 1px solid oklch(var(--bc) / 0.15);
+  background: var(--color-base-100);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
   border-radius: 0.5rem;
   overflow: hidden;
   display: flex;
@@ -144,28 +144,28 @@ watch(() => url.value, () => { void loadXlsx(); });
   opacity: 0.7;
   padding: 1rem;
 }
-.xlsx-state--err { opacity: 1; color: oklch(var(--er)); }
+.xlsx-state--err { opacity: 1; color: var(--color-error); }
 
 .xlsx-toolbar {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   padding: 0.3rem 0.5rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.15);
-  background: oklch(var(--b2));
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
+  background: var(--color-base-200);
   flex-shrink: 0;
 }
 .xlsx-reload {
   font-size: 0.78rem;
   padding: 0.2rem 0.6rem;
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.25rem;
   background: transparent;
   cursor: pointer;
   color: inherit;
 }
 .xlsx-reload:hover {
-  background: oklch(var(--bc) / 0.08);
+  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
 }
 .xlsx-tabs {
   display: flex;
@@ -177,16 +177,16 @@ watch(() => url.value, () => { void loadXlsx(); });
   flex: 0 0 auto;
   font-size: 0.78rem;
   padding: 0.2rem 0.6rem;
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.25rem;
   background: transparent;
   cursor: pointer;
   color: inherit;
 }
-.xlsx-tab:hover { background: oklch(var(--bc) / 0.08); }
+.xlsx-tab:hover { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
 .xlsx-tab--active {
-  background: oklch(var(--p) / 0.18);
-  border-color: oklch(var(--p) / 0.6);
+  background: color-mix(in oklab, var(--color-primary) 18%, transparent);
+  border-color: color-mix(in oklab, var(--color-primary) 60%, transparent);
 }
 
 .xlsx-stage {

@@ -33,10 +33,12 @@ const sizeClass = computed<string>(() => {
 </script>
 
 <template>
-  <label class="form-control w-full">
-    <div v-if="label" class="label">
-      <span class="label-text">{{ label }}</span>
-    </div>
+  <!-- `v-field` / `v-field-label` / `v-field-hint` carry no styles of their own —
+       they are stable hooks so hosts can retarget this markup via :deep().
+       DaisyUI 5 dropped `form-control` and `label-text`, so the layout is
+       expressed with utilities instead. -->
+  <label class="v-field flex flex-col gap-1 w-full">
+    <span v-if="label" class="v-field-label text-sm">{{ label }}</span>
     <input
       :type="type"
       :value="modelValue"
@@ -44,13 +46,11 @@ const sizeClass = computed<string>(() => {
       :required="required"
       :disabled="disabled"
       :autocomplete="autocomplete"
-      :class="['input', 'input-bordered', 'w-full', sizeClass, { 'input-error': !!error }]"
+      :class="['input', 'w-full', sizeClass, { 'input-error': !!error }]"
       @input="(e) => $emit('update:modelValue', (e.target as HTMLInputElement).value)"
     />
-    <div v-if="error || help" class="label">
-      <span :class="['label-text-alt', error ? 'text-error' : 'opacity-70']">
-        {{ error || help }}
-      </span>
-    </div>
+    <span v-if="error || help" :class="['v-field-hint', 'text-xs', error ? 'text-error' : 'opacity-70']">
+      {{ error || help }}
+    </span>
   </label>
 </template>

@@ -111,10 +111,9 @@ function formatSize(bytes: number): string {
 </script>
 
 <template>
-  <div class="form-control w-full">
-    <div v-if="label" class="label">
-      <span class="label-text">{{ label }}</span>
-    </div>
+  <!-- See VInput for the `v-field*` hook-class convention. -->
+  <div class="v-field flex flex-col gap-1 w-full">
+    <span v-if="label" class="v-field-label text-sm">{{ label }}</span>
 
     <label
       :class="[
@@ -188,10 +187,8 @@ function formatSize(bytes: number): string {
       </template>
     </label>
 
-    <div v-if="error || help" class="label">
-      <span :class="['label-text-alt', error ? 'text-error' : 'opacity-70']">
-        {{ error || help }}
-      </span>
-    </div>
+    <span v-if="error || help" :class="['v-field-hint', 'text-xs', error ? 'text-error' : 'opacity-70']">
+      {{ error || help }}
+    </span>
   </div>
 </template>

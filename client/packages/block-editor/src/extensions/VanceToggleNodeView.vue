@@ -74,7 +74,7 @@ function onBody(e: Event) {
   border: none;
   cursor: pointer;
   font-size: 0.9em;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   width: 1.25em;
   text-align: center;
   flex-shrink: 0;
@@ -102,9 +102,9 @@ function onBody(e: Event) {
 }
 .vance-toggle__summary::placeholder,
 .vance-toggle__body::placeholder {
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
 }
 .vance-toggle--selected {
-  box-shadow: 0 0 0 2px oklch(var(--p));
+  box-shadow: 0 0 0 2px var(--color-primary);
 }
 </style>

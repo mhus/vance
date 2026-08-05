@@ -76,7 +76,7 @@ const groups = ref([
 .slash-menu__panel {
   width: 100%;
   max-width: 28rem;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
   border-radius: 0.5rem;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
   padding: 0.5rem;
@@ -89,14 +89,14 @@ const groups = ref([
   align-items: center;
   padding: 0.25rem 0.5rem 0.75rem;
   font-weight: 600;
-  border-bottom: 1px solid oklch(var(--bc) / 0.18);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
 }
 .slash-menu__close {
   background: none;
   border: none;
   font-size: 1.25rem;
   cursor: pointer;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
 }
 .slash-menu__group {
   margin-top: 0.5rem;
@@ -104,7 +104,7 @@ const groups = ref([
 .slash-menu__group-label {
   font-size: 0.75rem;
   text-transform: uppercase;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   padding: 0.25rem 0.5rem;
 }
 .slash-menu__item {
@@ -120,13 +120,13 @@ const groups = ref([
   text-align: left;
 }
 .slash-menu__item:hover {
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
 .slash-menu__item-label {
   font-weight: 500;
 }
 .slash-menu__item-hint {
   font-size: 0.8em;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
 }
 </style>

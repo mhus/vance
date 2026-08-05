@@ -91,7 +91,7 @@ function open(page: WikiPageView): void {
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid hsl(var(--bc) / 0.15);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
 }
 .wiki-backlinks__title { font-size: 0.85rem; font-weight: 600; }
 .wiki-backlinks__count { font-size: 0.75rem; opacity: 0.6; }
@@ -118,7 +118,7 @@ function open(page: WikiPageView): void {
   border-radius: 6px;
   cursor: pointer;
 }
-.wiki-backlinks__row:hover { background: hsl(var(--bc) / 0.08); }
+.wiki-backlinks__row:hover { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
 .wiki-backlinks__row-title { font-size: 0.85rem; font-weight: 500; }
 .wiki-backlinks__row-space { font-size: 0.7rem; opacity: 0.55; }
 </style>

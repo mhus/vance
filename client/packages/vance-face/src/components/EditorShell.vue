@@ -587,17 +587,17 @@ onBeforeUnmount(() => {
 .editor-shell-grid > .zone-sidebar,
 .editor-shell-grid > .zone-right,
 .editor-shell-grid > .zone-footer {
-  background-color: var(--fallback-b1, oklch(var(--b1) / 1));
+  background-color: var(--color-base-100);
   transition: background-color var(--shell-focus-duration) ease-out;
 }
 .editor-shell-grid[data-focus] > .zone {
-  background-color: var(--fallback-b2, oklch(var(--b2) / 1));
+  background-color: var(--color-base-200);
 }
 .editor-shell-grid[data-focus='sidebar'] > .zone-sidebar,
 .editor-shell-grid[data-focus='main']    > .zone-main,
 .editor-shell-grid[data-focus='right']   > .zone-right,
 .editor-shell-grid[data-focus='footer']  > .zone-footer {
-  background-color: var(--fallback-b1, oklch(var(--b1) / 1));
+  background-color: var(--color-base-100);
 }
 
 /* ──────────────── Reclaim handles ────────────────
@@ -611,8 +611,8 @@ onBeforeUnmount(() => {
   position: absolute;
   z-index: 10;
   padding: 0.5rem 0.25rem;
-  background-color: var(--fallback-b3, oklch(var(--b3) / 1));
-  color: var(--fallback-bc, oklch(var(--bc) / 0.7));
+  background-color: var(--color-base-300);
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
   font-size: 0.875rem;
   line-height: 1;
   cursor: pointer;
@@ -624,8 +624,8 @@ onBeforeUnmount(() => {
     background-color 120ms ease-out;
 }
 .reclaim-handle:hover {
-  background-color: var(--fallback-b2, oklch(var(--b2) / 1));
-  color: var(--fallback-bc, oklch(var(--bc) / 1));
+  background-color: var(--color-base-200);
+  color: var(--color-base-content);
 }
 .reclaim-handle--hidden {
   opacity: 0;

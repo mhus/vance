@@ -1528,11 +1528,11 @@ const combinedError = computed<string | null>(() =>
   width: 100%;
 }
 .sidebar-item:hover {
-  background: oklch(var(--bc) / 0.08);
+  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
 }
 .sidebar-item--active {
-  background: oklch(var(--p) / 0.15);
-  color: oklch(var(--p));
+  background: color-mix(in oklab, var(--color-primary) 15%, transparent);
+  color: var(--color-primary);
   font-weight: 600;
 }
 .sidebar-item--child {

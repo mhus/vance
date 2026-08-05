@@ -210,7 +210,7 @@ watch(() => [props.projectId, props.folder], () => searchDocs(docQuery.value.tri
   padding: 2rem;
 }
 .embed-picker__panel {
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
   border-radius: 0.5rem;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
   width: 100%;
@@ -226,7 +226,7 @@ watch(() => [props.projectId, props.folder], () => searchDocs(docQuery.value.tri
   align-items: center;
   padding: 0.75rem 1rem;
   font-weight: 600;
-  border-bottom: 1px solid oklch(var(--bc) / 0.18);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
 }
 .embed-picker__close {
   background: none;
@@ -234,14 +234,14 @@ watch(() => [props.projectId, props.folder], () => searchDocs(docQuery.value.tri
   font-size: 1.4rem;
   line-height: 1;
   cursor: pointer;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   padding: 0 0.25rem;
 }
 .embed-picker__tabs {
   display: flex;
   gap: 0.25rem;
   padding: 0.5rem 1rem 0;
-  border-bottom: 1px solid oklch(var(--bc) / 0.18);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
 }
 .embed-picker__tab {
   background: none;
@@ -250,45 +250,45 @@ watch(() => [props.projectId, props.folder], () => searchDocs(docQuery.value.tri
   padding: 0.35rem 0.75rem;
   font-size: 0.85rem;
   cursor: pointer;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
 }
 .embed-picker__tab--active {
-  color: oklch(var(--bc));
-  border-bottom-color: oklch(var(--p));
+  color: var(--color-base-content);
+  border-bottom-color: var(--color-primary);
   font-weight: 600;
 }
 .embed-picker__actions {
   padding: 0.5rem 1rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.18);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
 }
 .embed-picker__search-input {
   width: 100%;
   padding: 0.4rem 0.6rem;
   font-size: 0.9rem;
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.25rem;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
   box-sizing: border-box;
 }
 .embed-picker__error {
-  background: oklch(var(--er) / 0.12);
-  color: oklch(var(--er));
+  background: color-mix(in oklab, var(--color-error) 12%, transparent);
+  color: var(--color-error);
   font-size: 0.85rem;
   padding: 0.5rem 1rem;
 }
 .embed-picker__loading,
 .embed-picker__empty {
   padding: 2rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   text-align: center;
   font-size: 0.9rem;
 }
 .embed-picker__truncated {
   padding: 0.5rem 1rem;
   font-size: 0.75rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   text-align: center;
-  border-top: 1px solid oklch(var(--bc) / 0.18);
+  border-top: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
 }
 .embed-picker__list {
   flex: 1;
@@ -306,10 +306,10 @@ watch(() => [props.projectId, props.folder], () => searchDocs(docQuery.value.tri
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
-  color: oklch(var(--bc));
+  color: var(--color-base-content);
 }
 .embed-picker__list-item:hover {
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
 .embed-picker__list-title {
   font-size: 0.9rem;
@@ -323,11 +323,11 @@ watch(() => [props.projectId, props.folder], () => searchDocs(docQuery.value.tri
   gap: 0.5rem;
   align-items: center;
   font-size: 0.7rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
 }
 .embed-picker__list-kind {
-  background: oklch(var(--bc) / 0.18);
-  color: oklch(var(--bc));
+  background: color-mix(in oklab, var(--color-base-content) 18%, transparent);
+  color: var(--color-base-content);
   border-radius: 999px;
   padding: 0 0.4rem;
   font-family: monospace;

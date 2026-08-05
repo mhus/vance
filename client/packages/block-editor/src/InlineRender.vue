@@ -62,7 +62,7 @@ function linkHref(seg: InlineSegment): string {
 
 <style>
 .inline-link {
-  color: oklch(var(--p));
+  color: var(--color-primary);
   text-decoration: underline;
 }
 .inline-link:hover { filter: brightness(0.85); }

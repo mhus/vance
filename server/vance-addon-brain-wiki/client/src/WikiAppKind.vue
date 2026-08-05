@@ -936,8 +936,8 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   align-items: center;
   gap: 0.5rem;
   padding: 0.4rem 0.75rem;
-  border-bottom: 1px solid hsl(var(--bc) / 0.15);
-  background: hsl(var(--b1));
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
+  background: var(--color-base-100);
 }
 .wiki-app__brand {
   font-weight: 700;
@@ -961,7 +961,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
 }
 .wiki-app__space-select {
   appearance: none;
-  border: 1px solid hsl(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 6px;
   background: transparent;
   padding: 0.2rem 1.4rem 0.2rem 0.5rem;
@@ -976,7 +976,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   gap: 0.25rem;
 }
 .wiki-app__search-input {
-  border: 1px solid hsl(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 6px;
   background: transparent;
   padding: 0.2rem 0.5rem;
@@ -993,8 +993,8 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   overflow-y: auto;
   list-style: none;
   padding: 0.25rem;
-  background: hsl(var(--b1));
-  border: 1px solid hsl(var(--bc) / 0.2);
+  background: var(--color-base-100);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 8px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
   z-index: 50;
@@ -1008,13 +1008,13 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   margin-top: 0.25rem;
   padding: 0.45rem 0.5rem;
   border: none;
-  border-top: 1px solid hsl(var(--bc) / 0.12);
+  border-top: 1px solid color-mix(in oklab, var(--color-base-content) 12%, transparent);
   background: transparent;
   cursor: pointer;
   font-size: 0.82rem;
-  color: hsl(var(--p));
+  color: var(--color-primary);
 }
-.wiki-app__search-create:hover:not(:disabled) { background: hsl(var(--bc) / 0.08); }
+.wiki-app__search-create:hover:not(:disabled) { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
 .wiki-app__search-create:disabled { opacity: 0.5; cursor: default; }
 .wiki-app__search-row {
   display: flex;
@@ -1023,7 +1023,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   border-radius: 6px;
   cursor: pointer;
 }
-.wiki-app__search-row:hover { background: hsl(var(--bc) / 0.08); }
+.wiki-app__search-row:hover { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
 .wiki-app__search-title { font-size: 0.85rem; font-weight: 600; }
 .wiki-app__search-path { font-size: 0.7rem; opacity: 0.55; }
 .wiki-app__spacer { flex: 1; }
@@ -1031,7 +1031,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
 .wiki-app__save--error { color: #d33; opacity: 1; }
 .wiki-app__save--saved { color: #2a8; }
 .wiki-app__btn {
-  border: 1px solid hsl(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 6px;
   background: transparent;
   padding: 0.2rem 0.55rem;
@@ -1039,20 +1039,20 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   cursor: pointer;
   white-space: nowrap;
 }
-.wiki-app__btn:hover:not(:disabled) { background: hsl(var(--bc) / 0.08); }
+.wiki-app__btn:hover:not(:disabled) { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
 .wiki-app__btn:disabled { opacity: 0.5; cursor: default; }
-.wiki-app__btn--active { background: hsl(var(--bc) / 0.14); }
-.wiki-app__btn--primary { border-color: hsl(var(--p) / 0.6); }
+.wiki-app__btn--active { background: color-mix(in oklab, var(--color-base-content) 14%, transparent); }
+.wiki-app__btn--primary { border-color: color-mix(in oklab, var(--color-primary) 60%, transparent); }
 .wiki-app__btn--danger:hover:not(:disabled) { background: rgba(221, 51, 51, 0.12); }
 .wiki-app__newpage {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   padding: 0.4rem 0.75rem;
-  border-bottom: 1px solid hsl(var(--bc) / 0.1);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 10%, transparent);
 }
 .wiki-app__newpage-input {
-  border: 1px solid hsl(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 6px;
   background: transparent;
   padding: 0.25rem 0.5rem;
@@ -1076,7 +1076,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   margin: 3rem auto;
   padding: 1.5rem;
   text-align: center;
-  border: 1px dashed hsl(var(--bc) / 0.25);
+  border: 1px dashed color-mix(in oklab, var(--color-base-content) 25%, transparent);
   border-radius: 10px;
 }
 .wiki-app__missing-title { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.5rem; }
@@ -1085,7 +1085,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   border: none;
   background: none;
   padding: 0;
-  color: hsl(var(--p));
+  color: var(--color-primary);
   cursor: pointer;
   text-decoration: underline;
   font: inherit;
@@ -1113,14 +1113,14 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   font-size: 0.68rem;
   padding: 0.1rem 0.4rem;
   border-radius: 4px;
-  background: hsl(var(--bc) / 0.1);
+  background: color-mix(in oklab, var(--color-base-content) 10%, transparent);
   opacity: 0.8;
 }
 .wiki-app__right {
   width: 320px;
   flex-shrink: 0;
-  border-left: 1px solid hsl(var(--bc) / 0.15);
-  background: hsl(var(--b1));
+  border-left: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
+  background: var(--color-base-100);
   min-height: 0;
   overflow: hidden;
 }

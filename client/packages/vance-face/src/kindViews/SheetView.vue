@@ -740,7 +740,7 @@ function cycleRowBorder(): void {
 function rowBorderStyle(row: number): Record<string, string> {
   const b = localRowBorders.value[String(row)];
   if (!b) return {};
-  const line = '2px solid oklch(var(--bc) / 0.5)';
+  const line = '2px solid color-mix(in oklab, var(--color-base-content) 50%, transparent)';
   const out: Record<string, string> = {};
   if (b === 'top' || b === 'both') out.borderTop = line;
   if (b === 'bottom' || b === 'both') out.borderBottom = line;
@@ -1011,7 +1011,7 @@ const gridStyle = computed(() => {
 function columnBorderStyle(col: string): Record<string, string> {
   const b = localColumns.value[col]?.border;
   if (!b) return {};
-  const line = '2px solid oklch(var(--bc) / 0.5)';
+  const line = '2px solid color-mix(in oklab, var(--color-base-content) 50%, transparent)';
   const out: Record<string, string> = {};
   if (b === 'left' || b === 'both') out.borderLeft = line;
   if (b === 'right' || b === 'both') out.borderRight = line;
@@ -1188,7 +1188,7 @@ function cellStyle(addr: string): Record<string, string> {
   if (c?.align) out.textAlign = c.align;
   const b = c?.borders;
   if (b) {
-    const line = '2px solid oklch(var(--bc) / 0.75)';
+    const line = '2px solid color-mix(in oklab, var(--color-base-content) 75%, transparent)';
     if (b.includes('t')) out.borderTop = line;
     if (b.includes('r')) out.borderRight = line;
     if (b.includes('b')) out.borderBottom = line;
@@ -1577,7 +1577,7 @@ function applyNumberFormat(raw: string, code: string): string {
   letter-spacing: -0.02em;
 }
 .ico--danger {
-  color: oklch(var(--er));
+  color: var(--color-error);
 }
 .hidden-file {
   display: none;
@@ -1596,9 +1596,9 @@ function applyNumberFormat(raw: string, code: string): string {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.4rem;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
   /* The single scroll container: sticky header + row numbers stay put. */
   overflow: auto;
 }
@@ -1606,7 +1606,7 @@ function applyNumberFormat(raw: string, code: string): string {
 .data-row {
   display: grid;
   align-items: stretch;
-  border-bottom: 1px solid oklch(var(--bc) / 0.08);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 8%, transparent);
   /* Take the grid's natural (summed) width so it scrolls horizontally,
      but never shrink below the viewport (fills empty space on the right). */
   width: max-content;
@@ -1616,19 +1616,19 @@ function applyNumberFormat(raw: string, code: string): string {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: oklch(var(--b2));
-  border-bottom-color: oklch(var(--bc) / 0.18);
+  background: var(--color-base-200);
+  border-bottom-color: color-mix(in oklab, var(--color-base-content) 18%, transparent);
 }
 .header-corner,
 .row-num {
-  background: oklch(var(--b2));
+  background: var(--color-base-200);
   font-family: ui-monospace, monospace;
   font-size: 0.7rem;
-  color: oklch(var(--bc) / 0.55);
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
-  border-right: 1px solid oklch(var(--bc) / 0.08);
+  border-right: 1px solid color-mix(in oklab, var(--color-base-content) 8%, transparent);
   min-height: 1.85rem;
 }
 .row-num {
@@ -1650,16 +1650,16 @@ function applyNumberFormat(raw: string, code: string): string {
   text-align: center;
   padding: 0.35rem 0;
   letter-spacing: 0.04em;
-  color: oklch(var(--bc) / 0.7);
-  border-right: 1px solid oklch(var(--bc) / 0.08);
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+  border-right: 1px solid color-mix(in oklab, var(--color-base-content) 8%, transparent);
   cursor: pointer;
   user-select: none;
 }
 .header-col--selected {
-  background: oklch(var(--p) / 0.28);
-  color: oklch(var(--bc));
+  background: color-mix(in oklab, var(--color-primary) 28%, transparent);
+  color: var(--color-base-content);
   font-weight: 700;
-  box-shadow: inset 0 -3px 0 oklch(var(--p));
+  box-shadow: inset 0 -3px 0 var(--color-primary);
 }
 .col-resize {
   position: absolute;
@@ -1671,7 +1671,7 @@ function applyNumberFormat(raw: string, code: string): string {
   z-index: 1;
 }
 .col-resize:hover {
-  background: oklch(var(--p) / 0.5);
+  background: color-mix(in oklab, var(--color-primary) 50%, transparent);
 }
 .row-resize {
   position: absolute;
@@ -1683,7 +1683,7 @@ function applyNumberFormat(raw: string, code: string): string {
   z-index: 2;
 }
 .row-resize:hover {
-  background: oklch(var(--p) / 0.5);
+  background: color-mix(in oklab, var(--color-primary) 50%, transparent);
 }
 /* Column / row highlight — a translucent overlay (::before) that alpha-blends
    over any cell background, so the highlight stays visible on coloured cells. */
@@ -1692,15 +1692,15 @@ function applyNumberFormat(raw: string, code: string): string {
   content: '';
   position: absolute;
   inset: 0;
-  background: oklch(var(--p) / 0.1);
+  background: color-mix(in oklab, var(--color-primary) 10%, transparent);
   pointer-events: none;
   z-index: 0;
 }
 .row-num--selected {
-  background: oklch(var(--p) / 0.28);
-  color: oklch(var(--bc));
+  background: color-mix(in oklab, var(--color-primary) 28%, transparent);
+  color: var(--color-base-content);
   font-weight: 700;
-  box-shadow: inset -3px 0 0 oklch(var(--p));
+  box-shadow: inset -3px 0 0 var(--color-primary);
 }
 .cell,
 .cell-input {
@@ -1714,7 +1714,7 @@ function applyNumberFormat(raw: string, code: string): string {
   outline: none;
   min-height: 1.85rem;
   cursor: cell;
-  border-right: 1px solid oklch(var(--bc) / 0.08);
+  border-right: 1px solid color-mix(in oklab, var(--color-base-content) 8%, transparent);
   user-select: none;
 }
 .cell-input {
@@ -1722,7 +1722,7 @@ function applyNumberFormat(raw: string, code: string): string {
   user-select: text;
 }
 .cell:hover {
-  background: oklch(var(--bc) / 0.04);
+  background: color-mix(in oklab, var(--color-base-content) 4%, transparent);
 }
 /* Range selection — translucent overlay (::after) that alpha-blends over the
    cell's own background instead of replacing it (invisible otherwise). */
@@ -1730,22 +1730,22 @@ function applyNumberFormat(raw: string, code: string): string {
   content: '';
   position: absolute;
   inset: 0;
-  background: oklch(var(--p) / 0.2);
+  background: color-mix(in oklab, var(--color-primary) 20%, transparent);
   pointer-events: none;
   z-index: 0;
 }
 .cell--active {
   /* the anchor cell of the selection */
-  outline: 2px solid oklch(var(--p) / 0.7);
+  outline: 2px solid color-mix(in oklab, var(--color-primary) 70%, transparent);
   outline-offset: -1px;
   z-index: 1;
 }
 .cell--formula {
-  box-shadow: inset 2px 0 0 oklch(var(--p));
+  box-shadow: inset 2px 0 0 var(--color-primary);
 }
 .cell--error {
-  color: oklch(var(--er));
-  box-shadow: inset 2px 0 0 oklch(var(--er));
+  color: var(--color-error);
+  box-shadow: inset 2px 0 0 var(--color-error);
 }
 .cell-text {
   display: block;
@@ -1764,15 +1764,15 @@ function applyNumberFormat(raw: string, code: string): string {
   z-index: 1;
 }
 .cell-input {
-  border-color: oklch(var(--p));
-  box-shadow: 0 0 0 2px oklch(var(--p) / 0.2);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary) 20%, transparent);
   width: 100%;
 }
 .panel {
   width: 14rem;
   flex: 0 0 14rem;
-  background: oklch(var(--b1));
-  border: 1px solid oklch(var(--bc) / 0.15);
+  background: var(--color-base-100);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
   border-radius: 0.5rem;
   padding: 0.7rem;
   display: flex;
@@ -1808,7 +1808,7 @@ function applyNumberFormat(raw: string, code: string): string {
 .color-row input[type="color"] {
   flex: 0 0 2.5rem;
   height: 1.85rem;
-  border: 1px solid oklch(var(--bc) / 0.25);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 25%, transparent);
   border-radius: 0.25rem;
   background: transparent;
   cursor: pointer;
@@ -1816,7 +1816,7 @@ function applyNumberFormat(raw: string, code: string): string {
 }
 .clear-btn {
   background: transparent;
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.25rem;
   padding: 0.2rem 0.5rem;
   font-size: 0.72rem;
@@ -1837,7 +1837,7 @@ function applyNumberFormat(raw: string, code: string): string {
   min-width: 1.75rem;
   height: 1.75rem;
   padding: 0 0.35rem;
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.3rem;
   background: transparent;
   color: inherit;
@@ -1845,25 +1845,25 @@ function applyNumberFormat(raw: string, code: string): string {
   line-height: 1;
 }
 .fmt-btn:hover {
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
 .fmt-btn--on {
-  background: oklch(var(--p) / 0.18);
-  border-color: oklch(var(--p) / 0.6);
+  background: color-mix(in oklab, var(--color-primary) 18%, transparent);
+  border-color: color-mix(in oklab, var(--color-primary) 60%, transparent);
 }
 .fmt-sep {
   width: 1px;
   height: 1.25rem;
-  background: oklch(var(--bc) / 0.15);
+  background: color-mix(in oklab, var(--color-base-content) 15%, transparent);
   margin: 0 0.15rem;
 }
 .fmt-select {
   width: 100%;
   margin-top: 0.2rem;
   padding: 0.25rem 0.35rem;
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.3rem;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
   color: inherit;
   font: inherit;
 }

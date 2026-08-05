@@ -193,7 +193,7 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
   padding: 2rem;
 }
 .form-picker__panel {
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
   border-radius: 0.5rem;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
   width: 100%;
@@ -209,7 +209,7 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
   align-items: center;
   padding: 0.75rem 1rem;
   font-weight: 600;
-  border-bottom: 1px solid oklch(var(--bc) / 0.18);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
 }
 .form-picker__close {
   background: none;
@@ -217,43 +217,43 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
   font-size: 1.4rem;
   line-height: 1;
   cursor: pointer;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   padding: 0 0.25rem;
 }
 .form-picker__actions {
   padding: 0.5rem 1rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.18);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
 }
 .form-picker__search-input {
   width: 100%;
   padding: 0.4rem 0.6rem;
   font-size: 0.9rem;
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.25rem;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
   box-sizing: border-box;
 }
 .form-picker__error {
-  background: oklch(var(--er) / 0.12);
-  color: oklch(var(--er));
+  background: color-mix(in oklab, var(--color-error) 12%, transparent);
+  color: var(--color-error);
   font-size: 0.85rem;
   padding: 0.5rem 1rem;
 }
 .form-picker__loading,
 .form-picker__empty {
   padding: 1.5rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   text-align: center;
   font-size: 0.9rem;
 }
 .form-picker__hint {
   margin-top: 0.5rem;
   font-size: 0.78rem;
-  color: oklch(var(--bc) / 0.5);
+  color: color-mix(in oklab, var(--color-base-content) 50%, transparent);
 }
 .form-picker__hint code {
   font-family: monospace;
-  background: oklch(var(--bc) / 0.1);
+  background: color-mix(in oklab, var(--color-base-content) 10%, transparent);
   padding: 0 0.25em;
   border-radius: 0.2em;
 }
@@ -273,10 +273,10 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
-  color: oklch(var(--bc));
+  color: var(--color-base-content);
 }
 .form-picker__list-item:hover {
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
 .form-picker__list-title {
   font-size: 0.9rem;
@@ -288,13 +288,13 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
 .form-picker__list-path {
   font-family: monospace;
   font-size: 0.75rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .form-picker__create {
-  border-top: 1px solid oklch(var(--bc) / 0.18);
+  border-top: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   padding: 0.6rem 1rem;
 }
 .form-picker__create-row {
@@ -302,9 +302,9 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
   gap: 0.5rem;
 }
 .form-picker__create-btn {
-  border: 1px solid oklch(var(--p));
-  background: oklch(var(--p));
-  color: oklch(var(--pc));
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-primary-content);
   border-radius: 0.25rem;
   padding: 0.4rem 0.9rem;
   font-size: 0.85rem;
@@ -313,7 +313,7 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
 }
 .form-picker__create-btn:disabled { opacity: 0.5; cursor: default; }
 .form-picker__create-error {
-  color: oklch(var(--er));
+  color: var(--color-error);
   font-size: 0.8rem;
   margin-bottom: 0.4rem;
 }

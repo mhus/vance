@@ -255,15 +255,15 @@ function fmtScore(score: number): string {
   font-size: 0.75rem;
   padding: 0.1rem 0.5rem;
   border-radius: 0.375rem;
-  background: oklch(var(--su) / 0.18);
-  color: oklch(var(--suc));
+  background: color-mix(in oklab, var(--color-success) 18%, transparent);
+  color: var(--color-success-content);
 }
 .badge-empty {
   display: inline-block;
   font-size: 0.75rem;
   padding: 0.1rem 0.5rem;
   border-radius: 0.375rem;
-  background: oklch(var(--bc) / 0.1);
-  color: oklch(var(--bc) / 0.6);
+  background: color-mix(in oklab, var(--color-base-content) 10%, transparent);
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
 }
 </style>

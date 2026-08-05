@@ -323,11 +323,11 @@ function sortedEvents(): EventSummary[] {
   border: 1px solid transparent;
 }
 .event-row:hover {
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
 .event-row--active {
-  background: oklch(var(--p) / 0.12);
-  border-color: oklch(var(--p) / 0.3);
+  background: color-mix(in oklab, var(--color-primary) 12%, transparent);
+  border-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
 }
 .event-row--disabled {
   opacity: 0.55;
@@ -339,25 +339,25 @@ function sortedEvents(): EventSummary[] {
   font-family: ui-monospace, monospace;
 }
 .badge-source--project {
-  background: oklch(var(--p) / 0.18);
-  color: oklch(var(--p));
+  background: color-mix(in oklab, var(--color-primary) 18%, transparent);
+  color: var(--color-primary);
 }
 .badge-source--vance {
-  background: oklch(var(--bc) / 0.12);
-  color: oklch(var(--bc) / 0.7);
+  background: color-mix(in oklab, var(--color-base-content) 12%, transparent);
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
 }
 
 .badge-open {
-  background: oklch(var(--su) / 0.18);
-  color: oklch(var(--suc));
+  background: color-mix(in oklab, var(--color-success) 18%, transparent);
+  color: var(--color-success-content);
 }
 .badge-closed {
-  background: oklch(var(--bc) / 0.1);
-  color: oklch(var(--bc) / 0.6);
+  background: color-mix(in oklab, var(--color-base-content) 10%, transparent);
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
 }
 
 .json-block {
-  background: oklch(var(--bc) / 0.05);
+  background: color-mix(in oklab, var(--color-base-content) 5%, transparent);
   padding: 0.5rem 0.75rem;
   border-radius: 0.375rem;
   font-size: 0.8125rem;

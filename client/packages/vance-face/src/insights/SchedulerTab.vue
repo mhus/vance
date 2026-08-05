@@ -291,7 +291,7 @@ function formatTimestamp(value?: Date | string | null): string {
           <span class="text-sm font-semibold">{{ t('scheduler.nameLabel') }}</span>
           <input
             v-model="newName"
-            class="input input-bordered w-full mt-1"
+            class="input w-full mt-1"
             :placeholder="t('scheduler.namePlaceholder')"
             @keyup.enter="createScheduler"
           />

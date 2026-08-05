@@ -16,8 +16,8 @@ defineProps<{ attrs: Record<string, unknown> }>();
   display: inline-block;
   padding: 0.5em 0.9em;
   border-radius: 0.5rem;
-  border: 1px solid oklch(var(--bc) / 0.2);
-  background: oklch(var(--bc) / 0.06);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
   margin: 0.5em 0;
 }
 </style>

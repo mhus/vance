@@ -120,7 +120,7 @@ async function onEdit(next: SheetDocument): Promise<void> {
 .preview-wrap {
   overflow: auto;
   max-height: 14rem;
-  border: 1px solid oklch(var(--bc) / 0.15);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
   border-radius: 0.4rem;
 }
 .sheet-preview {
@@ -130,7 +130,7 @@ async function onEdit(next: SheetDocument): Promise<void> {
 }
 .sheet-preview th,
 .sheet-preview td {
-  border: 1px solid oklch(var(--bc) / 0.1);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 10%, transparent);
   padding: 0.15rem 0.4rem;
   text-align: left;
   white-space: nowrap;
@@ -139,16 +139,16 @@ async function onEdit(next: SheetDocument): Promise<void> {
   text-overflow: ellipsis;
 }
 .sheet-preview th {
-  background: oklch(var(--b2));
+  background: var(--color-base-200);
   font-family: ui-monospace, monospace;
   font-weight: 600;
-  color: oklch(var(--bc) / 0.7);
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
   text-align: center;
 }
 .sheet-preview .rownum,
 .sheet-preview .corner {
-  background: oklch(var(--b2));
-  color: oklch(var(--bc) / 0.55);
+  background: var(--color-base-200);
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
   font-family: ui-monospace, monospace;
   text-align: center;
 }

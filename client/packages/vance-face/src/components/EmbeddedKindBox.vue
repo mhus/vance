@@ -208,7 +208,7 @@ function onDownload(): void {
   opacity: 0.7;
 }
 .kbx-act:hover {
-  background: oklch(var(--bc) / 0.1);
+  background: color-mix(in oklab, var(--color-base-content) 10%, transparent);
   opacity: 1;
 }
 .kbx-loading {
@@ -221,9 +221,9 @@ function onDownload(): void {
   height: 4rem;
   background: linear-gradient(
     90deg,
-    oklch(var(--bc) / 0.05) 25%,
-    oklch(var(--bc) / 0.12) 50%,
-    oklch(var(--bc) / 0.05) 75%
+    color-mix(in oklab, var(--color-base-content) 5%, transparent) 25%,
+    color-mix(in oklab, var(--color-base-content) 12%, transparent) 50%,
+    color-mix(in oklab, var(--color-base-content) 5%, transparent) 75%
   );
   background-size: 200% 100%;
   animation: kbx-shimmer 1.4s infinite;
@@ -234,7 +234,7 @@ function onDownload(): void {
   100% { background-position: -200% 0; }
 }
 .kbx-error {
-  color: oklch(var(--er));
+  color: var(--color-error);
   padding: 0.5rem;
   font-size: 0.85rem;
 }

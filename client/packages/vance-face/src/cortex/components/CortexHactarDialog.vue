@@ -180,8 +180,8 @@ onBeforeUnmount(() => {
   >
     <div class="space-y-3 p-1">
       <div v-if="!result || !result.code">
-        <label class="label">
-          <span class="label-text font-semibold">
+        <label class="flex items-center">
+          <span class="text-sm font-semibold">
             {{
               mode === 'UPDATE'
                 ? 'What should change?'

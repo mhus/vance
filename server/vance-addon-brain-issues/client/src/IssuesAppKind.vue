@@ -550,30 +550,30 @@ function commentDate(c: { createdAt?: string | null }): string {
 .iss { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .iss__topbar {
   display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.75rem;
-  border-bottom: 1px solid hsl(var(--bc) / 0.15); background: hsl(var(--b1));
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent); background: var(--color-base-100);
 }
 .iss__brand { font-weight: 700; font-size: 0.95rem; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .iss__tabs { display: flex; gap: 0.25rem; }
 .iss__tab {
-  border: 1px solid hsl(var(--bc) / 0.2); border-radius: 6px; background: transparent;
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent); border-radius: 6px; background: transparent;
   padding: 0.2rem 0.6rem; font-size: 0.8rem; cursor: pointer;
 }
-.iss__tab--active { background: hsl(var(--p) / 0.16); font-weight: 600; }
+.iss__tab--active { background: color-mix(in oklab, var(--color-primary) 16%, transparent); font-weight: 600; }
 .iss__badge { font-size: 0.68rem; opacity: 0.6; }
 .iss__search { position: relative; display: flex; align-items: center; gap: 0.25rem; }
 .iss__input {
-  border: 1px solid hsl(var(--bc) / 0.2); border-radius: 6px; background: transparent;
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent); border-radius: 6px; background: transparent;
   padding: 0.25rem 0.5rem; font-size: 0.82rem;
 }
 .iss__search .iss__input { width: 11rem; }
 .iss__search-results {
   position: absolute; top: 100%; left: 0; margin-top: 0.25rem; min-width: 22rem; max-height: 22rem;
-  overflow-y: auto; padding: 0.25rem; background: hsl(var(--b1)); border: 1px solid hsl(var(--bc) / 0.2);
+  overflow-y: auto; padding: 0.25rem; background: var(--color-base-100); border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); z-index: 50;
 }
 .iss__search-list { list-style: none; margin: 0; padding: 0; }
 .iss__search-row { display: flex; flex-direction: column; padding: 0.35rem 0.5rem; border-radius: 6px; cursor: pointer; }
-.iss__search-row:hover { background: hsl(var(--bc) / 0.08); }
+.iss__search-row:hover { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
 .iss__search-title { font-size: 0.85rem; font-weight: 600; }
 .iss__search-snippet { font-size: 0.72rem; opacity: 0.6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .iss__search-empty { padding: 0.6rem; font-size: 0.8rem; opacity: 0.6; }
@@ -582,54 +582,54 @@ function commentDate(c: { createdAt?: string | null }): string {
 .iss__save--error { color: #d33; opacity: 1; }
 .iss__save--saved { color: #2a8; }
 .iss__btn {
-  border: 1px solid hsl(var(--bc) / 0.2); border-radius: 6px; background: transparent;
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent); border-radius: 6px; background: transparent;
   padding: 0.2rem 0.55rem; font-size: 0.8rem; cursor: pointer; white-space: nowrap;
 }
-.iss__btn:hover:not(:disabled) { background: hsl(var(--bc) / 0.08); }
+.iss__btn:hover:not(:disabled) { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
 .iss__btn:disabled { opacity: 0.5; cursor: default; }
-.iss__btn--primary { border-color: hsl(var(--p) / 0.6); }
+.iss__btn--primary { border-color: color-mix(in oklab, var(--color-primary) 60%, transparent); }
 .iss__btn--danger:hover { background: rgba(221, 51, 51, 0.12); }
 .iss__error { padding: 0.5rem 0.75rem; color: #d33; font-size: 0.82rem; }
 .iss__hint { padding: 2rem; text-align: center; opacity: 0.6; font-size: 0.85rem; }
 .iss__body { flex: 1; display: flex; min-height: 0; }
 .iss__list { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow-y: auto; }
-.iss__new { padding: 0.5rem 0.75rem; border-bottom: 1px solid hsl(var(--bc) / 0.1); }
+.iss__new { padding: 0.5rem 0.75rem; border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 10%, transparent); }
 .iss__new-input { width: 100%; }
 .iss__labelfilter { display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.4rem 0.75rem; }
 .iss__chip {
-  border: 1px solid hsl(var(--bc) / 0.2); border-radius: 999px; background: transparent;
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent); border-radius: 999px; background: transparent;
   padding: 0.1rem 0.5rem; font-size: 0.72rem; cursor: pointer;
 }
-.iss__chip--active { background: hsl(var(--p) / 0.18); }
+.iss__chip--active { background: color-mix(in oklab, var(--color-primary) 18%, transparent); }
 .iss__items { list-style: none; margin: 0; padding: 0.25rem; }
 .iss__item { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.5rem; border-radius: 6px; cursor: pointer; }
-.iss__item:hover { background: hsl(var(--bc) / 0.06); }
-.iss__item--sel { background: hsl(var(--p) / 0.12); }
+.iss__item:hover { background: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
+.iss__item--sel { background: color-mix(in oklab, var(--color-primary) 12%, transparent); }
 .iss__dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .iss__dot--open { background: #2a8; }
-.iss__dot--closed { background: hsl(var(--bc) / 0.35); }
+.iss__dot--closed { background: color-mix(in oklab, var(--color-base-content) 35%, transparent); }
 .iss__num { font-size: 0.75rem; opacity: 0.55; font-variant-numeric: tabular-nums; }
 .iss__item-title { flex: 1; font-size: 0.88rem; }
 .iss__assignee, .iss__lab {
-  font-size: 0.68rem; opacity: 0.7; padding: 0.05rem 0.35rem; border-radius: 4px; background: hsl(var(--bc) / 0.08);
+  font-size: 0.68rem; opacity: 0.7; padding: 0.05rem 0.35rem; border-radius: 4px; background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
 }
 .iss__detail {
-  width: 360px; flex-shrink: 0; border-left: 1px solid hsl(var(--bc) / 0.15);
-  padding: 0.75rem; overflow-y: auto; background: hsl(var(--b1)); display: flex; flex-direction: column;
+  width: 360px; flex-shrink: 0; border-left: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
+  padding: 0.75rem; overflow-y: auto; background: var(--color-base-100); display: flex; flex-direction: column;
 }
 .iss__detail-head { display: flex; align-items: center; gap: 0.5rem; }
 .iss__state { font-size: 0.68rem; padding: 0.1rem 0.45rem; border-radius: 999px; text-transform: uppercase; }
 .iss__state--open { background: rgba(42, 136, 85, 0.18); color: #2a8; }
-.iss__state--closed { background: hsl(var(--bc) / 0.12); }
-.iss__archived { font-size: 0.68rem; padding: 0.1rem 0.4rem; border-radius: 4px; background: hsl(var(--bc) / 0.12); }
+.iss__state--closed { background: color-mix(in oklab, var(--color-base-content) 12%, transparent); }
+.iss__archived { font-size: 0.68rem; padding: 0.1rem 0.4rem; border-radius: 4px; background: color-mix(in oklab, var(--color-base-content) 12%, transparent); }
 .iss__detail-title { font-size: 1.1rem; font-weight: 700; border: none; background: transparent; width: 100%; margin: 0.4rem 0; }
 .iss__actions { display: flex; gap: 0.4rem; margin-bottom: 0.75rem; }
 .iss__field { margin-bottom: 0.6rem; display: flex; flex-direction: column; gap: 0.25rem; }
 .iss__field--row { flex-direction: row; gap: 0.5rem; }
 .iss__field--row .iss__field { flex: 1; }
 .iss__label { font-size: 0.7rem; text-transform: uppercase; opacity: 0.55; }
-.iss__comments { margin-top: 0.75rem; border-top: 1px solid hsl(var(--bc) / 0.12); padding-top: 0.6rem; }
-.iss__comment { border: 1px solid hsl(var(--bc) / 0.12); border-radius: 8px; padding: 0.4rem 0.55rem; margin-bottom: 0.5rem; }
+.iss__comments { margin-top: 0.75rem; border-top: 1px solid color-mix(in oklab, var(--color-base-content) 12%, transparent); padding-top: 0.6rem; }
+.iss__comment { border: 1px solid color-mix(in oklab, var(--color-base-content) 12%, transparent); border-radius: 8px; padding: 0.4rem 0.55rem; margin-bottom: 0.5rem; }
 .iss__comment-head { display: flex; align-items: center; gap: 0.5rem; font-size: 0.7rem; opacity: 0.65; margin-bottom: 0.2rem; }
 .iss__comment-user { font-weight: 600; }
 .iss__comment-date { flex: 1; }

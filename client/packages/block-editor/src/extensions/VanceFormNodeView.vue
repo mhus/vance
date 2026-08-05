@@ -82,9 +82,9 @@ function updateSession(next: boolean) {
   align-items: flex-start;
   gap: 0.75rem;
   padding: 0.75rem 1rem;
-  border: 1px dashed oklch(var(--bc) / 0.3);
+  border: 1px dashed color-mix(in oklab, var(--color-base-content) 30%, transparent);
   border-radius: 0.5rem;
-  background: oklch(var(--bc) / 0.04);
+  background: color-mix(in oklab, var(--color-base-content) 4%, transparent);
 }
 .vance-form__icon {
   font-size: 1.5em;
@@ -102,7 +102,7 @@ function updateSession(next: boolean) {
 .vance-form__path {
   font-family: monospace;
   font-size: 0.75rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   margin-top: 0.2em;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -58,7 +58,7 @@ function onBackdropClick(e: MouseEvent) {
   z-index: 1000;
 }
 .emoji-modal {
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
   border-radius: 8px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
   display: flex;
@@ -71,12 +71,12 @@ function onBackdropClick(e: MouseEvent) {
   align-items: center;
   justify-content: space-between;
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.18);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
 }
 .emoji-modal__title {
   font-size: 0.9rem;
   font-weight: 600;
-  color: oklch(var(--bc));
+  color: var(--color-base-content);
 }
 .emoji-modal__close {
   background: transparent;
@@ -84,9 +84,9 @@ function onBackdropClick(e: MouseEvent) {
   font-size: 1.4rem;
   line-height: 1;
   cursor: pointer;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
 }
-.emoji-modal__close:hover { color: oklch(var(--bc)); }
+.emoji-modal__close:hover { color: var(--color-base-content); }
 .emoji-modal__picker {
   /* The element exposes its width/height via host CSS. */
   width: 100%;
@@ -94,18 +94,18 @@ function onBackdropClick(e: MouseEvent) {
 }
 .emoji-modal__footer {
   padding: 0.5rem 0.75rem;
-  border-top: 1px solid oklch(var(--bc) / 0.18);
+  border-top: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   display: flex;
   justify-content: flex-end;
 }
 .emoji-modal__remove {
   background: transparent;
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 4px;
   padding: 0.25rem 0.75rem;
   font-size: 0.85rem;
   cursor: pointer;
-  color: oklch(var(--bc));
+  color: var(--color-base-content);
 }
-.emoji-modal__remove:hover { background: oklch(var(--bc) / 0.06); }
+.emoji-modal__remove:hover { background: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
 </style>

@@ -101,16 +101,16 @@ const imgClass = computed(() =>
 .canvas-image-placeholder {
   display: inline-block;
   padding: 0.4em 0.8em;
-  background: oklch(var(--bc) / 0.06);
-  border: 1px dashed oklch(var(--bc) / 0.25);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
+  border: 1px dashed color-mix(in oklab, var(--color-base-content) 25%, transparent);
   border-radius: 0.25rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   font-size: 0.85em;
   font-family: monospace;
 }
 .canvas-image-placeholder--error {
-  background: oklch(var(--er) / 0.12);
-  border-color: oklch(var(--er) / 0.5);
-  color: oklch(var(--er));
+  background: color-mix(in oklab, var(--color-error) 12%, transparent);
+  border-color: color-mix(in oklab, var(--color-error) 50%, transparent);
+  color: var(--color-error);
 }
 </style>

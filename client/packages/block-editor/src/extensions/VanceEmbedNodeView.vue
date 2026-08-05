@@ -223,19 +223,19 @@ watch(uri, resolve);
   align-items: flex-start;
   gap: 0.75rem;
   padding: 0.75rem 1rem;
-  border: 1px solid oklch(var(--bc) / 0.18);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.5rem;
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
   position: relative;
   transition: border-color 0.15s ease, background 0.15s ease;
   cursor: default;
 }
 .vance-embed__card:hover {
-  border-color: oklch(var(--p));
+  border-color: var(--color-primary);
 }
 .vance-embed__media-warning {
-  background: oklch(var(--wa) / 0.15);
-  border-color: oklch(var(--wa) / 0.5);
+  background: color-mix(in oklab, var(--color-warning) 15%, transparent);
+  border-color: color-mix(in oklab, var(--color-warning) 50%, transparent);
 }
 .vance-embed__icon {
   font-size: 1.5em;
@@ -259,21 +259,21 @@ watch(uri, resolve);
   font-size: 0.7rem;
   padding: 0 0.35em;
   margin-top: 0.2em;
-  background: oklch(var(--bc) / 0.18);
+  background: color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 999px;
-  color: oklch(var(--bc));
+  color: var(--color-base-content);
 }
 .vance-embed__path {
   font-family: monospace;
   font-size: 0.75rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   margin-top: 0.2em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .vance-embed__error {
-  color: oklch(var(--er));
+  color: var(--color-error);
   font-size: 0.8rem;
   margin-top: 0.25rem;
 }
@@ -287,8 +287,8 @@ watch(uri, resolve);
   opacity: 1;
 }
 .vance-embed__action {
-  background: oklch(var(--b1));
-  border: 1px solid oklch(var(--bc) / 0.18);
+  background: var(--color-base-100);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.25rem;
   cursor: pointer;
   width: 1.8rem;
@@ -297,11 +297,11 @@ watch(uri, resolve);
   align-items: center;
   justify-content: center;
   font-size: 0.95rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   padding: 0;
 }
 .vance-embed__action:hover {
-  background: oklch(var(--bc) / 0.06);
-  color: oklch(var(--bc));
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
+  color: var(--color-base-content);
 }
 </style>

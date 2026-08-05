@@ -418,15 +418,15 @@ async function onCreated(created: DocumentDto): Promise<void> {
 </template>
 
 <style scoped>
-/* Tighter form-control footprint than the DaisyUI defaults: the panel
- * sits above the document body and the user wants it compact, not the
- * roomy default we use in modals. We target the form-control children
- * via :deep() because VInput / VSelect / VColorPicker live in
- * @vance/components and ship the standard DaisyUI markup. */
-.properties-panel :deep(.label) {
-  padding: 0.125rem 0.25rem;
+/* Tighter field footprint than the shared defaults: the panel sits above
+ * the document body and the user wants it compact, not the roomy default
+ * we use in modals. We target the field parts via :deep() because
+ * VInput / VSelect / VColorPicker live in @vance/components — see VInput
+ * for the `v-field*` hook-class convention. */
+.properties-panel :deep(.v-field) {
+  gap: 0.125rem;
 }
-.properties-panel :deep(.label-text) {
+.properties-panel :deep(.v-field-label) {
   font-size: 0.7rem;
   opacity: 0.7;
 }

@@ -210,7 +210,7 @@ function writeWidths(updates: Array<{ idx: number; width: number }>) {
 }
 .vance-columns > .vance-columns__content > .vance-column:hover,
 .vance-columns > .vance-columns__content > .vance-column:focus-within {
-  border-color: oklch(var(--bc) / 0.18);
+  border-color: color-mix(in oklab, var(--color-base-content) 18%, transparent);
 }
 .vance-columns > .vance-columns__content > .vance-column > :first-child {
   margin-top: 0;
@@ -236,10 +236,10 @@ function writeWidths(updates: Array<{ idx: number; width: number }>) {
   transition: background 0.15s ease;
 }
 .vance-columns:hover .vance-column-resize-handle::before {
-  background: oklch(var(--bc) / 0.18);
+  background: color-mix(in oklab, var(--color-base-content) 18%, transparent);
 }
 .vance-column-resize-handle:hover::before,
 .vance-column-resize-handle--active::before {
-  background: oklch(var(--p));
+  background: var(--color-primary);
 }
 </style>

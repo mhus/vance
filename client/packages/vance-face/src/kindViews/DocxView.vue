@@ -119,8 +119,8 @@ watch(() => url.value, () => { void loadDocx(); });
 
 <style scoped>
 .docx-view {
-  background: oklch(var(--b1));
-  border: 1px solid oklch(var(--bc) / 0.15);
+  background: var(--color-base-100);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
   border-radius: 0.5rem;
   overflow: hidden;
   display: flex;
@@ -138,33 +138,33 @@ watch(() => url.value, () => { void loadDocx(); });
   opacity: 0.7;
   padding: 1rem;
 }
-.docx-state--err { opacity: 1; color: oklch(var(--er)); }
+.docx-state--err { opacity: 1; color: var(--color-error); }
 
 .docx-toolbar {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   padding: 0.3rem 0.5rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.1);
-  background: oklch(var(--b2) / 0.4);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 10%, transparent);
+  background: color-mix(in oklab, var(--color-base-200) 40%, transparent);
   flex-shrink: 0;
 }
 .docx-reload {
   font-size: 0.78rem;
   padding: 0.2rem 0.6rem;
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.25rem;
   background: transparent;
   cursor: pointer;
   color: inherit;
 }
 .docx-reload:hover {
-  background: oklch(var(--bc) / 0.08);
+  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
 }
 .docx-warnings {
   font-size: 0.75rem;
-  background: oklch(var(--wa) / 0.15);
-  color: oklch(var(--bc) / 0.7);
+  background: color-mix(in oklab, var(--color-warning) 15%, transparent);
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
   padding: 0.3rem 0.6rem;
   border-radius: 0.25rem;
   cursor: help;

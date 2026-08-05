@@ -171,7 +171,7 @@ export function followUpExtension(opts: FollowUpExtensionOptions): Extension {
         { key: 'Escape', run: dismissCommand },
       ]),
     ),
-    // Hard-coded colours rather than {@code hsl(var(--b2))} et al.
+    // Hard-coded colours rather than {@code var(--color-base-200)} et al.
     // — CodeMirror lifts the tooltip layer out of the editor's DOM
     // subtree (especially with {@code parent: document.body} above),
     // so DaisyUI's theme variables aren't guaranteed to resolve.

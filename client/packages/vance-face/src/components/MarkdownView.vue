@@ -918,21 +918,21 @@ export default defineComponent({
 .markdown-view :deep(ul ul ul) { list-style: square outside; }
 .markdown-view :deep(li) { margin: 0.15em 0; }
 .markdown-view :deep(blockquote) {
-  border-left: 3px solid oklch(var(--bc) / 0.25);
+  border-left: 3px solid color-mix(in oklab, var(--color-base-content) 25%, transparent);
   padding-left: 0.75em;
   margin: 0.6em 0;
   opacity: 0.8;
 }
 
 .markdown-view :deep(code) {
-  background: oklch(var(--bc) / 0.08);
+  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
   padding: 0.05em 0.3em;
   border-radius: 0.25rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.85em;
 }
 .markdown-view :deep(pre) {
-  background: oklch(var(--bc) / 0.06);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
   padding: 0.75em 1em;
   border-radius: 0.5rem;
   overflow-x: auto;
@@ -945,7 +945,7 @@ export default defineComponent({
 }
 
 .markdown-view :deep(a) {
-  color: oklch(var(--p));
+  color: var(--color-primary);
   text-decoration: underline;
 }
 .markdown-view :deep(a:hover) { opacity: 0.85; }
@@ -956,18 +956,18 @@ export default defineComponent({
 }
 .markdown-view :deep(th),
 .markdown-view :deep(td) {
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   padding: 0.3em 0.6em;
   text-align: left;
 }
 .markdown-view :deep(th) {
-  background: oklch(var(--bc) / 0.05);
+  background: color-mix(in oklab, var(--color-base-content) 5%, transparent);
   font-weight: 600;
 }
 
 .markdown-view :deep(hr) {
   border: 0;
-  border-top: 1px solid oklch(var(--bc) / 0.18);
+  border-top: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
   margin: 1em 0;
 }
 
@@ -992,13 +992,13 @@ export default defineComponent({
   gap: 0.25rem 0.9rem;
   margin: 0 0 0.75rem;
   padding: 0.35rem 0.6rem;
-  border: 1px dashed oklch(var(--bc) / 0.18);
+  border: 1px dashed color-mix(in oklab, var(--color-base-content) 18%, transparent);
   border-radius: 0.3rem;
-  background: oklch(var(--bc) / 0.03);
+  background: color-mix(in oklab, var(--color-base-content) 3%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.75rem;
   line-height: 1.35;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
 }
 .markdown-view__fm-row {
   display: inline-flex;
@@ -1010,11 +1010,11 @@ export default defineComponent({
   text-overflow: ellipsis;
 }
 .markdown-view__fm-key {
-  color: oklch(var(--bc) / 0.45);
+  color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
   letter-spacing: 0.01em;
 }
 .markdown-view__fm-val {
-  color: oklch(var(--bc) / 0.78);
+  color: color-mix(in oklab, var(--color-base-content) 78%, transparent);
   word-break: break-all;
 }
 

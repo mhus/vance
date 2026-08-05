@@ -37,13 +37,13 @@ function goToIndex(e: MouseEvent) {
   padding: 0.5em 0.9em;
   border-radius: 0.5rem;
   cursor: pointer;
-  border: 1px solid oklch(var(--bc) / 0.2);
-  background: oklch(var(--bc) / 0.06);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
   color: inherit;
   font: inherit;
 }
 .wb-index-block__btn:hover {
-  background: oklch(var(--p) / 0.12);
-  border-color: oklch(var(--p) / 0.5);
+  background: color-mix(in oklab, var(--color-primary) 12%, transparent);
+  border-color: color-mix(in oklab, var(--color-primary) 50%, transparent);
 }
 </style>

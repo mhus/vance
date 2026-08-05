@@ -43,14 +43,14 @@ function onClick(e: MouseEvent) {
 <style>
 .vance-wikilink-wrap { display: inline; }
 .vance-wikilink {
-  color: oklch(var(--p));
+  color: var(--color-primary);
   text-decoration: none;
   cursor: pointer;
-  border-bottom: 1px solid oklch(var(--p) / 0.4);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-primary) 40%, transparent);
 }
 .vance-wikilink:hover { text-decoration: underline; }
 .vance-wikilink--missing {
-  color: oklch(var(--er));
-  border-bottom: 1px dashed oklch(var(--er) / 0.55);
+  color: var(--color-error);
+  border-bottom: 1px dashed color-mix(in oklab, var(--color-error) 55%, transparent);
 }
 </style>

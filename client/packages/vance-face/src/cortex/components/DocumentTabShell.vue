@@ -1013,7 +1013,7 @@ function fmtDuration(ms: number | null): string {
 </template>
 
 <style scoped>
-/* CodeEditor renders a <label class="form-control"> with an inner
+/* CodeEditor renders a <label class="v-field"> with an inner
  * .code-editor div that only carries a min-height — by default the
  * label/.code-editor pair is content-sized and grows past the
  * Cortex-bounded parent, so CodeMirror's internal scroller never
@@ -1023,7 +1023,7 @@ function fmtDuration(ms: number | null): string {
   display: flex;
   flex-direction: column;
 }
-.cortex-code-host :deep(.form-control) {
+.cortex-code-host :deep(.v-field) {
   flex: 1 1 0;
   min-height: 0;
 }

@@ -401,23 +401,23 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
   text-transform: lowercase;
 }
 .badge-source--project {
-  background: oklch(var(--p) / 0.18);
-  color: oklch(var(--p));
+  background: color-mix(in oklab, var(--color-primary) 18%, transparent);
+  color: var(--color-primary);
 }
 .badge-source--vance {
-  background: oklch(var(--s) / 0.18);
-  color: oklch(var(--s));
+  background: color-mix(in oklab, var(--color-secondary) 18%, transparent);
+  color: var(--color-secondary);
 }
 .badge-source--builtin {
-  background: oklch(var(--b3));
-  color: oklch(var(--bc) / 0.7);
+  background: var(--color-base-300);
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
 }
 .badge-deferred {
   display: inline-block;
   padding: 0.05rem 0.4rem;
   border-radius: 0.25rem;
-  background: oklch(var(--wa) / 0.18);
-  color: oklch(var(--wa));
+  background: color-mix(in oklab, var(--color-warning) 18%, transparent);
+  color: var(--color-warning);
   font-size: 0.7rem;
   font-weight: 500;
 }
@@ -429,16 +429,16 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
   font-weight: 500;
 }
 .badge-health--ok {
-  background: oklch(var(--su) / 0.18);
-  color: oklch(var(--su));
+  background: color-mix(in oklab, var(--color-success) 18%, transparent);
+  color: var(--color-success);
 }
 .badge-health--degraded {
-  background: oklch(var(--wa) / 0.22);
-  color: oklch(var(--wa));
+  background: color-mix(in oklab, var(--color-warning) 22%, transparent);
+  color: var(--color-warning);
 }
 .badge-health--down {
-  background: oklch(var(--er) / 0.22);
-  color: oklch(var(--er));
+  background: color-mix(in oklab, var(--color-error) 22%, transparent);
+  color: var(--color-error);
 }
 .health-detail-row > td {
   background: transparent;

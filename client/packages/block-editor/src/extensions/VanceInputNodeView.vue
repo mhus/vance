@@ -231,8 +231,8 @@ onMounted(load);
   margin: 0.6em 0;
 }
 .vance-input__error {
-  background: oklch(var(--er) / 0.12);
-  color: oklch(var(--er));
+  background: color-mix(in oklab, var(--color-error) 12%, transparent);
+  color: var(--color-error);
   font-size: 0.82rem;
   padding: 0.35rem 0.6rem;
   border-radius: 0.25rem;
@@ -243,7 +243,7 @@ onMounted(load);
   align-items: center;
   gap: 0.8rem;
   font-size: 0.8rem;
-  color: oklch(var(--bc) / 0.7);
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
   margin-bottom: 0.35rem;
 }
 .vance-input__opt {
@@ -255,7 +255,7 @@ onMounted(load);
   margin-left: auto;
   font-family: monospace;
   font-size: 0.72rem;
-  color: oklch(var(--bc) / 0.5);
+  color: color-mix(in oklab, var(--color-base-content) 50%, transparent);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -266,7 +266,7 @@ onMounted(load);
   gap: 0.6rem;
   margin-top: 0.4rem;
   font-size: 0.78rem;
-  color: oklch(var(--bc) / 0.7);
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
 }
 .vance-input__settings-label {
   white-space: nowrap;
@@ -277,35 +277,35 @@ onMounted(load);
   gap: 0.4rem;
   margin-top: 0.35rem;
   font-size: 0.76rem;
-  color: oklch(var(--bc) / 0.65);
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
 }
 .vance-input__settings-input {
   flex: 1;
   min-width: 0;
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.3rem;
   padding: 0.25rem 0.45rem;
   font: inherit;
   font-size: 0.78rem;
   color: inherit;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
   outline: none;
 }
 .vance-input__field {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.3rem;
   padding: 0.35rem 0.5rem;
   font: inherit;
   color: inherit;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
   outline: none;
   resize: vertical;
 }
 .vance-input__field:disabled {
-  background: oklch(var(--bc) / 0.04);
-  color: oklch(var(--bc) / 0.7);
+  background: color-mix(in oklab, var(--color-base-content) 4%, transparent);
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
 }
 /* Auto-grow textarea: hide the scrollbar, height is driven by JS. */
 .vance-input__field--auto {
@@ -320,20 +320,20 @@ onMounted(load);
   margin-top: 0.4rem;
 }
 .vance-input__spacer { flex: 1; }
-.vance-input__saved { color: oklch(var(--su)); font-size: 0.78rem; }
+.vance-input__saved { color: var(--color-success); font-size: 0.78rem; }
 .vance-input__btn {
-  border: 1px solid oklch(var(--bc) / 0.2);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
   border-radius: 0.3rem;
   padding: 0.25rem 0.8rem;
   font-size: 0.82rem;
-  background: oklch(var(--b1));
-  color: oklch(var(--bc));
+  background: var(--color-base-100);
+  color: var(--color-base-content);
   cursor: pointer;
 }
 .vance-input__btn:disabled { opacity: 0.5; cursor: default; }
 .vance-input__btn--primary {
-  background: oklch(var(--p));
-  color: oklch(var(--pc));
-  border-color: oklch(var(--p));
+  background: var(--color-primary);
+  color: var(--color-primary-content);
+  border-color: var(--color-primary);
 }
 </style>

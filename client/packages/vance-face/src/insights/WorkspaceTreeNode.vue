@@ -106,11 +106,11 @@ function formatSize(bytes: number): string {
   white-space: nowrap;
 }
 .row:hover {
-  background: oklch(var(--b2));
+  background: var(--color-base-200);
 }
 .row--selected {
-  background: oklch(var(--p) / 0.12);
-  color: oklch(var(--p));
+  background: color-mix(in oklab, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
   font-weight: 500;
 }
 .chevron {

@@ -1075,6 +1075,9 @@ public class EddieEngine extends StructuredActionEngine {
             runCompletionGuard(process, chatMessage, appendedChat, awaitingUserInput);
             return new TurnSignal(appendedChat, loopResult.madeProgress());
         } finally {
+            // Drain one-shot skills — they only apply to the turn that
+            // activated them (shared StructuredActionEngine helper).
+            dropOneShotSkills(process);
             currentTurnHadUserInput.remove(process.getId());
             currentTurnEventsByRef.remove(process.getId());
             if (interrupted) {

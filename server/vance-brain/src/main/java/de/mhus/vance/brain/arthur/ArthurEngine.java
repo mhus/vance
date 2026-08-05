@@ -1008,6 +1008,10 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             runCompletionGuard(process, chatMessage, appendedChat, awaitingUserInput);
             return new TurnSignal(appendedChat, loopResult.madeProgress());
         } finally {
+            // Drain one-shot skills — they only apply to the turn that
+            // activated them (Ford/Frankie-compatible; hoisted into the
+            // StructuredActionEngine base so Arthur + Eddie share it).
+            dropOneShotSkills(process);
             currentTurnHadUserInput.remove(process.getId());
             currentTurnEventsByRef.remove(process.getId());
             if (interrupted) {

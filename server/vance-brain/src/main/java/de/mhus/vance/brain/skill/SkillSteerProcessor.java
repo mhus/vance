@@ -1,6 +1,9 @@
 package de.mhus.vance.brain.skill;
 
 import de.mhus.vance.api.skills.ProcessSkillCommand;
+import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
+import de.mhus.vance.brain.thinkengine.SteerMessage;
+import de.mhus.vance.brain.thinkengine.SteerMessageCodec;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
@@ -16,12 +19,18 @@ import org.springframework.stereotype.Service;
 
 /**
  * Out-of-band skill control for think-processes — activate, clear,
- * clear-all, list. Unlike {@code process-steer}, these calls do not
- * trigger an LLM turn; they only mutate the persisted
- * {@code activeSkills} on the process document. The next chat-turn
- * the user (or Arthur) initiates will pick the new skill set up
- * automatically because Ford reads {@code activeSkills} fresh on every
- * turn.
+ * clear-all, list. These calls mutate the persisted {@code activeSkills}
+ * on the process document; the next chat-turn the user (or Arthur)
+ * initiates picks the new skill set up automatically because Ford reads
+ * {@code activeSkills} fresh on every turn.
+ *
+ * <p><b>Exception — {@code action:}.</b> A skill carrying an
+ * {@code action:} prompt (see {@link ResolvedSkill#action()}) triggers
+ * one LLM turn on a <em>fresh explicit</em> activation: the prompt is
+ * appended to the process's pending queue plus a scheduled lane turn
+ * (never inline — {@link #fireAction}). Re-activating an already-active
+ * skill does not re-fire, and the auto-trigger path suppresses it (its
+ * in-flight turn already covers the work).
  *
  * <p>Recipe-bound skills (those activated by the spawning recipe with
  * {@code fromRecipe=true}) cannot be cleared by the user when the
@@ -32,13 +41,36 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class SkillSteerProcessor {
 
+    /** Sender id stamped on an {@code action:}-injected pending message. */
+    static final String ACTION_SENDER = "_skill";
+
     private final ThinkProcessService thinkProcessService;
     private final SessionService sessionService;
     private final SkillResolver skillResolver;
     private final SkillCommandRunner skillCommandRunner;
+    private final ProcessEventEmitter eventEmitter;
 
+    /**
+     * Explicit activation ({@code /skill <name>} / {@code process-skill}
+     * ACTIVATE). Fires the skill's {@code action:} turn on a fresh
+     * activation — there is no in-flight turn to cover the work, so the
+     * skill kicks it off itself.
+     */
     public ActivationResult activate(
             ThinkProcessDocument process, String skillName, boolean oneShot) {
+        return activate(process, skillName, oneShot, /*runAction*/ true);
+    }
+
+    /**
+     * @param runAction whether a fresh activation fires the skill's
+     *   {@code action:} turn. The auto-trigger path
+     *   ({@link SkillTriggerMatcher}) passes {@code false}: it activates
+     *   the skill <em>during</em> an already-running turn, which injects
+     *   the body and covers the work this turn — a scheduled action turn
+     *   would only duplicate it.
+     */
+    public ActivationResult activate(
+            ThinkProcessDocument process, String skillName, boolean oneShot, boolean runAction) {
         if (skillName == null || skillName.isBlank()) {
             throw new IllegalArgumentException("skillName is required for activate");
         }
@@ -57,6 +89,9 @@ public class SkillSteerProcessor {
             log.info("Skill activate id='{}' name='{}' lifecycle=shot "
                             + "(fired {} command(s), not persisted)",
                     process.getId(), skill.name(), skill.activate().size());
+            if (runAction) {
+                fireAction(process, skill);
+            }
             return new ActivationResult(skill, true, mutableActive(process));
         }
 
@@ -90,7 +125,36 @@ public class SkillSteerProcessor {
         // Fire the activate sequence only on a fresh activation — an
         // already-active skill (handled above) must not re-fire.
         skillCommandRunner.run(process, skill.activate(), "activate", skill.name());
+        if (runAction) {
+            fireAction(process, skill);
+        }
         return new ActivationResult(skill, true, active);
+    }
+
+    /**
+     * If the skill carries an {@code action:} prompt, fire it as one LLM
+     * turn — appended to the process's own pending queue plus a scheduled
+     * lane turn, never run inline. This mirrors the completion guard's
+     * injection path and sidesteps lane re-entrancy: skill activation
+     * already runs on the process lane (see {@code ProcessSkillHandler} and
+     * {@code SkillTriggerMatcher}), so a synchronous turn here would
+     * re-enter it. The injected message is stamped with {@link #ACTION_SENDER}
+     * so it reads as system-injected in history. Fires <b>after</b> the
+     * {@code activate:} sequence so the turn observes the freshly-set state.
+     * No-op when {@code action:} is absent/blank.
+     */
+    private void fireAction(ThinkProcessDocument process, ResolvedSkill skill) {
+        String action = skill.action();
+        if (action == null || action.isBlank()) {
+            return;
+        }
+        SteerMessage.UserChatInput injected = new SteerMessage.UserChatInput(
+                Instant.now(), null, ACTION_SENDER, action);
+        thinkProcessService.appendPending(
+                process.getId(), SteerMessageCodec.toDocument(injected));
+        eventEmitter.scheduleTurn(process.getId());
+        log.info("Skill action fired id='{}' name='{}' — scheduled turn ({} chars)",
+                process.getId(), skill.name(), action.length());
     }
 
     public List<ActiveSkillRefEmbedded> clear(ThinkProcessDocument process, String skillName) {

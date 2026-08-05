@@ -310,11 +310,12 @@ public class SkillLoader {
         List<EngineCommand> activate = parseCommandList(spec.get("activate"), stem, "activate");
         List<EngineCommand> deactivate = parseCommandList(spec.get("deactivate"), stem, "deactivate");
         SkillLifecycle lifecycle = parseLifecycle(spec.get("lifecycle"), stem);
+        String action = parseAction(spec.get("action"), stem);
 
         return new ResolvedSkill(
                 name, title, description, version,
                 triggers, promptExtension, tools, manualPaths, refDocs, scripts,
-                tags, enabled, scope, activate, deactivate, lifecycle);
+                tags, enabled, scope, activate, deactivate, lifecycle, action);
     }
 
     /**
@@ -345,6 +346,24 @@ public class SkillLoader {
             }
         }
         return List.copyOf(out);
+    }
+
+    /**
+     * Parses the optional {@code action:} frontmatter — a free-form prompt
+     * (typically a YAML block scalar) that fires one LLM turn on a fresh
+     * activation. Missing / blank yields {@code null} (no action turn).
+     * See {@code planning/engine-commands.md} §4.
+     */
+    private static @Nullable String parseAction(Object raw, String stem) {
+        if (raw == null) {
+            return null;
+        }
+        if (!(raw instanceof String s)) {
+            throw new IllegalStateException(
+                    "skill '" + stem + "': 'action' must be a string");
+        }
+        String stripped = s.strip();
+        return stripped.isEmpty() ? null : stripped;
     }
 
     private static SkillLifecycle parseLifecycle(Object raw, String stem) {

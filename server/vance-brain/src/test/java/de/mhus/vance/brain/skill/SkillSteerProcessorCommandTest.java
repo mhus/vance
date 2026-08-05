@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.skills.SkillScope;
 import de.mhus.vance.brain.command.EngineCommand;
+import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -29,13 +30,15 @@ class SkillSteerProcessorCommandTest {
     @Mock private SessionService sessionService;
     @Mock private SkillResolver skillResolver;
     @Mock private SkillCommandRunner skillCommandRunner;
+    @Mock private ProcessEventEmitter eventEmitter;
 
     private SkillSteerProcessor processor;
 
     @BeforeEach
     void setUp() {
         processor = new SkillSteerProcessor(
-                thinkProcessService, sessionService, skillResolver, skillCommandRunner);
+                thinkProcessService, sessionService, skillResolver, skillCommandRunner,
+                eventEmitter);
         when(sessionService.findBySessionId(anyString())).thenReturn(Optional.empty());
     }
 
@@ -49,10 +52,17 @@ class SkillSteerProcessorCommandTest {
     private ResolvedSkill skill(
             String name, SkillLifecycle lifecycle,
             List<EngineCommand> activate, List<EngineCommand> deactivate) {
+        return skill(name, lifecycle, activate, deactivate, null);
+    }
+
+    private ResolvedSkill skill(
+            String name, SkillLifecycle lifecycle,
+            List<EngineCommand> activate, List<EngineCommand> deactivate,
+            String action) {
         return new ResolvedSkill(
                 name, name, "desc", "1.0.0",
                 List.of(), null, List.of(), List.of(), List.of(), List.of(),
-                List.of(), true, SkillScope.VANCE, activate, deactivate, lifecycle);
+                List.of(), true, SkillScope.VANCE, activate, deactivate, lifecycle, action);
     }
 
     @Test
@@ -81,6 +91,78 @@ class SkillSteerProcessorCommandTest {
         verify(thinkProcessService).replaceActiveSkills(eq("p1"), any());
         verify(skillCommandRunner).run(eq(p), eq(activate), eq("activate"), eq("s"));
         assertThat(result.newlyActivated()).isTrue();
+    }
+
+    @Test
+    void activate_stickySkillWithAction_schedulesTurnAfterActivate() {
+        List<EngineCommand> activate = List.of(EngineCommand.parse("echo go"));
+        ResolvedSkill withAction = skill("s", SkillLifecycle.STICKY, activate, List.of(),
+                "Review the current diff.");
+        when(skillResolver.resolve(any(), eq("s"))).thenReturn(Optional.of(withAction));
+        ThinkProcessDocument p = process(List.of());
+
+        processor.activate(p, "s", true);
+
+        verify(skillCommandRunner).run(eq(p), eq(activate), eq("activate"), eq("s"));
+        verify(thinkProcessService).appendPending(eq("p1"), any());
+        verify(eventEmitter).scheduleTurn(eq("p1"));
+    }
+
+    @Test
+    void activate_shotSkillWithAction_firesActionTurn() {
+        ResolvedSkill shot = skill("cfg", SkillLifecycle.SHOT, List.of(), List.of(),
+                "Kick off the analysis.");
+        when(skillResolver.resolve(any(), eq("cfg"))).thenReturn(Optional.of(shot));
+        ThinkProcessDocument p = process(List.of());
+
+        processor.activate(p, "cfg", false);
+
+        verify(thinkProcessService).appendPending(eq("p1"), any());
+        verify(eventEmitter).scheduleTurn(eq("p1"));
+    }
+
+    @Test
+    void activate_withoutAction_schedulesNoTurn() {
+        ResolvedSkill plain = skill("s", SkillLifecycle.STICKY, List.of(), List.of());
+        when(skillResolver.resolve(any(), eq("s"))).thenReturn(Optional.of(plain));
+        ThinkProcessDocument p = process(List.of());
+
+        processor.activate(p, "s", false);
+
+        verify(thinkProcessService, never()).appendPending(anyString(), any());
+        verify(eventEmitter, never()).scheduleTurn(anyString());
+    }
+
+    @Test
+    void activate_withRunActionFalse_suppressesActionTurn() {
+        List<EngineCommand> activate = List.of(EngineCommand.parse("echo go"));
+        ResolvedSkill withAction = skill("s", SkillLifecycle.STICKY, activate, List.of(),
+                "Review the current diff.");
+        when(skillResolver.resolve(any(), eq("s"))).thenReturn(Optional.of(withAction));
+        ThinkProcessDocument p = process(List.of());
+
+        // auto-trigger path — activation during an in-flight turn
+        processor.activate(p, "s", true, /*runAction*/ false);
+
+        verify(skillCommandRunner).run(eq(p), eq(activate), eq("activate"), eq("s"));
+        verify(thinkProcessService, never()).appendPending(anyString(), any());
+        verify(eventEmitter, never()).scheduleTurn(anyString());
+    }
+
+    @Test
+    void activate_alreadyActiveSkillWithAction_doesNotRefireAction() {
+        ResolvedSkill withAction = skill("s", SkillLifecycle.STICKY, List.of(), List.of(),
+                "Review the current diff.");
+        when(skillResolver.resolve(any(), eq("s"))).thenReturn(Optional.of(withAction));
+        ActiveSkillRefEmbedded existing = ActiveSkillRefEmbedded.builder()
+                .name("s").oneShot(false).fromRecipe(false).build();
+        ThinkProcessDocument p = process(List.of(existing));
+
+        SkillSteerProcessor.ActivationResult result = processor.activate(p, "s", false);
+
+        assertThat(result.newlyActivated()).isFalse();
+        verify(thinkProcessService, never()).appendPending(anyString(), any());
+        verify(eventEmitter, never()).scheduleTurn(anyString());
     }
 
     @Test

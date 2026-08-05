@@ -92,7 +92,11 @@ public class SkillTriggerMatcher {
             if (!anyTriggerMatches(skill, lowered)) continue;
 
             try {
-                skillSteerProcessor.activate(process, skill.name(), /*oneShot*/ true);
+                // runAction=false: this fires during an already-running turn
+                // (the body injection covers the work this turn), so a skill's
+                // action: turn would only duplicate it. See fireAction.
+                skillSteerProcessor.activate(
+                        process, skill.name(), /*oneShot*/ true, /*runAction*/ false);
                 activated.add(skill.name());
                 log.info("Skill auto-trigger id='{}' skill='{}' (one-shot)",
                         process.getId(), skill.name());

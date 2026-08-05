@@ -19,6 +19,7 @@ import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.Lc4jSchema;
 import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -221,6 +222,33 @@ public abstract class StructuredActionEngine implements ThinkEngine {
     protected void resetGuardBudgetForUserTurn(
             ThinkProcessDocument process, List<SteerMessage> inbox) {
         completionGuardService.resetIfUserTurn(process, inbox);
+    }
+
+    /**
+     * Removes one-shot skills ({@code /skill --once}) from the process
+     * after a turn — they only ever apply to the turn that activated them.
+     * Every {@link StructuredActionEngine} subclass (Arthur, Eddie) must
+     * call this from its turn's {@code finally}; Ford and Frankie carry
+     * their own copy (they are not {@code StructuredActionEngine}s). No-op
+     * when no one-shot skill is active. See {@code specification/public/skills.md} §6.
+     */
+    protected void dropOneShotSkills(ThinkProcessDocument process) {
+        List<ActiveSkillRefEmbedded> active = process.getActiveSkills();
+        if (active == null || active.isEmpty()) {
+            return;
+        }
+        boolean anyOneShot = active.stream().anyMatch(ActiveSkillRefEmbedded::isOneShot);
+        if (!anyOneShot) {
+            return;
+        }
+        List<ActiveSkillRefEmbedded> kept = new ArrayList<>(active.size());
+        for (ActiveSkillRefEmbedded ref : active) {
+            if (!ref.isOneShot()) {
+                kept.add(ref);
+            }
+        }
+        process.setActiveSkills(kept);
+        thinkProcessService.replaceActiveSkills(process.getId(), kept);
     }
 
     // ─────────────────────────────────────────────

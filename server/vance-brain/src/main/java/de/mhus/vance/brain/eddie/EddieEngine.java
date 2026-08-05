@@ -291,9 +291,11 @@ public class EddieEngine extends StructuredActionEngine {
             de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService actionLoopJudgeService,
             de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver,
             de.mhus.vance.brain.notification.NotificationService notificationService,
-            de.mhus.vance.brain.guard.CompletionGuardService completionGuardService) {
+            de.mhus.vance.brain.guard.CompletionGuardService completionGuardService,
+            de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers) {
         super(streamingProperties, llmCallTracker, objectMapper, composer,
-                completionGuardService, actionLoopJudgeService, thinkProcessService);
+                completionGuardService, actionLoopJudgeService, thinkProcessService,
+                turnContextHandlers);
         this.modelCatalog = modelCatalog;
         this.engineChatFactory = engineChatFactory;
         this.enginePromptResolver = enginePromptResolver;

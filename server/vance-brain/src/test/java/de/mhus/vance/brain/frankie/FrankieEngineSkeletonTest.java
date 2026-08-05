@@ -164,6 +164,7 @@ class FrankieEngineSkeletonTest {
                 mock(de.mhus.vance.brain.context.PromptDateContextResolver.class),
                 memoryContextLoader,
                 modelCatalog, memoryCompactionService,
+                new de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry(java.util.List.of()),
                 hookHandler, completionGuard);
 
         process = new ThinkProcessDocument();

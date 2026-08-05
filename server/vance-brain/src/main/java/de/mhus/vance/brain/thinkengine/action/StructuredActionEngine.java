@@ -163,6 +163,9 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      */
     protected final ThinkProcessService thinkProcessService;
 
+    /** Per-request context handlers (research-pressure et al.), shared. */
+    protected final de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers;
+
     protected StructuredActionEngine(
             StreamingProperties streamingProperties,
             LlmCallTracker llmCallTracker,
@@ -170,7 +173,8 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             SystemPromptComposer composer,
             CompletionGuardService completionGuardService,
             ActionLoopJudgeService actionLoopJudgeService,
-            ThinkProcessService thinkProcessService) {
+            ThinkProcessService thinkProcessService,
+            de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers) {
         this.streamingProperties = streamingProperties;
         this.llmCallTracker = llmCallTracker;
         this.objectMapper = objectMapper;
@@ -178,6 +182,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         this.completionGuardService = completionGuardService;
         this.actionLoopJudgeService = actionLoopJudgeService;
         this.thinkProcessService = thinkProcessService;
+        this.turnContextHandlers = turnContextHandlers;
     }
 
     /**
@@ -439,7 +444,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             }
 
             ChatRequest req = ChatRequest.builder()
-                    .messages(messages)
+                    .messages(turnContextHandlers.apply(messages, ctx, process))
                     .toolSpecifications(allSpecs)
                     .build();
 

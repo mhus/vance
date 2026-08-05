@@ -11,7 +11,7 @@ engine: ford
 params:
   model: default:web-research,default:web
   validation: true
-  maxIterations: 100  # safety-net cap only — Ford ends by natural stop
+  maxIterations: 40  # safety-net cap only — Ford ends by natural stop
   manualPaths:
     - _vance/manuals/
   # Specialist worker — wants the highlights of the parent's

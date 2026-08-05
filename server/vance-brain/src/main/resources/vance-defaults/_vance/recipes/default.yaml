@@ -18,7 +18,7 @@ params:
   # multi-block workpage, with the occasional discovery / retry). 8 was too
   # tight — a page build routinely burned the budget mid-task. See
   # planning/worker-spawn-context.md.
-  maxIterations: 100  # safety-net cap only — Ford ends by natural stop
+  maxIterations: 40  # safety-net cap only — Ford ends by natural stop
   manualPaths:
     - _vance/manuals/
   # Selector-routed fallback recipe — used for Arthur's DELEGATE

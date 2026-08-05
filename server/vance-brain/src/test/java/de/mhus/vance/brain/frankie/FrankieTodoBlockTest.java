@@ -48,6 +48,7 @@ class FrankieTodoBlockTest {
                 mock(de.mhus.vance.brain.memory.MemoryContextLoader.class),
                 mock(de.mhus.vance.brain.ai.ModelCatalog.class),
                 mock(de.mhus.vance.brain.memory.MemoryCompactionService.class),
+                new de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry(java.util.List.of()),
                 mock(FrankiePostCompletionHookHandler.class),
                 mock(de.mhus.vance.brain.guard.CompletionGuardService.class));
     }

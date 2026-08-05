@@ -223,6 +223,7 @@ public class FrankieEngine implements ThinkEngine {
     private final MemoryContextLoader memoryContextLoader;
     private final ModelCatalog modelCatalog;
     private final MemoryCompactionService memoryCompactionService;
+    private final de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers;
     private final FrankiePostCompletionHookHandler postCompletionHookHandler;
     private final de.mhus.vance.brain.guard.CompletionGuardService completionGuardService;
 
@@ -484,7 +485,8 @@ public class FrankieEngine implements ThinkEngine {
                     messages.addAll(inflightTail);
                 }
 
-                ChatRequest.Builder req = ChatRequest.builder().messages(messages);
+                ChatRequest.Builder req = ChatRequest.builder()
+                        .messages(turnContextHandlers.apply(messages, ctx, process));
                 if (!toolSpecs.isEmpty()) {
                     req.toolSpecifications(toolSpecs);
                 }

@@ -123,10 +123,10 @@ public class Ford implements ThinkEngine {
      * Safety-net cap on tool-call iterations per turn. Ford ends a turn
      * by <em>natural stop</em> — an assistant message with no tool call —
      * so this is only a backstop against a broken model that never stops
-     * calling tools, not a routine limit. Set high; a healthy turn never
-     * approaches it. Per-process override via {@code params.maxIterations}.
+     * calling tools, not a routine limit. A healthy turn natural-stops well
+     * before it. Per-process override via {@code params.maxIterations}.
      */
-    private static final int MAX_TOOL_ITERATIONS = 100;
+    private static final int MAX_TOOL_ITERATIONS = 40;
 
     /**
      * Wall-clock safety-net for a single streaming LLM call. A hung provider
@@ -179,6 +179,7 @@ public class Ford implements ThinkEngine {
     private final de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver;
     private final de.mhus.vance.brain.tools.client.CortexBoundDocumentResolver cortexBoundDocumentResolver;
     private final de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder cortexTurnSelectionHolder;
+    private final de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -727,7 +728,8 @@ public class Ford implements ThinkEngine {
                 return TurnOutcome.interrupted(true);
             }
 
-            ChatRequest.Builder req = ChatRequest.builder().messages(messages);
+            ChatRequest.Builder req = ChatRequest.builder()
+                    .messages(turnContextHandlers.apply(messages, ctx, process));
             if (!toolSpecs.isEmpty()) {
                 req.toolSpecifications(toolSpecs);
             }

@@ -26,12 +26,14 @@ class MemoryServiceTest {
     }
 
     @Test
-    void deleteBySession_dropsEverySessionScopedMemory_andReturnsCount() {
-        when(repository.deleteByTenantIdAndSessionId("acme", "sess-1")).thenReturn(4L);
+    void deleteBySession_dropsWorkingMemoryButPreservesInsights_andReturnsCount() {
+        when(repository.deleteByTenantIdAndSessionIdAndKindNot("acme", "sess-1", MemoryKind.INSIGHT))
+                .thenReturn(4L);
 
         long n = service.deleteBySession("acme", "sess-1");
 
         assertThat(n).isEqualTo(4L);
-        verify(repository).deleteByTenantIdAndSessionId("acme", "sess-1");
+        // Knowledge-graph INSIGHTs are excluded from the delete.
+        verify(repository).deleteByTenantIdAndSessionIdAndKindNot("acme", "sess-1", MemoryKind.INSIGHT);
     }
 }

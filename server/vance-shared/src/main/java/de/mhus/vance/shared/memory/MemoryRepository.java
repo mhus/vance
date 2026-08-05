@@ -37,7 +37,10 @@ interface MemoryRepository extends MongoRepository<MemoryDocument, String> {
 
     long deleteByTenantIdAndThinkProcessId(String tenantId, String thinkProcessId);
 
-    /** Drops every memory carrying {@code sessionId} — session- and
-     *  process-scoped alike. Used by the session-move cleanup path. */
-    long deleteByTenantIdAndSessionId(String tenantId, String sessionId);
+    /** Drops session-/process-scoped memory carrying {@code sessionId} whose
+     *  kind is <em>not</em> {@code excludedKind} — used by the session
+     *  move/delete cleanup, which preserves knowledge-graph INSIGHTs while
+     *  dropping ephemeral working memory. */
+    long deleteByTenantIdAndSessionIdAndKindNot(
+            String tenantId, String sessionId, MemoryKind excludedKind);
 }

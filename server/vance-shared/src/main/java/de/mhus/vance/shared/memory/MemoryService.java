@@ -182,18 +182,23 @@ public class MemoryService {
     }
 
     /**
-     * Drops every memory carrying {@code sessionId} — session-scoped and
-     * process-scoped alike. Used by the session-move path, where the
-     * project-bound memory is deliberately not carried over and would
-     * otherwise dangle in the source project (see
-     * {@code planning/session-move.md}). Project- and tenant-scoped
-     * memories (no {@code sessionId}) are untouched.
+     * Drops the session's ephemeral working memory — every memory carrying
+     * {@code sessionId} (session- and process-scoped) <em>except</em>
+     * {@link MemoryKind#INSIGHT}. Used by the session move/delete cleanup
+     * (see {@code planning/session-move.md}): compaction summaries,
+     * scratchpad and plan entries are session-private and go, but INSIGHTs
+     * are knowledge-graph promotions ({@code PrakPromotionService}) — they
+     * are project-durable and may be referenced by relations, so deleting
+     * them would silently lose knowledge and dangle those references.
+     * Project- and tenant-scoped memories (no {@code sessionId}) are
+     * untouched.
      */
     public long deleteBySession(String tenantId, String sessionId) {
-        long n = repository.deleteByTenantIdAndSessionId(tenantId, sessionId);
+        long n = repository.deleteByTenantIdAndSessionIdAndKindNot(
+                tenantId, sessionId, MemoryKind.INSIGHT);
         if (n > 0) {
-            log.info("Deleted {} memory entries for session tenant='{}' session='{}'",
-                    n, tenantId, sessionId);
+            log.info("Deleted {} working-memory entries for session tenant='{}' session='{}' "
+                    + "(INSIGHTs preserved)", n, tenantId, sessionId);
         }
         return n;
     }

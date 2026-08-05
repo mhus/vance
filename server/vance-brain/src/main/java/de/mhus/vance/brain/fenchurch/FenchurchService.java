@@ -92,6 +92,7 @@ public class FenchurchService {
     private final AiModelResolver modelResolver;
     private final ModelCatalog modelCatalog;
     private final AiImageService imageService;
+    private final de.mhus.vance.brain.tools.ToolInterruptChecker interruptChecker;
     private final LightLlmService lightLlm;
     private final SettingService settingService;
     private final DocumentService documentService;
@@ -162,6 +163,11 @@ public class FenchurchService {
                 request, resolved, aspectRatio, timeoutSeconds);
 
         ThinkProcessDocument process = loadProcess(request);
+
+        // Pre-call interrupt: if ESC / /pause is already pending when
+        // image_generate is invoked, bail before reserving quota and
+        // starting the (uninterruptible) provider call + heartbeat.
+        interruptChecker.throwIfHalted(process.getId());
 
         // Reserve a quota slot only AFTER all cheap validation (alias/model
         // lookup, aspect-ratio, prompt-fit, path, process load) has passed. A

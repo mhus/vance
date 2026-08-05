@@ -117,6 +117,16 @@ abstract class RemoteExecComposeRunner implements ComposeRunner {
                 return new DamogranComposeResult(
                         DamogranStatus.FAILURE, ws.name(), List.copyOf(results), "cancelled by user");
             }
+            // Mid-batch interrupt: ESC / /pause halts before the next task
+            // (both the sync run and the async background run) — clean stop
+            // like the cancel path, not a throw, so provisioning still tears
+            // down normally on the way out.
+            if (processId != null && !processId.isBlank()
+                    && thinkProcessService.isHaltRequested(processId)) {
+                return new DamogranComposeResult(
+                        DamogranStatus.FAILURE, ws.name(), List.copyOf(results),
+                        "cancelled — process paused (ESC / /pause)");
+            }
             if (run != null) {
                 run.startTask(i, task.type());
             }

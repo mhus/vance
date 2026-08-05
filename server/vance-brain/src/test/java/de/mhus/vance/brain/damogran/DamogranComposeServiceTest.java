@@ -45,7 +45,9 @@ class DamogranComposeServiceTest {
         service = new DamogranComposeService(new DamogranManifestParser(), new ComposeRunRegistry(), List.of(
                 new WorkspaceComposeRunner(workspaceService, workTargetService, taskExecutor, transport,
                         mock(ExecManager.class), mock(GitService.class),
-                        mock(DamogranStateService.class))));
+                        mock(DamogranStateService.class),
+                        new de.mhus.vance.brain.tools.ToolInterruptChecker(
+                                mock(de.mhus.vance.shared.thinkprocess.ThinkProcessService.class)))));
     }
 
     private RootDirHandle handle(String label, String type) {
@@ -99,7 +101,9 @@ class DamogranComposeServiceTest {
         WorkspaceComposeRunner runner = new WorkspaceComposeRunner(
                 workspaceService, workTargetService, taskExecutor, transport,
                 mock(ExecManager.class), mock(GitService.class),
-                mock(DamogranStateService.class));
+                mock(DamogranStateService.class),
+                new de.mhus.vance.brain.tools.ToolInterruptChecker(
+                        mock(de.mhus.vance.shared.thinkprocess.ThinkProcessService.class)));
         ComposeRun run = new ComposeRun("cr-x", "t", "p", "ws", java.time.Instant.EPOCH);
         run.requestCancel();
 

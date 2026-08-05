@@ -47,6 +47,7 @@ public class WorkspaceComposeRunner implements ComposeRunner {
     private final ExecManager execManager;
     private final GitService gitService;
     private final DamogranStateService stateService;
+    private final de.mhus.vance.brain.tools.ToolInterruptChecker interruptChecker;
 
     public WorkspaceComposeRunner(
             WorkspaceService workspaceService,
@@ -55,7 +56,8 @@ public class WorkspaceComposeRunner implements ComposeRunner {
             DamogranTransport transport,
             ExecManager execManager,
             GitService gitService,
-            DamogranStateService stateService) {
+            DamogranStateService stateService,
+            de.mhus.vance.brain.tools.ToolInterruptChecker interruptChecker) {
         this.workspaceService = workspaceService;
         this.workTargetService = workTargetService;
         this.taskExecutor = taskExecutor;
@@ -63,6 +65,7 @@ public class WorkspaceComposeRunner implements ComposeRunner {
         this.execManager = execManager;
         this.gitService = gitService;
         this.stateService = stateService;
+        this.interruptChecker = interruptChecker;
     }
 
     @Override
@@ -115,6 +118,13 @@ public class WorkspaceComposeRunner implements ComposeRunner {
             if (run != null && run.isCancelRequested()) {
                 return new DamogranComposeResult(
                         DamogranStatus.FAILURE, ws.name(), List.copyOf(results), "cancelled by user");
+            }
+            // Mid-batch interrupt: ESC / /pause halts before the next task —
+            // clean stop like the cancel path, not a throw.
+            if (interruptChecker.isHalted(processId)) {
+                return new DamogranComposeResult(
+                        DamogranStatus.FAILURE, ws.name(), List.copyOf(results),
+                        "cancelled — process paused (ESC / /pause)");
             }
             if (run != null) {
                 run.startTask(i, task.type());

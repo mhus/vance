@@ -36,7 +36,8 @@ public record ScriptRequest(
         ScopeLevel scopeLevel,
         @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
         @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
-        @Nullable String documentBasePath) {
+        @Nullable String documentBasePath,
+        VanceScriptApi.@Nullable ScriptGuardApi guardApi) {
 
     public ScriptRequest {
         if (!"js".equals(language)) {
@@ -174,6 +175,28 @@ public record ScriptRequest(
     }
 
     /**
+     * 11-argument convenience — the historical canonical shape before
+     * {@code guardApi} was added. Defaults {@code guardApi} to
+     * {@code null} (no {@code vance.guard} surface); only the
+     * {@code CompletionGuardService} sets it, via {@link #withGuardApi}.
+     */
+    public ScriptRequest(
+            String language,
+            String code,
+            @Nullable String sourceName,
+            ContextToolsApi tools,
+            Duration timeout,
+            Map<String, @Nullable Object> bindings,
+            @Nullable String recipeName,
+            ScopeLevel scopeLevel,
+            @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
+            @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
+            @Nullable String documentBasePath) {
+        this(language, code, sourceName, tools, timeout, bindings, recipeName,
+                scopeLevel, progressEmitter, notificationEmitter, documentBasePath, null);
+    }
+
+    /**
      * Copy with the {@code documentBasePath} set — the "current directory"
      * that {@code vance.documents.*} resolves relative paths against
      * ({@code /abs} paths stay project-root-absolute). Used by the workbook
@@ -182,6 +205,17 @@ public record ScriptRequest(
      */
     public ScriptRequest withDocumentBasePath(@Nullable String dir) {
         return new ScriptRequest(language, code, sourceName, tools, timeout, bindings,
-                recipeName, scopeLevel, progressEmitter, notificationEmitter, dir);
+                recipeName, scopeLevel, progressEmitter, notificationEmitter, dir, guardApi);
+    }
+
+    /**
+     * Copy with the {@code vance.guard} surface attached — the
+     * completion-guard yield context, cap-aware continue hook and scratch
+     * stores. Set by the {@code CompletionGuardService} for guard runs;
+     * every other script run leaves {@code vance.guard} unset.
+     */
+    public ScriptRequest withGuardApi(VanceScriptApi.@Nullable ScriptGuardApi api) {
+        return new ScriptRequest(language, code, sourceName, tools, timeout, bindings,
+                recipeName, scopeLevel, progressEmitter, notificationEmitter, documentBasePath, api);
     }
 }

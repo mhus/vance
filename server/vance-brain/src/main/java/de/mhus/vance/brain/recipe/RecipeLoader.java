@@ -243,15 +243,28 @@ public class RecipeLoader {
                 throw new IllegalStateException("'guard[" + i + "]' must be a map");
             }
             Map<String, Object> m = (Map<String, Object>) rawMap;
-            String judge = stringOrNull(m.get("judge"));
-            String prompt = stringOrNull(m.get("prompt"));
-            if (judge == null || prompt == null) {
-                throw new IllegalStateException(
-                        "'guard[" + i + "]' requires non-blank 'judge' and 'prompt'");
-            }
+            String script = stringOrNull(m.get("script"));
+            String scriptBody = stringOrNull(m.get("scriptBody"));
             GuardTrigger trigger = parseGuardTrigger(m.get("trigger"), i);
             int maxRounds = m.get("maxRounds") == null ? 2 : parseMaxRounds(m.get("maxRounds"));
-            out.add(new GuardConfig(judge, prompt, trigger, maxRounds));
+            boolean allowTools = Boolean.TRUE.equals(m.get("allowTools"))
+                    || "true".equalsIgnoreCase(String.valueOf(m.get("allowTools")));
+            Map<String, Object> params = m.get("params") instanceof Map<?, ?> pm
+                    ? (Map<String, Object>) pm
+                    : Map.of();
+
+            if (script != null && scriptBody != null) {
+                throw new IllegalStateException(
+                        "'guard[" + i + "]' cannot set both 'script' and 'scriptBody'");
+            }
+            if (script != null) {
+                out.add(GuardConfig.scriptPath(script, params, allowTools, trigger, maxRounds));
+            } else if (scriptBody != null) {
+                out.add(GuardConfig.scriptBody(scriptBody, allowTools, trigger, maxRounds));
+            } else {
+                throw new IllegalStateException(
+                        "'guard[" + i + "]' requires 'script' (a guard-script path) or 'scriptBody'");
+            }
         }
         return List.copyOf(out);
     }

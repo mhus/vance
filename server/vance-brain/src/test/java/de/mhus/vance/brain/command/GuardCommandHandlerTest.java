@@ -33,7 +33,7 @@ class GuardCommandHandlerTest {
     @BeforeEach
     void setUp() {
         handler = new GuardCommandHandler(thinkProcessService, guardService);
-        when(thinkProcessService.setGuardOverride(any(), any(), any())).thenReturn(true);
+        when(thinkProcessService.setGuardScriptOverride(any(), any())).thenReturn(true);
         when(guardService.resolveGuards(any())).thenReturn(List.of());
     }
 
@@ -46,35 +46,27 @@ class GuardCommandHandlerTest {
     }
 
     @Test
-    void judge_setsJudgeOverride() {
-        EngineCommandResult result = handler.handle(process(), cmd("judge Is the task done?"));
+    void script_setsScriptOverride() {
+        EngineCommandResult result = handler.handle(
+                process(), cmd("script _vance/guards/dev-done.js"));
 
         assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.OK);
-        verify(thinkProcessService).setGuardOverride("p1", "guardJudgeOverride", "Is the task done?");
+        verify(thinkProcessService).setGuardScriptOverride("p1", "_vance/guards/dev-done.js");
     }
 
     @Test
-    void prompt_setsPromptOverride() {
-        EngineCommandResult result = handler.handle(process(), cmd("prompt Did you build?"));
-
-        assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.OK);
-        verify(thinkProcessService).setGuardOverride("p1", "guardPromptOverride", "Did you build?");
-    }
-
-    @Test
-    void judge_withoutText_isError() {
-        EngineCommandResult result = handler.handle(process(), cmd("judge"));
+    void script_withoutPath_isError() {
+        EngineCommandResult result = handler.handle(process(), cmd("script"));
 
         assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.ERROR);
     }
 
     @Test
-    void clear_unsetsBothFields() {
+    void clear_unsetsScript() {
         EngineCommandResult result = handler.handle(process(), cmd("clear"));
 
         assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.OK);
-        verify(thinkProcessService).setGuardOverride(eq("p1"), eq("guardJudgeOverride"), isNull());
-        verify(thinkProcessService).setGuardOverride(eq("p1"), eq("guardPromptOverride"), isNull());
+        verify(thinkProcessService).setGuardScriptOverride(eq("p1"), isNull());
     }
 
     @Test

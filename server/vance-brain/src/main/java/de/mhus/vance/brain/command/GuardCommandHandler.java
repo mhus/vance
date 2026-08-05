@@ -1,7 +1,6 @@
 package de.mhus.vance.brain.command;
 
 import de.mhus.vance.brain.guard.CompletionGuardService;
-import de.mhus.vance.brain.recipe.GuardConfig;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.Locale;
@@ -15,15 +14,13 @@ import org.springframework.stereotype.Component;
  * Subcommands (in the command's {@code text} argument):
  *
  * <ul>
- *   <li>{@code judge <text>} — set the runtime guard's judge query;</li>
- *   <li>{@code prompt <text>} — set the runtime guard's follow-up prompt;</li>
+ *   <li>{@code script <path>} — set the runtime guard's script path;</li>
  *   <li>{@code get} (or empty) — show the runtime override + effective guards;</li>
  *   <li>{@code clear} — drop the runtime override.</li>
  * </ul>
  *
- * <p>The runtime guard becomes active only when <b>both</b> judge and
- * prompt are set, and is additive to any recipe {@code guard:} entries.
- * See {@code planning/completion-guard.md} §3.
+ * <p>The runtime guard is a single guard-script path, additive to any
+ * recipe {@code guard:} entries. See {@code planning/completion-guard.md} v2.9.
  */
 @Component
 @RequiredArgsConstructor
@@ -44,61 +41,43 @@ public class GuardCommandHandler implements EngineCommandHandler {
         String rest = head[1];
         return switch (sub) {
             case "get" -> get(process);
-            case "judge" -> setField(process, "guardJudgeOverride", rest, "judge");
-            case "prompt" -> setField(process, "guardPromptOverride", rest, "prompt");
+            case "script" -> setScript(process, rest);
             case "clear" -> clear(process);
             default -> EngineCommandResult.error(
-                    "unknown subcommand '" + sub + "' (judge <text> | prompt <text> | get | clear)");
+                    "unknown subcommand '" + sub + "' (script <path> | get | clear)");
         };
     }
 
     private EngineCommandResult get(ThinkProcessDocument process) {
-        String judge = process.getGuardJudgeOverride();
-        String prompt = process.getGuardPromptOverride();
-        boolean runtimeActive = notBlank(judge) && notBlank(prompt);
+        String script = process.getGuardScriptOverride();
+        boolean runtimeActive = notBlank(script);
         int recipeGuards = (int) guardService.resolveGuards(process).stream()
-                .filter(g -> !isRuntime(g, judge, prompt))
+                .filter(g -> !isRuntime(g, script))
                 .count();
-        String state = "runtime: judge=" + (notBlank(judge) ? "set" : "—")
-                + " prompt=" + (notBlank(prompt) ? "set" : "—")
-                + (runtimeActive ? " (active)" : " (incomplete)")
+        String state = "runtime: " + (runtimeActive ? "script=" + script : "—")
                 + "; recipe guards: " + recipeGuards;
-        return EngineCommandResult.ok(state, runtimeActive
-                ? "judge: " + judge + "\nprompt: " + prompt
-                : null);
+        return EngineCommandResult.ok(state, null);
     }
 
-    private EngineCommandResult setField(
-            ThinkProcessDocument process, String field, String value, String label) {
+    private EngineCommandResult setScript(ThinkProcessDocument process, String value) {
         if (value.isBlank()) {
-            return EngineCommandResult.error(
-                    "set requires text: //guard " + label + " <text>");
+            return EngineCommandResult.error("set requires a path: //guard script <path>");
         }
-        if (!thinkProcessService.setGuardOverride(process.getId(), field, value)) {
+        if (!thinkProcessService.setGuardScriptOverride(process.getId(), value)) {
             return EngineCommandResult.error("process not found");
         }
-        boolean nowActive = "guardJudgeOverride".equals(field)
-                ? notBlank(process.getGuardPromptOverride())
-                : notBlank(process.getGuardJudgeOverride());
-        String msg = "guard " + label + " set"
-                + (nowActive ? " — runtime guard now active" : " — set the other field to activate");
-        return EngineCommandResult.ok(msg, null);
+        return EngineCommandResult.ok("guard script set — runtime guard now active", null);
     }
 
     private EngineCommandResult clear(ThinkProcessDocument process) {
-        boolean a = thinkProcessService.setGuardOverride(
-                process.getId(), "guardJudgeOverride", null);
-        boolean b = thinkProcessService.setGuardOverride(
-                process.getId(), "guardPromptOverride", null);
-        if (!a && !b) {
+        if (!thinkProcessService.setGuardScriptOverride(process.getId(), null)) {
             return EngineCommandResult.error("process not found");
         }
         return EngineCommandResult.ok("runtime guard cleared", null);
     }
 
-    private static boolean isRuntime(GuardConfig g, @Nullable String judge, @Nullable String prompt) {
-        return judge != null && prompt != null
-                && judge.equals(g.judge()) && prompt.equals(g.prompt());
+    private static boolean isRuntime(de.mhus.vance.brain.recipe.GuardConfig g, @Nullable String script) {
+        return script != null && script.equals(g.scriptPath());
     }
 
     private static boolean notBlank(@Nullable String s) {

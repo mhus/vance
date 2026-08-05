@@ -585,17 +585,13 @@ public class ThinkProcessService {
 
     /**
      * Sets or (on {@code null}) clears the runtime completion-guard
-     * override — {@code field} is {@code "guardJudgeOverride"} or
-     * {@code "guardPromptOverride"}. Atomic {@code $set}/{@code $unset}.
+     * override — the guard-script path. Atomic {@code $set}/{@code $unset}.
      */
-    public boolean setGuardOverride(String id, String field, @Nullable String value) {
-        if (!"guardJudgeOverride".equals(field) && !"guardPromptOverride".equals(field)) {
-            throw new IllegalArgumentException("unknown guard override field: " + field);
-        }
+    public boolean setGuardScriptOverride(String id, @Nullable String scriptPath) {
         Query query = new Query(Criteria.where("_id").is(id));
-        Update update = value == null
-                ? new Update().unset(field)
-                : new Update().set(field, value);
+        Update update = scriptPath == null
+                ? new Update().unset("guardScriptOverride")
+                : new Update().set("guardScriptOverride", scriptPath);
         return mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class)
                 .getMatchedCount() > 0;
     }

@@ -452,15 +452,13 @@ public class ThinkProcessDocument {
     private int guardRounds = 0;
 
     /**
-     * Runtime completion-guard override — judge query. Set/cleared live
-     * via the {@code guard} engine command. Becomes an additive guard
-     * only together with {@link #guardPromptOverride}. {@code null} =
-     * no runtime guard. See {@code planning/completion-guard.md} §3.
+     * Runtime completion-guard override — guard script path (document
+     * cascade). Set/cleared live via {@code //guard script <path>}. One
+     * script drives judge + action via the {@code vance.guard.*} surface.
+     * {@code null} = no runtime guard. Additive to any recipe
+     * {@code guard:} entries. See {@code planning/completion-guard.md} v2.9.
      */
-    private @Nullable String guardJudgeOverride;
-
-    /** Runtime completion-guard override — follow-up prompt. See {@link #guardJudgeOverride}. */
-    private @Nullable String guardPromptOverride;
+    private @Nullable String guardScriptOverride;
 
     /**
      * Runtime overlay over the spawn-static recipe {@code engineParams},

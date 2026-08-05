@@ -15,10 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -278,7 +275,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                 documentService, request.progressEmitter(),
                 request.notificationEmitter(), paramsForApi,
                 lightLlmService, settingService, request.documentBasePath(),
-                securityContextFactory, secretResolver);
+                securityContextFactory, secretResolver, request.guardApi());
         // Resource bounds enforceable on GraalVM CE / HotSpot:
         //   - statementLimit bounds the *number* of statements executed, and
         //   - the wall-clock watchdog below (ctx.close(true) on timeout) bounds
@@ -697,11 +694,11 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
     }
 
     /**
-     * Maps a Polyglot {@link Value} into a JSON-friendly Java object.
      * Resolve a top-level eval result. If it's a Promise (the LLM
      * wrapped its body in {@code (async () => { … })()}, or top-level-
      * await produced a Promise), block on the settled value and map
-     * <em>that</em>; otherwise route straight to {@link #mapValue}.
+     * <em>that</em> via {@link ScriptValueMarshaller}; otherwise map
+     * straight through.
      *
      * <p>GraalJS drains its microtask queue at the host/guest boundary
      * (i.e. inside {@code promise.invokeMember("then", …)}), so any
@@ -723,7 +720,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
     @Nullable
     private static Object resolveResult(Value value, long maxNodes, int maxDepth) {
         Value settled = settlePromise(value);
-        return mapValue(settled, 0, new long[] {maxNodes}, maxDepth);
+        return ScriptValueMarshaller.toPlainJava(settled, maxNodes, maxDepth);
     }
 
     /**
@@ -775,74 +772,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                     "Promise rejected: " + message);
         }
         // Recurse: an async function that returns another Promise
-        // chains down. mapValue would otherwise see Promise<Promise<X>>.
+        // chains down. The marshaller would otherwise see Promise<Promise<X>>.
         return settlePromise(fulfilled[0]);
-    }
-
-    /**
-     * Primitives stay primitive, objects become {@link LinkedHashMap},
-     * arrays become {@link ArrayList}.
-     *
-     * <p>Bounded against a hostile return value (hactar-jeltz-script
-     * review): {@code budget[0]} counts down one per array element /
-     * object member materialised and throws {@code RESOURCE_EXHAUSTED}
-     * when it goes negative — a script returning a giant array can no
-     * longer OOM the shared JVM during marshalling. {@code depth} is
-     * capped at {@code maxDepth}, which also bounds a self-referential
-     * (cyclic) return value ({@code const a={}; a.self=a; return a;})
-     * that would otherwise StackOverflow.
-     */
-    @Nullable
-    private static Object mapValue(Value value, int depth, long[] budget, int maxDepth) {
-        if (value == null || value.isNull()) {
-            return null;
-        }
-        if (value.isBoolean()) {
-            return value.asBoolean();
-        }
-        if (value.isNumber()) {
-            if (value.fitsInLong()) {
-                return value.asLong();
-            }
-            return value.asDouble();
-        }
-        if (value.isString()) {
-            return value.asString();
-        }
-        if (depth > maxDepth) {
-            throw new ScriptExecutionException(
-                    ScriptExecutionException.ErrorClass.RESOURCE_EXHAUSTED,
-                    "Script result nesting exceeds vance.script.result.maxDepth ("
-                            + maxDepth + ") — cyclic or too deeply nested return value");
-        }
-        if (value.hasArrayElements()) {
-            long size = value.getArraySize();
-            List<@Nullable Object> out = new ArrayList<>((int) Math.min(size, 1024));
-            for (long i = 0; i < size; i++) {
-                consumeNode(budget);
-                out.add(mapValue(value.getArrayElement(i), depth + 1, budget, maxDepth));
-            }
-            return out;
-        }
-        if (value.hasMembers()) {
-            Map<String, @Nullable Object> out = new LinkedHashMap<>();
-            for (String key : value.getMemberKeys()) {
-                consumeNode(budget);
-                out.put(key, mapValue(value.getMember(key), depth + 1, budget, maxDepth));
-            }
-            return out;
-        }
-        return value.toString();
-    }
-
-    /** Decrement the node budget; throw once it is exhausted. */
-    private static void consumeNode(long[] budget) {
-        if (--budget[0] < 0) {
-            throw new ScriptExecutionException(
-                    ScriptExecutionException.ErrorClass.RESOURCE_EXHAUSTED,
-                    "Script result exceeds the node cap "
-                            + "(vance.script.result.max / @maxResultNodes) — "
-                            + "returned value is too large");
-        }
     }
 }

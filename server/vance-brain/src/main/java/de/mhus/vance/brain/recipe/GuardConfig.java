@@ -1,29 +1,69 @@
 package de.mhus.vance.brain.recipe;
 
+import java.util.Map;
 import java.util.Objects;
+import org.apache.commons.lang3.StringUtils;
+import org.jspecify.annotations.Nullable;
 
 /**
- * One completion guard: a judge query and the follow-up prompt injected
- * when the judge fires. Config-level (recipe {@code guard:} block or a
- * per-process runtime override). See {@code planning/completion-guard.md}.
+ * One completion guard: a JS guard script plus where it fires and its
+ * loop cap. Config-level (recipe {@code guard:} block or a per-process
+ * runtime override). The script decides judge + action imperatively via
+ * the {@code vance.guard.*} surface — see
+ * {@code planning/completion-guard.md} v2.
  *
- * @param judge     free-form judge question — the LLM answers whether it holds
- * @param prompt    fixed follow-up prompt injected when the judge fires
- * @param trigger   which yield point this guard applies to
- * @param maxRounds hard cap on guard injections for the process (0 = disabled)
+ * <p>Exactly one script source is set: {@link #scriptPath} (document
+ * cascade) or inline {@link #scriptBody}. {@link #params} are handed to
+ * the script as {@code vance.params.*} — this is how a reusable bundled
+ * guard (e.g. {@code _vance/guards/llm-judge.js}) is configured without
+ * writing JS.
+ *
+ * @param scriptPath guard-script document-cascade path (null in inline shape)
+ * @param scriptBody inline guard-script body (null in path shape)
+ * @param params     inputs exposed to the script as {@code vance.params.*}
+ * @param allowTools grant the process's full tool surface (default: a
+ *                   supervisor surface — llm/documents/process only)
+ * @param trigger    which yield point this guard applies to
+ * @param maxRounds  hard cap on guard injections for the process (0 = disabled)
  */
-public record GuardConfig(String judge, String prompt, GuardTrigger trigger, int maxRounds) {
+public record GuardConfig(
+        @Nullable String scriptPath,
+        @Nullable String scriptBody,
+        @Nullable Map<String, Object> params,
+        boolean allowTools,
+        GuardTrigger trigger,
+        int maxRounds) {
 
     public GuardConfig {
-        if (judge == null || judge.isBlank()) {
-            throw new IllegalArgumentException("guard.judge must be non-blank");
-        }
-        if (prompt == null || prompt.isBlank()) {
-            throw new IllegalArgumentException("guard.prompt must be non-blank");
-        }
         Objects.requireNonNull(trigger, "guard.trigger");
         if (maxRounds < 0) {
             throw new IllegalArgumentException("guard.maxRounds must be >= 0");
         }
+        boolean hasPath = StringUtils.isNotBlank(scriptPath);
+        boolean hasBody = StringUtils.isNotBlank(scriptBody);
+        if (hasPath == hasBody) {
+            throw new IllegalArgumentException(
+                    "guard requires exactly one script source: either 'script' or 'scriptBody'");
+        }
+        params = params == null ? Map.of() : Map.copyOf(params);
+    }
+
+    /** Guard script from a document-cascade path. */
+    public static GuardConfig scriptPath(
+            String scriptPath, boolean allowTools, GuardTrigger trigger, int maxRounds) {
+        return new GuardConfig(scriptPath, null, Map.of(), allowTools, trigger, maxRounds);
+    }
+
+    /** Guard script from a document-cascade path with script params. */
+    public static GuardConfig scriptPath(
+            String scriptPath, @Nullable Map<String, Object> params,
+            boolean allowTools, GuardTrigger trigger, int maxRounds) {
+        return new GuardConfig(scriptPath, null, params, allowTools, trigger, maxRounds);
+    }
+
+    /** Guard script from an inline body. */
+    public static GuardConfig scriptBody(
+            String scriptBody, boolean allowTools, GuardTrigger trigger, int maxRounds) {
+        return new GuardConfig(null, scriptBody, Map.of(), allowTools, trigger, maxRounds);
     }
 }

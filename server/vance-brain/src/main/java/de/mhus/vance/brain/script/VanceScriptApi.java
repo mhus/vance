@@ -169,6 +169,18 @@ public final class VanceScriptApi {
     @HostAccess.Export
     public final @Nullable ScriptSecretApi secret;
 
+    /**
+     * Completion-guard surface exposed as {@code vance.guard}. Present
+     * only for guard runs (the {@code CompletionGuardService} builds it
+     * with the yield context + a cap-aware continue hook + the loop /
+     * session scratch stores). {@code null} for every other script run
+     * — trigger-scoped, Cortex, skill, Damogran-js — where
+     * {@code vance.guard} is {@code null} in JavaScript. See
+     * {@code planning/completion-guard.md} v2.5.
+     */
+    @HostAccess.Export
+    public final @Nullable ScriptGuardApi guard;
+
     public VanceScriptApi(ContextToolsApi toolsApi) {
         this(toolsApi, null, Set.of(), null, null, null);
     }
@@ -247,6 +259,7 @@ public final class VanceScriptApi {
         this.llm = null;
         this.settings = null;
         this.secret = null;
+        this.guard = null;
     }
 
     /**
@@ -347,6 +360,34 @@ public final class VanceScriptApi {
                           @Nullable String documentBasePath,
                           de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory,
                           @Nullable SecretResolver secretResolver) {
+        this(toolsApi, recipeName, deniedToolNames, documentService, progressEmitter,
+                notificationEmitter, paramsMap, lightLlmService, settingService,
+                documentBasePath, contextFactory, secretResolver, /*guardApi*/ null);
+    }
+
+    /**
+     * 13-arg canonical constructor — adds {@code guardApi}, the
+     * {@code vance.guard} surface for a completion-guard run. Every other
+     * constructor delegates here with a {@code null} guard. The
+     * {@code CompletionGuardService} is the only caller that passes a
+     * non-null value (via {@code ScriptRequest}); all other script runs
+     * leave {@code vance.guard} unset.
+     */
+    public VanceScriptApi(ContextToolsApi toolsApi,
+                          @Nullable String recipeName,
+                          Set<String> deniedToolNames,
+                          @Nullable DocumentService documentService,
+                          @Nullable BiConsumer<String,
+                                  @Nullable Map<String, Object>> progressEmitter,
+                          @Nullable BiConsumer<String,
+                                  @Nullable NotificationSeverity> notificationEmitter,
+                          @Nullable Map<String, Object> paramsMap,
+                          @Nullable LightLlmService lightLlmService,
+                          @Nullable SettingService settingService,
+                          @Nullable String documentBasePath,
+                          de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory,
+                          @Nullable SecretResolver secretResolver,
+                          @Nullable ScriptGuardApi guardApi) {
         this.tools = new ScriptToolsApi(toolsApi, deniedToolNames);
         this.files = new ScriptFilesApi(this.tools);
         this.context = new ScriptContextView(toolsApi.scope(), recipeName);
@@ -367,6 +408,7 @@ public final class VanceScriptApi {
         this.secret = secretResolver == null
                 ? null
                 : new ScriptSecretApi(secretResolver, toolsApi.scope());
+        this.guard = guardApi;
     }
 
     /** Tool-dispatch surface exposed as {@code vance.tools}. */
@@ -715,6 +757,165 @@ public final class VanceScriptApi {
             } catch (IllegalArgumentException e) {
                 LOG.debug("vance.process.notify: unknown severity '{}', defaulting to INFO", raw);
                 return NotificationSeverity.INFO;
+            }
+        }
+    }
+
+    /**
+     * Completion-guard surface exposed as {@code vance.guard} — present
+     * only for guard runs. Read-only yield context ({@link #task},
+     * {@link #output}, {@link #round}, {@link #maxRounds},
+     * {@link #naturalStop}), the cap-aware {@link #continueWith(String)}
+     * action, and the two transient scratch stores {@link #loopValues}
+     * (per process/loop) and {@link #sessionValues} (per session) — both
+     * {@link ScriptGuardScratchApi} instances backed by host-side maps
+     * that survive across the re-entrant guard runs.
+     *
+     * <p>Judge and follow-up prompt are no longer config fields — the
+     * script decides both (typically via {@code vance.llm.judge(...)} +
+     * {@code vance.guard.continueWith(...)}). See
+     * {@code planning/completion-guard.md} v2.
+     */
+    public static final class ScriptGuardApi {
+
+        /** First user message of the task under evaluation. */
+        @HostAccess.Export
+        public final String task;
+
+        /** The final output the engine would yield. */
+        @HostAccess.Export
+        public final String output;
+
+        /** Guard rounds already fired for this process (0 at the first yield). */
+        @HostAccess.Export
+        public final long round;
+
+        /** Hard cap on guard injections — {@link #continueWith} refuses past it. */
+        @HostAccess.Export
+        public final long maxRounds;
+
+        /** {@code true} for a natural stop, {@code false} for an explicit terminate. */
+        @HostAccess.Export
+        public final boolean naturalStop;
+
+        /** Per-process / per-loop scratch store (reset on a genuine user turn). */
+        @HostAccess.Export
+        public final ScriptGuardScratchApi loopValues;
+
+        /** Per-session scratch store (survives multiple processes of the session). */
+        @HostAccess.Export
+        public final ScriptGuardScratchApi sessionValues;
+
+        private final GuardScriptHost host;
+
+        public ScriptGuardApi(String task,
+                              String output,
+                              long round,
+                              long maxRounds,
+                              boolean naturalStop,
+                              ScriptGuardScratchApi loopValues,
+                              ScriptGuardScratchApi sessionValues,
+                              GuardScriptHost host) {
+            this.task = task == null ? "" : task;
+            this.output = output == null ? "" : output;
+            this.round = round;
+            this.maxRounds = maxRounds;
+            this.naturalStop = naturalStop;
+            this.loopValues = Objects.requireNonNull(loopValues, "loopValues");
+            this.sessionValues = Objects.requireNonNull(sessionValues, "sessionValues");
+            this.host = Objects.requireNonNull(host, "host");
+        }
+
+        /**
+         * Inject {@code prompt} into the process's own pending queue and
+         * keep the engine running instead of yielding. Cap-aware: returns
+         * {@code false} (no injection) once the round cap is reached, so a
+         * script can react to being capped. Named {@code continueWith}
+         * because {@code continue} is a JavaScript reserved word.
+         *
+         * @return {@code true} if injected, {@code false} if capped
+         */
+        @HostAccess.Export
+        public boolean continueWith(String prompt) {
+            if (prompt == null || prompt.isBlank()) {
+                throw new ScriptHostException(
+                        "vance.guard.continueWith: prompt must not be blank", null);
+            }
+            return host.continueWith(prompt);
+        }
+    }
+
+    /**
+     * A transient key/value scratch store handed to guard scripts as
+     * {@code vance.guard.loopValues} / {@code vance.guard.sessionValues}.
+     * Backed by a host-side map that lives in the
+     * {@code CompletionGuardService} (in-memory, non-persistent) so
+     * values survive across the re-entrant guard runs of a loop/session.
+     *
+     * <p>Exposed as an explicit wrapper — not the raw map — so the only
+     * write path is {@link #set(String, Object)}, which deep-copies the
+     * value into a context-independent plain-Java form via
+     * {@link ScriptValueMarshaller}. That prevents a guest value backed
+     * by the (soon-closed) script context from dangling in the store, and
+     * keeps {@link #get()} handing out a read-only copy rather than a live
+     * handle. Both {@code get()} arities the user asked for work through
+     * GraalJS arity-overload: {@code lv.get('key')} and
+     * {@code lv.get().key}.
+     */
+    public static final class ScriptGuardScratchApi {
+
+        private static final long MAX_NODES = 10_000L;
+        private static final int MAX_DEPTH = 32;
+
+        private final Map<String, Object> backing;
+
+        public ScriptGuardScratchApi(Map<String, Object> backing) {
+            this.backing = Objects.requireNonNull(backing, "backing");
+        }
+
+        /** Whole store as a read-only plain-Java copy (for {@code lv.get().key}). */
+        @HostAccess.Export
+        public @Nullable Object get() {
+            return ScriptValueMarshaller.toStorable(backing, MAX_NODES, MAX_DEPTH);
+        }
+
+        /** Single value by key, or {@code null} (→ {@code undefined} in JS) if absent. */
+        @HostAccess.Export
+        public @Nullable Object get(String key) {
+            return key == null ? null : backing.get(key);
+        }
+
+        /**
+         * Store {@code value} under {@code key}, deep-copied to plain Java.
+         * A {@code null}/{@code undefined} value removes the key (so the
+         * backing map never holds a null — lets it be a plain
+         * {@code ConcurrentHashMap} host-side).
+         */
+        @HostAccess.Export
+        public void set(String key, @Nullable Object value) {
+            if (key == null || key.isBlank()) {
+                throw new ScriptHostException(
+                        "vance.guard scratch set: key must not be blank", null);
+            }
+            Object stored = ScriptValueMarshaller.toStorable(value, MAX_NODES, MAX_DEPTH);
+            if (stored == null) {
+                backing.remove(key);
+            } else {
+                backing.put(key, stored);
+            }
+        }
+
+        /** Whether {@code key} is present. */
+        @HostAccess.Export
+        public boolean has(String key) {
+            return key != null && backing.containsKey(key);
+        }
+
+        /** Remove {@code key} from the store. */
+        @HostAccess.Export
+        public void remove(String key) {
+            if (key != null) {
+                backing.remove(key);
             }
         }
     }

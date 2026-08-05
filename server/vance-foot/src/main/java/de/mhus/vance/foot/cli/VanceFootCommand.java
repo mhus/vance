@@ -9,12 +9,14 @@ import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.config.VanceProjectConfig;
 import de.mhus.vance.foot.config.VanceProjectConfigApplier;
 import de.mhus.vance.foot.config.VanceProjectConfigStore;
+import de.mhus.vance.foot.command.SkillCommandHelper;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.ide.IdeBridgeService;
 import de.mhus.vance.foot.markdown.MarkdownRenderState;
 import de.mhus.vance.foot.permission.PermissionService;
 import de.mhus.vance.foot.session.AutoBootstrapService;
 import de.mhus.vance.foot.session.SessionResumeFlow;
+import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.tools.ClientToolService;
 import de.mhus.vance.foot.transfer.FootTransferService;
 import de.mhus.vance.foot.ui.ChatRepl;
@@ -24,6 +26,7 @@ import de.mhus.vance.foot.ui.Verbosity;
 import de.mhus.vance.foot.ui.WindowTitleService;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
@@ -198,6 +201,14 @@ public class VanceFootCommand implements Callable<Integer> {
                     + "applies on session create, ignored on resume.")
     @Nullable String recipe;
 
+    @Option(names = "--skill",
+            paramLabel = "<name>",
+            description = "One-shot: after connecting and bootstrapping a session, "
+                    + "activate <name> on the chat process (firing its action: turn), "
+                    + "print the result and exit — no interactive REPL. Requires a "
+                    + "session (--project / --session / -c, or a bootstrapped directory).")
+    @Nullable String skill;
+
     @Option(names = "--intellij-claude",
             description = "Connect to a running Claude Code IDE plugin "
                     + "for editor context (at_mentioned, selection_changed, "
@@ -268,6 +279,9 @@ public class VanceFootCommand implements Callable<Integer> {
     private final VanceProjectConfigStore projectConfigStore;
     private final VanceProjectConfigApplier projectConfigApplier;
     private final ColorResolver colorResolver;
+    private final SkillCommandHelper skillHelper;
+    private final SessionService sessions;
+    private final OneShotTurnGate oneShotGate;
 
     public VanceFootCommand(ChatRepl repl,
                             ConnectionService connection,
@@ -287,7 +301,10 @@ public class VanceFootCommand implements Callable<Integer> {
                             SessionAnchorStore sessionAnchorStore,
                             VanceProjectConfigStore projectConfigStore,
                             VanceProjectConfigApplier projectConfigApplier,
-                            ColorResolver colorResolver) {
+                            ColorResolver colorResolver,
+                            SkillCommandHelper skillHelper,
+                            SessionService sessions,
+                            OneShotTurnGate oneShotGate) {
         this.repl = repl;
         this.connection = connection;
         this.terminal = terminal;
@@ -307,6 +324,9 @@ public class VanceFootCommand implements Callable<Integer> {
         this.projectConfigStore = projectConfigStore;
         this.projectConfigApplier = projectConfigApplier;
         this.colorResolver = colorResolver;
+        this.skillHelper = skillHelper;
+        this.sessions = sessions;
+        this.oneShotGate = oneShotGate;
     }
 
     @Override
@@ -364,7 +384,9 @@ public class VanceFootCommand implements Callable<Integer> {
                         + "--session / --resume / --last / --eddie.");
                 return 2;
             }
-            String storedId = sessionAnchorStore.loadSessionId(vancePaths.activeDir());
+            String storedId = sessionAnchorStore.loadSessionId(
+                    vancePaths.activeDir(),
+                    name != null && !name.isBlank() ? name : null);
             if (storedId != null) {
                 sessionId = storedId;
                 terminal.info("Continuing last session " + storedId
@@ -529,6 +551,10 @@ public class VanceFootCommand implements Callable<Integer> {
                     List.of("⚠  SANDBOX DISABLED — all file & exec commands run unrestricted."));
         }
 
+        if (skill != null && !skill.isBlank()) {
+            return runSkillOneShot(skill.trim());
+        }
+
         if (noUi) {
             terminal.info("vance-foot running headless — Ctrl-C to exit.");
             CountDownLatch park = new CountDownLatch(1);
@@ -538,6 +564,69 @@ public class VanceFootCommand implements Callable<Integer> {
             repl.run();
         }
         return 0;
+    }
+
+    /** Overall wait budget for the one-shot skill's action turn to settle. */
+    private static final Duration ONE_SHOT_TURN_TIMEOUT = Duration.ofSeconds(180);
+    /** How long to wait for the async bootstrap to publish an active process. */
+    private static final Duration ONE_SHOT_BOOTSTRAP_TIMEOUT = Duration.ofSeconds(30);
+
+    /**
+     * Non-interactive {@code --skill} mode: wait for the async bootstrap
+     * to bind an active chat process, activate the skill (which fires its
+     * {@code action:} turn on the brain), block until that turn settles,
+     * then exit. The assistant reply renders to stdout through the normal
+     * push-frame path ({@code ChatTerminal} falls back to plain stdout when
+     * no REPL/LiveRegion is attached). Returns the process exit code.
+     */
+    private Integer runSkillOneShot(String skillName) throws Exception {
+        if (noConnect || !connection.isOpen()) {
+            terminal.error("--skill one-shot needs a live connection — cannot run offline.");
+            return 2;
+        }
+        String process = awaitActiveProcess(ONE_SHOT_BOOTSTRAP_TIMEOUT);
+        if (process == null) {
+            terminal.error("--skill one-shot: no active session within "
+                    + ONE_SHOT_BOOTSTRAP_TIMEOUT.toSeconds() + "s. Pass --project / --session / -c "
+                    + "or run in a bootstrapped directory (and not with --no-bootstrap / -d).");
+            return 2;
+        }
+        // Arm before activating so the turn's engine_turn_start/end edges
+        // can never slip past the gate (state-based, not edge-based).
+        oneShotGate.arm();
+        terminal.info("One-shot: activating skill '" + skillName + "' on process '" + process + "' …");
+        try {
+            skillHelper.activate(process, skillName, /*oneShot*/ true, List.of());
+        } catch (Exception e) {
+            terminal.error("Skill activation failed: " + e.getMessage());
+            return 1;
+        }
+        boolean settled = oneShotGate.awaitTurn(ONE_SHOT_TURN_TIMEOUT);
+        if (!settled) {
+            terminal.error("--skill one-shot: skill turn did not complete within "
+                    + ONE_SHOT_TURN_TIMEOUT.toSeconds() + "s.");
+            return 1;
+        }
+        // Small grace so the final chat-append render (processed on the WS
+        // listener thread, ordered just before engine_turn_end) is flushed
+        // before the context tears down.
+        Thread.sleep(250);
+        return 0;
+    }
+
+    /**
+     * Polls {@link SessionService#activeProcess()} until the async
+     * bootstrap publishes it, or the timeout elapses. Returns the process
+     * name, or {@code null} on timeout.
+     */
+    private @Nullable String awaitActiveProcess(Duration timeout) throws InterruptedException {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        String p = sessions.activeProcess();
+        while ((p == null || p.isBlank()) && System.nanoTime() < deadline) {
+            Thread.sleep(100);
+            p = sessions.activeProcess();
+        }
+        return (p == null || p.isBlank()) ? null : p;
     }
 
     private void applyLocalBinding() {

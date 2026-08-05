@@ -9,7 +9,6 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.SessionResumeRequest;
 import de.mhus.vance.api.ws.SessionResumeResponse;
 import de.mhus.vance.foot.config.FootConfig;
-import de.mhus.vance.foot.auth.SessionAnchor;
 import de.mhus.vance.foot.auth.SessionAnchorStore;
 import de.mhus.vance.foot.auth.VancePaths;
 import de.mhus.vance.foot.connection.BrainException;
@@ -283,18 +282,18 @@ public class AutoBootstrapService {
 
     /**
      * Records the session we just bootstrapped into as this directory's
-     * "last session" anchor ({@code .vancetope/session.yaml}), so a later
-     * {@code -c} / {@code --continue} resumes exactly it. Best-effort — a
-     * write failure is logged verbose and swallowed; it must never break an
-     * otherwise-successful bootstrap.
+     * session anchor ({@code .vancetope/session.yaml}), so a later
+     * {@code -c} / {@code --continue} resumes exactly it. The entry is
+     * upserted into the session history (newest first, max 20 entries) —
+     * concurrent terminal windows in the same directory no longer
+     * overwrite each other. Best-effort — a write failure is logged
+     * verbose and swallowed; it must never break an otherwise-successful
+     * bootstrap.
      */
     private void persistSessionAnchor(String sessionId, @Nullable String projectId) {
         try {
-            SessionAnchor anchor = new SessionAnchor();
-            anchor.setSessionId(sessionId);
-            anchor.setProjectId(projectId);
-            anchor.setUpdatedAt(System.currentTimeMillis());
-            anchorStore.save(paths.activeDir(), anchor);
+            String clientName = config.getClient().getName();
+            anchorStore.upsertSession(paths.activeDir(), sessionId, projectId, clientName);
             terminal.verbose("Session anchor updated → " + anchorStore.file(paths.activeDir()));
         } catch (RuntimeException e) {
             terminal.verbose("Could not write session anchor: " + e.getMessage());

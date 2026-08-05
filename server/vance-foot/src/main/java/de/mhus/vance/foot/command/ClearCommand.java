@@ -3,9 +3,9 @@ package de.mhus.vance.foot.command;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.SessionCreateRequest;
 import de.mhus.vance.api.ws.SessionCreateResponse;
-import de.mhus.vance.foot.auth.SessionAnchor;
 import de.mhus.vance.foot.auth.SessionAnchorStore;
 import de.mhus.vance.foot.auth.VancePaths;
+import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
@@ -28,17 +28,20 @@ public class ClearCommand implements SlashCommand {
     private final SessionService sessions;
     private final SessionAnchorStore anchorStore;
     private final VancePaths paths;
+    private final FootConfig config;
 
     public ClearCommand(ChatTerminal terminal,
                         ConnectionService connection,
                         SessionService sessions,
                         SessionAnchorStore anchorStore,
-                        VancePaths paths) {
+                        VancePaths paths,
+                        FootConfig config) {
         this.terminal = terminal;
         this.connection = connection;
         this.sessions = sessions;
         this.anchorStore = anchorStore;
         this.paths = paths;
+        this.config = config;
     }
 
     @Override
@@ -82,11 +85,11 @@ public class ClearCommand implements SlashCommand {
 
         // Persist the new session anchor so that .vancetope/session.yaml
         // reflects the session created by /clear (mirrors AutoBootstrapService).
-        SessionAnchor anchor = new SessionAnchor();
-        anchor.setSessionId(response.getSessionId());
-        anchor.setProjectId(response.getProjectId());
-        anchor.setUpdatedAt(System.currentTimeMillis());
-        anchorStore.save(paths.activeDir(), anchor);
+        anchorStore.upsertSession(
+                paths.activeDir(),
+                response.getSessionId(),
+                response.getProjectId(),
+                config.getClient().getName());
 
         String chatProcessName = response.getChatProcessName();
         if (chatProcessName != null && !chatProcessName.isBlank()) {

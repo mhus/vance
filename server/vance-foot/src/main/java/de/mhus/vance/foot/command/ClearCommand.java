@@ -7,6 +7,7 @@ import de.mhus.vance.foot.auth.SessionAnchorStore;
 import de.mhus.vance.foot.auth.VancePaths;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.ConnectionService;
+import de.mhus.vance.foot.session.RandomSessionNameGenerator;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import java.time.Duration;
@@ -29,19 +30,22 @@ public class ClearCommand implements SlashCommand {
     private final SessionAnchorStore anchorStore;
     private final VancePaths paths;
     private final FootConfig config;
+    private final RandomSessionNameGenerator nameGenerator;
 
     public ClearCommand(ChatTerminal terminal,
                         ConnectionService connection,
                         SessionService sessions,
                         SessionAnchorStore anchorStore,
                         VancePaths paths,
-                        FootConfig config) {
+                        FootConfig config,
+                        RandomSessionNameGenerator nameGenerator) {
         this.terminal = terminal;
         this.connection = connection;
         this.sessions = sessions;
         this.anchorStore = anchorStore;
         this.paths = paths;
         this.config = config;
+        this.nameGenerator = nameGenerator;
     }
 
     @Override
@@ -85,11 +89,17 @@ public class ClearCommand implements SlashCommand {
 
         // Persist the new session anchor so that .vancetope/session.yaml
         // reflects the session created by /clear (mirrors AutoBootstrapService).
+        // When no explicit client name is configured, generate a random
+        // adjective-noun name so the session is identifiable in the history.
+        String sessionName = config.getClient().getName();
+        if (sessionName == null || sessionName.isBlank()) {
+            sessionName = nameGenerator.generate();
+        }
         anchorStore.upsertSession(
                 paths.activeDir(),
                 response.getSessionId(),
                 response.getProjectId(),
-                config.getClient().getName());
+                sessionName);
 
         String chatProcessName = response.getChatProcessName();
         if (chatProcessName != null && !chatProcessName.isBlank()) {

@@ -134,6 +134,48 @@ public class SessionAnchorStore {
         }
     }
 
+    /**
+     * Renames a session entry in-place: patches only the {@code name} field
+     * of the entry matching {@code sessionId}, without changing its position
+     * in the list or its {@code updatedAt} timestamp. Does not move the
+     * entry to the front (unlike {@link #upsertSession}). No-op when the
+     * entry is not found.
+     */
+    public void renameSession(Path dir, String sessionId, @Nullable String name) {
+        Optional<SessionAnchor> loaded = load(dir);
+        if (loaded.isEmpty()) {
+            return;
+        }
+        SessionAnchor anchor = loaded.get();
+        List<SessionAnchor.SessionEntry> entries = anchor.sessionsOrEmpty();
+        boolean changed = false;
+        for (SessionAnchor.SessionEntry e : entries) {
+            if (sessionId.equals(e.getSessionId())) {
+                e.setName(name);
+                changed = true;
+                break;
+            }
+        }
+        if (changed) {
+            save(dir, anchor);
+        }
+    }
+
+    /**
+     * Finds the {@code name} of the entry matching {@code sessionId}.
+     * Returns {@code null} when the entry is not found or has no name.
+     */
+    public @Nullable String findName(Path dir, String sessionId) {
+        return load(dir)
+                .map(SessionAnchor::getSessions)
+                .map(entries -> entries.stream()
+                        .filter(e -> sessionId.equals(e.getSessionId()))
+                        .findFirst()
+                        .map(SessionAnchor.SessionEntry::getName)
+                        .orElse(null))
+                .orElse(null);
+    }
+
     // ── Internal ──
 
     /**

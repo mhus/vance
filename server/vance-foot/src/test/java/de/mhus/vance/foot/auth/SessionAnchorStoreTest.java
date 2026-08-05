@@ -145,4 +145,142 @@ class SessionAnchorStoreTest {
     void loadSessionId_emptyFile_returnsNull(@TempDir Path dir) {
         assertThat(store.loadSessionId(dir)).isNull();
     }
+
+    // ── renameSession ──
+
+    @Test
+    void renameSession_setsName_onMatchingEntry(@TempDir Path dir) {
+        store.upsertSession(dir, "sess_a", "proj-1", "old-name", 1_000L);
+
+        store.renameSession(dir, "sess_a", "new-name");
+
+        Optional<SessionAnchor> loaded = store.load(dir);
+        assertThat(loaded).isPresent();
+        assertThat(loaded.get().getSessions()).hasSize(1);
+        assertThat(loaded.get().getSessions().get(0).getName()).isEqualTo("new-name");
+    }
+
+    @Test
+    void renameSession_doesNotChangePosition(@TempDir Path dir) {
+        store.upsertSession(dir, "sess_a", "proj-1", null, 1_000L);
+        store.upsertSession(dir, "sess_b", "proj-1", null, 2_000L);
+        store.upsertSession(dir, "sess_c", "proj-1", null, 3_000L);
+
+        // Rename sess_b (position 1, middle) — should stay at position 1.
+        store.renameSession(dir, "sess_b", "renamed");
+
+        Optional<SessionAnchor> loaded = store.load(dir);
+        assertThat(loaded).isPresent();
+        assertThat(loaded.get().getSessions()).hasSize(3);
+        // Order unchanged: sess_c (newest), sess_b, sess_a
+        assertThat(loaded.get().getSessions().get(0).getSessionId()).isEqualTo("sess_c");
+        assertThat(loaded.get().getSessions().get(1).getSessionId()).isEqualTo("sess_b");
+        assertThat(loaded.get().getSessions().get(1).getName()).isEqualTo("renamed");
+        assertThat(loaded.get().getSessions().get(2).getSessionId()).isEqualTo("sess_a");
+    }
+
+    @Test
+    void renameSession_doesNotChangeUpdatedAt(@TempDir Path dir) {
+        store.upsertSession(dir, "sess_a", "proj-1", null, 5_000L);
+
+        store.renameSession(dir, "sess_a", "renamed");
+
+        Optional<SessionAnchor> loaded = store.load(dir);
+        assertThat(loaded).isPresent();
+        assertThat(loaded.get().getSessions().get(0).getUpdatedAt()).isEqualTo(5_000L);
+    }
+
+    @Test
+    void renameSession_clearsName_whenNullPassed(@TempDir Path dir) {
+        store.upsertSession(dir, "sess_a", "proj-1", "original", 1_000L);
+
+        store.renameSession(dir, "sess_a", null);
+
+        Optional<SessionAnchor> loaded = store.load(dir);
+        assertThat(loaded).isPresent();
+        assertThat(loaded.get().getSessions().get(0).getName()).isNull();
+    }
+
+    @Test
+    void renameSession_noop_whenEntryNotFound(@TempDir Path dir) {
+        store.upsertSession(dir, "sess_a", "proj-1", "alpha", 1_000L);
+
+        store.renameSession(dir, "sess_nonexistent", "whatever");
+
+        // File unchanged — name of sess_a is still "alpha".
+        Optional<SessionAnchor> loaded = store.load(dir);
+        assertThat(loaded).isPresent();
+        assertThat(loaded.get().getSessions().get(0).getName()).isEqualTo("alpha");
+    }
+
+    @Test
+    void renameSession_noop_whenAnchorFileAbsent(@TempDir Path dir) {
+        // No file written — rename should silently do nothing.
+        store.renameSession(dir, "sess_x", "name");
+
+        assertThat(store.load(dir)).isEmpty();
+    }
+
+    @Test
+    void renameSession_onlyPatchesTargetEntry(@TempDir Path dir) {
+        store.upsertSession(dir, "sess_a", "proj-1", "alpha", 1_000L);
+        store.upsertSession(dir, "sess_b", "proj-1", "beta", 2_000L);
+
+        store.renameSession(dir, "sess_b", "beta-renamed");
+
+        Optional<SessionAnchor> loaded = store.load(dir);
+        assertThat(loaded).isPresent();
+        // sess_a untouched.
+        assertThat(loaded.get().getSessions().get(1).getName()).isEqualTo("alpha");
+        // sess_b renamed.
+        assertThat(loaded.get().getSessions().get(0).getName()).isEqualTo("beta-renamed");
+    }
+
+    // ── findName ──
+
+    @Test
+    void findName_returnsName_whenEntryExists(@TempDir Path dir) {
+        store.upsertSession(dir, "sess_a", "proj-1", "frosty-badger", 1_000L);
+
+        assertThat(store.findName(dir, "sess_a")).isEqualTo("frosty-badger");
+    }
+
+    @Test
+    void findName_returnsNull_whenEntryHasNoName(@TempDir Path dir) {
+        store.upsertSession(dir, "sess_a", "proj-1", null, 1_000L);
+
+        assertThat(store.findName(dir, "sess_a")).isNull();
+    }
+
+    @Test
+    void findName_returnsNull_whenEntryNotFound(@TempDir Path dir) {
+        store.upsertSession(dir, "sess_a", "proj-1", "alpha", 1_000L);
+
+        assertThat(store.findName(dir, "sess_nonexistent")).isNull();
+    }
+
+    @Test
+    void findName_returnsNull_whenAnchorFileAbsent(@TempDir Path dir) {
+        assertThat(store.findName(dir, "sess_x")).isNull();
+    }
+
+    @Test
+    void findName_returnsCorrectName_fromMultipleEntries(@TempDir Path dir) {
+        store.upsertSession(dir, "sess_a", "proj-1", "alpha", 1_000L);
+        store.upsertSession(dir, "sess_b", "proj-1", "beta", 2_000L);
+        store.upsertSession(dir, "sess_c", "proj-1", "gamma", 3_000L);
+
+        assertThat(store.findName(dir, "sess_a")).isEqualTo("alpha");
+        assertThat(store.findName(dir, "sess_b")).isEqualTo("beta");
+        assertThat(store.findName(dir, "sess_c")).isEqualTo("gamma");
+    }
+
+    @Test
+    void findName_reflectsRename(@TempDir Path dir) {
+        store.upsertSession(dir, "sess_a", "proj-1", "old-name", 1_000L);
+
+        store.renameSession(dir, "sess_a", "new-name");
+
+        assertThat(store.findName(dir, "sess_a")).isEqualTo("new-name");
+    }
 }

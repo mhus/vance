@@ -40,7 +40,8 @@ class AutoBootstrapReconnectResumeTest {
                 sessions,
                 mock(ChatTerminal.class),
                 mock(VancePaths.class),
-                mock(SessionAnchorStore.class));
+                mock(SessionAnchorStore.class),
+                new RandomSessionNameGenerator());
     }
 
     private void stubResume(SessionResumeResponse response) throws Exception {

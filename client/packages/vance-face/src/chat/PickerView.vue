@@ -931,6 +931,7 @@ onBeforeUnmount(stopAutoScroll);
                   @reactivated="refreshSessions"
                   @deleted="refreshSessions"
                   @duplicated="refreshSessions"
+                  @moved="refreshSessions"
                   @crop="openCrop"
                   @compacted="showNotice"
                 />

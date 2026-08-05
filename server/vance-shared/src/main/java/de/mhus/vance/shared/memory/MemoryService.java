@@ -180,4 +180,21 @@ public class MemoryService {
         }
         return n;
     }
+
+    /**
+     * Drops every memory carrying {@code sessionId} — session-scoped and
+     * process-scoped alike. Used by the session-move path, where the
+     * project-bound memory is deliberately not carried over and would
+     * otherwise dangle in the source project (see
+     * {@code planning/session-move.md}). Project- and tenant-scoped
+     * memories (no {@code sessionId}) are untouched.
+     */
+    public long deleteBySession(String tenantId, String sessionId) {
+        long n = repository.deleteByTenantIdAndSessionId(tenantId, sessionId);
+        if (n > 0) {
+            log.info("Deleted {} memory entries for session tenant='{}' session='{}'",
+                    n, tenantId, sessionId);
+        }
+        return n;
+    }
 }

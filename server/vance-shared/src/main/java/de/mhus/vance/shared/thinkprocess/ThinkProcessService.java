@@ -1004,6 +1004,30 @@ public class ThinkProcessService {
         return (int) result.getModifiedCount();
     }
 
+    /**
+     * Retargets {@code projectId} on every process of a session — the
+     * think-process half of a session move (see
+     * {@code planning/session-move.md}). {@code workingProjectId} (Eddie's
+     * foreign "spot" project) is deliberately left untouched: it is a
+     * cross-scope reference, not the process's home project. The caller
+     * ({@code SessionMoveService}) guarantees no process is RUNNING.
+     *
+     * @return number of processes retargeted
+     */
+    public int retargetProject(String tenantId, String sessionId, String newProjectId) {
+        Query query = new Query(Criteria.where("tenantId").is(tenantId)
+                .and("sessionId").is(sessionId));
+        Update update = new Update().set("projectId", newProjectId);
+        UpdateResult result = mongoTemplate.updateMulti(
+                query, update, ThinkProcessDocument.class);
+        int n = (int) result.getModifiedCount();
+        if (n > 0) {
+            log.info("Retargeted {} think-process(es) of session='{}' to projectId='{}'",
+                    n, sessionId, newProjectId);
+        }
+        return n;
+    }
+
     // ─────────────────────────────────────────────────────────────────
     // Per-worker snapshot bookkeeping (workerLinks array on the parent
     // ThinkProcessDocument). Used by Eddie (full snapshot — Working-WS

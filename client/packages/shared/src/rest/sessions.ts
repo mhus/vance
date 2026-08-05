@@ -4,6 +4,7 @@ import type {
   SessionDuplicateResponse,
   SessionMetadataDto,
   SessionMetadataPatchRequest,
+  SessionMoveResponse,
   SessionSearchHitDto,
   SessionSummaryRichDto,
 } from '@vance/generated';
@@ -133,6 +134,25 @@ export async function duplicateSession(
     'POST',
     `sessions/${encodeURIComponent(sessionId)}/duplicate`,
     { body: title != null ? { title } : {} },
+  );
+}
+
+/**
+ * POST /brain/{tenant}/sessions/{id}/move — move the session into another
+ * project of the same tenant, in place (the {@code sessionId} is kept).
+ * Deliberately lossy: the project-bound memory does not travel and is
+ * dropped, and the session leaves its source-project group. Only valid
+ * while no think-process is running. Owner-only; requires CREATE on the
+ * target project. See {@code planning/session-move.md}.
+ */
+export async function moveSession(
+  sessionId: string,
+  targetProjectId: string,
+): Promise<SessionMoveResponse> {
+  return brainFetch<SessionMoveResponse>(
+    'POST',
+    `sessions/${encodeURIComponent(sessionId)}/move`,
+    { body: { targetProjectId } },
   );
 }
 

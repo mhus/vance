@@ -283,6 +283,18 @@ export default {
       duplicateTitlePrefix: 'Kopie von {title}',
       duplicateFallbackTitle: 'Kopie',
       duplicateError: 'Session konnte nicht dupliziert werden.',
+      move: 'In Projekt verschieben…',
+      moveTitle: 'Session in anderes Projekt verschieben',
+      moveTargetLabel: 'Zielprojekt',
+      moveTargetPlaceholder: 'Projekt auswählen…',
+      moveNoProjects: 'Kein anderes Projekt zum Verschieben verfügbar.',
+      moveWarning:
+        'Die Session verliert das in diesem Projekt aufgebaute Gedächtnis (RAG und Memories werden nicht übernommen und im alten Projekt gelöscht) und wird aus ihrer Session-Gruppe entfernt. Das lässt sich nicht rückgängig machen.',
+      moveConfirm: 'Verschieben',
+      moveCancel: 'Abbrechen',
+      moveError: 'Session konnte nicht verschoben werden.',
+      moveBusyError:
+        'Diese Session läuft gerade — beende den aktiven Turn, bevor du sie verschiebst.',
       crop: 'Zuschneiden',
       compact: 'Verdichten',
       compactConnectedConfirm: 'Diese Session ist gerade verbunden — jemand arbeitet möglicherweise daran. Erinnerung trotzdem jetzt verdichten? Die Verdichtung läuft sicher zwischen den Turns.',

@@ -7,6 +7,7 @@ import {
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useSessionActions } from '@composables/useSessionActions';
+import SessionMoveDialog from './SessionMoveDialog.vue';
 
 /**
  * Per-session-card action menu for the chat session list. Exposes the
@@ -31,6 +32,9 @@ const emit = defineEmits<{
   (e: 'deleted'): void;
   /** A duplicate was created; payload is the new session's business id. */
   (e: 'duplicated', newSessionId: string): void;
+  /** The session was moved to another project (payload: target project id).
+   *  Parent drops it from the current list. */
+  (e: 'moved', targetProjectId: string): void;
   /** User picked "Crop" — host opens the crop modal for this session. */
   (e: 'crop', sessionId: string): void;
   /** A compaction attempt finished; payload is a localized user message. */
@@ -55,7 +59,9 @@ const {
   reactivate: reactivateAction,
   remove: removeAction,
   duplicate: duplicateAction,
+  move: moveAction,
   compact: compactAction,
+  error: moveError,
 } = useSessionActions(sessionRef, {
   onPatched: (updated) => {
     sessionRef.value = updated;
@@ -65,6 +71,10 @@ const {
   onReactivated: () => emit('reactivated'),
   onDeleted: () => emit('deleted'),
   onDuplicated: (newSessionId) => emit('duplicated', newSessionId),
+  onMoved: (targetProjectId) => {
+    moveDialogOpen.value = false;
+    emit('moved', targetProjectId);
+  },
   onCompacted: (result) => {
     let msg: string;
     if (result.deferred) msg = t('chat.sessionHeader.compactDeferred');
@@ -76,6 +86,7 @@ const {
 });
 
 const menuOpen = ref(false);
+const moveDialogOpen = ref(false);
 const colorExpanded = ref(false);
 const triggerEl = ref<HTMLElement | null>(null);
 const menuEl = ref<HTMLElement | null>(null);
@@ -193,6 +204,17 @@ async function onDuplicate(): Promise<void> {
   await duplicateAction(title);
 }
 
+function onMove(): void {
+  closeMenu();
+  moveDialogOpen.value = true;
+}
+
+async function onMoveConfirm(targetProjectId: string): Promise<void> {
+  // The move action closes the dialog + emits 'moved' via onMoved on
+  // success; on failure the dialog stays open and shows the error.
+  await moveAction(targetProjectId);
+}
+
 async function onArchive(): Promise<void> {
   if (!window.confirm(t('chat.sessionHeader.archiveConfirm'))) return;
   closeMenu();
@@ -271,6 +293,19 @@ async function onDelete(): Promise<void> {
       >
         <span class="w-5 text-center">🗜</span>
         <span class="flex-1 text-left">{{ t('chat.sessionHeader.compact') }}</span>
+      </button>
+
+      <!-- Move to another project — in place, deliberately memory-lossy;
+           the dialog forces an explicit confirm. -->
+      <button
+        type="button"
+        class="flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50"
+        :disabled="saving"
+        role="menuitem"
+        @click.stop="onMove"
+      >
+        <span class="w-5 text-center">📁</span>
+        <span class="flex-1 text-left">{{ t('chat.sessionHeader.move') }}</span>
       </button>
 
       <div class="border-t border-base-300"></div>
@@ -373,5 +408,13 @@ async function onDelete(): Promise<void> {
       </button>
     </div>
     </Teleport>
+
+    <SessionMoveDialog
+      v-model="moveDialogOpen"
+      :current-project-id="session.projectId"
+      :saving="saving"
+      :error="moveError"
+      @confirm="onMoveConfirm"
+    />
   </div>
 </template>

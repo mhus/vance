@@ -55,6 +55,7 @@ public class SessionService {
 
     /** Field names — kept in one place so the conditional queries don't drift. */
     private static final String F_SESSION_ID = "sessionId";
+    private static final String F_PROJECT_ID = "projectId";
     private static final String F_STATUS = "status";
     private static final String F_BOUND_CONNECTION = "boundConnectionId";
     private static final String F_LAST_ACTIVITY = "lastActivityAt";
@@ -755,6 +756,27 @@ public class SessionService {
         mongoTemplate.updateFirst(
                 new Query(Criteria.where(F_SESSION_ID).is(sessionId)),
                 update, SessionDocument.class);
+    }
+
+    /**
+     * Retargets the session's {@code projectId} — the persistent half of a
+     * session move (see {@code planning/session-move.md}). Unconditional
+     * overwrite by {@code sessionId}. The caller ({@code SessionMoveService})
+     * is responsible for the move guard (non-running session, same tenant)
+     * and for retargeting the session's think-processes in lock-step; this
+     * method only touches the session document.
+     *
+     * @return {@code true} if a session was updated
+     */
+    public boolean setProjectId(String sessionId, String projectId) {
+        Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId));
+        Update update = new Update().set(F_PROJECT_ID, projectId);
+        UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
+        boolean ok = result.getModifiedCount() == 1;
+        if (ok) {
+            log.info("Moved session='{}' to projectId='{}'", sessionId, projectId);
+        }
+        return ok;
     }
 
     /**

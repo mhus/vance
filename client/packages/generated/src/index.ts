@@ -282,6 +282,8 @@ export * from './session/SessionGroupCreateRequest';
 export * from './session/SessionCompactResponse';
 export * from './session/SessionDuplicateRequest';
 export * from './session/SessionDuplicateResponse';
+export * from './session/SessionMoveRequest';
+export * from './session/SessionMoveResponse';
 export * from './session/SessionGroupDto';
 export * from './session/SessionGroupRenameRequest';
 export * from './session/SessionGroupReorderRequest';

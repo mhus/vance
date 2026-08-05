@@ -43,6 +43,8 @@ class SessionLifecycleServiceTest {
     private ThinkProcessService thinkProcessService;
     private de.mhus.vance.shared.chat.ChatMessageService chatMessageService;
     private de.mhus.vance.shared.enginemessage.EngineMessageService engineMessageService;
+    private de.mhus.vance.shared.memory.MemoryService memoryService;
+    private de.mhus.vance.shared.sessiongroup.SessionGroupService sessionGroupService;
     private ThinkEngineService engineService;
     private SessionChatBootstrapper chatBootstrapper;
     private LaneScheduler laneScheduler;
@@ -54,6 +56,8 @@ class SessionLifecycleServiceTest {
         thinkProcessService = mock(ThinkProcessService.class);
         chatMessageService = mock(de.mhus.vance.shared.chat.ChatMessageService.class);
         engineMessageService = mock(de.mhus.vance.shared.enginemessage.EngineMessageService.class);
+        memoryService = mock(de.mhus.vance.shared.memory.MemoryService.class);
+        sessionGroupService = mock(de.mhus.vance.shared.sessiongroup.SessionGroupService.class);
         engineService = mock(ThinkEngineService.class);
         chatBootstrapper = mock(SessionChatBootstrapper.class);
         laneScheduler = new LaneScheduler();
@@ -69,6 +73,7 @@ class SessionLifecycleServiceTest {
         lifecycle = new SessionLifecycleService(
                 sessionService, thinkProcessService,
                 chatMessageService, engineMessageService,
+                memoryService, sessionGroupService,
                 engineProvider, bootstrapperProvider, laneScheduler);
         // Default forced-suspend floor — value doesn't matter for these tests.
         ReflectionTestUtils.setField(lifecycle, "forcedFloorMs", 1000L);
@@ -404,6 +409,26 @@ class SessionLifecycleServiceTest {
     }
 
     // ─── helpers ────────────────────────────────────────────────────────
+
+    // ─── delete cascade cleanup (session-move §8 parity) ────────────────
+
+    @Test
+    void deleteSession_dropsMemoryAndClearsGroupMembership() {
+        SessionDocument doc = new SessionDocument();
+        doc.setSessionId("s-del");
+        doc.setTenantId("acme");
+        doc.setProjectId("proj");
+        doc.setStatus(SessionStatus.CLOSED);
+        when(sessionService.findBySessionId("s-del")).thenReturn(Optional.of(doc));
+
+        lifecycle.deleteSession("s-del");
+
+        verify(chatMessageService).deleteBySession("acme", "s-del");
+        verify(thinkProcessService).deleteBySession("acme", "s-del");
+        verify(memoryService).deleteBySession("acme", "s-del");
+        verify(sessionGroupService).removeSessionFromProject("acme", "proj", "s-del");
+        verify(sessionService).delete("s-del");
+    }
 
     private void stubSession(String sessionId, SessionStatus status,
                              DisconnectPolicy policy) {

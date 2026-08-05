@@ -12,6 +12,7 @@ import {
   deleteSession,
   duplicateSession,
   getUsername,
+  moveSession,
   patchSessionMetadata,
   reactivateSession,
 } from '@vance/shared';
@@ -32,6 +33,8 @@ export interface SessionActionCallbacks {
   onDeleted?: () => void;
   /** Fired after a successful duplicate with the new session's business id. */
   onDuplicated?: (newSessionId: string) => void;
+  /** Fired after a successful move with the target project id. */
+  onMoved?: (targetProjectId: string) => void;
   /** Fired after a compaction attempt with the outcome (compacted or no-op). */
   onCompacted?: (result: SessionCompactResponse) => void;
 }
@@ -184,6 +187,27 @@ export function useSessionActions(
   }
 
   /**
+   * Moves the session into another project of the same tenant, in place.
+   * Deliberately lossy — the project-bound memory is dropped and the
+   * session leaves its source-project group; the caller must confirm with
+   * the user first. Only valid while the session has no running turn
+   * (the server rejects a busy session with 409).
+   */
+  async function move(targetProjectId: string): Promise<void> {
+    if (!session.value) return;
+    saving.value = true;
+    error.value = null;
+    try {
+      await moveSession(session.value.sessionId, targetProjectId);
+      callbacks.onMoved?.(targetProjectId);
+    } catch (e) {
+      error.value = (e as Error).message;
+    } finally {
+      saving.value = false;
+    }
+  }
+
+  /**
    * Manually compact the session's chat memory now. A no-op (nothing left
    * to compact) is reported through {@code onCompacted}, not as an error.
    */
@@ -217,6 +241,7 @@ export function useSessionActions(
     reactivate,
     remove,
     duplicate,
+    move,
     compact,
   };
 }

@@ -84,4 +84,32 @@ class SessionServiceTest {
         verify(mongoTemplate, never()).updateFirst(any(Query.class), any(Update.class),
                 eq(SessionDocument.class));
     }
+
+    @Test
+    void setProjectId_writesProjectIdBySessionId_andReportsModified() {
+        UpdateResult res = mock(UpdateResult.class);
+        when(res.getModifiedCount()).thenReturn(1L);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
+                eq(SessionDocument.class))).thenReturn(res);
+
+        boolean ok = service.setProjectId("s-1", "projB");
+
+        assertThat(ok).isTrue();
+        ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
+        ArgumentCaptor<Update> update = ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(query.capture(), update.capture(),
+                eq(SessionDocument.class));
+        assertThat(query.getValue().getQueryObject().toJson()).contains("s-1");
+        assertThat(update.getValue().getUpdateObject().toJson()).contains("projectId").contains("projB");
+    }
+
+    @Test
+    void setProjectId_unknownSession_returnsFalse() {
+        UpdateResult res = mock(UpdateResult.class);
+        when(res.getModifiedCount()).thenReturn(0L);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
+                eq(SessionDocument.class))).thenReturn(res);
+
+        assertThat(service.setProjectId("ghost", "projB")).isFalse();
+    }
 }

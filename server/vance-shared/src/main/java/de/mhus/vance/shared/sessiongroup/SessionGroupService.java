@@ -144,6 +144,28 @@ public class SessionGroupService {
                 sessionId, tenantId, projectId, userId);
     }
 
+    /**
+     * Removes a session from every group in a project, across <em>all</em>
+     * users — the session-move cleanup (see {@code planning/session-move.md}).
+     * Groups are per-user and project-scoped; when a session leaves the
+     * project, its membership in any user's group of that project would
+     * otherwise dangle. Unlike {@link #unassign} this is not user-scoped.
+     *
+     * @return number of group documents that were modified
+     */
+    public long removeSessionFromProject(String tenantId, String projectId, String sessionId) {
+        long n = mongoTemplate.updateMulti(
+                new Query(Criteria.where("tenantId").is(tenantId)
+                        .and("projectId").is(projectId)),
+                new Update().pull("sessionIds", sessionId),
+                SessionGroupDocument.class).getModifiedCount();
+        if (n > 0) {
+            log.info("Removed session '{}' from {} group(s) in tenantId='{}' projectId='{}'",
+                    sessionId, n, tenantId, projectId);
+        }
+        return n;
+    }
+
     private void pullFromAll(String tenantId, String projectId, String userId, String sessionId) {
         mongoTemplate.updateMulti(
                 scopedQuery(tenantId, projectId, userId),

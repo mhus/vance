@@ -288,6 +288,18 @@ export default {
       duplicateTitlePrefix: 'Copy of {title}',
       duplicateFallbackTitle: 'Copy',
       duplicateError: 'Could not duplicate the session.',
+      move: 'Move to project…',
+      moveTitle: 'Move session to another project',
+      moveTargetLabel: 'Target project',
+      moveTargetPlaceholder: 'Choose a project…',
+      moveNoProjects: 'No other project available to move into.',
+      moveWarning:
+        'The session loses the memory it built up in this project (RAG and memories are not carried over and are deleted from the old project), and it is removed from its session group. This cannot be undone.',
+      moveConfirm: 'Move',
+      moveCancel: 'Cancel',
+      moveError: 'Could not move the session.',
+      moveBusyError:
+        'This session is currently running — stop the active turn before moving it.',
       crop: 'Crop',
       compact: 'Compact',
       compactConnectedConfirm: 'This session is currently connected — someone may be working on it. Compact its memory now anyway? Compaction runs safely between turns.',

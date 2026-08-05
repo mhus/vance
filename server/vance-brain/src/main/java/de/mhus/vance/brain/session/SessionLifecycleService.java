@@ -10,8 +10,10 @@ import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.enginemessage.EngineMessageService;
+import de.mhus.vance.shared.memory.MemoryService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.sessiongroup.SessionGroupService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.ArrayList;
@@ -46,6 +48,8 @@ public class SessionLifecycleService {
     private final ThinkProcessService thinkProcessService;
     private final ChatMessageService chatMessageService;
     private final EngineMessageService engineMessageService;
+    private final MemoryService memoryService;
+    private final SessionGroupService sessionGroupService;
     /**
      * Lazy — {@link ThinkEngineService} pulls in tools/recipes that
      * transitively reach this service in the bean graph; an eager
@@ -317,8 +321,14 @@ public class SessionLifecycleService {
             }
         }
         // Hard-delete the dependent collections, then the session row.
+        // Memory + group cleanup share the semantics of the session-move
+        // path (see planning/session-move.md §8) — both had been leaking
+        // session-scoped memories and orphaned group memberships.
         chatMessageService.deleteBySession(session.getTenantId(), sessionId);
         thinkProcessService.deleteBySession(session.getTenantId(), sessionId);
+        memoryService.deleteBySession(session.getTenantId(), sessionId);
+        sessionGroupService.removeSessionFromProject(
+                session.getTenantId(), session.getProjectId(), sessionId);
         sessionService.delete(sessionId);
     }
 

@@ -659,6 +659,28 @@ class ThinkProcessServiceTest {
                 .containsExactlyInAnyOrder("a", "b");
     }
 
+    // ─── retargetProject (session move) ─────────────────────────────────
+
+    @Test
+    void retargetProject_setsProjectIdOnAllSessionProcesses_leavingWorkingProjectIdUntouched() {
+        when(mongoTemplate.updateMulti(any(Query.class), any(Update.class),
+                eq(ThinkProcessDocument.class)))
+                .thenReturn(UpdateResult.acknowledged(2, 2L, null));
+
+        int n = service.retargetProject("acme", "sess-1", "projB");
+
+        assertThat(n).isEqualTo(2);
+        var updateCaptor = org.mockito.ArgumentCaptor.forClass(Update.class);
+        var queryCaptor = org.mockito.ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).updateMulti(queryCaptor.capture(), updateCaptor.capture(),
+                eq(ThinkProcessDocument.class));
+        String updateJson = updateCaptor.getValue().getUpdateObject().toJson();
+        assertThat(updateJson).contains("projectId").contains("projB");
+        assertThat(updateJson).doesNotContain("workingProjectId");
+        String queryJson = queryCaptor.getValue().getQueryObject().toJson();
+        assertThat(queryJson).contains("sess-1").contains("acme");
+    }
+
     // ─── helpers ─────────────────────────────────────────────────────────
 
     private static ThinkProcessDocument process(String id) {

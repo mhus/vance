@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.mongodb.client.result.UpdateResult;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -125,6 +126,23 @@ class SessionGroupServiceTest {
         assertThatThrownBy(() -> service.assign(T, P, U, "sess_1", "ghost"))
                 .isInstanceOf(SessionGroupService.SessionGroupNotFoundException.class);
         verify(mongoTemplate, never()).updateMulti(any(Query.class), any(Update.class), eq(SessionGroupDocument.class));
+    }
+
+    @Test
+    void removeSessionFromProject_pullsFromAllGroupsInProjectAcrossUsers() {
+        when(mongoTemplate.updateMulti(any(Query.class), any(Update.class), eq(SessionGroupDocument.class)))
+                .thenReturn(UpdateResult.acknowledged(3, 3L, null));
+
+        long n = service.removeSessionFromProject(T, P, "sess_1");
+
+        assertThat(n).isEqualTo(3);
+        ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
+        ArgumentCaptor<Update> update = ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateMulti(query.capture(), update.capture(), eq(SessionGroupDocument.class));
+        String queryJson = query.getValue().getQueryObject().toJson();
+        assertThat(queryJson).contains(T).contains(P);
+        assertThat(queryJson).doesNotContain("userId");  // project-wide, not user-scoped
+        assertThat(update.getValue().getUpdateObject().toJson()).contains("$pull").contains("sess_1");
     }
 
     @Test

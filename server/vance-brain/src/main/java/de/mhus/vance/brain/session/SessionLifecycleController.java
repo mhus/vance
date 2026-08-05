@@ -6,6 +6,8 @@ import de.mhus.vance.api.session.SessionDuplicateRequest;
 import de.mhus.vance.api.session.SessionDuplicateResponse;
 import de.mhus.vance.api.session.SessionMetadataDto;
 import de.mhus.vance.api.session.SessionMetadataPatchRequest;
+import de.mhus.vance.api.session.SessionMoveRequest;
+import de.mhus.vance.api.session.SessionMoveResponse;
 import de.mhus.vance.api.session.SessionStatus;
 import de.mhus.vance.brain.memory.CompactionResult;
 import de.mhus.vance.brain.memory.MemoryCompactionService;
@@ -61,6 +63,7 @@ public class SessionLifecycleController {
     private final SessionService sessionService;
     private final SessionLifecycleService lifecycleService;
     private final SessionDuplicationService duplicationService;
+    private final SessionMoveService moveService;
     private final ThinkProcessService thinkProcessService;
     private final MemoryCompactionService compactionService;
     private final LaneScheduler laneScheduler;
@@ -171,6 +174,56 @@ public class SessionLifecycleController {
                 .sessionId(result.newSessionId())
                 .title(result.title())
                 .build();
+    }
+
+    /**
+     * Move a session into another project of the same tenant, in place —
+     * the {@code sessionId} is kept, {@code projectId} is rewritten across
+     * the session's collections. Deliberately lossy: the project-bound
+     * memory does not travel and is dropped, and the session leaves its
+     * source-project group (the UI warns + confirms). Only movable while no
+     * think-process is RUNNING. Requires session ownership + {@code EXECUTE}
+     * on the session and {@code CREATE} on the target project (write only
+     * where you may create). See {@code planning/session-move.md}.
+     */
+    @PostMapping("/{sessionId}/move")
+    public SessionMoveResponse move(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("sessionId") String sessionId,
+            @RequestBody SessionMoveRequest body,
+            HttpServletRequest request) {
+        SessionDocument session = requireOwnedSession(tenant, sessionId, request);
+        String targetProjectId = body.getTargetProjectId();
+        if (targetProjectId == null || targetProjectId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "targetProjectId is required");
+        }
+        authority.enforce(request,
+                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
+                Action.EXECUTE);
+        authority.enforce(request,
+                new Resource.Project(tenant, targetProjectId),
+                Action.CREATE);
+        try {
+            SessionMoveService.MoveResult result =
+                    moveService.move(tenant, sessionId, targetProjectId);
+            return SessionMoveResponse.builder()
+                    .sessionId(result.sessionId())
+                    .fromProjectId(result.fromProjectId())
+                    .toProjectId(result.toProjectId())
+                    .processesRetargeted(result.processesRetargeted())
+                    .memoriesDeleted(result.memoriesDeleted())
+                    .groupsCleared(result.groupsCleared())
+                    .build();
+        } catch (SessionMoveService.SessionNotFoundException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+        } catch (SessionMoveService.TargetProjectNotFoundException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+        } catch (SessionMoveService.SameProjectException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        } catch (SessionMoveService.SessionBusyException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+        }
     }
 
     /**

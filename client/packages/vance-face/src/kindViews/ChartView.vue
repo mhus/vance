@@ -88,33 +88,44 @@ const isEditor = computed(() => props.mode === 'editor');
  * chart and a console-warn — the user sees a blank canvas rather than
  * a thrown error in a chat stream.
  */
-const resolvedDoc = computed<ChartDocument>(() => {
+const parsed = computed<{ doc: ChartDocument; error: string | null }>(() => {
   if (props.mode === 'editor') {
-    return props.doc ?? emptyChartDoc();
+    return { doc: props.doc ?? emptyChartDoc(), error: null };
   }
   if (props.mode === 'inline') {
-    try {
-      // Fence bodies for `chart` are JSON or YAML. Heuristic: a body
-      // starting with `{` is JSON, anything else parses as YAML —
-      // matches how other Vance kinds dispatch in inline mode.
-      const body = props.content ?? '';
-      const mime = body.trimStart().startsWith('{') ? 'application/json' : 'application/yaml';
-      return parseChart(body, mime);
-    } catch (e) {
-      console.warn('ChartView: failed to parse inline content', e);
-      return emptyChartDoc();
-    }
+    // Fence bodies for `chart` are JSON or YAML. Heuristic: a body
+    // starting with `{` is JSON, anything else parses as YAML —
+    // matches how other Vance kinds dispatch in inline mode.
+    const body = props.content ?? '';
+    const mime = body.trimStart().startsWith('{') ? 'application/json' : 'application/yaml';
+    return tryParse(body, mime);
   }
   // embedded
   const d = props.document;
-  if (!d?.inlineText) return emptyChartDoc();
-  try {
-    return parseChart(d.inlineText, d.mimeType ?? 'application/json');
-  } catch (e) {
-    console.warn('ChartView: failed to parse embedded document', e);
-    return emptyChartDoc();
-  }
+  if (!d?.inlineText) return { doc: emptyChartDoc(), error: null };
+  return tryParse(d.inlineText, d.mimeType ?? 'application/json');
 });
+
+/**
+ * Parse, keeping the failure reason. A syntax error in the body — an
+ * unquoted `: ` inside a title is the classic one — takes down the whole
+ * document, and falling back to an empty chart silently left the user
+ * with a blank canvas and no clue. The message goes to the template;
+ * the stack still goes to the console.
+ */
+function tryParse(body: string, mime: string): { doc: ChartDocument; error: string | null } {
+  try {
+    return { doc: parseChart(body, mime), error: null };
+  } catch (e) {
+    console.warn('ChartView: failed to parse chart body', e);
+    return { doc: emptyChartDoc(), error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+const resolvedDoc = computed<ChartDocument>(() => parsed.value.doc);
+
+/** Non-null when the body failed to parse (inline / embedded only). */
+const parseError = computed<string | null>(() => parsed.value.error);
 
 function emptyChartDoc(): ChartDocument {
   return {
@@ -558,6 +569,12 @@ const showsAxes = computed(() => !isNamedValueShaped(localHeader.value.chartType
       />
     </div>
 
+    <!-- Parse failure — an empty canvas alone gives the author nothing
+         to go on, so surface the reason instead. -->
+    <p v-if="parseError" class="chart-parse-error">
+      Chart could not be parsed: {{ parseError }}
+    </p>
+
     <!-- Main: chart canvas (always) + side panel (editor only) -->
     <div class="chart-main">
       <div ref="chartContainer" class="chart-canvas" />
@@ -724,6 +741,16 @@ const showsAxes = computed(() => !isNamedValueShaped(localHeader.value.chartType
 .chart-sidebar-error {
   font-size: 0.75rem;
   color: oklch(var(--er));
+}
+
+.chart-parse-error {
+  flex: none;
+  font-size: 0.8rem;
+  color: oklch(var(--er));
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.25rem;
+  background: oklch(var(--er) / 0.1);
+  overflow-wrap: anywhere;
 }
 
 .chart-series-row {

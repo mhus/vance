@@ -1071,6 +1071,11 @@ fences the client-side stripper skips.
   as "First, second, …". Longer → fence.
 - **Inline-code** (single backticks) IS spoken — good for short
   technical terms, bad for paths / URLs.
+- **Numbers, dates and IDs → spoken form**, not raw digit
+  strings. Say "der achte Juni" / "achtzehn Grad", not
+  "2026-06-08" / "18°C" — an ISO date or a long number reads as
+  "two-zero-two-six-dash-…" over TTS. Long numeric tables go in a
+  fence.
 
 Example — user asks for top Lisbon sights:
 

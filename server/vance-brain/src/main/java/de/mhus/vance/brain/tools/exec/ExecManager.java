@@ -663,15 +663,24 @@ public class ExecManager {
                     properties.getCompletionTailLines()));
             payload.put("stderrTail", tailFile(job.stderrFile(),
                     properties.getCompletionTailLines()));
+            long killedAfterSeconds = Duration.between(job.startedAt(),
+                    finished != null ? finished : Instant.now()).toSeconds();
             if (timedOut) {
-                long runMs = Duration.between(job.startedAt(),
-                        finished != null ? finished : Instant.now()).toMillis();
-                payload.put("killedAfterSeconds", runMs / 1000);
+                payload.put("killedAfterSeconds", killedAfterSeconds);
             }
 
+            // The LLM only sees this summary (the payload is not rendered into
+            // the <process-event> tag); spell out that a timeout is a KILL, so
+            // the model doesn't treat partial output as a completed run.
             String summary = timedOut
-                    ? "Exec " + job.id() + " timed out"
-                    : "Exec " + job.id() + " " + job.status().name().toLowerCase();
+                    ? "Exec " + job.id() + " was KILLED — it timed out after "
+                            + "hitting its deadline (ran ~" + killedAfterSeconds + "s"
+                            + (job.exitCode() != null ? ", exit " + job.exitCode() : "")
+                            + "). The command did NOT finish; it was terminated, "
+                            + "so any output is partial. Re-run with a larger "
+                            + "timeout if it needs more time."
+                    : "Exec " + job.id() + " " + job.status().name().toLowerCase()
+                            + (job.exitCode() != null ? " (exit " + job.exitCode() + ")" : "");
             PendingMessageDocument doc = PendingMessageDocument.builder()
                     .type(PendingMessageType.PROCESS_EVENT)
                     .at(Instant.now())

@@ -58,13 +58,21 @@ public class ClientExecRunTool implements ClientTool {
                             "type", "integer",
                             "description",
                                     "Optional hard-kill deadline (seconds from now). "
-                                            + "If the subprocess is still running when "
-                                            + "the deadline passes the foot kills it "
-                                            + "forcibly and the resulting EXEC_FINISHED "
-                                            + "event in your inbox is flagged with "
-                                            + "EXEC_TIMEOUT. Unlike brain's exec_run "
-                                            + "there is no extend/lease API on the foot — "
-                                            + "pass the full intended timeout up front.")),
+                                            + "If the subprocess is still running when the "
+                                            + "deadline passes, the foot KILLS it (SIGTERM) "
+                                            + "and posts an EXEC_TIMEOUT event to your inbox "
+                                            + "— the command does NOT finish, so its output "
+                                            + "stays partial. Size this to your WORST-CASE "
+                                            + "runtime estimate with generous headroom: a "
+                                            + "full build, test suite or benchmark routinely "
+                                            + "runs far longer than a first guess. For "
+                                            + "open-ended jobs prefer to OMIT it entirely — "
+                                            + "the job then runs to completion in the "
+                                            + "background and posts EXEC_FINISHED when done "
+                                            + "(park with WAIT meanwhile; that event wakes "
+                                            + "you). Unlike brain's exec_run there is no "
+                                            + "extend/lease API on the foot — pass the full "
+                                            + "intended timeout up front.")),
             "required", List.of("command"));
 
     private final ClientExecutorService executor;
@@ -102,7 +110,7 @@ public class ClientExecRunTool implements ClientTool {
 
     @Override
     public @org.jspecify.annotations.Nullable String troubleshootingHint() {
-        return "Requires CLIENT target. Non-zero exit = inspect stderr (exec_tail); timeout = retry with deadlineSeconds; missing binary = adjust PATH or use full path.";
+        return "Requires CLIENT target. Non-zero exit = inspect stderr (exec_tail); timeout = job was KILLED before finishing, re-run with a larger deadlineSeconds or omit it; missing binary = adjust PATH or use full path.";
     }
 
     @Override

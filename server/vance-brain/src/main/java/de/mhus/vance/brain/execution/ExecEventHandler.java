@@ -150,15 +150,29 @@ public class ExecEventHandler implements WsHandler {
                 payload.put("projectId", entry.projectId());
             }
             payload.put("source", "foot");
+            long killedAfterSeconds = Duration.between(
+                    entry.startedAt(), ended != null ? ended : Instant.now()).toSeconds();
             if (timedOut) {
-                long runMs = Duration.between(
-                        entry.startedAt(), ended != null ? ended : Instant.now()).toMillis();
-                payload.put("killedAfterSeconds", runMs / 1000);
+                payload.put("killedAfterSeconds", killedAfterSeconds);
             }
+            // The LLM only ever sees this summary string (the payload is not
+            // rendered into the <process-event> tag), so it must say plainly
+            // that a timeout means the job was KILLED and did NOT finish —
+            // otherwise the model reads "timed out" as a transient poll hiccup
+            // and reports partial output as a completed run.
             String summary = timedOut
-                    ? "Client exec " + event.getExecutionId() + " timed out"
+                    ? "Client exec " + event.getExecutionId()
+                            + " was KILLED — it timed out after hitting its "
+                            + "deadline (ran ~" + killedAfterSeconds + "s"
+                            + (event.getExitCode() != null
+                                    ? ", exit " + event.getExitCode() : "")
+                            + "). The command did NOT finish; it was terminated, "
+                            + "so any output so far is partial. Re-run with a "
+                            + "larger deadlineSeconds if it needs more time."
                     : "Client exec " + event.getExecutionId() + " "
-                            + (status.isBlank() ? "ended" : status.toLowerCase());
+                            + (status.isBlank() ? "ended" : status.toLowerCase())
+                            + (event.getExitCode() != null
+                                    ? " (exit " + event.getExitCode() + ")" : "");
             PendingMessageDocument doc = PendingMessageDocument.builder()
                     .type(PendingMessageType.PROCESS_EVENT)
                     .at(Instant.now())

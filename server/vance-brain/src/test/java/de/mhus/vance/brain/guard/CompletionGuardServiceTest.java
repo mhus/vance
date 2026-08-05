@@ -19,6 +19,7 @@ import de.mhus.vance.brain.notification.NotificationService;
 import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.document.DocumentRefResolver;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.metric.MetricService;
@@ -62,8 +63,8 @@ class CompletionGuardServiceTest {
     void setUp() {
         service = new CompletionGuardService(
                 recipeResolver, thinkProcessService, chatMessageService, eventEmitter,
-                scriptExecutor, documentService, toolDispatcher, progressEmitter,
-                notificationService, sessionService, thinkEngineProvider,
+                scriptExecutor, documentService, new DocumentRefResolver(), toolDispatcher,
+                progressEmitter, notificationService, sessionService, thinkEngineProvider,
                 new MetricService(new SimpleMeterRegistry()));
         when(recipeResolver.resolve(anyString(), anyString(), anyString()))
                 .thenReturn(Optional.empty());

@@ -24,6 +24,10 @@ import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.document.DocumentRef;
+import de.mhus.vance.shared.document.DocumentRefContext;
+import de.mhus.vance.shared.document.DocumentRefException;
+import de.mhus.vance.shared.document.DocumentRefResolver;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -98,6 +102,7 @@ public class CompletionGuardService {
     private final ProcessEventEmitter eventEmitter;
     private final ScriptExecutor scriptExecutor;
     private final DocumentService documentService;
+    private final DocumentRefResolver refResolver;
     private final ToolDispatcher toolDispatcher;
     private final ProgressEmitter progressEmitter;
     private final NotificationService notificationService;
@@ -291,8 +296,20 @@ public class CompletionGuardService {
 
     private @Nullable String loadScript(ThinkProcessDocument process, GuardConfig guard) {
         if (guard.scriptPath() != null) {
+            DocumentRef ref;
+            try {
+                // Guard-script refs are authored project-relative (recipe /
+                // runtime override), so the referrer base is the project root.
+                // Supports /absolute and //other-project/… cross-project refs.
+                ref = refResolver.resolve(
+                        guard.scriptPath(), DocumentRefContext.root(process.getProjectId()));
+            } catch (DocumentRefException e) {
+                log.warn("Completion guard id='{}' bad script ref '{}': {}",
+                        process.getId(), guard.scriptPath(), e.getMessage());
+                return null;
+            }
             return documentService
-                    .lookupCascade(process.getTenantId(), process.getProjectId(), guard.scriptPath())
+                    .lookupCascade(process.getTenantId(), ref.projectId(), ref.path())
                     .map(hit -> hit.content())
                     .orElse(null);
         }

@@ -317,6 +317,10 @@ watch(renderTrigger, () => nextTick(renderChart), { deep: true });
 
 function renderChart(): void {
   if (!chartInstance.value) return;
+  // Nothing to draw on a parse error, and the container is collapsed to
+  // 0px — ECharts would only warn about the missing DOM size. The watch
+  // fires again once the body parses, and by then the height is back.
+  if (parseError.value) return;
   try {
     const option = buildEChartsOption(
       localHeader.value,
@@ -552,7 +556,7 @@ const showsAxes = computed(() => !isNamedValueShaped(localHeader.value.chartType
 </script>
 
 <template>
-  <div :class="['chart-view', `chart-view--${mode}`]">
+  <div :class="['chart-view', `chart-view--${mode}`, { 'chart-view--error': parseError }]">
     <!-- Toolbar (editor only) -->
     <div v-if="isEditor" class="chart-toolbar">
       <VSelect
@@ -570,14 +574,20 @@ const showsAxes = computed(() => !isNamedValueShaped(localHeader.value.chartType
     </div>
 
     <!-- Parse failure — an empty canvas alone gives the author nothing
-         to go on, so surface the reason instead. -->
-    <p v-if="parseError" class="chart-parse-error">
-      Chart could not be parsed: {{ parseError }}
-    </p>
+         to go on, so surface the reason instead. Kept on one line: the
+         style is `white-space: pre-wrap`, which would also preserve the
+         template's own indentation. -->
+    <p v-if="parseError" class="chart-parse-error">{{ `Chart could not be parsed: ${parseError}` }}</p>
 
     <!-- Main: chart canvas (always) + side panel (editor only) -->
     <div class="chart-main">
-      <div ref="chartContainer" class="chart-canvas" />
+      <!-- Collapsed rather than v-if'd on a parse error: the container
+           must stay mounted or onMounted's echarts.init() never runs and
+           a later successful parse (streaming) would render nothing. -->
+      <div
+        ref="chartContainer"
+        :class="['chart-canvas', { 'chart-canvas--collapsed': parseError }]"
+      />
 
       <aside v-if="isEditor" class="chart-sidebar">
         <section>
@@ -709,6 +719,24 @@ const showsAxes = computed(() => !isNamedValueShaped(localHeader.value.chartType
   min-height: 240px;
 }
 
+/* Two classes, declared after the inline/embedded rule above so the tie
+   breaks here — otherwise `.chart-view--inline .chart-canvas` wins and
+   the dead canvas keeps its 240px. */
+.chart-canvas.chart-canvas--collapsed {
+  min-height: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+/* Collapsing the canvas alone leaves the box at its reserved
+   inline/embedded height (280px) — the root has to shrink too, or the
+   error sits on a tall empty panel. Two classes beat the single-class
+   `.chart-view--inline` height regardless of order. */
+.chart-view.chart-view--error {
+  min-height: 0;
+  height: auto;
+}
+
 .chart-sidebar {
   width: 18rem;
   max-height: 100%;
@@ -743,13 +771,23 @@ const showsAxes = computed(() => !isNamedValueShaped(localHeader.value.chartType
   color: oklch(var(--er));
 }
 
+/* DaisyUI 5 variable names. The `--er`/`--bc` shorthands used elsewhere
+   in this file are DaisyUI 3/4 and resolve to nothing under the
+   installed v5 — `oklch(var(--er))` is an invalid declaration, so the
+   text silently inherits base-content instead of turning red. */
 .chart-parse-error {
   flex: none;
-  font-size: 0.8rem;
-  color: oklch(var(--er));
-  padding: 0.4rem 0.6rem;
+  font-size: 0.75rem;
+  /* js-yaml errors carry a code frame with a caret line — it only lines
+     up in a monospace font with newlines preserved. */
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  color: var(--color-error);
+  padding: 0.5rem 0.7rem;
   border-radius: 0.25rem;
-  background: oklch(var(--er) / 0.1);
+  border-left: 3px solid var(--color-error);
+  background: color-mix(in oklch, var(--color-error) 12%, transparent);
+  overflow-x: auto;
   overflow-wrap: anywhere;
 }
 

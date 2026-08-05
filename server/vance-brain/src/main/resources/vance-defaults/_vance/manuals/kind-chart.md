@@ -153,6 +153,15 @@ persistence — "save this as a chart doc" — takes the stored form via
 
 ## Anti-patterns
 
+- **Unquoted YAML string containing `: `.** `subtitle: Quelle: llm-stats.com`
+  is not a string — it is a YAML syntax error, and it kills the whole
+  document, not just that key. **Diagnostic rule: a chart that renders
+  completely blank almost never has a data problem — the body failed to
+  parse.** The inline renderer catches the parse error, `console.warn`s
+  it and falls back to an empty chart, so there is no message in the UI.
+  Quote every `title` / `subtitle` / `label` / category that contains
+  `:`, `#`, or a leading `-`: `subtitle: "Quelle: llm-stats.com"`.
+
 - **Fence-wrapping a stored body, or saving as `.md`.** Both parse but
   open in the Raw editor — no chart tab, no render. Stored bodies are
   raw JSON/YAML at `.json`/`.yaml`; the fence is inline-chat only.
@@ -178,11 +187,11 @@ persistence — "save this as a chart doc" — takes the stored form via
   (see above). Sorting the data inside each series is not enough.
 
 - **Unsourced numbers.** A chart states facts. Name the benchmark or
-  source in `chart.subtitle` when the data is not the user's own, and
-  do not invent decimals for numbers you did not look up — use
-  `research_search` first. A plausible-looking axis of fabricated
-  scores is the most expensive failure mode here, because it renders
-  perfectly.
+  source in `chart.subtitle` when the data is not the user's own (quoted
+  — see the first anti-pattern), and do not invent decimals for numbers
+  you did not look up — use `research_search` first. A plausible-looking
+  axis of fabricated scores is the most expensive failure mode here,
+  because it renders perfectly.
 - **Mismatched data shape.** Points that don't match the per-
   `chartType` shape are **silently dropped**, not coerced. Modes:
   - *Some* points in a series wrong → series renders with the rest
@@ -202,10 +211,7 @@ persistence — "save this as a chart doc" — takes the stored form via
 
 ## When to graduate from inline to stored
 
-- Body grows past ~50 lines (lots of series or data points).
-- The chart is referenced repeatedly across sessions.
-- Output is part of a larger report.
-
-Then call `doc_write(kind="chart", path="…", content=<raw YAML or
-JSON>)` and embed the returned `markdownLink` — see
+Body past ~50 lines, referenced across sessions, or part of a larger
+report → `doc_write(kind="chart", path="…", content=<raw YAML or JSON>)`
+and embed the returned `markdownLink`, see
 `manual_read('embed-documents')`. Reminder: **raw content, no fence**.

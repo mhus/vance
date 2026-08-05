@@ -7,9 +7,15 @@
 # classpath vance-defaults/recipes/<name>.yaml. See specification/recipes.md.
 
 description: |
-  Generalist worker fallback — used when a process is spawned
-  without recipe AND without engine. Conservative defaults: ford
-  with a basic 'helpful assistant' prompt and validation on.
+  General-purpose worker for straightforward tasks — the right choice
+  whenever no specialist recipe clearly fits. Creates and edits
+  documents directly (doc_write) — notes, mindmaps, diagrams, records,
+  workpages — runs tools, answers questions, and produces files. Engine
+  ford with validation on. Prefer this over a script-authoring
+  (slart-and-run) or multi-phase (slartibartfast) specialist for simple
+  "make / write / edit a document" requests: those are heavier and are
+  only warranted when the task genuinely needs custom code or a
+  research-and-plan pipeline.
 engine: ford
 params:
   model: default:analyze

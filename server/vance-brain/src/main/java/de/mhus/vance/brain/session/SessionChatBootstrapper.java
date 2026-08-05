@@ -186,7 +186,20 @@ public class SessionChatBootstrapper {
                         /*callerParams*/ null);
             } catch (RecipeResolver.UnknownRecipeException e) {
                 // No engine-named recipe in the cascade — chat-process
-                // starts engine-default (no recipe overrides).
+                // starts engine-default (no recipe overrides). For the
+                // bundled engine recipes (arthur, eddie, …) this is
+                // never expected: it means the cascade missed a
+                // classpath default, and the session silently loses
+                // promptPrefix, model alias, tool adjustments and
+                // manualPaths for its whole lifetime (symptom:
+                // "No manualPaths configured in the recipe." on the
+                // first manual_read). Loud enough to correlate with
+                // whatever made the lookup fail.
+                log.warn("No recipe '{}' in the cascade for tenant='{}' project='{}' — "
+                                + "chat-process for session '{}' starts WITHOUT recipe "
+                                + "(no prompt prefix, no params, no manualPaths)",
+                        recipeLookup, session.getTenantId(), session.getProjectId(),
+                        session.getSessionId());
                 applied = null;
             }
             if (applied != null) {

@@ -45,12 +45,22 @@ public class DocumentRefResolver {
     public static final String SCHEME = "vance:";
 
     /**
-     * Resolves {@code ref} against {@code ctx}.
+     * Resolves {@code ref} against {@code ctx}. Instance facade for
+     * injection; delegates to the pure static {@link #resolveRef} so
+     * static call-sites (which cannot hold a bean) share the same logic.
      *
      * @throws DocumentRefException on a blank ref, a blank authority, or a
      *                              {@code ..} segment escaping above root
      */
     public DocumentRef resolve(String ref, DocumentRefContext ctx) {
+        return resolveRef(ref, ctx);
+    }
+
+    /**
+     * Pure static resolution (no state) — usable from static call-sites
+     * that cannot inject the bean. Same contract as {@link #resolve}.
+     */
+    public static DocumentRef resolveRef(String ref, DocumentRefContext ctx) {
         if (ref == null || ref.isBlank()) {
             throw new DocumentRefException("document ref must not be blank");
         }

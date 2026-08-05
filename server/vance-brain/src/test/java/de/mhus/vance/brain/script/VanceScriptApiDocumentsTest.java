@@ -269,6 +269,33 @@ class VanceScriptApiDocumentsTest {
                 eq(null), eq(null), eq("x"), eq("alice"), any());
     }
 
+    // ─── DocumentRefResolver hardening (single-doc access) ───────────────
+
+    @Test
+    void crossProjectPath_isRejected() {
+        assertThatThrownBy(() -> api.documents.read("//other/secret.md"))
+                .isInstanceOf(VanceScriptApi.ScriptHostException.class)
+                .hasMessageContaining("cross-project");
+        verify(documentService, never()).findByPath(any(), any(), any());
+    }
+
+    @Test
+    void dotDotWithinBasePath_isCanonicalised() {
+        apiWithBasePath("apps/ws").documents.write("../shared/g.md", "x");
+        verify(documentService).upsertText(
+                eq("acme"), eq("proj"), eq("apps/shared/g.md"),
+                eq(null), eq(null), eq("x"), eq("alice"), any());
+    }
+
+    @Test
+    void dotDotEscapingRoot_isRejected() {
+        assertThatThrownBy(() -> api.documents.write("../../etc/passwd", "x"))
+                .isInstanceOf(VanceScriptApi.ScriptHostException.class)
+                .hasMessageContaining("bad path");
+        verify(documentService, never()).upsertText(
+                any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
     private VanceScriptApi apiWithBasePath(String basePath) {
         return new VanceScriptApi(
                 contextTools("acme", "proj", "sess", "proc", "alice"),

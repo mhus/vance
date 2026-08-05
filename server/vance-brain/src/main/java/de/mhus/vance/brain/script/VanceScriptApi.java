@@ -994,6 +994,34 @@ public final class VanceScriptApi {
             return basePath + "/" + path;
         }
 
+        /**
+         * Resolve a single script-supplied <em>document</em> path through
+         * the central {@link de.mhus.vance.shared.document.DocumentRefResolver}
+         * (relative to {@link #basePath}): canonicalises {@code .}/{@code ..}
+         * and rejects a cross-project ref, so the script sandbox stays
+         * same-project. Distinct from {@link #resolve(String)}, which is used
+         * for {@code list()} prefixes — there a trailing slash is significant
+         * (startsWith match) and must not be canonicalised away.
+         */
+        private String resolveDoc(String path) {
+            de.mhus.vance.shared.document.DocumentRef ref;
+            try {
+                ref = de.mhus.vance.shared.document.DocumentRefResolver.resolveRef(
+                        path,
+                        de.mhus.vance.shared.document.DocumentRefContext.of(
+                                scope.projectId(), basePath));
+            } catch (de.mhus.vance.shared.document.DocumentRefException e) {
+                throw new ScriptHostException(
+                        "vance.documents: bad path '" + path + "': " + e.getMessage(), null);
+            }
+            if (!scope.projectId().equals(ref.projectId())) {
+                throw new ScriptHostException(
+                        "vance.documents: cross-project access is not allowed "
+                                + "from scripts ('" + path + "')", null);
+            }
+            return ref.path();
+        }
+
         private static String normalizeBasePath(@Nullable String base) {
             if (base == null) return "";
             String b = base.strip();
@@ -1025,7 +1053,7 @@ public final class VanceScriptApi {
                 throw new ScriptHostException(
                         "vance.documents.write: content must not be null", null);
             }
-            String resolved = resolve(path);
+            String resolved = resolveDoc(path);
             if (resolved.startsWith(DocumentService.TRASH_FOLDER_PREFIX)) {
                 throw new ScriptHostException(
                         "vance.documents.write: cannot write under '"
@@ -1042,7 +1070,7 @@ public final class VanceScriptApi {
             requireProject();
             requirePath(path);
             return documentService.findByPath(
-                    scope.tenantId(), scope.projectId(), resolve(path)).isPresent();
+                    scope.tenantId(), scope.projectId(), resolveDoc(path)).isPresent();
         }
 
         /**
@@ -1055,7 +1083,7 @@ public final class VanceScriptApi {
             requireProject();
             requirePath(path);
             return documentService.findByPath(
-                            scope.tenantId(), scope.projectId(), resolve(path))
+                            scope.tenantId(), scope.projectId(), resolveDoc(path))
                     .map(doc -> {
                         documentService.trash(doc.getId(), writeActor());
                         return true;
@@ -1103,7 +1131,7 @@ public final class VanceScriptApi {
         private DocumentDocument requireDoc(String path) {
             requireProject();
             requirePath(path);
-            String resolved = resolve(path);
+            String resolved = resolveDoc(path);
             return documentService.findByPath(
                             scope.tenantId(), scope.projectId(), resolved)
                     .orElseThrow(() -> new ScriptHostException(

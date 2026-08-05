@@ -346,6 +346,10 @@ public class MarvinEngine implements ThinkEngine {
 
     private void runTurnInner(ThinkProcessDocument process, ThinkEngineContext ctx) {
         try {
+            // Bail immediately when ESC / /pause already halted this
+            // process before the turn walked the tree.
+            de.mhus.vance.brain.thinkengine.OrchestratorInterrupt.check(
+                    thinkProcessService, process.getId());
             List<SteerMessage> drained = ctx.drainPending();
             for (SteerMessage msg : drained) {
                 consumePending(process, msg);
@@ -382,6 +386,17 @@ public class MarvinEngine implements ThinkEngine {
             }
             thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
             eventEmitter.scheduleTurn(process.getId());
+        } catch (de.mhus.vance.brain.thinkengine.OrchestratorInterruptedException ie) {
+            // ESC / /pause bailed the tree walk. The task tree persists;
+            // on resume the walk continues. Don't STALE-close.
+            if (ie.kind() == de.mhus.vance.brain.thinkengine.OrchestratorInterrupt.Kind.HALT) {
+                log.info("Marvin id='{}' interrupted (halt) — parking PAUSED", process.getId());
+                thinkProcessService.clearHalt(process.getId());
+                thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.PAUSED);
+            } else {
+                log.info("Marvin id='{}' interrupted (status) — leaving pause-handler status",
+                        process.getId());
+            }
         } catch (RuntimeException e) {
             log.warn("Marvin runTurn failed id='{}': {}",
                     process.getId(), e.toString(), e);
@@ -704,6 +719,8 @@ public class MarvinEngine implements ThinkEngine {
                 nodeService.markFailed(node, "unknown transition class: " + trans.getClass());
                 return false;
             }
+        } catch (de.mhus.vance.brain.thinkengine.OrchestratorInterruptedException ie) {
+            throw ie;
         } catch (RuntimeException e) {
             log.warn("Marvin id='{}' node='{}' phase loop crashed: {}",
                     process.getId(), node.getId(), e.toString(), e);
@@ -1368,6 +1385,8 @@ public class MarvinEngine implements ThinkEngine {
             if (reply == null || reply.isBlank()) {
                 reply = "[CALL_RECIPE returned no assistant text]";
             }
+        } catch (de.mhus.vance.brain.thinkengine.OrchestratorInterruptedException ie) {
+            throw ie;
         } catch (RuntimeException e) {
             reply = "[CALL_RECIPE drive failed: " + e.getMessage() + "]";
             log.warn("Marvin id='{}' CALL_RECIPE drive failed child='{}': {}",
@@ -1385,6 +1404,12 @@ public class MarvinEngine implements ThinkEngine {
 
     private void driveSubProcessOnce(
             ThinkProcessDocument child, String marvinProcessId, String content) {
+        // Mid-orchestration interrupt: bail before driving another
+        // CALL_RECIPE sub-turn when ESC / /pause halted this Marvin
+        // process. Unwinds the node phase-loop (its catch re-throws) to
+        // the turn-boundary handler in runTurnInner.
+        de.mhus.vance.brain.thinkengine.OrchestratorInterrupt.check(
+                thinkProcessService, marvinProcessId);
         SteerMessage.UserChatInput message = new SteerMessage.UserChatInput(
                 java.time.Instant.now(),
                 /*idempotencyKey*/ null,

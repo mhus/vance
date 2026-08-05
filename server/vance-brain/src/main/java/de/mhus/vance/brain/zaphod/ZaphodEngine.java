@@ -302,6 +302,10 @@ public class ZaphodEngine implements ThinkEngine {
 
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         try {
+            // Bail immediately when ESC / /pause already halted this
+            // process before the turn drove a head.
+            de.mhus.vance.brain.thinkengine.OrchestratorInterrupt.check(
+                    thinkProcessService, process.getId());
             // Drain any incoming messages — defensively, V1 doesn't
             // expect inbox-answers / process-events on Zaphod itself.
             for (SteerMessage ignored : ctx.drainPending()) {
@@ -376,6 +380,17 @@ public class ZaphodEngine implements ThinkEngine {
                     process.getId(), state.getCurrentRound() + 1, cr.reason());
             eventEmitter.scheduleTurn(process.getId());
             thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+        } catch (de.mhus.vance.brain.thinkengine.OrchestratorInterruptedException ie) {
+            // ESC / /pause bailed the head-round. Zaphod state persists;
+            // on resume the round continues. Don't STALE-close.
+            if (ie.kind() == de.mhus.vance.brain.thinkengine.OrchestratorInterrupt.Kind.HALT) {
+                log.info("Zaphod id='{}' interrupted (halt) — parking PAUSED", process.getId());
+                thinkProcessService.clearHalt(process.getId());
+                thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.PAUSED);
+            } else {
+                log.info("Zaphod id='{}' interrupted (status) — leaving pause-handler status",
+                        process.getId());
+            }
         } catch (RuntimeException e) {
             log.warn("Zaphod runTurn failed id='{}': {}",
                     process.getId(), e.toString(), e);
@@ -557,6 +572,8 @@ public class ZaphodEngine implements ThinkEngine {
                                 + (finalRound ? " — done" : " — replied"),
                         reply);
             }
+        } catch (de.mhus.vance.brain.thinkengine.OrchestratorInterruptedException ie) {
+            throw ie;
         } catch (RuntimeException e) {
             head.setStatus(HeadStatus.FAILED);
             head.setFailureReason("Drive failed in round "
@@ -765,6 +782,11 @@ public class ZaphodEngine implements ThinkEngine {
 
     private void driveHeadTurn(
             ThinkProcessDocument child, String zaphodProcessId, String content) {
+        // Mid-orchestration interrupt: bail before driving another head
+        // turn when ESC / /pause halted this Zaphod process. Unwinds the
+        // per-head drive (its catch re-throws) to runTurn's handler.
+        de.mhus.vance.brain.thinkengine.OrchestratorInterrupt.check(
+                thinkProcessService, zaphodProcessId);
         SteerMessage.UserChatInput message = new SteerMessage.UserChatInput(
                 java.time.Instant.now(),
                 /*idempotencyKey*/ null,

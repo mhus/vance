@@ -370,6 +370,17 @@ public class VogonEngine implements ThinkEngine {
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         try {
             runTurnInner(process, ctx, strategy, state);
+        } catch (de.mhus.vance.brain.thinkengine.OrchestratorInterruptedException ie) {
+            // ESC / /pause bailed the turn mid-orchestration. Persisted
+            // strategy state stands; on resume the turn re-runs from it.
+            if (ie.kind() == de.mhus.vance.brain.thinkengine.OrchestratorInterrupt.Kind.HALT) {
+                log.info("Vogon id='{}' interrupted (halt) — parking PAUSED", process.getId());
+                thinkProcessService.clearHalt(process.getId());
+                thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.PAUSED);
+            } else {
+                log.info("Vogon id='{}' interrupted (status) — leaving pause-handler status",
+                        process.getId());
+            }
         } finally {
             // Snapshot the (possibly mutated) phase state to the
             // user-progress side-channel — runs on every turn end,
@@ -390,6 +401,10 @@ public class VogonEngine implements ThinkEngine {
             StrategyState initialState) {
         StrategyState state = initialState;
         try {
+            // Bail immediately when ESC / /pause already halted this
+            // process before the turn did any work.
+            de.mhus.vance.brain.thinkengine.OrchestratorInterrupt.check(
+                    thinkProcessService, process.getId());
             // 1. Fold pending events (inbox answers, parent steers).
             for (SteerMessage msg : ctx.drainPending()) {
                 consumePending(process, state, msg);
@@ -443,6 +458,8 @@ public class VogonEngine implements ThinkEngine {
             // 5. Evaluate the phase: spawn worker if not yet done; then
             //    create checkpoint if defined; then check gate; advance.
             advancePhase(process, ctx, strategy, state, phase);
+        } catch (de.mhus.vance.brain.thinkengine.OrchestratorInterruptedException ie) {
+            throw ie;
         } catch (RuntimeException e) {
             log.warn("Vogon runTurn failed id='{}': {}", process.getId(), e.toString(), e);
             closeWithFinalReply(process, ctx, strategy, loadState(process), CloseReason.STALE);
@@ -706,6 +723,8 @@ public class VogonEngine implements ThinkEngine {
                 evaluateOutputSchemaAndPostActions(
                         process, child, strategy, state, phase, phaseKey, reply);
             }
+        } catch (de.mhus.vance.brain.thinkengine.OrchestratorInterruptedException ie) {
+            throw ie;
         } catch (RuntimeException e) {
             log.warn("Vogon id='{}' phase '{}' worker turn failed: {}",
                     process.getId(), phase.getName(), e.toString());
@@ -781,6 +800,8 @@ public class VogonEngine implements ThinkEngine {
                                 + "\nPlease re-emit the final JSON object correctly.");
                 reply = readLastAssistantText(process.getTenantId(),
                         process.getSessionId(), child.getId());
+            } catch (de.mhus.vance.brain.thinkengine.OrchestratorInterruptedException ie) {
+                throw ie;
             } catch (RuntimeException e) {
                 log.warn("Vogon id='{}' phase '{}' correction re-prompt failed: {}",
                         process.getId(), phase.getName(), e.toString());
@@ -793,6 +814,13 @@ public class VogonEngine implements ThinkEngine {
 
     private void driveWorkerTurn(
             ThinkProcessDocument child, String vogonProcessId, String content) {
+        // Mid-orchestration interrupt: bail before driving another worker
+        // turn when ESC / /pause halted this Vogon process. Throws
+        // OrchestratorInterruptedException, which unwinds the bounded
+        // phase/scorer/schema loops (their broad catches re-throw it) to
+        // the turn-boundary handler in runTurn.
+        de.mhus.vance.brain.thinkengine.OrchestratorInterrupt.check(
+                thinkProcessService, vogonProcessId);
         SteerMessage.UserChatInput message = new SteerMessage.UserChatInput(
                 java.time.Instant.now(),
                 /*idempotencyKey*/ null,
@@ -1253,6 +1281,8 @@ public class VogonEngine implements ThinkEngine {
                                     + "\nRe-emit the final JSON object correctly.");
                     reply = readLastAssistantText(process.getTenantId(),
                             process.getSessionId(), child.getId());
+                } catch (de.mhus.vance.brain.thinkengine.OrchestratorInterruptedException ie) {
+                    throw ie;
                 } catch (RuntimeException e) {
                     log.warn("Vogon id='{}' phase '{}' correction reprompt failed: {}",
                             process.getId(), phase.getName(), e.toString());
@@ -1537,6 +1567,8 @@ public class VogonEngine implements ThinkEngine {
                                 + r.correctionHint());
                 reply = readLastAssistantText(process.getTenantId(),
                         process.getSessionId(), child.getId());
+            } catch (de.mhus.vance.brain.thinkengine.OrchestratorInterruptedException ie) {
+                throw ie;
             } catch (RuntimeException e) {
                 log.warn("Vogon id='{}' phase '{}' correction re-prompt failed: {}",
                         process.getId(), phase.getName(), e.toString());

@@ -7,7 +7,7 @@ engine: ford
 params:
   model: default:python,default:code
   validation: true
-  maxIterations: 12
+  maxIterations: 100  # safety-net cap only — Ford ends by natural stop
   manualPaths:
     - _vance/manuals/
 allowedToolsAdd:

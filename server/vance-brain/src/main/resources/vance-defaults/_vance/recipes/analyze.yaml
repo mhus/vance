@@ -7,7 +7,7 @@ engine: ford
 params:
   model: default:analyze
   validation: true
-  maxIterations: 10
+  maxIterations: 100  # safety-net cap only — Ford ends by natural stop
   # Specialist worker — wants the highlights of the parent's
   # conversation, not the full chatter. `strong` = summary + active
   # history filtered to STRONG/PINNED (plus untagged for graceful

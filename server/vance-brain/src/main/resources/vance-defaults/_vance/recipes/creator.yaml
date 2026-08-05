@@ -26,7 +26,7 @@ params:
   # Setting up automation is a small, focused task (read context →
   # write one or two YAMLs → optionally test-fire). Keep the budget
   # modest but with room for a list/get + set + fire round-trip.
-  maxIterations: 12
+  maxIterations: 100  # safety-net cap only — Ford ends by natural stop
   # The creator manuals (scheduling / events / hooks) live under
   # creator/manuals/ — moved out of the default chats' menus so
   # building automation is not the path of least resistance. The

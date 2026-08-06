@@ -62,7 +62,8 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 @Slf4j
 public class SourceCatalogBuilder {
 
-    private static final String MANUALS_PREFIX = "_vance/manuals/";
+    /** Public so the change-listener filters on the same prefix this reads from. */
+    public static final String MANUALS_PREFIX = "_vance/manuals/";
     private static final String MD_SUFFIX = ".md";
 
     private static final java.util.regex.Pattern H1_LINE =
@@ -71,7 +72,6 @@ public class SourceCatalogBuilder {
 
     private final DocumentService documentService;
     private final SkillResolver skillResolver;
-    private final List<Tool> tools;
 
     /**
      * Build a snapshot for {@code tenantId} / {@code projectId}. Both
@@ -84,7 +84,13 @@ public class SourceCatalogBuilder {
         Map<String, CatalogSnapshot.EntrySpec> entries = new LinkedHashMap<>();
         appendManuals(md, entries, tenantId, projectId);
         appendSkills(md, entries, tenantId, projectId);
-        appendTools(md, entries);
+        // Tools deliberately NOT rendered here. The snapshot is cached
+        // per tenant+project, but which tools are callable is a property
+        // of the *session* — client-registered tools (client_*, MCP pack
+        // tools) are resolved per connection by ClientToolSource and are
+        // not Spring beans, so a bean-sourced section was both incomplete
+        // and wrongly scoped. DiscoveryService appends the caller's
+        // ContextToolsApi.listAll() per call instead.
         String text = md.toString();
         return new CatalogSnapshot(text, sha256(text), entries);
     }
@@ -351,62 +357,6 @@ public class SourceCatalogBuilder {
             }
         }
         return String.join(", ", all);
-    }
-
-    // ──────────────────── Tools ────────────────────
-
-    private void appendTools(
-            StringBuilder md, Map<String, CatalogSnapshot.EntrySpec> metaOut) {
-        if (tools == null || tools.isEmpty()) return;
-        List<Tool> primary = new ArrayList<>();
-        List<Tool> secondary = new ArrayList<>();
-        for (Tool t : tools) {
-            if (t == null) continue;
-            (t.primary() ? primary : secondary).add(t);
-        }
-        primary.sort(Comparator.comparing(Tool::name));
-        secondary.sort(Comparator.comparing(Tool::name));
-
-        // Primary tools: full descriptions (the model can call these directly).
-        if (!primary.isEmpty()) {
-            md.append("## Tools\n\n");
-            for (Tool t : primary) {
-                md.append("### ").append(t.name()).append("\n\n");
-                String description = safe(t.description());
-                if (!description.isBlank()) {
-                    md.append(description.trim()).append("\n\n");
-                }
-                // A tool entry trivially "requires" itself — CatalogFilter
-                // drops it when the engine's allow-set doesn't carry the name.
-                metaOut.put(t.name(),
-                        new CatalogSnapshot.EntrySpec("tool", Set.of(t.name())));
-            }
-        }
-
-        // Non-primary tools: COMPACT one-liner cards so how_do_i can route to
-        // them (previously they were skipped entirely and thus undiscoverable
-        // via semantic discovery). Full descriptions would balloon this hot-path
-        // prompt, so only the first sentence ships here. These are not in the
-        // model's upfront callable set — the header states how to activate one.
-        if (!secondary.isEmpty()) {
-            md.append("## More tools (non-primary — not callable directly; "
-                    + "activate with `invoke_tool name='<name>'`)\n\n");
-            for (Tool t : secondary) {
-                md.append("### ").append(t.name()).append("\n\n");
-                String description = safe(t.description());
-                if (!description.isBlank()) {
-                    md.append(firstSentence(description.trim())).append("\n\n");
-                }
-                metaOut.put(t.name(),
-                        new CatalogSnapshot.EntrySpec("tool", Set.of(t.name())));
-            }
-        }
-    }
-
-    /** First sentence (up to the first ". ") of a tool description — for compact cards. */
-    private static String firstSentence(String s) {
-        int dot = s.indexOf(". ");
-        return dot > 0 ? s.substring(0, dot + 1) : s;
     }
 
     // ──────────────────── Helpers ────────────────────

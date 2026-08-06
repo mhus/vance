@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.ai.light.LightLlmException;
+import de.mhus.vance.api.tools.ToolSpec;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.shared.document.DocumentService;
@@ -17,6 +18,7 @@ import de.mhus.vance.shared.document.LookupResult;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -56,6 +58,91 @@ class DiscoveryServiceTest {
         when(catalogService.renderForTenant(any(), any()))
                 .thenReturn(CATALOG_WITH_TWO_MANUALS);
         service = new DiscoveryService(catalogService, lightLlm, documentService);
+    }
+
+    // ── Session tools as the catalog's tool section ────────────────
+
+    private static ToolSpec spec(String name, String description, boolean primary) {
+        return ToolSpec.builder()
+                .name(name).description(description).primary(primary).build();
+    }
+
+    /** Captures the rendered catalog the LLM was handed. */
+    private String capturedCatalog() {
+        org.mockito.ArgumentCaptor<LightLlmRequest> captor =
+                org.mockito.ArgumentCaptor.forClass(LightLlmRequest.class);
+        verify(lightLlm).callForJson(captor.capture());
+        return String.valueOf(captor.getValue().getPebbleVars().get("sources"));
+    }
+
+    @Test
+    void sessionTools_areAppendedToTheCatalog() {
+        // The reason this exists: client-registered tools (client_*, MCP
+        // pack tools) are not Spring beans, so the cached snapshot never
+        // contained them and a filter could not add them back. Asking
+        // "how do I take a screenshot" with a browser pack connected
+        // answered "no match".
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("hint", "nothing"));
+
+        service.discover("take a screenshot", TENANT, null, null,
+                Set.of("chrome__take_screenshot"),
+                List.of(spec("chrome__take_screenshot", "Take a screenshot of the page.", true)));
+
+        assertThat(capturedCatalog())
+                .contains("### chrome__take_screenshot")
+                .contains("Take a screenshot of the page.");
+    }
+
+    @Test
+    void sessionTools_nonPrimary_areCompactButPresent() {
+        // Deferred tools are callable; omitting them is how a model
+        // concludes the capability does not exist.
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("hint", "nothing"));
+
+        service.discover("x", TENANT, null, null, Set.of("t"),
+                List.of(spec("client_file_read",
+                        "Read a file. Second sentence with detail.", false)));
+
+        String catalog = capturedCatalog();
+        assertThat(catalog)
+                .contains("## More tools")
+                .contains("### client_file_read")
+                .contains("Read a file.")
+                .doesNotContain("Second sentence with detail.");
+    }
+
+    @Test
+    void sessionTool_pickedByTheLlm_countsAsKnown() {
+        // knownCapability matches "### name" against the rendered
+        // catalog — a session tool must be accepted, not treated as a
+        // hallucinated pick.
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
+                "loaded", Map.of(
+                        "type", "tool",
+                        "name", "chrome__take_screenshot",
+                        "source", "client",
+                        "summary", "Screenshot the page.")));
+
+        DiscoveryResult r = service.discover("screenshot", TENANT, null, null,
+                Set.of("chrome__take_screenshot"),
+                List.of(spec("chrome__take_screenshot", "Take a screenshot.", true)));
+
+        assertThat(r.getLoaded()).isNotNull();
+        assertThat(r.getLoaded().getName()).isEqualTo("chrome__take_screenshot");
+    }
+
+    @Test
+    void withoutSessionTools_theCatalogIsUnchanged() {
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("hint", "nothing"));
+
+        service.discover("x", TENANT, null, null);
+
+        assertThat(capturedCatalog())
+                .isEqualTo(CATALOG_WITH_TWO_MANUALS)
+                .doesNotContain("## Tools");
     }
 
     // ── Loaded + auto-load happy path ──────────────────────────────

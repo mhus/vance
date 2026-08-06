@@ -2446,7 +2446,13 @@ public class EddieEngine extends StructuredActionEngine {
                             intent,
                             process.getTenantId(),
                             process.getProjectId(),
-                            process.getId());
+                            process.getId(),
+                            ctx.tools().allowed(),
+                            // The session's callable tools are the
+                            // catalog's tool section — without this the
+                            // client's own tools (client_*, MCP packs)
+                            // are invisible to discovery.
+                            ctx.tools().listAll());
             String json = serializeDiscoveryResult(result);
             log.info("Eddie id='{}' DISCOVER intent='{}' loaded={} alternatives={}",
                     process.getId(), intent,

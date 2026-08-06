@@ -2,6 +2,7 @@ package de.mhus.vance.brain.discovery;
 
 import de.mhus.vance.brain.ai.light.LightLlmException;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
+import de.mhus.vance.api.tools.ToolSpec;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
@@ -129,6 +130,38 @@ public class DiscoveryService {
             @Nullable String projectId,
             @Nullable String processId,
             @Nullable Set<String> allowedTools) {
+        return discover(intent, tenantId, projectId, processId, allowedTools, List.of());
+    }
+
+    /**
+     * Process-aware variant — the one engines should use.
+     *
+     * <p>{@code processTools} is what the calling process can actually
+     * invoke ({@code ContextToolsApi.listAll()}), and it is the
+     * <em>source</em> of the catalog's tool section, not merely a filter
+     * over it. That distinction is the whole point: the cached snapshot
+     * is built from Spring {@code Tool} beans, and client-registered
+     * tools — every {@code client_*} tool a connected Foot brings, and
+     * every MCP pack tool behind them — are not beans. They are resolved
+     * per session by {@code ClientToolSource}, so a filter could only
+     * ever remove them from a catalog they were never in. Asking
+     * {@code how_do_i} "how do I take a screenshot" while a browser MCP
+     * pack is connected therefore answered "no match".
+     *
+     * <p>The split also lines the two lifetimes up with their scopes:
+     * manuals and skills belong to the tenant/project and stay cached,
+     * tools belong to the session and are rendered per call.
+     *
+     * <p>{@code allowedTools} still filters the cached half — a manual
+     * whose {@code requires-tools} header isn't satisfied stays hidden.
+     */
+    public DiscoveryResult discover(
+            String intent,
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String processId,
+            @Nullable Set<String> allowedTools,
+            @Nullable List<ToolSpec> processTools) {
         if (intent == null || intent.isBlank()) {
             throw new IllegalArgumentException("intent is required");
         }
@@ -142,7 +175,69 @@ public class DiscoveryService {
             CatalogSnapshot snapshot = catalogService.snapshotFor(tenantId, projectId);
             catalog = CatalogFilter.filter(snapshot, allowedTools);
         }
+        catalog = catalog + renderProcessTools(processTools);
         return discoverWithCatalog(intent, tenantId, projectId, processId, catalog);
+    }
+
+    /**
+     * Renders the session's callable tools as catalog cards. Same
+     * {@code ### name} shape the builder emits, because
+     * {@link #knownCapability} validates the LLM's pick by matching
+     * those headers against the rendered catalog — a card in a different
+     * shape would be treated as hallucinated.
+     *
+     * <p>Deferred tools are included: they are callable, the engine just
+     * activates them on first use, and not listing them is exactly how a
+     * model ends up believing a capability does not exist.
+     */
+    private static String renderProcessTools(@Nullable List<ToolSpec> processTools) {
+        if (processTools == null || processTools.isEmpty()) {
+            return "";
+        }
+        List<ToolSpec> primary = new ArrayList<>();
+        List<ToolSpec> secondary = new ArrayList<>();
+        for (ToolSpec t : processTools) {
+            if (t == null || t.getName() == null || t.getName().isBlank()) continue;
+            (t.isPrimary() ? primary : secondary).add(t);
+        }
+        primary.sort(java.util.Comparator.comparing(ToolSpec::getName));
+        secondary.sort(java.util.Comparator.comparing(ToolSpec::getName));
+
+        StringBuilder md = new StringBuilder();
+        // Primary tools: full description — the model can call these directly.
+        if (!primary.isEmpty()) {
+            md.append("\n## Tools\n\n");
+            for (ToolSpec t : primary) {
+                md.append("### ").append(t.getName()).append("\n\n");
+                String description = t.getDescription() == null ? "" : t.getDescription().trim();
+                if (!description.isBlank()) {
+                    md.append(description).append("\n\n");
+                }
+            }
+        }
+        // Deferred / non-primary tools: compact one-liners. They are callable
+        // — the engine activates them on first use — and leaving them out is
+        // precisely how a model concludes a capability does not exist. Full
+        // descriptions would balloon this hot-path prompt, so only the first
+        // sentence ships.
+        if (!secondary.isEmpty()) {
+            md.append("\n## More tools (activate by calling them, or via "
+                    + "`tool_description name='<name>'`)\n\n");
+            for (ToolSpec t : secondary) {
+                md.append("### ").append(t.getName()).append("\n\n");
+                String description = t.getDescription() == null ? "" : t.getDescription().trim();
+                if (!description.isBlank()) {
+                    md.append(firstSentence(description)).append("\n\n");
+                }
+            }
+        }
+        return md.toString();
+    }
+
+    /** First sentence (up to the first ". ") — for the compact cards. */
+    private static String firstSentence(String s) {
+        int dot = s.indexOf(". ");
+        return dot > 0 ? s.substring(0, dot + 1) : s;
     }
 
     private DiscoveryResult discoverWithCatalog(

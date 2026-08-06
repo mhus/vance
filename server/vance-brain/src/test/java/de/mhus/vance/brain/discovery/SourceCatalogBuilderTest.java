@@ -52,7 +52,7 @@ class SourceCatalogBuilderTest {
                 .thenReturn(manuals);
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
-                documentService, skillResolver, List.of());
+                documentService, skillResolver);
         CatalogSnapshot snapshot = builder.build(TENANT, null);
 
         assertThat(snapshot.markdown())
@@ -81,7 +81,7 @@ class SourceCatalogBuilderTest {
                                 LookupResult.Source.RESOURCE, null)));
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
-                documentService, skillResolver, List.of());
+                documentService, skillResolver);
         String md = builder.build(TENANT, null).markdown();
 
         assertThat(md)
@@ -107,7 +107,7 @@ class SourceCatalogBuilderTest {
                                 LookupResult.Source.RESOURCE, null)));
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
-                documentService, skillResolver, List.of());
+                documentService, skillResolver);
         String md = builder.build(TENANT, null).markdown();
 
         assertThat(md)
@@ -131,7 +131,7 @@ class SourceCatalogBuilderTest {
                                 LookupResult.Source.RESOURCE, null)));
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
-                documentService, skillResolver, List.of());
+                documentService, skillResolver);
         String md = builder.build(TENANT, null).markdown();
 
         assertThat(md)
@@ -154,7 +154,7 @@ class SourceCatalogBuilderTest {
         when(documentService.listByPrefixCascade(any(), any(), any())).thenReturn(shuffled);
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
-                documentService, skillResolver, List.of());
+                documentService, skillResolver);
         String md = builder.build(TENANT, null).markdown();
 
         int alphaIdx = md.indexOf("### alpha");
@@ -188,7 +188,7 @@ class SourceCatalogBuilderTest {
         when(skillResolver.listAvailable(any())).thenReturn(List.of(skill));
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
-                documentService, skillResolver, List.of());
+                documentService, skillResolver);
         String md = builder.build(TENANT, null).markdown();
 
         assertThat(md)
@@ -218,40 +218,17 @@ class SourceCatalogBuilderTest {
         when(skillResolver.listAvailable(any())).thenReturn(List.of(disabledSkill));
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
-                documentService, skillResolver, List.of());
+                documentService, skillResolver);
         String md = builder.build(TENANT, null).markdown();
 
         assertThat(md).doesNotContain("## Skills");
         assertThat(md).doesNotContain("draft");
     }
 
-    @Test
-    void renders_primaryToolsFull_andNonPrimaryToolsCompact() {
-        DocumentService documentService = mock(DocumentService.class);
-        when(documentService.listByPrefixCascade(any(), any(), any())).thenReturn(Map.of());
-        SkillResolver skillResolver = mock(SkillResolver.class);
-        when(skillResolver.listAvailable(any())).thenReturn(List.of());
-
-        Tool primaryTool = stubTool("web_search", "Search the web.", true);
-        Tool helperTool = stubTool(
-                "manual_read", "Read a manual. Second sentence with extra detail.", false);
-
-        SourceCatalogBuilder builder = new SourceCatalogBuilder(
-                documentService, skillResolver, List.of(primaryTool, helperTool));
-        String md = builder.build(TENANT, null).markdown();
-
-        assertThat(md)
-                // Primary tools keep their full description under "## Tools".
-                .contains("## Tools")
-                .contains("### web_search")
-                .contains("Search the web.")
-                // Non-primary tools are now discoverable too (previously skipped
-                // entirely) — as a COMPACT first-sentence card in a separate section.
-                .contains("## More tools")
-                .contains("### manual_read")
-                .contains("Read a manual.")
-                .doesNotContain("Second sentence with extra detail.");
-    }
+    // The tool section moved to DiscoveryService: which tools are
+    // callable is a property of the session, not of the cached
+    // tenant/project snapshot. Covered by
+    // DiscoveryServiceTest#sessionTools_*.
 
     @Test
     void identical_inputs_produce_identical_hash() {
@@ -264,7 +241,7 @@ class SourceCatalogBuilderTest {
                                 LookupResult.Source.RESOURCE, null)));
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
-                documentService, skillResolver, List.of());
+                documentService, skillResolver);
         String hash1 = builder.build(TENANT, null).contentHash();
         String hash2 = builder.build(TENANT, null).contentHash();
 
@@ -280,7 +257,7 @@ class SourceCatalogBuilderTest {
         when(skillResolver.listAvailable(any())).thenReturn(List.of());
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
-                documentService, skillResolver, List.of());
+                documentService, skillResolver);
         CatalogSnapshot snap = builder.build(TENANT, null);
 
         assertThat(snap.markdown()).isEmpty();

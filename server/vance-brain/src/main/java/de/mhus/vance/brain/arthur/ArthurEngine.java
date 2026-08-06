@@ -1531,7 +1531,13 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                             intent,
                             process.getTenantId(),
                             process.getProjectId(),
-                            process.getId());
+                            process.getId(),
+                            ctx.tools().allowed(),
+                            // The session's callable tools are the
+                            // catalog's tool section — without this the
+                            // client's own tools (client_*, MCP packs)
+                            // are invisible to discovery.
+                            ctx.tools().listAll());
             String json = serializeDiscoveryResult(result);
             log.info("Arthur id='{}' DISCOVER intent='{}' loaded={} alternatives={}",
                     process.getId(), intent,

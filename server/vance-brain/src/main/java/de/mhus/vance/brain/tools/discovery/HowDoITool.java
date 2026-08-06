@@ -107,7 +107,7 @@ public class HowDoITool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        return doInvoke(params, ctx, null);
+        return doInvoke(params, ctx, null, java.util.List.of());
     }
 
     @Override
@@ -118,19 +118,26 @@ public class HowDoITool implements Tool {
         // The bus is a ContextToolsApi in the brain runtime; defensive
         // cast for tests / foot-side that pass NOOP.
         java.util.Set<String> allowedTools = null;
+        java.util.List<de.mhus.vance.api.tools.ToolSpec> processTools = java.util.List.of();
         if (bus instanceof ContextToolsApi cta) {
             java.util.Set<String> snapshot = cta.allowed();
             if (snapshot != null && !snapshot.isEmpty()) {
                 allowedTools = snapshot;
             }
+            // The session's actual tool surface — resolved through every
+            // ToolSource, so client-registered tools (client_*, MCP packs)
+            // are in here. This is the catalog's tool section, not just a
+            // filter over one.
+            processTools = cta.listAll();
         }
-        return doInvoke(params, ctx, allowedTools);
+        return doInvoke(params, ctx, allowedTools, processTools);
     }
 
     private Map<String, Object> doInvoke(
             Map<String, Object> params,
             ToolInvocationContext ctx,
-            @org.jspecify.annotations.Nullable Set<String> allowedTools) {
+            @org.jspecify.annotations.Nullable Set<String> allowedTools,
+            java.util.List<de.mhus.vance.api.tools.ToolSpec> processTools) {
         if (ctx == null || ctx.tenantId() == null || ctx.tenantId().isBlank()) {
             throw new ToolException("how_do_i requires a tenant scope");
         }
@@ -146,16 +153,16 @@ public class HowDoITool implements Tool {
 
         DiscoveryResult result;
         try {
-            // Route through the 4-arg overload when no allow-set is
-            // available (foot-side / tests with bus = NOOP) so the
-            // existing call signature stays the documented entry
-            // point.
-            result = allowedTools == null
+            // Route through the 4-arg overload only when there is no
+            // process surface at all (foot-side / tests with bus = NOOP).
+            // With one, the session's tools ARE the catalog's tool
+            // section — see DiscoveryService#discover(…, processTools).
+            result = allowedTools == null && processTools.isEmpty()
                     ? discoveryService.discover(
                             intent, ctx.tenantId(), ctx.projectId(), ctx.processId())
                     : discoveryService.discover(
                             intent, ctx.tenantId(), ctx.projectId(), ctx.processId(),
-                            allowedTools);
+                            allowedTools, processTools);
         } catch (LightLlmException e) {
             // Surface light-LLM errors as a tool exception so the
             // caller can fall back to manual_list / manual_read.

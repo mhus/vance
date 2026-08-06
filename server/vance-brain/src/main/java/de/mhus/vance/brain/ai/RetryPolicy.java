@@ -1,8 +1,11 @@
 package de.mhus.vance.brain.ai;
 
+import dev.langchain4j.exception.NonRetriableException;
+import dev.langchain4j.exception.RetriableException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Retry behaviour for a single chat-model entry. Covers transient
@@ -10,11 +13,22 @@ import java.util.Locale;
  * else propagates immediately so genuine errors (bad-request, unknown
  * model, missing key) don't get sat on for minutes of pointless retry.
  *
- * <p>Pattern matching is plain substring against the exception's
+ * <p>Classification is two-tier. langchain4j already sorts mapped HTTP
+ * failures into {@link RetriableException} (5xx, 408, 429) and
+ * {@link NonRetriableException} (4xx, auth, unknown model, DNS); that
+ * typed verdict wins. Only errors carrying neither marker fall through
+ * to substring matching against the exception's
  * {@link Throwable#getMessage() message} and full cause-chain. Default
- * patterns cover Gemini's common throttling phrases plus the standard
- * HTTP codes; tenants / recipes can supply their own list later
- * (Phase B).
+ * patterns cover Gemini's common throttling phrases plus errors that
+ * reach us outside langchain4j's mapper; tenants / recipes can supply
+ * their own list later (Phase B).
+ *
+ * <p>Why the type check is not optional: langchain4j maps 502 to
+ * {@code InternalServerException} whose message is the bare reason
+ * phrase {@code "Bad Gateway"} — no status code anywhere in the text.
+ * Substring matching alone therefore classified a gateway blip as a
+ * genuine error, exhausted the one-entry chain and left the
+ * think-process {@code BLOCKED} mid-turn.
  *
  * <p>Backoff is exponential, doubling each attempt, capped at
  * {@link #maxBackoff()}.
@@ -37,6 +51,11 @@ public record RetryPolicy(
             Duration.ofSeconds(60),
             List.of(
                     "503", "429",
+                    // Reason phrases for 502/504. Spelled out rather than
+                    // added as "502"/"504" because these patterns are
+                    // plain substrings — a bare code would also match the
+                    // digits inside an unrelated number in the message.
+                    "bad gateway", "gateway timeout",
                     "high demand", "overloaded",
                     "RESOURCE_EXHAUSTED", "UNAVAILABLE",
                     "quota", "rate limit", "rate-limit",
@@ -72,12 +91,18 @@ public record RetryPolicy(
     }
 
     /**
-     * Returns {@code true} if {@code error} matches any of the
-     * {@link #retryOnPatterns}. Walks the cause-chain so wrapped
-     * exceptions (langchain4j → its retry layer → HTTP client) are
-     * still caught.
+     * Returns {@code true} if the cause-chain carries langchain4j's
+     * {@link RetriableException} marker, or — absent any typed verdict —
+     * if a message in the chain matches one of the
+     * {@link #retryOnPatterns}. Walking the chain is what catches
+     * wrapped exceptions (our {@code AiChatException} → langchain4j →
+     * HTTP client).
      */
     public boolean shouldRetry(Throwable error) {
+        Boolean typed = typedVerdict(error);
+        if (typed != null) {
+            return typed;
+        }
         if (retryOnPatterns.isEmpty()) {
             return false;
         }
@@ -94,6 +119,27 @@ public record RetryPolicy(
             }
         }
         return false;
+    }
+
+    /**
+     * langchain4j's own classification of the failure, or {@code null}
+     * when the chain carries no marker exception and the patterns get
+     * to decide. A retriable marker anywhere in the chain wins over a
+     * non-retriable one: providers wrap a transient transport failure
+     * in a request-shaped exception often enough that the optimistic
+     * reading is the useful one, and the attempt budget bounds the cost.
+     */
+    private static @Nullable Boolean typedVerdict(Throwable error) {
+        boolean nonRetriable = false;
+        for (Throwable t = error; t != null; t = t.getCause()) {
+            if (t instanceof RetriableException) {
+                return Boolean.TRUE;
+            }
+            if (t instanceof NonRetriableException) {
+                nonRetriable = true;
+            }
+        }
+        return nonRetriable ? Boolean.FALSE : null;
     }
 
     /**

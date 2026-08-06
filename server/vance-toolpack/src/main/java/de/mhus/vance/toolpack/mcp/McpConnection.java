@@ -114,12 +114,21 @@ public final class McpConnection implements AutoCloseable {
      * on key collision — defaults never override an explicit argument.
      * Empty resolved values are dropped (a blank cloud_id is worse than
      * an absent one for most MCP servers).
+     *
+     * <p>The merged map then passes through {@link McpArgumentCoercer},
+     * so everything reaching the wire matches the types the tool's
+     * {@code inputSchema} declares. MCP servers validate strictly: a
+     * model that stringifies a boolean gets a {@code -32602} type error
+     * instead of a result, and typically retries the identical call
+     * before dropping the parameter. Operator-supplied
+     * {@code defaultArgs} are always strings and benefit likewise.
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> callTool(
             String toolName, Map<String, Object> arguments, ToolInvocationContext ctx) {
         ensureInitialized(ctx);
-        Map<String, Object> mergedArgs = mergeDefaultArgs(toolName, arguments, ctx);
+        Map<String, Object> mergedArgs = McpArgumentCoercer.coerce(
+                mergeDefaultArgs(toolName, arguments, ctx), schemaFor(toolName));
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("name", toolName);
         params.put("arguments", mergedArgs);
@@ -224,6 +233,20 @@ public final class McpConnection implements AutoCloseable {
             out.put(e.getKey(), resolved);
         }
         return out;
+    }
+
+    /**
+     * The tool's input-schema from the cached {@code tools/list}, or
+     * {@code null} when the tool hasn't been listed yet — coercion then
+     * has nothing to go on and leaves the arguments alone.
+     */
+    private @Nullable Map<String, Object> schemaFor(String toolName) {
+        List<McpToolMeta> tools = toolsCache.get();
+        if (tools == null) return null;
+        for (McpToolMeta meta : tools) {
+            if (meta.name().equals(toolName)) return meta.inputSchema();
+        }
+        return null;
     }
 
     /**

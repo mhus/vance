@@ -129,6 +129,15 @@ public class LiveRegion {
     private volatile long lastInputActivityMs = System.currentTimeMillis();
 
     /**
+     * Input-activity timestamp and provider generation the idle
+     * suggestion fetch last ran for — see {@link #claimIdleFetch}.
+     * {@code -1} means "not yet fired". Only touched from the animator
+     * thread (and from tests, single-threaded).
+     */
+    private long idleFetchActivityMs = -1;
+    private long idleFetchGeneration = -1;
+
+    /**
      * Lightweight interface for slash-command completion / ghost-text
      * generation. Injected by {@link ChatRepl} (or wherever the wiring
      * happens) so {@code LiveRegion} stays independent of the foot
@@ -169,6 +178,16 @@ public class LiveRegion {
         void clearSuggestion();
         /** Called on idle trigger — fetches a suggestion if applicable. */
         void fetchIfApplicable();
+
+        /**
+         * Counter the provider bumps whenever its inputs change (a new
+         * assistant message arrives), so the animator knows a fetch that
+         * already ran is stale. Together with the input-activity
+         * timestamp this is what makes the idle trigger fire once per
+         * idle period instead of once per animator tick — see
+         * {@code tickAnimate}.
+         */
+        long stateGeneration();
     }
 
     public LiveRegion(StatusBar statusBar, FootConfig config, ColorResolver colorResolver) {
@@ -611,10 +630,11 @@ public class LiveRegion {
 
         // Idle follow-up suggestion: when the input is empty, the
         // brain isn't busy, and the idle delay has elapsed, ask the
-        // provider for a suggestion. The fetch runs synchronously on
-        // this (daemon animator) thread — the REST call has a short
-        // timeout, and a brief block is acceptable here. If a new
-        // suggestion arrives we repaint so the ghost text shows up.
+        // provider for a suggestion — at most once per idle period (see
+        // the latch below). The fetch runs synchronously on this (daemon
+        // animator) thread — the REST call has a short timeout, and a
+        // brief block is acceptable here. If a new suggestion arrives we
+        // repaint so the ghost text shows up.
         IdleSuggestionProvider p = idleSuggestionProvider;
         if (p == null) {
             // No provider wired — skip silently.
@@ -625,15 +645,22 @@ public class LiveRegion {
         } else if (!inputText.isEmpty()) {
             // Input not empty — skip silently.
         } else if (promptLabel != null) {
-            log.trace("tickAnimate idle-check: blocked by promptLabel='{}'", promptLabel);
+            // Modal prompt owns the input line — skip silently (logging
+            // here would repeat at tick rate for as long as it is up).
         } else if (maskInput) {
-            log.trace("tickAnimate idle-check: blocked by maskInput");
+            // Password input — skip silently.
         } else if (p.currentSuggestion() != null) {
             // Suggestion already present — skip silently.
         } else {
             long idleMs = p.idleDelayMs();
-            long idleElapsed = now - lastInputActivityMs;
-            if (idleMs > 0 && idleElapsed >= idleMs) {
+            long activityMs = lastInputActivityMs;
+            long idleElapsed = now - activityMs;
+            long generation = p.stateGeneration();
+            // claimIdleFetch must stay the last condition — it consumes
+            // the latch, so evaluating it before the threshold check
+            // would burn the one fetch this idle period gets.
+            if (idleMs > 0 && idleElapsed >= idleMs
+                    && claimIdleFetch(activityMs, generation)) {
                 log.trace("tickAnimate idle-check: firing fetchIfApplicable — idleElapsed={}ms, threshold={}ms",
                         idleElapsed, idleMs);
                 String before = p.currentSuggestion();
@@ -644,6 +671,33 @@ public class LiveRegion {
                 }
             }
         }
+    }
+
+    /**
+     * Claims the single idle-suggestion fetch that each idle period gets.
+     * Returns {@code true} the first time it is asked for a given
+     * {@code (activityMs, generation)} pair and {@code false} for every
+     * repeat — the animator ticks ~8×/s while the idle condition holds,
+     * and only one of those ticks may reach the provider.
+     *
+     * <p>Both halves of the pair matter. The input timestamp re-arms the
+     * latch when the user types; the provider generation re-arms it when
+     * a new assistant message lands while the user sits still. Without
+     * the latch, every outcome that leaves no visible suggestion (none
+     * offered, suggestion already accepted, REST call failed) re-fetched
+     * on the next tick — which is how a briefly unreachable brain got
+     * several REST attempts per second.
+     *
+     * <p>Package-private so the latch can be exercised directly: the
+     * animator path around it needs a real TTY.
+     */
+    boolean claimIdleFetch(long activityMs, long generation) {
+        if (activityMs == idleFetchActivityMs && generation == idleFetchGeneration) {
+            return false;
+        }
+        idleFetchActivityMs = activityMs;
+        idleFetchGeneration = generation;
+        return true;
     }
 
     // ─── Input loop ────────────────────────────────────────────────

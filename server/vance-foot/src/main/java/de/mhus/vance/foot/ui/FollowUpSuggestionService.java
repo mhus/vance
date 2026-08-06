@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +57,8 @@ public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvi
 
     /** Monotonic sequence to drop stale fetch responses. */
     private final AtomicInteger fetchSeq = new AtomicInteger(0);
+    /** Bumped whenever the fetch inputs change — re-arms the idle trigger. */
+    private final AtomicLong stateGeneration = new AtomicLong(0);
     /** The currently visible suggestion (volatile — read from the animator thread). */
     private volatile @Nullable String currentSuggestion = null;
     /** The cache key that produced {@link #currentSuggestion}. */
@@ -74,8 +77,9 @@ public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvi
 
     /**
      * Called by {@code ChatMessageAppendedHandler} whenever a new
-     * assistant message is committed. Clears the current suggestion
-     * so the next idle period fetches fresh.
+     * assistant message is committed. Clears the current suggestion and
+     * bumps {@link #stateGeneration()} so the next idle period fetches
+     * fresh even if the user hasn't touched the keyboard since.
      */
     public void onAssistantMessage(@Nullable String content) {
         log.trace("onAssistantMessage called — content length={}, blank={}",
@@ -84,6 +88,7 @@ public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvi
         lastAssistantContent.set(content);
         currentSuggestion = null;
         currentKey = null;
+        stateGeneration.incrementAndGet();
     }
 
     // ─── IdleSuggestionProvider ────────────────────────────────────
@@ -116,6 +121,11 @@ public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvi
     @Override
     public void clearSuggestion() {
         currentSuggestion = null;
+    }
+
+    @Override
+    public long stateGeneration() {
+        return stateGeneration.get();
     }
 
     /**
@@ -210,8 +220,11 @@ public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvi
                 // Do NOT cache the failure — otherwise the first transient
                 // error (e.g. JWT not yet minted, brain briefly unreachable)
                 // permanently blocks the suggestion for this assistant
-                // message. Leave the key absent so the next idle period
-                // retries.
+                // message. Leave the key absent so the next arming of the
+                // idle trigger (user input, or a new assistant message)
+                // retries. Not the next animator tick: the trigger is
+                // latched per idle period, which is what keeps a failing
+                // brain from being retried several times a second.
                 currentSuggestion = null;
                 currentKey = null;
             }

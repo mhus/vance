@@ -27,9 +27,12 @@ class ChainedAiChat implements AiChat {
     /**
      * No retries — every transient failure of an entry has already been
      * handled by that entry's inner resilient layer; we just need to advance
-     * on whatever bubbles up. Empty {@code retryOnPatterns} means
-     * {@link RetryPolicy#shouldRetry(Throwable)} always returns false, so
-     * every error path goes straight to "advance to next chain entry".
+     * on whatever bubbles up. {@code maxAttempts = 1} is what guarantees
+     * that: with no attempt left, both the retriable and the non-retriable
+     * branch in {@link ResilientStreamingChatModel} advance to the next
+     * chain entry. (Empty {@code retryOnPatterns} no longer implies
+     * "never" on its own — {@link RetryPolicy#shouldRetry(Throwable)} also
+     * honours langchain4j's typed retriable marker.)
      */
     private static final RetryPolicy ADVANCE_ONLY = new RetryPolicy(
             1, Duration.ofMillis(1), Duration.ofMillis(1), List.of());

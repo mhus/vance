@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -65,6 +66,15 @@ public class SettingFormPlanBuilder {
      * required-presence / type / select-whitelist happens upstream in
      * {@code FormValidator}; this method assumes structurally-valid
      * input.
+     *
+     * @param unchangedFields names of direct-mapped fields whose
+     *        submitted value already equals the effective cascade value.
+     *        Their binding reduces to SKIP — writing the same value again
+     *        would be a no-op at best and, when the value is inherited
+     *        from an outer scope, would silently pin it into the scope
+     *        being edited. They stay in the Pebble context so computed
+     *        settings still see a complete value map. Determined by
+     *        {@code SettingFormService}, which owns the cascade reads.
      */
     public List<PlannedSettingAction> buildApplyPlan(
             ResolvedSettingForm form,
@@ -72,7 +82,8 @@ public class SettingFormPlanBuilder {
             String tenantId,
             @Nullable String projectId,
             @Nullable String userId,
-            @Nullable String lang) {
+            @Nullable String lang,
+            Set<String> unchangedFields) {
         Map<String, Object> ctx = buildPebbleContext(form, values, projectId, userId, lang, tenantId);
         Map<String, Boolean> shownFields = evaluateShowIf(form.fields(), ctx);
 
@@ -88,7 +99,8 @@ public class SettingFormPlanBuilder {
                 continue;
             }
             PlannedSettingAction action = planForField(
-                    form, field, binding, values, ctx, projectId, userId, tenantId);
+                    form, field, binding, values, ctx, projectId, userId, tenantId,
+                    unchangedFields.contains(field.getName()));
             if (action == null) continue;
             recordPlanned(seen, out, action);
         }
@@ -163,7 +175,8 @@ public class SettingFormPlanBuilder {
             Map<String, Object> ctx,
             @Nullable String projectId,
             @Nullable String userId,
-            String tenantId) {
+            String tenantId,
+            boolean unchanged) {
         String wireScope = binding.getScope() == null ? form.defaultScope() : binding.getScope();
         ResolvedScope scope = resolveScope(wireScope, projectId, userId);
         SettingType settingType = resolveFieldSettingType(field, binding);
@@ -174,10 +187,23 @@ public class SettingFormPlanBuilder {
                 field.getWriteIf(), ctx, "fields[" + field.getName() + "].writeIf");
 
         if (!writeAllowed) {
+            // Conditional-Reset outranks the unchanged-check below: a falsy
+            // writeIf is an explicit "remove this key", not a no-op.
             return new PlannedSettingAction(
                     binding.getKey(), wireScope,
                     scope.referenceType(), scope.referenceId(),
                     PlannedSettingAction.Action.DELETE,
+                    null, null, masked, sourceLabel);
+        }
+
+        // Value equals what the cascade already yields → nothing to write.
+        // Same effective outcome, minus pinning an inherited value into the
+        // scope being edited.
+        if (unchanged) {
+            return new PlannedSettingAction(
+                    binding.getKey(), wireScope,
+                    scope.referenceType(), scope.referenceId(),
+                    PlannedSettingAction.Action.SKIP,
                     null, null, masked, sourceLabel);
         }
 

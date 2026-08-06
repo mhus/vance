@@ -1,0 +1,23 @@
+# Gemini 3.1 Flash Image ("Nano Banana 2") — the fast/cheap tier of the
+# Gemini 3 image family. Candidate successor for the `default:image`
+# alias (currently gemini-2.5-flash-image).
+#
+# costPerImage.standard is the 1K rate ($0.067 / 1120 output tokens).
+# The model also bills 0.5K ($0.045), 2K ($0.101) and 4K ($0.151), but
+# Fenchurch does not select a resolution — see gemini-3-pro-image.yaml.
+kind: image
+timeoutSeconds: 180
+supportedAspectRatios:
+- '1:1'
+- '2:3'
+- '3:2'
+- '3:4'
+- '4:3'
+- '4:5'
+- '5:4'
+- '9:16'
+- '16:9'
+- '21:9'
+costPerImage:
+  standard: 0.067
+maxPromptChars: 4000

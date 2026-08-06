@@ -43,9 +43,12 @@ import org.springframework.stereotype.Service;
  * manual layer ({@code model}), so discovery is free to overwrite any
  * file it owns — manual edits live elsewhere and survive untouched.
  *
- * <p>Pricing is intentionally NOT in the auto docs. Provider listing
- * APIs don't return prices; the manual layer (bundled + operator
- * edits) carries them and inherits through the cascade.
+ * <p>Pricing and {@code kind} are intentionally NOT in the auto docs.
+ * Provider listing APIs don't return prices, and model <i>kind</i> is a
+ * classification the operator owns — the manual layer (bundled +
+ * operator edits) carries both and inherits through the cascade. Since
+ * the auto layer outranks the bundled one, anything asserted here would
+ * shadow a correct bundled value; see {@link DiscoveredModelInfo}.
  */
 @Service
 @RequiredArgsConstructor
@@ -233,6 +236,14 @@ public class ModelDiscoveryService {
      * is preserved via the YAML {@code wireName:} field; wire-names
      * with {@code '/'} (HF-style) become nested subdirectories
      * losslessly.
+     *
+     * <p>Only <em>observations</em> go in here — the wire name and, if
+     * the vendor reports it, the context window. Classifications
+     * ({@code kind}, pricing, capabilities) are never written: the auto
+     * layer outranks the bundled layer in the catalog cascade, so an
+     * asserted {@code kind: chat} would shadow a bundled
+     * {@code kind: image} and drop that model out of every image picker.
+     * See {@link DiscoveredModelInfo}.
      */
     private void writeAutoDoc(
             String tenantId, String projectId, String instance, DiscoveredModelInfo model) {
@@ -253,9 +264,6 @@ public class ModelDiscoveryService {
         }
         if (model.contextWindowTokens() != null) {
             yaml.append("contextWindowTokens: ").append(model.contextWindowTokens()).append('\n');
-        }
-        if (model.kind() != null) {
-            yaml.append("kind: ").append(model.kind()).append('\n');
         }
         yaml.append("discoveredBy: ").append(DISCOVERED_BY).append('\n');
         yaml.append("discoveredAt: \"").append(Instant.now()).append("\"\n");

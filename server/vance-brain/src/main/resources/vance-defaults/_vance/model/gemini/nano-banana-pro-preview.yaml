@@ -1,0 +1,20 @@
+# Vendor alias wire name for Gemini 3 Pro Image — "Nano Banana Pro" is
+# Google's marketing name for the same engine. Same specs and rate as
+# gemini-3-pro-image; listed separately because the model listing
+# returns it as its own ID.
+kind: image
+timeoutSeconds: 360
+supportedAspectRatios:
+- '1:1'
+- '2:3'
+- '3:2'
+- '3:4'
+- '4:3'
+- '4:5'
+- '5:4'
+- '9:16'
+- '16:9'
+- '21:9'
+costPerImage:
+  standard: 0.134
+maxPromptChars: 4000

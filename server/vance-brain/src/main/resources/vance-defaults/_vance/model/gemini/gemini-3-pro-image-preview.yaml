@@ -1,0 +1,19 @@
+# Preview channel of gemini-3-pro-image. Same specs and rate as the
+# stable ID — kept as its own entry because the wire name differs and a
+# picker selection has to classify as `image` either way.
+kind: image
+timeoutSeconds: 360
+supportedAspectRatios:
+- '1:1'
+- '2:3'
+- '3:2'
+- '3:4'
+- '4:3'
+- '4:5'
+- '5:4'
+- '9:16'
+- '16:9'
+- '21:9'
+costPerImage:
+  standard: 0.134
+maxPromptChars: 4000

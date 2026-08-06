@@ -15,6 +15,7 @@ import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.settings.SettingService;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class SettingFormPlanBuilderTest {
@@ -34,7 +35,7 @@ class SettingFormPlanBuilderTest {
                 List.of());
 
         List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
-                form, Map.of("provider", "anthropic"), TENANT, PROJECT, USER, "en");
+                form, Map.of("provider", "anthropic"), TENANT, PROJECT, USER, "en", Set.of());
 
         assertThat(plan).hasSize(1);
         PlannedSettingAction a = plan.get(0);
@@ -51,7 +52,7 @@ class SettingFormPlanBuilderTest {
                 List.of());
 
         List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
-                form, Map.of("anthKey", ""), TENANT, PROJECT, USER, "en");
+                form, Map.of("anthKey", ""), TENANT, PROJECT, USER, "en", Set.of());
 
         assertThat(plan).hasSize(1);
         assertThat(plan.get(0).action()).isEqualTo(PlannedSettingAction.Action.SKIP);
@@ -69,7 +70,7 @@ class SettingFormPlanBuilderTest {
 
         List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
                 form, Map.of("provider", "openai", "anthKey", "secret"),
-                TENANT, PROJECT, USER, "en");
+                TENANT, PROJECT, USER, "en", Set.of());
 
         assertThat(plan).extracting(PlannedSettingAction::action, PlannedSettingAction::key)
                 .containsExactly(
@@ -88,7 +89,7 @@ class SettingFormPlanBuilderTest {
 
         List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
                 form, Map.of("provider", "openai", "anthKey", "should-be-ignored"),
-                TENANT, PROJECT, USER, "en");
+                TENANT, PROJECT, USER, "en", Set.of());
 
         assertThat(plan).hasSize(1);
         assertThat(plan.get(0).key()).isEqualTo("ai.default.provider");
@@ -105,9 +106,9 @@ class SettingFormPlanBuilderTest {
                 List.of(cs));
 
         List<PlannedSettingAction> planSmall = planBuilder.buildApplyPlan(
-                form, Map.of("budget", "small"), TENANT, PROJECT, USER, "en");
+                form, Map.of("budget", "small"), TENANT, PROJECT, USER, "en", Set.of());
         List<PlannedSettingAction> planLarge = planBuilder.buildApplyPlan(
-                form, Map.of("budget", "large"), TENANT, PROJECT, USER, "en");
+                form, Map.of("budget", "large"), TENANT, PROJECT, USER, "en", Set.of());
 
         assertThat(planSmall).filteredOn(a -> a.key().equals("quota.daily_tokens"))
                 .singleElement()
@@ -127,7 +128,7 @@ class SettingFormPlanBuilderTest {
                 List.of(cs));
 
         List<PlannedSettingAction> planOff = planBuilder.buildApplyPlan(
-                form, Map.of("tracing", "false"), TENANT, PROJECT, USER, "en");
+                form, Map.of("tracing", "false"), TENANT, PROJECT, USER, "en", Set.of());
 
         assertThat(planOff).filteredOn(a -> a.key().equals("tracing.llm.sample_rate"))
                 .singleElement()
@@ -153,7 +154,7 @@ class SettingFormPlanBuilderTest {
 
         List<PlannedSettingAction> planCustom = planBuilder.buildApplyPlan(
                 form, Map.of("mode", "custom", "customValue", "99"),
-                TENANT, PROJECT, USER, "en");
+                TENANT, PROJECT, USER, "en", Set.of());
 
         // After merge, the single output for x.value is a WRITE with value 99.
         assertThat(planCustom).filteredOn(a -> a.key().equals("x.value"))
@@ -176,7 +177,7 @@ class SettingFormPlanBuilderTest {
         // the runtime safety net in the planner.
 
         assertThatThrownBy(() -> planBuilder.buildApplyPlan(
-                form, Map.of("a", "1", "b", "2"), TENANT, PROJECT, USER, "en"))
+                form, Map.of("a", "1", "b", "2"), TENANT, PROJECT, USER, "en", Set.of()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("duplicate WRITE");
     }
@@ -251,11 +252,65 @@ class SettingFormPlanBuilderTest {
 
         List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
                 form, Map.of("dummy", "claude-opus-4-7"),
-                TENANT, PROJECT, USER, "en");
+                TENANT, PROJECT, USER, "en", Set.of());
 
         assertThat(plan).filteredOn(a -> a.key().equals("ai.default.model.echo"))
                 .singleElement()
                 .extracting(PlannedSettingAction::value).isEqualTo("claude-sonnet-4-6");
+    }
+
+    @Test
+    void unchanged_field_is_SKIP_instead_of_WRITE() {
+        ResolvedSettingForm form = formWith(
+                List.of(stringField("provider", "ai.default.provider", null, null)),
+                List.of());
+
+        List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
+                form, Map.of("provider", "anthropic"),
+                TENANT, PROJECT, USER, "en", Set.of("provider"));
+
+        assertThat(plan).hasSize(1);
+        assertThat(plan.get(0).action()).isEqualTo(PlannedSettingAction.Action.SKIP);
+        assertThat(plan.get(0).key()).isEqualTo("ai.default.provider");
+    }
+
+    @Test
+    void unchanged_field_with_falsy_writeIf_still_DELETEs() {
+        // Conditional-Reset must outrank the unchanged-check: a falsy writeIf
+        // is an explicit "remove this key", not "leave it alone".
+        ResolvedSettingForm form = formWith(
+                List.of(
+                        booleanField("enabled"),
+                        stringField("model", "ai.embedding.model", null, "enabled")),
+                List.of());
+
+        List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
+                form, Map.of("enabled", "false", "model", "text-embedding-3-small"),
+                TENANT, PROJECT, USER, "en", Set.of("model"));
+
+        assertThat(plan).hasSize(1);
+        assertThat(plan.get(0).action()).isEqualTo(PlannedSettingAction.Action.DELETE);
+        assertThat(plan.get(0).key()).isEqualTo("ai.embedding.model");
+    }
+
+    @Test
+    void unchanged_field_still_feeds_the_pebble_context() {
+        // The value is skipped for writing but must stay visible to computed
+        // settings — otherwise skipping a field silently blanks a template.
+        ResolvedComputedSetting cs = new ResolvedComputedSetting(
+                "ai.default.provider.echo", null, SettingType.STRING,
+                "{{ provider }}", null, null);
+        ResolvedSettingForm form = formWith(
+                List.of(stringField("provider", "ai.default.provider", null, null)),
+                List.of(cs));
+
+        List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
+                form, Map.of("provider", "anthropic"),
+                TENANT, PROJECT, USER, "en", Set.of("provider"));
+
+        assertThat(plan).filteredOn(a -> a.key().equals("ai.default.provider.echo"))
+                .singleElement()
+                .extracting(PlannedSettingAction::value).isEqualTo("anthropic");
     }
 
     // ──────────────────── helpers ────────────────────

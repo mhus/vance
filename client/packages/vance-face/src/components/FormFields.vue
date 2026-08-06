@@ -186,7 +186,17 @@ function canRemove(field: FormFieldDto): boolean {
 
 <template>
   <div class="flex flex-col gap-3">
-    <template v-for="field in fields" :key="field.name">
+    <!--
+      One wrapper per field, tagged with the same path the error map uses
+      (`members[2].name` for repeat-nested entries). Hosts scroll a failed
+      field into view via [data-form-field="<path>"] — a long form
+      otherwise reports errors somewhere off-screen.
+    -->
+    <div
+      v-for="field in fields"
+      :key="field.name"
+      :data-form-field="pathOf(field.name)"
+    >
       <!-- ── string ── -->
       <VInput
         v-if="field.type === 'string'"
@@ -259,6 +269,7 @@ function canRemove(field: FormFieldDto): boolean {
         :label="labelOf(field)"
         :options="selectOptionsOf(field)"
         :help="helpOf(field)"
+        :error="errorOf(field)"
         :placeholder="field.required ? undefined : '—'"
         :disabled="disabled"
         @update:model-value="(v: string | null) => setField(field.name, v ?? '')"
@@ -345,6 +356,6 @@ function canRemove(field: FormFieldDto): boolean {
       <div v-else class="text-xs text-error">
         Unknown field type: <code class="font-mono">{{ field.type }}</code>
       </div>
-    </template>
+    </div>
   </div>
 </template>

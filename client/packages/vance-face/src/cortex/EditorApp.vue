@@ -37,7 +37,7 @@ import {
   isAudioVideoMime,
   tryThreeWayMerge,
 } from '@/composables/useDocumentChangeReaction';
-import { onDocumentChanged } from '@/ws/wsConnectionStore';
+import { onDocumentChanged, useWsConnection } from '@/ws/wsConnectionStore';
 import VanceEmbedView from '@/components/VanceEmbedView.vue';
 import VanceFormView from '@/components/VanceFormView.vue';
 import ComposeOutput from '@/cortex/components/ComposeOutput.vue';
@@ -449,7 +449,20 @@ const breadcrumbs = computed<Crumb[]>(() => {
 // Replay the URL's view on popstate. restoreView() reconciles open tabs,
 // active tab and preferences to match the history entry and writes nothing
 // back (the URL is already at the target), so there is no flip-flop.
+//
+// Also re-reads sessionId from the URL so an in-place session switch
+// (pushState) is correctly reverted when the user navigates back to the
+// chatless URL. When the sessionId changes, a full reload is the safest
+// path — the WS binding state, tool service, and chat panel all need
+// to re-initialise for the new context.
 function onPopState(): void {
+  const urlSessionId = new URLSearchParams(window.location.search).get('sessionId');
+  if (urlSessionId !== sessionId.value) {
+    // Session context changed (back/forward across an in-place switch) —
+    // reload to let the page boot cleanly with the new URL state.
+    window.location.reload();
+    return;
+  }
   void restoreView();
 }
 
@@ -715,9 +728,15 @@ const bindIconTooltip = computed<string>(() => {
 /**
  * The client-tool surface Cortex exposes to the LLM agent. Built only
  * when a session is bound — chatless mode has no agent to talk to.
+ *
+ * <p>Reactive: when the session changes in-place (e.g. the session
+ * picker bootstraps a new session and {@link enterSession} switches to
+ * it without a full page reload), a fresh {@code CortexClientToolService}
+ * is created so the new session's tool surface starts clean.
  */
-const clientToolService = hasSession.value
-  ? new CortexClientToolService({
+const clientToolService = computed<CortexClientToolService | null>(() => {
+  if (!sessionId.value) return null;
+  return new CortexClientToolService({
     getSelection: () => store.currentSelection,
     getActiveTab: () => {
       const tab = store.activeTab;
@@ -733,8 +752,8 @@ const clientToolService = hasSession.value
       await store.openFile(file.id);
       return { documentId: file.id, path: file.path, alreadyOpen };
     },
-  })
-  : null;
+  });
+});
 
 async function onSave(): Promise<void> {
   if (!activeTab.value) return;
@@ -1033,9 +1052,46 @@ const toggleTooltip = computed<string>(() => {
  * Enter a chat from the (chatless-mode) session picker. Carry the current
  * open tabs into the session URL so opening a chat doesn't wipe the
  * documents the user had open — the reported bug this whole change fixes.
+ *
+ * <p>When {@code sid} matches the session already bound on the WS
+ * (bootstrap just created + bound it), we switch <em>in-place</em>:
+ * update the reactive {@code sessionId} ref, resolve the session
+ * metadata, and push the URL — no full page reload. This avoids the
+ * WebSocket being torn down and re-created, which was causing a
+ * {@code session_bound_elsewhere} conflict (the old connection's
+ * registry entry hadn't been cleaned up yet when the new one tried to
+ * resume the same session).
+ *
+ * <p>For sessions picked from the list (not just bootstrapped), the
+ * WS hasn't bound the session yet, so a full navigation is still
+ * needed — the page reload will establish the WS and bind cleanly.
  */
-function enterSession(sid: string): void {
+async function enterSession(sid: string): Promise<void> {
+  const { activeSessionId } = useWsConnection();
+  if (activeSessionId.value === sid) {
+    // The WS already has this session bound (bootstrap path) — switch
+    // in-place without reloading the page.
+    await switchToSessionInPlace(sid);
+    return;
+  }
+  // Session picked from the list (not bootstrapped) — full navigation
+  // so the page boots fresh and binds the WS to the session.
   window.location.href = cortexHref({ sessionId: sid, project: projectId.value }, currentView());
+}
+
+/**
+ * In-place session switch: update reactive state and the URL without
+ * a page reload. The WS binding is already in place (caller guarantees
+ * this via {@code markBound}); we just need to resolve the session
+ * metadata and let Vue reactivity mount the chat panel.
+ */
+async function switchToSessionInPlace(sid: string): Promise<void> {
+  sessionId.value = sid;
+  rightPanelOpen.value = true;
+  // Update the URL so a refresh / bookmark lands on the session.
+  const qs = writeCortexView(`sessionId=${sid}&project=${projectId.value ?? ''}`, currentView());
+  window.history.pushState({ cortex: true }, '', `/cortex.html?${qs}`);
+  await resolveSession(sid);
 }
 </script>
 

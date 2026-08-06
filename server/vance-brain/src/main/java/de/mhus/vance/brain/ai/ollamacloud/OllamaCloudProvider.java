@@ -82,7 +82,7 @@ public class OllamaCloudProvider extends AbstractChatProvider {
         for (JsonNode entry : models) {
             String name = entry.path("name").asText();
             if (name.isBlank()) continue;
-            out.add(new DiscoveredModelInfo(name, null, "chat"));
+            out.add(DiscoveredModelInfo.of(name));
         }
         return out;
     }

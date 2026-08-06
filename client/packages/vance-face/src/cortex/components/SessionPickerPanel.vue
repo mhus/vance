@@ -5,22 +5,30 @@
  * sessions; click on a row emits {@code open-session} so the host
  * (EditorApp) can navigate to {@code cortex.html?sessionId=…} while
  * carrying the currently-open tabs across (they'd otherwise vanish).
- * "+ New session" hands off to {@code chat.html?project=…} where the
- * recipe-modal lives — the new session jumps back into Cortex via the
- * existing chat → cortex link.
+ * The "+ New session" button opens a recipe-selection modal inline
+ * and bootstraps the new session via WebSocket — no redirect to
+ * chat.html, so open tabs are preserved.
  */
 import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { listSessions } from '@vance/shared';
+import {
+  listProjectRecipes,
+  listSessions,
+  WebSocketRequestError,
+} from '@vance/shared';
 import {
   AccentColor,
   SessionStatus,
+  type RecipeListedDto,
+  type SessionBootstrapRequest,
+  type SessionBootstrapResponse,
   type SessionGroupDto,
   type SessionSummaryRichDto,
 } from '@vance/generated';
-import { VAlert, VButton, VInput } from '@/components';
+import { VAlert, VButton, VInput, VModal } from '@/components';
 import { useSessionGroups } from '@/composables/useSessionGroups';
 import { useSessionGroupCollapse } from '@/composables/useSessionGroupCollapse';
+import { markBound, useWsConnection } from '@/ws/wsConnectionStore';
 
 const { t } = useI18n();
 
@@ -39,6 +47,21 @@ const loading = ref(false);
 const error = ref<string | null>(null);
 const filter = ref('');
 const showArchived = ref(false);
+
+// ─── Inline recipe picker + session bootstrap ───
+// Mirrors PickerView.vue's recipe modal so the "+" button stays in
+// cortex.html instead of redirecting to chat.html (which would wipe
+// the user's open tabs). On success we emit `open-session` so
+// EditorApp's enterSession() navigates to cortex.html?sessionId=…
+// while carrying the open tabs across.
+const { socket } = useWsConnection();
+
+const recipeModalOpen = ref(false);
+const recipeOptions = ref<RecipeListedDto[]>([]);
+const recipesLoading = ref(false);
+const recipesError = ref<string | null>(null);
+const bootstrapping = ref(false);
+const bootstrapError = ref<string | null>(null);
 
 const filtered = computed<SessionSummaryRichDto[]>(() => {
   const needle = filter.value.trim().toLowerCase();
@@ -175,10 +198,78 @@ function openSession(session: SessionSummaryRichDto): void {
   emit('open-session', session.sessionId);
 }
 
-function newSession(): void {
-  const params = new URLSearchParams();
-  params.set('project', props.projectId);
-  window.location.href = `/chat.html?${params.toString()}`;
+/**
+ * Open the recipe-selection modal inline. Fetches the project's listed
+ * recipes (same call as PickerView). The user picks a recipe (or
+ * "Default") to trigger {@link bootstrapNew}.
+ */
+async function openRecipeModal(): Promise<void> {
+  bootstrapError.value = null;
+  recipesError.value = null;
+  recipeModalOpen.value = true;
+  recipesLoading.value = true;
+  try {
+    recipeOptions.value = await listProjectRecipes(props.projectId);
+  } catch (e) {
+    recipesError.value = describeError(e, t('chat.picker.recipeLoadFailed'));
+    recipeOptions.value = [];
+  } finally {
+    recipesLoading.value = false;
+  }
+}
+
+/**
+ * Bootstrap a fresh session via the `session-bootstrap` WebSocket call.
+ * On success, emit `open-session` with the new sessionId so EditorApp's
+ * {@code enterSession()} navigates to `cortex.html?sessionId=…` (carrying
+ * the open tabs). On failure, surface the error inline — only fall back
+ * to the chat.html redirect if the socket itself is unavailable.
+ */
+async function bootstrapNew(chatRecipe: string | null): Promise<void> {
+  const sock = socket.value;
+  if (!sock) {
+    // Socket not ready — fall back to the legacy chat.html flow rather
+    // than silently failing. This is the only redirect path left.
+    const params = new URLSearchParams();
+    params.set('project', props.projectId);
+    window.location.href = `/chat.html?${params.toString()}`;
+    return;
+  }
+  bootstrapping.value = true;
+  bootstrapError.value = null;
+  try {
+    const payload: SessionBootstrapRequest = {
+      projectId: props.projectId,
+      processes: [],
+      // Creating a fresh session — takeover only applies to resume.
+      takeover: false,
+    };
+    if (chatRecipe) payload.chatRecipe = chatRecipe;
+    const response = await sock.send<SessionBootstrapRequest, SessionBootstrapResponse>(
+      'session-bootstrap',
+      payload,
+    );
+    recipeModalOpen.value = false;
+    // The bootstrap call bound the session to this WebSocket on the
+    // server. Tell the WS store so it knows the session is already
+    // bound — without this, the store would send a fresh session-resume
+    // after the page switches, which collides with the bootstrap-time
+    // bind and triggers the "session already open elsewhere" conflict
+    // dialog (the very bug we're fixing).
+    markBound(response.sessionId);
+    emit('open-session', response.sessionId);
+  } catch (e) {
+    bootstrapError.value = describeError(e, t('chat.picker.failedToStartSession'));
+  } finally {
+    bootstrapping.value = false;
+  }
+}
+
+function describeError(e: unknown, fallback: string): string {
+  if (e instanceof WebSocketRequestError) {
+    return `${e.message} (code ${e.errorCode})`;
+  }
+  return e instanceof Error ? e.message : fallback;
 }
 
 onMounted(() => {
@@ -205,7 +296,7 @@ watch(showArchived, () => {
         size="sm"
         variant="ghost"
         :title="$t('chat.picker.newSession')"
-        @click="newSession"
+        @click="openRecipeModal"
       >
         +
       </VButton>
@@ -301,5 +392,73 @@ watch(showArchived, () => {
         </div>
       </template>
     </div>
+
+    <!-- Recipe picker — inline modal (mirrors PickerView.vue) -->
+    <VModal
+      v-model="recipeModalOpen"
+      :title="$t('chat.picker.recipeModalTitle')"
+    >
+      <div class="space-y-3">
+        <p class="text-sm opacity-70">{{ $t('chat.picker.recipeModalIntro') }}</p>
+
+        <VAlert v-if="recipesError" variant="error">{{ recipesError }}</VAlert>
+        <VAlert v-if="bootstrapError" variant="error">{{ bootstrapError }}</VAlert>
+
+        <ul class="flex flex-col gap-2 max-h-[60vh] overflow-y-auto">
+          <li>
+            <button
+              type="button"
+              class="w-full text-left rounded-lg border border-base-300 hover:border-primary p-3 transition-colors"
+              :disabled="bootstrapping"
+              @click="bootstrapNew(null)"
+            >
+              <div class="font-semibold">{{ $t('chat.picker.recipeDefaultName') }}</div>
+              <div class="text-xs opacity-70 mt-1">
+                {{ $t('chat.picker.recipeDefaultDescription') }}
+              </div>
+            </button>
+          </li>
+
+          <li v-if="recipesLoading" class="text-sm opacity-60 px-1">
+            {{ $t('chat.picker.sessionsLoading') }}
+          </li>
+
+          <li
+            v-for="recipe in recipeOptions"
+            :key="recipe.name"
+          >
+            <button
+              type="button"
+              class="w-full text-left rounded-lg border border-base-300 hover:border-primary p-3 transition-colors"
+              :disabled="bootstrapping"
+              @click="bootstrapNew(recipe.name)"
+            >
+              <div class="flex items-baseline gap-2 min-w-0">
+                <span class="font-semibold truncate">
+                  {{ recipe.title || recipe.name }}
+                </span>
+                <span
+                  v-if="recipe.title"
+                  class="text-xs opacity-50 font-mono truncate"
+                >
+                  {{ recipe.name }}
+                </span>
+              </div>
+              <div
+                v-if="recipe.description"
+                class="text-xs opacity-70 mt-1 whitespace-pre-line line-clamp-3"
+              >
+                {{ recipe.description }}
+              </div>
+            </button>
+          </li>
+        </ul>
+      </div>
+      <template #actions>
+        <VButton variant="ghost" :disabled="bootstrapping" @click="recipeModalOpen = false">
+          {{ $t('common.cancel') }}
+        </VButton>
+      </template>
+    </VModal>
   </div>
 </template>

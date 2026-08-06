@@ -1,0 +1,25 @@
+# Gemini 3 Pro Image ("Nano Banana Pro") — reasoning-driven generation,
+# the quality tier of the Gemini image family. Candidate for the
+# `default:image-high` alias.
+#
+# costPerImage.standard is the 1K/2K rate ($0.134 / 1120 output tokens).
+# 4K costs $0.24 (2000 tokens), but Fenchurch never asks for it:
+# GeminiImageProvider does not set langchain4j's `imageSize`, so the API
+# renders at its default resolution. Revisit this rate if imageSize gets
+# wired through.
+kind: image
+timeoutSeconds: 360
+supportedAspectRatios:
+- '1:1'
+- '2:3'
+- '3:2'
+- '3:4'
+- '4:3'
+- '4:5'
+- '5:4'
+- '9:16'
+- '16:9'
+- '21:9'
+costPerImage:
+  standard: 0.134
+maxPromptChars: 4000

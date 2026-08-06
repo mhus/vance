@@ -71,19 +71,30 @@ export async function login(params: {
 }
 
 /**
+ * Outcome of a silent re-mint. `rejected` and `failed` both mean "not
+ * authenticated", but they must not be treated alike: only `rejected`
+ * proves the stored session is dead. Collapsing the two would either
+ * strand the client on a stale session (see {@code refreshAccessCookie})
+ * or log the user out over a dropped connection.
+ */
+export type SilentLoginOutcome =
+  /** Server issued fresh cookies. */
+  | 'ok'
+  /** Server answered 401/403 — the refresh credential is dead. */
+  | 'rejected'
+  /** Unreachable, or answered with an unrelated status (5xx). Session unproven. */
+  | 'failed';
+
+/**
  * Silent re-mint via the refresh cookie. The browser ships
  * `vance_refresh` (HttpOnly) automatically; the server uses it as
  * the credential and sets fresh access/data cookies. JavaScript
  * never touches the refresh token itself.
- *
- * Returns `true` on success, `false` when the refresh cookie is
- * missing/expired/rejected. Caller treats `false` as "redirect to
- * login".
  */
 export async function silentLogin(params: {
   tenant: string;
   username: string;
-}): Promise<boolean> {
+}): Promise<SilentLoginOutcome> {
   const body: AccessTokenRequest = {
     requestRefreshToken: true,
     requestCookies: true,
@@ -112,10 +123,14 @@ export async function silentLogin(params: {
           refreshToken: parsed.refreshToken,
         });
       }
+      return 'ok';
     }
-    return response.ok;
+    // Only an explicit auth refusal proves the credential is dead. A 5xx
+    // is the server having a bad day — keep the session and let the user
+    // retry rather than dropping them at the login form.
+    return response.status === 401 || response.status === 403 ? 'rejected' : 'failed';
   } catch {
-    return false;
+    return 'failed';
   }
 }
 

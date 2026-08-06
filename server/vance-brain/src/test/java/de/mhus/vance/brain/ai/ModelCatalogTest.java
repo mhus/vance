@@ -294,8 +294,59 @@ class ModelCatalogTest {
 
         assertThat(info.timeoutSeconds()).isEqualTo(90);
         assertThat(info.maxPromptChars()).isEqualTo(480);
-        assertThat(info.costFor("standard")).isEqualTo(0.005);
+        // $0.039 per image per Google's published rate (1290 output tokens).
+        assertThat(info.costFor("standard")).isEqualTo(0.039);
         assertThat(info.costFor("hd")).isNull();
+    }
+
+    /**
+     * Every Gemini 3 image wire name — stable, preview and the
+     * nano-banana vendor alias — must classify as {@code image} and carry
+     * a price. Without a bundled entry they default to chat and drop out
+     * of the {@code ai-image-models} pickers entirely.
+     */
+    @Test
+    void image_lookup_covers_the_whole_gemini_3_image_family() {
+        List<String> proTier = List.of(
+                "gemini-3-pro-image", "gemini-3-pro-image-preview", "nano-banana-pro-preview");
+        for (String model : proTier) {
+            ImageModelInfo info = catalog
+                    .lookupImage(null, null, "gemini", model)
+                    .orElseThrow(() -> new AssertionError("not an image model: " + model));
+            assertThat(info.costFor("standard")).as(model).isEqualTo(0.134);
+            assertThat(info.timeoutSeconds()).as(model).isEqualTo(360);
+            assertThat(info.maxPromptChars()).as(model).isEqualTo(4000);
+            assertThat(info.supportedAspectRatios()).as(model).contains("21:9", "4:5", "1:1");
+        }
+
+        List<String> flashTier = List.of(
+                "gemini-3.1-flash-image", "gemini-3.1-flash-image-preview");
+        for (String model : flashTier) {
+            ImageModelInfo info = catalog
+                    .lookupImage(null, null, "gemini", model)
+                    .orElseThrow(() -> new AssertionError("not an image model: " + model));
+            assertThat(info.costFor("standard")).as(model).isEqualTo(0.067);
+            assertThat(info.timeoutSeconds()).as(model).isEqualTo(180);
+        }
+    }
+
+    @Test
+    void gemini_3_image_models_are_not_offered_as_chat_models() {
+        // The mirror image of the bug that motivated these entries: a
+        // kind:image model must not show up in the chat-model picker.
+        assertThat(catalog.lookup(null, null, "gemini", "gemini-3-pro-image")).isEmpty();
+        assertThat(catalog.lookup(null, null, "gemini", "gemini-3.1-flash-image")).isEmpty();
+    }
+
+    @Test
+    void every_bundled_image_model_carries_a_standard_price() {
+        // An empty costPerImage silently degrades ImageCallTracker to
+        // counting-without-billing, so a bundled entry must always price.
+        assertThat(catalog.listAllImages(null, null))
+                .isNotEmpty()
+                .allSatisfy(info -> assertThat(info.costFor("standard"))
+                        .as(info.provider() + ":" + info.modelName())
+                        .isNotNull());
     }
 
     @Test

@@ -108,6 +108,95 @@ class SettingFormServiceChoicesFromTest {
                 .containsExactly("gemini:gemini-2.5-pro", "anthropic:claude-sonnet-4-6");
     }
 
+    @Test
+    void validate_tolerates_a_stale_inherited_value_the_user_did_not_touch() {
+        // The reported bug: ai.alias.default.image was inherited from the
+        // tenant, the model it pointed at had dropped out of the choice list
+        // (a discovery run had reclassified it), and the pre-filled value came
+        // back on submit — blocking the whole form with invalid_choice on a
+        // field the user never opened.
+        when(modelCatalog.listAll(any(), any())).thenReturn(List.of(
+                model("gemini", "gemini-2.5-pro", ModelSize.LARGE)));
+        when(settingService.getStringValue(
+                TENANT, SettingService.SCOPE_PROJECT, PROJECT, "ai.alias.default.analyze"))
+                .thenReturn(null);
+        when(settingService.getStringValue(
+                TENANT, SettingService.SCOPE_PROJECT, "_tenant", "ai.alias.default.analyze"))
+                .thenReturn("gemini:gone-from-catalog");
+
+        ResolvedSettingForm form = formWithAliasField();
+        Map<String, Object> values = Map.of("aliasAnalyze", "gemini:gone-from-catalog");
+
+        assertThatCode(() ->
+                service.validate(form, values, TENANT, PROJECT, "alice", "en"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void validate_rejects_a_stale_value_once_the_user_actually_changes_it() {
+        // Same setup, but the submitted value differs from the inherited one:
+        // now it is a real user choice and must be validated normally.
+        when(modelCatalog.listAll(any(), any())).thenReturn(List.of(
+                model("gemini", "gemini-2.5-pro", ModelSize.LARGE)));
+        when(settingService.getStringValue(
+                TENANT, SettingService.SCOPE_PROJECT, "_tenant", "ai.alias.default.analyze"))
+                .thenReturn("gemini:gone-from-catalog");
+
+        ResolvedSettingForm form = formWithAliasField();
+        Map<String, Object> values = Map.of("aliasAnalyze", "gemini:also-not-in-catalog");
+
+        assertThatThrownBy(() ->
+                service.validate(form, values, TENANT, PROJECT, "alice", "en"))
+                .isInstanceOf(FormValidationException.class)
+                .hasMessageContaining("invalid_choice");
+    }
+
+    @Test
+    void apply_does_not_pin_an_inherited_value_into_the_edited_project() {
+        // Opening the form on a project and pressing Save must not copy the
+        // tenant-level values down into the project scope.
+        when(modelCatalog.listAll(any(), any())).thenReturn(List.of(
+                model("gemini", "gemini-2.5-pro", ModelSize.LARGE)));
+        when(settingService.getStringValue(
+                TENANT, SettingService.SCOPE_PROJECT, PROJECT, "ai.alias.default.analyze"))
+                .thenReturn(null);
+        when(settingService.getStringValue(
+                TENANT, SettingService.SCOPE_PROJECT, "_tenant", "ai.alias.default.analyze"))
+                .thenReturn("gemini:gemini-2.5-pro");
+
+        ResolvedSettingForm form = formWithAliasField();
+        Map<String, Object> values = Map.of("aliasAnalyze", "gemini:gemini-2.5-pro");
+
+        List<PlannedSettingAction> plan =
+                service.apply(form, values, TENANT, PROJECT, "alice", "en");
+
+        assertThat(plan).singleElement()
+                .extracting(PlannedSettingAction::action)
+                .isEqualTo(PlannedSettingAction.Action.SKIP);
+    }
+
+    @Test
+    void apply_writes_the_value_when_the_user_picks_a_different_model() {
+        when(modelCatalog.listAll(any(), any())).thenReturn(List.of(
+                model("gemini", "gemini-2.5-pro", ModelSize.LARGE),
+                model("gemini", "gemini-2.5-flash", ModelSize.SMALL)));
+        when(settingService.getStringValue(
+                TENANT, SettingService.SCOPE_PROJECT, "_tenant", "ai.alias.default.analyze"))
+                .thenReturn("gemini:gemini-2.5-pro");
+
+        ResolvedSettingForm form = formWithAliasField();
+        Map<String, Object> values = Map.of("aliasAnalyze", "gemini:gemini-2.5-flash");
+
+        List<PlannedSettingAction> plan =
+                service.apply(form, values, TENANT, PROJECT, "alice", "en");
+
+        assertThat(plan).singleElement().satisfies(a -> {
+            assertThat(a.action()).isEqualTo(PlannedSettingAction.Action.WRITE);
+            assertThat(a.referenceId()).isEqualTo(PROJECT);
+            assertThat(a.value()).isEqualTo("gemini:gemini-2.5-flash");
+        });
+    }
+
     // ──────────────────── helpers ────────────────────
 
     private static ResolvedSettingForm formWithAliasField() {

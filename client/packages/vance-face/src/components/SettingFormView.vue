@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { VAlert, VButton, VCard } from '@vance/components';
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type {
   AppliedSettingDto,
@@ -63,6 +63,8 @@ const values = ref<Record<string, FormValue>>({});
 const errors = ref<Record<string, string>>({});
 const submitting = ref(false);
 const submitError = ref<string | null>(null);
+const root = ref<HTMLElement | null>(null);
+const submitErrorBox = ref<HTMLElement | null>(null);
 
 type PreviewState = { kind: 'apply' | 'validate' | 'reset'; entries: AppliedSettingDto[] } | null;
 const preview = ref<PreviewState>(null);
@@ -190,6 +192,28 @@ function handleSubmitError(err: unknown): void {
   } else {
     submitError.value = String(err);
   }
+  void revealError();
+}
+
+/**
+ * Brings the failure into view. The action buttons sit below a form that
+ * can be a dozen fields long, so an error rendered at either end is
+ * off-screen at the moment the user clicks Save — it has to be scrolled
+ * to, not just rendered. First field error wins; otherwise the error
+ * banner next to the buttons.
+ */
+async function revealError(): Promise<void> {
+  await nextTick();
+  const firstFieldPath = Object.keys(errors.value)[0];
+  const target = firstFieldPath
+    ? root.value?.querySelector<HTMLElement>(
+        `[data-form-field="${CSS.escape(firstFieldPath)}"]`,
+      )
+    : null;
+  (target ?? submitErrorBox.value)?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'center',
+  });
 }
 
 function parseValidationMessage(msg: string): Record<string, string> | null {
@@ -227,7 +251,7 @@ function actionLabel(action: string): string {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4 min-h-0">
+  <div ref="root" class="flex flex-col gap-4 min-h-0">
     <VAlert v-if="loadError" variant="error">{{ loadError }}</VAlert>
 
     <div v-if="loading" class="text-sm opacity-70">{{ t('common.loading') }}</div>
@@ -276,9 +300,6 @@ function actionLabel(action: string): string {
         </ul>
       </VCard>
 
-      <!-- Submit error -->
-      <VAlert v-if="submitError" variant="error">{{ submitError }}</VAlert>
-
       <!-- Form -->
       <FormFields
         v-model="values"
@@ -286,6 +307,15 @@ function actionLabel(action: string): string {
         :errors="errors"
         :disabled="submitting"
       />
+
+      <!--
+        Submit error sits with the action buttons, not above the fields:
+        this is where the user's attention is when the save fails.
+        revealError() additionally scrolls the offending field into view.
+      -->
+      <div v-if="submitError" ref="submitErrorBox">
+        <VAlert variant="error">{{ submitError }}</VAlert>
+      </div>
 
       <!-- Action buttons -->
       <div class="flex gap-2 justify-end mt-2 flex-wrap">

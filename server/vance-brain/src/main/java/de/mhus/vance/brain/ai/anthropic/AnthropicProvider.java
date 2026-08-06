@@ -154,7 +154,7 @@ public class AnthropicProvider extends AbstractChatProvider {
         for (JsonNode entry : data) {
             String id = entry.path("id").asText();
             if (id.isBlank()) continue;
-            out.add(new DiscoveredModelInfo(id, null, "chat"));
+            out.add(DiscoveredModelInfo.of(id));
         }
         return out;
     }

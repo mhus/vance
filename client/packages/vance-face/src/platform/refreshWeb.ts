@@ -1,5 +1,6 @@
 import { silentLogin } from './loginWeb';
 import {
+  clearLocalSessionData,
   getSessionData,
   hydrateIdentity,
   isRefreshAlive,
@@ -42,10 +43,27 @@ export function refreshAccessCookie(): Promise<boolean> {
 async function doRefreshAccessCookie(): Promise<boolean> {
   const session = getSessionData();
   if (!session) return false;
-  if (!isRefreshAlive()) return false;
-  const ok = await silentLogin({ tenant: session.tenantId, username: session.username });
-  if (ok) {
-    hydrateIdentity();
+  if (!isRefreshAlive()) {
+    // The cookie's own stamp says the refresh credential is spent, so the
+    // session is provably dead without asking the server — same stale-data
+    // problem as a rejection below, same remedy.
+    clearLocalSessionData();
+    return false;
   }
-  return ok;
+  const outcome = await silentLogin({ tenant: session.tenantId, username: session.username });
+  if (outcome === 'ok') {
+    hydrateIdentity();
+    return true;
+  }
+  if (outcome === 'rejected') {
+    // The data cookie is not HttpOnly and carries the expiry stamps the
+    // client trusts, so a server refusal leaves it claiming a session
+    // that no longer exists. Left standing, that lie loops the user:
+    // `ensureAuthenticated` / `IndexApp` see `isAccessAlive()` and bounce
+    // straight back into the editor, which 401s and redirects again.
+    // Dropping it makes the local view match the server's answer, so the
+    // login form is finally reached.
+    clearLocalSessionData();
+  }
+  return false;
 }

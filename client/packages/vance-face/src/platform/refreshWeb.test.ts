@@ -7,23 +7,26 @@ vi.mock('./webUiSession', () => ({
   getSessionData: vi.fn(() => ({ tenantId: 't', username: 'u' })),
   isRefreshAlive: vi.fn(() => true),
   hydrateIdentity: vi.fn(),
+  clearLocalSessionData: vi.fn(),
 }));
 
 import { refreshAccessCookie } from './refreshWeb';
-import { silentLogin } from './loginWeb';
+import { silentLogin, type SilentLoginOutcome } from './loginWeb';
+import { clearLocalSessionData, isRefreshAlive } from './webUiSession';
 
 const silentLoginMock = vi.mocked(silentLogin);
+const clearLocalSessionDataMock = vi.mocked(clearLocalSessionData);
 
 describe('refreshAccessCookie single-flight', () => {
   afterEach(() => vi.clearAllMocks());
 
   it('collapses concurrent callers into one silentLogin', async () => {
-    let resolve!: (v: boolean) => void;
-    silentLoginMock.mockReturnValueOnce(new Promise<boolean>((r) => { resolve = r; }));
+    let resolve!: (v: SilentLoginOutcome) => void;
+    silentLoginMock.mockReturnValueOnce(new Promise<SilentLoginOutcome>((r) => { resolve = r; }));
 
     const a = refreshAccessCookie();
     const b = refreshAccessCookie();
-    resolve(true);
+    resolve('ok');
 
     expect(await a).toBe(true);
     expect(await b).toBe(true);
@@ -31,7 +34,7 @@ describe('refreshAccessCookie single-flight', () => {
   });
 
   it('starts a fresh refresh once the previous one has settled', async () => {
-    silentLoginMock.mockResolvedValue(true);
+    silentLoginMock.mockResolvedValue('ok');
 
     await refreshAccessCookie();
     await refreshAccessCookie();
@@ -43,8 +46,45 @@ describe('refreshAccessCookie single-flight', () => {
     silentLoginMock.mockRejectedValueOnce(new Error('boom'));
     await expect(refreshAccessCookie()).rejects.toThrow('boom');
 
-    silentLoginMock.mockResolvedValueOnce(true);
+    silentLoginMock.mockResolvedValueOnce('ok');
     expect(await refreshAccessCookie()).toBe(true);
     expect(silentLoginMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+// Login-loop regression: a corrupted access/refresh cookie leaves the
+// JS-readable data cookie claiming a live session. If that claim survives
+// a server refusal, `ensureAuthenticated` and `IndexApp` bounce the user
+// between editor and index forever.
+describe('refreshAccessCookie stale-session handling', () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it('drops the local session data when the server rejects the refresh', async () => {
+    silentLoginMock.mockResolvedValueOnce('rejected');
+
+    expect(await refreshAccessCookie()).toBe(false);
+    expect(clearLocalSessionDataMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the local session data when the server is unreachable', async () => {
+    silentLoginMock.mockResolvedValueOnce('failed');
+
+    expect(await refreshAccessCookie()).toBe(false);
+    expect(clearLocalSessionDataMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the local session data on success', async () => {
+    silentLoginMock.mockResolvedValueOnce('ok');
+
+    expect(await refreshAccessCookie()).toBe(true);
+    expect(clearLocalSessionDataMock).not.toHaveBeenCalled();
+  });
+
+  it('drops the local session data when the cookie says refresh is spent', async () => {
+    vi.mocked(isRefreshAlive).mockReturnValueOnce(false);
+
+    expect(await refreshAccessCookie()).toBe(false);
+    expect(silentLoginMock).not.toHaveBeenCalled();
+    expect(clearLocalSessionDataMock).toHaveBeenCalledTimes(1);
   });
 });

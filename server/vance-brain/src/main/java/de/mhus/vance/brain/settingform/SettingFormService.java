@@ -70,9 +70,10 @@ public class SettingFormService {
             @Nullable String projectId,
             @Nullable String userId,
             @Nullable String lang) {
-        formValidator.validate(resolveDynamicChoices(form.fields(), tenantId, projectId), values);
+        Set<String> unchanged = unchangedFields(form, values, tenantId, projectId, userId);
+        validateSubmitted(form, values, tenantId, projectId, unchanged);
         List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
-                form, values, tenantId, projectId, userId, lang);
+                form, values, tenantId, projectId, userId, lang, unchanged);
         executePlan(tenantId, plan);
         return plan;
     }
@@ -90,9 +91,10 @@ public class SettingFormService {
             @Nullable String projectId,
             @Nullable String userId,
             @Nullable String lang) {
-        formValidator.validate(resolveDynamicChoices(form.fields(), tenantId, projectId), values);
+        Set<String> unchanged = unchangedFields(form, values, tenantId, projectId, userId);
+        validateSubmitted(form, values, tenantId, projectId, unchanged);
         return planBuilder.buildApplyPlan(
-                form, values, tenantId, projectId, userId, lang);
+                form, values, tenantId, projectId, userId, lang, unchanged);
     }
 
     /**
@@ -161,6 +163,76 @@ public class SettingFormService {
                     .currentValue(live.value)
                     .currentSource(live.source)
                     .build());
+        }
+        return out;
+    }
+
+    /**
+     * Runs {@link FormValidator} over the submitted values, with the
+     * {@code unchanged} fields left out.
+     *
+     * <p>A field the user did not touch is not going to be written (see
+     * {@link SettingFormPlanBuilder#buildApplyPlan}), so validating it
+     * only creates a way for unrelated state to block the save. The
+     * concrete case: {@code ai.alias.default.image} inherited from the
+     * tenant, whose model dropped out of the {@code ai-image-models}
+     * choice list — {@code invalid_choice} on a field the user never
+     * opened, blocking the whole form. Values the user <em>does</em>
+     * submit are still fully validated.
+     */
+    private void validateSubmitted(
+            ResolvedSettingForm form,
+            Map<String, Object> values,
+            String tenantId,
+            @Nullable String projectId,
+            Set<String> unchanged) {
+        List<FormFieldDto> resolved = resolveDynamicChoices(form.fields(), tenantId, projectId);
+        if (unchanged.isEmpty()) {
+            formValidator.validate(resolved, values);
+            return;
+        }
+        List<FormFieldDto> toValidate = new ArrayList<>(resolved.size());
+        for (FormFieldDto f : resolved) {
+            if (!unchanged.contains(f.getName())) toValidate.add(f);
+        }
+        formValidator.validate(toValidate, values);
+    }
+
+    /**
+     * Names of direct-mapped fields whose submitted value already equals
+     * the effective cascade value — i.e. the ones the user left alone.
+     *
+     * <p>The Web-UI pre-fills every direct-mapped field with its live
+     * cascade value so the form shows what is currently in effect. Without
+     * this check, saving the form would write all of them back into the
+     * scope being edited, pinning a dozen inherited values the user never
+     * asked to own. Comparison is on the trimmed wire string, which is
+     * what both sides are: {@link #lookupLiveValue} returns the persisted
+     * string and the client submits strings for every scalar type.
+     *
+     * <p>PASSWORD fields never qualify — their live value is the {@code "***"}
+     * placeholder, and an empty submission already means "keep unchanged"
+     * (spec §6.4). Fields without a live value never qualify either: there
+     * is nothing to be unchanged relative to.
+     */
+    private Set<String> unchangedFields(
+            ResolvedSettingForm form,
+            Map<String, Object> values,
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String userId) {
+        Set<String> out = new LinkedHashSet<>();
+        for (FormFieldDto f : form.fields()) {
+            BindsToDto b = f.getBindsTo();
+            if (b == null) continue;
+            if ("password".equals(f.getType())) continue;
+            Object submitted = values.get(f.getName());
+            if (submitted == null) continue;
+            if (!(submitted instanceof String s)) continue;
+            String wireScope = b.getScope() == null ? form.defaultScope() : b.getScope();
+            LiveValue live = lookupLiveValue(f, b, wireScope, tenantId, projectId, userId);
+            if (live.value == null) continue;
+            if (live.value.trim().equals(s.trim())) out.add(f.getName());
         }
         return out;
     }

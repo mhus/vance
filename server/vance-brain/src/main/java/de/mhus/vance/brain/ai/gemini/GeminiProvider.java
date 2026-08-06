@@ -140,7 +140,13 @@ public class GeminiProvider extends AbstractChatProvider {
      * {@code inputTokenLimit} maps cleanly to
      * {@link DiscoveredModelInfo#contextWindowTokens}. Models that
      * don't advertise {@code generateContent} are skipped (embedding,
-     * tuning endpoints, …) — we only want chat-capable entries here.
+     * tuning endpoints, …).
+     *
+     * <p>Note that surviving the {@code generateContent} filter does
+     * <em>not</em> mean "chat model": {@code gemini-2.5-flash-image} and
+     * the Imagen endpoints pass it too. Classifying them is the model
+     * catalog's manual layer's job, which is why we never report a
+     * {@code kind} here — see {@link DiscoveredModelInfo}.
      */
     @Override
     public List<DiscoveredModelInfo> listAvailableModels(ProviderListingRequest req) {
@@ -171,7 +177,7 @@ public class GeminiProvider extends AbstractChatProvider {
             if (entry.has("inputTokenLimit") && entry.path("inputTokenLimit").canConvertToInt()) {
                 ctx = entry.path("inputTokenLimit").asInt();
             }
-            out.add(new DiscoveredModelInfo(wireName, ctx, "chat"));
+            out.add(new DiscoveredModelInfo(wireName, ctx));
         }
         return out;
     }

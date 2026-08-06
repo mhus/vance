@@ -15,6 +15,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -127,6 +129,68 @@ public class BrainRestClientService {
     public <T> T post(String path, Object body, Class<T> type) throws Exception {
         HttpResponse<String> response = postRaw(path, body);
         return this.json.readValue(response.body(), type);
+    }
+
+    /**
+     * Authenticated multipart {@code POST} of a single file, returning a
+     * typed response. Built by hand because {@code HttpRequest} has no
+     * multipart publisher — the body is assembled in memory, which is
+     * fine for the one caller (chat attachments, capped well below the
+     * brain's 20 MB per-file limit) and would not be for bulk transfer.
+     *
+     * @param fields extra text form fields, alternating name and value
+     */
+    public <T> T postMultipartFile(
+            String path, Path file, String fileFieldName,
+            Class<T> type, String... fields) throws Exception {
+        String boundary = "vance-" + java.util.UUID.randomUUID();
+        byte[] body = multipartBody(boundary, file, fileFieldName, fields);
+        String token = requireToken();
+        URI uri = URI.create(config.getBrain().getHttpBase() + path);
+        HttpRequest request = HttpRequest.newBuilder(uri)
+                .header("Authorization", "Bearer " + token)
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                // Generous: an upload crosses the wire, unlike the
+                // metadata calls the 15 s default was chosen for.
+                .timeout(Duration.ofSeconds(120))
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body))
+                .build();
+        HttpResponse<String> response =
+                http.send(request, HttpResponse.BodyHandlers.ofString());
+        int status = response.statusCode();
+        if (status / 100 != 2) {
+            throw new IllegalStateException("REST POST " + path + " failed: HTTP " + status
+                    + (response.body().isEmpty() ? "" : " — " + truncate(response.body(), 400)));
+        }
+        return json.readValue(response.body(), type);
+    }
+
+    /**
+     * RFC-7578 body: text fields first, the file part last. Field values
+     * are written as-is; the callers pass plain identifiers and paths,
+     * not user prose, so no encoding beyond UTF-8 is needed.
+     */
+    static byte[] multipartBody(
+            String boundary, Path file, String fileFieldName, String... fields)
+            throws java.io.IOException {
+        if (fields.length % 2 != 0) {
+            throw new IllegalArgumentException("fields must alternate name and value");
+        }
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        for (int i = 0; i < fields.length; i += 2) {
+            out.write(("--" + boundary + "\r\n"
+                    + "Content-Disposition: form-data; name=\"" + fields[i] + "\"\r\n\r\n"
+                    + fields[i + 1] + "\r\n").getBytes(StandardCharsets.UTF_8));
+        }
+        String filename = file.getFileName() == null ? "upload" : file.getFileName().toString();
+        out.write(("--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"" + fileFieldName
+                + "\"; filename=\"" + filename + "\"\r\n"
+                + "Content-Type: application/octet-stream\r\n\r\n")
+                .getBytes(StandardCharsets.UTF_8));
+        out.write(Files.readAllBytes(file));
+        out.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+        return out.toByteArray();
     }
 
     /** Authenticated {@code DELETE}. Returns nothing — throws on non-2xx. */

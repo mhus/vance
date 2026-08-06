@@ -37,7 +37,9 @@ class ChatInputServiceTest {
                 mock(PendingPermissionPrompt.class),
                 mock(PendingLinePrompt.class),
                 mock(AutoAiService.class),
-                mock(ConversationAuditService.class));
+                mock(ConversationAuditService.class),
+                new PendingAttachmentService(),
+                mock(AttachmentUploadService.class));
     }
 
     @Test

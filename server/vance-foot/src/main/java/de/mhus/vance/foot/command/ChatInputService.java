@@ -89,6 +89,8 @@ public class ChatInputService {
 
     private final AutoAiService autoAi;
     private final ConversationAuditService audit;
+    private final PendingAttachmentService pendingAttachments;
+    private final AttachmentUploadService attachmentUpload;
 
     public ChatInputService(CommandService commandService,
                             ConnectionService connection,
@@ -101,7 +103,9 @@ public class ChatInputService {
                             PendingPermissionPrompt pendingPermission,
                             PendingLinePrompt pendingLine,
                             AutoAiService autoAi,
-                            ConversationAuditService audit) {
+                            ConversationAuditService audit,
+                            PendingAttachmentService pendingAttachments,
+                            AttachmentUploadService attachmentUpload) {
         this.commandService = commandService;
         this.connection = connection;
         this.sessions = sessions;
@@ -114,6 +118,8 @@ public class ChatInputService {
         this.pendingLine = pendingLine;
         this.autoAi = autoAi;
         this.audit = audit;
+        this.pendingAttachments = pendingAttachments;
+        this.attachmentUpload = attachmentUpload;
     }
 
     /**
@@ -347,6 +353,15 @@ public class ChatInputService {
         }
     }
 
+    /** Project of the bound session — the scope attachments are uploaded into. */
+    private String projectIdForAttachments() {
+        SessionService.BoundSession bound = sessions.current();
+        if (bound == null || bound.projectId() == null || bound.projectId().isBlank()) {
+            throw new IllegalStateException("no project bound to this session");
+        }
+        return bound.projectId();
+    }
+
     private InputResult sendChatLocked(String line, Duration timeout) {
         return sendChatLocked(line, timeout, false);
     }
@@ -381,11 +396,30 @@ public class ChatInputService {
             // them — auditing here guarantees every user message lands
             // in the .jsonl regardless of session topology.
             audit.appendUserInput(process, wireLine, voiceMode);
+            // Staged /attach files become project documents now, and the
+            // turn carries their ids. Draining before the upload means a
+            // failed upload does not leave the queue armed for the next
+            // message — the user is told and can attach again.
+            java.util.List<de.mhus.vance.api.attachment.AttachmentRef> attachments =
+                    java.util.List.of();
+            if (!pendingAttachments.isEmpty()) {
+                java.util.List<java.nio.file.Path> files = pendingAttachments.drain();
+                try {
+                    attachments = attachmentUpload.upload(files, projectIdForAttachments());
+                    chatTerminal.info("📎 sent " + attachments.size() + " attachment"
+                            + (attachments.size() == 1 ? "" : "s") + ".");
+                } catch (RuntimeException e) {
+                    chatTerminal.error("Attachment upload failed: " + e.getMessage()
+                            + " — message not sent.");
+                    return InputResult.chat(line, false, "attachment upload failed");
+                }
+            }
             ProcessSteerRequest steer = ProcessSteerRequest.builder()
                     .processName(process)
                     .content(wireLine)
                     .ideContext(ideContextBuilder.buildAndConsumeForSteer().orElse(null))
                     .voiceMode(voiceMode ? Boolean.TRUE : null)
+                    .attachments(attachments.isEmpty() ? null : attachments)
                     .build();
             // Chat-steer uses the streaming variant: a single engine
             // turn (Frankie, Marvin, …) can legitimately run for many

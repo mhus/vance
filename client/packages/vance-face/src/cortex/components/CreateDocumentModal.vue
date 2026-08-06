@@ -486,6 +486,12 @@ async function submit(): Promise<void> {
   creating.value = true;
   createError.value = null;
   try {
+    // Ensure the path ends with a trailing slash so the filename
+    // concatenation produces "folder/file.md" not "folderfile.md".
+    // Empty path stays empty (project root).
+    if (createPath.value.trim()) {
+      createPath.value = createPath.value.trim().replace(/\/+$/, '') + '/';
+    }
     const tags = createTagsRaw.value
       .split(',')
       .map((t) => t.trim())

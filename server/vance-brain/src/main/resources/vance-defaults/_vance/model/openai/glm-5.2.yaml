@@ -1,4 +1,5 @@
-contextWindowTokens: 131000
+# Text-only (vision lives in the separate glm-5v-turbo model).
+contextWindowTokens: 1048576
 defaultMaxOutputTokens: 8192
 size: LARGE
 pricing:

@@ -7,6 +7,8 @@ import de.mhus.vance.api.documents.DocumentArchiveSummary;
 import de.mhus.vance.api.documents.DocumentCreateRequest;
 import de.mhus.vance.api.documents.DocumentDto;
 import de.mhus.vance.api.documents.DocumentExportRequest;
+import de.mhus.vance.api.documents.DocumentCopyChunkRequest;
+import de.mhus.vance.api.documents.DocumentCopyChunkResponse;
 import de.mhus.vance.api.documents.DocumentMoveChunkRequest;
 import de.mhus.vance.api.documents.DocumentMoveChunkResponse;
 import de.mhus.vance.api.documents.DocumentRenameChunkRequest;
@@ -1118,6 +1120,131 @@ public class DocumentController {
         t = t.replaceAll("^/+", "").replaceAll("/+$", "");
         return t.isEmpty() ? "" : t + "/";
     }
+
+    // ──────────────────── Chunked copy ────────────────────
+
+    /**
+     * Copy one bounded chunk of the selection to {@code targetFolder} in
+     * {@code targetProjectId} (defaults to the source project). The client
+     * drives the loop (progress + cancel between chunks); the server skips
+     * anything it cannot copy (no READ on the source, no CREATE on the
+     * destination, or a name collision in the target).
+     *
+     * <p>Explicit {@code ids} not inside a selected folder are copied on the
+     * first call (blank cursor). {@code folders} are keyset-scanned by path
+     * via {@link DocumentService#listUnderFoldersAfter}: the returned
+     * {@code cursor} must be passed back on each call. Unlike move, copied
+     * documents stay in place, so the cursor simply advances past processed
+     * ones and the loop is O(N) and terminates when {@code done} is true.
+     */
+    @PostMapping("/brain/{tenant}/documents/copy-chunk")
+    public DocumentCopyChunkResponse copyChunk(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @Valid @RequestBody DocumentCopyChunkRequest request,
+            @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
+            HttpServletRequest httpRequest) {
+
+        String targetProject = (request.getTargetProjectId() == null
+                || request.getTargetProjectId().isBlank())
+                        ? projectId : request.getTargetProjectId();
+        String target = normalizeMoveFolder(request.getTargetFolder());
+        int limit = Math.max(1, Math.min(
+                request.getLimit() == null ? 25 : request.getLimit(), MOVE_CHUNK_MAX));
+        List<String> folders = new ArrayList<>();
+        if (request.getFolders() != null) {
+            for (String f : request.getFolders()) {
+                String norm = normalizeFolderPrefixTrailing(f);
+                if (!norm.isEmpty()) folders.add(norm);
+            }
+        }
+
+        DocumentService.WriterIdentity writer = writerIdentity(httpRequest, editorId);
+        int copied = 0;
+        int skipped = 0;
+
+        // First call: explicit ids that are not covered by a selected folder.
+        boolean firstCall = request.getCursor() == null || request.getCursor().isBlank();
+        if (firstCall && request.getIds() != null) {
+            for (String id : request.getIds()) {
+                DocumentDocument doc = documentService.findById(id).orElse(null);
+                if (doc == null
+                        || !tenant.equals(doc.getTenantId())
+                        || !projectId.equals(doc.getProjectId())
+                        || isUnderAnyFolder(doc.getPath(), folders)) {
+                    continue;
+                }
+                CopyOutcome o = tryCopyDoc(tenant, doc, targetProject,
+                        moveNewPath(doc, folders, target), writer, httpRequest);
+                if (o == CopyOutcome.COPIED) copied++;
+                else if (o == CopyOutcome.SKIPPED) skipped++;
+            }
+        }
+
+        // Folder scan: one keyset page after the cursor.
+        String cursor = request.getCursor();
+        boolean done = true;
+        if (!folders.isEmpty()) {
+            List<DocumentDocument> batch =
+                    documentService.listUnderFoldersAfter(tenant, projectId, folders, cursor, limit);
+            for (DocumentDocument doc : batch) {
+                cursor = doc.getPath();
+                CopyOutcome o = tryCopyDoc(tenant, doc, targetProject,
+                        moveNewPath(doc, folders, target), writer, httpRequest);
+                if (o == CopyOutcome.COPIED) copied++;
+                else if (o == CopyOutcome.SKIPPED) skipped++;
+            }
+            done = batch.size() < limit;
+        }
+
+        return DocumentCopyChunkResponse.builder()
+                .copied(copied)
+                .skipped(skipped)
+                .cursor(done ? null : cursor)
+                .done(done)
+                .build();
+    }
+
+    /**
+     * Copy a single document into {@code targetProjectId} at {@code newPath}.
+     * Requires READ on the source and CREATE on the destination; skips on
+     * collision or any other failure.
+     */
+    private CopyOutcome tryCopyDoc(String tenant, DocumentDocument doc, String targetProjectId,
+            String newPath, DocumentService.WriterIdentity writer, HttpServletRequest httpRequest) {
+        // READ on the source — the caller must be allowed to read what they copy.
+        if (!authority.check(httpRequest,
+                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ)) {
+            return CopyOutcome.SKIPPED;
+        }
+        // CREATE on the destination — the caller must be allowed to create in
+        // the target project / path.
+        if (!authority.check(httpRequest,
+                new Resource.Document(tenant, targetProjectId, newPath), Action.CREATE)) {
+            return CopyOutcome.SKIPPED;
+        }
+        try {
+            String content = documentService.readContent(doc);
+            documentService.create(
+                    tenant,
+                    targetProjectId,
+                    newPath,
+                    doc.getTitle(),
+                    doc.getTags(),
+                    doc.getMimeType(),
+                    new java.io.ByteArrayInputStream(
+                            content.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                    writer.userId(),
+                    doc.isAutoSummary() ? Boolean.TRUE : Boolean.FALSE,
+                    doc.getRagEnabled(),
+                    actor(httpRequest));
+            return CopyOutcome.COPIED;
+        } catch (DocumentService.DocumentAlreadyExistsException | IllegalArgumentException e) {
+            return CopyOutcome.SKIPPED;
+        }
+    }
+
+    private enum CopyOutcome { COPIED, SKIPPED }
 
     // ──────────────────── Chunked trash ────────────────────
 

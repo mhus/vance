@@ -55,6 +55,8 @@ export * from './documents/DocumentCreateRequest';
 export * from './documents/DocumentDto';
 export * from './documents/DocumentExportRequest';
 export * from './documents/DocumentFolderListResponse';
+export * from './documents/DocumentCopyChunkRequest';
+export * from './documents/DocumentCopyChunkResponse';
 export * from './documents/DocumentFoldersResponse';
 export * from './documents/DocumentInvalidateNotification';
 export * from './documents/DocumentKindsResponse';

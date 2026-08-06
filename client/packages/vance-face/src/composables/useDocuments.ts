@@ -1,5 +1,6 @@
 import { ref, type Ref } from 'vue';
 import type {
+  DocumentCopyChunkResponse,
   DocumentCreateRequest,
   DocumentDto,
   DocumentFolderListResponse,
@@ -16,6 +17,15 @@ import type {
 export interface MoveChunkArgs {
   ids?: string[];
   folders?: string[];
+  targetFolder: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface CopyChunkArgs {
+  ids?: string[];
+  folders?: string[];
+  targetProjectId?: string;
   targetFolder: string;
   limit?: number;
   cursor?: string;
@@ -93,6 +103,7 @@ export function useDocuments(pageSize = 20): {
   ) => Promise<{ blob: Blob; filename: string | null } | null>;
   unpack: (projectId: string, id: string) => Promise<DocumentUnpackResponse | null>;
   moveChunk: (projectId: string, args: MoveChunkArgs) => Promise<DocumentMoveChunkResponse | null>;
+  copyChunk: (projectId: string, args: CopyChunkArgs) => Promise<DocumentCopyChunkResponse | null>;
   trashChunk: (projectId: string, args: TrashChunkArgs) => Promise<DocumentTrashChunkResponse | null>;
   renameChunk: (projectId: string, args: RenameChunkArgs) => Promise<DocumentRenameChunkResponse | null>;
 } {
@@ -478,6 +489,31 @@ export function useDocuments(pageSize = 20): {
   }
 
   /**
+   * Copy one bounded chunk of the selection to a target folder (optionally
+   * in a different project). The caller loops, passing {@code args.cursor}
+   * back from each response, until the response reports {@code done}. The
+   * server skips anything it cannot copy (no READ on source, no CREATE on
+   * destination, or a name collision).
+   */
+  async function copyChunk(
+    projectId: string,
+    args: CopyChunkArgs,
+  ): Promise<DocumentCopyChunkResponse | null> {
+    error.value = null;
+    try {
+      const params = new URLSearchParams({ projectId });
+      return await brainFetch<DocumentCopyChunkResponse>(
+        'POST',
+        `documents/copy-chunk?${params}`,
+        { body: args },
+      );
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to copy documents.';
+      return null;
+    }
+  }
+
+  /**
    * Move one bounded chunk of the selection to the trash. Mirrors
    * {@link moveChunk}: loop passing {@code args.cursor} back until {@code done};
    * the server skips anything it cannot delete.
@@ -574,6 +610,7 @@ export function useDocuments(pageSize = 20): {
     exportZip,
     unpack,
     moveChunk,
+    copyChunk,
     trashChunk,
     renameChunk,
   };

@@ -30,7 +30,8 @@ import {
 import { useI18n } from 'vue-i18n';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import { useDocuments } from '@composables/useDocuments';
-import type { DocumentSummary } from '@vance/generated';
+import { brainFetch } from '@vance/shared';
+import type { DocumentFoldersResponse, DocumentSummary } from '@vance/generated';
 import DocumentIcon from './DocumentIcon.vue';
 
 const { t } = useI18n();
@@ -325,6 +326,11 @@ const bulkBusy = ref(false);
 const showTrashModal = ref(false);
 const showMoveModal = ref(false);
 const moveTarget = ref<string | null>(null);
+const showCopyModal = ref(false);
+const copyTargetProject = ref<string>('');
+const copyTargetFolder = ref<string | null>(null);
+const copyFolderOptions = ref<{ value: string; label: string }[]>([]);
+const copyFoldersLoading = ref(false);
 
 const moveFolderOptions = computed(() => [
   { value: '', label: t('documents.selection.moveRoot') },
@@ -534,6 +540,93 @@ function openMoveModal(): void {
     void docsState.loadFolders(selectedProjectId.value);
   }
   showMoveModal.value = true;
+}
+
+// ── Copy ────────────────────────────────────────────────────────
+// Copy is like move but creates a new document in the target project
+// (default: current project) instead of updating the source path. The
+// dialog lets the user pick a target project first; switching the
+// project reloads the folder list for that project.
+const copyProjectOptions = computed(() => [
+  { value: '', label: t('documents.selection.copyCurrentProject') },
+  ...projectsState.projects.value.map((p) => ({ value: p.name, label: p.title || p.name })),
+]);
+
+function openCopyModal(): void {
+  copyTargetProject.value = '';
+  copyTargetFolder.value = docsState.pathPrefix.value.replace(/\/+$/, '') || null;
+  copyFolderOptions.value = [
+    { value: '', label: t('documents.selection.moveRoot') },
+    ...docsState.folders.value.map((f) => ({ value: f, label: f })),
+  ];
+  showCopyModal.value = true;
+}
+
+async function onCopyProjectChange(): Promise<void> {
+  const targetPid = copyTargetProject.value || selectedProjectId.value;
+  if (!targetPid) return;
+  copyFoldersLoading.value = true;
+  try {
+    // Use a fresh fetch — docsState.loadFolders would overwrite the
+    // current project's folder list in the shared composable state.
+    const params = new URLSearchParams({ projectId: targetPid });
+    const data = await brainFetch<DocumentFoldersResponse>(
+      'GET',
+      `documents/folders?${params}`,
+    );
+    const folders = data.folders ?? [];
+    copyFolderOptions.value = [
+      { value: '', label: t('documents.selection.moveRoot') },
+      ...folders.map((f) => ({ value: f, label: f })),
+    ];
+  } catch {
+    copyFolderOptions.value = [
+      { value: '', label: t('documents.selection.moveRoot') },
+    ];
+  } finally {
+    copyFoldersLoading.value = false;
+  }
+}
+
+async function confirmCopy(): Promise<void> {
+  const pid = selectedProjectId.value;
+  if (!pid) return;
+  const targetProject = copyTargetProject.value || pid;
+  const target = (copyTargetFolder.value ?? '').replace(/\/+$/, '');
+  const ids = [...selectedIds.value];
+  const folders = [...selectedFolders.value];
+  bulkBusy.value = true;
+  bulkAbort.value = false;
+  bulkProgress.value = 0;
+  let copiedTotal = 0;
+  let skippedTotal = 0;
+  let cursor: string | undefined;
+  try {
+    let done = false;
+    while (!done && !bulkAbort.value) {
+      const r = await docsState.copyChunk(pid, {
+        ids,
+        folders,
+        targetProjectId: targetProject,
+        targetFolder: target,
+        limit: MOVE_CHUNK,
+        cursor,
+      });
+      if (!r) break; // error surfaced via docsState.error
+      copiedTotal += r.copied;
+      skippedTotal += r.skipped;
+      bulkProgress.value = copiedTotal;
+      cursor = r.cursor ?? undefined;
+      done = r.done;
+    }
+    notice.value = t('documents.selection.copyDone', {
+      copied: copiedTotal,
+      skipped: skippedTotal,
+    });
+  } finally {
+    bulkBusy.value = false;
+    showCopyModal.value = false;
+  }
 }
 
 // Chunked move: the server executes one bounded chunk per call and skips
@@ -792,6 +885,14 @@ function confirmNewFolder(): void {
           {{ $t('documents.selection.move') }}
         </VButton>
         <VButton
+          variant="secondary"
+          size="sm"
+          :disabled="bulkBusy || exportBusy"
+          @click="openCopyModal"
+        >
+          {{ $t('documents.selection.copy') }}
+        </VButton>
+        <VButton
           variant="danger"
           size="sm"
           :disabled="bulkBusy || exportBusy"
@@ -981,6 +1082,51 @@ function confirmNewFolder(): void {
         </VButton>
         <VButton variant="primary" :loading="bulkBusy" @click="confirmMove">
           {{ $t('documents.selection.moveConfirm') }}
+        </VButton>
+      </template>
+    </VModal>
+
+    <!-- Bulk copy to another project/folder -->
+    <VModal
+      v-model="showCopyModal"
+      :title="$t('documents.selection.copyTitle')"
+      :close-on-backdrop="!bulkBusy"
+    >
+      <p v-if="bulkBusy" class="text-sm mb-3">
+        {{ $t('documents.selection.copyRunning', { copied: bulkProgress }) }}
+      </p>
+      <template v-else>
+        <p class="text-sm mb-3 opacity-80">
+          {{ $t('documents.selection.copyBody', { count: selectedCount }) }}
+        </p>
+        <VSelect
+          v-model="copyTargetProject"
+          :options="copyProjectOptions"
+          :label="$t('documents.selection.copyTargetProjectLabel')"
+          @update:model-value="onCopyProjectChange"
+        />
+        <VSelect
+          v-model="copyTargetFolder"
+          :options="copyFolderOptions"
+          :label="$t('documents.selection.copyTargetFolderLabel')"
+          :disabled="copyFoldersLoading"
+          class="mt-3"
+        />
+      </template>
+      <template #actions>
+        <VButton
+          v-if="bulkBusy"
+          variant="ghost"
+          :disabled="bulkAbort"
+          @click="bulkAbort = true"
+        >
+          {{ $t('documents.selection.stop') }}
+        </VButton>
+        <VButton v-else variant="ghost" @click="showCopyModal = false">
+          {{ $t('common.cancel') }}
+        </VButton>
+        <VButton variant="primary" :loading="bulkBusy" @click="confirmCopy">
+          {{ $t('documents.selection.copyConfirm') }}
         </VButton>
       </template>
     </VModal>

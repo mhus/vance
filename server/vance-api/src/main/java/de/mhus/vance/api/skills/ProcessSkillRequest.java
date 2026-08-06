@@ -43,4 +43,18 @@ public class ProcessSkillRequest {
 
     /** Drains after the next lane-turn. Only meaningful for {@code ACTIVATE}. */
     private boolean oneShot;
+
+    /**
+     * Raw trailing text of the invocation — everything after
+     * {@code /skill <name>} minus the {@code --once} flag, unparsed.
+     * Only meaningful for {@code ACTIVATE}.
+     *
+     * <p>The <b>server</b> decides what happens with it: a skill that
+     * declares {@code arguments:} gets it bound into its prompt template,
+     * any other skill gets it injected as a plain user message. Clients
+     * must therefore send it here and <b>not</b> additionally as a chat
+     * message — otherwise a declaring skill would receive it twice. See
+     * {@code specification/public/skills.md} §6.
+     */
+    private @Nullable String args;
 }

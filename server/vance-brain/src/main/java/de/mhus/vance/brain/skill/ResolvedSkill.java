@@ -34,6 +34,24 @@ public record ResolvedSkill(
         List<EngineCommand> deactivate,
         SkillLifecycle lifecycle,
         /**
+         * Whether this skill consumes the invocation's trailing text
+         * ({@code /skill <name> <rest…>}) as arguments. Set by an
+         * {@code arguments:} frontmatter entry — either {@code true}
+         * (raw consume, {@code args.text} / {@code args.words} only) or
+         * a list of {@link Argument} declarations. When {@code false}
+         * the trailing text is <b>not</b> bound into the template; the
+         * activation path injects it as a plain user message instead
+         * (see {@code SkillSteerProcessor}). Exactly one side consumes
+         * it — never both.
+         */
+        boolean consumesArgs,
+        /**
+         * Declared arguments, positionally bound against the trailing
+         * text. Empty for {@code arguments: true} (raw consume) and for
+         * skills that declare nothing. See {@link SkillArgumentBinder}.
+         */
+        List<Argument> arguments,
+        /**
          * Optional initial prompt fired <b>once</b> on a fresh activation:
          * unlike {@code activate:} (control-plane commands, no model), this
          * triggers a real LLM turn so the skill can kick off work by itself.
@@ -66,7 +84,22 @@ public record ResolvedSkill(
             SkillScope source) {
         this(name, title, description, version, triggers, promptExtension,
                 tools, manualPaths, referenceDocs, scripts, tags, enabled, source,
-                List.of(), List.of(), SkillLifecycle.STICKY, null);
+                List.of(), List.of(), SkillLifecycle.STICKY,
+                /*consumesArgs*/ false, List.of(), null);
+    }
+
+    /**
+     * One declared invocation argument of a skill. Bound positionally
+     * from the trailing text of {@code /skill <name> <rest…>} — the
+     * last declared {@code string} argument binds the remainder greedily
+     * (shell convention). Same field shape as
+     * {@link Script.ScriptParam} so authors only learn one schema.
+     */
+    public record Argument(
+            String name,
+            String type,
+            @Nullable String description,
+            boolean required) {
     }
 
     public record Trigger(

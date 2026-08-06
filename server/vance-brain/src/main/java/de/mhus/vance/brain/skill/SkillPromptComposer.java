@@ -66,6 +66,31 @@ public class SkillPromptComposer {
      */
     public @Nullable String compose(
             List<ResolvedSkill> skills, Map<String, Object> pebbleContext) {
+        return compose(skills, pebbleContext, Map.of());
+    }
+
+    /**
+     * Renders {@code skills} with per-skill invocation arguments.
+     * {@code rawArgsBySkill} maps a skill name to the raw trailing text
+     * it was activated with (see
+     * {@code ActiveSkillRefEmbedded.args}); each skill's body is
+     * rendered against {@code pebbleContext} plus its own {@code args}
+     * variable, so two skills activated with different arguments in the
+     * same turn do not see each other's.
+     *
+     * <p>A skill that declares no {@code arguments:} never gets an
+     * {@code args} variable — the trailing text went out as a plain user
+     * message instead, and binding it here as well would deliver it
+     * twice. A binding error (missing required argument) is logged and
+     * the skill is skipped rather than failing the turn: the activation
+     * path already rejected bad arguments up front, so reaching this
+     * point means the declaration changed underneath a sticky
+     * activation.
+     */
+    public @Nullable String compose(
+            List<ResolvedSkill> skills,
+            Map<String, Object> pebbleContext,
+            Map<String, String> rawArgsBySkill) {
         if (skills == null || skills.isEmpty()) {
             return null;
         }
@@ -76,9 +101,14 @@ public class SkillPromptComposer {
         for (ResolvedSkill skill : skills) {
             String renderedBody;
             try {
-                renderedBody = renderBody(skill, pebbleContext);
+                renderedBody = renderBody(skill,
+                        withArgs(skill, pebbleContext, rawArgsBySkill.get(skill.name())));
             } catch (PromptTemplateException e) {
                 log.warn("Skill '{}' has invalid Pebble template — skipping: {}",
+                        skill.name(), e.getMessage());
+                continue;
+            } catch (SkillArgumentException e) {
+                log.warn("Skill '{}' arguments no longer bind — skipping: {}",
                         skill.name(), e.getMessage());
                 continue;
             }
@@ -125,6 +155,23 @@ public class SkillPromptComposer {
         String body = skill.promptExtension();
         if (body == null || body.isBlank()) return body;
         return templateRenderer.render(body, pebbleContext);
+    }
+
+    /**
+     * Returns {@code base} plus this skill's {@code args} variable, or
+     * {@code base} unchanged when the skill consumes no arguments. The
+     * base map is never mutated — it is shared across all skills of the
+     * turn.
+     */
+    private static Map<String, Object> withArgs(
+            ResolvedSkill skill, Map<String, Object> base, @Nullable String rawArgs) {
+        Map<String, Object> args = SkillArgumentBinder.bind(skill, rawArgs);
+        if (args.isEmpty()) {
+            return base;
+        }
+        Map<String, Object> merged = new java.util.LinkedHashMap<>(base);
+        merged.put("args", args);
+        return merged;
     }
 
     /**

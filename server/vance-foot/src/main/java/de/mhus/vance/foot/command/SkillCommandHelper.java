@@ -5,8 +5,6 @@ import de.mhus.vance.api.skills.ProcessSkillCommand;
 import de.mhus.vance.api.skills.ProcessSkillRequest;
 import de.mhus.vance.api.skills.ProcessSkillResponse;
 import de.mhus.vance.api.skills.SkillSummaryDto;
-import de.mhus.vance.api.thinkprocess.ProcessSteerRequest;
-import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.session.SessionService;
@@ -30,7 +28,6 @@ import org.springframework.stereotype.Component;
 public class SkillCommandHelper {
 
     private static final Duration SKILL_TIMEOUT = Duration.ofSeconds(15);
-    private static final Duration STEER_TIMEOUT = Duration.ofSeconds(60);
 
     private final ConnectionService connection;
     private final ChatTerminal terminal;
@@ -111,39 +108,34 @@ public class SkillCommandHelper {
     }
 
     /**
-     * Activates {@code skillName}; if {@code trailingMessage} is
-     * non-blank, sends it as a follow-up chat message so the
-     * freshly-activated skill applies to that turn.
+     * Activates {@code skillName}, handing any trailing tokens to the
+     * brain as the invocation's raw arguments.
+     *
+     * <p>The client deliberately does <b>not</b> decide what happens with
+     * them: a skill that declares {@code arguments:} gets them bound into
+     * its prompt template, any other skill gets them injected as a plain
+     * user message server-side. Sending a follow-up chat message here as
+     * well would deliver the text twice to a declaring skill. See
+     * {@code specification/public/skills.md} §6.
      */
     public void activate(
             String processName,
             String skillName,
             boolean oneShot,
             List<String> trailingMessageTokens) throws Exception {
+        String args = trailingMessageTokens == null || trailingMessageTokens.isEmpty()
+                ? null : String.join(" ", trailingMessageTokens);
         ProcessSkillResponse response = sendSkillRequest(ProcessSkillRequest.builder()
                 .processName(processName)
                 .command(ProcessSkillCommand.ACTIVATE)
                 .skillName(skillName)
                 .oneShot(oneShot)
+                .args(args)
                 .build());
         terminal.info("→ skill '" + skillName + "' activated"
                 + (oneShot ? " (once)" : "")
+                + (args == null ? "" : " with args")
                 + ". active skills now: " + response.getActiveSkills().size());
-
-        if (trailingMessageTokens == null || trailingMessageTokens.isEmpty()) {
-            return;
-        }
-        String content = String.join(" ", trailingMessageTokens);
-        ProcessSteerResponse steer = connection.request(
-                MessageType.PROCESS_STEER,
-                ProcessSteerRequest.builder()
-                        .processName(processName)
-                        .content(content)
-                        .build(),
-                ProcessSteerResponse.class,
-                STEER_TIMEOUT);
-        terminal.info("→ steered " + steer.getProcessName()
-                + " (status=" + steer.getStatus() + ")");
     }
 
     /**

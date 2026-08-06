@@ -29,4 +29,12 @@ public class ActiveSkillRefDto {
     private boolean oneShot;
 
     private Instant activatedAt;
+
+    /**
+     * Raw trailing text the skill was activated with
+     * ({@code /skill <name> <rest…>}), when it declares
+     * {@code arguments:}. Surfaced so a client can show what a sticky
+     * skill is parameterised with.
+     */
+    private String args;
 }

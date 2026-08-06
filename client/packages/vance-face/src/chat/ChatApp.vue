@@ -381,6 +381,11 @@ async function onSkillCommandFromComposer(line: string): Promise<void> {
   let command: ProcessSkillCommand;
   let skillName: string | undefined;
   let oneShot = false;
+  // Raw trailing text of `/skill <name> [--once] <rest…>`. The brain decides
+  // what happens with it — bound into the skill's prompt template when it
+  // declares `arguments:`, injected as a plain user message otherwise. Never
+  // both, so we must not send it as a chat message here as well.
+  let args: string | undefined;
 
   if (head === '/skill-list') {
     command = ProcessSkillCommand.LIST;
@@ -392,7 +397,7 @@ async function onSkillCommandFromComposer(line: string): Promise<void> {
     const sub = parts[1];
     if (!sub) {
       chatViewRef.value?.pushCommandActivity(
-        '/skill → usage: /skill list | clear [name] | <name> [--once]');
+        '/skill → usage: /skill list | clear [name] | <name> [--once] [args…]');
       return;
     }
     if (sub === 'list') {
@@ -404,6 +409,8 @@ async function onSkillCommandFromComposer(line: string): Promise<void> {
       command = ProcessSkillCommand.ACTIVATE;
       skillName = sub;
       oneShot = parts.includes('--once');
+      const rest = parts.slice(2).filter((p) => p !== '--once').join(' ');
+      args = rest.length > 0 ? rest : undefined;
     }
   }
 
@@ -413,6 +420,7 @@ async function onSkillCommandFromComposer(line: string): Promise<void> {
       command,
       skillName,
       oneShot,
+      args,
     });
     chatViewRef.value?.pushCommandActivity(renderSkillReply(command, skillName, reply));
   } catch (e) {

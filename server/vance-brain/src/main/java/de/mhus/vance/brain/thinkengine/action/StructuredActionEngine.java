@@ -423,11 +423,35 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             String modelAlias,
             int maxCorrections,
             long deadlineMs) {
+        return runStructuredActionLoop(aiChat, readToolSpecsFactory, messages, ctx,
+                process, maxIters, modelAlias, maxCorrections, deadlineMs, Set.of());
+    }
+
+    /**
+     * @param extraTools tool names to add to the context's surface for
+     *   this loop — the add-only contribution of the turn's active skills
+     *   ({@code tools:} entries plus their mounted scripts). Widening has
+     *   to happen on the {@link ContextToolsApi} itself, not just on the
+     *   spec list: the loop dispatches calls through the same surface, so
+     *   a tool that is advertised but not allowed would be rejected on
+     *   invocation. Empty for engines without skill support.
+     */
+    protected ActionLoopResult runStructuredActionLoop(
+            AiChat aiChat,
+            Function<ContextToolsApi, List<ToolSpecification>> readToolSpecsFactory,
+            List<ChatMessage> messages,
+            ThinkEngineContext ctx,
+            ThinkProcessDocument process,
+            int maxIters,
+            String modelAlias,
+            int maxCorrections,
+            long deadlineMs,
+            Set<String> extraTools) {
 
         // Fresh tools + spec list per loop. Refreshed after any
         // iteration that called read tools so tool_description
         // activations take effect on the very next iteration.
-        ContextToolsApi tools = ctx.tools();
+        ContextToolsApi tools = toolsFor(ctx, extraTools);
         List<ToolSpecification> allSpecs = new ArrayList<>(readToolSpecsFactory.apply(tools));
         allSpecs.add(buildActionToolSpec());
 
@@ -610,7 +634,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             // to the next one — DefaultThinkEngineContext.tools()
             // re-reads activatedDeferredTools from Mongo each call.
             if (!readCalls.isEmpty()) {
-                tools = ctx.tools();
+                tools = toolsFor(ctx, extraTools);
                 allSpecs = new ArrayList<>(readToolSpecsFactory.apply(tools));
                 allSpecs.add(buildActionToolSpec());
             }
@@ -773,6 +797,27 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             String modelAlias,
             int maxCorrections,
             List<SteerMessage> inbox) {
+        return runActionLoopWithJudge(aiChat, readToolSpecsFactory, messages, ctx,
+                process, maxIters, modelAlias, maxCorrections, inbox, Set.of());
+    }
+
+    /**
+     * Judge-wrapped loop with the turn's skill-contributed tools — see
+     * {@link #runStructuredActionLoop(AiChat, Function, List,
+     * ThinkEngineContext, ThinkProcessDocument, int, String, int, long,
+     * Set)} for {@code extraTools}.
+     */
+    protected ActionLoopResult runActionLoopWithJudge(
+            AiChat aiChat,
+            Function<ContextToolsApi, List<ToolSpecification>> readToolSpecsFactory,
+            List<ChatMessage> messages,
+            ThinkEngineContext ctx,
+            ThinkProcessDocument process,
+            int maxIters,
+            String modelAlias,
+            int maxCorrections,
+            List<SteerMessage> inbox,
+            Set<String> extraTools) {
         // One deadline for the whole turn — initial budget plus every
         // judge extension share it, so the wallclock net actually bounds
         // the turn instead of resetting each extension round.
@@ -780,7 +825,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                 + TURN_WALLCLOCK_MINUTES * 60_000L;
         ActionLoopResult loopResult = runStructuredActionLoop(
                 aiChat, readToolSpecsFactory, messages, ctx, process,
-                maxIters, modelAlias, maxCorrections, deadlineMs);
+                maxIters, modelAlias, maxCorrections, deadlineMs, extraTools);
 
         // When the loop max-iters out (and isn't a plan-mode-yield case,
         // which the engine's own continuation handles), consult the judge
@@ -834,6 +879,17 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      * in-memory copy if the read misses. Cheap per-iteration probe used
      * by the action loop to detect a mid-loop interrupt.
      */
+    /**
+     * The tool surface for a loop iteration: the context's own view,
+     * widened by the turn's skill-contributed tools. Re-derived from
+     * {@code ctx} on every call so deferred-tool activations stay visible.
+     */
+    private static ContextToolsApi toolsFor(ThinkEngineContext ctx, Set<String> extraTools) {
+        ContextToolsApi tools = ctx.tools();
+        return extraTools == null || extraTools.isEmpty()
+                ? tools : tools.withAdditional(extraTools);
+    }
+
     private ThinkProcessStatus currentStatus(ThinkProcessDocument process) {
         return thinkProcessService.findById(process.getId())
                 .map(ThinkProcessDocument::getStatus)

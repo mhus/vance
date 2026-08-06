@@ -1047,7 +1047,8 @@ public class Ford implements ThinkEngine {
             }
             messages.add(SystemMessage.from(hb.toString()));
         }
-        String skillSection = skillPromptComposer.compose(activeSkills, ctxBuilder.build());
+        String skillSection = skillPromptComposer.compose(activeSkills, ctxBuilder.build(),
+                de.mhus.vance.brain.skill.SkillTurnSupport.rawArgsByName(process));
         if (skillSection != null && !skillSection.isBlank()) {
             messages.add(SystemMessage.from(skillSection));
         }

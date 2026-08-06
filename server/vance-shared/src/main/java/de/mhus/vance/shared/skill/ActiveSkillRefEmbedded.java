@@ -36,4 +36,16 @@ public class ActiveSkillRefEmbedded {
     private boolean fromRecipe;
 
     private @Nullable Instant activatedAt;
+
+    /**
+     * Raw trailing text of the activating invocation
+     * ({@code /skill <name> <rest…>}), kept verbatim so a sticky skill
+     * can re-bind it on every turn — the body is re-rendered each turn,
+     * so the arguments have to outlive the activation. Bound against the
+     * skill's current {@code arguments:} declaration at render time, not
+     * cached as a parsed map: cheap, and a skill edit takes effect at
+     * once. {@code null} when the invocation carried no arguments or the
+     * skill declares none.
+     */
+    private @Nullable String args;
 }

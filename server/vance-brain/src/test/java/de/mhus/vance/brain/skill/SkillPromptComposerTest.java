@@ -160,4 +160,59 @@ class SkillPromptComposerTest {
                 .contains("- ondemand-doc — summary")
                 .doesNotContain("PULLED");
     }
+
+    private static ResolvedSkill argSkill(
+            String name, String body,
+            boolean consumesArgs, List<ResolvedSkill.Argument> arguments) {
+        return new ResolvedSkill(
+                name, name, "desc", "1.0.0",
+                List.of(), body, List.of(), List.of(), List.of(), List.of(),
+                List.of(), true, SkillScope.PROJECT, List.of(), List.of(),
+                SkillLifecycle.STICKY, consumesArgs, arguments, null);
+    }
+
+    @Test
+    void declaredArgs_renderIntoTheBody() {
+        ResolvedSkill s = argSkill("review", "Focus on {{ args.scope }}.", true,
+                List.of(new ResolvedSkill.Argument("scope", "string", null, false)));
+
+        String out = composer.compose(List.of(s), Map.of(), Map.of("review", "the auth flow"));
+
+        assertThat(out).contains("Focus on the auth flow.");
+    }
+
+    @Test
+    void undeclaredSkill_neverSeesArgs() {
+        // Its trailing text went out as a user message instead — binding
+        // it here as well would deliver it twice.
+        ResolvedSkill s = argSkill("review", "Focus on {{ args.text }}.", false, List.of());
+
+        String out = composer.compose(List.of(s), Map.of(), Map.of("review", "the auth flow"));
+
+        assertThat(out).contains("Focus on .");
+    }
+
+    @Test
+    void argsOfOneSkillDoNotLeakIntoAnother() {
+        ResolvedSkill a = argSkill("a", "A sees {{ args.text }}.", true, List.of());
+        ResolvedSkill b = argSkill("b", "B sees {{ args.text }}.", true, List.of());
+
+        String out = composer.compose(
+                List.of(a, b), Map.of(), Map.of("a", "alpha", "b", "beta"));
+
+        assertThat(out).contains("A sees alpha.").contains("B sees beta.");
+    }
+
+    @Test
+    void missingRequiredArg_skipsThatSkillButKeepsTheRest() {
+        // Reachable when a sticky activation outlives an edit that made an
+        // argument required. The turn must not die over it.
+        ResolvedSkill broken = argSkill("broken", "Needs {{ args.scope }}.", true,
+                List.of(new ResolvedSkill.Argument("scope", "string", null, true)));
+        ResolvedSkill fine = argSkill("fine", "Still here.", false, List.of());
+
+        String out = composer.compose(List.of(broken, fine), Map.of(), Map.of());
+
+        assertThat(out).doesNotContain("Needs").contains("Still here.");
+    }
 }

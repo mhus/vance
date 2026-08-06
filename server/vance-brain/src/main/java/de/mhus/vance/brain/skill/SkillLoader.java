@@ -268,7 +268,12 @@ public class SkillLoader {
     }
 
     @SuppressWarnings("unchecked")
-    private static ResolvedSkill parse(
+    /**
+     * Package-private so the frontmatter contract (lifecycle, arguments,
+     * triggers, reference docs) can be unit-tested without a Mongo /
+     * classpath round-trip.
+     */
+    static ResolvedSkill parse(
             String stem,
             String raw,
             SkillScope scope,
@@ -311,11 +316,88 @@ public class SkillLoader {
         List<EngineCommand> deactivate = parseCommandList(spec.get("deactivate"), stem, "deactivate");
         SkillLifecycle lifecycle = parseLifecycle(spec.get("lifecycle"), stem);
         String action = parseAction(spec.get("action"), stem);
+        ParsedArguments args = parseArguments(spec.get("arguments"), stem);
+
+        // A shot skill never registers, so its only effects are the
+        // activate: commands and its turn-prompt — and the auto-trigger
+        // path deliberately fires no turn-prompt (a turn is already
+        // running). A shot skill with triggers but no commands is
+        // therefore a no-op on that path; warn instead of failing, the
+        // explicit /skill route still works.
+        if (lifecycle == SkillLifecycle.SHOT
+                && !triggers.isEmpty() && activate.isEmpty()) {
+            log.warn("skill '{}': lifecycle=shot with triggers but no activate: commands — "
+                    + "auto-trigger will be a no-op (use lifecycle: sticky, or invoke "
+                    + "explicitly via /skill)", stem);
+        }
 
         return new ResolvedSkill(
                 name, title, description, version,
                 triggers, promptExtension, tools, manualPaths, refDocs, scripts,
-                tags, enabled, scope, activate, deactivate, lifecycle, action);
+                tags, enabled, scope, activate, deactivate, lifecycle,
+                args.consumes(), args.declared(), action);
+    }
+
+    /** Outcome of {@link #parseArguments} — the two {@code arguments:} facets. */
+    private record ParsedArguments(boolean consumes, List<ResolvedSkill.Argument> declared) {
+
+        static final ParsedArguments NONE = new ParsedArguments(false, List.of());
+    }
+
+    /**
+     * Parses the optional {@code arguments:} frontmatter, which decides
+     * whether the skill consumes the trailing text of its invocation
+     * ({@code /skill <name> <rest…>}). Two accepted forms:
+     * <ul>
+     *   <li>{@code arguments: true} — raw consume. The body sees
+     *       {@code args.text} / {@code args.words}, nothing named.</li>
+     *   <li>{@code arguments: [ {name, type, description, required} ]} —
+     *       typed positional declarations on top of the raw view.</li>
+     * </ul>
+     * Absent (or {@code false}) means the skill does not consume
+     * arguments: the activation path then injects the trailing text as a
+     * plain user message, so exactly one side gets it.
+     *
+     * <p>Field shape mirrors {@code scripts[].params} (see
+     * {@code specification/public/skills.md} §13.7) — one schema for
+     * both, rather than a second dialect.
+     */
+    private static ParsedArguments parseArguments(Object raw, String stem) {
+        if (raw == null) {
+            return ParsedArguments.NONE;
+        }
+        if (raw instanceof Boolean b) {
+            return b ? new ParsedArguments(true, List.of()) : ParsedArguments.NONE;
+        }
+        if (!(raw instanceof List<?> list)) {
+            throw new IllegalStateException("skill '" + stem
+                    + "': 'arguments' must be true or a list of argument declarations");
+        }
+        List<ResolvedSkill.Argument> out = new ArrayList<>(list.size());
+        for (int i = 0; i < list.size(); i++) {
+            if (!(list.get(i) instanceof Map<?, ?> rawSpec)) {
+                throw new IllegalStateException("skill '" + stem + "': arguments[" + i
+                        + "] must be a map");
+            }
+            Map<String, Object> argSpec = (Map<String, Object>) rawSpec;
+            String argName = stringOrNull(argSpec.get("name"));
+            if (argName == null || argName.isBlank()) {
+                throw new IllegalStateException("skill '" + stem + "': arguments[" + i
+                        + "].name is required");
+            }
+            String type = stringOrNull(argSpec.get("type"));
+            if (type == null || type.isBlank()) {
+                type = "string";
+            }
+            if (!SCRIPT_PARAM_TYPES.contains(type)) {
+                throw new IllegalStateException("skill '" + stem + "': arguments[" + i
+                        + "].type '" + type + "' must be one of " + SCRIPT_PARAM_TYPES);
+            }
+            String description = stringOrNull(argSpec.get("description"));
+            boolean required = argSpec.get("required") instanceof Boolean r && r;
+            out.add(new ResolvedSkill.Argument(argName.trim(), type, description, required));
+        }
+        return new ParsedArguments(true, List.copyOf(out));
     }
 
     /**
@@ -668,7 +750,7 @@ public class SkillLoader {
     // ─── Sibling readers ───────────────────────────────────────────────────
 
     /** Reads a sibling file out of the same cascade tier the SKILL.md came from. */
-    private interface SiblingReader {
+    interface SiblingReader {
         Optional<String> read(String skillFolderStem, String relativePath);
     }
 

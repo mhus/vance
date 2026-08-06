@@ -202,6 +202,13 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
     private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
     private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
+    /**
+     * Active-skill resolution + prompt composition + tool contribution.
+     * Without it an activated skill would be invisible in Arthur: the
+     * trigger matcher would flip it on, and nothing would ever read its
+     * body. See {@code specification/public/skills.md} §5.
+     */
+    private final de.mhus.vance.brain.skill.SkillTurnSupport skillTurnSupport;
     private final de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter;
     private final de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService;
     private final de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver;
@@ -286,6 +293,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver,
             de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory,
             de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher,
+            de.mhus.vance.brain.skill.SkillTurnSupport skillTurnSupport,
             de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter,
             de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService,
             de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver,
@@ -317,6 +325,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.enginePromptResolver = enginePromptResolver;
         this.engineChatFactory = engineChatFactory;
         this.skillTriggerMatcher = skillTriggerMatcher;
+        this.skillTurnSupport = skillTurnSupport;
         this.messageRouter = messageRouter;
         this.planModeService = planModeService;
         this.attachmentResolver = attachmentResolver;
@@ -789,7 +798,15 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                     engineChatFactory.forProcess(process, ctx, NAME);
             AiChat aiChat = chatBundle.chat();
             AiChatConfig config = chatBundle.primaryConfig();
-            ContextToolsApi tools = ctx.tools();
+            // Active skills — resolved after the trigger matcher so a
+            // freshly auto-activated skill counts for this turn. Their
+            // tools: entries are add-only on top of the engine/recipe
+            // whitelist (skills never remove a tool).
+            List<de.mhus.vance.brain.skill.ResolvedSkill> activeSkills =
+                    skillTurnSupport.resolveActive(process);
+            java.util.Set<String> skillTools = skillTurnSupport.mergedTools(activeSkills);
+            ContextToolsApi tools = skillTools.isEmpty()
+                    ? ctx.tools() : ctx.tools().withAdditional(skillTools);
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
                     process.getTenantId(), process.getProjectId(),
                     config.providerInstance(), config.provider(), config.modelName());
@@ -800,7 +817,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                     paramString(process, "modelSize", null), modelInfo.size());
 
             List<ChatMessage> messages = buildPromptMessages(
-                    process, chatLog, inbox, effectiveSize, ctx, config, modelInfo);
+                    process, chatLog, inbox, effectiveSize, ctx, config, modelInfo,
+                    activeSkills);
             // Strength-aware compaction trigger: SOFT/HARD/EMERGENCY
             // based on est-tokens vs context window. Compacts via
             // MemoryCompactionService and rebuilds the prompt if so.
@@ -811,7 +829,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         process.getId(), cr.messagesCompacted(),
                         cr.summaryChars(), cr.memoryId());
                 messages = buildPromptMessages(
-                        process, chatLog, inbox, effectiveSize, ctx, config, modelInfo);
+                        process, chatLog, inbox, effectiveSize, ctx, config, modelInfo,
+                        activeSkills);
             }
             int maxIters = paramInt(process, "maxIterations",
                     arthurProperties.getMaxToolIterations());
@@ -855,7 +874,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             ActionLoopResult loopResult = runActionLoopWithJudge(
                     aiChat, ContextToolsApi::primaryAsLc4j,
                     messages, ctx, process, maxIters, modelAlias,
-                    modelInfo.actionLoopCorrections(), inbox);
+                    modelInfo.actionLoopCorrections(), inbox, skillTools);
 
             // Mid-loop interrupt (ESC / /pause): the loop stopped before a
             // terminal action. Surface no answer, drop buffered history
@@ -2435,7 +2454,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             ModelSize modelSize,
             ThinkEngineContext ctx,
             de.mhus.vance.brain.ai.AiChatConfig chatConfig,
-            ModelInfo modelInfo) {
+            ModelInfo modelInfo,
+            List<de.mhus.vance.brain.skill.ResolvedSkill> activeSkills) {
         List<ChatMessage> messages = new ArrayList<>();
 
         // ── STATIC system prefix — Anthropic cache anchors here ──
@@ -2513,6 +2533,16 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             base = base + discoveryBlock;
         }
         messages.add(SystemMessage.from(base));
+
+        // Active skills — body + inline reference docs, rendered with
+        // this turn's Pebble context plus each skill's invocation
+        // arguments. Its own message so a skill activation does not bust
+        // the static prefix's cache marker.
+        String skillSection = skillTurnSupport.composeSection(
+                process, activeSkills, ctxBuilder.build());
+        if (skillSection != null && !skillSection.isBlank()) {
+            messages.add(SystemMessage.from(skillSection));
+        }
 
         // Current-date block (recipe-param promptDateGranularity:
         // auto/day/hour, default none). DYNAMIC — date rollover stays

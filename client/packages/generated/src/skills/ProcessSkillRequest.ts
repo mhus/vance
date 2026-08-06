@@ -10,4 +10,5 @@ export interface ProcessSkillRequest {
   command: ProcessSkillCommand;
   skillName?: string;
   oneShot: boolean;
+  args?: string;
 }

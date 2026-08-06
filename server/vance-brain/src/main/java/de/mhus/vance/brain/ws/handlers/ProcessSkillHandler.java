@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketSession;
 import tools.jackson.databind.ObjectMapper;
@@ -114,7 +115,7 @@ public class ProcessSkillHandler implements WsHandler {
 
         if (command == ProcessSkillCommand.LIST) {
             // Read-only — no lane needed.
-            applyAndReply(wsSession, envelope, process, request, command);
+            applyAndReply(wsSession, envelope, process, request, command, ctx.getUserId());
             return;
         }
 
@@ -122,6 +123,7 @@ public class ProcessSkillHandler implements WsHandler {
         // engine-command sequence → run on the process lane so a command
         // can't race an in-flight turn (planning/engine-commands.md §4.2).
         String processId = process.getId();
+        String userId = ctx.getUserId();
         laneScheduler.submit(processId, () -> {
             ThinkProcessDocument fresh = processId == null
                     ? null
@@ -132,7 +134,7 @@ public class ProcessSkillHandler implements WsHandler {
                                 + "' disappeared before skill op");
                 return;
             }
-            applyAndReply(wsSession, envelope, fresh, request, command);
+            applyAndReply(wsSession, envelope, fresh, request, command, userId);
         });
     }
 
@@ -145,11 +147,13 @@ public class ProcessSkillHandler implements WsHandler {
             WebSocketEnvelope envelope,
             ThinkProcessDocument process,
             ProcessSkillRequest request,
-            ProcessSkillCommand command) {
+            ProcessSkillCommand command,
+            @Nullable String userId) {
         List<ActiveSkillRefEmbedded> active;
         try {
             active = skillSteerProcessor.apply(
-                    process, command, request.getSkillName(), request.isOneShot());
+                    process, command, request.getSkillName(), request.isOneShot(),
+                    request.getArgs(), userId);
         } catch (UnknownSkillException e) {
             trySendError(wsSession, envelope, 404, e.getMessage());
             return;
@@ -202,6 +206,7 @@ public class ProcessSkillHandler implements WsHandler {
                     .resolvedFromScope(ref.getResolvedFromScope())
                     .oneShot(ref.isOneShot())
                     .activatedAt(ref.getActivatedAt())
+                    .args(ref.getArgs())
                     .build());
         }
         return out;

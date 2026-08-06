@@ -14,12 +14,16 @@ triggers:
       - review the diff
       - code-review
       - review the changes
+arguments: true
 action: |
   Review the current code changes now. First gather the diff using the
   tools available to you (e.g. `git status` and `git diff` via an exec
   tool, or by reading the changed files). Then produce the review as
   described in your instructions. If there are no pending changes, say so
   and ask which files or diff to review instead.
+  {% if args.text %}
+  Scope for this review: {{ args.text }}
+  {% endif %}
 ---
 
 You are operating in **code-review mode**. Review changed code for real defects and concrete cleanups — nothing else. Be specific and terse; a reviewer's value is in what they catch, not in how much they write.

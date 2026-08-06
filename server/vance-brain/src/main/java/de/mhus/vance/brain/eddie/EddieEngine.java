@@ -213,6 +213,13 @@ public class EddieEngine extends StructuredActionEngine {
 
     private final ModelCatalog modelCatalog;
     private final EngineChatFactory engineChatFactory;
+    /**
+     * Active-skill resolution + prompt composition + tool contribution.
+     * Eddie shares the skill surface with Arthur — a skill activated in
+     * the hub session has to reach the model there too. See
+     * {@code specification/public/skills.md} §5.
+     */
+    private final de.mhus.vance.brain.skill.SkillTurnSupport skillTurnSupport;
     private final EnginePromptResolver enginePromptResolver;
     private final MemoryContextLoader memoryContextLoader;
     private final EddieActivityService activityService;
@@ -266,6 +273,7 @@ public class EddieEngine extends StructuredActionEngine {
             ThinkProcessService thinkProcessService,
             ModelCatalog modelCatalog,
             EngineChatFactory engineChatFactory,
+            de.mhus.vance.brain.skill.SkillTurnSupport skillTurnSupport,
             EnginePromptResolver enginePromptResolver,
             MemoryContextLoader memoryContextLoader,
             EddieActivityService activityService,
@@ -298,6 +306,7 @@ public class EddieEngine extends StructuredActionEngine {
                 turnContextHandlers);
         this.modelCatalog = modelCatalog;
         this.engineChatFactory = engineChatFactory;
+        this.skillTurnSupport = skillTurnSupport;
         this.enginePromptResolver = enginePromptResolver;
         this.memoryContextLoader = memoryContextLoader;
         this.activityService = activityService;
@@ -897,8 +906,14 @@ public class EddieEngine extends StructuredActionEngine {
             ModelSize effectiveSize = ModelSize.parseOrAuto(
                     paramString(process, "modelSize", null), modelInfo.size());
 
+            // Active skills — body into the prompt, tools: entries onto
+            // the loop's surface (add-only).
+            List<de.mhus.vance.brain.skill.ResolvedSkill> activeSkills =
+                    skillTurnSupport.resolveActive(process);
+            java.util.Set<String> skillTools = skillTurnSupport.mergedTools(activeSkills);
+
             List<ChatMessage> messages = buildPromptMessages(
-                    process, chatLog, inbox, modelInfo, effectiveSize, ctx);
+                    process, chatLog, inbox, modelInfo, effectiveSize, ctx, activeSkills);
             // Strength-aware compaction trigger: SOFT/HARD/EMERGENCY
             // based on est-tokens vs context window. Compacts via
             // MemoryCompactionService and rebuilds the prompt if so.
@@ -909,7 +924,7 @@ public class EddieEngine extends StructuredActionEngine {
                         process.getId(), cr.messagesCompacted(),
                         cr.summaryChars(), cr.memoryId());
                 messages = buildPromptMessages(
-                        process, chatLog, inbox, modelInfo, effectiveSize, ctx);
+                        process, chatLog, inbox, modelInfo, effectiveSize, ctx, activeSkills);
             }
             int maxIters = paramInt(process, "maxIterations",
                     DEFAULT_MAX_ITERATIONS);
@@ -929,7 +944,7 @@ public class EddieEngine extends StructuredActionEngine {
             ActionLoopResult loopResult = runActionLoopWithJudge(
                     aiChat, ContextToolsApi::primaryAsLc4j,
                     messages, ctx, process, maxIters, modelAlias,
-                    modelInfo.actionLoopCorrections(), inbox);
+                    modelInfo.actionLoopCorrections(), inbox, skillTools);
 
             // Mid-loop interrupt (ESC / /pause): stop before a terminal
             // action, surface no answer, drop buffered history tags, and
@@ -2493,7 +2508,8 @@ public class EddieEngine extends StructuredActionEngine {
             List<SteerMessage> inbox,
             ModelInfo modelInfo,
             ModelSize modelSize,
-            ThinkEngineContext engineCtx) {
+            ThinkEngineContext engineCtx,
+            List<de.mhus.vance.brain.skill.ResolvedSkill> activeSkills) {
         List<ChatMessage> messages = new ArrayList<>();
 
         // ── STATIC system prefix — Anthropic cache anchors here ──
@@ -2573,6 +2589,16 @@ public class EddieEngine extends StructuredActionEngine {
         String userBlock = composeUserContextBlock(process);
         if (userBlock != null && !userBlock.isBlank()) {
             messages.add(SystemMessage.from(userBlock));
+        }
+
+        // Active skills — body + inline reference docs, rendered with
+        // this turn's Pebble context plus each skill's invocation
+        // arguments. Own message: a skill activation must not bust the
+        // static prefix's cache marker.
+        String skillSection = skillTurnSupport.composeSection(
+                process, activeSkills, ctxBuilder.build());
+        if (skillSection != null && !skillSection.isBlank()) {
+            messages.add(SystemMessage.from(skillSection));
         }
 
         // Current-date block (recipe-param promptDateGranularity:

@@ -6,9 +6,10 @@ import org.springframework.stereotype.Component;
 
 /**
  * {@code /skill <name> [--once] [args...]} — explicit skill activation
- * for the active think-process. Sticky by default; passes any trailing
- * args as a follow-up chat message that runs with the freshly
- * activated skill set.
+ * for the active think-process. Sticky by default. Trailing args go to
+ * the brain as the invocation's raw arguments: a skill that declares
+ * {@code arguments:} renders them into its prompt, any other skill gets
+ * them as a plain user message.
  *
  * <p>Subcommand aliases (kept for tab-friendly entry under the
  * {@code /skill} namespace; the canonical commands are
@@ -40,7 +41,7 @@ public class SkillSlashCommand implements SlashCommand {
     @Override
     public String description() {
         return "Activate, clear or list skills on the active process. "
-                + "Args: list | clear [name] | <name> [--once] [message...]";
+                + "Args: list | clear [name] | <name> [--once] [args...]";
     }
 
     @Override
@@ -54,7 +55,7 @@ public class SkillSlashCommand implements SlashCommand {
     @Override
     public void execute(List<String> args) throws Exception {
         if (args.isEmpty()) {
-            terminal.error("Usage: /skill list | clear [name] | <name> [--once] [message...]");
+            terminal.error("Usage: /skill list | clear [name] | <name> [--once] [args...]");
             return;
         }
         String processName = helper.requireActiveProcess();

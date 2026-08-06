@@ -8,6 +8,7 @@ import de.mhus.vance.api.thinkprocess.TodoItem;
 import de.mhus.vance.api.thinkprocess.TodoStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.ai.AiChat;
+import de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer;
 import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.ai.ModelCatalog;
@@ -226,6 +227,7 @@ public class FrankieEngine implements ThinkEngine {
     private final de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers;
     private final FrankiePostCompletionHookHandler postCompletionHookHandler;
     private final de.mhus.vance.brain.guard.CompletionGuardService completionGuardService;
+    private final AttachedUserMessageComposer attachedUserMessageComposer;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -360,8 +362,23 @@ public class FrankieEngine implements ThinkEngine {
                     bundle.primaryConfig().providerInstance(),
                     bundle.primaryConfig().provider(),
                     bundle.primaryConfig().modelName());
+            // Attachment context for this turn — the bound model decides
+            // which content blocks an attachment may become (a model
+            // without VISION cannot take an image). Built only when this
+            // turn actually carries an attachment: resolving the wire
+            // name throws for a provider outside the enum, and a turn
+            // without attachments must not depend on that.
+            AttachedUserMessageComposer.Context attachmentContext = anyAttachment(drained)
+                    ? new AttachedUserMessageComposer.Context(
+                            process.getTenantId(), process.getProjectId(), process.getId(),
+                            bundle.primaryConfig().fullName(),
+                            de.mhus.vance.brain.ai.ProviderType.requireWireName(
+                                    bundle.primaryConfig().provider()),
+                            modelInfo.capabilities())
+                    : null;
             List<ChatMessage> messages = buildPromptMessages(
-                    process, chatLog, extras, activeSkills, modelInfo);
+                    process, chatLog, extras, drained, activeSkills, modelInfo,
+                    attachmentContext);
 
             // Turn-start compaction: identical to Arthur/Eddie/Ford.
             // Trigger ratio uses outgoing prompt vs model context window;
@@ -375,7 +392,8 @@ public class FrankieEngine implements ThinkEngine {
                         process.getId(), cr0.messagesCompacted(),
                         cr0.summaryChars(), cr0.memoryId());
                 messages = buildPromptMessages(
-                        process, chatLog, extras, activeSkills, modelInfo);
+                        process, chatLog, extras, drained, activeSkills, modelInfo,
+                        attachmentContext);
             }
 
             // Context-scaled streaming timeout: rebuild the chat model with
@@ -480,7 +498,8 @@ public class FrankieEngine implements ThinkEngine {
                     List<ChatMessage> inflightTail =
                             new ArrayList<>(messages.subList(anchorSize, messages.size()));
                     messages = buildPromptMessages(
-                            process, chatLog, extras, activeSkills, modelInfo);
+                            process, chatLog, extras, drained, activeSkills, modelInfo,
+                            attachmentContext);
                     anchorSize = messages.size();
                     messages.addAll(inflightTail);
                 }
@@ -675,6 +694,14 @@ public class FrankieEngine implements ThinkEngine {
                     consecutivePolls = 0;
                 }
 
+                // Tool-produced images: a screenshot the batch just took is
+                // now a document, and this is the only place it can be
+                // handed to the model — a tool result is text in the
+                // OpenAI-compatible API, so the picture rides on its own
+                // user message before the next call. Drained, so it is
+                // shown once and does not re-enter every later iteration.
+                showToolAttachments(ctx, messages, process, bundle, modelInfo);
+
                 // Refresh the tool view after the batch. A tool_description
                 // call in it activates a deferred tool, and the specs the
                 // model gets are built from this snapshot — without the
@@ -834,13 +861,23 @@ public class FrankieEngine implements ThinkEngine {
      * skills system block (when the process has active skills),
      * persisted chat history, then turn-local extras as user-role
      * messages.
+     *
+     * <p>{@code turnUserInputs} are this turn's {@code UserChatInput}
+     * items. Their text is already in the persisted history, but the
+     * history carries text only — so the trailing entries that
+     * correspond to them are re-rendered from the inbox instead, which
+     * is what lets an attachment ride along as a content block. Same
+     * shape Arthur uses; without it an image attached to a Frankie
+     * session is silently dropped.
      */
     private List<ChatMessage> buildPromptMessages(
             ThinkProcessDocument process,
             ChatMessageService chatLog,
             List<SteerMessage> inboxExtras,
+            List<SteerMessage> turnUserInputs,
             List<ResolvedSkill> activeSkills,
-            @Nullable ModelInfo modelInfo) {
+            @Nullable ModelInfo modelInfo,
+            AttachedUserMessageComposer.@Nullable Context attachmentContext) {
         List<ChatMessage> messages = new ArrayList<>();
         PromptContextBuilder ctxBuilder = PromptContextBuilder
                 .forProcess(process, modelInfo)
@@ -884,9 +921,27 @@ public class FrankieEngine implements ThinkEngine {
         if (!todoBlock.isBlank()) {
             messages.add(VanceSystemMessage.dynamic(todoBlock));
         }
-        for (ChatMessageDocument msg : chatLog.activeHistory(
-                process.getTenantId(), process.getSessionId(), process.getId())) {
-            messages.add(toLangchain(msg));
+        List<ChatMessageDocument> history = chatLog.activeHistory(
+                process.getTenantId(), process.getSessionId(), process.getId());
+        // Attachment-free turns — the overwhelming majority — render
+        // exactly as before: straight from the persisted history.
+        List<SteerMessage.UserChatInput> rebuild = attachmentContext == null
+                ? List.of()
+                : userChatInputs(turnUserInputs);
+        // With attachments in play, drop the trailing history entries
+        // that belong to this turn's user input and re-render them from
+        // the inbox — text-only ones come out identical, the one
+        // carrying the image gains its content blocks. All of them are
+        // rebuilt, not just the carrier: the trailing entries and the
+        // inbox items have to stay aligned one-to-one, or the rebuilt
+        // message lands after the wrong history entry.
+        int plainHistorySize = Math.max(0, history.size() - rebuild.size());
+        for (int i = 0; i < plainHistorySize; i++) {
+            messages.add(toLangchain(history.get(i)));
+        }
+        for (SteerMessage.UserChatInput uci : rebuild) {
+            messages.add(attachedUserMessageComposer.compose(
+                    attachmentContext, uci.content(), uci.attachments()));
         }
         for (SteerMessage m : inboxExtras) {
             String wrapped = renderForLlm(m);
@@ -1027,6 +1082,62 @@ public class FrankieEngine implements ThinkEngine {
 
     private static ChatMessage toLangchain(ChatMessageDocument msg) {
         return de.mhus.vance.brain.chat.ChatHistoryRenderer.toLangchain(msg);
+    }
+
+    /**
+     * Appends one user message carrying whatever the last tool batch
+     * produced as visual content. No-op when the sink is empty (the
+     * normal case) or when the model has no vision capability — the
+     * composer drops blocks it cannot send, and an empty result then
+     * degrades to a bare text note rather than a broken request.
+     */
+    private void showToolAttachments(
+            ThinkEngineContext ctx,
+            List<ChatMessage> messages,
+            ThinkProcessDocument process,
+            EngineChatFactory.EngineChatBundle bundle,
+            @Nullable ModelInfo modelInfo) {
+        if (!ctx.attachmentSink().hasPending()) {
+            return;
+        }
+        List<de.mhus.vance.api.attachment.AttachmentRef> refs = ctx.attachmentSink().drain();
+        try {
+            AttachedUserMessageComposer.Context attachmentContext =
+                    new AttachedUserMessageComposer.Context(
+                            process.getTenantId(), process.getProjectId(), process.getId(),
+                            bundle.primaryConfig().fullName(),
+                            de.mhus.vance.brain.ai.ProviderType.requireWireName(
+                                    bundle.primaryConfig().provider()),
+                            modelInfo == null ? Set.of() : modelInfo.capabilities());
+            messages.add(attachedUserMessageComposer.compose(
+                    attachmentContext,
+                    "Output of the tool call above:",
+                    refs));
+        } catch (RuntimeException e) {
+            // Unknown provider wire-name, resolver trouble — the turn
+            // continues without the picture rather than dying over it.
+            log.warn("Frankie id='{}' cannot show {} tool attachment(s): {}",
+                    process.getId(), refs.size(), e.toString());
+        }
+    }
+
+    /** This turn's user-chat items, in inbox order. */
+    private static List<SteerMessage.UserChatInput> userChatInputs(List<SteerMessage> drained) {
+        List<SteerMessage.UserChatInput> out = new ArrayList<>();
+        for (SteerMessage m : drained) {
+            if (m instanceof SteerMessage.UserChatInput uci) out.add(uci);
+        }
+        return out;
+    }
+
+    /** Whether any of them carries an attachment — the trigger for the rebuild. */
+    private static boolean anyAttachment(List<SteerMessage> drained) {
+        for (SteerMessage m : drained) {
+            if (m instanceof SteerMessage.UserChatInput uci && !uci.attachments().isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private @Nullable String renderForLlm(SteerMessage m) {

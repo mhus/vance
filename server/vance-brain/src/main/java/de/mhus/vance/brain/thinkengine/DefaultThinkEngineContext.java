@@ -70,7 +70,9 @@ record DefaultThinkEngineContext(
         TurnReasoningBuffer reasoning,
         @Nullable ToolResultStorage toolResultStorage,
         ToolHealthService toolHealthService,
-        Set<String> engineRoles
+        Set<String> engineRoles,
+        de.mhus.vance.brain.ai.attachment.@Nullable ToolImageHarvester imageHarvester,
+        de.mhus.vance.brain.ai.attachment.ToolAttachmentSink attachmentSink
 ) implements ThinkEngineContext {
 
     @Override
@@ -117,7 +119,9 @@ record DefaultThinkEngineContext(
                 toolInvocationListener, refresh,
                 historyTagBuilder, historyTagSink,
                 toolResultStorage,
-                toolHealthService);
+                toolHealthService,
+                imageHarvester,
+                attachmentSink);
     }
 
     /**

@@ -303,10 +303,12 @@ public class EddieEngine extends StructuredActionEngine {
             de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver,
             de.mhus.vance.brain.notification.NotificationService notificationService,
             de.mhus.vance.brain.guard.CompletionGuardService completionGuardService,
-            de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers) {
+            de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers,
+            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer
+                    attachedUserMessageComposer) {
         super(streamingProperties, llmCallTracker, objectMapper, composer,
                 completionGuardService, actionLoopJudgeService, thinkProcessService,
-                turnContextHandlers);
+                turnContextHandlers, attachedUserMessageComposer);
         this.modelCatalog = modelCatalog;
         this.engineChatFactory = engineChatFactory;
         this.skillTurnSupport = skillTurnSupport;
@@ -947,7 +949,15 @@ public class EddieEngine extends StructuredActionEngine {
             ActionLoopResult loopResult = runActionLoopWithJudge(
                     aiChat, ContextToolsApi::primaryAsLc4j,
                     messages, ctx, process, maxIters, modelAlias,
-                    modelInfo.actionLoopCorrections(), inbox, skillTools);
+                    modelInfo.actionLoopCorrections(), inbox, skillTools,
+                    // Lets a tool-produced image (MCP screenshot) reach
+                    // the model between iterations.
+                    new de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.Context(
+                            process.getTenantId(), process.getProjectId(), process.getId(),
+                            config.fullName(),
+                            de.mhus.vance.brain.ai.ProviderType.requireWireName(
+                                    config.provider()),
+                            modelInfo.capabilities()));
 
             // Mid-loop interrupt (ESC / /pause): stop before a terminal
             // action, surface no answer, drop buffered history tags, and

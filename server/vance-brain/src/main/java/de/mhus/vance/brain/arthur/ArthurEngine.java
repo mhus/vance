@@ -211,7 +211,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final de.mhus.vance.brain.skill.SkillTurnSupport skillTurnSupport;
     private final de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter;
     private final de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService;
-    private final de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver;
+    private final de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer
+            attachedUserMessageComposer;
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
     /**
      * Used by {@link #summarizeForParent} to pull the last ASSISTANT
@@ -296,7 +297,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.skill.SkillTurnSupport skillTurnSupport,
             de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter,
             de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService,
-            de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver,
+            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer
+                    attachedUserMessageComposer,
             de.mhus.vance.brain.thinkengine.SystemPromptComposer composer,
             de.mhus.vance.shared.workspace.WorkspaceService workspaceService,
             de.mhus.vance.shared.chat.ChatMessageService chatMessageService,
@@ -317,7 +319,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers) {
         super(streamingProperties, llmCallTracker, objectMapper, composer,
                 completionGuardService, actionLoopJudgeService, thinkProcessService,
-                turnContextHandlers);
+                turnContextHandlers, attachedUserMessageComposer);
         this.arthurProperties = arthurProperties;
         this.recipeLoader = recipeLoader;
         this.modelCatalog = modelCatalog;
@@ -328,7 +330,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.skillTurnSupport = skillTurnSupport;
         this.messageRouter = messageRouter;
         this.planModeService = planModeService;
-        this.attachmentResolver = attachmentResolver;
+        this.attachedUserMessageComposer = attachedUserMessageComposer;
         this.workspaceService = workspaceService;
         this.chatMessageService = chatMessageService;
         this.historyStrengthFilter = historyStrengthFilter;
@@ -875,7 +877,15 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             ActionLoopResult loopResult = runActionLoopWithJudge(
                     aiChat, ContextToolsApi::primaryAsLc4j,
                     messages, ctx, process, maxIters, modelAlias,
-                    modelInfo.actionLoopCorrections(), inbox, skillTools);
+                    modelInfo.actionLoopCorrections(), inbox, skillTools,
+                    // Lets a tool-produced image (MCP screenshot) reach
+                    // the model between iterations.
+                    new de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.Context(
+                            process.getTenantId(), process.getProjectId(), process.getId(),
+                            config.fullName(),
+                            de.mhus.vance.brain.ai.ProviderType.requireWireName(
+                                    config.provider()),
+                            modelInfo.capabilities()));
 
             // Mid-loop interrupt (ESC / /pause): the loop stopped before a
             // terminal action. Surface no answer, drop buffered history
@@ -2734,18 +2744,11 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
 
     /**
      * Build a {@link UserMessage} for one current-turn
-     * {@link SteerMessage.UserChatInput}. Text-only when there are no
-     * attachments (fast path). When attachments are present, resolves
-     * them via {@link de.mhus.vance.brain.ai.attachment.AttachmentResolver}
-     * (validates project scope + size) and produces a multimodal
-     * message — image / PDF / text content blocks ahead of the
-     * question text. Provider/capability-aware via
-     * {@link de.mhus.vance.brain.ai.StandardAiChat#toContentBlock}.
-     *
-     * <p>Attachment resolution failures (missing doc, foreign project,
-     * oversize) are caught and downgraded to a clear text-only message
-     * — Arthur should reply gracefully rather than crash the turn. The
-     * underlying error is logged so operators can see what happened.
+     * {@link SteerMessage.UserChatInput}, delegating the attachment
+     * work to the shared
+     * {@link de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer}.
+     * Arthur's own part is the sender prefix for multi-user sessions —
+     * everything below the text belongs to every engine alike.
      */
     private UserMessage buildUserMessageWithAttachments(
             SteerMessage.UserChatInput uci,
@@ -2756,32 +2759,12 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             boolean collabActive) {
         String prefixedContent = de.mhus.vance.brain.chat.ChatHistoryRenderer
                 .applySenderPrefix(uci.fromUserDisplayName(), uci.content(), collabActive);
-        if (uci.attachments().isEmpty()) {
-            return UserMessage.from(prefixedContent);
-        }
-        List<de.mhus.vance.brain.ai.attachment.ResolvedAttachment> resolved;
-        try {
-            resolved = attachmentResolver.resolveAll(
-                    uci.attachments(), process.getTenantId(), process.getProjectId());
-        } catch (de.mhus.vance.brain.ai.attachment.AttachmentException e) {
-            log.warn("Arthur: attachment resolution failed for process '{}': {} — "
-                            + "falling back to text-only turn",
-                    process.getId(), e.getMessage());
-            return UserMessage.from(prefixedContent
-                    + "\n\n[Attachment resolution failed: " + e.getMessage() + "]");
-        }
-        List<dev.langchain4j.data.message.Content> blocks = new ArrayList<>();
-        for (de.mhus.vance.brain.ai.attachment.ResolvedAttachment att : resolved) {
-            try {
-                blocks.add(de.mhus.vance.brain.ai.StandardAiChat.toContentBlock(
-                        att, chatName, providerType, capabilities));
-            } catch (de.mhus.vance.brain.ai.attachment.AttachmentException e) {
-                log.warn("Arthur: attachment '{}' rejected by model '{}': {} — skipping",
-                        att.originalFilename(), chatName, e.getMessage());
-            }
-        }
-        blocks.add(dev.langchain4j.data.message.TextContent.from(prefixedContent));
-        return UserMessage.from(blocks);
+        return attachedUserMessageComposer.compose(
+                new de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.Context(
+                        process.getTenantId(), process.getProjectId(), process.getId(),
+                        chatName, providerType, capabilities),
+                prefixedContent,
+                uci.attachments());
     }
 
     /**

@@ -106,6 +106,9 @@ public final class ContextToolsApi implements ToolBus {
     private final HistoryTagBuilder historyTagBuilder;
     private final HistoryTagSink historyTagSink;
     private final @org.jspecify.annotations.Nullable ToolResultStorage toolResultStorage;
+    private final de.mhus.vance.brain.ai.attachment.@org.jspecify.annotations.Nullable
+            ToolImageHarvester imageHarvester;
+    private final de.mhus.vance.brain.ai.attachment.ToolAttachmentSink attachmentSink;
     /**
      * Optional — when set, {@link #primaryAsLc4j()} suffixes the
      * description of each tool that has a non-OK health entry in the
@@ -248,6 +251,34 @@ public final class ContextToolsApi implements ToolBus {
             @org.jspecify.annotations.Nullable HistoryTagSink historyTagSink,
             @org.jspecify.annotations.Nullable ToolResultStorage toolResultStorage,
             @org.jspecify.annotations.Nullable ToolHealthService toolHealthService) {
+        this(dispatcher, ctx, allowed, primary, deferred, activatedDeferred, listener,
+                activationRefresh, historyTagBuilder, historyTagSink, toolResultStorage,
+                toolHealthService, null, null);
+    }
+
+    /**
+     * Full constructor — adds the image-harvest hook. Tool results that
+     * carry image content have it lifted into a document here, so the
+     * model sees a picture next turn instead of a base64 blob in its
+     * text channel. See {@link de.mhus.vance.brain.ai.attachment.ToolImageHarvester}.
+     */
+    public ContextToolsApi(
+            ToolDispatcher dispatcher,
+            ToolInvocationContext ctx,
+            Set<String> allowed,
+            Set<String> primary,
+            Set<String> deferred,
+            Set<String> activatedDeferred,
+            ToolInvocationListener listener,
+            java.util.function.@org.jspecify.annotations.Nullable Consumer<String> activationRefresh,
+            @org.jspecify.annotations.Nullable HistoryTagBuilder historyTagBuilder,
+            @org.jspecify.annotations.Nullable HistoryTagSink historyTagSink,
+            @org.jspecify.annotations.Nullable ToolResultStorage toolResultStorage,
+            @org.jspecify.annotations.Nullable ToolHealthService toolHealthService,
+            de.mhus.vance.brain.ai.attachment.@org.jspecify.annotations.Nullable
+                    ToolImageHarvester imageHarvester,
+            de.mhus.vance.brain.ai.attachment.@org.jspecify.annotations.Nullable
+                    ToolAttachmentSink attachmentSink) {
         this.dispatcher = dispatcher;
         this.ctx = ctx;
         this.allowed = allowed == null ? Set.of() : Set.copyOf(allowed);
@@ -260,6 +291,9 @@ public final class ContextToolsApi implements ToolBus {
         this.historyTagSink = historyTagSink == null ? HistoryTagSink.NOOP : historyTagSink;
         this.toolResultStorage = toolResultStorage;
         this.toolHealthService = toolHealthService;
+        this.imageHarvester = imageHarvester;
+        this.attachmentSink = attachmentSink == null
+                ? de.mhus.vance.brain.ai.attachment.ToolAttachmentSink.NOOP : attachmentSink;
     }
 
     /** All tools visible in this scope (after the engine's allow-filter). */
@@ -460,7 +494,8 @@ public final class ContextToolsApi implements ToolBus {
         // tool's labels without a second resolve. Cheap (map lookup).
         Optional<ToolDispatcher.Resolved> resolved = dispatcher.resolve(name, ctx);
         try {
-            Map<String, Object> result = dispatcher.invoke(name, params, ctx, this);
+            Map<String, Object> result = harvestImages(
+                    name, dispatcher.invoke(name, params, ctx, this));
             listener.after(name, System.currentTimeMillis() - startMs, null);
             // Sliding TTL: bump the activation timestamp on every use of
             // an activated deferred tool so the discovery cycle doesn't
@@ -517,6 +552,28 @@ public final class ContextToolsApi implements ToolBus {
      * storage path (large result). No-op when storage is null
      * (e.g. test ctors).
      */
+    /**
+     * Lifts image content out of the result into a document and queues
+     * the reference for the engine. Runs <em>before</em> tag extraction
+     * and truncation on purpose: the rewritten result is small, so a
+     * screenshot no longer trips the 32 KB stub, and the tag builder
+     * still sees a documentId to work with.
+     */
+    private Map<String, Object> harvestImages(String toolName, Map<String, Object> result) {
+        if (imageHarvester == null) return result;
+        try {
+            de.mhus.vance.brain.ai.attachment.ToolImageHarvester.Harvest harvest =
+                    imageHarvester.harvest(
+                            result, ctx.tenantId(), ctx.projectId(), toolName, ctx.userId());
+            attachmentSink.emit(harvest.attachments());
+            return harvest.result();
+        } catch (RuntimeException e) {
+            // A picture that cannot be stored must not cost the caller
+            // the tool result it already has.
+            return result;
+        }
+    }
+
     private Map<String, Object> maybeTruncateResult(String toolName, Map<String, Object> result) {
         if (toolResultStorage == null) return result;
         try {
@@ -753,9 +810,24 @@ public final class ContextToolsApi implements ToolBus {
             if (mergedPrimary.add(e)) changed = true;
         }
         if (!changed) return this;
+        return copyWith(mergedAllowed, mergedPrimary, deferred, activatedDeferred);
+    }
+
+    /**
+     * Re-shapes the allow/primary/deferred sets while carrying every
+     * hook forward. Both clone paths route through here: building the
+     * copy with the short constructor dropped output-truncation, history
+     * tags, tool-health and the activation-TTL refresh, so a turn with an
+     * active skill (the one case that calls {@link #withAdditional})
+     * silently lost all four — including the 32 KB result cap.
+     */
+    private ContextToolsApi copyWith(
+            Set<String> newAllowed, Set<String> newPrimary,
+            Set<String> newDeferred, Set<String> newActivated) {
         return new ContextToolsApi(
-                dispatcher, ctx, mergedAllowed, mergedPrimary,
-                deferred, activatedDeferred, listener);
+                dispatcher, ctx, newAllowed, newPrimary, newDeferred, newActivated,
+                listener, activationRefresh, historyTagBuilder, historyTagSink,
+                toolResultStorage, toolHealthService, imageHarvester, attachmentSink);
     }
 
     /**
@@ -793,9 +865,7 @@ public final class ContextToolsApi implements ToolBus {
         narrowedDeferred.retainAll(narrowedAllowed);
         Set<String> narrowedActivated = new LinkedHashSet<>(activatedDeferred);
         narrowedActivated.retainAll(narrowedAllowed);
-        return new ContextToolsApi(
-                dispatcher, ctx, narrowedAllowed, narrowedPrimary,
-                narrowedDeferred, narrowedActivated, listener);
+        return copyWith(narrowedAllowed, narrowedPrimary, narrowedDeferred, narrowedActivated);
     }
 
     /**

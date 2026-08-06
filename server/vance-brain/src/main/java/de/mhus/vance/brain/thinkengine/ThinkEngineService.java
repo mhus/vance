@@ -53,6 +53,7 @@ public class ThinkEngineService {
     private final LlmTraceService llmTraceService;
     private final de.mhus.vance.brain.history.HistoryTagBuilder historyTagBuilder;
     private final de.mhus.vance.brain.tools.ToolResultStorage toolResultStorage;
+    private final de.mhus.vance.brain.ai.attachment.ToolImageHarvester imageHarvester;
     private final de.mhus.vance.shared.toolhealth.ToolHealthService toolHealthService;
     /** Lazy provider — RecipeResolver depends on us, so the bean graph cycles otherwise. */
     private final ObjectProvider<RecipeResolver> recipeResolverProvider;
@@ -73,6 +74,7 @@ public class ThinkEngineService {
             de.mhus.vance.brain.history.HistoryTagBuilder historyTagBuilder,
             de.mhus.vance.brain.tools.ToolResultStorage toolResultStorage,
             de.mhus.vance.shared.toolhealth.ToolHealthService toolHealthService,
+            de.mhus.vance.brain.ai.attachment.ToolImageHarvester imageHarvester,
             ObjectProvider<RecipeResolver> recipeResolverProvider) {
         this.engines = engineBeans.stream().collect(
                 Collectors.toMap(ThinkEngine::name, e -> e, (a, b) -> {
@@ -93,6 +95,7 @@ public class ThinkEngineService {
         this.llmTraceService = llmTraceService;
         this.historyTagBuilder = historyTagBuilder;
         this.toolResultStorage = toolResultStorage;
+        this.imageHarvester = imageHarvester;
         this.toolHealthService = toolHealthService;
         this.recipeResolverProvider = recipeResolverProvider;
     }
@@ -223,6 +226,11 @@ public class ThinkEngineService {
         de.mhus.vance.brain.history.TurnReasoningBuffer reasoningBuffer =
                 new de.mhus.vance.brain.history.TurnReasoningBuffer();
         Set<String> engineRoles = engine.roles() == null ? Set.of() : Set.copyOf(engine.roles());
+        // Fresh per-turn queue for tool-produced attachments (images out
+        // of MCP results). Per turn like the tag sink: a picture is shown
+        // once, in the turn that produced it.
+        de.mhus.vance.brain.ai.attachment.ToolAttachmentSink attachmentSink =
+                new de.mhus.vance.brain.ai.attachment.ToolAttachmentSink();
         return new DefaultThinkEngineContext(
                 process, projectId, userId, base,
                 aiModelService, settingService, chatMessageService,
@@ -239,7 +247,9 @@ public class ThinkEngineService {
                 reasoningBuffer,
                 toolResultStorage,
                 toolHealthService,
-                engineRoles);
+                engineRoles,
+                imageHarvester,
+                attachmentSink);
     }
 
     /**

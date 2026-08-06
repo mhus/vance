@@ -166,6 +166,8 @@ public abstract class StructuredActionEngine implements ThinkEngine {
 
     /** Per-request context handlers (research-pressure et al.), shared. */
     protected final de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers;
+    private final de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer
+            attachedUserMessageComposer;
 
     protected StructuredActionEngine(
             StreamingProperties streamingProperties,
@@ -175,7 +177,9 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             CompletionGuardService completionGuardService,
             ActionLoopJudgeService actionLoopJudgeService,
             ThinkProcessService thinkProcessService,
-            de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers) {
+            de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers,
+            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer
+                    attachedUserMessageComposer) {
         this.streamingProperties = streamingProperties;
         this.llmCallTracker = llmCallTracker;
         this.objectMapper = objectMapper;
@@ -184,6 +188,42 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         this.actionLoopJudgeService = actionLoopJudgeService;
         this.thinkProcessService = thinkProcessService;
         this.turnContextHandlers = turnContextHandlers;
+        this.attachedUserMessageComposer = attachedUserMessageComposer;
+    }
+
+    /**
+     * Appends one user message carrying whatever the last tool batch
+     * produced as visual content — a screenshot an MCP tool returned,
+     * harvested into a document by
+     * {@link de.mhus.vance.brain.ai.attachment.ToolImageHarvester}. It
+     * cannot ride on the tool result itself: that is text in the
+     * OpenAI-compatible API.
+     *
+     * <p>No-op without an attachment context (the engine did not resolve
+     * its model metadata for this turn) or with an empty sink — the
+     * normal case, so the check stays a boolean read.
+     *
+     * <p>Package-private for tests: driving the surrounding action loop
+     * would need a scripted model, a judge and a streaming stack.
+     */
+    void appendToolAttachments(
+            ThinkEngineContext ctx,
+            List<ChatMessage> messages,
+            ThinkProcessDocument process,
+            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.@Nullable Context
+                    attachmentContext) {
+        if (attachmentContext == null || !ctx.attachmentSink().hasPending()) {
+            return;
+        }
+        java.util.List<de.mhus.vance.api.attachment.AttachmentRef> refs =
+                ctx.attachmentSink().drain();
+        try {
+            messages.add(attachedUserMessageComposer.compose(
+                    attachmentContext, "Output of the tool call above:", refs));
+        } catch (RuntimeException e) {
+            log.warn("{} id='{}' cannot show {} tool attachment(s): {}",
+                    name(), process.getId(), refs.size(), e.toString());
+        }
     }
 
     /**
@@ -424,7 +464,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             int maxCorrections,
             long deadlineMs) {
         return runStructuredActionLoop(aiChat, readToolSpecsFactory, messages, ctx,
-                process, maxIters, modelAlias, maxCorrections, deadlineMs, Set.of());
+                process, maxIters, modelAlias, maxCorrections, deadlineMs, Set.of(), null);
     }
 
     /**
@@ -446,7 +486,9 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             String modelAlias,
             int maxCorrections,
             long deadlineMs,
-            Set<String> extraTools) {
+            Set<String> extraTools,
+            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.@Nullable Context
+                    attachmentContext) {
 
         // Fresh tools + spec list per loop. Refreshed after any
         // iteration that called read tools so tool_description
@@ -637,6 +679,9 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                 tools = toolsFor(ctx, extraTools);
                 allSpecs = new ArrayList<>(readToolSpecsFactory.apply(tools));
                 allSpecs.add(buildActionToolSpec());
+                // A read tool may have returned an image; it can only
+                // reach the model on a message of its own.
+                appendToolAttachments(ctx, messages, process, attachmentContext);
             }
 
             if (actionCall == null) {
@@ -798,7 +843,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             int maxCorrections,
             List<SteerMessage> inbox) {
         return runActionLoopWithJudge(aiChat, readToolSpecsFactory, messages, ctx,
-                process, maxIters, modelAlias, maxCorrections, inbox, Set.of());
+                process, maxIters, modelAlias, maxCorrections, inbox, Set.of(), null);
     }
 
     /**
@@ -817,7 +862,9 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             String modelAlias,
             int maxCorrections,
             List<SteerMessage> inbox,
-            Set<String> extraTools) {
+            Set<String> extraTools,
+            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.@Nullable Context
+                    attachmentContext) {
         // One deadline for the whole turn — initial budget plus every
         // judge extension share it, so the wallclock net actually bounds
         // the turn instead of resetting each extension round.
@@ -825,7 +872,8 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                 + TURN_WALLCLOCK_MINUTES * 60_000L;
         ActionLoopResult loopResult = runStructuredActionLoop(
                 aiChat, readToolSpecsFactory, messages, ctx, process,
-                maxIters, modelAlias, maxCorrections, deadlineMs, extraTools);
+                maxIters, modelAlias, maxCorrections, deadlineMs, extraTools,
+                attachmentContext);
 
         // When the loop max-iters out (and isn't a plan-mode-yield case,
         // which the engine's own continuation handles), consult the judge

@@ -95,7 +95,7 @@ class StructuredActionEngineOneShotTest {
      */
     private static final class TestEngine extends StructuredActionEngine {
         TestEngine(ThinkProcessService tps) {
-            super(null, null, null, null, null, null, tps, null);
+            super(null, null, null, null, null, null, tps, null, null);
         }
 
         @Override public String name() { return "test-engine"; }

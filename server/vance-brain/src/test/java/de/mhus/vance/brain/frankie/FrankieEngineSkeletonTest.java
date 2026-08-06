@@ -72,6 +72,10 @@ class FrankieEngineSkeletonTest {
     private SkillPromptComposer skillPromptComposer;
     private SessionService sessionService;
 
+    private de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver;
+    private de.mhus.vance.brain.ai.ModelCatalog modelCatalog;
+    private de.mhus.vance.brain.ai.attachment.ToolAttachmentSink attachmentSink;
+
     private FrankieEngine engine;
     private FrankieProperties properties;
     private ThinkProcessDocument process;
@@ -128,8 +132,7 @@ class FrankieEngineSkeletonTest {
                 mock(de.mhus.vance.brain.memory.MemoryContextLoader.class);
         lenient().when(memoryContextLoader.composeBlock(any())).thenReturn(null);
 
-        de.mhus.vance.brain.ai.ModelCatalog modelCatalog =
-                mock(de.mhus.vance.brain.ai.ModelCatalog.class);
+        modelCatalog = mock(de.mhus.vance.brain.ai.ModelCatalog.class);
         de.mhus.vance.brain.ai.ModelInfo fakeModelInfo = new de.mhus.vance.brain.ai.ModelInfo(
                 "test", "test-model",
                 /*contextWindowTokens*/ 128_000,
@@ -149,6 +152,7 @@ class FrankieEngineSkeletonTest {
         lenient().when(memoryCompactionService.compactIfNeeded(any(), any(), any(), any()))
                 .thenReturn(de.mhus.vance.brain.memory.CompactionResult.noop("test"));
 
+        attachmentResolver = mock(de.mhus.vance.brain.ai.attachment.AttachmentResolver.class);
         FrankiePostCompletionHookHandler hookHandler =
                 mock(FrankiePostCompletionHookHandler.class);
         lenient().when(hookHandler.maybeSpawn(any(), any(), any(), anyBoolean()))
@@ -166,7 +170,9 @@ class FrankieEngineSkeletonTest {
                 memoryContextLoader,
                 modelCatalog, memoryCompactionService,
                 new de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry(java.util.List.of()),
-                hookHandler, completionGuard);
+                hookHandler, completionGuard,
+                new de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer(
+                                attachmentResolver));
 
         process = new ThinkProcessDocument();
         process.setId(PROC_ID);
@@ -180,6 +186,8 @@ class FrankieEngineSkeletonTest {
         ClientEventPublisher events = mock(ClientEventPublisher.class);
         lenient().when(ctx.chatMessageService()).thenReturn(chatMessageService);
         lenient().when(ctx.tools()).thenReturn(tools);
+        attachmentSink = new de.mhus.vance.brain.ai.attachment.ToolAttachmentSink();
+        lenient().when(ctx.attachmentSink()).thenReturn(attachmentSink);
         lenient().when(ctx.drainPending()).thenReturn(List.of());
         lenient().when(ctx.historyTagSink()).thenReturn(tagSink);
         lenient().when(ctx.events()).thenReturn(events);
@@ -318,6 +326,201 @@ class FrankieEngineSkeletonTest {
         verify(thinkProcessService).clearHalt(PROC_ID);
         verify(thinkProcessService).updateStatus(PROC_ID, ThinkProcessStatus.PAUSED);
         verify(thinkProcessService, never()).closeProcess(eq(PROC_ID), any());
+    }
+
+    // ─── Attachments (Phase 2) ──────────────────────────────────────
+
+    @Test
+    void attachedImage_ridesAlongAsAContentBlock() {
+        // Frankie renders its prompt from the persisted chat log, which
+        // stores text only — so an image attached to a coding session
+        // used to be dropped between the inbox and the LLM call.
+        de.mhus.vance.brain.ai.AiChatConfig visionCfg =
+                new AiChatConfig("openai", "gpt-x", "stub-key");
+        AiChat aiChat = mock(AiChat.class);
+        lenient().when(aiChat.streamingChatModel()).thenReturn(chatModel);
+        EngineChatFactory.EngineChatBundle visionBundle =
+                new EngineChatFactory.EngineChatBundle(aiChat, ChatBehavior.single(visionCfg));
+        lenient().when(engineChatFactory.forProcess(any(), any(), any())).thenReturn(visionBundle);
+        lenient().when(engineChatFactory.forProcess(any(), any(), any(), any()))
+                .thenReturn(visionBundle);
+        lenient().when(modelCatalog.lookupOrDefault(any(), any(), any(), any(), any()))
+                .thenReturn(visionModelInfo());
+        when(attachmentResolver.resolveAll(any(), any(), any()))
+                .thenReturn(List.of(new de.mhus.vance.brain.ai.attachment.ResolvedAttachment(
+                        "doc-1", "image/png", new byte[] {1, 2, 3}, "screenshot.png")));
+        when(ctx.drainPending()).thenReturn(List.of(userInputWithAttachment("look at this")));
+        // Production shape: the text was already persisted, so the same
+        // turn appears both in history and in the inbox. The rebuild has
+        // to replace the history entry, not append next to it.
+        when(chatMessageService.activeHistory(any(), any(), any()))
+                .thenReturn(List.of(ChatMessageDocument.builder()
+                        .role(de.mhus.vance.api.chat.ChatRole.USER)
+                        .content("look at this")
+                        .build()));
+        chatModel.script(AiMessage.from("I see a screenshot."));
+
+        engine.runTurn(process, ctx);
+
+        dev.langchain4j.data.message.UserMessage userMessage =
+                lastUserMessage(chatModel.requests().get(0));
+        assertThat(userMessage.contents())
+                .as("image block plus the user's text")
+                .hasSize(2);
+        assertThat(userMessage.contents().get(0).type())
+                .isEqualTo(dev.langchain4j.data.message.ContentType.IMAGE);
+        assertThat(countUserMessages(chatModel.requests().get(0)))
+                .as("the rebuilt message replaces the history entry instead of doubling it")
+                .isEqualTo(1);
+    }
+
+    @Test
+    void turnWithoutAttachments_rendersFromHistoryUnchanged() {
+        // The attachment path must not disturb the ordinary turn: no
+        // resolver call, no rebuild, history as before.
+        when(ctx.drainPending()).thenReturn(List.of(userInput("plain question")));
+        chatModel.script(AiMessage.from("answer"));
+
+        engine.runTurn(process, ctx);
+
+        verify(attachmentResolver, never()).resolveAll(any(), any(), any());
+    }
+
+    private static de.mhus.vance.brain.ai.ModelInfo visionModelInfo() {
+        return new de.mhus.vance.brain.ai.ModelInfo(
+                "openai", "gpt-x", 128_000, 4096,
+                de.mhus.vance.brain.ai.ModelSize.LARGE,
+                java.util.Set.of(de.mhus.vance.brain.ai.ModelCapability.VISION),
+                60, 2, false, null, null);
+    }
+
+    private static de.mhus.vance.brain.thinkengine.SteerMessage.UserChatInput userInput(
+            String text) {
+        return new de.mhus.vance.brain.thinkengine.SteerMessage.UserChatInput(
+                Instant.now(), null, "wile.coyote", null, text,
+                List.of(), false, null, null, null);
+    }
+
+    private static de.mhus.vance.brain.thinkengine.SteerMessage.UserChatInput
+            userInputWithAttachment(String text) {
+        return new de.mhus.vance.brain.thinkengine.SteerMessage.UserChatInput(
+                Instant.now(), null, "wile.coyote", null, text,
+                List.of(new de.mhus.vance.api.attachment.AttachmentRef("doc-1")),
+                false, null, null, null);
+    }
+
+    private static int countUserMessages(ChatRequest request) {
+        int n = 0;
+        for (dev.langchain4j.data.message.ChatMessage m : request.messages()) {
+            if (m instanceof dev.langchain4j.data.message.UserMessage) n++;
+        }
+        return n;
+    }
+
+    /** The last user-role message of a request — the one this turn built. */
+    private static dev.langchain4j.data.message.UserMessage lastUserMessage(ChatRequest request) {
+        dev.langchain4j.data.message.UserMessage last = null;
+        for (dev.langchain4j.data.message.ChatMessage m : request.messages()) {
+            if (m instanceof dev.langchain4j.data.message.UserMessage um) last = um;
+        }
+        assertThat(last).as("request carries a user message").isNotNull();
+        return last;
+    }
+
+    @Test
+    void imageFromAToolCall_isShownToTheModelOnTheNextIteration() {
+        // A screenshot arrives as an image content block, gets harvested
+        // into a document, and can only reach the model on a message of
+        // its own — a tool result is text in the OpenAI-compatible API.
+        de.mhus.vance.brain.ai.AiChatConfig visionCfg =
+                new AiChatConfig("openai", "gpt-x", "stub-key");
+        AiChat aiChat = mock(AiChat.class);
+        lenient().when(aiChat.streamingChatModel()).thenReturn(chatModel);
+        EngineChatFactory.EngineChatBundle visionBundle =
+                new EngineChatFactory.EngineChatBundle(aiChat, ChatBehavior.single(visionCfg));
+        lenient().when(engineChatFactory.forProcess(any(), any(), any())).thenReturn(visionBundle);
+        lenient().when(engineChatFactory.forProcess(any(), any(), any(), any()))
+                .thenReturn(visionBundle);
+        lenient().when(modelCatalog.lookupOrDefault(any(), any(), any(), any(), any()))
+                .thenReturn(visionModelInfo());
+        when(attachmentResolver.resolveAll(any(), any(), any()))
+                .thenReturn(List.of(new de.mhus.vance.brain.ai.attachment.ResolvedAttachment(
+                        "doc-1", "image/png", new byte[] {1, 2, 3}, "screenshot.png")));
+
+        ToolExecutionRequest shot = ToolExecutionRequest.builder()
+                .id("call-1").name("chrome__take_screenshot").arguments("{}").build();
+        chatModel.script(AiMessage.from("", List.of(shot)));
+        chatModel.script(AiMessage.from("I can see the page."));
+        // The harvester runs inside the dispatch path; here the tool
+        // invocation stands in for it by filling the sink.
+        when(tools.invoke(eq("chrome__take_screenshot"), any())).thenAnswer(inv -> {
+            attachmentSink.emit(List.of(
+                    new de.mhus.vance.api.attachment.AttachmentRef("doc-1")));
+            return java.util.Map.of("content", List.of(
+                    java.util.Map.of("type", "image", "path", "_chatbox/shot.png")));
+        });
+
+        engine.runTurn(process, ctx);
+
+        dev.langchain4j.data.message.UserMessage shown =
+                lastUserMessage(chatModel.requests().get(1));
+        assertThat(shown.contents().get(0).type())
+                .as("the screenshot reaches the second iteration as an image block")
+                .isEqualTo(dev.langchain4j.data.message.ContentType.IMAGE);
+    }
+
+    @Test
+    void toolImage_isAddedOnce_notPerIteration() {
+        // The message stays in the conversation for the rest of the turn
+        // — that is what a message is. What draining guarantees is that
+        // it is *appended* once: without it every later iteration would
+        // add the same picture again and the context would fill up.
+        de.mhus.vance.brain.ai.AiChatConfig visionCfg =
+                new AiChatConfig("openai", "gpt-x", "stub-key");
+        AiChat aiChat = mock(AiChat.class);
+        lenient().when(aiChat.streamingChatModel()).thenReturn(chatModel);
+        EngineChatFactory.EngineChatBundle visionBundle =
+                new EngineChatFactory.EngineChatBundle(aiChat, ChatBehavior.single(visionCfg));
+        lenient().when(engineChatFactory.forProcess(any(), any(), any())).thenReturn(visionBundle);
+        lenient().when(engineChatFactory.forProcess(any(), any(), any(), any()))
+                .thenReturn(visionBundle);
+        lenient().when(modelCatalog.lookupOrDefault(any(), any(), any(), any(), any()))
+                .thenReturn(visionModelInfo());
+        when(attachmentResolver.resolveAll(any(), any(), any()))
+                .thenReturn(List.of(new de.mhus.vance.brain.ai.attachment.ResolvedAttachment(
+                        "doc-1", "image/png", new byte[] {1, 2, 3}, "screenshot.png")));
+
+        ToolExecutionRequest shot = ToolExecutionRequest.builder()
+                .id("call-1").name("chrome__take_screenshot").arguments("{}").build();
+        ToolExecutionRequest other = ToolExecutionRequest.builder()
+                .id("call-2").name("noop_tool").arguments("{}").build();
+        chatModel.script(AiMessage.from("", List.of(shot)));
+        chatModel.script(AiMessage.from("", List.of(other)));
+        chatModel.script(AiMessage.from("done"));
+        when(tools.invoke(eq("chrome__take_screenshot"), any())).thenAnswer(inv -> {
+            attachmentSink.emit(List.of(
+                    new de.mhus.vance.api.attachment.AttachmentRef("doc-1")));
+            return java.util.Map.of("ok", true);
+        });
+        when(tools.invoke(eq("noop_tool"), any())).thenReturn(java.util.Map.of("ok", true));
+
+        engine.runTurn(process, ctx);
+
+        assertThat(countImageBlocks(chatModel.requests().get(2)))
+                .as("the picture is in the conversation exactly once, not once per iteration")
+                .isEqualTo(1);
+    }
+
+    private static int countImageBlocks(ChatRequest request) {
+        int n = 0;
+        for (dev.langchain4j.data.message.ChatMessage m : request.messages()) {
+            if (m instanceof dev.langchain4j.data.message.UserMessage um) {
+                for (dev.langchain4j.data.message.Content c : um.contents()) {
+                    if (c.type() == dev.langchain4j.data.message.ContentType.IMAGE) n++;
+                }
+            }
+        }
+        return n;
     }
 
     // ─── Deferred-tool activation inside the turn ───────────────────

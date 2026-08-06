@@ -208,4 +208,15 @@ public interface ThinkEngineContext {
      * lifecycle as {@link #historyTagSink()}.
      */
     TurnReasoningBuffer reasoning();
+
+    /**
+     * Per-turn queue of attachments that tool calls produced — today
+     * images lifted out of MCP results by
+     * {@link de.mhus.vance.brain.ai.attachment.ToolImageHarvester}. An
+     * engine that can render multimodal content drains it between tool
+     * batches and shows the items to the model; one that cannot simply
+     * never drains, and the pictures stay documents. Same per-turn
+     * lifecycle as {@link #historyTagSink()}.
+     */
+    de.mhus.vance.brain.ai.attachment.ToolAttachmentSink attachmentSink();
 }

@@ -11,6 +11,7 @@ import de.mhus.vance.foot.connection.MessageHandler;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.ColorResolver;
+import de.mhus.vance.foot.ui.FollowUpSuggestionService;
 import de.mhus.vance.foot.ui.StreamingDisplay;
 import de.mhus.vance.foot.ui.ThinkingVisibility;
 import de.mhus.vance.foot.ui.Verbosity;
@@ -20,6 +21,8 @@ import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -39,6 +42,8 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 public class ChatMessageAppendedHandler implements MessageHandler {
 
+    private static final Logger log = LoggerFactory.getLogger(ChatMessageAppendedHandler.class);
+
     /** Configurable thoughts style, resolved from vance.ui.colors.thoughts. */
     private final @Nullable AttributedStyle thoughtsStyle;
 
@@ -49,6 +54,7 @@ public class ChatMessageAppendedHandler implements MessageHandler {
     private final ConversationAuditService audit;
     private final FootConfig config;
     private final ThinkingVisibility thinkingVisibility;
+    private final FollowUpSuggestionService followUpService;
     private final ObjectMapper json = JsonMapper.builder().build();
 
     public ChatMessageAppendedHandler(ChatTerminal terminal,
@@ -58,6 +64,7 @@ public class ChatMessageAppendedHandler implements MessageHandler {
                                       ConversationAuditService audit,
                                       FootConfig config,
                                       ThinkingVisibility thinkingVisibility,
+                                      FollowUpSuggestionService followUpService,
                                       ColorResolver colorResolver) {
         this.terminal = terminal;
         this.streaming = streaming;
@@ -66,6 +73,7 @@ public class ChatMessageAppendedHandler implements MessageHandler {
         this.audit = audit;
         this.config = config;
         this.thinkingVisibility = thinkingVisibility;
+        this.followUpService = followUpService;
         this.thoughtsStyle = colorResolver.thoughts();
     }
 
@@ -78,6 +86,12 @@ public class ChatMessageAppendedHandler implements MessageHandler {
     public void handle(WebSocketEnvelope envelope) {
         ChatMessageAppendedData data = json.convertValue(
                 envelope.getData(), ChatMessageAppendedData.class);
+        log.trace("handle: chat-message-appended — role={}, process={}, thinkProcessId={}, activeProcess={}, contentLen={}",
+                data.getRole(),
+                data.getProcessName(),
+                data.getThinkProcessId(),
+                sessions.activeProcess(),
+                data.getContent() == null ? 0 : data.getContent().length());
         // Persist the message to the conversation audit log before
         // rendering — the audit is best-effort and must never block
         // the UI. Only ASSISTANT turns are audited here: USER turns
@@ -101,6 +115,20 @@ public class ChatMessageAppendedHandler implements MessageHandler {
             // after the reply (unless it was already streamed live).
             if (!thinkingStreamed) {
                 maybeRenderThoughts(data);
+            }
+            // Capture the assistant content for follow-up suggestions.
+            // We do NOT gate on isMainProcess() here: when the main
+            // process (chat/Arthur) delegates to a worker (e.g.
+            // coding-xxx), the worker's chat-message-appended events
+            // are what the user sees as the conversation reply. The
+            // main process itself rarely emits chat-message-appended
+            // events for assistant turns — it delegates. Gating on
+            // isMainProcess() would therefore skip every real reply.
+            if (data.getRole() == ChatRole.ASSISTANT) {
+                String content = data.getContent() == null ? "" : data.getContent();
+                log.trace("onAssistantMessage (streamed) — process={}, contentLen={}",
+                        data.getProcessName(), content.length());
+                followUpService.onAssistantMessage(content);
             }
             maybeUpdatePicker(data);
             return;
@@ -138,6 +166,19 @@ public class ChatMessageAppendedHandler implements MessageHandler {
             terminal.chatMarkdown(header, content);
         } else {
             terminal.worker(header + content);
+        }
+        // Capture the assistant content for follow-up suggestions.
+        // We do NOT gate on isMainProcess() here: when the main
+        // process (chat/Arthur) delegates to a worker (e.g.
+        // coding-xxx), the worker's chat-message-appended events
+        // are what the user sees as the conversation reply. The
+        // main process itself rarely emits chat-message-appended
+        // events for assistant turns — it delegates. Gating on
+        // isMainProcess() would therefore skip every real reply.
+        if (data.getRole() == ChatRole.ASSISTANT) {
+            log.trace("onAssistantMessage (non-streamed) — process={}, contentLen={}",
+                    data.getProcessName(), content.length());
+            followUpService.onAssistantMessage(content);
         }
         maybeUpdatePicker(data);
     }
@@ -214,6 +255,11 @@ public class ChatMessageAppendedHandler implements MessageHandler {
 
     private boolean isMainProcess(@org.jspecify.annotations.Nullable String processName) {
         if (processName == null) return false;
-        return Objects.equals(processName, sessions.activeProcess());
+        String active = sessions.activeProcess();
+        boolean match = Objects.equals(processName, active);
+        if (!match) {
+            log.trace("isMainProcess: MISMATCH — processName='{}', activeProcess='{}'", processName, active);
+        }
+        return match;
     }
 }

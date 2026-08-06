@@ -50,6 +50,7 @@ public class ChatRepl {
     private final PendingLinePrompt linePrompt;
     private final ThinkingVisibility thinkingVisibility;
     private final ColorResolver colorResolver;
+    private final FollowUpSuggestionService followUpService;
 
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
     private @Nullable Terminal terminal;
@@ -65,7 +66,8 @@ public class ChatRepl {
                     IdeSelectionState ideSelection,
                     PendingLinePrompt linePrompt,
                     ThinkingVisibility thinkingVisibility,
-                    ColorResolver colorResolver) {
+                    ColorResolver colorResolver,
+                    FollowUpSuggestionService followUpService) {
         this.input = input;
         this.chatTerminal = chatTerminal;
         this.interfaceService = interfaceService;
@@ -77,6 +79,7 @@ public class ChatRepl {
         this.linePrompt = linePrompt;
         this.thinkingVisibility = thinkingVisibility;
         this.colorResolver = colorResolver;
+        this.followUpService = followUpService;
     }
 
     public void requestStop() {
@@ -107,6 +110,7 @@ public class ChatRepl {
         historyFile = resolveHistoryFile();
         liveRegion.loadHistory(loadHistoryFromFile(historyFile));
         liveRegion.setCompleter(this::completeSlashCommand);
+        liveRegion.setIdleSuggestionProvider(followUpService);
         liveRegion.setSubmitListener(this::onSubmit);
         liveRegion.setInterruptListener(this::onInterrupt);
         liveRegion.setQuitListener(this::requestStop);

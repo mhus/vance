@@ -69,6 +69,13 @@ vance:
       completion: "fg:blue"
       ghost-text: "fg:bright-black,faint"
       system-message: "fg:bright-black,faint"
+    # Idle-triggered ghost-text follow-up suggestions. When the user
+    # hasn't typed for the configured delay and the input is empty, foot
+    # asks the brain for a follow-up suggestion and shows it as ghost text.
+    # Accept with Right-Arrow or Tab; dismiss by typing.
+    follow-up:
+      enabled: true
+      idle-delay: 3s
   conversation-capture:
     # Append every chat message to .vancetope/conversations/<YYYY>-<MM>/<sessionId>.jsonl
     # Override per-project in .vancetope/config.yaml or with --audit / --no-audit.

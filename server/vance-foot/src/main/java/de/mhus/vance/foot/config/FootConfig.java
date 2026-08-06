@@ -198,6 +198,7 @@ public class FootConfig {
         private WindowTitle windowTitle = new WindowTitle();
         private ToolOutput toolOutput = new ToolOutput();
         private Markdown markdown = new Markdown();
+        private FollowUp followUp = new FollowUp();
         /**
          * Render the model's reasoning ("thoughts") for assistant turns
          * as a dimmed block alongside the answer. On by default; set
@@ -206,6 +207,25 @@ public class FootConfig {
          * (the toggle starts from this configured default).
          */
         private boolean showThoughts = true;
+    }
+
+    /**
+     * Idle-triggered ghost-text follow-up suggestions. When the user
+     * hasn't typed for {@link #idleDelay} and the input line is empty,
+     * foot asks the brain's {@code /brain/{tenant}/follow-up/{project}}
+     * endpoint (reply mode) for a single suggestion and shows it as
+     * ghost text. Accept with Right-Arrow or Tab; dismiss by typing.
+     *
+     * <p>Mirrors the web UI's {@code useFollowUpSuggestion} composable.
+     * The suggestion is cached per assistant message so repeated idle
+     * periods don't re-fire the LLM call.
+     */
+    @Data
+    public static class FollowUp {
+        /** Master switch. Default {@code true}. */
+        private boolean enabled = true;
+        /** Idle delay before a suggestion fetch fires. Default 3 seconds. */
+        private Duration idleDelay = Duration.ofSeconds(3);
     }
 
     /**

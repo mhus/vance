@@ -16,6 +16,8 @@ import org.jline.terminal.Attributes.LocalFlag;
 import org.jline.terminal.Terminal;
 import org.jline.utils.NonBlockingReader;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
@@ -45,6 +47,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class LiveRegion {
+
+    private static final Logger log = LoggerFactory.getLogger(LiveRegion.class);
 
     private static final String ESC = "\u001b";
 
@@ -119,6 +123,10 @@ public class LiveRegion {
     private volatile @Nullable Runnable f4Listener;
     private volatile @Nullable Runnable ctrlTListener;
     private volatile @Nullable LiveCompleter completer;
+    private volatile @Nullable IdleSuggestionProvider idleSuggestionProvider;
+
+    /** Wall-clock millis of the last input activity (keystroke, cursor move). */
+    private volatile long lastInputActivityMs = System.currentTimeMillis();
 
     /**
      * Lightweight interface for slash-command completion / ghost-text
@@ -135,6 +143,32 @@ public class LiveRegion {
          * is a slash-command prefix.
          */
         java.util.List<String> complete(String input, int cursorIdx);
+    }
+
+    /**
+     * Provides idle-triggered ghost-text suggestions (follow-up
+     * suggestions fetched from the brain). When the user has been idle
+     * for the configured delay and the input line is empty, the
+     * animator calls {@link #fetchIfApplicable()} on the provider;
+     * {@link #currentSuggestion()} exposes the result.
+     *
+     * <p>Kept as a separate interface from {@link LiveCompleter} because
+     * the data source is different (brain REST vs. local slash-command
+     * list) and the trigger is different (idle timer vs. keystroke).
+     */
+    public interface IdleSuggestionProvider {
+        /** Whether the feature is enabled (config gate). */
+        boolean isEnabled();
+        /** Idle delay in milliseconds before a fetch fires. */
+        long idleDelayMs();
+        /** Current suggestion text, or {@code null} when none. */
+        @Nullable String currentSuggestion();
+        /** Called when the user accepts the current suggestion (Right-Arrow / Tab). */
+        void acceptCurrent();
+        /** Called when the user starts typing — clears the visible suggestion. */
+        void clearSuggestion();
+        /** Called on idle trigger — fetches a suggestion if applicable. */
+        void fetchIfApplicable();
     }
 
     public LiveRegion(StatusBar statusBar, FootConfig config, ColorResolver colorResolver) {
@@ -186,6 +220,15 @@ public class LiveRegion {
      */
     public void setCompleter(@Nullable LiveCompleter completer) {
         this.completer = completer;
+    }
+
+    /**
+     * Installs the idle-suggestion provider that fetches follow-up
+     * suggestions from the brain when the user is idle. Pass
+     * {@code null} to disable idle suggestions.
+     */
+    public void setIdleSuggestionProvider(@Nullable IdleSuggestionProvider provider) {
+        this.idleSuggestionProvider = provider;
     }
 
     /**
@@ -565,7 +608,42 @@ public class LiveRegion {
         } else if (now - lastPaintMillis > IDLE_HEARTBEAT_MS) {
             paintLive();
         }
-        // Else: nothing to do — skip the paint to spare cycles.
+
+        // Idle follow-up suggestion: when the input is empty, the
+        // brain isn't busy, and the idle delay has elapsed, ask the
+        // provider for a suggestion. The fetch runs synchronously on
+        // this (daemon animator) thread — the REST call has a short
+        // timeout, and a brief block is acceptable here. If a new
+        // suggestion arrives we repaint so the ghost text shows up.
+        IdleSuggestionProvider p = idleSuggestionProvider;
+        if (p == null) {
+            // No provider wired — skip silently.
+        } else if (!p.isEnabled()) {
+            // Feature disabled — skip silently.
+        } else if (busyNow) {
+            // Brain busy — skip silently.
+        } else if (!inputText.isEmpty()) {
+            // Input not empty — skip silently.
+        } else if (promptLabel != null) {
+            log.trace("tickAnimate idle-check: blocked by promptLabel='{}'", promptLabel);
+        } else if (maskInput) {
+            log.trace("tickAnimate idle-check: blocked by maskInput");
+        } else if (p.currentSuggestion() != null) {
+            // Suggestion already present — skip silently.
+        } else {
+            long idleMs = p.idleDelayMs();
+            long idleElapsed = now - lastInputActivityMs;
+            if (idleMs > 0 && idleElapsed >= idleMs) {
+                log.trace("tickAnimate idle-check: firing fetchIfApplicable — idleElapsed={}ms, threshold={}ms",
+                        idleElapsed, idleMs);
+                String before = p.currentSuggestion();
+                p.fetchIfApplicable();
+                String after = p.currentSuggestion();
+                if (after != null && !after.equals(before)) {
+                    paintLive();
+                }
+            }
+        }
     }
 
     // ─── Input loop ────────────────────────────────────────────────
@@ -681,6 +759,7 @@ public class LiveRegion {
                     inputText = "";
                     cursorIdx = 0;
                     inputViewportTop = 0;
+                    onInputActivity();
                     if (!submitted.isEmpty()) {
                         Consumer<String> sub = submitListener;
                         if (sub != null) {
@@ -718,11 +797,24 @@ public class LiveRegion {
 
     // ─── Input model ───────────────────────────────────────────────
 
+    /**
+     * Called on every keystroke, cursor move, or input mutation.
+     * Resets the idle timer and clears any visible idle suggestion
+     * (the brain-generated ghost text). The next idle period may
+     * re-fetch it from cache.
+     */
+    private void onInputActivity() {
+        lastInputActivityMs = System.currentTimeMillis();
+        IdleSuggestionProvider p = idleSuggestionProvider;
+        if (p != null) p.clearSuggestion();
+    }
+
     private synchronized void insertAtCursor(String s) {
         if (s == null || s.isEmpty()) return;
         int c = Math.min(Math.max(cursorIdx, 0), inputText.length());
         inputText = inputText.substring(0, c) + s + inputText.substring(c);
         cursorIdx = c + s.length();
+        onInputActivity();
     }
 
     private synchronized void clearInput() {
@@ -731,6 +823,7 @@ public class LiveRegion {
         inputViewportTop = 0;
         historyIdx = history.size();
         pendingInput = "";
+        onInputActivity();
     }
 
     private synchronized boolean backspaceAtCursor() {
@@ -738,6 +831,7 @@ public class LiveRegion {
         if (c == 0) return false;
         inputText = inputText.substring(0, c - 1) + inputText.substring(c);
         cursorIdx = c - 1;
+        onInputActivity();
         return true;
     }
 
@@ -759,6 +853,12 @@ public class LiveRegion {
             // At end of buffer — accept the ghost-text suggestion if any.
             String s = currentSuggestion();
             if (!s.isEmpty()) {
+                if (inputText.isEmpty()) {
+                    // Idle follow-up suggestion: accept the whole text
+                    // and notify the provider so it doesn't re-offer.
+                    IdleSuggestionProvider p = idleSuggestionProvider;
+                    if (p != null) p.acceptCurrent();
+                }
                 insertAtCursor(s);
                 return true;
             }
@@ -861,11 +961,21 @@ public class LiveRegion {
     /**
      * Ghost-text suggestion for autosuggestion: tail of the most likely
      * continuation. Empty when the caret isn't at the end of a
-     * single-line buffer. Source priority: slash-command completer →
-     * history.
+     * single-line buffer. Source priority: idle-suggestion provider
+     * (when input is empty) → slash-command completer → history.
      */
     private String currentSuggestion() {
-        if (inputText.isEmpty()) return "";
+        // Idle-suggestion provider: when the input is empty, the idle
+        // follow-up suggestion (brain-generated reply) takes priority.
+        // It's a full-line suggestion, not a prefix completion.
+        if (inputText.isEmpty()) {
+            IdleSuggestionProvider p = idleSuggestionProvider;
+            if (p != null) {
+                String s = p.currentSuggestion();
+                if (s != null && !s.isEmpty()) return s;
+            }
+            return "";
+        }
         if (cursorIdx != inputText.length()) return "";
         if (inputText.indexOf('\n') >= 0) return "";
         LiveCompleter c = completer;
@@ -903,6 +1013,19 @@ public class LiveRegion {
      * list as a static (scrollback) line.
      */
     private void handleTab() {
+        // Idle follow-up suggestion: Tab accepts it when the input is empty.
+        if (inputText.isEmpty()) {
+            IdleSuggestionProvider p = idleSuggestionProvider;
+            if (p != null) {
+                String s = p.currentSuggestion();
+                if (s != null && !s.isEmpty()) {
+                    p.acceptCurrent();
+                    insertAtCursor(s);
+                    paintLive();
+                    return;
+                }
+            }
+        }
         LiveCompleter c = completer;
         if (c == null) return;
         int caret = Math.min(Math.max(cursorIdx, 0), inputText.length());

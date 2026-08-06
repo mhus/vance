@@ -96,6 +96,13 @@ public final class McpStdioTransport implements McpTransport {
         this.stdin = new BufferedWriter(new OutputStreamWriter(
                 p.getOutputStream(), StandardCharsets.UTF_8));
 
+        // Flip the flag BEFORE the reader thread starts: readerLoop gates
+        // its read on `open`, so a thread that wins the race against a
+        // later assignment sees false, exits immediately and leaves the
+        // subprocess's stdout unread — every request then times out with
+        // no diagnostic (the server answered, nobody listened).
+        this.open = true;
+
         BufferedReader stdout = new BufferedReader(new InputStreamReader(
                 p.getInputStream(), StandardCharsets.UTF_8));
         this.readerThread = new Thread(() -> readerLoop(stdout), "mcp-stdio-reader");
@@ -108,7 +115,6 @@ public final class McpStdioTransport implements McpTransport {
         this.stderrThread.setDaemon(true);
         this.stderrThread.start();
 
-        this.open = true;
         log.info("McpStdioTransport opened: pid={} cmd={}", p.pid(), config.command());
     }
 

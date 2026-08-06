@@ -16,7 +16,6 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -30,22 +29,16 @@ import org.junit.jupiter.api.condition.OS;
  * <p>Skipped on Windows — the stub uses POSIX shell scripting. The
  * stdio transport itself is portable; the test mechanism isn't.
  *
- * <p><b>Currently {@code @Disabled}.</b> The Python-stub-based test
- * harness is sensitive to Surefire-JVM contention from the broader
- * brain test suite — Python writes responses but Java's subprocess
- * stdout reader observes them only after a 5+ second delay under
- * load, which exceeds the per-call request timeout. The transport
- * code itself is exercised end-to-end by the upcoming MCP integration
- * test (real {@code @modelcontextprotocol/server-filesystem} as
- * subprocess) — we keep this class as a starting point for future
- * unit-level coverage once the stub-IO race is understood.
- *
- * <p>Re-enable by removing {@code @Disabled} and running
- * {@code mvn -Dtest=McpStdioTransportTest -pl vance/vance-brain test}
- * in isolation; the tests pass deterministically that way.
+ * <p>These tests were {@code @Disabled} as "flaky under suite load"
+ * (responses supposedly observed only after a 5+ second delay). The
+ * real cause was a start-up race in {@link McpStdioTransport#open()}:
+ * the reader thread gates its read loop on the {@code open} flag, which
+ * used to be assigned <i>after</i> the thread was started — so the
+ * reader usually exited before reading a single line and every request
+ * timed out. Fixed by flipping the flag before the threads start; the
+ * stub harness itself was never the problem.
  */
 @DisabledOnOs(OS.WINDOWS)
-@Disabled("flaky under suite load — see class docstring")
 class McpStdioTransportTest {
 
     private Path scriptDir;

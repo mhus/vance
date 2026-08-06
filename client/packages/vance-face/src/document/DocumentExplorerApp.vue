@@ -325,17 +325,16 @@ function clearSelection(): void {
 const bulkBusy = ref(false);
 const showTrashModal = ref(false);
 const showMoveModal = ref(false);
-const moveTarget = ref<string | null>(null);
+const moveTargetPath = ref('');
 const showCopyModal = ref(false);
 const copyTargetProject = ref<string>('');
-const copyTargetFolder = ref<string | null>(null);
-const copyFolderOptions = ref<{ value: string; label: string }[]>([]);
+const copyTargetPath = ref('');
+const copyFolderSuggestions = ref<string[]>([]);
 const copyFoldersLoading = ref(false);
 
-const moveFolderOptions = computed(() => [
-  { value: '', label: t('documents.selection.moveRoot') },
-  ...docsState.folders.value.map((f) => ({ value: f, label: f })),
-]);
+const moveFolderSuggestions = computed(() =>
+  docsState.folders.value.map((f) => f),
+);
 
 async function confirmTrash(): Promise<void> {
   const pid = selectedProjectId.value;
@@ -535,7 +534,7 @@ async function exportSelected(): Promise<void> {
 }
 
 function openMoveModal(): void {
-  moveTarget.value = docsState.pathPrefix.value.replace(/\/+$/, '') || null;
+  moveTargetPath.value = docsState.pathPrefix.value.replace(/\/+$/, '');
   if (selectedProjectId.value && docsState.folders.value.length === 0) {
     void docsState.loadFolders(selectedProjectId.value);
   }
@@ -554,11 +553,8 @@ const copyProjectOptions = computed(() => [
 
 function openCopyModal(): void {
   copyTargetProject.value = '';
-  copyTargetFolder.value = docsState.pathPrefix.value.replace(/\/+$/, '') || null;
-  copyFolderOptions.value = [
-    { value: '', label: t('documents.selection.moveRoot') },
-    ...docsState.folders.value.map((f) => ({ value: f, label: f })),
-  ];
+  copyTargetPath.value = docsState.pathPrefix.value.replace(/\/+$/, '');
+  copyFolderSuggestions.value = docsState.folders.value.map((f) => f);
   showCopyModal.value = true;
 }
 
@@ -566,6 +562,7 @@ async function onCopyProjectChange(): Promise<void> {
   const targetPid = copyTargetProject.value || selectedProjectId.value;
   if (!targetPid) return;
   copyFoldersLoading.value = true;
+  copyTargetPath.value = '';
   try {
     // Use a fresh fetch — docsState.loadFolders would overwrite the
     // current project's folder list in the shared composable state.
@@ -574,15 +571,9 @@ async function onCopyProjectChange(): Promise<void> {
       'GET',
       `documents/folders?${params}`,
     );
-    const folders = data.folders ?? [];
-    copyFolderOptions.value = [
-      { value: '', label: t('documents.selection.moveRoot') },
-      ...folders.map((f) => ({ value: f, label: f })),
-    ];
+    copyFolderSuggestions.value = data.folders ?? [];
   } catch {
-    copyFolderOptions.value = [
-      { value: '', label: t('documents.selection.moveRoot') },
-    ];
+    copyFolderSuggestions.value = [];
   } finally {
     copyFoldersLoading.value = false;
   }
@@ -592,7 +583,7 @@ async function confirmCopy(): Promise<void> {
   const pid = selectedProjectId.value;
   if (!pid) return;
   const targetProject = copyTargetProject.value || pid;
-  const target = (copyTargetFolder.value ?? '').replace(/\/+$/, '');
+  const target = copyTargetPath.value.replace(/\/+$/, '');
   const ids = [...selectedIds.value];
   const folders = [...selectedFolders.value];
   bulkBusy.value = true;
@@ -640,7 +631,7 @@ const bulkAbort = ref(false);
 async function confirmMove(): Promise<void> {
   const pid = selectedProjectId.value;
   if (!pid) return;
-  const target = (moveTarget.value ?? '').replace(/\/+$/, '');
+  const target = moveTargetPath.value.replace(/\/+$/, '');
   const ids = [...selectedIds.value];
   const folders = [...selectedFolders.value];
   bulkBusy.value = true;
@@ -1062,10 +1053,11 @@ function confirmNewFolder(): void {
         <p class="text-sm mb-3 opacity-80">
           {{ $t('documents.selection.moveBody', { count: selectedCount }) }}
         </p>
-        <VSelect
-          v-model="moveTarget"
-          :options="moveFolderOptions"
+        <VInput
+          v-model="moveTargetPath"
           :label="$t('documents.selection.moveTargetLabel')"
+          :placeholder="$t('documents.selection.customPathPlaceholder')"
+          :suggestions="moveFolderSuggestions"
         />
       </template>
       <template #actions>
@@ -1105,10 +1097,11 @@ function confirmNewFolder(): void {
           :label="$t('documents.selection.copyTargetProjectLabel')"
           @update:model-value="onCopyProjectChange"
         />
-        <VSelect
-          v-model="copyTargetFolder"
-          :options="copyFolderOptions"
+        <VInput
+          v-model="copyTargetPath"
           :label="$t('documents.selection.copyTargetFolderLabel')"
+          :placeholder="$t('documents.selection.customPathPlaceholder')"
+          :suggestions="copyFolderSuggestions"
           :disabled="copyFoldersLoading"
           class="mt-3"
         />

@@ -488,7 +488,7 @@ export default {
       moveTitle: 'Move documents',
       moveBody: 'Move {count} selected documents to another folder.',
       moveTargetLabel: 'Target folder',
-      moveRoot: '/ (root)',
+      customPathPlaceholder: 'e.g. folder/new-folder (free text)',
       moveConfirm: 'Move',
       copy: 'Copy',
       copyTitle: 'Copy documents',

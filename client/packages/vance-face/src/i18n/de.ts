@@ -483,7 +483,7 @@ export default {
       moveTitle: 'Dokumente verschieben',
       moveBody: '{count} ausgewählte Dokumente in einen anderen Ordner verschieben.',
       moveTargetLabel: 'Zielordner',
-      moveRoot: '/ (Stammverzeichnis)',
+      customPathPlaceholder: 'z. B. ordner/neuer-ordner (frei editierbar)',
       moveConfirm: 'Verschieben',
       copy: 'Kopieren',
       copyTitle: 'Dokumente kopieren',

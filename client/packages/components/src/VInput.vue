@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, useId } from 'vue';
 
 interface Props {
   modelValue: string;
@@ -12,6 +12,8 @@ interface Props {
   disabled?: boolean;
   autocomplete?: string;
   size?: 'xs' | 'sm' | 'md';
+  /** Optional autocomplete suggestions rendered via a native <datalist>. */
+  suggestions?: string[];
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -19,6 +21,7 @@ const props = withDefaults(defineProps<Props>(), {
   required: false,
   disabled: false,
   size: 'md',
+  suggestions: () => [] as string[],
 });
 
 defineEmits<{ (e: 'update:modelValue', value: string): void }>();
@@ -30,6 +33,8 @@ const sizeClass = computed<string>(() => {
     default: return '';
   }
 });
+
+const datalistId = useId();
 </script>
 
 <template>
@@ -46,9 +51,13 @@ const sizeClass = computed<string>(() => {
       :required="required"
       :disabled="disabled"
       :autocomplete="autocomplete"
+      :list="suggestions.length ? datalistId : undefined"
       :class="['input', 'w-full', sizeClass, { 'input-error': !!error }]"
       @input="(e) => $emit('update:modelValue', (e.target as HTMLInputElement).value)"
     />
+    <datalist v-if="suggestions.length" :id="datalistId">
+      <option v-for="s in suggestions" :key="s" :value="s" />
+    </datalist>
     <span v-if="error || help" :class="['v-field-hint', 'text-xs', error ? 'text-error' : 'opacity-70']">
       {{ error || help }}
     </span>

@@ -24,9 +24,10 @@
  */
 import { computed, onBeforeUnmount, ref, shallowRef, toRef, watch } from 'vue';
 import { CodeEditor, VLockBadge, accentColorDotClass } from '@/components';
-import { brainFetchBlob } from '@vance/shared';
-import type { DocumentDto } from '@vance/generated';
+import { brainFetch, brainFetchBlob } from '@vance/shared';
+import type { DocumentDto, FollowUpRequestDto, FollowUpResponseDto } from '@vance/generated';
 import { WriterRole } from '@vance/generated';
+import type { FollowUpExtensionOptions } from '@/components';
 import { resolveKindFor } from '@vance/kind-registry';
 import ImageView from '@/kindViews/ImageView.vue';
 import DocumentPreview from '@/kindViews/DocumentPreview.vue';
@@ -262,6 +263,34 @@ interface RawSelection {
   to: number;
   text: string;
 }
+
+// ─── Follow-up suggestion config ───
+// Wired to POST /brain/{tenant}/follow-up/{project} in edit mode
+// (cursor set). The CodeEditor's idle-trigger fires after 3s of
+// inactivity and calls this fetch callback with the full doc text
+// and cursor offset.
+const followUpOptions = computed<FollowUpExtensionOptions | null>(() => {
+  const project = store.projectId;
+  if (!project) return null;
+  return {
+    fetch: async (text: string, cursor: number): Promise<string | null> => {
+      const body: FollowUpRequestDto = {
+        text,
+        cursor,
+        count: 1,
+        mode: 'text-editor',
+      };
+      const resp = await brainFetch<FollowUpResponseDto>(
+        'POST',
+        `follow-up/${encodeURIComponent(project)}`,
+        { body },
+      );
+      const first = resp.suggestions?.[0]?.text?.trim() ?? null;
+      return first && first.length > 0 ? first : null;
+    },
+    acceptHint: '↹ Tab',
+  };
+});
 
 function onSelectionChanged(sel: RawSelection): void {
   if (sel.from === sel.to || !sel.text) {
@@ -824,6 +853,7 @@ function fmtDuration(ms: number | null): string {
         :mime-type="effectiveMimeType"
         :note-lines="docNotes.linesWithNotes.value"
         :read-only="isUserLocked"
+        :follow-up="followUpOptions"
         @update:model-value="(v: string) => emit('update', v)"
         @selection-changed="onSelectionChanged"
         @note-anchor-click="onNoteAnchorClick"
@@ -874,6 +904,7 @@ function fmtDuration(ms: number | null): string {
           :model-value="document.inlineText"
           :mime-type="effectiveMimeType"
           :note-lines="docNotes.linesWithNotes.value"
+          :follow-up="followUpOptions"
           @update:model-value="(v: string) => emit('update', v)"
           @selection-changed="onSelectionChanged"
           @note-anchor-click="onNoteAnchorClick"
@@ -895,6 +926,7 @@ function fmtDuration(ms: number | null): string {
             :model-value="document.inlineText"
             :mime-type="effectiveMimeType"
             :note-lines="docNotes.linesWithNotes.value"
+            :follow-up="followUpOptions"
             @update:model-value="(v: string) => emit('update', v)"
             @selection-changed="onSelectionChanged"
             @note-anchor-click="onNoteAnchorClick"

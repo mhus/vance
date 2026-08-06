@@ -1,24 +1,23 @@
 /**
  * Follow-up suggestion extension for {@code CodeEditor} (CodeMirror 6).
  *
- * <p>On-demand workflow:
+ * <p>Automatic idle-trigger workflow:
  *
  * <ol>
- *   <li>User presses {@code Ctrl+.} (or {@code Cmd+.} on macOS) — the
- *       extension calls the host-provided {@link
- *       FollowUpExtensionOptions.fetch} callback with the current
- *       full document text and cursor offset. {@code Ctrl/Cmd+Space}
- *       was tried first but the OS captures it on macOS (Spotlight /
- *       IME switcher); {@code Mod-.} is free and matches the
- *       VS-Code-style "quick action" semantics.</li>
- *   <li>When the callback resolves with a non-empty string, a CodeMirror
- *       tooltip appears at the cursor showing the suggestion plus a
- *       small accept-hint label.</li>
+ *   <li>After the user stops typing / moving the cursor for
+ *       {@link FollowUpExtensionOptions.idleDelay} ms (default
+ *       {@code 5000}), the extension automatically calls the
+ *       host-provided {@link FollowUpExtensionOptions.fetch}
+ *       callback with the current full document text and cursor
+ *       offset.</li>
+ *   <li>When the callback resolves with a non-empty string, a
+ *       CodeMirror tooltip appears at the cursor showing the
+ *       suggestion plus a small accept-hint label.</li>
  *   <li>While the tooltip is visible: {@code Tab} inserts the
  *       suggestion at the cursor and dismisses the tooltip;
  *       {@code Escape} dismisses without inserting. Any document or
  *       selection change also dismisses (the suggestion is anchored
- *       to a stale position then).</li>
+ *       to a stale position then) and resets the idle timer.</li>
  * </ol>
  *
  * <p>The extension is REST-agnostic — the host (e.g. the Web-UI's
@@ -27,7 +26,7 @@
  * tenant / auth concerns.
  */
 
-import { EditorView, keymap, showTooltip, tooltips, type Tooltip } from '@codemirror/view';
+import { EditorView, keymap, showTooltip, tooltips, ViewPlugin, type PluginValue, type Tooltip, type ViewUpdate } from '@codemirror/view';
 import { Prec, StateEffect, StateField, type Extension } from '@codemirror/state';
 
 interface FollowUpState {
@@ -114,6 +113,12 @@ export interface FollowUpExtensionOptions {
    * Localised by the host — defaults to {@code "Tab"}.
    */
   acceptHint?: string;
+  /**
+   * Idle time in milliseconds after the last keystroke / cursor
+   * movement before the suggestion is fetched automatically.
+   * Defaults to {@code 5000} (5 seconds).
+   */
+  idleDelay?: number;
 }
 
 /**
@@ -122,14 +127,20 @@ export interface FollowUpExtensionOptions {
  * indent / fold mappings while a suggestion is active; when no
  * suggestion is present, our handlers return {@code false} and
  * CodeMirror falls through to the default behaviour.
+ *
+ * <p>The suggestion is fetched automatically after the user is idle
+ * for {@code idleDelay} ms. The debounce timer resets on every
+ * document or selection change and is cleared when the editor is
+ * destroyed.
  */
 export function followUpExtension(opts: FollowUpExtensionOptions): Extension {
   const acceptHint = opts.acceptHint ?? 'Tab';
+  const idleDelay = opts.idleDelay ?? 5000;
   // Per-extension counter so stale fetch responses (slower than a
   // subsequent trigger or any doc edit) get dropped.
   let pendingSeq = 0;
 
-  const triggerCommand = (view: EditorView): boolean => {
+  const trigger = (view: EditorView): void => {
     const seq = ++pendingSeq;
     const text = view.state.doc.toString();
     const cursor = view.state.selection.main.head;
@@ -138,8 +149,6 @@ export function followUpExtension(opts: FollowUpExtensionOptions): Extension {
       .then((suggestion) => {
         if (seq !== pendingSeq) return;
         if (!suggestion) {
-          // Clear any prior suggestion so the user sees the trigger
-          // had no result rather than the stale value.
           view.dispatch({ effects: setFollowUp.of(null) });
           return;
         }
@@ -151,11 +160,46 @@ export function followUpExtension(opts: FollowUpExtensionOptions): Extension {
         if (seq !== pendingSeq) return;
         view.dispatch({ effects: setFollowUp.of(null) });
       });
-    return true;
   };
+
+  // --- Idle-trigger ViewPlugin --------------------------------------
+  // Resets a debounce timer on every update (doc or selection
+  // change). When the timer fires, it calls trigger(). The timer is
+  // cleared on plugin destroy.
+  const idlePlugin = ViewPlugin.fromClass(
+    class implements PluginValue {
+      private timer: ReturnType<typeof setTimeout> | null = null;
+
+      constructor(view: EditorView) {
+        this.schedule(view);
+      }
+
+      update(update: ViewUpdate): void {
+        if (update.docChanged || update.selectionSet) {
+          this.schedule(update.view);
+        }
+      }
+
+      private schedule(view: EditorView): void {
+        if (this.timer !== null) clearTimeout(this.timer);
+        this.timer = setTimeout(() => {
+          this.timer = null;
+          trigger(view);
+        }, idleDelay);
+      }
+
+      destroy(): void {
+        if (this.timer !== null) {
+          clearTimeout(this.timer);
+          this.timer = null;
+        }
+      }
+    },
+  );
 
   return [
     followUpField,
+    idlePlugin,
     // {@code position: "fixed"} renders the tooltip into the body's
     // top layer; without this the default {@code "absolute"} mode
     // glues it to the editor's offset parent, where overflow:hidden
@@ -166,7 +210,6 @@ export function followUpExtension(opts: FollowUpExtensionOptions): Extension {
     ),
     Prec.high(
       keymap.of([
-        { key: 'Mod-.', run: triggerCommand, preventDefault: true },
         { key: 'Tab', run: acceptCommand },
         { key: 'Escape', run: dismissCommand },
       ]),

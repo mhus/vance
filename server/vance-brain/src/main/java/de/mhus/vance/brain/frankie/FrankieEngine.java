@@ -675,6 +675,22 @@ public class FrankieEngine implements ThinkEngine {
                     consecutivePolls = 0;
                 }
 
+                // Refresh the tool view after the batch. A tool_description
+                // call in it activates a deferred tool, and the specs the
+                // model gets are built from this snapshot — without the
+                // rebuild the activation stays invisible for the rest of
+                // the turn, so the model is told "activated: true" for a
+                // tool it then cannot call. It re-describes, gives up, and
+                // reports the tool as unavailable. Cheap: this is one
+                // point-read next to a full streaming LLM call, and
+                // DefaultThinkEngineContext.tools() re-reads
+                // activatedDeferredTools from Mongo per call. Same reason
+                // StructuredActionEngine rebuilds after its read-tool
+                // dispatch.
+                tools = ctx.tools().withAdditional(
+                        skillPromptComposer.mergedTools(activeSkills));
+                toolSpecs = tools.primaryAsLc4j();
+
                 // Loop continues: next iteration's LLM call will see the tool results.
             }
         } catch (RuntimeException ex) {

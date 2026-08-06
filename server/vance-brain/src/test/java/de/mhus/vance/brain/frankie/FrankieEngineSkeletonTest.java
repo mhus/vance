@@ -32,6 +32,7 @@ import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
@@ -319,6 +320,63 @@ class FrankieEngineSkeletonTest {
         verify(thinkProcessService, never()).closeProcess(eq(PROC_ID), any());
     }
 
+    // ─── Deferred-tool activation inside the turn ───────────────────
+
+    @Test
+    void deferredToolActivatedMidTurn_reachesTheNextIterationsToolSpecs() {
+        // Field case: the model called tool_description('chrome__new_page'),
+        // was told activated:true, and then could not call the tool —
+        // Frankie built its tool specs once before the loop, so the
+        // activation stayed invisible until the next turn. It re-described
+        // four more times and told the user the tools were unavailable.
+        ToolSpecification base = ToolSpecification.builder().name("tool_description").build();
+        ToolSpecification activated = ToolSpecification.builder().name("chrome__new_page").build();
+        when(tools.primaryAsLc4j())
+                .thenReturn(List.of(base))          // turn start
+                .thenReturn(List.of(base, activated));  // after the batch
+
+        ToolExecutionRequest describe = ToolExecutionRequest.builder()
+                .id("call-1")
+                .name("tool_description")
+                .arguments("{\"names\":[\"chrome__new_page\"]}")
+                .build();
+        chatModel.script(AiMessage.from("", List.of(describe)));
+        chatModel.script(AiMessage.from("Opened the page."));
+        when(tools.invoke(eq("tool_description"), any()))
+                .thenReturn(java.util.Map.of("activated", true));
+
+        engine.runTurn(process, ctx);
+
+        assertThat(chatModel.requests()).hasSize(2);
+        assertThat(chatModel.requests().get(0).toolSpecifications())
+                .extracting(ToolSpecification::name)
+                .containsExactly("tool_description");
+        assertThat(chatModel.requests().get(1).toolSpecifications())
+                .as("the tool activated in iteration 1 must be callable in iteration 2")
+                .extracting(ToolSpecification::name)
+                .contains("chrome__new_page");
+    }
+
+    @Test
+    void toolViewIsRebuiltFromTheContext_notFromTheTurnStartSnapshot() {
+        // The rebuild has to go back through ctx.tools(), because that is
+        // what re-reads activatedDeferredTools from Mongo; reusing the
+        // snapshot would keep returning the pre-activation view.
+        ToolExecutionRequest call = ToolExecutionRequest.builder()
+                .id("call-1")
+                .name("noop_tool")
+                .arguments("{}")
+                .build();
+        chatModel.script(AiMessage.from("", List.of(call)));
+        chatModel.script(AiMessage.from("done"));
+        when(tools.invoke(eq("noop_tool"), any())).thenReturn(java.util.Map.of("ok", true));
+
+        engine.runTurn(process, ctx);
+
+        // Once at turn start, once after the tool batch.
+        verify(ctx, org.mockito.Mockito.atLeast(2)).tools();
+    }
+
     @Test
     void externalInterrupt_closedMidLoop_exitsAfterStatusChange() {
         // First iter: LLM asks for a tool call. Before second iter, status flips to CLOSED.
@@ -461,6 +519,7 @@ class FrankieEngineSkeletonTest {
      */
     private static class ScriptedStreamingChatModel implements StreamingChatModel {
         private final Deque<AiMessage> queue = new ArrayDeque<>();
+        private final List<ChatRequest> requests = new java.util.ArrayList<>();
         private @org.jspecify.annotations.Nullable AiMessage repeating;
         private int calls;
 
@@ -476,9 +535,15 @@ class FrankieEngineSkeletonTest {
             return calls;
         }
 
+        /** Requests as the engine issued them — one per loop iteration. */
+        List<ChatRequest> requests() {
+            return List.copyOf(requests);
+        }
+
         @Override
         public void chat(ChatRequest request, StreamingChatResponseHandler handler) {
             calls++;
+            requests.add(request);
             AiMessage msg;
             if (repeating != null) {
                 msg = repeating;

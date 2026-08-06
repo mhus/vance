@@ -81,14 +81,22 @@ public class ClientFileGrepTool implements ClientTool {
         p.put("limit", Map.of("type", "integer",
                 "description", "Cap on total match rows. Default: " + DEFAULT_LIMIT
                         + ", max: " + MAX_LIMIT + "."));
+        p.put("includeGenerated", Map.of("type", "boolean",
+                "description",
+                        "Also search dependency and build directories "
+                                + "(node_modules, target, dist, .git, …), which are "
+                                + "skipped by default. Set true to search inside a "
+                                + "dependency on purpose."));
         return p;
     }
 
     @Override public String name() { return "client_file_grep"; }
     @Override public String description() {
         return "Recursively grep regex patterns across files on the user's machine. "
-                + "Returns matching lines with relative path + 1-based line number, "
-                + "optionally with context. Binary / oversized files are skipped.";
+                + "Returns matching lines with a 1-based line number and a path that "
+                + "can be passed straight to the other file tools, optionally with "
+                + "context. Binary / oversized files and common build output "
+                + "(node_modules, target, .git, dist, …) are skipped.";
     }
     @Override public boolean primary() { return true; }
     @Override public java.util.Set<String> labels() { return java.util.Set.of("read-only"); }
@@ -115,6 +123,8 @@ public class ClientFileGrepTool implements ClientTool {
         int after = clampNonNeg(intOrNull(params, "contextAfter"));
         int maxDepth = clampDepth(intOrNull(params, "maxDepth"));
         int limit = clampLimit(intOrNull(params, "limit"));
+        boolean includeGenerated =
+                Boolean.TRUE.equals(params == null ? null : params.get("includeGenerated"));
 
         Pattern pattern;
         try {
@@ -133,16 +143,27 @@ public class ClientFileGrepTool implements ClientTool {
         List<Map<String, Object>> matches = new ArrayList<>();
         int filesScanned = 0;
         int filesSkipped = 0;
+        int generatedSkipped = 0;
         boolean truncated = false;
         try (Stream<Path> stream = singleFile ? Stream.of(root) : Files.walk(root, maxDepth)) {
             for (Path file : (Iterable<Path>) stream::iterator) {
                 if (matches.size() >= limit) { truncated = true; break; }
                 if (!Files.isRegularFile(file)) continue;
+                // A path pointing straight at a file inside node_modules is an
+                // explicit request and stays honoured; only the walk filters.
+                if (!singleFile && !includeGenerated && WalkFilters.isGenerated(root, file)) {
+                    generatedSkipped++;
+                    continue;
+                }
                 // Per-file deny-floor check: the walk root was gated, but a broad
                 // allow (e.g. ~/**) must not let the recursion read ~/.ssh/** etc.
                 if (!singleFile && !security.permitWalkedFile(file)) { filesSkipped++; continue; }
+                // Root-relative for glob matching (that is what 'pathGlob'
+                // documents), working-dir-relative for output (that is what
+                // the file tools accept as input).
                 Path rel = singleFile ? file.getFileName() : root.relativize(file);
                 if (matcher != null && !matcher.matches(rel)) continue;
+                String outPath = ClientFilePaths.toToolPath(file);
                 long size;
                 try { size = Files.size(file); } catch (IOException ignored) {
                     filesSkipped++; continue;
@@ -159,7 +180,7 @@ public class ClientFileGrepTool implements ClientTool {
                     if (!pattern.matcher(lines[i]).find()) continue;
                     if (matches.size() >= limit) { truncated = true; break; }
                     Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("path", rel.toString());
+                    m.put("path", outPath);
                     m.put("lineNumber", i + 1);
                     m.put("line", clipLine(lines[i]));
                     if (before > 0 || after > 0) {
@@ -186,6 +207,13 @@ public class ClientFileGrepTool implements ClientTool {
         out.put("pattern", patternStr);
         out.put("filesScanned", filesScanned);
         out.put("filesSkipped", filesSkipped);
+        // Report what the default filter removed rather than letting the
+        // caller read the result as a complete sweep.
+        if (generatedSkipped > 0) {
+            out.put("generatedFilesSkipped", generatedSkipped);
+            out.put("generatedFilesHint",
+                    "Dependency/build directories were skipped — pass includeGenerated=true to search them.");
+        }
         out.put("matchCount", matches.size());
         out.put("truncated", truncated);
         out.put("matches", matches);

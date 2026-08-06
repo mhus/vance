@@ -103,13 +103,13 @@ public class ClientFileReadTool implements ClientTool {
                 }
             }
             Map<String, Object> out = new LinkedHashMap<>();
-            out.put("path", p.toAbsolutePath().toString());
+            out.put("path", ClientFilePaths.toToolPath(p));
             out.put("content", content);
             out.put("truncated", truncated);
             out.put("totalChars", totalChars);
             return out;
         } catch (Exception e) {
-            throw new RuntimeException("Read failed: " + e.getMessage(), e);
+            throw new RuntimeException(ClientFilePaths.describeFailure(p, e), e);
         }
     }
 

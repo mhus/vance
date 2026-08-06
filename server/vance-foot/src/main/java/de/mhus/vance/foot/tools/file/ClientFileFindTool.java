@@ -71,14 +71,20 @@ public class ClientFileFindTool implements ClientTool {
         p.put("limit", Map.of("type", "integer",
                 "description", "Cap on entries returned. Default: " + DEFAULT_LIMIT
                         + ", max: " + MAX_LIMIT + "."));
+        p.put("includeGenerated", Map.of("type", "boolean",
+                "description",
+                        "Also walk dependency and build directories "
+                                + "(node_modules, target, dist, .git, …), which are "
+                                + "skipped by default."));
         return p;
     }
 
     @Override public String name() { return "client_file_find"; }
     @Override public String description() {
         return "Find files on the user's machine by path glob, size range, and "
-                + "modification-time range. Returns relative paths with size + mtime. "
-                + "Recursive walk under 'path'.";
+                + "modification-time range. Recursive walk under 'path'. Returns "
+                + "size + mtime per hit, with paths that can be passed straight "
+                + "to the other file tools.";
     }
     @Override public boolean primary() { return true; }
     @Override public java.util.Set<String> labels() { return java.util.Set.of("read-only"); }
@@ -106,6 +112,8 @@ public class ClientFileFindTool implements ClientTool {
         String sortBy = stringOrNull(params, "sortBy");
         int maxDepth = clampDepth(intOrNull(params, "maxDepth"));
         int limit = clampLimit(intOrNull(params, "limit"));
+        boolean includeGenerated =
+                Boolean.TRUE.equals(params == null ? null : params.get("includeGenerated"));
 
         Path root = pathRaw == null ? Path.of(".") : ClientFilePaths.resolve(pathRaw);
         if (!Files.isDirectory(root)) {
@@ -115,13 +123,21 @@ public class ClientFileFindTool implements ClientTool {
 
         List<Entry> entries = new ArrayList<>();
         int totalConsidered = 0;
+        int generatedSkipped = 0;
         try (Stream<Path> stream = Files.walk(root, maxDepth)) {
             for (Path file : (Iterable<Path>) stream::iterator) {
                 if (!Files.isRegularFile(file)) continue;
+                if (!includeGenerated && WalkFilters.isGenerated(root, file)) {
+                    generatedSkipped++;
+                    continue;
+                }
                 // Per-file deny-floor check: a broad allow on the root must not let
                 // the recursion list files under ~/.ssh/** etc.
                 if (!security.permitWalkedFile(file)) continue;
                 totalConsidered++;
+                // Root-relative for glob matching (that is what 'pathGlob'
+                // documents), working-dir-relative for output (that is what
+                // the file tools accept as input).
                 Path rel = root.relativize(file);
                 if (matcher != null && !matcher.matches(rel)) continue;
                 BasicFileAttributes attrs;
@@ -133,7 +149,7 @@ public class ClientFileFindTool implements ClientTool {
                 if (maxSize != null && size > maxSize) continue;
                 if (after != null && !mtime.isAfter(after)) continue;
                 if (before != null && !mtime.isBefore(before)) continue;
-                entries.add(new Entry(rel.toString(), size, mtime));
+                entries.add(new Entry(ClientFilePaths.toToolPath(file), size, mtime));
             }
         } catch (IOException e) {
             throw new RuntimeException("Walk failed: " + e.getMessage(), e);
@@ -158,6 +174,13 @@ public class ClientFileFindTool implements ClientTool {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("path", root.toAbsolutePath().toString());
         out.put("totalConsidered", totalConsidered);
+        // Report what the default filter removed rather than letting the
+        // caller read the result as a complete sweep.
+        if (generatedSkipped > 0) {
+            out.put("generatedFilesSkipped", generatedSkipped);
+            out.put("generatedFilesHint",
+                    "Dependency/build directories were skipped — pass includeGenerated=true to walk them.");
+        }
         out.put("matchCount", entries.size());
         out.put("returned", rows.size());
         out.put("truncated", truncated);

@@ -63,6 +63,11 @@ public class ClientFileCountTool implements ClientTool {
                 "description",
                         "Recursion depth cap when 'path' is a directory. Default: "
                                 + DEFAULT_MAX_DEPTH + "."));
+        p.put("includeGenerated", Map.of("type", "boolean",
+                "description",
+                        "Also count dependency and build directories "
+                                + "(node_modules, target, dist, .git, …), which are "
+                                + "skipped by default."));
         return p;
     }
 
@@ -83,6 +88,8 @@ public class ClientFileCountTool implements ClientTool {
         String patternStr = stringOrNull(params, "pattern");
         boolean ci = Boolean.TRUE.equals(params == null ? null : params.get("caseInsensitive"));
         int maxDepth = clampDepth(intOrNull(params, "maxDepth"));
+        boolean includeGenerated =
+                Boolean.TRUE.equals(params == null ? null : params.get("includeGenerated"));
 
         Pattern pattern;
         try {
@@ -103,12 +110,17 @@ public class ClientFileCountTool implements ClientTool {
                 : null;
 
         Counter counter = new Counter();
+        int generatedSkipped = 0;
         if (!isDir) {
             counter.consume(target, target.getFileName(), pattern);
         } else {
             try (Stream<Path> stream = Files.walk(target, maxDepth)) {
                 for (Path file : (Iterable<Path>) stream::iterator) {
                     if (!Files.isRegularFile(file)) continue;
+                    if (!includeGenerated && WalkFilters.isGenerated(target, file)) {
+                        generatedSkipped++;
+                        continue;
+                    }
                     // Per-file deny-floor check: a broad allow on the root must not
                     // let the recursion read/count files under ~/.ssh/** etc.
                     if (!security.permitWalkedFile(file)) continue;
@@ -127,6 +139,13 @@ public class ClientFileCountTool implements ClientTool {
         if (patternStr != null) out.put("pattern", patternStr);
         out.put("filesCounted", counter.filesCounted);
         out.put("filesSkipped", counter.filesSkipped);
+        // Report what the default filter removed rather than letting the
+        // caller read the totals as covering everything under 'path'.
+        if (generatedSkipped > 0) {
+            out.put("generatedFilesSkipped", generatedSkipped);
+            out.put("generatedFilesHint",
+                    "Dependency/build directories were skipped — pass includeGenerated=true to count them.");
+        }
         out.put("lines", pattern == null ? counter.lines : counter.matchingLines);
         if (pattern != null) out.put("totalLinesScanned", counter.lines);
         out.put("chars", counter.chars);

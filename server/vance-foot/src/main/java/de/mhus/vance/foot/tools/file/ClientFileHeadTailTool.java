@@ -4,6 +4,7 @@ import de.mhus.vance.foot.tools.ClientTool;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -69,17 +70,19 @@ public class ClientFileHeadTailTool implements ClientTool {
 
         Path file = ClientFilePaths.resolve(pathRaw);
         if (!Files.exists(file)) {
-            throw new IllegalArgumentException("Not found: " + file.toAbsolutePath());
+            throw new IllegalArgumentException(
+                    ClientFilePaths.describeFailure(file, new NoSuchFileException(pathRaw)));
         }
         if (!Files.isRegularFile(file)) {
-            throw new IllegalArgumentException("Not a regular file: " + file.toAbsolutePath());
+            throw new IllegalArgumentException(
+                    ClientFilePaths.describeFailure(file, new IOException("not a regular file")));
         }
 
         List<String> all;
         try {
             all = Files.readAllLines(file, StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new RuntimeException("Read failed: " + e.getMessage(), e);
+            throw new RuntimeException(ClientFilePaths.describeFailure(file, e), e);
         }
         int total = all.size();
 

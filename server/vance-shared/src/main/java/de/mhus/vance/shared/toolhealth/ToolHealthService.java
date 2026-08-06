@@ -18,6 +18,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 /**
@@ -41,6 +42,8 @@ public class ToolHealthService {
     private static final String F_SCOPE = "scope";
     private static final String F_SCOPE_ID = "scopeId";
     private static final String F_TOOL = "toolName";
+    private static final String F_ID = "_id";
+    private static final String F_VERSION = "version";
     private final MongoTemplate mongoTemplate;
     private final ToolHealthRepository repository;
 
@@ -360,8 +363,7 @@ public class ToolHealthService {
             String errorSignature,
             @Nullable String userId) {
         withOptimisticRetry(() -> {
-            repository.findByTenantIdAndScopeAndScopeIdAndToolName(
-                            tenantId, scope, nullToEmpty(scopeId), toolName)
+            findForUpdate(tenantId, scope, scopeId, toolName)
                     .ifPresent(doc -> {
                         boolean removed = removeMatching(doc, errorSignature, userId);
                         if (removed) {
@@ -418,8 +420,7 @@ public class ToolHealthService {
             boolean flipAllowed,
             Instant now) {
         Optional<ToolHealthDocument> maybe =
-                repository.findByTenantIdAndScopeAndScopeIdAndToolName(
-                        tenantId, scope, nullToEmpty(scopeId), toolName);
+                findForUpdate(tenantId, scope, scopeId, toolName);
         if (maybe.isEmpty()) return false;
         ToolHealthDocument doc = maybe.get();
         boolean changed = false;
@@ -479,6 +480,53 @@ public class ToolHealthService {
         throw last;
     }
 
+    /**
+     * Repairs a legacy row that predates the {@code @Version} field before
+     * it is handed to a read-modify-save block.
+     *
+     * <p>Spring Data reads a {@code null} version as "entity is new" and
+     * turns the next {@code save()} into an insert, which collides with the
+     * row's existing {@code _id}. Unlike a genuine concurrency conflict that
+     * failure is <em>deterministic</em>: {@link #withOptimisticRetry} re-reads
+     * the same version-less row every attempt and exhausts its budget. So we
+     * backfill the field in the database — an in-memory {@code setVersion(0)}
+     * would not help, because {@code save()} would then issue an update
+     * matching on {@code version: 0}, which a row without the field never
+     * satisfies.
+     *
+     * <p>The {@code exists(false)} guard makes this safe under a race: a
+     * concurrent pod that already backfilled and saved leaves our in-memory
+     * copy stale, {@code save()} raises an optimistic-lock failure, and the
+     * retry re-reads the now-versioned row.
+     *
+     * <p>{@link ToolHealthVersionBackfillMigration} in vance-brain does the
+     * same thing in bulk at boot; this is the per-row net for rows that
+     * arrive afterwards (restored dumps, pods on an older build).
+     */
+    private ToolHealthDocument ensureVersioned(ToolHealthDocument doc) {
+        if (doc.getVersion() != null || doc.getId() == null) return doc;
+        mongoTemplate.updateFirst(
+                new Query(Criteria.where(F_ID).is(doc.getId()).and(F_VERSION).exists(false)),
+                new Update().set(F_VERSION, 0L),
+                ToolHealthDocument.class);
+        doc.setVersion(0L);
+        log.debug("ToolHealth backfilled missing 'version' on legacy row id='{}' tool='{}'",
+                doc.getId(), doc.getToolName());
+        return doc;
+    }
+
+    /**
+     * Repository lookup for the read-modify-save paths — same query as the
+     * read-only callers, plus the {@link #ensureVersioned} repair.
+     */
+    private Optional<ToolHealthDocument> findForUpdate(
+            String tenantId, ToolHealthScope scope, @Nullable String scopeId, String toolName) {
+        return repository
+                .findByTenantIdAndScopeAndScopeIdAndToolName(
+                        tenantId, scope, nullToEmpty(scopeId), toolName)
+                .map(this::ensureVersioned);
+    }
+
     private ToolHealthDocument fetchOrCreate(
             String tenantId,
             ToolHealthScope scope,
@@ -486,8 +534,7 @@ public class ToolHealthService {
             String toolName,
             Instant now) {
         String key = nullToEmpty(scopeId);
-        return repository
-                .findByTenantIdAndScopeAndScopeIdAndToolName(tenantId, scope, key, toolName)
+        return findForUpdate(tenantId, scope, key, toolName)
                 .orElseGet(() -> ToolHealthDocument.builder()
                         .tenantId(tenantId)
                         .scope(scope)

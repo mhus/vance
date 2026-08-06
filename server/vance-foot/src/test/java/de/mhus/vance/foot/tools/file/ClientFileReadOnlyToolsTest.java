@@ -79,8 +79,12 @@ class ClientFileReadOnlyToolsTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> matches = (List<Map<String, Object>>) result.get("matches");
         assertThat(matches).hasSize(2);
+        // Emitted paths must be usable as input for the other file tools —
+        // the temp root is outside the working directory, so absolute.
         assertThat(matches).extracting(m -> m.get("path"))
-                .containsExactlyInAnyOrder("docs/notes.md", "docs/nested/sub.md");
+                .containsExactlyInAnyOrder(
+                        root.resolve("docs/notes.md").toString(),
+                        root.resolve("docs/nested/sub.md").toString());
         assertThat(result).containsEntry("filesScanned", 2);
     }
 
@@ -137,7 +141,8 @@ class ClientFileReadOnlyToolsTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> entries = (List<Map<String, Object>>) result.get("entries");
         assertThat(entries).hasSize(1).first()
-                .extracting(e -> e.get("path")).isEqualTo("docs/big.md");
+                .extracting(e -> e.get("path"))
+                .isEqualTo(root.resolve("docs/big.md").toString());
     }
 
     @Test
@@ -154,8 +159,8 @@ class ClientFileReadOnlyToolsTest {
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> entries = (List<Map<String, Object>>) result.get("entries");
-        assertThat(entries.get(0)).containsEntry("path", "b.md");
-        assertThat(entries.get(1)).containsEntry("path", "a.md");
+        assertThat(entries.get(0)).containsEntry("path", b.toString());
+        assertThat(entries.get(1)).containsEntry("path", a.toString());
     }
 
     @Test
@@ -207,7 +212,7 @@ class ClientFileReadOnlyToolsTest {
                 "path", root.resolve("nope.txt").toString(),
                 "head", 5)))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Not found");
+                .hasMessageContaining("No such file");
     }
 
     // ──────────────── count ────────────────

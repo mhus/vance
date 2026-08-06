@@ -843,6 +843,21 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         // this while).
         while ("max-iters".equals(loopResult.fallbackReason())
                 && !ActionLoopJudgeHelpers.isPlanModeYieldCase(process, loopResult)) {
+            // The judge can only extend into budget that is still there.
+            // Consulting it once the turn wallclock is spent costs an LLM
+            // call and then hands the extension round an already-expired
+            // deadline: that round exits at iteration 0 and its *empty*
+            // result replaces the text this turn had actually gathered.
+            // Observed as a 31-minute turn answered with a placeholder.
+            // Stop here and keep what the loop produced.
+            if (System.currentTimeMillis() >= deadlineMs) {
+                log.warn("{} id='{}' turn wallclock ({} min) spent — skipping judge extension, "
+                                + "keeping gathered text (chars={}, toolInvocations={})",
+                        name(), process.getId(), TURN_WALLCLOCK_MINUTES,
+                        loopResult.fallbackText() == null ? 0 : loopResult.fallbackText().length(),
+                        loopResult.toolInvocations());
+                break;
+            }
             ActionLoopJudgeService.JudgeRequest req =
                     new ActionLoopJudgeService.JudgeRequest(
                             process,

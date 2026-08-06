@@ -13,9 +13,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * Tests for {@link FootToolPackLoader}. Uses a temp directory pointed
- * at via the {@code vance.foot.tools.dir} mechanism (set via
- * reflection — full Spring context isn't worth the boot cost).
+ * Tests for {@link FootToolPackLoader}'s global layer. Uses a temp
+ * directory pointed at via the {@code vance.foot.tools.dir} mechanism
+ * (set via reflection — full Spring context isn't worth the boot cost).
+ * The two-layer merge lives in {@link FootToolPackLoaderLayerTest}.
  */
 class FootToolPackLoaderTest {
 
@@ -40,6 +41,10 @@ class FootToolPackLoaderTest {
         }
     }
 
+    private List<FootToolPackConfig> loadConfigs() {
+        return loader.loadAll().stream().map(LoadedPack::config).toList();
+    }
+
     @Test
     void emptyDirectory_returnsEmptyList() {
         assertThat(loader.loadAll()).isEmpty();
@@ -61,10 +66,13 @@ class FootToolPackLoaderTest {
                 }
                 """);
 
-        List<FootToolPackConfig> configs = loader.loadAll();
+        List<LoadedPack> packs = loader.loadAll();
 
-        assertThat(configs).hasSize(1);
-        FootToolPackConfig c = configs.get(0);
+        assertThat(packs).hasSize(1);
+        LoadedPack pack = packs.get(0);
+        assertThat(pack.origin()).isEqualTo(PackOrigin.GLOBAL);
+        assertThat(pack.file()).isEqualTo(dir.resolve("jira.json"));
+        FootToolPackConfig c = pack.config();
         assertThat(c.name()).isEqualTo("jira");
         assertThat(c.type()).isEqualTo("rest_api");
         assertThat(c.defaultDeferred()).isTrue();
@@ -84,7 +92,7 @@ class FootToolPackLoaderTest {
                 }
                 """);
 
-        List<FootToolPackConfig> configs = loader.loadAll();
+        List<FootToolPackConfig> configs = loadConfigs();
 
         assertThat(configs).hasSize(1);
         assertThat(configs.get(0).isEffectivelyEnabled()).isFalse();
@@ -99,9 +107,7 @@ class FootToolPackLoaderTest {
                 {"name":"inactive","type":"rest_api","parameters":{"specUrl":"http://y"}}
                 """);
 
-        List<FootToolPackConfig> configs = loader.loadAll();
-
-        assertThat(configs).extracting(FootToolPackConfig::name).containsExactly("active");
+        assertThat(loadConfigs()).extracting(FootToolPackConfig::name).containsExactly("active");
     }
 
     @Test
@@ -111,9 +117,7 @@ class FootToolPackLoaderTest {
                 """);
         Files.writeString(dir.resolve("broken.json"), "this is not json");
 
-        List<FootToolPackConfig> configs = loader.loadAll();
-
-        assertThat(configs).extracting(FootToolPackConfig::name).containsExactly("ok");
+        assertThat(loadConfigs()).extracting(FootToolPackConfig::name).containsExactly("ok");
     }
 
     @Test
@@ -122,9 +126,7 @@ class FootToolPackLoaderTest {
                 {"type":"rest_api","parameters":{}}
                 """);
 
-        List<FootToolPackConfig> configs = loader.loadAll();
-
-        assertThat(configs).isEmpty();
+        assertThat(loader.loadAll()).isEmpty();
     }
 
     @Test
@@ -134,9 +136,7 @@ class FootToolPackLoaderTest {
         Files.writeString(dir.resolve("b.json"),
                 "{\"name\":\"b\",\"type\":\"mcp_server\",\"parameters\":{\"transport\":\"http\",\"url\":\"http://b/mcp\"}}");
 
-        List<FootToolPackConfig> configs = loader.loadAll();
-
-        assertThat(configs).extracting(FootToolPackConfig::name)
+        assertThat(loadConfigs()).extracting(FootToolPackConfig::name)
                 .containsExactlyInAnyOrder("a", "b");
     }
 }

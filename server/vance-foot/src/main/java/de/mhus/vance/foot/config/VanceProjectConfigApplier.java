@@ -1,5 +1,6 @@
 package de.mhus.vance.foot.config;
 
+import java.util.ArrayList;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -26,6 +27,7 @@ public class VanceProjectConfigApplier {
     public void apply(VanceProjectConfig project, FootConfig config) {
         applyConversationCapture(project, config);
         applyDefaults(project, config);
+        applyToolPacks(project, config);
     }
 
     private void applyConversationCapture(VanceProjectConfig project, FootConfig config) {
@@ -68,5 +70,31 @@ public class VanceProjectConfigApplier {
         log.debug("applied project config: defaults.intellijClaude={} intellijMcpDefault={} recipe={} sandbox={}",
                 src.isIntellijClaude(), src.isIntellijMcpDefault(),
                 src.getRecipe(), src.isSandbox());
+    }
+
+    /**
+     * Overlays the {@code toolPacks:} selection. Every field is
+     * individually optional: an absent block, or an absent field inside
+     * it, leaves the running value alone — "don't steer" must stay
+     * distinguishable from "steer to empty", or a project that only sets
+     * {@code enabled: false} would also wipe an allow-list.
+     */
+    private void applyToolPacks(VanceProjectConfig project, FootConfig config) {
+        VanceProjectConfig.ToolPacks src = project.getToolPacks();
+        if (src == null) return;
+
+        FootConfig.ToolPacks dst = config.getToolPacks();
+        if (src.getEnabled() != null) {
+            dst.setEnabled(src.getEnabled());
+        }
+        if (src.getPacks() != null) {
+            dst.setPacks(new ArrayList<>(src.getPacks()));
+        }
+        if (src.getDisabledPacks() != null) {
+            dst.setDisabledPacks(new ArrayList<>(src.getDisabledPacks()));
+        }
+
+        log.debug("applied project config: toolPacks.enabled={} packs={} disabledPacks={}",
+                dst.isEnabled(), dst.getPacks(), dst.getDisabledPacks());
     }
 }

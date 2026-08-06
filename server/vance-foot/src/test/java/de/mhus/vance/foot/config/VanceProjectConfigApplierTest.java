@@ -169,4 +169,62 @@ class VanceProjectConfigApplierTest {
         // Unchanged
         assertThat(config.getIde().getClaude().isEnabled()).isTrue();
     }
+
+    // ─── toolPacks: selection ───
+
+    @Test
+    void absentToolPacksBlock_leavesTheSelectionAlone() {
+        VanceProjectConfig project = new VanceProjectConfig();
+        FootConfig config = new FootConfig();
+        config.getToolPacks().setPacks(new java.util.ArrayList<>(java.util.List.of("chrome")));
+
+        applier.apply(project, config);
+
+        assertThat(config.getToolPacks().isEnabled()).isTrue();
+        assertThat(config.getToolPacks().getPacks()).containsExactly("chrome");
+    }
+
+    @Test
+    void appliesToolPackKillSwitch() {
+        VanceProjectConfig project = new VanceProjectConfig();
+        VanceProjectConfig.ToolPacks src = new VanceProjectConfig.ToolPacks();
+        src.setEnabled(false);
+        project.setToolPacks(src);
+        FootConfig config = new FootConfig();
+
+        applier.apply(project, config);
+
+        assertThat(config.getToolPacks().isEnabled()).isFalse();
+    }
+
+    @Test
+    void appliesAllowAndDenyLists() {
+        VanceProjectConfig project = new VanceProjectConfig();
+        VanceProjectConfig.ToolPacks src = new VanceProjectConfig.ToolPacks();
+        src.setPacks(java.util.List.of("chrome", "projectdb"));
+        src.setDisabledPacks(java.util.List.of("jira"));
+        project.setToolPacks(src);
+        FootConfig config = new FootConfig();
+
+        applier.apply(project, config);
+
+        assertThat(config.getToolPacks().getPacks()).containsExactly("chrome", "projectdb");
+        assertThat(config.getToolPacks().getDisabledPacks()).containsExactly("jira");
+    }
+
+    @Test
+    void killSwitchAlone_doesNotWipeAnExistingAllowList() {
+        // "don't steer this field" has to stay distinguishable from
+        // "steer it to empty", or setting one field clears the others.
+        VanceProjectConfig project = new VanceProjectConfig();
+        VanceProjectConfig.ToolPacks src = new VanceProjectConfig.ToolPacks();
+        src.setEnabled(false);
+        project.setToolPacks(src);
+        FootConfig config = new FootConfig();
+        config.getToolPacks().setPacks(new java.util.ArrayList<>(java.util.List.of("chrome")));
+
+        applier.apply(project, config);
+
+        assertThat(config.getToolPacks().getPacks()).containsExactly("chrome");
+    }
 }

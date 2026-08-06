@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import de.mhus.vance.foot.audit.ConversationAuditService;
 import de.mhus.vance.foot.cli.FootRunner;
 import de.mhus.vance.foot.cli.VanceFootCommand;
+import de.mhus.vance.foot.tools.pack.FootToolPackLoader;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -46,5 +47,19 @@ class VanceFootContextSmokeTest {
         // dual-constructor ambiguity previously crashed startup.
         assertThat(context.getBean(VanceFootCommand.class)).isNotNull();
         assertThat(context.getBean(ConversationAuditService.class)).isNotNull();
+    }
+
+    @Test
+    void toolPackLoader_getsTheInjectedPaths_notItsTestConstructor() {
+        // The loader has a second, package-private no-arg constructor for
+        // tests. With two constructors and none annotated, Spring silently
+        // prefers the no-arg one — the context would still boot, and packs
+        // would simply never be found. A resolved global directory proves
+        // VancePaths was injected.
+        FootToolPackLoader loader = context.getBean(FootToolPackLoader.class);
+
+        assertThat(loader.globalDir())
+                .as("global foot-tools dir resolved via VancePaths")
+                .isNotNull();
     }
 }

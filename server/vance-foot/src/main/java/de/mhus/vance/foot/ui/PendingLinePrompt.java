@@ -44,6 +44,18 @@ public class PendingLinePrompt {
     }
 
     /**
+     * Whether an answer could actually arrive. The REPL input thread is
+     * the only caller of {@link #offerAnswer}, and it exists exactly
+     * while the live region is attached — on a dumb terminal (CI, piped
+     * stdin, IntelliJ Run window) no key reader runs and typed lines are
+     * discarded, so asking there would always time out. Callers that
+     * must not block on an unanswerable prompt check this first.
+     */
+    public boolean canAsk() {
+        return liveRegion.isAttached();
+    }
+
+    /**
      * Shows {@code label} as an inline input prompt (rendered as the live
      * input-line prefix on a PTY, or a static line on a dumb terminal) and
      * blocks until the user submits a line or {@code timeoutMs} elapses.

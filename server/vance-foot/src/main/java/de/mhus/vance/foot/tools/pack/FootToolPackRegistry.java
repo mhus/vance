@@ -1,11 +1,11 @@
 package de.mhus.vance.foot.tools.pack;
 
+import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.tools.ClientToolService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.core.PackHttpClient;
 import de.mhus.vance.toolpack.mcp.McpPackBuilder;
 import de.mhus.vance.toolpack.rest.RestApiPackBuilder;
-import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -16,13 +16,19 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
- * Loads {@code ~/.vancetope/foot-tools/*.json} into runnable
- * {@link Tool}s and pushes them through {@link ClientToolService}
- * so the brain sees a single registration containing both the
- * hand-coded {@code @Component ClientTool} beans and the JSON-defined
- * pack tools.
+ * Loads {@code foot-tools/*.json} from the global and project-local
+ * {@code .vancetope} directories (see {@link FootToolPackLoader}) into
+ * runnable {@link Tool}s and pushes them through
+ * {@link ClientToolService} so the brain sees a single registration
+ * containing both the hand-coded {@code @Component ClientTool} beans and
+ * the file-defined pack tools.
  *
- * <p>Boot lifecycle: a {@code @PostConstruct} kicks off a background
+ * <p>Three filters sit between a definition and a live tool: the pack's
+ * own {@code enabled} flag, the {@code toolPacks:} selection from
+ * {@code .vancetope/config.yaml}, and — for project-layer packs only —
+ * {@link ProjectPackConsent}.
+ *
+ * <p>Boot lifecycle: {@link #startBootLoad()} kicks off a background
  * thread that does the load + materialise + register. Foot doesn't
  * block on it — the 8 hand-coded tools are already registered
  * separately on session-bind; pack tools land asynchronously and
@@ -42,6 +48,8 @@ public class FootToolPackRegistry {
     private final FootToolPackLoader loader;
     private final EnvSecretResolver secretResolver;
     private final ClientToolService clientToolService;
+    private final ProjectPackConsent consent;
+    private final FootConfig config;
 
     /**
      * Single shared HTTP client for every REST/MCP-HTTP pack — pools
@@ -65,8 +73,16 @@ public class FootToolPackRegistry {
      */
     private final AtomicReference<String> lastStatus = new AtomicReference<>("(not loaded yet)");
 
-    @PostConstruct
-    void bootLoadAsync() {
+    /**
+     * Starts the boot-load on a daemon thread. Called by
+     * {@code VanceFootCommand} rather than from a {@code @PostConstruct}
+     * because everything the load depends on is decided during command
+     * start-up: {@code --no-local} (whether the project layer counts at
+     * all), {@code .vancetope/config.yaml}'s {@code toolPacks:} selection,
+     * and whether this run will have an interactive terminal for the
+     * project-pack consent prompt. A bean-init hook would race all three.
+     */
+    public void startBootLoad() {
         Thread loader = new Thread(() -> {
             try {
                 String status = doLoadAndRegister();
@@ -104,8 +120,16 @@ public class FootToolPackRegistry {
     // ─────── Internals ───────
 
     private String doLoadAndRegister() {
-        List<FootToolPackConfig> configs = loader.loadAll();
-        if (configs.isEmpty()) {
+        if (!config.getToolPacks().isEnabled()) {
+            closeActiveTools();
+            activePackTools.set(List.of());
+            clientToolService.setPackTools(List.of());
+            String s = "tool packs disabled for this project (toolPacks.enabled=false)";
+            lastStatus.set(s);
+            return s;
+        }
+        List<LoadedPack> packs = loader.loadAll();
+        if (packs.isEmpty()) {
             closeActiveTools();
             activePackTools.set(List.of());
             clientToolService.setPackTools(List.of());
@@ -118,9 +142,21 @@ public class FootToolPackRegistry {
         int skipped = 0;
         int failed = 0;
         List<Tool> nextTools = new ArrayList<>();
-        for (FootToolPackConfig config : configs) {
+        for (LoadedPack pack : packs) {
+            FootToolPackConfig config = pack.config();
             if (!config.isEffectivelyEnabled()) {
                 log.info("FootToolPackRegistry: pack '{}' disabled (enabled=false)", config.name());
+                skipped++;
+                continue;
+            }
+            if (!isSelected(config.name())) {
+                log.info("FootToolPackRegistry: pack '{}' not selected by toolPacks: "
+                        + "packs={} disabledPacks={}", config.name(),
+                        selection().getPacks(), selection().getDisabledPacks());
+                skipped++;
+                continue;
+            }
+            if (!consent.isAllowed(pack)) {
                 skipped++;
                 continue;
             }
@@ -128,8 +164,8 @@ public class FootToolPackRegistry {
                 Collection<Tool> tools = materialise(config);
                 nextTools.addAll(tools);
                 active++;
-                log.info("FootToolPackRegistry: pack '{}' (type={}) → {} tool(s)",
-                        config.name(), config.type(), tools.size());
+                log.info("FootToolPackRegistry: pack '{}' (type={}, origin={}) → {} tool(s)",
+                        config.name(), config.type(), pack.origin(), tools.size());
             } catch (RuntimeException e) {
                 failed++;
                 log.warn("FootToolPackRegistry: pack '{}' (type={}) failed to materialise: {}",
@@ -150,6 +186,31 @@ public class FootToolPackRegistry {
                 skipped, failed);
         lastStatus.set(status);
         return status;
+    }
+
+    private FootConfig.ToolPacks selection() {
+        return config.getToolPacks();
+    }
+
+    /**
+     * Applies the {@code toolPacks:} selection from
+     * {@code .vancetope/config.yaml}: an allow-list restricts to the
+     * named packs (empty = no restriction), the deny-list removes from
+     * whatever is left. Names are matched exactly — a pack name is a
+     * namespace prefix for its sub-tools, so fuzzy matching would be a
+     * footgun.
+     *
+     * <p>Package-private for tests: the surrounding load path
+     * materialises packs, which spawns real MCP subprocesses.
+     */
+    boolean isSelected(String name) {
+        FootConfig.ToolPacks sel = selection();
+        List<String> allow = sel.getPacks();
+        if (allow != null && !allow.isEmpty() && !allow.contains(name)) {
+            return false;
+        }
+        List<String> deny = sel.getDisabledPacks();
+        return deny == null || !deny.contains(name);
     }
 
     private Collection<Tool> materialise(FootToolPackConfig config) {
@@ -221,8 +282,19 @@ public class FootToolPackRegistry {
         }
     }
 
+    /** Both layers, so "nothing found" points at every place that was looked at. */
     private String describeDir() {
-        java.nio.file.Path dir = loader.effectiveDir();
-        return dir == null ? "(no directory configured)" : dir.toString();
+        java.nio.file.Path global = loader.globalDir();
+        java.nio.file.Path project = loader.projectDir();
+        if (global == null && project == null) {
+            return "(no directory configured)";
+        }
+        if (project == null) {
+            return String.valueOf(global);
+        }
+        if (global == null) {
+            return String.valueOf(project);
+        }
+        return global + " or " + project;
     }
 }

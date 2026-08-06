@@ -1,5 +1,6 @@
 package de.mhus.vance.foot.config;
 
+import java.util.List;
 import lombok.Data;
 import org.jspecify.annotations.Nullable;
 
@@ -19,6 +20,7 @@ public class VanceProjectConfig {
 
     private ConversationCapture conversationCapture = new ConversationCapture();
     private Defaults defaults = new Defaults();
+    private @Nullable ToolPacks toolPacks;
 
     /**
      * Conversation audit logging — appends every chat message (USER and
@@ -42,6 +44,35 @@ public class VanceProjectConfig {
          * {@code conversations} (i.e. {@code .vancetope/conversations/}).
          */
         private @Nullable String dir;
+    }
+
+    /**
+     * Which tool packs are active in this project. Selection only — pack
+     * <em>definitions</em> stay in {@code foot-tools/*.json} (global
+     * {@code .vancetope} and/or project-local, merged with the project
+     * winning on name). Keeping definition and selection apart means
+     * this file can narrow what runs without becoming a second pack
+     * format.
+     *
+     * <p>The whole block is nullable: an absent {@code toolPacks:} is not
+     * "empty selection" but "don't steer", i.e. exactly today's
+     * behaviour. Same for the two lists individually.
+     *
+     * <pre>
+     * toolPacks:
+     *   enabled: true          # false = no packs at all in this project
+     *   packs: [chrome]        # allow-list; absent/empty = all of them
+     *   disabledPacks: [jira]  # applied after packs
+     * </pre>
+     */
+    @Data
+    public static class ToolPacks {
+        /** Master switch for this project. {@code null} = don't steer. */
+        private @Nullable Boolean enabled;
+        /** Allow-list of pack names. {@code null} or empty = no restriction. */
+        private @Nullable List<String> packs;
+        /** Deny-list of pack names, applied after {@link #packs}. */
+        private @Nullable List<String> disabledPacks;
     }
 
     /**

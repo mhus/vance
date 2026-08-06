@@ -18,6 +18,8 @@ import de.mhus.vance.foot.session.AutoBootstrapService;
 import de.mhus.vance.foot.session.SessionResumeFlow;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.tools.ClientToolService;
+import de.mhus.vance.foot.tools.pack.FootToolPackRegistry;
+import de.mhus.vance.foot.tools.pack.ProjectPackConsent;
 import de.mhus.vance.foot.transfer.FootTransferService;
 import de.mhus.vance.foot.ui.ChatRepl;
 import de.mhus.vance.foot.ui.ChatTerminal;
@@ -282,6 +284,8 @@ public class VanceFootCommand implements Callable<Integer> {
     private final SkillCommandHelper skillHelper;
     private final SessionService sessions;
     private final OneShotTurnGate oneShotGate;
+    private final FootToolPackRegistry toolPacks;
+    private final ProjectPackConsent packConsent;
 
     public VanceFootCommand(ChatRepl repl,
                             ConnectionService connection,
@@ -304,7 +308,9 @@ public class VanceFootCommand implements Callable<Integer> {
                             ColorResolver colorResolver,
                             SkillCommandHelper skillHelper,
                             SessionService sessions,
-                            OneShotTurnGate oneShotGate) {
+                            OneShotTurnGate oneShotGate,
+                            FootToolPackRegistry toolPacks,
+                            ProjectPackConsent packConsent) {
         this.repl = repl;
         this.connection = connection;
         this.terminal = terminal;
@@ -327,6 +333,8 @@ public class VanceFootCommand implements Callable<Integer> {
         this.skillHelper = skillHelper;
         this.sessions = sessions;
         this.oneShotGate = oneShotGate;
+        this.toolPacks = toolPacks;
+        this.packConsent = packConsent;
     }
 
     @Override
@@ -460,6 +468,19 @@ public class VanceFootCommand implements Callable<Integer> {
             config.getIde().getClaude().setEnabled(false);
             config.getIde().getIntellijMcp().setUrl(null);
         }
+        // Tool packs load here, not from a bean-init hook: the layer set
+        // (--no-local), the toolPacks: selection from .vancetope/config.yaml
+        // and whether a terminal exists to confirm a project-defined pack
+        // are all only settled at this point. --no-tools skips the load
+        // entirely — suppressing the registration downstream would still
+        // have spawned every MCP subprocess.
+        if (noTools) {
+            terminal.println(Verbosity.VERBOSE, "Skipping tool packs (--no-tools).");
+        } else {
+            packConsent.setInteractiveExpected(!noUi && (skill == null || skill.isBlank()));
+            toolPacks.startBootLoad();
+        }
+
         if (noSandbox) {
             permissions.disableSandbox();
         } else if (config.getIde().isNoSandboxDefault()) {

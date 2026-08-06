@@ -29,6 +29,7 @@ public class FootConfig {
     private Ide ide = new Ide();
     private SleepGuard sleepGuard = new SleepGuard();
     private ConversationCapture conversationCapture = new ConversationCapture();
+    private ToolPacks toolPacks = new ToolPacks();
 
     @Data
     public static class Brain {
@@ -418,6 +419,27 @@ public class FootConfig {
         private String ghostText = "fg:bright-black,faint";
         /** Style for system-role chat messages in replay (default faint grey). */
         private String systemMessage = "fg:bright-black,faint";
+    }
+
+    /**
+     * Which tool packs this run activates. Populated from
+     * {@code .vancetope/config.yaml}'s {@code toolPacks:} block by
+     * {@link VanceProjectConfigApplier} and read by
+     * {@code FootToolPackRegistry}. Pack definitions themselves live in
+     * {@code foot-tools/*.json} (global and/or project-local) — this is
+     * selection, not definition.
+     *
+     * <p>Defaults are "no steering": enabled, no allow-list, no
+     * deny-list.
+     */
+    @Data
+    public static class ToolPacks {
+        /** Master switch. {@code false} = load no packs at all. */
+        private boolean enabled = true;
+        /** Allow-list of pack names; empty = every pack found. */
+        private List<String> packs = new ArrayList<>();
+        /** Deny-list of pack names, applied after {@link #packs}. */
+        private List<String> disabledPacks = new ArrayList<>();
     }
 
     /**

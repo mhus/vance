@@ -15,12 +15,15 @@ params:
   model: default:arthur,default:analyze
   validation: true
   # maxIterations is deliberately NOT pinned here — it falls through to
-  # vance.arthur.maxToolIterations (12), which is where the value is
+  # vance.arthur.maxToolIterations (20), which is where the value is
   # reasoned about and where a deployment can tune it. This recipe used to
   # pin 6 and thereby silently defeat the 6→12 bump of 2026-06-19: measured
   # on a real coding session, 10 of 29 turns hit the cap and fell back to
-  # free text with the work half-done. Plan-mode turns raise the floor
-  # further (12 exploring/planning, 24 executing) in ArthurEngine.
+  # free text with the work half-done. Note that this is not a hard cap —
+  # the action-loop judge extends by +6 with no ceiling, so the value only
+  # decides how early a long turn starts paying for judge round-trips.
+  # Plan-mode turns raise the floor further (24 exploring/planning,
+  # 32 executing) in ArthurEngine.
   # Auto-inject the project's default RAG into Arthur's turns —
   # project documents (specs, notes, prior research) get chunked by
   # the auto-indexer and surface as context in every turn that

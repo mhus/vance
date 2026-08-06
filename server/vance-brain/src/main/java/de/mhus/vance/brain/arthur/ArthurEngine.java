@@ -834,26 +834,27 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             }
             int maxIters = paramInt(process, "maxIterations",
                     arthurProperties.getMaxToolIterations());
-            // Plan-Mode turns chain multiple read/write tool calls
-            // before emitting the next action. The default budget
-            // (~6) is sized for NORMAL action loops; lift the floor
-            // for the entire plan-mode trio (EXPLORING / PLANNING /
-            // EXECUTING) so the model has room to settle.
+            // Plan-Mode turns chain multiple read/write tool calls before
+            // emitting the next action, so they get more room than a NORMAL
+            // turn. These are floors, not additions: they only bite while
+            // vance.arthur.maxToolIterations sits below them, which is the
+            // point — a deployment that tunes the base down should not
+            // thereby cripple plan mode.
             //
-            // EXECUTING gets the highest floor (24) because TODO_UPDATE
-            // was promoted to a continuing action — items now chain
-            // inside a single turn instead of each ending the turn.
-            // A 4-item refactor realistically needs ~16-20 iterations
-            // (TODO_UPDATE→read→write→TODO_UPDATE per item, plus a
-            // final ANSWER); 12 cuts the LLM off mid-refactor and the
-            // free-text fallback puts Arthur into BLOCKED with the
-            // work half-done.
+            // EXECUTING gets the highest floor because TODO_UPDATE was
+            // promoted to a continuing action — items now chain inside a
+            // single turn instead of each ending the turn. A 4-item refactor
+            // realistically needs ~16-20 iterations (TODO_UPDATE→read→write→
+            // TODO_UPDATE per item, plus a final ANSWER), and cutting the LLM
+            // off mid-refactor puts Arthur into BLOCKED with the work half
+            // done. Kept meaningfully above the base (20) rather than trailing
+            // it, so the mode still means something.
             de.mhus.vance.api.thinkprocess.ProcessMode currentMode = process.getMode();
             if (currentMode == de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING) {
-                maxIters = Math.max(maxIters, 24);
+                maxIters = Math.max(maxIters, 32);
             } else if (currentMode == de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING
                     || currentMode == de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING) {
-                maxIters = Math.max(maxIters, 12);
+                maxIters = Math.max(maxIters, 24);
             }
             boolean validation = paramBool(process, "validation", false);
             log.debug("Arthur.turn id='{}' inbox={} historyMsgs={} model={} maxIters={} validation={} mode={} allowedSize={} clientWriteAllowed={}",

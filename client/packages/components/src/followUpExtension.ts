@@ -39,11 +39,22 @@ interface FollowUpState {
 /** Show / hide effect — value {@code null} dismisses the tooltip. */
 const setFollowUp = StateEffect.define<FollowUpState | null>();
 
+/**
+ * Public dismiss effect — mapped to the internal {@link setFollowUp}
+ * inside {@link followUpField.update}. Hosts dispatch this when they
+ * tear the extension out of a compartment at runtime (toggle off):
+ * without it the tooltip compute would lose its StateField dependency
+ * and could leave a stale tooltip on screen. A no-op when nothing is
+ * shown or the field isn't part of the state's extensions.
+ */
+export const dismissFollowUp = StateEffect.define<null>();
+
 const followUpField = StateField.define<FollowUpState | null>({
   create: () => null,
   update(value, tr) {
     for (const eff of tr.effects) {
       if (eff.is(setFollowUp)) return eff.value;
+      if (eff.is(dismissFollowUp)) return null;
     }
     // Any document or selection change invalidates the anchored
     // suggestion — the user moved on and we don't want to insert

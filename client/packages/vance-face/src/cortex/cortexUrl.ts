@@ -14,6 +14,12 @@
  *  - `bind` — chat-bind mode (`pinned` / `off`; omitted when the `auto` default).
  *  - `pin`  — the pinned document id (only with `bind=pinned`, must be in `open`).
  *  - `at`   — `0` when auto-target is off (omitted for the `true` default).
+ *             Mirror of the localStorage-backed user preference
+ *             (`vance:cortex:auto-target`); localStorage is the source of
+ *             truth, the URL only carries it for shared/bookmarked links.
+ *  - `sg`   — `0` when follow-up suggestions are off (omitted for the
+ *             `true` default). Same mirror semantics as `at`
+ *             (`vance:cortex:suggestions`).
  *
  * Boot context (`project`, `sessionId`) is preserved verbatim. The one-shot
  * handoff params (`create`, `path`) are ALWAYS stripped by {@link writeCortexView}
@@ -28,6 +34,7 @@ export interface CortexView {
   bind: CortexBindMode;
   pinned: string | null;
   autoTarget: boolean;
+  suggestions: boolean;
 }
 
 const OPEN_PARAM = 'open';
@@ -35,6 +42,7 @@ const DOC_PARAM = 'doc';
 const BIND_PARAM = 'bind';
 const PIN_PARAM = 'pin';
 const AUTOTARGET_PARAM = 'at';
+const SUGGESTIONS_PARAM = 'sg';
 
 /** One-shot handoff params that must never survive a URL rebuild. */
 const TRANSIENT_PARAMS = ['create', 'path'] as const;
@@ -80,14 +88,15 @@ export function readCortexView(search: string = window.location.search): CortexV
   if (pinned && !open.includes(pinned)) pinned = null;
 
   const autoTarget = p.get(AUTOTARGET_PARAM) !== '0';
+  const suggestions = p.get(SUGGESTIONS_PARAM) !== '0';
 
-  return { open: open.slice(0, MAX_OPEN), doc, bind, pinned, autoTarget };
+  return { open: open.slice(0, MAX_OPEN), doc, bind, pinned, autoTarget, suggestions };
 }
 
 /**
  * Serialise a view onto an existing query string, preserving unrelated
  * params (`project`, `sessionId`, …) and always dropping the transient
- * handoff params. Defaults (`bind=auto`, `at=true`) are omitted to keep the
+ * handoff params. Defaults (`bind=auto`, `at=true`, `sg=true`) are omitted to keep the
  * URL clean. Returns the query string WITHOUT a leading `?`.
  */
 export function writeCortexView(base: string, view: CortexView): string {
@@ -108,6 +117,7 @@ export function writeCortexView(base: string, view: CortexView): string {
   }
 
   if (!view.autoTarget) p.set(AUTOTARGET_PARAM, '0'); else p.delete(AUTOTARGET_PARAM);
+  if (!view.suggestions) p.set(SUGGESTIONS_PARAM, '0'); else p.delete(SUGGESTIONS_PARAM);
 
   return p.toString();
 }

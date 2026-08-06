@@ -32,7 +32,11 @@ import { java } from '@codemirror/lang-java';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
 import { r } from '@codemirror/legacy-modes/mode/r';
 import { stex } from '@codemirror/legacy-modes/mode/stex';
-import { followUpExtension, type FollowUpExtensionOptions } from './followUpExtension';
+import {
+  dismissFollowUp,
+  followUpExtension,
+  type FollowUpExtensionOptions,
+} from './followUpExtension';
 
 interface Props {
   modelValue: string;
@@ -63,11 +67,12 @@ interface Props {
    * the cursor, and accepts it via {@code Tab}. {@code null}/absent
    * disables the feature entirely.
    *
-   * <p>Only applied at editor-construction time; toggling at runtime
-   * has no effect (the prop is read in {@code onMounted} only). For
-   * conditional use (e.g. enable only for Markdown documents), the
-   * host should conditionally render the {@code CodeEditor} with
-   * {@code v-if="…"} so a fresh editor mounts when the toggle flips.
+   * <p>Reactive: the extension lives in a {@link Compartment} that a
+   * watcher reconfigures when the prop flips between a value and
+   * {@code null}, so the host can toggle the feature at runtime
+   * (e.g. the Cortex View-menu switch) without remounting the editor.
+   * Turning it off also dismisses any visible tooltip and cancels the
+   * pending idle timer.
    */
   followUp?: FollowUpExtensionOptions | null;
 
@@ -118,6 +123,7 @@ const emit = defineEmits<{
 
 const host = ref<HTMLDivElement | null>(null);
 let view: EditorView | null = null;
+const followUpCompartment = new Compartment();
 
 // Compartments so language, read-only, and the optional notes gutter
 // can be reconfigured at runtime without rebuilding the whole editor
@@ -277,9 +283,11 @@ onMounted(() => {
     languageCompartment.of(languageFor(props.mimeType)),
     readOnlyCompartment.of(readOnlyExt(props.disabled || props.readOnly)),
   ];
-  if (props.followUp) {
-    baseExtensions.push(followUpExtension(props.followUp));
-  }
+  baseExtensions.push(
+    followUpCompartment.of(
+      props.followUp ? followUpExtension(props.followUp) : [],
+    ),
+  );
   const state = EditorState.create({
     doc: props.modelValue ?? '',
     extensions: baseExtensions,
@@ -307,6 +315,23 @@ watch(
     if (!view) return;
     view.dispatch({
       effects: languageCompartment.reconfigure(languageFor(mt)),
+    });
+  },
+);
+
+watch(
+  () => props.followUp,
+  (opts) => {
+    if (!view) return;
+    // Dismiss a visible tooltip first — the compartment reconfigure
+    // below would drop the StateField from the state's extension list,
+    // which would leave the tooltip compute orphaned. The explicit
+    // effect is a no-op when nothing is shown.
+    view.dispatch({ effects: dismissFollowUp.of(null) });
+    view.dispatch({
+      effects: followUpCompartment.reconfigure(
+        opts ? followUpExtension(opts) : [],
+      ),
     });
   },
 );

@@ -6,6 +6,7 @@
 export { accentColorDotClass } from './accentColor';
 export { default as CodeEditor } from './CodeEditor.vue';
 export {
+  dismissFollowUp,
   followUpExtension,
   type FollowUpExtensionOptions,
 } from './followUpExtension';

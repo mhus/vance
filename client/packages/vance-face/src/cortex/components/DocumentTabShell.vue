@@ -22,7 +22,8 @@
  *    Calendar). Same render contract as {@code typed-model}; the host
  *    just sourced the entry differently.
  */
-import { computed, onBeforeUnmount, ref, shallowRef, toRef, watch } from 'vue';
+import { computed, inject, onBeforeUnmount, ref, shallowRef, toRef, watch } from 'vue';
+import type { Ref } from 'vue';
 import { CodeEditor, VLockBadge, accentColorDotClass } from '@/components';
 import { brainFetch, brainFetchBlob } from '@vance/shared';
 import type { DocumentDto, FollowUpRequestDto, FollowUpResponseDto } from '@vance/generated';
@@ -268,10 +269,13 @@ interface RawSelection {
 // Wired to POST /brain/{tenant}/follow-up/{project} in edit mode
 // (cursor set). The CodeEditor's idle-trigger fires after 3s of
 // inactivity and calls this fetch callback with the full doc text
-// and cursor offset.
+// and cursor offset. The user can switch the whole feature off via
+// the View menu ("Auto — suggest completions on idle"); EditorApp
+// provides the toggle and cortexUrl persists it in the URL.
+const followUpEnabled = inject<Ref<boolean>>('vance:follow-up-enabled', ref(true));
 const followUpOptions = computed<FollowUpExtensionOptions | null>(() => {
   const project = store.projectId;
-  if (!project) return null;
+  if (!project || !followUpEnabled.value) return null;
   return {
     fetch: async (text: string, cursor: number): Promise<string | null> => {
       const body: FollowUpRequestDto = {

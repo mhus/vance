@@ -84,9 +84,52 @@ const focusZone = ref<FocusZone>('main');
 
 // Auto-Target: when on (default), the document tree auto-reveals the
 // active tab's file — same effect as clicking the 🎯 button in the tree
-// header, but on every tab switch. Carried in the URL like the rest of
-// the view-state (see cortexUrl). Toggled via the View menu.
-const autoTarget = ref(true);
+// header, but on every tab switch. Like the suggestions toggle this is a
+// genuine user PREFERENCE, not per-view state: it persists in localStorage
+// so it survives refresh, hard navigations (chat ↔ chatless, explorer →
+// cortex) and new browser tabs. The URL `at` param only *mirrors* the
+// current value (so a shared/bookmarked URL carries it); on boot
+// localStorage wins over the URL. Toggled via the View menu.
+const AUTOTARGET_STORAGE_KEY = 'vance:cortex:auto-target';
+function loadAutoTargetPref(): boolean {
+  try {
+    const raw = window.localStorage.getItem(AUTOTARGET_STORAGE_KEY);
+    if (raw === null) {
+      // No stored choice yet — honour an explicit URL override once
+      // (e.g. a shared link with at=0), otherwise default on.
+      return new URLSearchParams(window.location.search).get('at') !== '0';
+    }
+    return raw !== '0';
+  } catch {
+    return true; // storage unavailable (private mode, …) → default on
+  }
+}
+const autoTarget = ref(loadAutoTargetPref());
+
+// Follow-up suggestions: when on (default), the code editor asks the
+// brain for an inline completion after a few seconds of typing pause
+// and shows it as a ghost tooltip at the cursor (accept with Tab).
+// This is a genuine user PREFERENCE, not per-view state: it persists in
+// localStorage so it survives refresh, hard navigations (chat ↔ chatless,
+// explorer → cortex) and new browser tabs. The URL `sg` param only
+// *mirrors* the current value (so a shared/bookmarked URL carries it);
+// on boot localStorage wins over the URL. Toggled via the View menu;
+// DocumentTabShell injects the flag.
+const SUGGESTIONS_STORAGE_KEY = 'vance:cortex:suggestions';
+function loadSuggestionsPref(): boolean {
+  try {
+    const raw = window.localStorage.getItem(SUGGESTIONS_STORAGE_KEY);
+    if (raw === null) {
+      // No stored choice yet — honour an explicit URL override once
+      // (e.g. a shared link with sg=0), otherwise default on.
+      return new URLSearchParams(window.location.search).get('sg') !== '0';
+    }
+    return raw !== '0';
+  } catch {
+    return true; // storage unavailable (private mode, …) → default on
+  }
+}
+const suggestionsEnabled = ref(loadSuggestionsPref());
 
 // Session-bound mode = there's a sessionId on this tab. Used everywhere
 // the chat-bound logic, persistence, bind-icon, etc. needs to gate.
@@ -166,6 +209,10 @@ provide('vance:compose-output-component', ComposeOutput);
 // pass it so the run binds to the session's primary chat process — the
 // workspace/target is then shared with the chat (see ComposeController).
 provide('vance:session-id', sessionId);
+
+// Follow-up suggestion toggle for the code editors inside the tab
+// shells (see the View menu + cortexUrl `sg` param).
+provide('vance:follow-up-enabled', suggestionsEnabled);
 
 // An app remote (Workbook, …) reports the sub-document its editor currently
 // has open, so the chat binds to that instead of the app manifest (see
@@ -302,6 +349,7 @@ function currentView(): CortexView {
     bind: chatBindMode.value,
     pinned: chatBindMode.value === 'pinned' ? pinnedDocumentId.value : null,
     autoTarget: autoTarget.value,
+    suggestions: suggestionsEnabled.value,
   };
 }
 
@@ -366,7 +414,10 @@ async function restoreView(): Promise<void> {
       chatBindMode.value = 'auto';
       pinnedDocumentId.value = null;
     }
-    autoTarget.value = view.autoTarget;
+    // autoTarget + suggestionsEnabled are NOT restored from the URL here:
+    // both are localStorage-backed user preferences (source of truth), the
+    // URL merely mirrors them. Overwriting from the URL would flip a pref
+    // back on after a hard navigation dropped the at/sg param.
     lastActiveDoc = store.activeTabId ?? null;
     // Normalise the URL once (canonical param set, transient params dropped).
     syncUrl('replace');
@@ -398,11 +449,29 @@ watch(
   },
 );
 
-// Preference edits (bind mode / pinned doc / auto-target) are not
-// navigation — update the current history entry in place.
-watch([chatBindMode, pinnedDocumentId, autoTarget], () => {
+// Preference edits (bind mode / pinned doc / auto-target / suggestions)
+// are not navigation — update the current history entry in place.
+watch([chatBindMode, pinnedDocumentId, autoTarget, suggestionsEnabled], () => {
   if (restoring.value) return;
   syncUrl('replace');
+});
+
+// Persist the suggestions + auto-target preferences across sessions/tabs.
+// Unlike the other view-state these two are user-scoped, so they ALSO live
+// in localStorage — the URL only mirrors them (see the ref declarations).
+watch(suggestionsEnabled, (on) => {
+  try {
+    window.localStorage.setItem(SUGGESTIONS_STORAGE_KEY, on ? '1' : '0');
+  } catch {
+    // storage unavailable — preference stays session-only, that's fine
+  }
+});
+watch(autoTarget, (on) => {
+  try {
+    window.localStorage.setItem(AUTOTARGET_STORAGE_KEY, on ? '1' : '0');
+  } catch {
+    // storage unavailable — preference stays session-only, that's fine
+  }
 });
 
 const title = computed<string>(() => {
@@ -1261,6 +1330,12 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
               <a @click="closeMenus(); autoTarget = !autoTarget">
                 <span class="w-4 text-center">{{ autoTarget ? '✓' : '' }}</span>
                 <span class="flex-1">Auto — reveal active file in tree</span>
+              </a>
+            </li>
+            <li>
+              <a @click="closeMenus(); suggestionsEnabled = !suggestionsEnabled">
+                <span class="w-4 text-center">{{ suggestionsEnabled ? '✓' : '' }}</span>
+                <span class="flex-1">Auto — suggest completions on idle</span>
               </a>
             </li>
         </VDropdown>

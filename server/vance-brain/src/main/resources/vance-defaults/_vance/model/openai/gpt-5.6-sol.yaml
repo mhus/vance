@@ -1,0 +1,15 @@
+# Frontier multimodal reasoning model (text + image in, text out).
+# Long-context surcharge: prompts >272k input tokens are billed at 2x
+# input / 1.5x output for the whole request — not expressible in the
+# flat Pricing record, so cost estimates understate huge prompts.
+contextWindowTokens: 1050000
+defaultMaxOutputTokens: 8192
+size: LARGE
+capabilities:
+- vision
+- thinking
+pricing:
+  currency: USD
+  inputPerMTok: 5.0
+  outputPerMTok: 30.0
+  cacheReadPerMTok: 0.5

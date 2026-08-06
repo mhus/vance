@@ -1,0 +1,15 @@
+# Cost-optimized sibling of gpt-5.6-sol (text + image in, text out).
+# Long-context surcharge: prompts >272k input tokens are billed at 2x
+# input / 1.5x output for the whole request — not expressible in the
+# flat Pricing record.
+contextWindowTokens: 1050000
+defaultMaxOutputTokens: 8192
+size: SMALL
+capabilities:
+- vision
+- thinking
+pricing:
+  currency: USD
+  inputPerMTok: 0.2
+  outputPerMTok: 1.2
+  cacheReadPerMTok: 0.02

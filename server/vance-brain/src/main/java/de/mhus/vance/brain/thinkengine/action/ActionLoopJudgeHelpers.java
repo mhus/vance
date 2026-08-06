@@ -19,10 +19,16 @@ import java.util.List;
 public final class ActionLoopJudgeHelpers {
 
     /**
-     * Iteration budget granted on each judge-approved extension. Kept
-     * deliberately small (a fraction of typical {@code maxIters}
-     * defaults) so the judge re-evaluates the loop's health after a
-     * short round rather than handing out a full fresh budget each time.
+     * Iteration budget granted on each judge-approved extension. Kept a
+     * fraction of the typical initial {@code maxIters} — roughly half — so
+     * the judge re-evaluates the loop's health after a short round rather
+     * than handing out a full fresh budget each time.
+     *
+     * <p>Raised 6 -> 10 on 2026-08-06 to hold that ratio. It was half of
+     * the then-current Arthur budget of 12; once the budget moved to 20 the
+     * unchanged 6 had quietly become under a third, which is a tighter
+     * supervision cadence than anyone chose — and every extra round is an
+     * extra judge LLM call on top of the turn.
      *
      * <p>There is deliberately <b>no</b> absolute extension ceiling: as
      * long as the judge keeps deciding {@code extend} (i.e. it still
@@ -32,8 +38,11 @@ public final class ActionLoopJudgeHelpers {
      * are the user pressing ESC / {@code /pause} (honoured mid-loop by
      * {@link StructuredActionEngine#runStructuredActionLoop}) and the
      * per-turn wallclock safety net.
+     *
+     * <p>Shared by Arthur and Eddie; both sit at an initial budget of 20,
+     * so the half-the-base ratio holds for either engine.
      */
-    public static final int JUDGE_EXTENSION_ITERS = 6;
+    public static final int JUDGE_EXTENSION_ITERS = 10;
 
     /**
      * Cap on the number of tool-call entries shipped to the judge —

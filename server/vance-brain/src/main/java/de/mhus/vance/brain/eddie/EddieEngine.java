@@ -134,21 +134,24 @@ public class EddieEngine extends StructuredActionEngine {
     private static volatile @Nullable String cachedPromptResource;
 
     /**
-     * Aligned with Arthur's recipe (6) — Eddie's "self-work" path
-     * (web_search → web_fetch → doc_write → ANSWER) already
-     * eats 4 iterations; with Plan-Mode actions now in her schema
-     * and the occasional discovery tool (tool_list / tool_description)
-     * pre-amble, 4 leaves no slack for the final ANSWER and the
-     * action-loop trips "max-iters" with no user-facing output. Six
-     * is generous for the typical hub-turn (most are 1-2 iterations
-     * total) and rescues the longer self-work flows.
+     * Fallback for {@code maxIterations} when the recipe doesn't pin it —
+     * mirrors {@code eddie.yaml}'s default. Recipe is the source of truth;
+     * this is just the last resort. Keep the two in sync.
+     *
+     * <p>Sized like Arthur's budget, for the same reason: the action-loop
+     * judge extends without a ceiling, so this value does not cap a turn,
+     * it only decides how early a long turn starts paying for judge
+     * round-trips. Eddie's self-work path (web_search → web_fetch →
+     * doc_write → ANSWER) already eats 4 iterations before Plan-Mode
+     * actions and the occasional discovery pre-amble (tool_list /
+     * tool_description); the typical hub-turn is 1-2 iterations and never
+     * comes near this, so a generous value costs nothing in the common
+     * case and rescues the long flows.
+     *
+     * <p>Raised 6 -> 20 on 2026-08-06 together with Arthur, which the
+     * previous value was explicitly aligned to.
      */
-    /**
-     * Fallback for {@code maxIterations} when the recipe doesn't pin
-     * it — mirrors {@code eddie.yaml}'s default. Recipe is the source
-     * of truth; this is just the last resort.
-     */
-    private static final int DEFAULT_MAX_ITERATIONS = 6;
+    private static final int DEFAULT_MAX_ITERATIONS = 20;
 
     /**
      * Most-recent {@code UserChatInput.at()} in the drained inbox —

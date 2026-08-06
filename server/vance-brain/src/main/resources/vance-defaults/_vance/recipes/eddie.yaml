@@ -16,7 +16,12 @@ engine: eddie
 params:
   model: default:eddie,default:analyze
   validation: true
-  maxIterations: 6
+  # Not a hard cap — the action-loop judge extends by +10 with no ceiling,
+  # so this only decides how early a long turn starts paying for judge
+  # round-trips. Raised 6 -> 20 on 2026-08-06 together with Arthur, whose
+  # budget the old value was aligned to. Keep in sync with
+  # EddieEngine.DEFAULT_MAX_ITERATIONS.
+  maxIterations: 20
   # Auto-inject the project's default RAG into Eddie's turns. Cheap
   # for the user-hub project where the auto-indexer chunks
   # documents/ as they're created — Eddie answers from her own

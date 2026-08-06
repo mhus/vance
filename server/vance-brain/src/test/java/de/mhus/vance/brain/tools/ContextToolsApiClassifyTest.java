@@ -307,6 +307,98 @@ class ContextToolsApiClassifyTest {
         assertThat(c.primary()).containsExactlyInAnyOrder("tool_list", "tool_description");
     }
 
+    // ─── per-turn additive allow (label selectors over client packs) ───
+
+    @Test
+    void filterAdd_admitsToolOutsideBase_keepingItsDeferredDefault() {
+        // `@browser` expanded to a client-registered MCP pack tool: it
+        // cannot be in the spawn-frozen base (session-scoped), so the add
+        // list has to widen the allow-set. Its own defaultDeferred keeps
+        // the 29-tool pack out of every turn's manifest.
+        stubResolve("doc_read", false);
+        stubResolve("chrome__navigate_page", true);
+
+        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
+                List.of(), List.of("chrome__navigate_page"), List.of());
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx, Set.of("doc_read"), filter, Set.of());
+
+        assertThat(c.allowed()).contains("chrome__navigate_page");
+        assertThat(c.deferred()).containsExactly("chrome__navigate_page");
+        assertThat(c.primary()).contains("doc_read").doesNotContain("chrome__navigate_page");
+    }
+
+    @Test
+    void filterAdd_admitsToolOutsideBase_asPrimaryWhenNotDeferredByDefault() {
+        stubResolve("doc_read", false);
+        stubResolve("chrome__take_snapshot", false);
+
+        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
+                List.of(), List.of("chrome__take_snapshot"), List.of());
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx, Set.of("doc_read"), filter, Set.of());
+
+        assertThat(c.primary()).contains("chrome__take_snapshot");
+    }
+
+    @Test
+    void filterAdd_ignoresNameTheDispatcherCannotResolve() {
+        // Foot disconnected / pack unloaded: a stale expanded name must
+        // not enter the allow-set, or the manifest builder hard-fails.
+        stubResolve("doc_read", false);
+
+        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
+                List.of(), List.of("chrome__gone"), List.of());
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx, Set.of("doc_read"), filter, Set.of());
+
+        assertThat(c.allowed()).doesNotContain("chrome__gone");
+    }
+
+    @Test
+    void filterAdd_admittedTool_stillDroppedByRemove() {
+        stubResolve("doc_read", false);
+        stubResolve("chrome__navigate_page", true);
+
+        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
+                List.of("chrome__navigate_page"), List.of("chrome__navigate_page"), List.of());
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx, Set.of("doc_read"), filter, Set.of());
+
+        assertThat(c.allowed()).doesNotContain("chrome__navigate_page");
+    }
+
+    @Test
+    void filterAdd_admittedTool_stillSubjectToProfileGate() {
+        // Widening the allow-set must not bypass the gates that run on
+        // base — otherwise a recipe add could smuggle in a tool the
+        // bound profile is not allowed to route.
+        stubResolve("doc_read", false, Set.of());
+        stubResolve("chrome__navigate_page", true, Set.of("user"));
+
+        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
+                List.of(), List.of("chrome__navigate_page"), List.of());
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx, Set.of("doc_read"), filter, Set.of(), "eddie");
+
+        assertThat(c.allowed()).doesNotContain("chrome__navigate_page");
+    }
+
+    @Test
+    void filterAdd_onToolAlreadyInBase_stillForcesPrimary() {
+        // Regression guard for the pre-existing meaning of add: promoting
+        // an already-allowed deferred tool must keep working.
+        stubResolve("kit_install", true);
+
+        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
+                List.of(), List.of("kit_install"), List.of("kit_install"));
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx, Set.of("kit_install"), filter, Set.of());
+
+        assertThat(c.primary()).containsExactly("kit_install");
+        assertThat(c.deferred()).isEmpty();
+    }
+
     private void stubResolve(String name, boolean deferred) {
         when(dispatcher.resolve(eq(name), any())).thenReturn(Optional.of(resolved(name, deferred)));
     }

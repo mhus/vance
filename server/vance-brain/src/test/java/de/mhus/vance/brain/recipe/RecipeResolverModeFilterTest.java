@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.api.thinkprocess.ProcessMode;
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.brain.servertool.ServerToolService;
+import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.toolpack.Tool;
 import java.util.List;
@@ -39,8 +40,9 @@ class RecipeResolverModeFilterTest {
     private final RecipeLoader loader = mock(RecipeLoader.class);
     private final ObjectProvider<ThinkEngineService> engineSvcProvider = providerOf(null);
     private final ServerToolService serverToolService = mock(ServerToolService.class);
+    private final ClientToolRegistry clientToolRegistry = mock(ClientToolRegistry.class);
     private final RecipeResolver resolver = new RecipeResolver(
-            loader, engineSvcProvider, serverToolService);
+            loader, engineSvcProvider, serverToolService, providerOf(clientToolRegistry));
 
     private static final String TENANT = "acme";
     private static final String PROJECT = "p1";
@@ -217,6 +219,77 @@ class RecipeResolverModeFilterTest {
                 TENANT, PROJECT, "arthur", "foot", ProcessMode.EXPLORING);
 
         assertThat(f.remove()).isEmpty();
+    }
+
+    // ─────── Label expansion over client-registered tools ───────
+
+    @Test
+    void labelSelector_alsoExpandsToClientRegisteredToolsOfTheSession() {
+        // A foot MCP pack (~/.vancetope/foot-tools/chrome.json) pushes its
+        // labels on the ToolSpec; a recipe selects the capability by label
+        // instead of naming 29 generated sub-tools.
+        ResolvedRecipe r = recipe(
+                List.of(), List.of("@browser"), List.of(), Map.of(), Map.of());
+        when(loader.load(any(), any(), eq("coding"))).thenReturn(Optional.of(r));
+        when(serverToolService.findByLabel(any(), any(), eq("browser"), any()))
+                .thenReturn(List.of());
+        when(clientToolRegistry.toolsFor("s1")).thenReturn(List.of(
+                clientSpec("chrome__navigate_page", Set.of("browser", "mcp:chrome")),
+                clientSpec("chrome__take_snapshot", Set.of("browser", "mcp:chrome")),
+                clientSpec("client_file_read", Set.of("read-only"))));
+
+        RecipeResolver.ToolFilter f = resolver.toolFilterFor(
+                TENANT, PROJECT, "coding", "foot", ProcessMode.NORMAL,
+                new de.mhus.vance.toolpack.ToolInvocationContext(
+                        TENANT, PROJECT, "s1", "proc", "marvin"));
+
+        assertThat(f.add()).containsExactlyInAnyOrder(
+                "chrome__navigate_page", "chrome__take_snapshot");
+    }
+
+    @Test
+    void labelSelector_withoutSessionScope_ignoresClientTools() {
+        // The spawn path has no session: expanding client tool names there
+        // would freeze a list that `/tools reload` invalidates.
+        ResolvedRecipe r = recipe(
+                List.of(), List.of("@browser"), List.of(), Map.of(), Map.of());
+        when(loader.load(any(), any(), eq("coding"))).thenReturn(Optional.of(r));
+        when(serverToolService.findByLabel(any(), any(), eq("browser"), any()))
+                .thenReturn(List.of());
+
+        RecipeResolver.ToolFilter f = resolver.toolFilterFor(
+                TENANT, PROJECT, "coding", "foot", ProcessMode.NORMAL);
+
+        assertThat(f.add()).isEmpty();
+        org.mockito.Mockito.verifyNoInteractions(clientToolRegistry);
+    }
+
+    @Test
+    void labelSelector_unionsServerAndClientMatches_withoutDuplicates() {
+        ResolvedRecipe r = recipe(
+                List.of(), List.of("@browser"), List.of(), Map.of(), Map.of());
+        when(loader.load(any(), any(), eq("coding"))).thenReturn(Optional.of(r));
+        when(serverToolService.findByLabel(any(), any(), eq("browser"), any()))
+                .thenReturn(List.of(stubTool("headless_fetch"), stubTool("shared_name")));
+        when(clientToolRegistry.toolsFor("s1")).thenReturn(List.of(
+                clientSpec("shared_name", Set.of("browser")),
+                clientSpec("chrome__navigate_page", Set.of("browser"))));
+
+        RecipeResolver.ToolFilter f = resolver.toolFilterFor(
+                TENANT, PROJECT, "coding", "foot", ProcessMode.NORMAL,
+                new de.mhus.vance.toolpack.ToolInvocationContext(
+                        TENANT, PROJECT, "s1", "proc", "marvin"));
+
+        assertThat(f.add()).containsExactlyInAnyOrder(
+                "headless_fetch", "shared_name", "chrome__navigate_page");
+    }
+
+    private static de.mhus.vance.api.tools.ToolSpec clientSpec(
+            String name, Set<String> labels) {
+        de.mhus.vance.api.tools.ToolSpec spec = new de.mhus.vance.api.tools.ToolSpec();
+        spec.setName(name);
+        spec.setLabels(new java.util.LinkedHashSet<>(labels));
+        return spec;
     }
 
     // ─────── Helpers ───────

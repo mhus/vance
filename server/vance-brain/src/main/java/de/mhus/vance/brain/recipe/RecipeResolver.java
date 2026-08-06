@@ -2,8 +2,10 @@ package de.mhus.vance.brain.recipe;
 
 import de.mhus.vance.api.thinkprocess.ProcessMode;
 import de.mhus.vance.api.ws.Profiles;
+import de.mhus.vance.api.tools.ToolSpec;
 import de.mhus.vance.brain.servertool.ServerToolService;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
+import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -41,6 +43,14 @@ public class RecipeResolver {
     private final RecipeLoader loader;
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
     private final ServerToolService serverToolService;
+    /**
+     * Client-registered tools ({@code ~/.vancetope/foot-tools/*.json}
+     * packs plus the foot's hand-coded beans) participate in label
+     * selectors too — see {@link #expandLabelSelectors}. Lazy provider
+     * so the recipe layer stays usable in contexts without the WS
+     * stack (anus, tests).
+     */
+    private final ObjectProvider<ClientToolRegistry> clientToolRegistryProvider;
 
     /** Prefix that marks an entry as a label selector (vs. a literal tool name). */
     public static final String LABEL_PREFIX = "@";
@@ -245,11 +255,23 @@ public class RecipeResolver {
 
     /**
      * Expands any {@code @<label>} selector in {@code entries} to the
-     * concrete tool names carrying that label, looked up through
-     * {@link ServerToolService#findByLabel}. Literal entries (without
-     * the {@code @} prefix) pass through unchanged. Result is
+     * concrete tool names carrying that label. Two lookup sources:
+     * {@link ServerToolService#findByLabel} for server-managed tools,
+     * and — when {@code ctx} carries a {@code sessionId} — the session's
+     * {@link ClientToolRegistry} registration for client-side tools
+     * (foot MCP/REST packs from {@code ~/.vancetope/foot-tools/*.json},
+     * whose labels reach us on {@code ToolSpec.labels}). Literal entries
+     * (without the {@code @} prefix) pass through unchanged. Result is
      * deduplicated while preserving first-seen order — the snapshot
      * gets persisted on the spawned process and must be deterministic.
+     *
+     * <p>Client tools are therefore only reachable through the per-turn
+     * path ({@link #toolFilterFor}), never through the spawn path, which
+     * has no session scope. That is deliberate: a foot may re-register a
+     * different pack set at any time ({@code /tools reload}), so a
+     * name list frozen into {@code allowedToolsOverride} would go stale.
+     * {@code ContextToolsApi.classify} closes the loop by admitting
+     * per-turn {@code add} entries into the dispatch pool.
      *
      * <p>An unresolved label (no tools carry it) silently expands to
      * the empty list. The recipe author can use that as a feature
@@ -284,11 +306,35 @@ public class RecipeResolver {
                         tenantId, effectiveProjectId, label, ctx)) {
                     if (seen.add(t.name())) out.add(t.name());
                 }
+                for (String name : clientToolNamesByLabel(label, ctx)) {
+                    if (seen.add(name)) out.add(name);
+                }
             } else if (seen.add(entry)) {
                 out.add(entry);
             }
         }
         return List.copyOf(out);
+    }
+
+    /**
+     * Names of the session's client-registered tools carrying
+     * {@code label}. Empty when there is no session scope (spawn path),
+     * no registration for it (client disconnected), or no WS stack at
+     * all — the label then behaves like any other unresolved selector.
+     */
+    private List<String> clientToolNamesByLabel(
+            String label, @Nullable ToolInvocationContext ctx) {
+        if (ctx == null || ctx.sessionId() == null || ctx.sessionId().isBlank()) {
+            return List.of();
+        }
+        ClientToolRegistry registry = clientToolRegistryProvider.getIfAvailable();
+        if (registry == null) return List.of();
+        List<String> out = new ArrayList<>();
+        for (ToolSpec spec : registry.toolsFor(ctx.sessionId())) {
+            Set<String> labels = spec.getLabels();
+            if (labels != null && labels.contains(label)) out.add(spec.getName());
+        }
+        return out;
     }
 
     /**

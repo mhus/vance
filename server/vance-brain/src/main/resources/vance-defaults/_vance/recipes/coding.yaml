@@ -53,6 +53,15 @@ allowedToolsAdd:
   - todo_create
   - todo_update
   - todo_remove
+  # Capability label, not a tool name: every tool the connected client
+  # (or a server tool pack) registers with the label `browser` becomes
+  # reachable — e.g. a Chrome-DevTools MCP pack in
+  # ~/.vancetope/foot-tools/*.json. Client-side labels resolve per turn
+  # against the session's registration, so `/tools reload` is picked up
+  # live and an absent pack expands to nothing. The tools land in the
+  # deferred bucket (the pack's defaultDeferred), i.e. visible through
+  # tool_list, schema on demand — no manifest bloat when unused.
+  - "@browser"
 
 # Backends are reachable (engine allow-set includes them) but should
 # stay OUT of the LLM manifest — the generic file_* / exec_* wrappers

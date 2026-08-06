@@ -956,11 +956,32 @@ public final class ContextToolsApi implements ToolBus {
             base = all;
         }
 
+        // Per-turn additive allow: an `allowedToolsAdd` entry naming a
+        // tool outside `base` joins the dispatch pool instead of being
+        // silently dropped. Needed for label selectors over
+        // client-registered packs (`@browser` → `chrome__*`): those
+        // resolve only per turn (session-scoped), so the spawn-frozen
+        // allowedToolsOverride cannot carry them — see
+        // RecipeResolver.expandLabelSelectors.
+        //
+        // Names already in `base` keep the established meaning ("promote
+        // to primary"); names that only arrive here keep their own
+        // deferred() default, so a 29-tool MCP pack becomes reachable
+        // via tool_list without flooding every turn's manifest.
+        Set<String> pool = new LinkedHashSet<>(base);
+        Set<String> admittedByAdd = new LinkedHashSet<>();
+        for (String name : add) {
+            if (pool.contains(name)) continue;
+            if (dispatcher.resolve(name, ctx).isEmpty()) continue;
+            pool.add(name);
+            admittedByAdd.add(name);
+        }
+
         // Engine-role gate (Remove pre-step): drop tools whose
         // requiresEngineRoles is non-empty unless every required role
         // is carried by the engine. The default-empty engineRoles set
         // intentionally hides every role-gated tool.
-        Set<String> roleFiltered = new LinkedHashSet<>(base);
+        Set<String> roleFiltered = new LinkedHashSet<>(pool);
         Set<String> effectiveRoles = engineRoles == null ? Set.of() : engineRoles;
         roleFiltered.removeIf(name -> {
             Set<String> required = dispatcher.resolve(name, ctx)
@@ -994,11 +1015,16 @@ public final class ContextToolsApi implements ToolBus {
         // concrete tool-name set) would block any narrower promotion,
         // because there'd be no way to override a label cluster
         // selectively in YAML.
+        //
+        // Exception: names in `admittedByAdd` were not part of `base` —
+        // there the add list widened the allow-set rather than promoting
+        // an already-allowed tool, so defer / the tool's own flag decide
+        // visibility.
         Set<String> primary = new LinkedHashSet<>();
         Set<String> deferred = new LinkedHashSet<>();
         for (String name : effective) {
             boolean isDeferred;
-            if (add.contains(name)) {
+            if (add.contains(name) && !admittedByAdd.contains(name)) {
                 isDeferred = false;
             } else if (defer.contains(name)) {
                 isDeferred = true;

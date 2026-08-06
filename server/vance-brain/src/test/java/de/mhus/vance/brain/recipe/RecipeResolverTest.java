@@ -50,7 +50,13 @@ class RecipeResolverTest {
         when(fakeEngine.allowedTools()).thenReturn(Set.of());
         when(engineService.resolve(any())).thenReturn(Optional.of(fakeEngine));
 
-        resolver = new RecipeResolver(loader, engineProvider, serverToolService);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<de.mhus.vance.brain.tools.client.ClientToolRegistry> clientToolProvider =
+                mock(ObjectProvider.class);
+        when(clientToolProvider.getIfAvailable()).thenReturn(null);
+
+        resolver = new RecipeResolver(
+                loader, engineProvider, serverToolService, clientToolProvider);
     }
 
     // ──── applyDefaulting policy ─────────────────────────────────────────

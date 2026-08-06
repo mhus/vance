@@ -258,7 +258,14 @@ public class MarkdownAnsiRenderer {
                 }
             }
             // Italic: *…* or _…_
-            if ((c == '*' || c == '_') && i + 1 < n && text.charAt(i + 1) != c) {
+            // Underscores only count at word boundaries — CommonMark's
+            // intraword rule, and the reason it exists: without it every
+            // snake_case identifier in an agent's answer gets mangled.
+            // `chrome__take_screenshot` rendered as `chrome_takescreenshot`
+            // with "take" in italics, which reads like a different tool
+            // name and sent a user hunting for a tool that never existed.
+            if ((c == '*' || c == '_') && i + 1 < n && text.charAt(i + 1) != c
+                    && (c == '*' || !isWordChar(prevChar(text, i)))) {
                 // Pick matching closing marker not preceded by a space
                 char marker = c;
                 int end = -1;
@@ -268,6 +275,12 @@ public class MarkdownAnsiRenderer {
                     if (idx < 0) break;
                     if (marker == '*' && idx + 1 < n && text.charAt(idx + 1) == '*') {
                         probe = idx + 2;
+                        continue;
+                    }
+                    // Same rule on the closing side: an underscore
+                    // followed by a word character is part of a word.
+                    if (marker == '_' && idx + 1 < n && isWordChar(text.charAt(idx + 1))) {
+                        probe = idx + 1;
                         continue;
                     }
                     if (idx > i + 1 && text.charAt(idx - 1) != ' ') {
@@ -289,6 +302,20 @@ public class MarkdownAnsiRenderer {
             i++;
         }
         flush(sb, buf, baseStyle);
+    }
+
+    /** Character before {@code i}, or a space when at the start of the text. */
+    private static char prevChar(String text, int i) {
+        return i == 0 ? ' ' : text.charAt(i - 1);
+    }
+
+    /**
+     * Word characters for the intraword-underscore rule. Letters and
+     * digits — the set that makes {@code a_b} one word rather than
+     * emphasis around {@code b}.
+     */
+    private static boolean isWordChar(char c) {
+        return Character.isLetterOrDigit(c);
     }
 
     private static void flush(AttributedStringBuilder sb, StringBuilder buf, AttributedStyle style) {

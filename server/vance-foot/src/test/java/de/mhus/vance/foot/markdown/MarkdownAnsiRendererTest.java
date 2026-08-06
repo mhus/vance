@@ -56,6 +56,39 @@ class MarkdownAnsiRendererTest {
     }
 
     @Test
+    void snakeCaseIdentifiers_survive_intact() {
+        // Field case: the agent listed its MCP tools as plain text and
+        // the renderer turned `chrome__take_screenshot` into
+        // `chrome_takescreenshot` (with "take" italic), which reads as a
+        // different tool name — the user went looking for a tool that
+        // does not exist.
+        List<String> out = plainLines("- chrome__take_screenshot\n- chrome__close_page");
+
+        assertThat(out).containsExactly("- chrome__take_screenshot", "- chrome__close_page");
+    }
+
+    @Test
+    void underscoresInsideAWord_areNotEmphasis() {
+        assertThat(plainLines("snake_case_word")).containsExactly("snake_case_word");
+        assertThat(plainLines("a_b")).containsExactly("a_b");
+    }
+
+    @Test
+    void underscoreEmphasisAtWordBoundaries_stillWorks() {
+        assertThat(plainLines("say _this_ loud")).containsExactly("say this loud");
+        String ansi = renderer.render("say _this_ loud").get(0).toAnsi();
+        assertThat(ansi).contains("[3m").contains("this");
+    }
+
+    @Test
+    void asteriskEmphasis_stillWorksInsideAWord() {
+        // CommonMark keeps intraword emphasis for '*' — only '_' is
+        // restricted, so this must not regress along with the fix.
+        assertThat(plainLines("un*frigging*believable"))
+                .containsExactly("unfriggingbelievable");
+    }
+
+    @Test
     void inline_code_markers_are_stripped_in_plain_view() {
         List<String> out = plainLines("call `methodName()` here");
         assertThat(out).containsExactly("call methodName() here");

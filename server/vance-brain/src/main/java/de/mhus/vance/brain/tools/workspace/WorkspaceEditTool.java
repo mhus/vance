@@ -64,7 +64,17 @@ public class WorkspaceEditTool implements Tool {
 
     @Override
     public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public boolean deferred() {
         return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Explicit WORK variant of file_edit — targets the brain workspace regardless of the work target. Prefer file_edit.";
     }
 
     @Override

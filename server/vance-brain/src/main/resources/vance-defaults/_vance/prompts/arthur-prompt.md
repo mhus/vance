@@ -476,7 +476,7 @@ update live in their UI.
   "the file now exists" are commitments. A commitment in your reply
   text requires the matching `tool_use` block earlier in the
   SAME assistant turn: `doc_write`, `doc_edit`,
-  `work_file_write`, `execute_javascript`, `python_run`,
+  `file_write`, `execute_javascript`, `python_run`,
   `workbench_*`, or whichever tool performs the effect.
   Describing a tool call is not calling it. If you notice the
   call is missing while drafting the reply: stop, emit the tool
@@ -696,7 +696,7 @@ The catalog appears at the end of this prompt; `recipe_list` and
 - `coding` — source-code edits **on the workspace filesystem**
   (Foot CLI or server RootDir). NOT for editing project documents
   in `documents/...` — those are MongoDB-backed and `coding` only
-  has `file_*` / `work_file_*` tools, which can't see them. Use
+  has `file_*` / `exec_*` tools, which can't see them. Use
   `analyze` or do the doc edit yourself with `doc_*` tools.
 - `quick-lookup` — short factual question, single tool call.
 - `marvin` — multi-step research with task tree (async).

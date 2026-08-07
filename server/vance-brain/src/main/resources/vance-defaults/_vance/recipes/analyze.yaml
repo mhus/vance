@@ -62,10 +62,10 @@ profiles:
     promptPrefixAppend: |
       ## Client context — local CLI
 
-      You are reachable from a foot client. Use `client_file_read`
-      / `client_file_list` / `client_exec_run` to operate on the
-      user's actual files and shell — that's the point of the foot
-      client.
+      You are reachable from a foot client. Use `file_read` /
+      `file_list` / `exec_run` to operate on the user's actual files
+      and shell — your work target is the foot host, so the generic
+      tools land there. That's the point of the foot client.
 
   # Browser clients can't host filesystem / shell / JS tools.
   web:
@@ -81,9 +81,9 @@ profiles:
     promptPrefixAppend: |
       ## Client context — web browser
 
-      No local filesystem on the client side. Use `work_file_read`
-      / `work_file_write` for project files; explain to the user
-      that local paths aren't reachable.
+      No local filesystem on the client side. `file_read` /
+      `file_write` resolve to the brain workspace here; explain to the
+      user that local paths aren't reachable.
 
   # Catch-all for unknown / future / API-only profiles — defensive.
   default:

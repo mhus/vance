@@ -61,7 +61,7 @@ public class ExecKillTool implements Tool {
 
     @Override
     public String searchHint() {
-        return "Run/kill shell job on user scratch";
+        return "Explicit WORK variant of exec_kill — targets the brain workspace regardless of the work target. Prefer exec_kill.";
     }
 
     @Override

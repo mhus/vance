@@ -86,7 +86,17 @@ public class ClientFileFindTool implements ClientTool {
                 + "size + mtime per hit, with paths that can be passed straight "
                 + "to the other file tools.";
     }
-    @Override public boolean primary() { return true; }
+    @Override public boolean primary() { return false; }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Explicit CLIENT variant of file_find — targets the user's machine (foot host) regardless of the work target. Prefer file_find.";
+    }
     @Override public java.util.Set<String> labels() { return java.util.Set.of("read-only"); }
 
     @Override

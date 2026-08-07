@@ -67,7 +67,17 @@ public class WorkspaceCountTool implements Tool {
                 + "across many files matching a glob. Optional regex narrows the "
                 + "line-count to matches (wc-style line/char/byte stats).";
     }
-    @Override public boolean primary() { return true; }
+    @Override public boolean primary() { return false; }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Explicit WORK variant of file_count — targets the brain workspace regardless of the work target. Prefer file_count.";
+    }
     @Override public Set<String> labels() { return Set.of("read-only"); }
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

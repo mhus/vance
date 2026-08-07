@@ -77,7 +77,17 @@ public class ClientFileCountTool implements ClientTool {
                 + "a directory — across every file matching a glob. Optional regex "
                 + "narrows the line-count to matches (wc-style line/char/byte stats).";
     }
-    @Override public boolean primary() { return true; }
+    @Override public boolean primary() { return false; }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Explicit CLIENT variant of file_count — targets the user's machine (foot host) regardless of the work target. Prefer file_count.";
+    }
     @Override public java.util.Set<String> labels() { return java.util.Set.of("read-only"); }
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

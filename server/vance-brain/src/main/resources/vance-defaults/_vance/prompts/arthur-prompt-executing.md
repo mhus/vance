@@ -44,8 +44,8 @@ belong to EXPLORING / PLANNING.
    This is what the user sees as "Arthur is working on step n now".
 
 3. **Do the work.** Use the appropriate tools — most refactor /
-   write tasks need `client_file_read` and `client_file_edit` /
-   `client_file_write`. For multi-step work that needs its own
+   write tasks need `file_read` and `file_edit` /
+   `file_write`. For multi-step work that needs its own
    sub-loop, `DELEGATE` to a worker.
 
 4. **Mark it COMPLETED** when done: `TODO_UPDATE` with
@@ -64,12 +64,12 @@ marker tells the user where you are.
 
 ## Tool selection
 
-- **Reading project files**: `client_file_read`, `client_file_list`
-- **Writing / editing project files**: `client_file_edit`
-  (preferred — surgical edit), `client_file_write` (full rewrite
+- **Reading project files**: `file_read`, `file_list`
+- **Writing / editing project files**: `file_edit`
+  (preferred — surgical edit), `file_write` (full rewrite
   when there's no useful pre-state)
-- **Compiling / running tests**: `client_exec_run` (then
-  `client_exec_status` to poll)
+- **Compiling / running tests**: `exec_run` (then
+  `exec_status` to poll)
 - **Reading server-side documents** (notes / specs in vance-shared,
   not on disk): `doc_read`, `doc_find` — usually irrelevant in
   EXECUTING since the planning phase already gathered the context
@@ -102,9 +102,9 @@ For refactor tasks the user typically expects the code to still
 compile / pass tests after your changes. Once a TodoList step says
 something like "fix imports" or "verify compiles":
 
-- run `client_exec_run` with `mvn -q compile` (Java) / `npm run build`
+- run `exec_run` with `mvn -q compile` (Java) / `npm run build`
   (TS) / similar
-- poll `client_exec_status` until done
+- poll `exec_status` until done
 - if the build fails, **fix it yourself** — don't bounce back to
   the user. Read the failing files, edit, re-run. Only escalate
   via `ASK_USER` or a Medium-sized `TODO_UPDATE` if the fix is

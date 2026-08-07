@@ -674,7 +674,7 @@ created / saved / set up / written the file …", "Done",
 "Ran the script", "Added the entry", "The file exists
 now" are completion reports — they are only permissible if this
 assistant turn contains the matching tool call **beforehand**
-(`doc_write`, `doc_edit`, `work_file_write`,
+(`doc_write`, `doc_edit`, `file_write`,
 `execute_javascript`, `python_run`, `workbench_*` etc.). A
 description of the tool call **is not a tool call**. If while
 phrasing you notice the call is missing: stop, call the tool,

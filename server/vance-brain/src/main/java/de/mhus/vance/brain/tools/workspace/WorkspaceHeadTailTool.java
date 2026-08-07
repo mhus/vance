@@ -57,7 +57,17 @@ public class WorkspaceHeadTailTool implements Tool {
                 + "Lines are 1-based; the response carries lineNumber so the LLM "
                 + "can address them again.";
     }
-    @Override public boolean primary() { return true; }
+    @Override public boolean primary() { return false; }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Explicit WORK variant of file_head_tail — targets the brain workspace regardless of the work target. Prefer file_head_tail.";
+    }
     @Override public Set<String> labels() { return Set.of("read-only"); }
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

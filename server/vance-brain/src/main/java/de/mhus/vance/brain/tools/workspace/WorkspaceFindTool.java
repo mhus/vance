@@ -74,7 +74,17 @@ public class WorkspaceFindTool implements Tool {
                 + "modification-time range. Returns relative paths with size + mtime. "
                 + "Sort by path (default), mtime, or size.";
     }
-    @Override public boolean primary() { return true; }
+    @Override public boolean primary() { return false; }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Explicit WORK variant of file_find — targets the brain workspace regardless of the work target. Prefer file_find.";
+    }
     @Override public Set<String> labels() { return Set.of("read-only"); }
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

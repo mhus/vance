@@ -98,7 +98,17 @@ public class ClientFileGrepTool implements ClientTool {
                 + "context. Binary / oversized files and common build output "
                 + "(node_modules, target, .git, dist, …) are skipped.";
     }
-    @Override public boolean primary() { return true; }
+    @Override public boolean primary() { return false; }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Explicit CLIENT variant of file_grep — targets the user's machine (foot host) regardless of the work target. Prefer file_grep.";
+    }
     @Override public java.util.Set<String> labels() { return java.util.Set.of("read-only"); }
 
     @Override

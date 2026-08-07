@@ -53,6 +53,16 @@ public class ClientExecTailTool implements ClientTool {
     }
 
     @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Explicit CLIENT variant of exec_tail — targets the user's machine (foot host) regardless of the work target. Prefer exec_tail.";
+    }
+
+    @Override
     public java.util.Set<String> labels() {
         return java.util.Set.of("read-only");
     }

@@ -52,7 +52,17 @@ public class ExecTailTool implements Tool {
 
     @Override
     public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public boolean deferred() {
         return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Explicit WORK variant of exec_tail — targets the brain workspace regardless of the work target. Prefer exec_tail.";
     }
 
     @Override

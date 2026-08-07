@@ -60,7 +60,23 @@ class WorkTargetDispatcherTest {
         process.setTenantId(TENANT_ID);
         process.setProjectId(PROJECT_ID);
         lenient().when(thinkProcessService.findById(PROC_ID)).thenReturn(Optional.of(process));
-        lenient().when(bus.invoke(any(), any())).thenReturn(Map.of("ok", true));
+        lenient().when(bus.invokeDelegate(any(), any())).thenReturn(Map.of("ok", true));
+    }
+
+    @Test
+    void dispatch_usesInvokeDelegate_soDeferredBackendsAreNotActivated() {
+        // Backends are deferred. A plain bus.invoke() would count as the LLM
+        // discovering the backend and promote it into the next turn's
+        // manifest — which would put file_read and work_file_read side by
+        // side again, the exact ambiguity the wrapper removes.
+        process.setEngineParams(new LinkedHashMap<>(Map.of(
+                WorkTarget.KEY, Map.of("kind", "WORK"))));
+
+        dispatcher.dispatch(ctx, bus, "client_file_read", "work_file_read",
+                Map.of("path", "a.txt"));
+
+        verify(bus).invokeDelegate(eq("work_file_read"), any());
+        verify(bus, never()).invoke(any(), any());
     }
 
     @Test
@@ -77,7 +93,7 @@ class WorkTargetDispatcherTest {
         dispatcher.dispatch(ctx, bus, "client_file_read", "work_file_read", params);
 
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(bus).invoke(eq("client_file_read"), captor.capture());
+        verify(bus).invokeDelegate(eq("client_file_read"), captor.capture());
         Map<String, Object> sent = captor.getValue();
         assertThat(sent).containsEntry("path", "Foo.java");
         // CLIENT path strips dirName — Foot tools don't take it.
@@ -94,7 +110,7 @@ class WorkTargetDispatcherTest {
         dispatcher.dispatch(ctx, bus, "client_file_read", "work_file_read", params);
 
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(bus).invoke(eq("work_file_read"), captor.capture());
+        verify(bus).invokeDelegate(eq("work_file_read"), captor.capture());
         Map<String, Object> sent = captor.getValue();
         assertThat(sent).containsEntry("path", "src/Foo.java")
                 .containsEntry("dirName", "main");
@@ -110,7 +126,7 @@ class WorkTargetDispatcherTest {
         dispatcher.dispatch(ctx, bus, "client_file_read", "work_file_read", params);
 
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(bus).invoke(eq("work_file_read"), captor.capture());
+        verify(bus).invokeDelegate(eq("work_file_read"), captor.capture());
         // Caller's dirName overrides the active target's dirName.
         assertThat(captor.getValue()).containsEntry("dirName", "build-output");
     }
@@ -125,7 +141,7 @@ class WorkTargetDispatcherTest {
         dispatcher.dispatch(ctx, bus, "client_file_read", "work_file_read", params);
 
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(bus).invoke(eq("work_file_read"), captor.capture());
+        verify(bus).invokeDelegate(eq("work_file_read"), captor.capture());
         // No dirName injected → workspace tool's WorkspaceDirResolver
         // falls back to process-temp RootDir on its own.
         assertThat(captor.getValue()).doesNotContainKey("dirName");
@@ -143,7 +159,7 @@ class WorkTargetDispatcherTest {
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("CLIENT")
                 .hasMessageContaining("no Foot client");
-        verify(bus, never()).invoke(any(), any());
+        verify(bus, never()).invokeDelegate(any(), any());
     }
 
     @Test
@@ -154,7 +170,7 @@ class WorkTargetDispatcherTest {
         dispatcher.dispatch(ctx, bus, "client_file_read", "work_file_read",
                 Map.of("path", "Foo.java"));
 
-        verify(bus).invoke(eq("client_file_read"), any());
+        verify(bus).invokeDelegate(eq("client_file_read"), any());
     }
 
     @Test
@@ -164,7 +180,7 @@ class WorkTargetDispatcherTest {
         dispatcher.dispatch(ctx, bus, "client_file_read", "work_file_read",
                 Map.of("path", "Foo.java"));
 
-        verify(bus).invoke(eq("work_file_read"), any());
+        verify(bus).invokeDelegate(eq("work_file_read"), any());
     }
 
     @Test
@@ -183,7 +199,7 @@ class WorkTargetDispatcherTest {
 
         assertThat(result).containsEntry("ok", true);
         // DAEMON routes the client_* tool over the daemon's WS — never the bus.
-        verify(bus, never()).invoke(any(), any());
+        verify(bus, never()).invokeDelegate(any(), any());
 
         ArgumentCaptor<DaemonRegistry.DaemonKey> keyCaptor =
                 ArgumentCaptor.forClass(DaemonRegistry.DaemonKey.class);

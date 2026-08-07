@@ -34,12 +34,31 @@ public final class BaseEngineTools {
      *       needed.</li>
      *   <li>The dispatch backends themselves ({@code client_*},
      *       {@code work_file_*}, {@code work_exec_*}). The wrappers
-     *       route through these via {@code ContextToolsApi.invoke},
+     *       route through these via {@code ContextToolsApi.invokeDelegate},
      *       which gates against the engine's allow-set — so the
      *       backends MUST be in the same set even though they're
-     *       not directly LLM-visible. They're {@code primary=false}
-     *       at the per-tool level so the LLM manifest stays clean.</li>
+     *       not directly LLM-visible.</li>
      * </ul>
+     *
+     * <p><b>Backends are {@code deferred=true} + {@code primary=false}.</b>
+     * Both flags are needed and they do different jobs: {@code deferred}
+     * decides the per-turn bucket in {@code ContextToolsApi.classify}
+     * (which never consults {@code primary}), while {@code primary}
+     * governs the discovery surfaces — {@code tool_list}'s default view,
+     * the {@code how_do_i} catalogue, and the unrestricted-engine
+     * fallback in {@code visibleResolved}. Setting only one leaves the
+     * backend advertised on the other side.
+     *
+     * <p>The point is that the LLM should never have to choose a side:
+     * that is what the wrapper decides from the work target. Two equally
+     * advertised candidates for one job measurably split model choice —
+     * see {@code planning/tool-surface-followups.md} (C-run, {@code
+     * exec_run}↔{@code work_exec_run}) and {@code
+     * planning/tool-naming-sweep.md} §2.
+     *
+     * <p>Excluded on purpose: {@code work_exec_check}, {@code
+     * work_exec_stat}, {@code client_exec_stat}. They have no wrapper, so
+     * deferring them would make them unreachable rather than redundant.
      */
     public static final Set<String> WORK_TARGET = Set.of(
             // Generic wrappers (primary)

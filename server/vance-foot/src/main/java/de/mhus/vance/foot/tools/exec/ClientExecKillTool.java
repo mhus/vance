@@ -43,6 +43,16 @@ public class ClientExecKillTool implements ClientTool {
     }
 
     @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Explicit CLIENT variant of exec_kill — targets the user's machine (foot host) regardless of the work target. Prefer exec_kill.";
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

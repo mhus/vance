@@ -67,7 +67,17 @@ public class WorkspaceWriteTool implements Tool {
 
     @Override
     public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public boolean deferred() {
         return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Explicit WORK variant of file_write — targets the brain workspace regardless of the work target. Prefer file_write.";
     }
 
     @Override

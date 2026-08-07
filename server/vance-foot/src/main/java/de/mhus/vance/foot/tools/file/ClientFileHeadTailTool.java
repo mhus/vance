@@ -44,7 +44,17 @@ public class ClientFileHeadTailTool implements ClientTool {
                 + "a file on the user's machine. At least one of head / tail "
                 + "must be > 0. Lines carry 1-based numbers.";
     }
-    @Override public boolean primary() { return true; }
+    @Override public boolean primary() { return false; }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Explicit CLIENT variant of file_head_tail — targets the user's machine (foot host) regardless of the work target. Prefer file_head_tail.";
+    }
     @Override public java.util.Set<String> labels() { return java.util.Set.of("read-only"); }
 
     @Override

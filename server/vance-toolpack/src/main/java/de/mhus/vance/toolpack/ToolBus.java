@@ -36,6 +36,26 @@ public interface ToolBus {
     Map<String, Object> invoke(String name, Map<String, Object> params);
 
     /**
+     * Dispatches a sibling call that the <b>wrapper made, not the LLM</b>
+     * — a mechanical delegation to a backend the model never named.
+     *
+     * <p>The distinction matters for deferred tools. {@link #invoke} treats
+     * a call to a deferred tool as the LLM discovering it and activates it,
+     * so it appears in the manifest from the next turn on. For a dispatcher
+     * wrapper that is exactly wrong: one {@code file_read} would promote
+     * {@code work_file_read} into the prompt and re-create the
+     * two-candidates-for-one-job confusion the wrapper exists to prevent.
+     *
+     * <p>Implementations must still enforce their allow-set — this widens
+     * nothing, it only suppresses the activation side-effect. Default
+     * delegates to {@link #invoke} so buses that don't distinguish the two
+     * keep working.
+     */
+    default Map<String, Object> invokeDelegate(String name, Map<String, Object> params) {
+        return invoke(name, params);
+    }
+
+    /**
      * Names of the tools this bus can actually invoke in the current
      * engine scope — i.e. calling {@link #invoke(String, Map)} with any
      * other name is expected to fail. Discovery tools ({@code tool_list})

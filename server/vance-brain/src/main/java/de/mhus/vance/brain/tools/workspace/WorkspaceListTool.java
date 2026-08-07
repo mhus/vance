@@ -45,7 +45,17 @@ public class WorkspaceListTool implements Tool {
 
     @Override
     public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public boolean deferred() {
         return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Explicit WORK variant of file_list — targets the brain workspace regardless of the work target. Prefer file_list.";
     }
 
     @Override

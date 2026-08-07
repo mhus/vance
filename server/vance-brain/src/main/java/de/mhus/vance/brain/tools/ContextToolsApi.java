@@ -488,6 +488,18 @@ public final class ContextToolsApi implements ToolBus {
      * <p>Still gated by the dispatch allow-set: a tool not in
      * {@link #allowed()} cannot be invoked even internally.
      */
+    /**
+     * {@link ToolBus#invokeDelegate} — a wrapper delegating to its backend.
+     * Routes to {@link #invokeInternal} so the call keeps the allow-set gate
+     * but does <b>not</b> auto-activate a deferred backend: the LLM asked for
+     * {@code file_read}, not for {@code work_file_read}, and promoting the
+     * backend into the manifest would undo the wrapper's whole purpose.
+     */
+    @Override
+    public Map<String, Object> invokeDelegate(String name, Map<String, Object> params) {
+        return invokeInternal(name, params);
+    }
+
     public Map<String, Object> invokeInternal(String name, Map<String, Object> params) {
         if (!isInDispatch(name)) {
             throw new ToolException(

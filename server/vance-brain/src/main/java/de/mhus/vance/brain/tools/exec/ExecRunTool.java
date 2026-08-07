@@ -89,7 +89,7 @@ public class ExecRunTool implements Tool {
 
     @Override
     public boolean primary() {
-        return true;
+        return false;
     }
 
     @Override
@@ -109,7 +109,7 @@ public class ExecRunTool implements Tool {
 
     @Override
     public String searchHint() {
-        return "Run/kill shell job on user scratch";
+        return "Explicit WORK variant of exec_run — targets the brain workspace regardless of the work target. Prefer exec_run.";
     }
 
     @Override

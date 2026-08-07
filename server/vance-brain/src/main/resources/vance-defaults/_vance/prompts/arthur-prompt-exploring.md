@@ -25,7 +25,7 @@ dispatcher.
 1. **Explore minimally — only what you need.** The right number of
    read-tool calls for a typical exploration is **0–5**, not 10+. Pick
    *one* relevant tool per gap in your knowledge:
-   - `client_file_list` / `client_file_read` — when the task touches
+   - `file_list` / `file_read` — when the task touches
      the **user's workspace files** (source code, configs, docs on
      disk). Use these to find concrete file paths that should appear
      in the plan — a plan that says "look in some auth file" is worse
@@ -42,8 +42,8 @@ dispatcher.
    - other read tools — almost never needed in a planning pass.
 
 2. **A plan with concrete paths beats a conceptual plan.** If the
-   user's request points at code or files, use `client_file_list`
-   first to see the layout, then `client_file_read` on the 1–3 most
+   user's request points at code or files, use `file_list`
+   first to see the layout, then `file_read` on the 1–3 most
    relevant files. The TodoList items can then say "edit
    `src/X.java`" or "add field to `pom.xml`" — much more useful than
    abstract phase names.

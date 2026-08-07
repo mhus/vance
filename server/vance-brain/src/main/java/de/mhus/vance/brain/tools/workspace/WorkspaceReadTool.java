@@ -57,7 +57,17 @@ public class WorkspaceReadTool implements Tool {
 
     @Override
     public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public boolean deferred() {
         return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Explicit WORK variant of file_read — targets the brain workspace regardless of the work target. Prefer file_read.";
     }
 
     @Override

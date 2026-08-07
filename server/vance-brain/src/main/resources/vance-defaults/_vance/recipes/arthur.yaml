@@ -184,10 +184,12 @@ profiles:
 
       You are reachable from a foot client — the user's CLI on their
       own machine. The user is editing files locally; reach them
-      through `client_file_read` / `client_file_list` /
-      `client_file_write` / `client_exec_run`. That is the point of
-      the foot client. Do not push the user to upload local files
-      into the project workspace when they're already on disk.
+      through `file_read` / `file_list` / `file_write` / `exec_run`.
+      Your work target is the foot host, so those land on the user's
+      disk — you do not need the explicit `client_*` variants. That is
+      the point of the foot client. Do not push the user to upload
+      local files into the project workspace when they're already on
+      disk.
 
   # Browser clients can't host filesystem / shell / JS tools — strip
   # them from the allowed list so the LLM doesn't propose calls that

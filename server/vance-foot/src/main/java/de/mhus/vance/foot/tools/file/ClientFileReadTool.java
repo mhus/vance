@@ -50,7 +50,17 @@ public class ClientFileReadTool implements ClientTool {
 
     @Override
     public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public boolean deferred() {
         return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Explicit CLIENT variant of file_read — targets the user's machine (foot host) regardless of the work target. Prefer file_read.";
     }
 
     @Override

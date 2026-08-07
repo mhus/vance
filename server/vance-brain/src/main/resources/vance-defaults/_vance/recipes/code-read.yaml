@@ -32,9 +32,9 @@ profiles:
     promptPrefixAppend: |
       ## Client context — local CLI
 
-      You are reachable from a foot client. Use `client_file_read`
-      / `client_file_list` / `client_exec_run` to inspect the user's
-      actual local source tree.
+      You are reachable from a foot client. Use `file_read` /
+      `file_list` / `exec_run` to inspect the user's actual local
+      source tree — your work target is the foot host.
 
   # Browser clients have no filesystem / shell / JS — strip the rest
   # of the client_* tools that the recipe-base still leaves in.
@@ -49,8 +49,8 @@ profiles:
     promptPrefixAppend: |
       ## Client context — web browser
 
-      No local filesystem on the client side. Use `work_file_read`
-      for project files.
+      No local filesystem on the client side. `file_read` resolves to
+      the brain workspace here.
 
   # Catch-all for unknown / future / API-only profiles — defensive.
   default:

@@ -70,7 +70,17 @@ public class WorkspaceGrepTool implements Tool {
                 + "Returns matching lines with file path + 1-based line number, "
                 + "optionally with context lines. Binary / oversized files are skipped.";
     }
-    @Override public boolean primary() { return true; }
+    @Override public boolean primary() { return false; }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Explicit WORK variant of file_grep — targets the brain workspace regardless of the work target. Prefer file_grep.";
+    }
     @Override public Set<String> labels() { return Set.of("read-only"); }
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

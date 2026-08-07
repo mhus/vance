@@ -48,7 +48,7 @@ public class WorkspaceDeleteTool implements Tool {
 
     @Override
     public boolean primary() {
-        return true;
+        return false;
     }
 
     @Override
@@ -68,7 +68,7 @@ public class WorkspaceDeleteTool implements Tool {
 
     @Override
     public String searchHint() {
-        return "Workspace shell/git/JS — destructive or rare";
+        return "Explicit WORK variant of file_delete — targets the brain workspace regardless of the work target. Prefer file_delete.";
     }
 
     @Override

@@ -117,7 +117,11 @@ public class WorkTargetDispatcher {
             // applies here.
             return toolDispatcher.invoke(backendName, p, ctx);
         }
-        return bus.invoke(backendName, p);
+        // invokeDelegate, not invoke: the backends are deferred, and a plain
+        // invoke would activate the one we happened to pick — the next turn
+        // would then show file_read AND work_file_read, which is the exact
+        // ambiguity this wrapper removes.
+        return bus.invokeDelegate(backendName, p);
     }
 
     /**

@@ -15,15 +15,19 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Materialise a document's inline body as a file inside the
- * scratch — bridge between the document-pool and the
- * shell-friendly scratch world (so that subsequent tools like
- * {@code workspace_execute_javascript}, {@code git_checkout} or
- * {@code client_exec_run} can act on the content).
+ * Materialise a document's inline body as a file in the brain
+ * workspace — bridge between the document pool and the
+ * shell-friendly file world (so that subsequent tools like
+ * {@code work_exec_run} or {@code client_exec_run} can act on the
+ * content). Other half of the {@link WorkFileToDocTool} bridge.
+ *
+ * <p>Named so the dispatch wrapper is the backend name minus the
+ * prefix ({@code file_from_doc} → {@code work_file_from_doc}); see
+ * {@code planning/tool-naming-sweep.md} §1 rule 2.
  */
 @Component
 @RequiredArgsConstructor
-public class DocToWorkspaceTool implements Tool {
+public class WorkFileFromDocTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
@@ -33,9 +37,9 @@ public class DocToWorkspaceTool implements Tool {
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
         p.put("workspacePath", Map.of("type", "string",
-                "description", "Relative path inside the scratch dir, e.g. 'sources/notes.md'."));
+                "description", "Relative path inside the RootDir, e.g. 'sources/notes.md'."));
         p.put("dirName", Map.of("type", "string",
-                "description", "Optional scratch RootDir name. Default: the process's current "
+                "description", "Optional workspace RootDir name. Default: the process's current "
                         + "working dir (same convention as `work_file_write`)."));
         return p;
     }
@@ -43,14 +47,14 @@ public class DocToWorkspaceTool implements Tool {
     private final KindToolSupport support;
     private final WorkspaceService workspace;
 
-    @Override public String name() { return "doc_to_work_file"; }
+    @Override public String name() { return "work_file_from_doc"; }
     @Override public String description() {
-        return "Write a document's inline body into the scratch as a file. The document is "
-                + "untouched; only the scratch gets the copy. Pending buffered writes are "
-                + "flushed first so the scratch file matches the latest in-flight content.";
+        return "Write a document's inline body into the brain workspace as a file. The "
+                + "document is untouched; only the workspace gets the copy. Pending buffered "
+                + "writes are flushed first so the file matches the latest in-flight content.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("scratch-bridge", "eddie", "write", "workspace"); }
+    @Override public Set<String> labels() { return Set.of("workspace-bridge", "eddie", "write", "workspace"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
@@ -78,7 +82,7 @@ public class DocToWorkspaceTool implements Tool {
             out.put("chars", body.length());
             return out;
         } catch (RuntimeException e) {
-            throw new ToolException("Failed to write scratch file: " + e.getMessage(), e);
+            throw new ToolException("Failed to write workspace file: " + e.getMessage(), e);
         }
     }
 }

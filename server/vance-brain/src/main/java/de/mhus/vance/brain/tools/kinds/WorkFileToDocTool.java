@@ -18,8 +18,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Read a scratch file and turn it into a project document — the
- * other half of the {@code doc_to_work_file} bridge.
+ * Read a brain-workspace file and turn it into a project document —
+ * other half of the {@link WorkFileFromDocTool} bridge.
  *
  * <p>Two modes:
  * <ul>
@@ -31,7 +31,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @RequiredArgsConstructor
-public class WorkspaceToDocTool implements Tool {
+public class WorkFileToDocTool implements Tool {
 
     private static final int MAX_IMPORT_CHARS = 200_000;
 
@@ -45,9 +45,9 @@ public class WorkspaceToDocTool implements Tool {
         p.put("projectId", Map.of("type", "string",
                 "description", "Optional project name. Defaults to the active project."));
         p.put("workspacePath", Map.of("type", "string",
-                "description", "Relative path inside the scratch dir to read."));
+                "description", "Relative path inside the RootDir to read."));
         p.put("dirName", Map.of("type", "string",
-                "description", "Optional scratch RootDir name."));
+                "description", "Optional workspace RootDir name."));
         p.put("documentPath", Map.of("type", "string",
                 "description", "Target path inside the project (e.g. 'imported/notes.md')."));
         p.put("title", Map.of("type", "string", "description", "Optional title for new docs."));
@@ -61,13 +61,13 @@ public class WorkspaceToDocTool implements Tool {
 
     @Override public String name() { return "work_file_to_doc"; }
     @Override public String description() {
-        return "Import a scratch file into the project's document pool. Creates the document "
+        return "Import a brain-workspace file into the project's document pool. Creates the document "
                 + "when `documentPath` is unused, updates the existing one when it's already there. "
                 + "Capped at " + MAX_IMPORT_CHARS + " characters; bigger files should stay in the "
-                + "scratch.";
+                + "workspace.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("scratch-bridge", "eddie", "write", "document"); }
+    @Override public Set<String> labels() { return Set.of("workspace-bridge", "eddie", "write", "document"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
@@ -86,12 +86,12 @@ public class WorkspaceToDocTool implements Tool {
         try {
             read = workspace.read(ctx.tenantId(), ctx.projectId(), dirName, workspacePath, MAX_IMPORT_CHARS);
         } catch (RuntimeException e) {
-            throw new ToolException("Cannot read scratch file: " + e.getMessage(), e);
+            throw new ToolException("Cannot read workspace file: " + e.getMessage(), e);
         }
         if (read.truncated()) {
             throw new ToolException("Workspace file '" + workspacePath + "' exceeds the import "
                     + "limit (" + MAX_IMPORT_CHARS + " chars). Trim it first or keep it in the "
-                    + "scratch.");
+                    + "workspace.");
         }
         String content = read.text();
 

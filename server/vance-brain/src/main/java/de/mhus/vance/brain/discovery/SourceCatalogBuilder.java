@@ -27,10 +27,21 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 /**
  * Renders the source catalog for a tenant/project scope as a single
- * Markdown block. Three sections — Manuals, Skills, Tools — each
- * sorted alphabetically so the same set of sources always yields the
- * same hash. The DiscoveryService hands this block to the
+ * Markdown block. Two sections — Manuals and Skills — each sorted
+ * alphabetically so the same set of sources always yields the same
+ * hash. {@link DiscoveryService} hands this block to the
  * {@code how-do-i} recipe via Pebble variable {@code {{ sources }}}.
+ *
+ * <p><b>Tools are not rendered here.</b> They used to be, sourced from
+ * the injected {@code Tool} beans — which silently excluded every
+ * client-registered tool, because those are resolved per session by
+ * {@code ClientToolSource} and are not beans. {@code how_do_i} answered
+ * "no match" for anything a connected client provided. What is callable
+ * is a property of the session, not of the cached tenant/project
+ * snapshot, so {@link DiscoveryService} appends the caller's
+ * {@code ContextToolsApi.listAll()} per call instead. That also lines
+ * the two lifetimes up: manuals and skills belong to the scope and stay
+ * cached, tools belong to the session and are rendered fresh.
  *
  * <p>Manuals are rendered as <em>summary cards</em> rather than full
  * bodies — the LLM picks a name from the catalog and the caller

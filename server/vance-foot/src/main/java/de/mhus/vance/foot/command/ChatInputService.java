@@ -40,6 +40,15 @@ import org.springframework.stereotype.Service;
  * <p>The {@link PromptGate} is flipped to exclusive while the input is being
  * processed, so async streaming sinks can write directly to the terminal
  * without corrupting an active prompt.
+ *
+ * <p><b>Attachments.</b> Files staged with {@code /attach} are uploaded as
+ * project documents immediately before the steer frame goes out and ride
+ * along as {@code ProcessSteerRequest.attachments}. The queue is drained
+ * before the upload and a failed upload aborts the send: a broken file
+ * must not silently re-attach itself to every later message, and
+ * "I attached three files" / "the model saw two" is a mismatch nobody
+ * notices until the answer is wrong. See {@link PendingAttachmentService}
+ * and {@link AttachmentUploadService}.
  */
 @Service
 public class ChatInputService {

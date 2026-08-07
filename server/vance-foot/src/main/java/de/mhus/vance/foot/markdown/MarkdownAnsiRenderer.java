@@ -31,7 +31,13 @@ import org.springframework.stereotype.Component;
  *       inline formatting applied per cell.</li>
  *   <li>Blockquotes (lines starting with {@code &gt; }) — faint italic.</li>
  *   <li>Inline {@code **bold**}, {@code *italic*}/{@code _italic_},
- *       {@code `code`} — markers stripped, ANSI styles applied.</li>
+ *       {@code `code`} — markers stripped, ANSI styles applied.
+ *       Underscores only count at word boundaries (CommonMark's
+ *       intraword rule): without it every {@code snake_case} identifier
+ *       in an agent's answer comes out mangled, which is how
+ *       {@code chrome__take_screenshot} once rendered as
+ *       {@code chrome_takescreenshot} and sent a user hunting for a tool
+ *       that does not exist. {@code *} keeps intraword emphasis.</li>
  *   <li>List items {@code - …}, {@code * …}, {@code 1. …} pass through
  *       with inline formatting applied. No nested-indent special
  *       handling; the user already gets a usable indent from the

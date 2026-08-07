@@ -49,6 +49,15 @@ import java.util.Set;
  * unions primary + deferred. {@link #invoke} rejects anything outside
  * the pool.
  *
+ * <p><b>Result pipeline.</b> Every dispatch passes through three hooks,
+ * in this order: image harvest (lifts picture content out into a
+ * document — see
+ * {@link de.mhus.vance.brain.ai.attachment.ToolImageHarvester}), history
+ * tags, then output truncation. The order is load-bearing: harvesting
+ * first keeps a screenshot from tripping the truncation threshold, and
+ * tagging before truncation lets the tag builder read a documentId the
+ * stub would no longer carry.
+ *
  * <p>The classification (which allowed tools are primary, which are
  * deferred) and the live activation set are pre-computed by
  * {@link DefaultThinkEngineContext#tools()} via

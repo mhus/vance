@@ -23,11 +23,14 @@ import org.springframework.stereotype.Component;
  * {@link DiscoveryService}; the heavy lifting (catalog render, LLM
  * call, schema validation) is delegated.
  *
- * <p>The {@link DiscoveryService} reference is {@code @Lazy} because
- * Spring builds a bean graph that would otherwise cycle here:
- * {@code DiscoveryService → SourceCatalogService → Builder →
- * List<Tool> → HowDoITool → DiscoveryService}. The lazy proxy is
- * resolved at first invocation, by which point all beans exist.
+ * <p>The {@link DiscoveryService} reference is {@code @Lazy}. The cycle
+ * it was introduced for — {@code DiscoveryService → SourceCatalogService
+ * → Builder → List<Tool> → HowDoITool → DiscoveryService} — no longer
+ * exists: the builder stopped injecting {@code List<Tool>} when the
+ * catalog's tool section moved to the calling session. The annotation
+ * stays as a cheap guard, since any future bean that both provides a
+ * {@code Tool} and consumes discovery would close the loop again;
+ * removing it is safe only with a context-boot check to back it up.
  *
  * <p>Returns one of three response shapes:
  *

@@ -25,9 +25,12 @@ import org.springframework.stereotype.Service;
  *
  * <ol>
  *   <li><b>Discovery LLM picks a pointer.</b> The {@link LightLlmService}
- *       is handed the source catalog (summary cards, see
- *       {@link SourceCatalogBuilder}) plus the caller's intent and
- *       returns a structured shape with {@code name + type + source}
+ *       is handed the source catalog — cached manual / skill cards from
+ *       {@link SourceCatalogBuilder} plus the calling session's callable
+ *       tools, appended per call (see
+ *       {@link #discover(String, String, String, String, Set, List)}) —
+ *       together with the caller's intent, and returns a structured
+ *       shape with {@code name + type + source}
  *       only — never raw content.</li>
  *   <li><b>Server resolves the body.</b> When the pick is
  *       {@code type: "manual"} and the name exists in the document

@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Per-call tools surface exposed to a think-engine through
@@ -65,6 +67,8 @@ import java.util.Set;
  * de.mhus.vance.brain.recipe.RecipeResolver.ToolFilter, java.util.Set)}.
  */
 public final class ContextToolsApi implements ToolBus {
+
+    private static final Logger log = LoggerFactory.getLogger(ContextToolsApi.class);
 
     /**
      * Capability floor — tools that {@link #classify} forces into the
@@ -479,16 +483,6 @@ public final class ContextToolsApi implements ToolBus {
     }
 
     /**
-     * Engine-internal invocation — bypasses the LLM-visibility check.
-     * Used by think-engine action handlers that route LLM-emitted
-     * actions through fixed tool calls (e.g. Arthur's DELEGATE action
-     * dispatching to {@code process_create} in selector-routed mode
-     * regardless of whether the LLM has the tool in its manifest).
-     *
-     * <p>Still gated by the dispatch allow-set: a tool not in
-     * {@link #allowed()} cannot be invoked even internally.
-     */
-    /**
      * {@link ToolBus#invokeDelegate} — a wrapper delegating to its backend.
      * Routes to {@link #invokeInternal} so the call keeps the allow-set gate
      * but does <b>not</b> auto-activate a deferred backend: the LLM asked for
@@ -500,6 +494,16 @@ public final class ContextToolsApi implements ToolBus {
         return invokeInternal(name, params);
     }
 
+    /**
+     * Engine-internal invocation — bypasses the LLM-visibility check.
+     * Used by think-engine action handlers that route LLM-emitted
+     * actions through fixed tool calls (e.g. Arthur's DELEGATE action
+     * dispatching to {@code process_create} in selector-routed mode
+     * regardless of whether the LLM has the tool in its manifest).
+     *
+     * <p>Still gated by the dispatch allow-set: a tool not in
+     * {@link #allowed()} cannot be invoked even internally.
+     */
     public Map<String, Object> invokeInternal(String name, Map<String, Object> params) {
         if (!isInDispatch(name)) {
             throw new ToolException(
@@ -567,13 +571,6 @@ public final class ContextToolsApi implements ToolBus {
     }
 
     /**
-     * Passes the result through {@link ToolResultStorage#truncateIfLarge}
-     * when storage is wired. Caller gets back either the original map
-     * (small result) or a stub map with first-2KB preview + on-disk
-     * storage path (large result). No-op when storage is null
-     * (e.g. test ctors).
-     */
-    /**
      * Lifts image content out of the result into a document and queues
      * the reference for the engine. Runs <em>before</em> tag extraction
      * and truncation on purpose: the rewritten result is small, so a
@@ -590,11 +587,22 @@ public final class ContextToolsApi implements ToolBus {
             return harvest.result();
         } catch (RuntimeException e) {
             // A picture that cannot be stored must not cost the caller
-            // the tool result it already has.
+            // the tool result it already has — but it must not vanish
+            // silently either, or a permanently broken image path looks
+            // like a model that simply never asks for screenshots.
+            log.warn("Image harvest failed for tool '{}' — returning the raw result: {}",
+                    toolName, e.toString());
             return result;
         }
     }
 
+    /**
+     * Passes the result through {@link ToolResultStorage#truncateIfLarge}
+     * when storage is wired. Caller gets back either the original map
+     * (small result) or a stub map with first-2KB preview + on-disk
+     * storage path (large result). No-op when storage is null
+     * (e.g. test ctors).
+     */
     private Map<String, Object> maybeTruncateResult(String toolName, Map<String, Object> result) {
         if (toolResultStorage == null) return result;
         try {

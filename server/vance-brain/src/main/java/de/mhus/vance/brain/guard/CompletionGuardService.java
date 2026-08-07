@@ -6,6 +6,7 @@ import de.mhus.vance.api.progress.StatusPayload;
 import de.mhus.vance.api.progress.StatusTag;
 import de.mhus.vance.brain.action.ScopeLevel;
 import de.mhus.vance.brain.notification.NotificationService;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.recipe.GuardConfig;
 import de.mhus.vance.brain.recipe.GuardTrigger;
@@ -30,6 +31,9 @@ import de.mhus.vance.shared.document.DocumentRefException;
 import de.mhus.vance.shared.document.DocumentRefResolver;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.metric.MetricService;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.PermissionService;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -103,6 +107,8 @@ public class CompletionGuardService {
     private final ScriptExecutor scriptExecutor;
     private final DocumentService documentService;
     private final DocumentRefResolver refResolver;
+    private final PermissionService permissionService;
+    private final SecurityContextFactory contextFactory;
     private final ToolDispatcher toolDispatcher;
     private final ProgressEmitter progressEmitter;
     private final NotificationService notificationService;
@@ -357,6 +363,29 @@ public class CompletionGuardService {
                         process.getId(), guard.scriptPath(), e.getMessage());
                 return null;
             }
+            // A cross-project ref (//other-project/…) resolves to a real
+            // path in another project, and DocumentRefResolver is pure
+            // computation by contract — the READ check belongs here, at
+            // the call site. Only enforced when the ref actually leaves
+            // the process's own project: an in-project guard script is
+            // covered by the EXECUTE the caller already needed to install
+            // it, and checking it would cost a permission round-trip on
+            // every yield point.
+            if (!process.getProjectId().equals(ref.projectId())) {
+                try {
+                    permissionService.enforce(
+                            contextFactory.forToolSubject(
+                                    process.getTenantId(), sessionOwner(process)),
+                            new Resource.Document(
+                                    process.getTenantId(), ref.projectId(), ref.path()),
+                            Action.READ);
+                } catch (RuntimeException denied) {
+                    log.warn("Completion guard id='{}' may not read cross-project script "
+                                    + "'{}' in project '{}': {}",
+                            process.getId(), ref.path(), ref.projectId(), denied.getMessage());
+                    return null;
+                }
+            }
             return documentService
                     .lookupCascade(process.getTenantId(), ref.projectId(), ref.path())
                     .map(hit -> hit.content())
@@ -417,10 +446,19 @@ public class CompletionGuardService {
         return loopScratch.computeIfAbsent(process.getId(), k -> new ConcurrentHashMap<>());
     }
 
+    /**
+     * The session scratch, or — for a session-less process (a headless
+     * worker, a scheduler-spawned run) — its loop scratch. Falling back
+     * rather than handing out a throw-away map matters: the script's
+     * {@code sessionValues.set(...)} used to succeed and then vanish, so
+     * an "already asked" flag never took and the guard re-asked forever.
+     * Loop scope is the narrower store, so the fallback can only
+     * under-remember, never leak across processes.
+     */
     private Map<String, Object> sessionStore(ThinkProcessDocument process) {
         String sessionId = process.getSessionId();
         if (sessionId == null) {
-            return new ConcurrentHashMap<>();
+            return loopStore(process);
         }
         return sessionScratch.computeIfAbsent(sessionId, k -> new ConcurrentHashMap<>());
     }

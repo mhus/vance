@@ -63,6 +63,16 @@ public class ConnectionService {
     /** Identity the Brain reported in the WELCOME frame of the live connection. */
     private volatile @Nullable WelcomeData lastWelcome;
 
+    /**
+     * How long {@code /connect} waits for a cancelled reconnect dial to
+     * finish before giving up. Slightly over the 10s handshake timeout in
+     * {@link #openConnection()}, so the in-flight attempt always resolves
+     * one way or the other first.
+     */
+    private static final long DIAL_SLOT_WAIT_MS = 12_000;
+
+    private static final long DIAL_SLOT_POLL_MS = 100;
+
     private final AtomicReference<State> state = new AtomicReference<>(State.DISCONNECTED);
     private final AtomicReference<@Nullable VanceWebSocketClient> clientRef = new AtomicReference<>();
     private final AtomicReference<@Nullable ScheduledExecutorService> keepAliveRef = new AtomicReference<>();
@@ -122,8 +132,15 @@ public class ConnectionService {
         // clears the "user wants us offline" latch set by /disconnect.
         intentionalClose.set(false);
         stopReconnect();
-        if (!state.compareAndSet(State.DISCONNECTED, State.CONNECTING)) {
+        if (!awaitDialSlot()) {
             terminal.println(Verbosity.WARN, "Connection state is %s — /disconnect first.", state.get());
+            return;
+        }
+        if (state.get() == State.OPEN) {
+            // A reconnect campaign got there first, in the moment between
+            // stopReconnect() and the CAS. That is what the user asked
+            // for, so say so instead of complaining about the state.
+            terminal.info("Already connected.");
             return;
         }
         try {
@@ -133,6 +150,39 @@ public class ConnectionService {
             state.set(State.DISCONNECTED);
             clientRef.set(null);
             throw e;
+        }
+    }
+
+    /**
+     * Claims the right to dial, i.e. moves {@code DISCONNECTED →
+     * CONNECTING}. Returns {@code true} when the caller owns the dial, or
+     * when the connection came up on its own in the meantime (check
+     * {@link #state} for which).
+     *
+     * <p>Bounded wait rather than a bare {@code compareAndSet}: a
+     * reconnect campaign we just cancelled may still be inside
+     * {@link #tryDial()}, holding {@code CONNECTING}. Failing outright
+     * there told the user to "/disconnect first" for a connection they
+     * were only trying to bring up faster.
+     */
+    private boolean awaitDialSlot() {
+        long deadline = System.nanoTime() + DIAL_SLOT_WAIT_MS * 1_000_000L;
+        while (true) {
+            if (state.compareAndSet(State.DISCONNECTED, State.CONNECTING)) {
+                return true;
+            }
+            if (state.get() == State.OPEN) {
+                return true;
+            }
+            if (System.nanoTime() >= deadline) {
+                return false;
+            }
+            try {
+                Thread.sleep(DIAL_SLOT_POLL_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
         }
     }
 

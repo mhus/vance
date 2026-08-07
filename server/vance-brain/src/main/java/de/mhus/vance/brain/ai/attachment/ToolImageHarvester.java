@@ -133,22 +133,28 @@ public class ToolImageHarvester {
             String toolName, @Nullable String userId, List<AttachmentRef> refs) {
         String mimeType = image.get("mimeType") instanceof String m && !m.isBlank()
                 ? m.trim() : DEFAULT_MIME;
+        String encoded = String.valueOf(image.get("data"));
+        // Size gate on the *encoded* string, before decoding. Checking the
+        // decoded array would bound nothing: the allocation has already
+        // happened by then, and the MCP stdio transport puts no cap on a
+        // pack's response (only PackHttpLimits does, and only for HTTP).
+        long decodedBytes = decodedLength(encoded);
+        if (decodedBytes > maxBytesPerImage) {
+            log.warn("ToolImageHarvester: image from tool '{}' is ~{} bytes, over the "
+                    + "{} byte attachment limit — dropping it",
+                    toolName, decodedBytes, maxBytesPerImage);
+            return dropped(image, "image of ~" + decodedBytes + " bytes exceeds the "
+                    + maxBytesPerImage + " byte attachment limit");
+        }
         byte[] bytes;
         try {
-            bytes = Base64.getDecoder().decode(String.valueOf(image.get("data")));
+            bytes = Base64.getDecoder().decode(encoded);
         } catch (IllegalArgumentException e) {
             log.warn("ToolImageHarvester: tool '{}' returned an image block that is not "
                     + "valid base64 — leaving it in the result", toolName);
             return image;
         }
-        if (bytes.length > maxBytesPerImage) {
-            log.warn("ToolImageHarvester: image from tool '{}' is {} bytes, over the "
-                    + "{} byte attachment limit — dropping it",
-                    toolName, bytes.length, maxBytesPerImage);
-            return dropped(image, "image of " + bytes.length + " bytes exceeds the "
-                    + maxBytesPerImage + " byte attachment limit");
-        }
-        String path = FOLDER + "/" + toolName + "-" + System.nanoTime()
+        String path = FOLDER + "/" + slug(toolName) + "-" + System.nanoTime()
                 + extensionFor(mimeType);
         try {
             DocumentDocument doc = documentService.createOrReplaceBinary(
@@ -193,6 +199,38 @@ public class ToolImageHarvester {
                 && TYPE_IMAGE.equals(m.get("type"))
                 && m.get("data") instanceof String s
                 && !s.isBlank();
+    }
+
+    /**
+     * Decoded byte count of a base64 string, computed without decoding it:
+     * four encoded characters carry three bytes, minus one per trailing
+     * {@code =}. Whitespace an encoder may have wrapped in is not counted.
+     * Approximate by design — it is a size gate, not an exact measure.
+     */
+    static long decodedLength(String encoded) {
+        long chars = 0;
+        int padding = 0;
+        for (int i = 0; i < encoded.length(); i++) {
+            char c = encoded.charAt(i);
+            if (Character.isWhitespace(c)) {
+                continue;
+            }
+            if (c == '=') {
+                padding++;
+            }
+            chars++;
+        }
+        return Math.max(0, chars / 4 * 3 - padding);
+    }
+
+    /**
+     * Tool name reduced to a safe path segment. A pack names its own
+     * tools, so the name is foreign input: it reaches the document path
+     * and a {@code ../} in it would be stored verbatim as the path.
+     */
+    static String slug(String toolName) {
+        String s = toolName == null ? "" : toolName.replaceAll("[^A-Za-z0-9_-]", "_");
+        return s.isBlank() ? "tool" : s;
     }
 
     private static String extensionFor(String mimeType) {

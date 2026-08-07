@@ -8,6 +8,7 @@ import dev.langchain4j.http.client.sse.ServerSentEventParser;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +42,14 @@ final class ToolCallContentHttpClient implements HttpClient {
 
     private static final Logger log = LoggerFactory.getLogger(ToolCallContentHttpClient.class);
     private static final JsonMapper MAPPER = JsonMapper.builder().build();
+
+    /**
+     * A {@code "content"} that is {@code null}, empty or whitespace-only —
+     * the only thing this decorator ever rewrites. Used as a pre-parse
+     * filter; see {@link #mayNeedRewrite}.
+     */
+    private static final Pattern EMPTY_CONTENT =
+            Pattern.compile("\"content\"\\s*:\\s*(null|\"\\s*\")");
 
     private final HttpClient delegate;
 
@@ -90,6 +99,9 @@ final class ToolCallContentHttpClient implements HttpClient {
         if (body == null || body.isBlank()) {
             return null;
         }
+        if (!mayNeedRewrite(body)) {
+            return null;
+        }
         JsonNode root;
         try {
             root = MAPPER.readTree(body);
@@ -135,6 +147,25 @@ final class ToolCallContentHttpClient implements HttpClient {
                     e.toString());
             return null;
         }
+    }
+
+    /**
+     * Cheap substring pre-check: is there anything in this body that
+     * could possibly need stripping? Without it every request pays a
+     * full Jackson parse plus re-serialisation of the entire
+     * conversation, on a path that changes nothing in the overwhelming
+     * majority of calls — an assistant tool-call turn is a minority of
+     * messages, and only the empty-content variant is affected at all.
+     *
+     * <p>Covers exactly the shapes {@link #normalizeRequestBody}'s
+     * emptiness test accepts — {@code null} and a string that is empty
+     * or all-whitespace — and tolerates spacing so a
+     * differently-configured serialiser upstream cannot quietly disable
+     * the fix. False positives are harmless: they fall through to the
+     * real parse, which then decides on the actual message structure.
+     */
+    private static boolean mayNeedRewrite(String body) {
+        return EMPTY_CONTENT.matcher(body).find();
     }
 
     /**

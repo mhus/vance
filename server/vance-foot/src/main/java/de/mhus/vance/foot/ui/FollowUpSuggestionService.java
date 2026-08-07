@@ -8,9 +8,15 @@ import de.mhus.vance.foot.connection.BrainRestClientService;
 import de.mhus.vance.foot.session.SessionService;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Collections;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -27,16 +33,18 @@ import org.springframework.stereotype.Service;
  *
  * <p>Mirrors the web UI's {@code useFollowUpSuggestion} composable:
  * <ul>
- *   <li>Caches one suggestion per {@code projectId + assistantContent} key.</li>
+ *   <li>Caches one suggestion per {@code projectId + assistantContent} key
+ *       (bounded LRU, keyed on a digest — the text itself is not kept).</li>
  *   <li>Once the user accepts a suggestion (Right-Arrow / Tab), it is not
  *       re-offered for the same assistant message.</li>
  *   <li>Errors are swallowed — the ghost text is a UX nicety, not a
  *       blocking feature.</li>
  * </ul>
  *
- * <p>The suggestion is fetched asynchronously on a background thread so
- * the input loop never blocks on the REST call. A fetch sequence number
- * guards against stale responses.
+ * <p>The REST call runs on a dedicated single daemon thread, never on
+ * {@link LiveRegion}'s animator: the endpoint is LLM-backed and can take
+ * seconds, and the animator is what redraws the live region. A fetch
+ * sequence number guards against stale responses.
  */
 @Service
 public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvider {
@@ -47,10 +55,22 @@ public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvi
     private final ObjectProvider<BrainRestClientService> restProvider;
     private final SessionService sessions;
 
-    /** Cache keyed on {@code projectId + "::" + assistantContent}. */
-    private final Map<String, @Nullable String> cache = new ConcurrentHashMap<>();
-    /** Keys for which the user already accepted the suggestion. */
-    private final java.util.Set<String> accepted = ConcurrentHashMap.newKeySet();
+    /**
+     * Entries kept in each of the two stores. foot is a long-lived
+     * process and a busy session produces hundreds of assistant
+     * messages, so both maps are bounded — an unbounded cache keyed on
+     * message *content* would hold every reply of the session forever.
+     */
+    private static final int CACHE_MAX = 200;
+
+    /**
+     * Cache keyed on a digest of {@code projectId + assistantContent}
+     * (see {@link #cacheKey}). Bounded LRU — the value is a one-line
+     * suggestion, but the key must not be the whole assistant message.
+     */
+    private final Map<String, @Nullable String> cache = boundedLru(CACHE_MAX);
+    /** Keys for which the user already accepted the suggestion. Bounded LRU. */
+    private final Map<String, Boolean> accepted = boundedLru(CACHE_MAX);
 
     /** Last assistant message content — set by ChatMessageAppendedHandler. */
     private final AtomicReference<@Nullable String> lastAssistantContent = new AtomicReference<>(null);
@@ -63,6 +83,17 @@ public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvi
     private volatile @Nullable String currentSuggestion = null;
     /** The cache key that produced {@link #currentSuggestion}. */
     private volatile @Nullable String currentKey = null;
+
+    /**
+     * Carries the REST round-trip off the animator thread. Single-threaded
+     * and daemon: overlapping fetches serialise instead of piling up, and
+     * an in-flight suggestion never keeps foot from exiting.
+     */
+    private final ExecutorService fetcher = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "vance-foot-followup");
+        t.setDaemon(true);
+        return t;
+    });
 
     public FollowUpSuggestionService(FootConfig config,
                                      ObjectProvider<BrainRestClientService> restProvider,
@@ -113,7 +144,7 @@ public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvi
     public void acceptCurrent() {
         String key = currentKey;
         if (key != null) {
-            accepted.add(key);
+            accepted.put(key, Boolean.TRUE);
         }
         currentSuggestion = null;
     }
@@ -129,12 +160,17 @@ public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvi
     }
 
     /**
-     * Triggers an asynchronous fetch of a follow-up suggestion from
-     * the brain. Called by {@link LiveRegion}'s idle timer when the
-     * input is empty and the user has been idle for the configured
-     * delay. The fetch runs on the calling thread (the animator
-     * thread) — the REST call has a short timeout and the animator
-     * is a daemon thread, so a brief block is acceptable.
+     * Triggers a fetch of a follow-up suggestion from the brain. Called
+     * by {@link LiveRegion}'s idle timer when the input is empty and the
+     * user has been idle for the configured delay.
+     *
+     * <p>Everything up to and including the cache lookup runs on the
+     * calling (animator) thread — those are map reads. The REST call
+     * itself is handed to {@link #fetcher}: the endpoint is backed by an
+     * LLM (recipe {@code follow-up}), not a cheap GET, so it can take
+     * seconds, and the animator thread is what redraws the live region.
+     * The suggestion is picked up by a later tick via
+     * {@link #currentSuggestion()}.
      */
     @Override
     public void fetchIfApplicable() {
@@ -159,8 +195,8 @@ public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvi
             return;
         }
 
-        String key = projectId + "::" + assistant;
-        if (accepted.contains(key)) {
+        String key = cacheKey(projectId, assistant);
+        if (accepted.containsKey(key)) {
             log.trace("fetchIfApplicable: suggestion already accepted for this key — skipping");
             return;
         }
@@ -174,17 +210,24 @@ public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvi
             return;
         }
 
-        // Fire the REST call synchronously — the animator thread can
-        // spare a few hundred ms. If it times out the suggestion just
-        // stays null.
         BrainRestClientService rest = restProvider.getIfAvailable();
         if (rest == null) {
-            log.warn("fetchIfApplicable: BrainRestClientService not available — cannot fetch");
+            log.trace("fetchIfApplicable: BrainRestClientService not available — cannot fetch");
             return;
         }
         int seq = fetchSeq.incrementAndGet();
         log.trace("fetchIfApplicable: firing REST call — project={}, contentLen={}, seq={}",
                 projectId, assistant.length(), seq);
+        // Off the animator thread — see the method Javadoc. The
+        // single-threaded executor also serialises overlapping fetches,
+        // so the seq guard only has to discard stale *results*.
+        fetcher.execute(() -> runFetch(rest, key, projectId, assistant, seq));
+    }
+
+    /** The REST round-trip itself. Runs on {@link #fetcher}, never on the animator. */
+    private void runFetch(
+            BrainRestClientService rest, String key, String projectId,
+            String assistant, int seq) {
         try {
             FollowUpRequestDto body = FollowUpRequestDto.builder()
                     .text(assistant)
@@ -215,7 +258,10 @@ public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvi
             log.trace("fetchIfApplicable: success — suggestion={}",
                     text == null ? "null" : "'" + (text.length() > 60 ? text.substring(0, 60) + "…" : text) + "'");
         } catch (Exception e) {
-            log.warn("fetchIfApplicable: REST call failed — {}: {}", e.getClass().getSimpleName(), e.getMessage());
+            // Expected on an unreachable brain, and this is a UX nicety —
+            // warning here would spam the log once per idle period.
+            log.trace("fetchIfApplicable: REST call failed — {}: {}",
+                    e.getClass().getSimpleName(), e.getMessage());
             if (seq == fetchSeq.get()) {
                 // Do NOT cache the failure — otherwise the first transient
                 // error (e.g. JWT not yet minted, brain briefly unreachable)
@@ -233,5 +279,35 @@ public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvi
 
     private static String urlEncode(String s) {
         return URLEncoder.encode(s, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Cache key for one (project, assistant message) pair — a SHA-256
+     * digest rather than the concatenation. The map is long-lived and the
+     * assistant message can be kilobytes; only equality matters here, so
+     * there is no reason to retain the text itself.
+     */
+    private static String cacheKey(String projectId, String assistant) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            digest.update(projectId.getBytes(StandardCharsets.UTF_8));
+            digest.update((byte) 0);
+            digest.update(assistant.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (NoSuchAlgorithmException e) {
+            // Platform-mandated; degrade to the plain key rather than
+            // losing the feature.
+            return projectId + "::" + assistant;
+        }
+    }
+
+    /** Access-ordered map that evicts its eldest entry past {@code max}. */
+    private static <V> Map<String, V> boundedLru(int max) {
+        return Collections.synchronizedMap(new LinkedHashMap<String, V>(64, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<String, V> eldest) {
+                return size() > max;
+            }
+        });
     }
 }

@@ -159,6 +159,55 @@ class ToolImageHarvesterTest {
     }
 
     @Test
+    void oversizeImage_isRejectedWithoutDecoding() {
+        // The gate has to run on the encoded string. Checking the decoded
+        // array would bound nothing — the allocation already happened by
+        // then, and the MCP stdio transport caps no response size.
+        String huge = "A".repeat(4_000_000);           // ~3 MB decoded
+        ToolImageHarvester small = new ToolImageHarvester(
+                documentService, mock(SecurityContextFactory.class), /*max*/ 1024);
+
+        ToolImageHarvester.Harvest h = small.harvest(
+                imageResult(huge, "image/png"), "acme", "proj", "t", "u");
+
+        assertThat(h.attachments()).isEmpty();
+        verify(documentService, never()).createOrReplaceBinary(
+                anyString(), anyString(), anyString(), any(), anyString(),
+                any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void decodedLength_matchesTheRealDecodeForPaddedAndUnpadded() {
+        for (int len : new int[] {1, 2, 3, 4, 5, 30, 31, 32}) {
+            byte[] raw = new byte[len];
+            String encoded = Base64.getEncoder().encodeToString(raw);
+            assertThat(ToolImageHarvester.decodedLength(encoded))
+                    .as("length %d", len)
+                    .isEqualTo(len);
+        }
+    }
+
+    @Test
+    void decodedLength_ignoresWrappedWhitespace() {
+        // The MIME encoder wraps at 76 columns, so the payload has to be
+        // past that before there is a newline to ignore at all.
+        byte[] raw = new byte[300];
+        String wrapped = Base64.getMimeEncoder().encodeToString(raw);
+        assertThat(wrapped).contains("\n");
+        assertThat(ToolImageHarvester.decodedLength(wrapped)).isEqualTo(300);
+    }
+
+    @Test
+    void slug_stripsPathSyntaxFromAForeignToolName() {
+        // A pack names its own tools, and the name reaches the document
+        // path — "../" in it would be stored verbatim.
+        assertThat(ToolImageHarvester.slug("../../escape")).isEqualTo("______escape");
+        assertThat(ToolImageHarvester.slug("chrome__take_screenshot"))
+                .isEqualTo("chrome__take_screenshot");
+        assertThat(ToolImageHarvester.slug("")).isEqualTo("tool");
+    }
+
+    @Test
     void storageFailure_leavesTheBlockAlone() {
         when(documentService.createOrReplaceBinary(
                 anyString(), anyString(), anyString(), any(), anyString(),

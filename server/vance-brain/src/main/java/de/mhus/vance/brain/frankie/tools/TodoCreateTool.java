@@ -123,6 +123,17 @@ public class TodoCreateTool implements Tool {
         // turn, which snowballs into a runaway re-planning loop. Matching
         // against all statuses means "re-send the full list" becomes a
         // no-op instead of duplicating. See planning discussion.
+        //
+        // COMPLETED is matched on purpose, even though it means a plan
+        // that legitimately repeats a finished step ("run tests" after a
+        // second fix round) cannot schedule it under the same wording.
+        // Exempting COMPLETED was tried and reverted: a whole-plan resend
+        // carries the finished items too, so they would come back as
+        // fresh PENDING entries every turn — the snowball this guard
+        // exists to stop, with the extra insult of un-completing work.
+        // Content alone cannot tell "resend" from "do it again"; the
+        // workaround (reword, or todo_update back to PENDING) is cheaper
+        // than the failure mode. See planning/code-review-3-fixes.md §2.
         Set<String> seen = new HashSet<>();
         if (existing != null) {
             for (TodoItem t : existing) {

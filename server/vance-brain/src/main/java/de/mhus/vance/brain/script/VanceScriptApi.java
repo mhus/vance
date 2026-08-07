@@ -879,10 +879,29 @@ public final class VanceScriptApi {
             return ScriptValueMarshaller.toStorable(backing, MAX_NODES, MAX_DEPTH);
         }
 
-        /** Single value by key, or {@code null} (→ {@code undefined} in JS) if absent. */
+        /**
+         * Single value by key, or {@code null} (→ {@code undefined} in JS)
+         * if absent. Copied out like {@link #get()}: handing back the
+         * stored {@code Map}/{@code List} itself would give the script a
+         * live handle into the shared store, so a nested value could be
+         * mutated behind {@link #set} — and the session store is reachable
+         * from two processes of the same session running on different
+         * lanes, where that means concurrent access to a plain
+         * {@code LinkedHashMap}/{@code ArrayList}.
+         */
         @HostAccess.Export
         public @Nullable Object get(String key) {
-            return key == null ? null : backing.get(key);
+            if (key == null) {
+                return null;
+            }
+            Object stored = backing.get(key);
+            // Scalars are immutable — no copy needed, and this keeps the
+            // common "flag" case free of marshalling.
+            if (stored == null || stored instanceof String
+                    || stored instanceof Boolean || stored instanceof Number) {
+                return stored;
+            }
+            return ScriptValueMarshaller.toStorable(stored, MAX_NODES, MAX_DEPTH);
         }
 
         /**

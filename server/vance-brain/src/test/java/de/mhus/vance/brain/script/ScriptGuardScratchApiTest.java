@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import de.mhus.vance.brain.script.VanceScriptApi.ScriptGuardScratchApi;
 import de.mhus.vance.brain.script.VanceScriptApi.ScriptHostException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -82,5 +83,54 @@ class ScriptGuardScratchApiTest {
         Map<String, Object> backing = new LinkedHashMap<>();
         scratch(backing).set("asked", Boolean.TRUE);
         assertThat(scratch(backing).get("asked")).isEqualTo(true);
+    }
+
+    @Test
+    void getByKey_returnsACopy_notTheStoredCollection() {
+        // Handing out the stored Map would let a script mutate the shared
+        // store behind set(). The session store is reachable from two
+        // processes of the same session on different lanes, so that is
+        // concurrent access to a plain LinkedHashMap.
+        Map<String, Object> backing = new LinkedHashMap<>();
+        ScriptGuardScratchApi s = scratch(backing);
+        s.set("seen", Map.of("a", 1));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> handedOut = (Map<String, Object>) s.get("seen");
+        handedOut.put("b", 2);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> reread = (Map<String, Object>) s.get("seen");
+        assertThat(reread).containsOnlyKeys("a");
+    }
+
+    @Test
+    void getByKey_returnsListCopiesToo() {
+        Map<String, Object> backing = new LinkedHashMap<>();
+        ScriptGuardScratchApi s = scratch(backing);
+        s.set("items", List.of("x"));
+
+        @SuppressWarnings("unchecked")
+        List<Object> handedOut = (List<Object>) s.get("items");
+        assertThat(handedOut).containsExactly("x");
+        assertThat(handedOut).isNotSameAs(backing.get("items"));
+    }
+
+    @Test
+    void getByKey_passesScalarsThroughUnwrapped() {
+        // Immutable — copying them would only cost marshalling on the
+        // common "flag" case.
+        Map<String, Object> backing = new LinkedHashMap<>();
+        ScriptGuardScratchApi s = scratch(backing);
+        s.set("flag", Boolean.TRUE);
+        s.set("n", 7);
+        s.set("txt", "hi");
+
+        assertThat(s.get("flag")).isEqualTo(true);
+        // Boxed as handed in — the marshaller passes Number through, it
+        // does not normalise to long the way a guest Value would.
+        assertThat(s.get("n")).isEqualTo(7);
+        assertThat(s.get("txt")).isEqualTo("hi");
+        assertThat(s.get("absent")).isNull();
     }
 }

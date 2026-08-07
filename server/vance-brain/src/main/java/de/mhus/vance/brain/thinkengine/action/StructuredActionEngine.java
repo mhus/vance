@@ -510,7 +510,12 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             // status as-is; (b) an out-of-band halt flag was set without
             // a status flip — clear it and signal the engine to park
             // PAUSED so the user's next message auto-resumes.
-            ThinkProcessStatus liveStatus = currentStatus(process);
+            //
+            // Both paths read the same document, so this is one findById
+            // per iteration, not two.
+            ThinkProcessDocument live = thinkProcessService
+                    .findById(process.getId()).orElse(process);
+            ThinkProcessStatus liveStatus = live.getStatus();
             if (liveStatus == ThinkProcessStatus.SUSPENDED
                     || liveStatus == ThinkProcessStatus.PAUSED
                     || liveStatus == ThinkProcessStatus.CLOSED) {
@@ -518,7 +523,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                         name(), process.getId(), liveStatus);
                 return ActionLoopResult.interrupted(false, toolInvocations);
             }
-            if (thinkProcessService.isHaltRequested(process.getId())) {
+            if (live.isHaltRequested()) {
                 log.info("{} id='{}' action-loop halt requested — exiting (PAUSED)",
                         name(), process.getId());
                 thinkProcessService.clearHalt(process.getId());
@@ -919,10 +924,17 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                 log.info("{} id='{}' judge extends action loop (+{} iters, reason='{}')",
                         name(), process.getId(),
                         ActionLoopJudgeHelpers.JUDGE_EXTENSION_ITERS, j.reason());
+                // Same surface as the initial round: an extension that
+                // dropped extraTools would take the turn's active-skill
+                // tools away mid-turn (the loop dispatches through the
+                // same ContextToolsApi, so they'd come back as "not
+                // allowed"), and a dropped attachmentContext would stop
+                // tool-produced images from reaching the model.
                 loopResult = runStructuredActionLoop(
                         aiChat, readToolSpecsFactory, messages, ctx, process,
                         ActionLoopJudgeHelpers.JUDGE_EXTENSION_ITERS,
-                        modelAlias, maxCorrections, deadlineMs);
+                        modelAlias, maxCorrections, deadlineMs,
+                        extraTools, attachmentContext);
                 continue;
             }
             log.info("{} id='{}' judge synthesises (answer-chars={}, reason='{}')",
@@ -938,11 +950,6 @@ public abstract class StructuredActionEngine implements ThinkEngine {
     }
 
     /**
-     * Live status of the process from the store, falling back to the
-     * in-memory copy if the read misses. Cheap per-iteration probe used
-     * by the action loop to detect a mid-loop interrupt.
-     */
-    /**
      * The tool surface for a loop iteration: the context's own view,
      * widened by the turn's skill-contributed tools. Re-derived from
      * {@code ctx} on every call so deferred-tool activations stay visible.
@@ -951,12 +958,6 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         ContextToolsApi tools = ctx.tools();
         return extraTools == null || extraTools.isEmpty()
                 ? tools : tools.withAdditional(extraTools);
-    }
-
-    private ThinkProcessStatus currentStatus(ThinkProcessDocument process) {
-        return thinkProcessService.findById(process.getId())
-                .map(ThinkProcessDocument::getStatus)
-                .orElse(process.getStatus());
     }
 
     /**
@@ -1408,18 +1409,6 @@ public abstract class StructuredActionEngine implements ThinkEngine {
     // ─────────────────────────────────────────────
 
     /**
-     * Runs one streaming LLM call and returns the complete
-     * {@link AiMessage}. Tokens stream through the
-     * {@link ChunkBatcher} into the engine's chat-stream channel
-     * the same way as the legacy tool-loop, so clients render
-     * incremental progress without changes.
-     *
-     * <p>Throws {@link AiChatException} on stream failure (typically
-     * after the resilient-retry budget is exhausted in the underlying
-     * {@code ChatBehavior}). Callers may catch and recover with the
-     * best-free-text fallback pattern.
-     */
-    /**
      * The user-facing message that must still be streamed to the client
      * for a terminal action, or {@code null} when nothing extra is
      * needed. Returns {@code null} when the streamed prose already
@@ -1477,6 +1466,18 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         }
     }
 
+    /**
+     * Runs one streaming LLM call and returns the complete
+     * {@link AiMessage}. Tokens stream through the
+     * {@link ChunkBatcher} into the engine's chat-stream channel
+     * the same way as the legacy tool-loop, so clients render
+     * incremental progress without changes.
+     *
+     * <p>Throws {@link AiChatException} on stream failure (typically
+     * after the resilient-retry budget is exhausted in the underlying
+     * {@code ChatBehavior}). Callers may catch and recover with the
+     * best-free-text fallback pattern.
+     */
     protected AiMessage streamOneIteration(
             AiChat aiChat,
             ChatRequest request,

@@ -128,4 +128,54 @@ class LlmCommandHandlerTest {
         assertThat(result.message()).contains("no llm overrides");
         verifyNoInteractions(thinkProcessService);
     }
+
+    // ─── Range validation ────────────────────────────────────────────
+    // The override applies from the *next* turn, so a provider-side 400
+    // would surface far away from the command that caused it. Rejecting
+    // here keeps a typo from costing a whole turn.
+
+    @Test
+    void aboveMaximum_isRejectedBeforeItIsStored() {
+        EngineCommandResult result = handler.handle(process(), cmd("topP 5"));
+
+        assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.ERROR);
+        assertThat(result.message()).contains("topP").contains("<= 1");
+        verifyNoInteractions(thinkProcessService);
+    }
+
+    @Test
+    void belowMinimum_isRejectedBeforeItIsStored() {
+        EngineCommandResult result = handler.handle(process(), cmd("temperature -1"));
+
+        assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.ERROR);
+        assertThat(result.message()).contains("temperature").contains(">= 0");
+        verifyNoInteractions(thinkProcessService);
+    }
+
+    @Test
+    void absurdMaxTokens_isRejected() {
+        EngineCommandResult result = handler.handle(process(), cmd("maxTokens 99999999"));
+
+        assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.ERROR);
+        assertThat(result.message()).contains("maxTokens");
+        verifyNoInteractions(thinkProcessService);
+    }
+
+    @Test
+    void boundaryValues_areAccepted() {
+        assertThat(handler.handle(process(), cmd("temperature 0")).outcome())
+                .isEqualTo(EngineCommandOutcome.OK);
+        assertThat(handler.handle(process(), cmd("temperature 2")).outcome())
+                .isEqualTo(EngineCommandOutcome.OK);
+        assertThat(handler.handle(process(), cmd("presencePenalty -2")).outcome())
+                .isEqualTo(EngineCommandOutcome.OK);
+    }
+
+    @Test
+    void seed_hasNoRangeAndTakesAnyLong() {
+        EngineCommandResult result = handler.handle(process(), cmd("seed -9999999999"));
+
+        assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.OK);
+        verify(thinkProcessService).setEngineParamOverride("p1", "seed", -9999999999L);
+    }
 }

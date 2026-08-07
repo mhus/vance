@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -74,7 +75,7 @@ public class PasswordPolicyService {
                     "Password is too long — must be at most " + MAX_BYTES
                             + " bytes when UTF-8 encoded.");
         }
-        if (commonPasswords.contains(plaintext.toLowerCase())) {
+        if (commonPasswords.contains(plaintext.toLowerCase(Locale.ROOT))) {
             throw new PasswordPolicyException(
                     "Password is too common — choose a less predictable one.");
         }
@@ -95,7 +96,7 @@ public class PasswordPolicyService {
                 while ((line = reader.readLine()) != null) {
                     String trimmed = line.trim();
                     if (!trimmed.isEmpty() && !trimmed.startsWith("#")) {
-                        set.add(trimmed.toLowerCase());
+                        set.add(trimmed.toLowerCase(Locale.ROOT));
                     }
                 }
             }

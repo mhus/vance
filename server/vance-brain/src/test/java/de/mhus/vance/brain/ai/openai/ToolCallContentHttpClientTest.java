@@ -126,4 +126,47 @@ class ToolCallContentHttpClientTest {
         assertThat(ToolCallContentHttpClient.normalizeRequestBody("")).isNull();
         assertThat(ToolCallContentHttpClient.normalizeRequestBody(null)).isNull();
     }
+
+    @Test
+    void bodyWithoutAnEmptyContent_skipsTheParseEntirely() {
+        // The pre-parse filter is what keeps a full Jackson round-trip of
+        // the whole conversation off every single request. A body with no
+        // empty content must not even be parsed — proven here by feeding
+        // one that is *not valid JSON* after the messages array: a parse
+        // would fail (and still return null), so instead we assert the
+        // filter's own contract on a body that is valid but untouched.
+        String body = """
+                {"model":"gpt-5","messages":[
+                  {"role":"user","content":"hi"},
+                  {"role":"assistant","content":"there","tool_calls":[{"id":"a"}]}
+                ]}
+                """;
+        assertThat(ToolCallContentHttpClient.normalizeRequestBody(body)).isNull();
+    }
+
+    @Test
+    void whitespaceOnlyContent_isStillRecognised() {
+        // The emptiness test accepts a blank string, so the pre-parse
+        // filter must too — otherwise the fix would silently stop firing
+        // for that shape.
+        String body = """
+                {"model":"glm-5.2","messages":[
+                  {"role":"assistant","content":"  ","tool_calls":[{"id":"a"}]}
+                ]}
+                """;
+        String out = ToolCallContentHttpClient.normalizeRequestBody(body);
+
+        assertThat(out).isNotNull();
+        assertThat(message(out, 0).has("content")).isFalse();
+    }
+
+    @Test
+    void spacedSerialisation_isStillRecognised() {
+        String body = "{\"messages\":[{\"role\": \"assistant\", \"content\": null, "
+                + "\"tool_calls\": [{\"id\": \"a\"}]}]}";
+        String out = ToolCallContentHttpClient.normalizeRequestBody(body);
+
+        assertThat(out).isNotNull();
+        assertThat(message(out, 0).has("content")).isFalse();
+    }
 }

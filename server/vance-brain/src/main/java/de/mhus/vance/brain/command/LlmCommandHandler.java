@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -44,7 +45,19 @@ public class LlmCommandHandler implements EngineCommandHandler {
     /** Whitelisted sampling params: lowercase alias → canonical key + value parser. */
     private static final Map<String, Param> PARAMS = buildParams();
 
-    private record Param(String canonical, Function<String, Object> parse) {}
+    /**
+     * One whitelisted sampling knob. {@code min}/{@code max} are the
+     * inclusive bounds every mainstream provider agrees on; {@code null}
+     * on both means unbounded ({@code seed}). Range-checking here rather
+     * than letting the provider reject it keeps a typo from costing a
+     * whole turn — the override applies from the *next* turn, so a
+     * provider-side 400 would surface far away from the command that
+     * caused it.
+     */
+    private record Param(String canonical,
+                         Function<String, Object> parse,
+                         @Nullable Double min,
+                         @Nullable Double max) {}
 
     @Override
     public String verb() {
@@ -96,6 +109,10 @@ public class LlmCommandHandler implements EngineCommandHandler {
             return EngineCommandResult.error(
                     param.canonical() + " must be a number, got '" + rawValue.trim() + "'");
         }
+        String rangeError = checkRange(param, value);
+        if (rangeError != null) {
+            return EngineCommandResult.error(rangeError);
+        }
         if (!thinkProcessService.setEngineParamOverride(process.getId(), param.canonical(), value)) {
             return EngineCommandResult.error("process not found");
         }
@@ -110,6 +127,29 @@ public class LlmCommandHandler implements EngineCommandHandler {
         return EngineCommandResult.ok(canonical + " override cleared — back to recipe default", null);
     }
 
+    /**
+     * {@code null} when {@code value} is inside the param's bounds,
+     * otherwise the user-facing complaint. Unbounded params always pass.
+     */
+    private static @Nullable String checkRange(Param param, Object value) {
+        if (param.min() == null && param.max() == null) {
+            return null;
+        }
+        double d = ((Number) value).doubleValue();
+        if (param.min() != null && d < param.min()) {
+            return param.canonical() + " must be >= " + trim(param.min()) + ", got " + value;
+        }
+        if (param.max() != null && d > param.max()) {
+            return param.canonical() + " must be <= " + trim(param.max()) + ", got " + value;
+        }
+        return null;
+    }
+
+    /** Renders a bound without a pointless {@code .0} tail. */
+    private static String trim(double d) {
+        return d == Math.rint(d) ? String.valueOf((long) d) : String.valueOf(d);
+    }
+
     private static String knownKeys() {
         return PARAMS.values().stream()
                 .map(Param::canonical)
@@ -119,13 +159,15 @@ public class LlmCommandHandler implements EngineCommandHandler {
 
     private static Map<String, Param> buildParams() {
         Map<String, Param> m = new LinkedHashMap<>();
-        m.put("temperature", new Param("temperature", LlmCommandHandler::asDouble));
-        m.put("topp", new Param("topP", LlmCommandHandler::asDouble));
-        m.put("topk", new Param("topK", LlmCommandHandler::asInt));
-        m.put("maxtokens", new Param("maxTokens", LlmCommandHandler::asInt));
-        m.put("seed", new Param("seed", LlmCommandHandler::asLong));
-        m.put("frequencypenalty", new Param("frequencyPenalty", LlmCommandHandler::asDouble));
-        m.put("presencepenalty", new Param("presencePenalty", LlmCommandHandler::asDouble));
+        m.put("temperature", new Param("temperature", LlmCommandHandler::asDouble, 0.0, 2.0));
+        m.put("topp", new Param("topP", LlmCommandHandler::asDouble, 0.0, 1.0));
+        m.put("topk", new Param("topK", LlmCommandHandler::asInt, 1.0, 1_000.0));
+        m.put("maxtokens", new Param("maxTokens", LlmCommandHandler::asInt, 1.0, 1_000_000.0));
+        m.put("seed", new Param("seed", LlmCommandHandler::asLong, null, null));
+        m.put("frequencypenalty",
+                new Param("frequencyPenalty", LlmCommandHandler::asDouble, -2.0, 2.0));
+        m.put("presencepenalty",
+                new Param("presencePenalty", LlmCommandHandler::asDouble, -2.0, 2.0));
         return Map.copyOf(m);
     }
 

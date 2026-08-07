@@ -20,7 +20,9 @@ import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.document.DocumentRefResolver;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.session.SessionService;
@@ -51,6 +53,8 @@ class CompletionGuardServiceTest {
     @Mock private ProcessEventEmitter eventEmitter;
     @Mock private ScriptExecutor scriptExecutor;
     @Mock private DocumentService documentService;
+    @Mock private PermissionService permissionService;
+    @Mock private SecurityContextFactory contextFactory;
     @Mock private ToolDispatcher toolDispatcher;
     @Mock private ProgressEmitter progressEmitter;
     @Mock private NotificationService notificationService;
@@ -63,7 +67,8 @@ class CompletionGuardServiceTest {
     void setUp() {
         service = new CompletionGuardService(
                 recipeResolver, thinkProcessService, chatMessageService, eventEmitter,
-                scriptExecutor, documentService, new DocumentRefResolver(), toolDispatcher,
+                scriptExecutor, documentService, new DocumentRefResolver(),
+                permissionService, contextFactory, toolDispatcher,
                 progressEmitter, notificationService, sessionService, thinkEngineProvider,
                 new MetricService(new SimpleMeterRegistry()));
         when(recipeResolver.resolve(anyString(), anyString(), anyString()))

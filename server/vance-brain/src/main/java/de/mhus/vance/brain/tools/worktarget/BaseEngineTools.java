@@ -22,8 +22,12 @@ public final class BaseEngineTools {
      * their {@code allowedTools()}. Three groups:
      *
      * <ul>
-     *   <li>12 primary generic wrappers ({@code file_*}, {@code exec_*})
-     *       — these the LLM sees in the per-turn manifest.</li>
+     *   <li>13 primary generic wrappers ({@code file_*}, {@code exec_*})
+     *       — these the LLM sees in the per-turn manifest. {@code
+     *       file_delete} is primary although both its backends are
+     *       deferred: a deferred backend is only acceptable because a
+     *       visible wrapper covers its purpose, so deferring the wrapper
+     *       too would make deleting unreachable in practice.</li>
      *   <li>2 work-target meta tools ({@code work_target_get},
      *       {@code work_target_set}) — non-primary, reachable via
      *       {@code tool_list} when an exotic backend switch is
@@ -47,6 +51,7 @@ public final class BaseEngineTools {
             "file_grep",
             "file_head_tail",
             "file_count",
+            "file_delete",
             "exec_run",
             "exec_status",
             "exec_tail",
@@ -63,6 +68,7 @@ public final class BaseEngineTools {
             "client_file_grep",
             "client_file_head_tail",
             "client_file_count",
+            "client_file_delete",
             "client_exec_run",
             "client_exec_status",
             "client_exec_tail",

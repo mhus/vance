@@ -20,6 +20,9 @@ import org.springframework.stereotype.Service;
  * <ul>
  *   <li>{@code client_file_*} — checked by their {@code path} parameter
  *       against the path rules (globs);</li>
+ *   <li>{@code client_file_delete} — same subject, but against the
+ *       separate {@code delete} rules, so a read/write allow never
+ *       grants deletion (see {@link PermissionDomain#DELETE});</li>
  *   <li>{@code client_exec_run} — checked by its {@code command} string
  *       against the command rules (regex).</li>
  * </ul>
@@ -38,6 +41,7 @@ import org.springframework.stereotype.Service;
 public class ClientSecurityService {
 
     private static final String EXEC_RUN = "client_exec_run";
+    private static final String FILE_DELETE = "client_file_delete";
     private static final String FILE_PREFIX = "client_file_";
 
     private final PermissionService permissions;
@@ -68,9 +72,11 @@ public class ClientSecurityService {
             }
             case ASK -> {
                 Scope scope = scopeOf(toolName);
-                PermissionDomain domain = scope == Scope.COMMAND
-                        ? PermissionDomain.COMMANDS
-                        : PermissionDomain.PATHS;
+                PermissionDomain domain = switch (scope) {
+                    case COMMAND -> PermissionDomain.COMMANDS;
+                    case DELETE -> PermissionDomain.DELETE;
+                    case PATH, NONE -> PermissionDomain.PATHS;
+                };
                 PermissionDecision resolved =
                         prompt.resolve(toolName, domain, ruleSubject(scope, params));
                 boolean allowed = resolved == PermissionDecision.ALLOW;
@@ -120,6 +126,10 @@ public class ClientSecurityService {
                 Path canonical = PermissionPaths.canonicalize(pathSubject(params));
                 yield permissions.policy().evaluatePath(canonical);
             }
+            case DELETE -> {
+                Path canonical = PermissionPaths.canonicalize(pathSubject(params));
+                yield permissions.policy().evaluateDelete(canonical);
+            }
             case COMMAND -> {
                 String command = stringParam(params, "command");
                 if (command == null || command.isBlank()) {
@@ -135,7 +145,7 @@ public class ClientSecurityService {
     public String denyReason(String toolName, Map<String, Object> params) {
         Scope scope = scopeOf(toolName);
         String subject = switch (scope) {
-            case PATH -> "path '" + PermissionPaths.canonicalize(pathSubject(params)) + "'";
+            case PATH, DELETE -> "path '" + PermissionPaths.canonicalize(pathSubject(params)) + "'";
             case COMMAND -> {
                 String command = stringParam(params, "command");
                 yield command == null || command.isBlank()
@@ -156,6 +166,11 @@ public class ClientSecurityService {
     private Scope scopeOf(String toolName) {
         if (EXEC_RUN.equals(toolName)) {
             return Scope.COMMAND;
+        }
+        // Before the prefix check — client_file_delete is a client_file_*
+        // name but must not be judged by the path rules.
+        if (FILE_DELETE.equals(toolName)) {
+            return Scope.DELETE;
         }
         if (toolName.startsWith(FILE_PREFIX)) {
             return Scope.PATH;
@@ -182,6 +197,7 @@ public class ClientSecurityService {
     private enum Scope {
         PATH,
         COMMAND,
+        DELETE,
         NONE
     }
 }

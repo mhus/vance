@@ -17,6 +17,12 @@ import java.util.regex.PatternSyntaxException;
  * a matching deny rule wins outright (no prompt), a matching allow rule
  * permits, and no match means the user must be asked.
  *
+ * <p>The {@code delete} domain is the one asymmetric case: its
+ * <em>deny</em> side inherits the path denies (floor included), while its
+ * <em>allow</em> side stands alone. Denying a tree must keep denying it
+ * for every operation, but allowing a tree to be read must not allow it
+ * to be emptied — see {@link #evaluateDelete}.
+ *
  * <p>Paths are matched as globs against the {@link PermissionPaths#canonicalize
  * canonical} subject path; commands are matched as regex (via
  * {@link java.util.regex.Matcher#find}) against the raw command string,
@@ -28,16 +34,22 @@ public final class PermissionPolicy {
     private final List<PathMatcher> pathAllow;
     private final List<Pattern> commandDeny;
     private final List<Pattern> commandAllow;
+    private final List<PathMatcher> deleteDeny;
+    private final List<PathMatcher> deleteAllow;
 
     private PermissionPolicy(
             List<PathMatcher> pathDeny,
             List<PathMatcher> pathAllow,
             List<Pattern> commandDeny,
-            List<Pattern> commandAllow) {
+            List<Pattern> commandAllow,
+            List<PathMatcher> deleteDeny,
+            List<PathMatcher> deleteAllow) {
         this.pathDeny = List.copyOf(pathDeny);
         this.pathAllow = List.copyOf(pathAllow);
         this.commandDeny = List.copyOf(commandDeny);
         this.commandAllow = List.copyOf(commandAllow);
+        this.deleteDeny = List.copyOf(deleteDeny);
+        this.deleteAllow = List.copyOf(deleteAllow);
     }
 
     /**
@@ -61,7 +73,15 @@ public final class PermissionPolicy {
         }
         List<Pattern> cDeny = compileRegex(config.getCommands().getDeny());
         List<Pattern> cAllow = compileRegex(config.getCommands().getAllow());
-        return new PermissionPolicy(pDeny, pAllow, cDeny, cAllow);
+        List<PathMatcher> dDeny = new ArrayList<>();
+        for (String glob : config.getDelete().getDeny()) {
+            dDeny.add(PermissionPaths.globMatcher(glob));
+        }
+        List<PathMatcher> dAllow = new ArrayList<>();
+        for (String glob : config.getDelete().getAllow()) {
+            dAllow.add(PermissionPaths.globMatcher(glob));
+        }
+        return new PermissionPolicy(pDeny, pAllow, cDeny, cAllow, dDeny, dAllow);
     }
 
     private static List<Pattern> compileRegex(List<String> patterns) {
@@ -83,6 +103,26 @@ public final class PermissionPolicy {
             if (m.matches(canonical)) return PermissionDecision.DENY;
         }
         for (PathMatcher m : pathAllow) {
+            if (m.matches(canonical)) return PermissionDecision.ALLOW;
+        }
+        return PermissionDecision.ASK;
+    }
+
+    /**
+     * Verdict for {@code client_file_delete}. Denies cascade from the
+     * path domain (floor + {@code paths.deny}) and are then extended by
+     * {@code delete.deny}; only {@code delete.allow} can grant. A path
+     * covered solely by {@code paths.allow} yields {@code ASK}, never
+     * {@code ALLOW} — that is the whole point of the separate domain.
+     */
+    public PermissionDecision evaluateDelete(Path canonical) {
+        for (PathMatcher m : pathDeny) {
+            if (m.matches(canonical)) return PermissionDecision.DENY;
+        }
+        for (PathMatcher m : deleteDeny) {
+            if (m.matches(canonical)) return PermissionDecision.DENY;
+        }
+        for (PathMatcher m : deleteAllow) {
             if (m.matches(canonical)) return PermissionDecision.ALLOW;
         }
         return PermissionDecision.ASK;

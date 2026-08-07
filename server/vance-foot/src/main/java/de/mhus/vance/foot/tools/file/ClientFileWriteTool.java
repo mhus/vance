@@ -48,8 +48,8 @@ public class ClientFileWriteTool implements ClientTool {
                 + "search it. "
                 + "NOT for: research notes the user wants to find "
                 + "later inside Vance (use doc_write), or "
-                + "scratch / scriptable data for project-side "
-                + "processing (use scratch_write). "
+                + "scriptable data for project-side "
+                + "processing (use work_file_write). "
                 + "Parent directories are created as needed.";
     }
 

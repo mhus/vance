@@ -117,6 +117,30 @@ class PermissionConfigLoaderTest {
     }
 
     @Test
+    void effectiveConfig_deleteDomain_followsTheSameTighteningRules(@TempDir Path dir)
+            throws Exception {
+        Path central = dir.resolve("central.yaml");
+        Path local = dir.resolve("local.yaml");
+        Files.writeString(central, """
+                permissions:
+                  delete:
+                    deny: ["~/projects/keep/**"]
+                    allow: ["~/projects/tmp/**"]
+                """);
+        Files.writeString(local, """
+                permissions:
+                  delete:
+                    deny: ["./dist/**"]
+                    allow: ["/etc/**"]
+                """);
+        PermissionConfig eff = loader(central, local).effectiveConfig();
+
+        assertThat(eff.getDelete().getDeny())
+                .containsExactly("~/projects/keep/**", "./dist/**");
+        assertThat(eff.getDelete().getAllow()).containsExactly("~/projects/tmp/**");
+    }
+
+    @Test
     void effectiveConfig_localAllow_isIgnored(@TempDir Path dir) throws Exception {
         Path central = dir.resolve("central.yaml");
         Path local = dir.resolve("local.yaml");

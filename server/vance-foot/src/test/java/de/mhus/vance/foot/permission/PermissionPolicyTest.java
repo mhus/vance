@@ -43,6 +43,67 @@ class PermissionPolicyTest {
     }
 
     @Test
+    void evaluateDelete_pathAllowAlone_doesNotGrantDeletion() {
+        // The reason the delete domain exists: a user who allowed reading a
+        // tree has not thereby allowed emptying it.
+        PermissionConfig c = config();
+        c.getPaths().getAllow().add("/tmp/work/**");
+        PermissionPolicy policy = PermissionPolicy.compile(c, List.of());
+
+        assertThat(policy.evaluatePath(Path.of("/tmp/work/file.txt")))
+                .isEqualTo(PermissionDecision.ALLOW);
+        assertThat(policy.evaluateDelete(Path.of("/tmp/work/file.txt")))
+                .isEqualTo(PermissionDecision.ASK);
+    }
+
+    @Test
+    void evaluateDelete_deleteAllowMatch_permits() {
+        PermissionConfig c = config();
+        c.getDelete().getAllow().add("/tmp/work/**");
+        PermissionPolicy policy = PermissionPolicy.compile(c, List.of());
+
+        assertThat(policy.evaluateDelete(Path.of("/tmp/work/sub/file.txt")))
+                .isEqualTo(PermissionDecision.ALLOW);
+    }
+
+    @Test
+    void evaluateDelete_pathDenyCascades_overridingDeleteAllow() {
+        // Denies must keep denying for every operation, so a path deny beats
+        // an explicit delete allow.
+        PermissionConfig c = config();
+        c.getPaths().getDeny().add("/tmp/work/vault/**");
+        c.getDelete().getAllow().add("/tmp/work/**");
+        PermissionPolicy policy = PermissionPolicy.compile(c, List.of());
+
+        assertThat(policy.evaluateDelete(Path.of("/tmp/work/vault/key")))
+                .isEqualTo(PermissionDecision.DENY);
+        assertThat(policy.evaluateDelete(Path.of("/tmp/work/notes.md")))
+                .isEqualTo(PermissionDecision.ALLOW);
+    }
+
+    @Test
+    void evaluateDelete_ownDenyRule_beatsOwnAllow() {
+        PermissionConfig c = config();
+        c.getDelete().getDeny().add("/tmp/work/keep/**");
+        c.getDelete().getAllow().add("/tmp/work/**");
+        PermissionPolicy policy = PermissionPolicy.compile(c, List.of());
+
+        assertThat(policy.evaluateDelete(Path.of("/tmp/work/keep/x.txt")))
+                .isEqualTo(PermissionDecision.DENY);
+    }
+
+    @Test
+    void evaluateDelete_floorDeny_appliesToDeletionToo() {
+        PermissionConfig c = config();
+        c.getDelete().getAllow().add("~/**");
+        PermissionPolicy policy =
+                PermissionPolicy.compile(c, PermissionConfigLoader.DEFAULT_PATH_DENY);
+        Path sshKey = Path.of(System.getProperty("user.home"), ".ssh", "id_rsa");
+
+        assertThat(policy.evaluateDelete(sshKey)).isEqualTo(PermissionDecision.DENY);
+    }
+
+    @Test
     void evaluatePath_floorDeny_protectsCredentials_evenWithEmptyConfig() {
         PermissionPolicy policy =
                 PermissionPolicy.compile(config(), PermissionConfigLoader.DEFAULT_PATH_DENY);

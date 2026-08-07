@@ -21,6 +21,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *   commands:
  *     deny:  ["^\\s*rm\\s+-rf\\s+/"]
  *     allow: ["^git( |$)", "^ls( |$)"]
+ *   delete:
+ *     allow: ["~/projects/scratch/**"]
  * </pre>
  *
  * <p>The YAML document has a single top-level {@code permissions:} key
@@ -42,6 +44,14 @@ public class PermissionConfig {
 
     private DomainRules paths = new DomainRules();
     private DomainRules commands = new DomainRules();
+
+    /**
+     * Rules for {@code client_file_delete} only. Kept apart from
+     * {@link #paths} so a read/write allow never implies permission to
+     * delete — see {@link PermissionDomain#DELETE}. An empty allow list
+     * (the default) means every delete is asked about.
+     */
+    private DomainRules delete = new DomainRules();
 
     /**
      * Optional exec-isolation block. Nullable so an absent block keeps the

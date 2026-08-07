@@ -125,7 +125,8 @@ public class PermissionConfigLoader {
      * PermissionConfig#getSandbox() sandbox} value resolved from both
      * scopes, central allow rules, and the concatenation of central +
      * local deny rules per domain. The local allow rules and a local
-     * {@code sandbox: false} are intentionally dropped.
+     * {@code sandbox: false} are intentionally dropped. The {@code
+     * delete} domain follows the same shape as the other two.
      */
     public PermissionConfig effectiveConfig() {
         PermissionConfig central = load();
@@ -144,6 +145,9 @@ public class PermissionConfigLoader {
         eff.getCommands().getAllow().addAll(central.getCommands().getAllow());
         eff.getCommands().getDeny().addAll(central.getCommands().getDeny());
         eff.getCommands().getDeny().addAll(local.getCommands().getDeny());
+        eff.getDelete().getAllow().addAll(central.getDelete().getAllow());
+        eff.getDelete().getDeny().addAll(central.getDelete().getDeny());
+        eff.getDelete().getDeny().addAll(local.getDelete().getDeny());
 
         // Exec-isolation, tightening only: the central setting is
         // authoritative; a local file may only *introduce* isolation where
@@ -191,8 +195,11 @@ public class PermissionConfigLoader {
      */
     public synchronized void appendRule(PermissionDomain domain, boolean allow, String rule) {
         PermissionConfig config = load();
-        PermissionConfig.DomainRules rules =
-                domain == PermissionDomain.PATHS ? config.getPaths() : config.getCommands();
+        PermissionConfig.DomainRules rules = switch (domain) {
+            case PATHS -> config.getPaths();
+            case COMMANDS -> config.getCommands();
+            case DELETE -> config.getDelete();
+        };
         List<String> list = allow ? rules.getAllow() : rules.getDeny();
         if (!list.contains(rule)) {
             list.add(rule);

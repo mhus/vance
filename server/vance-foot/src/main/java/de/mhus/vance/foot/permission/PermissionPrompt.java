@@ -90,7 +90,13 @@ public class PermissionPrompt implements InteractivePermissionResolver {
     }
 
     private void printMenu(String toolName, PermissionDomain domain, String subject) {
-        String label = domain == PermissionDomain.COMMANDS ? "command" : "path";
+        // The DELETE label spells out what an "always" answer widens, so
+        // the user does not read it as a general path grant.
+        String label = switch (domain) {
+            case COMMANDS -> "command";
+            case DELETE -> "delete path";
+            case PATHS -> "path";
+        };
         AttributedStyle warnStyle = colorResolver.permissionWarn();
         if (warnStyle == null) warnStyle = AttributedStyle.DEFAULT;
         terminal.printBoxed(

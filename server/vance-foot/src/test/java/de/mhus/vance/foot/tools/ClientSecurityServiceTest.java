@@ -108,6 +108,58 @@ class ClientSecurityServiceTest {
     }
 
     @Test
+    void permit_fileDelete_readAllowDoesNotGrantDeletion(@TempDir Path dir) throws Exception {
+        // client_file_delete is judged by the delete rules, not the path
+        // rules — so the broad WORK allow that lets it write does not let it
+        // delete. It falls through to ASK, and the stub resolver denies.
+        ClientSecurityService service = serviceWithRules(dir);
+
+        assertThat(service.permit("client_file_write", Map.of("path", WORK + "/out.txt"))).isTrue();
+        assertThat(service.evaluate("client_file_delete", Map.of("path", WORK + "/out.txt")))
+                .isEqualTo(PermissionDecision.ASK);
+        assertThat(service.permit("client_file_delete", Map.of("path", WORK + "/out.txt"))).isFalse();
+        assertThat(resolver.calls)
+                .anyMatch(c -> c.startsWith("client_file_delete:DELETE:"));
+    }
+
+    @Test
+    void permit_fileDelete_deleteAllowRule_permits(@TempDir Path dir) throws Exception {
+        Path central = dir.resolve("permissions.yaml");
+        Files.writeString(central, """
+                permissions:
+                  sandbox: true
+                  paths:
+                    allow: ["%s/**"]
+                  delete:
+                    allow: ["%s/tmpfiles/**"]
+                """.formatted(WORK, WORK));
+        ClientSecurityService service = service(central);
+
+        assertThat(service.permit("client_file_delete", Map.of("path", WORK + "/tmpfiles/x.txt")))
+                .isTrue();
+        // Sibling directory is readable but not deletable.
+        assertThat(service.evaluate("client_file_delete", Map.of("path", WORK + "/keep/x.txt")))
+                .isEqualTo(PermissionDecision.ASK);
+    }
+
+    @Test
+    void permit_fileDelete_pathDenyStillCascades(@TempDir Path dir) throws Exception {
+        Path central = dir.resolve("permissions.yaml");
+        Files.writeString(central, """
+                permissions:
+                  sandbox: true
+                  paths:
+                    deny: ["%s/**"]
+                  delete:
+                    allow: ["%s/**"]
+                """.formatted(SECRET, SECRET));
+        ClientSecurityService service = service(central);
+
+        assertThat(service.evaluate("client_file_delete", Map.of("path", SECRET + "/key")))
+                .isEqualTo(PermissionDecision.DENY);
+    }
+
+    @Test
     void permitWalkedFile_deniesFloorDescendant_allowsWorkDescendant(@TempDir Path dir)
             throws Exception {
         // Security regression (code-review-2 S3): the recursive file tools gate

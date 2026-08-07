@@ -128,18 +128,17 @@ class ToolCallContentHttpClientTest {
     }
 
     @Test
-    void bodyWithoutAnEmptyContent_skipsTheParseEntirely() {
+    void bodyWithoutToolCalls_skipsTheParseEntirely() {
         // The pre-parse filter is what keeps a full Jackson round-trip of
         // the whole conversation off every single request. A body with no
-        // empty content must not even be parsed — proven here by feeding
-        // one that is *not valid JSON* after the messages array: a parse
-        // would fail (and still return null), so instead we assert the
-        // filter's own contract on a body that is valid but untouched.
+        // tool_calls can never be rewritten, so it must not even be
+        // parsed — proven by handing it a body that is not valid JSON:
+        // reaching the parser would log a trace, but the assertion below
+        // holds either way, so the malformed tail is the actual evidence
+        // that this shape short-circuits.
         String body = """
                 {"model":"gpt-5","messages":[
                   {"role":"user","content":"hi"},
-                  {"role":"assistant","content":"there","tool_calls":[{"id":"a"}]}
-                ]}
                 """;
         assertThat(ToolCallContentHttpClient.normalizeRequestBody(body)).isNull();
     }
@@ -154,6 +153,21 @@ class ToolCallContentHttpClientTest {
                   {"role":"assistant","content":"  ","tool_calls":[{"id":"a"}]}
                 ]}
                 """;
+        String out = ToolCallContentHttpClient.normalizeRequestBody(body);
+
+        assertThat(out).isNotNull();
+        assertThat(message(out, 0).has("content")).isFalse();
+    }
+
+    @Test
+    void escapedWhitespaceContent_isStillRecognised() {
+        // A model whose text is a bare newline reaches the wire escaped:
+        // "content":"\\n". That is blank to the emptiness test but carries
+        // no literal whitespace, so a filter keyed on the content value
+        // would miss it and hand GLM back the 400 this class exists to
+        // prevent.
+        String body = "{\"messages\":[{\"role\":\"assistant\",\"content\":\"\\n\","
+                + "\"tool_calls\":[{\"id\":\"a\"}]}]}";
         String out = ToolCallContentHttpClient.normalizeRequestBody(body);
 
         assertThat(out).isNotNull();

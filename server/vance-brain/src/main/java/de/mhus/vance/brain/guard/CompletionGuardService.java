@@ -312,10 +312,14 @@ public class CompletionGuardService {
         return m == null ? Map.of() : new LinkedHashMap<>(m);
     }
 
-    /** Snapshot of a process's session scratch (empty if none / no session). */
+    /**
+     * Snapshot of a process's session scratch (empty if none yet). For a
+     * session-less process this is its loop scratch — the same store
+     * {@link #sessionStore} hands the script, so what {@code //guard
+     * status session} shows is what the script sees.
+     */
     public Map<String, Object> sessionScratchView(ThinkProcessDocument process) {
-        String sid = process.getSessionId();
-        Map<String, Object> m = sid == null ? null : sessionScratch.get(sid);
+        Map<String, Object> m = existingSessionStore(process);
         return m == null ? Map.of() : new LinkedHashMap<>(m);
     }
 
@@ -331,7 +335,7 @@ public class CompletionGuardService {
     /** Removes a scratch key; returns {@code true} if it was present. */
     public boolean removeScratch(ThinkProcessDocument process, boolean session, String key) {
         Map<String, Object> m = session
-                ? (process.getSessionId() == null ? null : sessionScratch.get(process.getSessionId()))
+                ? existingSessionStore(process)
                 : loopScratch.get(process.getId());
         return m != null && m.remove(key) != null;
     }
@@ -339,12 +343,50 @@ public class CompletionGuardService {
     /** Clears a whole scratch scope. */
     public void clearScratch(ThinkProcessDocument process, boolean session) {
         if (session) {
-            if (process.getSessionId() != null) {
-                sessionScratch.remove(process.getSessionId());
+            String sessionId = sessionKey(process);
+            if (sessionId != null) {
+                sessionScratch.remove(sessionId);
+            } else {
+                // Session-less: the session scope *is* the loop scope here
+                // (see sessionStore). Dropping the entry would leave the
+                // script's loopValues intact, so clear in place instead.
+                Map<String, Object> m = loopScratch.get(process.getId());
+                if (m != null) {
+                    m.clear();
+                }
             }
         } else {
             loopScratch.remove(process.getId());
         }
+    }
+
+    /**
+     * The session scratch as it exists right now, or {@code null} when
+     * nothing was ever written. Resolves the session-less fallback the
+     * same way {@link #sessionStore} does, so the inspect/remove paths
+     * cannot disagree with the read/write path about which map is "the
+     * session scratch" — they used to, and {@code //guard status session
+     * del} then reported "not present" for a key the script could read.
+     */
+    private @Nullable Map<String, Object> existingSessionStore(ThinkProcessDocument process) {
+        String sessionId = sessionKey(process);
+        return sessionId == null
+                ? loopScratch.get(process.getId())
+                : sessionScratch.get(sessionId);
+    }
+
+    /**
+     * The process's session id, or {@code null} when it has none.
+     *
+     * <p>{@code ThinkProcessDocument.sessionId} is {@code @NullMarked} and
+     * defaults to the empty string, so a session-less process carries
+     * {@code ""} rather than {@code null}. Testing for {@code null} alone
+     * would key every such process on the same {@code ""} entry — one
+     * session scratch shared by every headless worker on the pod.
+     */
+    private static @Nullable String sessionKey(ThinkProcessDocument process) {
+        String sessionId = process.getSessionId();
+        return sessionId == null || sessionId.isBlank() ? null : sessionId;
     }
 
     // ──────────────────── Helpers ────────────────────
@@ -372,10 +414,23 @@ public class CompletionGuardService {
             // it, and checking it would cost a permission round-trip on
             // every yield point.
             if (!process.getProjectId().equals(ref.projectId())) {
+                String owner = sessionOwner(process);
+                if (owner == null) {
+                    // No session, so no identity to check against — and
+                    // forToolSubject would map that to SecurityContext.SYSTEM,
+                    // which passes every enforce. A session-less process (a
+                    // headless worker, a scheduler-spawned run) is exactly the
+                    // case where nobody vouched for the ref, so refuse rather
+                    // than let the check quietly become a no-op. An in-project
+                    // script still loads; only leaving the project needs an owner.
+                    log.warn("Completion guard id='{}' has no session owner — refusing the "
+                                    + "cross-project script '{}' in project '{}'",
+                            process.getId(), ref.path(), ref.projectId());
+                    return null;
+                }
                 try {
                     permissionService.enforce(
-                            contextFactory.forToolSubject(
-                                    process.getTenantId(), sessionOwner(process)),
+                            contextFactory.forToolSubject(process.getTenantId(), owner),
                             new Resource.Document(
                                     process.getTenantId(), ref.projectId(), ref.path()),
                             Action.READ);
@@ -416,10 +471,11 @@ public class CompletionGuardService {
     }
 
     private @Nullable String sessionOwner(ThinkProcessDocument process) {
-        if (process.getSessionId() == null) {
+        String sessionId = sessionKey(process);
+        if (sessionId == null) {
             return null;
         }
-        return sessionService.findBySessionId(process.getSessionId())
+        return sessionService.findBySessionId(sessionId)
                 .map(SessionDocument::getUserId)
                 .orElse(null);
     }
@@ -456,7 +512,7 @@ public class CompletionGuardService {
      * under-remember, never leak across processes.
      */
     private Map<String, Object> sessionStore(ThinkProcessDocument process) {
-        String sessionId = process.getSessionId();
+        String sessionId = sessionKey(process);
         if (sessionId == null) {
             return loopStore(process);
         }

@@ -3,6 +3,8 @@ package de.mhus.vance.brain.guard;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -22,9 +24,14 @@ import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.document.DocumentRefResolver;
 import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.PermissionDeniedException;
 import de.mhus.vance.shared.permission.PermissionService;
+import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.metric.MetricService;
+import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -188,6 +195,105 @@ class CompletionGuardServiceTest {
         // script never runs — assert the cap holds at the outer gate too.
         assertThat(result.fired()).isFalse();
         verify(scriptExecutor, never()).run(any());
+    }
+
+    /** A process whose guard script lives in another project of the same tenant. */
+    private ThinkProcessDocument crossProjectGuarded() {
+        return ThinkProcessDocument.builder()
+                .id("p1").tenantId("acme").projectId("proj").sessionId("s1")
+                .guardScriptOverride("//other/guards/g.js")
+                .guardRounds(0)
+                .build();
+    }
+
+    /** Binds session {@code s1} to a named owner, so the ref check has an identity. */
+    private void sessionOwnedBy(String userId) {
+        when(sessionService.findBySessionId("s1")).thenReturn(Optional.of(
+                SessionDocument.builder().sessionId("s1").tenantId("acme")
+                        .projectId("proj").userId(userId).build()));
+    }
+
+    @Test
+    void crossProjectScript_withoutRead_isNotLoaded() {
+        sessionOwnedBy("alice");
+        doThrow(new PermissionDeniedException(
+                        SecurityContext.SYSTEM,
+                        new Resource.Document("acme", "other", "guards/g.js"), Action.READ))
+                .when(permissionService).enforce(any(), any(), eq(Action.READ));
+        scriptFires("nudge");
+
+        GuardEvaluation result = service.evaluate(crossProjectGuarded(), "done", true);
+
+        assertThat(result.fired()).isFalse();
+        verify(scriptExecutor, never()).run(any());
+    }
+
+    @Test
+    void crossProjectScript_withRead_isLoaded() {
+        sessionOwnedBy("alice");
+        scriptFires("nudge");
+
+        GuardEvaluation result = service.evaluate(crossProjectGuarded(), "done", true);
+
+        assertThat(result.fired()).isTrue();
+        verify(permissionService).enforce(any(),
+                eq(new Resource.Document("acme", "other", "guards/g.js")), eq(Action.READ));
+    }
+
+    @Test
+    void crossProjectScript_withoutSessionOwner_isRefused() {
+        // No session owner means forToolSubject would yield SYSTEM, which
+        // passes every enforce — the check must not silently become a no-op
+        // on exactly the headless path.
+        when(sessionService.findBySessionId(any())).thenReturn(Optional.empty());
+        scriptFires("nudge");
+
+        GuardEvaluation result = service.evaluate(crossProjectGuarded(), "done", true);
+
+        assertThat(result.fired()).isFalse();
+        verify(scriptExecutor, never()).run(any());
+        verify(permissionService, never()).enforce(any(), any(), any());
+    }
+
+    @Test
+    void inProjectScript_isLoadedWithoutAPermissionRoundTrip() {
+        sessionOwnedBy("alice");
+        scriptFires("nudge");
+
+        GuardEvaluation result = service.evaluate(guarded(0), "done", true);
+
+        assertThat(result.fired()).isTrue();
+        verify(permissionService, never()).enforce(any(), any(), any());
+    }
+
+    @Test
+    void sessionlessScratch_isVisibleToRemoveAndView() {
+        // A session-less process falls back to its loop scratch for the
+        // session scope. Read, inspect and remove must agree on that —
+        // //guard status session del used to report "not present" for a
+        // key the script could still read.
+        ThinkProcessDocument headless = ThinkProcessDocument.builder()
+                .id("p9").tenantId("acme").projectId("proj").sessionId("").build();
+
+        service.putScratch(headless, true, "asked", "yes");
+
+        assertThat(service.sessionScratchView(headless)).containsEntry("asked", "yes");
+        assertThat(service.removeScratch(headless, true, "asked")).isTrue();
+        assertThat(service.sessionScratchView(headless)).isEmpty();
+    }
+
+    @Test
+    void sessionlessScratch_isNotSharedBetweenProcesses() {
+        // The empty sessionId must not become a shared map key — every
+        // headless worker on the pod would otherwise see the same flags.
+        ThinkProcessDocument one = ThinkProcessDocument.builder()
+                .id("p9").tenantId("acme").projectId("proj").sessionId("").build();
+        ThinkProcessDocument two = ThinkProcessDocument.builder()
+                .id("p10").tenantId("acme").projectId("proj").sessionId("").build();
+
+        service.putScratch(one, true, "asked", "yes");
+
+        assertThat(service.sessionScratchView(two)).isEmpty();
     }
 
     @Test

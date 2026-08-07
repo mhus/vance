@@ -132,7 +132,12 @@ public class ConnectionService {
         // clears the "user wants us offline" latch set by /disconnect.
         intentionalClose.set(false);
         stopReconnect();
-        if (!awaitDialSlot()) {
+        DialSlot slot = awaitDialSlot();
+        if (slot == DialSlot.INTERRUPTED) {
+            terminal.println(Verbosity.WARN, "Interrupted while waiting for the running attempt.");
+            return;
+        }
+        if (slot == DialSlot.BUSY) {
             terminal.println(Verbosity.WARN, "Connection state is %s — /disconnect first.", state.get());
             return;
         }
@@ -153,11 +158,19 @@ public class ConnectionService {
         }
     }
 
+    /** Outcome of {@link #awaitDialSlot()} — the three cases the caller reports differently. */
+    private enum DialSlot {
+        /** The caller owns the dial, or the connection came up on its own (check {@link #state}). */
+        CLAIMED,
+        /** Something else still holds the state after the full wait. */
+        BUSY,
+        /** The waiting thread was interrupted. */
+        INTERRUPTED
+    }
+
     /**
      * Claims the right to dial, i.e. moves {@code DISCONNECTED →
-     * CONNECTING}. Returns {@code true} when the caller owns the dial, or
-     * when the connection came up on its own in the meantime (check
-     * {@link #state} for which).
+     * CONNECTING}.
      *
      * <p>Bounded wait rather than a bare {@code compareAndSet}: a
      * reconnect campaign we just cancelled may still be inside
@@ -165,23 +178,30 @@ public class ConnectionService {
      * there told the user to "/disconnect first" for a connection they
      * were only trying to bring up faster.
      */
-    private boolean awaitDialSlot() {
+    private DialSlot awaitDialSlot() {
         long deadline = System.nanoTime() + DIAL_SLOT_WAIT_MS * 1_000_000L;
+        boolean announced = false;
         while (true) {
             if (state.compareAndSet(State.DISCONNECTED, State.CONNECTING)) {
-                return true;
+                return DialSlot.CLAIMED;
             }
             if (state.get() == State.OPEN) {
-                return true;
+                return DialSlot.CLAIMED;
             }
             if (System.nanoTime() >= deadline) {
-                return false;
+                return DialSlot.BUSY;
+            }
+            if (!announced) {
+                // This blocks the REPL for up to DIAL_SLOT_WAIT_MS. Say so
+                // once, or /connect looks like it swallowed the command.
+                terminal.info("An attempt is already running — waiting for it to finish…");
+                announced = true;
             }
             try {
                 Thread.sleep(DIAL_SLOT_POLL_MS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return false;
+                return DialSlot.INTERRUPTED;
             }
         }
     }

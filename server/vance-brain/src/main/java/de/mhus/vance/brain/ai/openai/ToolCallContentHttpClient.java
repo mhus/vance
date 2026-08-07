@@ -8,7 +8,6 @@ import dev.langchain4j.http.client.sse.ServerSentEventParser;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,12 +43,10 @@ final class ToolCallContentHttpClient implements HttpClient {
     private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
     /**
-     * A {@code "content"} that is {@code null}, empty or whitespace-only —
-     * the only thing this decorator ever rewrites. Used as a pre-parse
-     * filter; see {@link #mayNeedRewrite}.
+     * The field every rewrite candidate must carry — see
+     * {@link #mayNeedRewrite}.
      */
-    private static final Pattern EMPTY_CONTENT =
-            Pattern.compile("\"content\"\\s*:\\s*(null|\"\\s*\")");
+    private static final String TOOL_CALLS_FIELD = "\"tool_calls\"";
 
     private final HttpClient delegate;
 
@@ -157,15 +154,17 @@ final class ToolCallContentHttpClient implements HttpClient {
      * majority of calls — an assistant tool-call turn is a minority of
      * messages, and only the empty-content variant is affected at all.
      *
-     * <p>Covers exactly the shapes {@link #normalizeRequestBody}'s
-     * emptiness test accepts — {@code null} and a string that is empty
-     * or all-whitespace — and tolerates spacing so a
-     * differently-configured serialiser upstream cannot quietly disable
-     * the fix. False positives are harmless: they fall through to the
-     * real parse, which then decides on the actual message structure.
+     * <p>Filters on {@code tool_calls} rather than on the empty content
+     * itself: the rewrite only ever touches an assistant message that has
+     * a non-empty {@code tool_calls} array, so this cannot produce a false
+     * negative. Matching the content would — its emptiness test accepts
+     * any blank string, and a blank string reaches the wire escaped
+     * ({@code "content":"\\n"}), which no plain-whitespace pattern sees.
+     * False positives are harmless: they fall through to the real parse,
+     * which then decides on the actual message structure.
      */
     private static boolean mayNeedRewrite(String body) {
-        return EMPTY_CONTENT.matcher(body).find();
+        return body.contains(TOOL_CALLS_FIELD);
     }
 
     /**

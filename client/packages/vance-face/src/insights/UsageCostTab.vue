@@ -14,6 +14,7 @@ import type { EChartsType } from 'echarts/core';
 import type { UsageBucketDto } from '@vance/generated';
 import { VAlert, VCard, VEmptyState, VSelect } from '@/components';
 import { useUsageReport } from '@/composables/useUsageReport';
+import UsageBreakdownTable from './UsageBreakdownTable.vue';
 
 // Register ECharts modules. Mirrors ChartView.vue but only loads the
 // two chart types this tab uses, so the bundle stays small.
@@ -31,7 +32,8 @@ echarts.use([
 const groupBy = ref<'day' | 'week' | 'month'>('day');
 const rangeDays = ref<number>(30);
 
-const { summary, byProject, byModel, loading, error, loadAll } = useUsageReport();
+const { summary, byProject, byModel, byEngine, byRecipe, loading, error, loadAll } =
+  useUsageReport();
 
 async function refresh(): Promise<void> {
   const to = new Date();
@@ -87,9 +89,13 @@ function renderChart(): void {
   // generated DTO has `Date`); normalize to its ISO key for matching.
   const keyOf = (d: Date | undefined): string | null =>
     d ? new Date(d).toISOString() : null;
+  // Buckets without a currency come from models that have no pricing
+  // block — they carry tokens but no cost, so they contribute to the
+  // token series only and get no cost line of their own.
   const byCurrency = new Map<string, UsageBucketDto[]>();
   for (const b of report.buckets) {
-    const cur = b.currency || '?';
+    const cur = b.currency;
+    if (!cur) continue;
     if (!byCurrency.has(cur)) byCurrency.set(cur, []);
     byCurrency.get(cur)!.push(b);
   }
@@ -147,6 +153,10 @@ function fmtTokens(n: number): string {
 }
 
 function fmtCost(n: number, currency: string): string {
+  // No currency ⇒ the model has no pricing block. The row is real
+  // (tokens were burned), the cost is simply unknown — say so instead
+  // of printing a misleading 0.
+  if (!currency) return 'n/a';
   // 4 decimals for small numbers, 2 for big — micro-USD reads better
   // when you can see the cents.
   const fixed = n < 1 ? n.toFixed(4) : n.toFixed(2);
@@ -159,7 +169,9 @@ const totals = computed<{ tokensIn: number; tokensOut: number; byCurrency: Map<s
   for (const b of summary.value.buckets) {
     out.tokensIn += b.tokensIn;
     out.tokensOut += b.tokensOut;
-    out.byCurrency.set(b.currency, (out.byCurrency.get(b.currency) || 0) + b.costTotal);
+    if (b.currency) {
+      out.byCurrency.set(b.currency, (out.byCurrency.get(b.currency) || 0) + b.costTotal);
+    }
   }
   return out;
 });
@@ -167,7 +179,9 @@ const totals = computed<{ tokensIn: number; tokensOut: number; byCurrency: Map<s
 const hasData = computed<boolean>(() =>
   (summary.value?.buckets.length ?? 0) > 0
   || (byProject.value?.buckets.length ?? 0) > 0
-  || (byModel.value?.buckets.length ?? 0) > 0,
+  || (byModel.value?.buckets.length ?? 0) > 0
+  || (byEngine.value?.buckets.length ?? 0) > 0
+  || (byRecipe.value?.buckets.length ?? 0) > 0,
 );
 </script>
 
@@ -200,7 +214,7 @@ const hasData = computed<boolean>(() =>
     <VEmptyState
       v-if="!loading && !error && !hasData"
       headline="No usage data yet"
-      body="Once an LLM call records its tokens, this view fills in. Models without a pricing block in ai-models.yaml are skipped — add inputPerMTok / outputPerMTok to see costs."
+      body="Once an LLM call records its tokens, this view fills in. Models without a pricing block still show their tokens and calls, but their cost reads n/a — add pricing.inputPerMTok / pricing.outputPerMTok to the model YAML to see costs."
     />
 
     <template v-else>
@@ -223,51 +237,48 @@ const hasData = computed<boolean>(() =>
       </VCard>
 
       <VCard title="Top projects">
-        <table class="usage-tab__table" v-if="byProject && byProject.buckets.length">
-          <thead>
-            <tr>
-              <th>Project</th>
-              <th class="num">Calls</th>
-              <th class="num">Tokens in</th>
-              <th class="num">Tokens out</th>
-              <th class="num">Cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(row, idx) in byProject.buckets" :key="`${row.key}-${row.currency}-${idx}`">
-              <td>{{ row.key || '—' }}</td>
-              <td class="num">{{ row.calls }}</td>
-              <td class="num">{{ fmtTokens(row.tokensIn) }}</td>
-              <td class="num">{{ fmtTokens(row.tokensOut) }}</td>
-              <td class="num">{{ fmtCost(row.costTotal, row.currency) }}</td>
-            </tr>
-          </tbody>
-        </table>
-        <p v-else class="muted">No project data in this window.</p>
+        <UsageBreakdownTable
+          label="Project"
+          :rows="byProject?.buckets ?? []"
+          empty-text="No project data in this window."
+          :fmt-tokens="fmtTokens"
+          :fmt-cost="fmtCost"
+        />
       </VCard>
 
       <VCard title="Top models">
-        <table class="usage-tab__table" v-if="byModel && byModel.buckets.length">
-          <thead>
-            <tr>
-              <th>Model</th>
-              <th class="num">Calls</th>
-              <th class="num">Tokens in</th>
-              <th class="num">Tokens out</th>
-              <th class="num">Cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(row, idx) in byModel.buckets" :key="`${row.key}-${row.currency}-${idx}`">
-              <td>{{ row.key || '—' }}</td>
-              <td class="num">{{ row.calls }}</td>
-              <td class="num">{{ fmtTokens(row.tokensIn) }}</td>
-              <td class="num">{{ fmtTokens(row.tokensOut) }}</td>
-              <td class="num">{{ fmtCost(row.costTotal, row.currency) }}</td>
-            </tr>
-          </tbody>
-        </table>
-        <p v-else class="muted">No model data in this window.</p>
+        <UsageBreakdownTable
+          label="Model"
+          :rows="byModel?.buckets ?? []"
+          empty-text="No model data in this window."
+          :fmt-tokens="fmtTokens"
+          :fmt-cost="fmtCost"
+        />
+      </VCard>
+
+      <VCard title="By engine">
+        <p class="muted usage-tab__hint">
+          Who is spending. Autonomous engines show up here even when nobody is
+          watching a chat; <code>_light</code> collects the single-shot helper
+          calls (discovery, follow-up, title generation, triage).
+        </p>
+        <UsageBreakdownTable
+          label="Engine"
+          :rows="byEngine?.buckets ?? []"
+          empty-text="No engine data in this window."
+          :fmt-tokens="fmtTokens"
+          :fmt-cost="fmtCost"
+        />
+      </VCard>
+
+      <VCard title="By recipe">
+        <UsageBreakdownTable
+          label="Recipe"
+          :rows="byRecipe?.buckets ?? []"
+          empty-text="No recipe data in this window."
+          :fmt-tokens="fmtTokens"
+          :fmt-cost="fmtCost"
+        />
       </VCard>
     </template>
   </div>
@@ -304,20 +315,8 @@ const hasData = computed<boolean>(() =>
   font-size: 1.25rem;
   font-variant-numeric: tabular-nums;
 }
-.usage-tab__table {
-  width: 100%;
-  border-collapse: collapse;
-  font-variant-numeric: tabular-nums;
-}
-.usage-tab__table th,
-.usage-tab__table td {
-  padding: 0.375rem 0.75rem;
-  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 10%, transparent);
-  text-align: left;
-}
-.usage-tab__table th.num,
-.usage-tab__table td.num {
-  text-align: right;
+.usage-tab__hint {
+  margin-bottom: 0.5rem;
 }
 .muted {
   color: color-mix(in oklab, var(--color-base-content) 60%, transparent);

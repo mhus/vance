@@ -26,6 +26,15 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class LlmUsageService {
 
+    /**
+     * Synthetic {@code engineName} for calls that no think-engine
+     * issued — the single-shot {@code LightLlmService} path (discovery,
+     * follow-up, title generation, triage, …). Leading underscore
+     * follows the system-namespace convention, so per-engine reports
+     * show this volume as its own row instead of an unattributed gap.
+     */
+    public static final String ENGINE_LIGHT = "_light";
+
     private final LlmUsageRepository repository;
 
     /**
@@ -57,7 +66,7 @@ public class LlmUsageService {
                 .tenantId(w.tenantId())
                 .projectId(blankToNull(w.projectId()))
                 .sessionId(blankToNull(w.sessionId()))
-                .processId(w.processId())
+                .processId(w.processId() == null ? "" : w.processId())
                 .recipeName(blankToNull(w.recipeName()))
                 .engineName(blankToNull(w.engineName()))
                 .providerInstance(blankToNull(w.providerInstance()))
@@ -105,7 +114,8 @@ public class LlmUsageService {
             String tenantId,
             @Nullable String projectId,
             @Nullable String sessionId,
-            String processId,
+            /** {@code null} for process-less calls (LightLlmService). */
+            @Nullable String processId,
             @Nullable String recipeName,
             @Nullable String engineName,
             @Nullable String providerInstance,

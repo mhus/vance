@@ -390,10 +390,30 @@ class ModelCatalogTest {
         ModelInfo info = catalog.lookupOrDefault("openai", "glm-5.2");
         assertThat(info.pricing()).isNotNull();
         assertThat(info.pricing().currency()).isEqualTo("EUR");
-        assertThat(info.pricing().inputPerMTok()).isEqualTo(0.355);
-        assertThat(info.pricing().outputPerMTok()).isEqualTo(1.775);
-        assertThat(info.pricing().cacheReadPerMTok()).isNull();
+        assertThat(info.pricing().inputPerMTok()).isEqualTo(1.077);
+        assertThat(info.pricing().outputPerMTok()).isEqualTo(3.77);
+        assertThat(info.pricing().cacheReadPerMTok()).isEqualTo(0.233);
         assertThat(info.pricing().cacheWritePerMTok()).isNull();
+    }
+
+    /**
+     * Guards the fix for a report that showed every non-glm model as
+     * unused: the usage ledger drops nothing, but a model with no
+     * {@code pricing:} block still costs nothing, so the models we
+     * actually run must carry rates.
+     */
+    @Test
+    void bundled_cortecs_workhorses_are_priced() {
+        for (String model : List.of("kimi-k3", "deepseek-v4-pro", "deepseek-v4-flash",
+                "glm-5", "glm-5.1")) {
+            ModelInfo info = catalog.lookupOrDefault("openai", model);
+            assertThat(info.pricing())
+                    .as("pricing for %s", model)
+                    .isNotNull();
+            assertThat(info.pricing().currency()).isEqualTo("EUR");
+            assertThat(info.pricing().inputPerMTok()).isGreaterThan(0.0);
+            assertThat(info.pricing().outputPerMTok()).isGreaterThan(0.0);
+        }
     }
 
     @Test

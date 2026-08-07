@@ -30,9 +30,10 @@ import org.mockito.ArgumentCaptor;
 
 /**
  * Pins the {@link LlmCallTracker} → {@link LlmUsageService} hand-off:
- * usage is persisted exactly when the model has a pricing block AND
- * the provider reported tokens. Other combinations must skip the
- * write so reports aren't polluted with zero-cost rows.
+ * usage is persisted whenever the provider reported tokens. A missing
+ * pricing block or a missing catalog entry only degrades the row
+ * (no cost, no currency, no context window) — it must never swallow
+ * it, otherwise unpriced models read as "never used" in the report.
  *
  * <p>Also verifies that {@code MetricsPayload.contextWindowTokens}
  * is filled from {@link ModelInfo} so the client HUD can render
@@ -105,19 +106,29 @@ class LlmCallTrackerUsageTest {
     }
 
     @Test
-    void skipsUsage_whenModelInfoIsNull() {
+    void persistsUsage_whenModelInfoIsNull_identityFromAlias() {
         ChatResponse response = responseWith(10_000, 2_500);
 
-        tracker.record(process, /*request*/ null, response, 1234L, "default:code");
+        tracker.record(process, /*request*/ null, response, 1234L, "openai:kimi-k3", null);
 
-        verify(usageService, never()).record(any());
+        ArgumentCaptor<LlmUsageService.UsageWrite> cap =
+                ArgumentCaptor.forClass(LlmUsageService.UsageWrite.class);
+        verify(usageService, times(1)).record(cap.capture());
+        LlmUsageService.UsageWrite w = cap.getValue();
+
+        assertThat(w.providerInstance()).isEqualTo("openai");
+        assertThat(w.providerModel()).isEqualTo("kimi-k3");
+        assertThat(w.tokensIn()).isEqualTo(10_000);
+        assertThat(w.tokensOut()).isEqualTo(2_500);
+        assertThat(w.currency()).isNull();
+        assertThat(w.contextWindowTokens()).isNull();
     }
 
     @Test
-    void skipsUsage_whenPricingIsNull() {
+    void persistsUsage_whenPricingIsNull_asTokenOnlyRow() {
         ModelInfo unpriced = new ModelInfo(
-                "openai", "no-price",
-                128_000, 4096,
+                "openai", "kimi-k3",
+                1_048_576, 8192,
                 ModelSize.LARGE, Set.<ModelCapability>of(),
                 60, 2, false,
                 /*messageParser*/ null,
@@ -126,7 +137,17 @@ class LlmCallTrackerUsageTest {
 
         tracker.record(process, /*request*/ null, response, 1234L, "default:code", unpriced);
 
-        verify(usageService, never()).record(any());
+        ArgumentCaptor<LlmUsageService.UsageWrite> cap =
+                ArgumentCaptor.forClass(LlmUsageService.UsageWrite.class);
+        verify(usageService, times(1)).record(cap.capture());
+        LlmUsageService.UsageWrite w = cap.getValue();
+
+        assertThat(w.providerModel()).isEqualTo("kimi-k3");
+        assertThat(w.tokensIn()).isEqualTo(10_000);
+        assertThat(w.priceInputPerMTok()).isNull();
+        assertThat(w.priceOutputPerMTok()).isNull();
+        assertThat(w.currency()).isNull();
+        assertThat(w.contextWindowTokens()).isEqualTo(1_048_576);
     }
 
     @Test

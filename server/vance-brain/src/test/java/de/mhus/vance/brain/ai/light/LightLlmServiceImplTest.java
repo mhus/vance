@@ -13,11 +13,17 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.brain.ai.AiChat;
+import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.ai.ChatBehavior;
+import de.mhus.vance.brain.ai.ModelCapability;
+import de.mhus.vance.brain.ai.ModelCatalog;
+import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.brain.ai.ModelSize;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
+import de.mhus.vance.shared.llmusage.LlmUsageService;
 import de.mhus.vance.brain.recipe.RecipeLoader;
 import de.mhus.vance.brain.recipe.RecipeSource;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
@@ -34,6 +40,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -50,6 +57,8 @@ class LightLlmServiceImplTest {
     private SettingService settingService;
     private AiModelResolver aiModelResolver;
     private AiModelService aiModelService;
+    private ModelCatalog modelCatalog;
+    private LlmUsageService usageService;
     private ScriptedChatModel chatModel;
     private LightLlmServiceImpl service;
 
@@ -79,11 +88,84 @@ class LightLlmServiceImplTest {
                 .thenAnswer(inv -> inv.getArgument(4));
         when(templateRenderer.render(any(), any())).thenReturn("rendered system prompt");
 
+        modelCatalog = mock(ModelCatalog.class);
+        usageService = mock(LlmUsageService.class);
+
         service = new LightLlmServiceImpl(
                 recipeLoader, templateRenderer, settingService,
                 aiModelResolver, aiModelService, JsonMapper.builder().build(),
                 metricService,
-                org.mockito.Mockito.mock(de.mhus.vance.shared.audit.AuditService.class));
+                org.mockito.Mockito.mock(de.mhus.vance.shared.audit.AuditService.class),
+                modelCatalog, usageService);
+    }
+
+    // ──────────────────── Usage ledger ────────────────────
+
+    @Test
+    void persistUsage_writesRow_attributedToLightEngine() {
+        AiChatConfig cfg = new AiChatConfig("openai", "cortecs", "kimi-k3", "key", null);
+        when(modelCatalog.lookupOrDefault(any(), any(), eq("cortecs"), eq("openai"), eq("kimi-k3")))
+                .thenReturn(modelInfo(new ModelInfo.Pricing("EUR", 2.693, 13.464, null, null)));
+
+        service.persistUsage(
+                List.of(new ChatBehavior.Entry(cfg, "primary")),
+                "kimi-k3", TENANT, "demo", /*processId*/ null,
+                "how-do-i", 4_000, 250, 900L);
+
+        ArgumentCaptor<LlmUsageService.UsageWrite> cap =
+                ArgumentCaptor.forClass(LlmUsageService.UsageWrite.class);
+        verify(usageService).record(cap.capture());
+        LlmUsageService.UsageWrite w = cap.getValue();
+
+        assertThat(w.engineName()).isEqualTo(LlmUsageService.ENGINE_LIGHT);
+        assertThat(w.recipeName()).isEqualTo("how-do-i");
+        assertThat(w.providerInstance()).isEqualTo("cortecs");
+        assertThat(w.providerType()).isEqualTo("openai");
+        assertThat(w.providerModel()).isEqualTo("kimi-k3");
+        assertThat(w.tokensIn()).isEqualTo(4_000);
+        assertThat(w.tokensOut()).isEqualTo(250);
+        assertThat(w.currency()).isEqualTo("EUR");
+        assertThat(w.processId()).isNull();
+    }
+
+    @Test
+    void persistUsage_picksTheFallbackModelThatActuallyAnswered() {
+        AiChatConfig primary = new AiChatConfig("openai", "cortecs", "kimi-k3", "key", null);
+        AiChatConfig fallback = new AiChatConfig("openai", "cortecs", "glm-5.2", "key", null);
+        when(modelCatalog.lookupOrDefault(any(), any(), any(), any(), any()))
+                .thenReturn(modelInfo(null));
+
+        service.persistUsage(
+                List.of(new ChatBehavior.Entry(primary, "primary"),
+                        new ChatBehavior.Entry(fallback, "fallback:glm")),
+                "glm-5.2", TENANT, "demo", null, "how-do-i", 100, 10, 50L);
+
+        ArgumentCaptor<LlmUsageService.UsageWrite> cap =
+                ArgumentCaptor.forClass(LlmUsageService.UsageWrite.class);
+        verify(usageService).record(cap.capture());
+        assertThat(cap.getValue().providerModel()).isEqualTo("glm-5.2");
+        assertThat(cap.getValue().currency()).isNull();
+    }
+
+    @Test
+    void persistUsage_skips_whenProviderReportedNoTokens() {
+        AiChatConfig cfg = new AiChatConfig("openai", "cortecs", "kimi-k3", "key", null);
+
+        service.persistUsage(
+                List.of(new ChatBehavior.Entry(cfg, "primary")),
+                "kimi-k3", TENANT, "demo", null, "how-do-i", 0, 0, 900L);
+
+        verify(usageService, never()).record(any());
+    }
+
+    private static ModelInfo modelInfo(ModelInfo.@org.jspecify.annotations.Nullable Pricing p) {
+        return new ModelInfo(
+                "cortecs", "kimi-k3",
+                1_048_576, 8192,
+                ModelSize.LARGE, java.util.Set.<ModelCapability>of(),
+                60, 2, false,
+                /*messageParser*/ null,
+                p);
     }
 
     // ──────────────────── extractJson static helper ────────────────────

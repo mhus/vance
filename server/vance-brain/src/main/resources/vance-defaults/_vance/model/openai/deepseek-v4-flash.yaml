@@ -7,3 +7,10 @@ size: SMALL
 # rounds: the StructuredActionEngine wraps that prose straight into an
 # ANSWER action (see answerActionFromText). 0 = no wasted re-prompts.
 actionLoopCorrections: 0
+
+# Rates: Cortecs catalog (api.cortecs.ai/v1/models), snapshot 2026-08-07.
+pricing:
+  currency: EUR
+  inputPerMTok: 0.133
+  outputPerMTok: 0.266
+  cacheReadPerMTok: 0.033

@@ -3,3 +3,9 @@ defaultMaxOutputTokens: 8192
 size: LARGE
 capabilities:
 - vision
+
+# Rates: Cortecs catalog (api.cortecs.ai/v1/models), snapshot 2026-08-07.
+pricing:
+  currency: EUR
+  inputPerMTok: 2.693
+  outputPerMTok: 13.464

@@ -69,6 +69,35 @@ public class LlmUsageReportController {
         return reportService.byModel(tenant, w.from, w.to);
     }
 
+    /**
+     * Totals per think-engine. The interesting question for autonomous
+     * engines: which of them is quietly burning the budget. Light
+     * single-shot calls are reported under the synthetic engine
+     * {@code _light}.
+     */
+    @GetMapping("/by-engine")
+    public UsageReportDto byEngine(
+            @PathVariable("tenant") String tenant,
+            @RequestParam(value = "from", required = false) @Nullable Instant from,
+            @RequestParam(value = "to", required = false) @Nullable Instant to,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        Window w = window(from, to);
+        return reportService.byEngine(tenant, w.from, w.to);
+    }
+
+    /** Totals per recipe — the finer cut under {@link #byEngine}. */
+    @GetMapping("/by-recipe")
+    public UsageReportDto byRecipe(
+            @PathVariable("tenant") String tenant,
+            @RequestParam(value = "from", required = false) @Nullable Instant from,
+            @RequestParam(value = "to", required = false) @Nullable Instant to,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        Window w = window(from, to);
+        return reportService.byRecipe(tenant, w.from, w.to);
+    }
+
     private static Window window(@Nullable Instant from, @Nullable Instant to) {
         Instant effectiveTo = to == null ? Instant.now() : to;
         Instant effectiveFrom = from == null

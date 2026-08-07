@@ -28,7 +28,9 @@ import org.springframework.stereotype.Service;
  *   <li>{@link #summary} — time series by day / week / month, optional
  *       project filter;
  *   <li>{@link #byProject} — tenant-wide totals per project;
- *   <li>{@link #byModel} — tenant-wide totals per concrete model.
+ *   <li>{@link #byModel} — tenant-wide totals per concrete model;
+ *   <li>{@link #byEngine} / {@link #byRecipe} — tenant-wide totals per
+ *       think-engine resp. recipe.
  * </ul>
  *
  * <p>Each bucket also carries the currency, because the underlying
@@ -96,7 +98,7 @@ public class LlmUsageReportService {
                     Document key = doc.get("_id", Document.class);
                     return UsageBucketDto.builder()
                             .bucketStart(key.getDate("ts").toInstant())
-                            .currency(asString(key.get("currency"), "?"))
+                            .currency(asString(key.get("currency"), ""))
                             .tokensIn(asLong(doc.get("tokensIn")))
                             .tokensOut(asLong(doc.get("tokensOut")))
                             .cacheReadTokens(asLong(doc.get("cacheReadTokens")))
@@ -126,6 +128,21 @@ public class LlmUsageReportService {
         return groupedByKey(tenantId, from, to, "providerModel", "model");
     }
 
+    /**
+     * Totals per think-engine — answers "which engine is burning the
+     * budget", which matters most for autonomous engines that run
+     * without anyone watching. Process-less light calls land under
+     * {@link de.mhus.vance.shared.llmusage.LlmUsageService#ENGINE_LIGHT}.
+     */
+    public UsageReportDto byEngine(String tenantId, Instant from, Instant to) {
+        return groupedByKey(tenantId, from, to, "engineName", "engine");
+    }
+
+    /** Totals per recipe — the finer cut under {@link #byEngine}. */
+    public UsageReportDto byRecipe(String tenantId, Instant from, Instant to) {
+        return groupedByKey(tenantId, from, to, "recipeName", "recipe");
+    }
+
     private UsageReportDto groupedByKey(
             String tenantId,
             Instant from,
@@ -153,12 +170,16 @@ public class LlmUsageReportService {
         List<UsageBucketDto> rows = runPipeline(
                 match,
                 group,
-                Sort.by(Sort.Order.desc("costTotal")),
+                // Cost first — it's the headline of the report. Tokens
+                // break the tie so unpriced models (all cost 0) still
+                // rank by how much they actually burned instead of in
+                // arbitrary Mongo order.
+                Sort.by(Sort.Order.desc("costTotal"), Sort.Order.desc("tokensIn")),
                 doc -> {
                     Document key = doc.get("_id", Document.class);
                     return UsageBucketDto.builder()
                             .key(asString(key.get("key"), "?"))
-                            .currency(asString(key.get("currency"), "?"))
+                            .currency(asString(key.get("currency"), ""))
                             .tokensIn(asLong(doc.get("tokensIn")))
                             .tokensOut(asLong(doc.get("tokensOut")))
                             .cacheReadTokens(asLong(doc.get("cacheReadTokens")))

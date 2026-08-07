@@ -100,16 +100,18 @@ public class LlmCallTracker {
      *   <li>the emitted {@link MetricsPayload} gets {@code contextWindowTokens}
      *       so the client HUD can render a fill ratio
      *       ({@code lastCallTokensIn / contextWindowTokens});
-     *   <li>when the model has a {@code pricing:} block in
-     *       {@code ai-models.yaml} and the provider reported token
-     *       counts, a row is persisted to {@code llm_usage_records}
-     *       via {@link LlmUsageService} — the rate snapshot is
-     *       verewigt so later YAML edits do not rewrite history.
+     *   <li>whenever the provider reported token counts, a row is
+     *       persisted to {@code llm_usage_records} via
+     *       {@link LlmUsageService} — including for models without a
+     *       {@code pricing:} block, which then land as token-only
+     *       rows (zero cost, {@code currency == null}). The rate
+     *       snapshot is verewigt so later YAML edits do not rewrite
+     *       history.
      * </ul>
      *
      * Pass {@code null} for {@code modelInfo} when the engine path
-     * doesn't resolve a catalog entry — both effects fall away
-     * gracefully.
+     * doesn't resolve a catalog entry — the usage row is then built
+     * from {@code modelAlias} alone and carries no context window.
      */
     public void record(
             ThinkProcessDocument process,
@@ -171,12 +173,14 @@ public class LlmCallTracker {
             metricService.summary("vance.llm.tokens.output", "model", alias).record(dTokensOut);
         }
 
-        // Durable cost ledger. Only written when the model has a
-        // pricing block in ai-models.yaml AND the provider reported
-        // tokens — otherwise the row would either be unpriced (no
-        // value for reports) or zero-token (no value period). Cache
-        // tokens are not yet pulled from langchain4j's TokenUsage —
-        // future Anthropic/Gemini-specific shims will fill them.
+        // Durable usage ledger. Written whenever the provider reported
+        // tokens — a missing pricing block only zeroes the cost
+        // columns, it must not swallow the row: token/call volume per
+        // model is the primary question the usage report answers, and
+        // an unpriced model that silently vanishes reads as "never
+        // used". Cache tokens are not yet pulled from langchain4j's
+        // TokenUsage — future Anthropic/Gemini-specific shims will
+        // fill them.
         persistUsage(process, modelAlias, modelInfo, dTokensIn, dTokensOut, elapsedMs);
     }
 
@@ -187,9 +191,18 @@ public class LlmCallTracker {
             int dTokensIn,
             int dTokensOut,
             long elapsedMs) {
-        if (modelInfo == null || modelInfo.pricing() == null) return;
         if (dTokensIn <= 0 && dTokensOut <= 0) return;
-        ModelInfo.Pricing p = modelInfo.pricing();
+        ModelInfo.Pricing p = modelInfo == null ? null : modelInfo.pricing();
+        // Without a catalog entry the alias is the only identity we
+        // have — it is already resolved to "provider:model" by the
+        // time it reaches the tracker, so split it rather than write
+        // an anonymous row.
+        String providerInstance = modelInfo != null
+                ? modelInfo.provider() : aliasPart(modelAlias, 0);
+        String providerModel = modelInfo != null
+                ? modelInfo.modelName() : aliasPart(modelAlias, 1);
+        Integer contextWindow = modelInfo != null && modelInfo.contextWindowTokens() > 0
+                ? modelInfo.contextWindowTokens() : null;
         try {
             llmUsageService.record(LlmUsageService.UsageWrite.builder()
                     .tenantId(process.getTenantId())
@@ -198,21 +211,21 @@ public class LlmCallTracker {
                     .processId(process.getId())
                     .recipeName(process.getRecipeName())
                     .engineName(process.getThinkEngine())
-                    .providerInstance(modelInfo.provider())
+                    .providerInstance(providerInstance)
                     .providerType(null)
-                    .providerModel(modelInfo.modelName())
+                    .providerModel(providerModel)
                     .modelAlias(modelAlias)
                     .tokensIn(dTokensIn)
                     .tokensOut(dTokensOut)
                     .cacheReadTokens(0)
                     .cacheWriteTokens(0)
-                    .priceInputPerMTok(p.inputPerMTok())
-                    .priceOutputPerMTok(p.outputPerMTok())
-                    .priceCacheReadPerMTok(p.cacheReadPerMTok())
-                    .priceCacheWritePerMTok(p.cacheWritePerMTok())
-                    .currency(p.currency())
+                    .priceInputPerMTok(p == null ? null : p.inputPerMTok())
+                    .priceOutputPerMTok(p == null ? null : p.outputPerMTok())
+                    .priceCacheReadPerMTok(p == null ? null : p.cacheReadPerMTok())
+                    .priceCacheWritePerMTok(p == null ? null : p.cacheWritePerMTok())
+                    .currency(p == null ? null : p.currency())
                     .durationMs(elapsedMs)
-                    .contextWindowTokens(modelInfo.contextWindowTokens())
+                    .contextWindowTokens(contextWindow)
                     .createdAt(Instant.now())
                     .build());
         } catch (RuntimeException e) {
@@ -242,6 +255,19 @@ public class LlmCallTracker {
         }
         Counters c = ref.get();
         return new Snapshot(c.tokensIn, c.tokensOut, c.charsIn, c.charsOut, c.calls);
+    }
+
+    /**
+     * Splits a resolved {@code "provider:model"} alias. {@code part 0}
+     * yields the provider instance, {@code part 1} the model name.
+     * Returns {@code null} when the alias is absent or unsplittable —
+     * the usage row then simply carries no provider/model identity.
+     */
+    private static @Nullable String aliasPart(@Nullable String modelAlias, int part) {
+        if (modelAlias == null || modelAlias.isBlank()) return null;
+        int sep = modelAlias.indexOf(':');
+        if (sep <= 0 || sep == modelAlias.length() - 1) return null;
+        return part == 0 ? modelAlias.substring(0, sep) : modelAlias.substring(sep + 1);
     }
 
     private static int tokens(@Nullable Integer raw) {

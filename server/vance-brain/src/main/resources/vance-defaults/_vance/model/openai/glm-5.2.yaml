@@ -4,5 +4,6 @@ defaultMaxOutputTokens: 8192
 size: LARGE
 pricing:
   currency: EUR
-  inputPerMTok: 0.355
-  outputPerMTok: 1.775
+  inputPerMTok: 1.077
+  outputPerMTok: 3.77
+  cacheReadPerMTok: 0.233

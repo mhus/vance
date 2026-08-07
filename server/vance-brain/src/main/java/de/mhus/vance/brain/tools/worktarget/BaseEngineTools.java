@@ -45,9 +45,11 @@ public final class BaseEngineTools {
      * decides the per-turn bucket in {@code ContextToolsApi.classify}
      * (which never consults {@code primary}), while {@code primary}
      * governs the discovery surfaces — {@code tool_list}'s default view,
-     * the {@code how_do_i} catalogue, and the unrestricted-engine
-     * fallback in {@code visibleResolved}. Setting only one leaves the
-     * backend advertised on the other side.
+     * the unrestricted-engine fallback in {@code visibleResolved}, and
+     * how prominently {@code how_do_i} renders the tool (full
+     * description vs. a one-line card under "More tools"; the catalogue
+     * itself lists everything callable). Setting only one flag leaves
+     * the backend advertised on the other side.
      *
      * <p>The point is that the LLM should never have to choose a side:
      * that is what the wrapper decides from the work target. Two equally

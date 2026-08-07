@@ -167,6 +167,7 @@ class FrankieEngineSkeletonTest {
                 enginePromptResolver, systemPromptComposer,
                 skillResolver, skillPromptComposer, sessionService,
                 mock(de.mhus.vance.brain.context.PromptDateContextResolver.class),
+                mock(de.mhus.vance.brain.prompt.ScratchpadPromptContributor.class),
                 memoryContextLoader,
                 modelCatalog, memoryCompactionService,
                 new de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry(java.util.List.of()),

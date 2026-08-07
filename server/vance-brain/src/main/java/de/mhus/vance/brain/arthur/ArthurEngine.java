@@ -195,6 +195,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private static final String DEFAULT_PROMPT_PATH = "_vance/prompts/arthur-prompt.md";
 
     private final de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver;
+    private final de.mhus.vance.brain.prompt.ScratchpadPromptContributor scratchpadPromptContributor;
     private final ArthurProperties arthurProperties;
     private final RecipeLoader recipeLoader;
     private final ModelCatalog modelCatalog;
@@ -314,6 +315,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver,
             de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService actionLoopJudgeService,
             de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver,
+            de.mhus.vance.brain.prompt.ScratchpadPromptContributor scratchpadPromptContributor,
             de.mhus.vance.brain.notification.NotificationService notificationService,
             de.mhus.vance.brain.guard.CompletionGuardService completionGuardService,
             de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers) {
@@ -344,6 +346,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.activeAppPromptResolver = activeAppPromptResolver;
         this.objectMapper = objectMapper;
         this.promptDateContextResolver = promptDateContextResolver;
+        this.scratchpadPromptContributor = scratchpadPromptContributor;
         this.notificationService = notificationService;
     }
 
@@ -2570,6 +2573,9 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // command dialect its client_exec_run calls run on. DYNAMIC, no-op
         // when no CLIENT connection is bound. See PromptEnvironmentBlock.
         promptDateContextResolver.appendClientEnvMessage(messages, process);
+        // Scratchpad slot inventory — DYNAMIC, no-op for a process that
+        // took no notes. See ScratchpadPromptBlock.
+        scratchpadPromptContributor.appendDynamicMessage(messages, process);
 
         // ── DYNAMIC blocks — change tenant/project/turn-to-turn ──
         // Recipe catalog: depends on tenant + bundled recipes; mutates

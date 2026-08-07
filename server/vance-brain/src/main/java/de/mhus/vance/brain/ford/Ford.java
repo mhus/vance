@@ -174,6 +174,7 @@ public class Ford implements ThinkEngine {
     private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
     private final SessionService sessionService;
     private final de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver;
+    private final de.mhus.vance.brain.prompt.ScratchpadPromptContributor scratchpadPromptContributor;
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
     private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
     private final de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver;
@@ -1061,6 +1062,9 @@ public class Ford implements ThinkEngine {
         // command dialect its client_exec_run calls run on. DYNAMIC, no-op
         // when no CLIENT connection is bound. See PromptEnvironmentBlock.
         promptDateContextResolver.appendClientEnvMessage(messages, process);
+        // Scratchpad slot inventory — DYNAMIC, no-op for a process that
+        // took no notes. See ScratchpadPromptBlock.
+        scratchpadPromptContributor.appendDynamicMessage(messages, process);
         for (MemoryDocument m : memoryService.activeByProcessAndKind(
                 process.getTenantId(), process.getId(), MemoryKind.ARCHIVED_CHAT)) {
             messages.add(SystemMessage.from(

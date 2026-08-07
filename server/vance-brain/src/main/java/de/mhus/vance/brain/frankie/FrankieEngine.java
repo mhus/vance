@@ -221,6 +221,7 @@ public class FrankieEngine implements ThinkEngine {
     private final SkillPromptComposer skillPromptComposer;
     private final SessionService sessionService;
     private final de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver;
+    private final de.mhus.vance.brain.prompt.ScratchpadPromptContributor scratchpadPromptContributor;
     private final MemoryContextLoader memoryContextLoader;
     private final ModelCatalog modelCatalog;
     private final MemoryCompactionService memoryCompactionService;
@@ -910,6 +911,10 @@ public class FrankieEngine implements ThinkEngine {
         // command dialect its client_exec_run calls run on. DYNAMIC, no-op
         // when no CLIENT connection is bound. See PromptEnvironmentBlock.
         promptDateContextResolver.appendClientEnvMessage(messages, process);
+        // Scratchpad slot inventory — DYNAMIC, no-op for a process that
+        // took no notes. Unlike the TodoList block below it stays silent on
+        // an empty inventory. See ScratchpadPromptBlock.
+        scratchpadPromptContributor.appendDynamicMessage(messages, process);
         // Reduced Plan-Mode TodoList (see §9.2). Marked DYNAMIC so the
         // Anthropic mapper places cache_control before this block —
         // plan-state churn (PENDING → IN_PROGRESS → COMPLETED) doesn't

@@ -46,7 +46,7 @@ public class DocLockRemoveTool implements Tool {
         this.contextFactory = contextFactory;
     }
 
-    @Override public String name() { return "document_lock_remove"; }
+    @Override public String name() { return "doc_lock_remove"; }
 
     @Override
     public String description() {

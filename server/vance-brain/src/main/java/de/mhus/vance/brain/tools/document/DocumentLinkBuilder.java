@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
  * Single source of truth for building {@code vance:} URIs and the
  * canonical Markdown link form.
  *
- * <p>Shared by {@link DocumentLinkTool} (explicit LLM tool call) and
+ * <p>Shared by {@link DocLinkTool} (explicit LLM tool call) and
  * by document-producing tools ({@code doc_write} et al.) that
  * include a {@code markdownLink} field in their result so the LLM
  * can embed the link without a second tool round-trip.

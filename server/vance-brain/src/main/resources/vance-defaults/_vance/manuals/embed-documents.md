@@ -1,5 +1,5 @@
 ---
-triggers: "Document, document_link, doc_write, vance: URI, markdownLink, save as document, save as file, slides, slide deck, presentation, Präsentation, Foliendeck, PDF, audio, video, generated artifact, project file, attach"
+triggers: "Document, doc_link, doc_write, vance: URI, markdownLink, save as document, save as file, slides, slide deck, presentation, Präsentation, Foliendeck, PDF, audio, video, generated artifact, project file, attach"
 summary: How to reference a project Document (PDF, image, audio, slides, generated artifact) via a vance:-URI Markdown link.
 ---
 # Embedding — Project Documents
@@ -86,13 +86,13 @@ Here is the Q1 review deck:
 Slides are **embedded-only** — never wrap them in a `\`\`\`slides` fence,
 that just renders as raw `<pre>`.
 
-### Path 2: link to an existing Document — use `document_link`
+### Path 2: link to an existing Document — use `doc_link`
 
 For a Document the user mentioned or that came up earlier, call
-`document_link`:
+`doc_link`:
 
 ```
-document_link(path="documents/q1/summary.pdf")
+doc_link(path="documents/q1/summary.pdf")
   → { markdownLink: "[Q1 summary](vance:/documents/q1/summary.pdf?kind=pdf)",
       path: "documents/q1/summary.pdf",
       kind: "pdf",

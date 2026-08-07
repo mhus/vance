@@ -250,7 +250,7 @@ public class Ford implements ThinkEngine {
         base.add("doc_find");
         base.add("doc_grep");
         base.add("doc_grep_path");
-        base.add("document_link");
+        base.add("doc_link");
         // Research — analyze / web-research / quick-lookup all need
         // these; pulling them into the default avoids per-recipe
         // duplication.

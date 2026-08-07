@@ -28,13 +28,13 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @RequiredArgsConstructor
-public class DocumentLinkTool implements Tool {
+public class DocLinkTool implements Tool {
 
     private final ProjectService projectService;
     private final DocumentService documentService;
     private final DocumentLinkBuilder linkBuilder;
 
-    @Override public String name() { return "document_link"; }
+    @Override public String name() { return "doc_link"; }
 
     @Override public String description() {
         return "Build a Markdown link to a Document in the workspace. "

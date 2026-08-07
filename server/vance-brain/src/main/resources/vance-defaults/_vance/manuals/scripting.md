@@ -43,10 +43,10 @@ Same engine, plus read/write access to the project scratch area.
 Use for short scripts that touch scratch files but don't need a
 library.
 
-### `script_run_doc` / `script_run_workspace` — persisted JS
+### `script_run_doc` / `script_run_work` — persisted JS
 
 Run a script that already lives as a Document (`script_run_doc`)
-or in a workspace RootDir (`script_run_workspace`). Same
+or in a workspace RootDir (`script_run_work`). Same
 `vance.tools` surface. Use these when the script should be
 **re-runnable later** (hooks, scheduler, multiple invocations) —
 then `doc_write(kind="text", …)` first, then `script_run_doc`. For

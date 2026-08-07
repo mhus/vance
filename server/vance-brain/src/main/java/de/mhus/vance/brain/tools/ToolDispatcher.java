@@ -139,7 +139,7 @@ public class ToolDispatcher {
             // signal rather than a generic "Tool failed" wrapper. The
             // structured fields (blockedRole, lockedFor) go into the
             // message so the model can decide whether to ask the user
-            // or call `document_lock_remove` itself.
+            // or call `doc_lock_remove` itself.
             String lockedFor = e.getLockedFor().stream()
                     .sorted()
                     .map(Enum::name)
@@ -148,7 +148,7 @@ public class ToolDispatcher {
             String msg = "document_locked: write blocked because the document's "
                     + "lockedFor set contains " + e.getBlockedRole()
                     + " (full set: [" + lockedFor + "]). Ask the user to unlock "
-                    + "via the document properties panel, or call document_lock_remove "
+                    + "via the document properties panel, or call doc_lock_remove "
                     + "if you have a clear reason.";
             log.info("Tool '{}' rejected by document lock blocked={} lockedFor={}",
                     name, e.getBlockedRole(), e.getLockedFor());

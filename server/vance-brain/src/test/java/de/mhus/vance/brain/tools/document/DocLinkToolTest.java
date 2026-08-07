@@ -19,23 +19,23 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 /**
- * Surface tests for {@link DocumentLinkTool}: URI building, image-vs-link
+ * Surface tests for {@link DocLinkTool}: URI building, image-vs-link
  * syntax, cross-project handling, default-mode heuristic.
  */
-class DocumentLinkToolTest {
+class DocLinkToolTest {
 
     private static final ToolInvocationContext CTX =
             new ToolInvocationContext("acme", "proj-a", "sess", "proc", "user", null);
 
     private DocumentService documentService;
     private ProjectService projectService;
-    private DocumentLinkTool tool;
+    private DocLinkTool tool;
 
     @BeforeEach
     void setUp() {
         documentService = Mockito.mock(DocumentService.class);
         projectService = Mockito.mock(ProjectService.class);
-        tool = new DocumentLinkTool(projectService, documentService, new DocumentLinkBuilder());
+        tool = new DocLinkTool(projectService, documentService, new DocumentLinkBuilder());
     }
 
     @Test

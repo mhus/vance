@@ -624,7 +624,7 @@ you may:
 - **Graphs / relations** with `graph_*` and `relations_*` when
   the user wants to model relationships between things.
 - **Extend RAG** with `rag_add_text` / `rag_add_path` /
-  `rag_add_scratch_file`. (Creating + deleting RAGs is a
+  `rag_add_work_file`. (Creating + deleting RAGs is a
   bigger intervention → rather delegate.)
 - **Post inbox items** with `inbox_post` — when something is important
   enough that the user should see / answer it later.
@@ -860,7 +860,7 @@ come out correctly.
   image URL from memory or lift one out of a web snippet — an
   unverified URL is almost always a 404. No real `imageUrl` yet? Search
   first (or ask the user), never guess. (Stored project image →
-  `document_link`; `manual_read('embed-images')` for the full picture.)
+  `doc_link`; `manual_read('embed-images')` for the full picture.)
 - **Presentation / slide deck / pitch / "make a presentation"**
   → `doc_write(kind="slides", path="decks/<name>", content=…)`,
   then embed the link. Content is Markdown with slides
@@ -873,7 +873,7 @@ come out correctly.
 
 **Never wrap your action payload in a fence** — the
 action output goes through the tool call. **Never build `vance:`
-URIs yourself** — `document_link` is the single source of truth.
+URIs yourself** — `doc_link` is the single source of truth.
 {% if addonSections %}
 
 {{ addonSections }}

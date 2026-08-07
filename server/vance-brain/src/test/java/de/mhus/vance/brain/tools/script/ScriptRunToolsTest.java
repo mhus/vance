@@ -75,7 +75,7 @@ class ScriptRunToolsTest {
         assertThat(out).containsEntry("error", "bad input");
     }
 
-    // ──────────────────── script_run_workspace ────────────────────
+    // ──────────────────── script_run_work ────────────────────
 
     @Test
     void workspace_tool_routes_with_WORKSPACE_source_and_dirName() {

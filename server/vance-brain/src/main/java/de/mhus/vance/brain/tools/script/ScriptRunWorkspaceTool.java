@@ -59,7 +59,7 @@ public class ScriptRunWorkspaceTool implements Tool {
 
     @Override
     public String name() {
-        return "script_run_workspace";
+        return "script_run_work";
     }
 
     @Override

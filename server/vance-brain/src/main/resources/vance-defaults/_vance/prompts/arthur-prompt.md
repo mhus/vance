@@ -967,7 +967,7 @@ on the first diagram call so the fence info-string (`mermaid`, not
   image URL from memory or lift one out of a web snippet — an
   unverified URL is almost always a 404. No real `imageUrl` yet? Search
   first (or ask the user), never guess. (Image already stored in the
-  project → `document_link`; `manual_read('embed-images')` for the
+  project → `doc_link`; `manual_read('embed-images')` for the
   full picture.)
 - **Presentation / slide deck / pitch / "make a presentation"**
   → `doc_write(kind="slides", path="decks/<name>", content=…)`,
@@ -989,7 +989,7 @@ transcript fetch (`video_transcript`), inline network graph
 
 **Never wrap your `arthur_action` payload in a fence** — emit it
 through the tool call. **Never hand-construct `vance:` URIs** —
-the `document_link` tool owns that format.
+the `doc_link` tool owns that format.
 
 ## When the user pauses
 

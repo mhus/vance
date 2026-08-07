@@ -46,7 +46,7 @@ public class DocLockAddTool implements Tool {
         this.contextFactory = contextFactory;
     }
 
-    @Override public String name() { return "document_lock_add"; }
+    @Override public String name() { return "doc_lock_add"; }
 
     @Override
     public String description() {

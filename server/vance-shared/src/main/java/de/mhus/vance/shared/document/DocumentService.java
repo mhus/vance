@@ -3137,7 +3137,7 @@ public class DocumentService {
      * <p>Soft lock: this is not an authorisation failure. Membership /
      * role permits the write; the user / kit author has merely asked for
      * a stop-sign against accidental overwrites. The remedy is
-     * {@code document_lock_remove} or the UI properties panel — see
+     * {@code doc_lock_remove} or the UI properties panel — see
      * {@code planning/document-lock-level.md}.
      */
     public static class DocumentLockedException extends RuntimeException {

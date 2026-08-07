@@ -25,7 +25,7 @@ import org.springframework.stereotype.Component;
  * to the LLM and translates the result back into a tool-result map.
  *
  * <p>See {@code specification/trigger-actions.md} §4.5. The companion
- * {@code script_run_workspace} tool covers workspace-resident scripts.
+ * {@code script_run_work} tool covers workspace-resident scripts.
  *
  * <p>{@code @SpawnTool}-annotated so the trigger-scoped sandbox refuses
  * to dispatch it from a trigger-scoped script — a script that can run

@@ -49,7 +49,7 @@ public class DocLockSetTool implements Tool {
         this.contextFactory = contextFactory;
     }
 
-    @Override public String name() { return "document_lock_set"; }
+    @Override public String name() { return "doc_lock_set"; }
 
     @Override
     public String description() {

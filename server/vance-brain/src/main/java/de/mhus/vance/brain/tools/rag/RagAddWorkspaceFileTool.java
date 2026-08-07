@@ -50,7 +50,7 @@ public class RagAddWorkspaceFileTool implements Tool {
 
     @Override
     public String name() {
-        return "rag_add_scratch_file";
+        return "rag_add_work_file";
     }
 
     @Override
@@ -119,7 +119,7 @@ public class RagAddWorkspaceFileTool implements Tool {
             out.put("totalChars", read.totalChars());
             return out;
         } catch (RuntimeException e) {
-            throw new ToolException("rag_add_scratch_file failed: " + e.getMessage(), e);
+            throw new ToolException("rag_add_work_file failed: " + e.getMessage(), e);
         }
     }
 

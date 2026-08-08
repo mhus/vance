@@ -167,6 +167,22 @@ public class FrankieEngine implements ThinkEngine {
         base.add("todo_create");
         base.add("todo_update");
         base.add("todo_remove");
+        // Free-form notes across turns — what todo_* can't carry (a
+        // rejected approach, a working hypothesis, where something
+        // lives) and what history compaction would otherwise drop.
+        // All four are primary()==false, so they ride in the deferred
+        // bucket as name + hint and pull a schema only on first use;
+        // the cost of listing them is a line each, not a schema each.
+        // They have to be named here regardless: computeAllowed is
+        // (engineDefault ∪ recipe.add) ∖ recipe.remove, so a tool
+        // missing from a non-empty engine default is excluded outright
+        // — not merely undiscovered, and no tool_list / how_do_i call
+        // can reach past that. Slots are process-scoped for now (see
+        // planning/scratchpad-review.md §7.2 R2).
+        base.add("scratchpad_set");
+        base.add("scratchpad_get");
+        base.add("scratchpad_list");
+        base.add("scratchpad_delete");
         // Generic work-target file/exec wrappers + work_target_get/set.
         // The 12 file_*/exec_* tools dispatch to client_* or work_*
         // backends per the per-process WorkTarget; see

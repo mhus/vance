@@ -53,6 +53,24 @@ allowedToolsAdd:
   - todo_create
   - todo_update
   - todo_remove
+  # Free-form notes across turns. todo_* covers "what do I do next";
+  # this covers what doesn't fit a task list and would otherwise be lost
+  # to memory compaction — a rejected approach, a working hypothesis,
+  # where something lives. Frankie's baseline has no scratchpad, so
+  # without these three the tools are not merely undiscovered but
+  # excluded: computeAllowed is (engineDefault ∪ add) ∖ remove, and no
+  # tool_list / how_do_i call can reach past that.
+  # Still non-primary, so they ship as name + hint and pull their schema
+  # on first use. Also on Frankie's baseline now — listed here for the
+  # same reason as todo_*: allowedToolsOverride is frozen at spawn, so
+  # naming them guarantees they ship regardless of when the process was
+  # spawned. delete is included so the agent can clear its own stale
+  # note; since R1 every slot rides in every turn.
+  # See planning/scratchpad-review.md §7.
+  - scratchpad_set
+  - scratchpad_get
+  - scratchpad_list
+  - scratchpad_delete
   # Capability label, not a tool name: every tool the connected client
   # (or a server tool pack) registers with the label `browser` becomes
   # reachable — e.g. a Chrome-DevTools MCP pack in

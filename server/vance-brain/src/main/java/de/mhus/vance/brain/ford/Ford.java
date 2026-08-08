@@ -237,6 +237,21 @@ public class Ford implements ThinkEngine {
         // Basics
         base.add("current_time");
         base.add("whoami");
+        // Free-form notes across turns. primary()==false, so these ride
+        // in the deferred bucket as name + hint and cost a line each
+        // rather than a schema each — but they have to be named here,
+        // because computeAllowed is (engineDefault ∪ recipe.add) ∖
+        // recipe.remove and anything missing from a non-empty engine
+        // default is excluded outright, not merely undiscovered.
+        // Ford's processes are short-lived and slots are process-scoped
+        // (planning/scratchpad-review.md §7.2 R2), so the notes rarely
+        // outlive the task — the point here is that a Ford worker can
+        // park an intermediate finding at all instead of losing it to
+        // compaction mid-task.
+        base.add("scratchpad_set");
+        base.add("scratchpad_get");
+        base.add("scratchpad_list");
+        base.add("scratchpad_delete");
         // Read-side document operations — common across Ford recipes
         // (code-read, analyze, quick-lookup). Mutating doc_* / kit_*
         // / scratch-write paths stay opt-in per recipe.

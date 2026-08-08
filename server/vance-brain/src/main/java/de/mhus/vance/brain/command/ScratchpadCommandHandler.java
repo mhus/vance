@@ -70,11 +70,27 @@ public class ScratchpadCommandHandler implements EngineCommandHandler {
             return EngineCommandResult.ok("no slots", null);
         }
         StringBuilder detail = new StringBuilder();
+        int listed = 0;
         for (MemoryDocument slot : slots) {
-            detail.append('\n').append(slot.getTitle())
-                    .append(" — ").append(slot.getContent().length()).append(" chars");
+            // Skip blank titles and tolerate a null content the same way
+            // ScratchpadPromptBlock does — otherwise `list` and `block`
+            // disagree about which slots exist, and a row written past
+            // ScratchpadService (MemoryDocument.content has no
+            // @Builder.Default) would NPE the whole listing instead of
+            // costing one line.
+            String title = slot.getTitle();
+            if (title == null || title.isBlank()) {
+                continue;
+            }
+            String content = slot.getContent() == null ? "" : slot.getContent();
+            detail.append('\n').append(title)
+                    .append(" — ").append(content.length()).append(" chars");
+            listed++;
         }
-        return EngineCommandResult.ok(slots.size() + " slot(s)", detail.toString());
+        if (listed == 0) {
+            return EngineCommandResult.ok("no slots", null);
+        }
+        return EngineCommandResult.ok(listed + " slot(s)", detail.toString());
     }
 
     private EngineCommandResult get(
@@ -84,9 +100,9 @@ public class ScratchpadCommandHandler implements EngineCommandHandler {
             return EngineCommandResult.error("get requires a key: //scratchpad get <key>");
         }
         return scratchpadService.get(process.getTenantId(), processId, title)
-                .map(slot -> EngineCommandResult.ok(
-                        title + " — " + slot.getContent().length() + " chars",
-                        "\n" + slot.getContent()))
+                .map(slot -> slot.getContent() == null ? "" : slot.getContent())
+                .map(content -> EngineCommandResult.ok(
+                        title + " — " + content.length() + " chars", "\n" + content))
                 .orElseGet(() -> EngineCommandResult.ok(title + " (not set)", null));
     }
 

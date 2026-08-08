@@ -1053,6 +1053,17 @@ public class Ford implements ThinkEngine {
         if (skillSection != null && !skillSection.isBlank()) {
             messages.add(SystemMessage.from(skillSection));
         }
+        // Compaction summaries first: these are plain SystemMessages, which
+        // the Anthropic mapper tags STATIC, and the cache marker goes on the
+        // LAST static block. Appending them after the dynamic blocks below
+        // would pull those inside the cached prefix, so every date rollover
+        // or scratchpad write would re-bill the whole system prompt. See
+        // specification/public/prompt-caching.md §5a.
+        for (MemoryDocument m : memoryService.activeByProcessAndKind(
+                process.getTenantId(), process.getId(), MemoryKind.ARCHIVED_CHAT)) {
+            messages.add(SystemMessage.from(
+                    "[Conversation summary from earlier turns]\n" + m.getContent()));
+        }
         // Current-date block (recipe-param promptDateGranularity:
         // auto/day/hour, default none). DYNAMIC — date rollover stays
         // behind the cache marker. See PromptDateBlock.
@@ -1065,11 +1076,6 @@ public class Ford implements ThinkEngine {
         // Scratchpad slot inventory — DYNAMIC, no-op for a process that
         // took no notes. See ScratchpadPromptBlock.
         scratchpadPromptContributor.appendDynamicMessage(messages, process);
-        for (MemoryDocument m : memoryService.activeByProcessAndKind(
-                process.getTenantId(), process.getId(), MemoryKind.ARCHIVED_CHAT)) {
-            messages.add(SystemMessage.from(
-                    "[Conversation summary from earlier turns]\n" + m.getContent()));
-        }
         for (ChatMessageDocument msg : historyStrengthFilter.filter(chatLog.activeHistory(
                 process.getTenantId(), process.getSessionId(), process.getId()))) {
             messages.add(toLangchain(msg));

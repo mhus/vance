@@ -76,6 +76,25 @@ class ScratchpadCommandHandlerTest {
     }
 
     @Test
+    void list_skipsBlankTitlesAndTakesNullContent_likeTheBlockDoes() {
+        // MemoryDocument.content has no @Builder.Default, so a row written
+        // past ScratchpadService can carry null — one bad row must not cost
+        // the whole listing.
+        when(scratchpadService.list("acme", "p1")).thenReturn(List.of(
+                MemoryDocument.builder().kind(MemoryKind.SCRATCHPAD).title(" ").build(),
+                MemoryDocument.builder().kind(MemoryKind.SCRATCHPAD).title("todo").build(),
+                slot("notes", "abc")));
+
+        EngineCommandResult result = handler.handle(process(), cmd("list"));
+
+        assertThat(result.message()).isEqualTo("2 slot(s)");
+        assertThat(String.valueOf(result.value()))
+                .contains("todo — 0 chars")
+                .contains("notes — 3 chars")
+                .doesNotContain("null");
+    }
+
+    @Test
     void get_returnsFullContentUncapped() {
         String content = "x".repeat(5_000);
         when(scratchpadService.get("acme", "p1", "findings"))

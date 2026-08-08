@@ -539,7 +539,14 @@ public class TrillianUserEngine implements ThinkEngine {
         return switch (msg.getRole()) {
             case USER -> UserMessage.from(msg.getContent());
             case ASSISTANT -> AiMessage.from(msg.getContent());
-            case SYSTEM -> SystemMessage.from(msg.getContent());
+            // DYNAMIC, not a plain SystemMessage: the mapper hoists every
+            // SystemMessage into the system array and puts cache_control on
+            // the LAST static one. A compaction marker (MemoryCompactionService
+            // writes ChatRole.SYSTEM rows) would otherwise land behind the
+            // date / client-env / scratchpad blocks and pull them inside the
+            // cached prefix, so each of their changes re-bills the whole
+            // system prompt. See specification/public/prompt-caching.md §5a.
+            case SYSTEM -> de.mhus.vance.brain.ai.VanceSystemMessage.dynamic(msg.getContent());
         };
     }
 

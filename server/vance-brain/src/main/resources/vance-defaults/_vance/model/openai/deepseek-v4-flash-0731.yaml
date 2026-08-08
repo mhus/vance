@@ -8,9 +8,13 @@ size: SMALL
 # ANSWER action (see answerActionFromText). 0 = no wasted re-prompts.
 actionLoopCorrections: 0
 
-# Rates: Cortecs catalog (api.cortecs.ai/v1/models), snapshot 2026-08-07.
+# Cortecs dates the flash variant — the wire name carries the `-0731`
+# suffix. The undated `deepseek-v4-flash` is not in the catalog and
+# 404s ("NotFoundError: Model not found.").
+#
+# Rates: Cortecs catalog (api.cortecs.ai/v1/models), snapshot 2026-08-08.
 pricing:
   currency: EUR
-  inputPerMTok: 0.133
-  outputPerMTok: 0.266
-  cacheReadPerMTok: 0.033
+  inputPerMTok: 0.224
+  outputPerMTok: 0.269
+  cacheReadPerMTok: 0.056

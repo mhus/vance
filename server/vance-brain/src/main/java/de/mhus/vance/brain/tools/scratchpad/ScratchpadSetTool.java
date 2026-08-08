@@ -50,6 +50,22 @@ public class ScratchpadSetTool implements Tool {
         return false;
     }
 
+    /**
+     * Kept out of the manifest body on classified paths too. {@link
+     * #primary()} alone is not enough: it only decides visibility for
+     * engines with no allow-list and no recipe filter. As soon as a
+     * classification runs — any restricted engine (Frankie, Ford) or any
+     * recipe carrying a filter — {@code ContextToolsApi.classify} reads
+     * {@code deferred()} and ignores {@code primary()}, so the default
+     * {@code false} would ship the full schema in every turn of those
+     * engines. Deferred means: listed by name + hint, schema pulled on
+     * first call.
+     */
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
     @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;

@@ -237,12 +237,14 @@ public class Ford implements ThinkEngine {
         // Basics
         base.add("current_time");
         base.add("whoami");
-        // Free-form notes across turns. primary()==false, so these ride
-        // in the deferred bucket as name + hint and cost a line each
-        // rather than a schema each — but they have to be named here,
+        // Free-form notes across turns. They have to be named here,
         // because computeAllowed is (engineDefault ∪ recipe.add) ∖
         // recipe.remove and anything missing from a non-empty engine
-        // default is excluded outright, not merely undiscovered.
+        // default is excluded outright, not merely undiscovered. Cost is
+        // a name + hint line each rather than a schema each, because all
+        // four declare deferred()==true — primary() alone would not do
+        // it here, since classify() reads deferred() and never asks
+        // primary() on a restricted engine.
         // Ford's processes are short-lived and slots are process-scoped
         // (planning/scratchpad-review.md §7.2 R2), so the notes rarely
         // outlive the task — the point here is that a Ford worker can

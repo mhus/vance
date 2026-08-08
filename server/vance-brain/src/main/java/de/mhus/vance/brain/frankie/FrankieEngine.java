@@ -170,15 +170,14 @@ public class FrankieEngine implements ThinkEngine {
         // Free-form notes across turns — what todo_* can't carry (a
         // rejected approach, a working hypothesis, where something
         // lives) and what history compaction would otherwise drop.
-        // All four are primary()==false, so they ride in the deferred
-        // bucket as name + hint and pull a schema only on first use;
-        // the cost of listing them is a line each, not a schema each.
-        // They have to be named here regardless: computeAllowed is
-        // (engineDefault ∪ recipe.add) ∖ recipe.remove, so a tool
-        // missing from a non-empty engine default is excluded outright
-        // — not merely undiscovered, and no tool_list / how_do_i call
-        // can reach past that. Slots are process-scoped for now (see
-        // planning/scratchpad-review.md §7.2 R2).
+        // They have to be named here: computeAllowed is (engineDefault ∪
+        // recipe.add) ∖ recipe.remove, so a tool missing from a
+        // non-empty engine default is excluded outright — not merely
+        // undiscovered, and no tool_list / how_do_i call can reach past
+        // that. Cost is a name + hint line each, not a schema each,
+        // because all four declare deferred()==true (primary() alone
+        // would not do it here — classify() reads deferred()). Slots are
+        // process-scoped for now (planning/scratchpad-review.md §7.2 R2).
         base.add("scratchpad_set");
         base.add("scratchpad_get");
         base.add("scratchpad_list");

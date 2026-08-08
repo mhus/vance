@@ -47,6 +47,12 @@ public class ScratchpadGetTool implements Tool {
         return false;
     }
 
+    /** Deferred like {@link #primary()} — see ScratchpadSetTool#deferred(). */
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
     @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;

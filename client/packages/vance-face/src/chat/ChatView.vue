@@ -259,14 +259,21 @@ const { messages: history, loading: historyLoading, error: historyError, load, r
 const liveMessages = ref<ChatMessageDto[]>([]);
 
 /**
- * Set of {@code messageId}s that arrived from a sub-process (worker)
- * rather than the main chat process. The bubble for these renders in
- * the compact green worker variant of {@link MessageBubble}, mirroring
- * the foot client's {@code worker()} channel. History from REST is
- * filtered to the chat-process server-side, so this only ever fills
- * for live frames.
+ * Whether a message came from a sub-process (worker) rather than the main
+ * chat process. Its bubble renders in the compact green worker variant of
+ * {@link MessageBubble}, mirroring the foot client's {@code worker()}
+ * channel.
+ *
+ * <p>Derived from {@code processName}, which both the live
+ * {@code chat-message-appended} frame and the REST history carry — so a
+ * reload keeps the worker notes looking like notes instead of promoting them
+ * to main-chat turns (planning/process-visibility.md §5.3). Being a computed
+ * derivation rather than a tracked Set also means it self-corrects once
+ * {@code chatProcessName} arrives from the bootstrap response.
  */
-const workerMessageIds = ref<Set<string>>(new Set());
+function isWorkerMessage(msg: ChatMessageDto): boolean {
+  return isWorkerProcess(msg.processName);
+}
 
 /** Per-process buffer of streaming chunks waiting for their commit frame.
  *  `thinking` accumulates the reasoning side-channel, which streams before
@@ -381,7 +388,7 @@ const lastAssistantContent = computed<string | null>(() => {
     const m = msgs[i];
     if (String(m.role) === 'USER') return null;
     if (String(m.role) !== 'ASSISTANT') continue;
-    if (workerMessageIds.value.has(m.messageId)) continue;
+    if (isWorkerMessage(m)) continue;
     const content = m.content?.trim();
     if (!content) return null;
     return content;
@@ -461,6 +468,7 @@ function appendMessageBubble(data: ChatMessageAppendedData): void {
   liveMessages.value.push({
     messageId: data.chatMessageId,
     thinkProcessId: data.thinkProcessId,
+    processName: data.processName,
     role: data.role,
     content: data.content,
     thinking: data.thinking,
@@ -470,9 +478,6 @@ function appendMessageBubble(data: ChatMessageAppendedData): void {
     senderDisplayName: data.senderDisplayName,
     addressedToAgent: data.addressedToAgent,
   });
-  if (isWorkerProcess(data.processName)) {
-    workerMessageIds.value = new Set(workerMessageIds.value).add(data.chatMessageId);
-  }
   streamingDrafts.value.delete(data.processName);
   // Speak non-USER messages from the main chat process when the
   // composer's speaker is enabled — sibling component, so emit up.
@@ -642,7 +647,6 @@ onBeforeUnmount(() => {
 watch(() => props.sessionId, async (newId, oldId) => {
   if (!newId || newId === oldId) return;
   liveMessages.value = [];
-  workerMessageIds.value = new Set();
   streamingDrafts.value = new Map();
   resetPlanModeState();
   exportFeedback.value = null;
@@ -676,7 +680,7 @@ let exportFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
  *  worker side-chatter, only SYSTEM messages). */
 const exportableTurns = computed<ChatMessageDto[]>(() =>
   allMessages.value.filter((m) => {
-    if (workerMessageIds.value.has(m.messageId)) return false;
+    if (isWorkerMessage(m)) return false;
     const role = String(m.role);
     if (role !== 'USER' && role !== 'ASSISTANT') return false;
     return (m.content?.trim().length ?? 0) > 0;
@@ -812,7 +816,7 @@ onBeforeUnmount(() => {
             :content="msg.content"
             :thinking="msg.thinking"
             :created-at="msg.createdAt"
-            :worker="workerMessageIds.has(msg.messageId)"
+            :worker="isWorkerMessage(msg)"
             :meta="msg.meta"
             :options-actionable="msg.messageId === activeAskUserMessageId"
             :sender-user-id="msg.senderUserId"

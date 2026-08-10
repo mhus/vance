@@ -8,6 +8,7 @@ import { ChatRole } from './ChatRole';
 export interface ChatMessageDto {
   messageId: string;
   thinkProcessId: string;
+  processName?: string;
   role: ChatRole;
   content: string;
   thinking?: string;

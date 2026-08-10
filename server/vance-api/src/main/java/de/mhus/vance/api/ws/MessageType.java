@@ -65,6 +65,21 @@ public final class MessageType {
     public static final String PROCESS_LIST = "process-list";
 
     /**
+     * Client → brain: the conversation of one think-process of the bound
+     * session, for a process detail view ("what is that worker doing?").
+     * Payload {@link de.mhus.vance.api.thinkprocess.ProcessMessagesRequest},
+     * reply {@link de.mhus.vance.api.thinkprocess.ProcessMessagesResponse}.
+     *
+     * <p>Session-scoped by construction: the handler resolves the process
+     * inside the bound session and refuses anything else. That is the
+     * deliberate difference to the REST endpoint
+     * {@code GET /brain/{tenant}/process/{id}/messages}, which is
+     * project-scoped so it can also serve chatless Damogran agents living
+     * in system sessions — see {@code planning/process-visibility.md} §5.1.
+     */
+    public static final String PROCESS_MESSAGES = "process-messages";
+
+    /**
      * Client → brain: stop a running think-process in the bound
      * session. User-initiated counterpart to the orchestrator-only
      * {@code process_stop} brain-tool. Triggers

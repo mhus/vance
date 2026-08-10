@@ -19,6 +19,8 @@ import ReconnectOverlay from '@/ws/ReconnectOverlay.vue';
 import SessionTakeoverDialog from '@/ws/SessionTakeoverDialog.vue';
 import { useNotificationSubscription } from '@/notification/useNotificationSubscription';
 import { useProcessCountsSubscription } from '@/process/useProcessCountsSubscription';
+import { processPanelOpen } from '@/process/processPanelState';
+import ProcessPanel from './ProcessPanel.vue';
 
 // Re-export the breadcrumb segment type so existing consumers
 // (`import { type Crumb } from '@components'`) keep working without
@@ -469,6 +471,9 @@ onBeforeUnmount(() => {
          Mounted once at the shell level so every editor gets it for
          free; the store + WebSocket subscription live elsewhere. -->
     <NotificationToasts />
+    <!-- Global process panel: opened from the topbar badge, needs the
+         shell's socket for its process-list / process-messages calls. -->
+    <ProcessPanel v-model="processPanelOpen" :socket="wsSocket" />
     <!-- Global reconnect overlay — visible whenever the tab-singleton
          WebSocket is reconnecting or down. Renders a blocking modal so
          every editor (chat, cortex, documents, …) automatically

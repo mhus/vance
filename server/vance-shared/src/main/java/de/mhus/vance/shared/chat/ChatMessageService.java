@@ -186,6 +186,37 @@ public class ChatMessageService {
     }
 
     /**
+     * Session-wide variant of {@link #activeHistoryWithInterim} — the
+     * messages of <em>every</em> process of the session, ordered by
+     * {@code createdAt}.
+     *
+     * <p>This is the scrollback the UI actually shows: worker output is
+     * pushed live to every connection of the session
+     * ({@code ChatMessageNotificationDispatcher}) and rendered as a
+     * {@code [processName · role]}-tagged note, so a reload that returned
+     * only the chat-process would silently drop what the user just saw.
+     *
+     * <p>Deliberately <em>not</em> used for the LLM-replay path
+     * ({@link #activeHistory}) nor for the crop editor
+     * ({@link #historyForCrop}): an engine must not be fed a sibling's
+     * transcript, and the user must not crop messages that don't belong to
+     * the conversation they own.
+     *
+     * <p>See {@code planning/process-visibility.md} §5.3.
+     */
+    public List<ChatMessageDocument> activeHistoryWithInterimForSession(
+            String tenantId, String sessionId) {
+        List<ChatMessageDocument> raw =
+                repository.findByTenantIdAndSessionIdAndArchivedInMemoryIdIsNull(
+                        tenantId, sessionId, BY_CREATED);
+        List<ChatMessageDocument> filtered = new ArrayList<>(raw.size());
+        for (ChatMessageDocument m : raw) {
+            if (!m.isRemoved()) filtered.add(m);
+        }
+        return filtered;
+    }
+
+    /**
      * The message list for the Modify/Crop editor: every non-archived
      * message of the process <em>including</em> those already removed (so
      * the user can see and restore them), but <em>excluding</em> interim

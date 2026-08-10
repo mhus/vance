@@ -85,6 +85,31 @@ export default {
     tooltip: '{n} weitere(r) Betrachter dieses Dokuments',
   },
 
+  processPanel: {
+    title: 'Prozesse dieser Session',
+    count: '{n} Prozess(e)',
+    filterLive: 'Filter: aktiv',
+    filterAll: 'Filter: alle',
+    empty: 'Keine Prozesse',
+    pickOne: 'Prozess auswählen',
+    loading: 'Wird geladen …',
+    silent: 'Noch keine Nachrichten — der Prozess hat nichts gesagt.',
+    olderTruncated: '… {n} ältere Nachricht(en) nicht angezeigt',
+    steer: 'Senden',
+    steerPlaceholder: 'Nachricht an den Prozess …',
+    pause: 'Pause',
+    resume: 'Fortsetzen',
+    stop: 'Stoppen',
+    reload: 'Neu laden',
+    sent: 'Zugestellt.',
+    queuedBusy: 'Eingereiht — der Prozess arbeitet gerade und nimmt es nach dem '
+      + 'aktuellen Turn auf.',
+    done: 'Ausgeführt.',
+    loadFailed: 'Laden fehlgeschlagen.',
+    actionFailed: 'Aktion fehlgeschlagen.',
+    noConnection: 'Keine Verbindung — Prozesse sind nur mit gebundener Session sichtbar.',
+  },
+
   processCounts: {
     label: '{n} Prozess(e)',
     tooltip: '{running} laufen · {waiting} wartend · {blocked} blockiert',

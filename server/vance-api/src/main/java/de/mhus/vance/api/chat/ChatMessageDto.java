@@ -30,6 +30,17 @@ public class ChatMessageDto {
 
     private String thinkProcessId;
 
+    /**
+     * Name of the producing think-process — the same value the live
+     * {@code chat-message-appended} frame carries. Lets a client tell a
+     * worker's note apart from the session's own chat turn after a history
+     * reload, not only while streaming.
+     *
+     * <p>{@code null} when the process row is gone (history outlives a
+     * deleted process).
+     */
+    private @Nullable String processName;
+
     private ChatRole role;
 
     private String content;

@@ -17,6 +17,14 @@ interface ChatMessageRepository extends MongoRepository<ChatMessageDocument, Str
     List<ChatMessageDocument> findByTenantIdAndSessionIdAndThinkProcessIdAndArchivedInMemoryIdIsNull(
             String tenantId, String sessionId, String thinkProcessId, Sort sort);
 
+    /**
+     * Active history of the whole session — every process, not just the
+     * chat-process. Backs the UI scrollback, which shows worker output as
+     * {@code [processName · role]}-tagged notes.
+     */
+    List<ChatMessageDocument> findByTenantIdAndSessionIdAndArchivedInMemoryIdIsNull(
+            String tenantId, String sessionId, Sort sort);
+
     long deleteByTenantIdAndSessionIdAndThinkProcessId(
             String tenantId, String sessionId, String thinkProcessId);
 

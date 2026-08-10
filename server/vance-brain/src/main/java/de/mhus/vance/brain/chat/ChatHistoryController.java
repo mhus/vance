@@ -10,8 +10,12 @@ import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -28,10 +32,17 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Pull endpoint for the persisted chat history of a session.
  *
- * <p>Returns the same messages that the LLM would replay on the next
- * roundtrip — i.e. {@link ChatMessageService#activeHistory} (messages
- * already rolled into a memory compaction are filtered out, matching
- * what {@code vance-foot} renders).
+ * <p>Returns the session's scrollback: the messages of <em>every</em>
+ * process of the session, minus those already rolled into a memory
+ * compaction ({@link ChatMessageService#activeHistoryWithInterimForSession}).
+ * Worker output is part of it — it is pushed live to the same clients and
+ * rendered as a {@code [processName · role]} note, so leaving it out here
+ * would make a reload lose what the user just watched
+ * ({@code planning/process-visibility.md} §5.3). Each row carries its
+ * {@code processName} so the client can tell notes from the chat turn.
+ *
+ * <p>The crop view ({@code includeRemoved}) stays scoped to the
+ * chat-process — a user may not crop a worker's transcript.
  *
  * <p>Tenant in the path is validated by
  * {@link de.mhus.vance.brain.access.BrainAccessFilter} against the
@@ -57,6 +68,7 @@ public class ChatHistoryController {
 
     private final SessionService sessionService;
     private final ChatMessageService chatMessageService;
+    private final ThinkProcessService thinkProcessService;
     private final RequestAuthority authority;
 
     @GetMapping("/{sessionId}/messages")
@@ -95,7 +107,7 @@ public class ChatHistoryController {
                 new Resource.Session(tenant, session.getProjectId(), session.getSessionId()), Action.READ);
 
         String chatProcessId = session.getChatProcessId();
-        if (chatProcessId == null || chatProcessId.isBlank()) {
+        if (includeRemoved && (chatProcessId == null || chatProcessId.isBlank())) {
             // Session exists but has no chat-process bootstrapped yet —
             // valid state between session-create and the first
             // SessionChatBootstrapper.ensureChatProcess call. Empty
@@ -103,22 +115,44 @@ public class ChatHistoryController {
             return List.of();
         }
 
-        // Crop editor (includeRemoved): the logical conversation incl.
-        // already-removed messages (so they can be restored), minus interim
-        // noise. Otherwise the normal scrollback: keep interim (dimmed),
-        // drop removed.
+        // Crop editor (includeRemoved): the conversation *of the chat-process*
+        // incl. already-removed messages (so they can be restored), minus
+        // interim noise. Scoped to the chat-process on purpose — the user
+        // must not crop a worker's transcript.
+        //
+        // Normal scrollback: the whole session, every process. Worker output
+        // is pushed live to this client and rendered as a
+        // [processName · role] note, so returning only the chat-process here
+        // would drop on reload what the user just watched happen
+        // (planning/process-visibility.md §5.3). Interim stays (UI dims it),
+        // removed is gone.
         List<ChatMessageDocument> messages = includeRemoved
                 ? chatMessageService.historyForCrop(tenant, sessionId, chatProcessId)
-                : chatMessageService.activeHistoryWithInterim(tenant, sessionId, chatProcessId);
+                : chatMessageService.activeHistoryWithInterimForSession(tenant, sessionId);
 
         int cap = (limit != null && limit > 0) ? limit : DEFAULT_LIMIT;
         if (messages.size() > cap) {
             messages = messages.subList(messages.size() - cap, messages.size());
         }
 
+        // One lookup for the whole page instead of one per message: the
+        // scrollback now spans every process of the session, so a per-row
+        // resolve would be N+1 on the hot reload path.
+        Map<String, String> processNames = processNamesOf(tenant, sessionId);
         return messages.stream()
-                .map(ChatHistoryController::toDto)
+                .map(doc -> toDto(doc, processNames.get(doc.getThinkProcessId())))
                 .toList();
+    }
+
+    /** {@code thinkProcessId → name} for every process of the session. */
+    private Map<String, String> processNamesOf(String tenant, String sessionId) {
+        Map<String, String> names = new HashMap<>();
+        for (ThinkProcessDocument p : thinkProcessService.findBySession(tenant, sessionId)) {
+            if (p.getId() != null && p.getName() != null) {
+                names.put(p.getId(), p.getName());
+            }
+        }
+        return names;
     }
 
     /**
@@ -159,15 +193,21 @@ public class ChatHistoryController {
             chatMessageService.unmarkRemoved(tenant, sessionId, body.getRestore());
         }
 
+        // Crop is chat-process-scoped, so every row carries the same name.
+        String chatProcessName = thinkProcessService.findById(chatProcessId)
+                .map(ThinkProcessDocument::getName)
+                .orElse(null);
         return chatMessageService.historyForCrop(tenant, sessionId, chatProcessId).stream()
-                .map(ChatHistoryController::toDto)
+                .map(doc -> toDto(doc, chatProcessName))
                 .toList();
     }
 
-    private static ChatMessageDto toDto(ChatMessageDocument doc) {
+    private static ChatMessageDto toDto(
+            ChatMessageDocument doc, @Nullable String processName) {
         return ChatMessageDto.builder()
                 .messageId(doc.getId())
                 .thinkProcessId(doc.getThinkProcessId())
+                .processName(processName)
                 .role(doc.getRole())
                 .content(doc.getContent())
                 .thinking(doc.getThinking())

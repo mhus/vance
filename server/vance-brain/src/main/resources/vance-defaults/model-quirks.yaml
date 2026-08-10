@@ -1,8 +1,9 @@
-# Pattern-based defaults for ModelInfo.messageParser. Applies whenever
-# a per-model YAML under _vance/model/<provider>/<model>.yaml does not
-# explicitly set the field — the bundled file is the global fallback,
-# so we maintain one entry per known quirk family instead of touching
-# every provider directory.
+# Pattern-based defaults for the per-model quirk fields
+# (ModelInfo.messageParser, ModelInfo.outputTokenParam). Applies
+# whenever a per-model YAML under _vance/model/<provider>/<model>.yaml
+# does not explicitly set the field — the bundled file is the global
+# fallback, so we maintain one entry per known quirk family instead of
+# touching every provider directory.
 #
 # Resolution cascade (outermost → innermost; innermost wins):
 #   1. Project / tenant / _vance YAML overrides (per-model)
@@ -13,7 +14,9 @@
 # Matching: case-insensitive glob over the model wire name.
 #   *  zero-or-more characters
 #   ?  exactly one character
-# First match wins; subsequent rules for the same model are ignored.
+# Resolution is per field: the first matching rule that carries the
+# requested field wins, so a messageParser-only rule does not shadow a
+# later outputTokenParam rule for the same model.
 #
 # Adding a new rule = add an entry here. The corresponding parser bean
 # must already be registered (de.mhus.vance.brain.ai.parser package).
@@ -49,6 +52,52 @@ rules:
   # the same shape as for structured-output-capable models.
   - match: "gemma-4*"
     messageParser: "gemma4"
+
+  # OpenAI reasoning models (o-series, gpt-5 and newer) speak a
+  # narrower Chat-Completions dialect. Two deviations, both hard
+  # HTTP 400s, both verified 2026-08-10 against openai:gpt-5.6-sol
+  # (ModelWireProbeAiTest — that run is what these lists encode):
+  #
+  #   "Unsupported parameter: 'max_tokens' is not supported with this
+  #    model. Use 'max_completion_tokens' instead."
+  #   "Unsupported value: 'temperature' does not support 0.2 with this
+  #    model. Only the default (1) value is supported."
+  #   "Unsupported parameter: 'top_p' / 'presence_penalty' / 'stop'
+  #    is not supported with this model."
+  #
+  # `seed` and the output cap under its new name are accepted, so the
+  # lists stay narrow. Dropping an unsupported knob costs sampling
+  # control; sending it costs the whole turn — hence drop.
+  #
+  # Only OpenAI proper (and gateways tracking its current API) speak
+  # this dialect, so it stays a family pattern rather than a
+  # provider-wide switch. The globs match the bare wire names OpenAI
+  # uses; a gateway that prefixes them ("openai/gpt-5") needs the
+  # fields in its own model YAML.
+  #
+  # Third deviation, gpt-5 only: the model reasons by default and then
+  # refuses to do so alongside function tools —
+  #
+  #   "Function tools with reasoning_effort are not supported for
+  #    gpt-5.6-sol in /v1/chat/completions. To use function tools, use
+  #    /v1/responses or set reasoning_effort to 'none'."
+  #
+  # Every engine turn carries a tool manifest, so "no reasoning" has to
+  # be said out loud rather than by omitting the field. The o-series
+  # predates the 'none' value and must NOT get this line.
+  - match: "gpt-5*"
+    outputTokenParam: "max_completion_tokens"
+    unsupportedParams: ["temperature", "top_p", "frequency_penalty", "presence_penalty", "stop"]
+    reasoningEffortWhenOff: "none"
+  - match: "o1*"
+    outputTokenParam: "max_completion_tokens"
+    unsupportedParams: ["temperature", "top_p", "frequency_penalty", "presence_penalty", "stop"]
+  - match: "o3*"
+    outputTokenParam: "max_completion_tokens"
+    unsupportedParams: ["temperature", "top_p", "frequency_penalty", "presence_penalty", "stop"]
+  - match: "o4-mini*"
+    outputTokenParam: "max_completion_tokens"
+    unsupportedParams: ["temperature", "top_p", "frequency_penalty", "presence_penalty", "stop"]
 
   # Gemini 2.5 family: intermittently emits tool calls as `tool_code`
   # pseudo-code in the assistant text (fenced ```tool_code``` block or a

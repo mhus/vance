@@ -13,6 +13,7 @@ import de.mhus.vance.brain.ai.ModelCapability;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ModelSize;
+import de.mhus.vance.brain.ai.OutputTokenParam;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import de.mhus.vance.shared.form.FormValidationException;
 import de.mhus.vance.shared.form.FormValidator;
@@ -217,6 +218,8 @@ class SettingFormServiceChoicesFromTest {
     private static ModelInfo model(String provider, String name, ModelSize size) {
         return new ModelInfo(provider, name, 200000, 8192, size,
                 Set.<ModelCapability>of(), 60, 2, false,
-                /*messageParser*/ null, /*pricing*/ null);
+                /*messageParser*/ null, /*pricing*/ null,
+                OutputTokenParam.MAX_TOKENS,
+                java.util.Set.of(), null);
     }
 }

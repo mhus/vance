@@ -10,6 +10,7 @@ import de.mhus.vance.brain.ai.LlmResponseSanitizer;
 import de.mhus.vance.brain.ai.ModelCapability;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.brain.ai.OutputTokenParam;
 import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import de.mhus.vance.brain.ai.ProviderListingHttp;
 import de.mhus.vance.brain.ai.ProviderListingRequest;
@@ -30,6 +31,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
@@ -71,6 +73,9 @@ import tools.jackson.databind.JsonNode;
 @Slf4j
 public class OpenAiProvider extends AbstractChatProvider {
 
+    /** OpenAI proper — used whenever nothing else is configured. */
+    public static final String OPENAI_BASE_URL = "https://api.openai.com/v1";
+
     private final String defaultBaseUrl;
     private final boolean cacheEnabled;
 
@@ -78,10 +83,16 @@ public class OpenAiProvider extends AbstractChatProvider {
             ModelCatalog modelCatalog,
             LlmResponseSanitizer responseSanitizer,
             MessageParserRegistry messageParserRegistry,
-            @Value("${vance.ai.openai.base-url:https://api.openai.com/v1}") String baseUrl,
+            @Value("${vance.ai.openai.base-url:}") String baseUrl,
             @Value("${vance.ai.cache.enabled:true}") boolean cacheEnabled) {
         super(modelCatalog, responseSanitizer, messageParserRegistry);
-        this.defaultBaseUrl = baseUrl;
+        // Blank means "not configured" — same as absent. A property-default
+        // alone is not enough: an environment variable that exists but is
+        // empty (VANCE_AI_OPENAI_BASE_URL="", as surefire passes it through
+        // when the developer's shell doesn't set it) satisfies the
+        // placeholder and would otherwise hand langchain4j an empty base URL,
+        // which it rejects outright.
+        this.defaultBaseUrl = StringUtils.isBlank(baseUrl) ? OPENAI_BASE_URL : baseUrl.trim();
         this.cacheEnabled = cacheEnabled;
         if (!cacheEnabled) {
             log.info("OpenAI prompt-cache hints DISABLED via vance.ai.cache.enabled=false "
@@ -109,12 +120,21 @@ public class OpenAiProvider extends AbstractChatProvider {
         // Per-tenant override (cortecs / OpenRouter / vLLM) wins over the Spring
         // boot-time default. Empty / unset falls back to vance.ai.openai.base-url.
         String baseUrl = config.baseUrl() != null ? config.baseUrl() : defaultBaseUrl;
+        // Reasoning models (o-series, gpt-5+) reject 'max_tokens' with
+        // an HTTP 400 and demand 'max_completion_tokens'; every other
+        // OpenAI-wire endpoint only understands the historic field.
+        // Which one applies is a catalog fact — see OutputTokenParam.
+        boolean useCompletionTokens =
+                modelInfo.outputTokenParam() == OutputTokenParam.MAX_COMPLETION_TOKENS;
+        Integer maxTokens = useCompletionTokens ? null : options.getMaxTokens();
+        Integer maxCompletionTokens = useCompletionTokens ? options.getMaxTokens() : null;
         OpenAiChatModel.OpenAiChatModelBuilder syncBuilder = OpenAiChatModel.builder()
                 .baseUrl(baseUrl)
                 .apiKey(config.apiKey())
                 .modelName(config.modelName())
                 .temperature(options.getTemperature())
-                .maxTokens(options.getMaxTokens())
+                .maxTokens(maxTokens)
+                .maxCompletionTokens(maxCompletionTokens)
                 .topP(options.getTopP())
                 .frequencyPenalty(options.getFrequencyPenalty())
                 .presencePenalty(options.getPresencePenalty())
@@ -140,7 +160,8 @@ public class OpenAiProvider extends AbstractChatProvider {
                         .apiKey(config.apiKey())
                         .modelName(config.modelName())
                         .temperature(options.getTemperature())
-                        .maxTokens(options.getMaxTokens())
+                        .maxTokens(maxTokens)
+                        .maxCompletionTokens(maxCompletionTokens)
                         .topP(options.getTopP())
                         .frequencyPenalty(options.getFrequencyPenalty())
                         .presencePenalty(options.getPresencePenalty())
@@ -167,6 +188,13 @@ public class OpenAiProvider extends AbstractChatProvider {
         ThinkingLevel effectiveLevel = gateThinkingLevel(
                 options.getThinkingLevel(), modelInfo);
         String reasoningEffort = mapReasoningEffort(effectiveLevel);
+        if (reasoningEffort == null) {
+            // "No reasoning" is normally the absence of the field. A
+            // reasoning-native model reasons anyway and then rejects the
+            // combination with function tools — it needs an explicit
+            // off-value. See ModelInfo.reasoningEffortWhenOff().
+            reasoningEffort = modelInfo.reasoningEffortWhenOff();
+        }
         if (reasoningEffort != null) {
             OpenAiChatRequestParameters defaults = OpenAiChatRequestParameters.builder()
                     .reasoningEffort(reasoningEffort)
@@ -174,9 +202,10 @@ public class OpenAiProvider extends AbstractChatProvider {
             syncBuilder.defaultRequestParameters(defaults);
             streamBuilder.defaultRequestParameters(defaults);
         }
-        log.debug("Built OpenAI chat pair: model='{}', baseUrl='{}', maxTokens={}, "
+        log.debug("Built OpenAI chat pair: model='{}', baseUrl='{}', {}={}, "
                         + "temperature={}, cacheParams={}, reasoningEffort={}",
-                config.modelName(), baseUrl, options.getMaxTokens(),
+                config.modelName(), baseUrl,
+                modelInfo.outputTokenParam().wireName(), options.getMaxTokens(),
                 options.getTemperature(), cacheParams.keySet(), reasoningEffort);
         return new BuiltChat(syncBuilder.build(), streamBuilder.build());
     }

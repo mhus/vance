@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.ai.image.openai;
 
 import de.mhus.vance.brain.ai.ProviderType;
+import de.mhus.vance.brain.ai.openai.OpenAiProvider;
 import de.mhus.vance.brain.ai.image.AiImageConfig;
 import de.mhus.vance.brain.ai.image.AiImageException;
 import de.mhus.vance.brain.ai.image.AiImageModelProvider;
@@ -11,6 +12,7 @@ import dev.langchain4j.model.output.Response;
 import java.time.Duration;
 import java.util.Base64;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -48,8 +50,13 @@ public class OpenAiImageProvider implements AiImageModelProvider {
     private final String defaultBaseUrl;
 
     public OpenAiImageProvider(
-            @Value("${vance.ai.openai.base-url:https://api.openai.com/v1}") String baseUrl) {
-        this.defaultBaseUrl = baseUrl;
+            @Value("${vance.ai.openai.base-url:}") String baseUrl) {
+        // Blank (unset, or an env var that exists but is empty) → OpenAI
+        // proper. Same normalisation as the chat provider, which owns the
+        // constant.
+        this.defaultBaseUrl = StringUtils.isBlank(baseUrl)
+                ? OpenAiProvider.OPENAI_BASE_URL
+                : baseUrl.trim();
     }
 
     @Override

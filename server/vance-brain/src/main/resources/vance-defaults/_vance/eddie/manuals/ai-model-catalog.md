@@ -90,6 +90,9 @@ capabilities:                           # optional input modalities
 stripThinkTags: false                   # strip <think>…</think> from output text
 timeoutSeconds: 60                      # per-call HTTP timeout
 actionLoopCorrections: 2                # structured-action loop pacemaker
+outputTokenParam: max_tokens            # OpenAI-wire output cap field, see below
+unsupportedParams: []                   # sampling knobs the model rejects, see below
+reasoningEffortWhenOff: null            # explicit "no reasoning" wire value, see below
 
 pricing:                                # USD/EUR/… per 1M tokens
   currency: USD
@@ -101,6 +104,43 @@ pricing:                                # USD/EUR/… per 1M tokens
 discoveredBy: manual                    # ALWAYS this — marker that an operator wrote it
 discoveredAt: "2026-06-27T10:00:00Z"    # optional, informational
 ```
+
+### `outputTokenParam` — which field carries the output cap
+
+Only relevant for models on the **OpenAI wire** (provider instances of
+type `openai`, including gateways). Two values:
+
+| Value | Wire field | Use for |
+|---|---|---|
+| `max_tokens` (default) | `max_tokens` | Everything that isn't an OpenAI reasoning model — gateways (cortecs, LM Studio, Ollama, GLM, DeepSeek) only know this one |
+| `max_completion_tokens` | `max_completion_tokens` | OpenAI's reasoning models — o-series and gpt-5 upwards |
+
+Sending the wrong field is a hard HTTP 400 that kills the turn. The
+families `gpt-5*`, `o1*`, `o3*`, `o4-mini*` are already covered by a
+bundled pattern rule — write the field by hand only for a model outside
+those globs (a gateway renaming it to `openai/gpt-5`) or to force
+`max_tokens` back on a gateway that proxies gpt-5 on the older dialect.
+
+### `unsupportedParams` — sampling knobs the model rejects
+
+List of `temperature`, `top_p`, `top_k`, `frequency_penalty`,
+`presence_penalty`, `seed`, `stop` (the OpenAI field names and the
+Vance option names both parse). Anything listed is dropped from the
+request before it goes out, so the model runs on its own defaults
+instead of answering HTTP 400. Reasoning models refuse most of these,
+and since Vance always sends a temperature, one missing entry is enough
+to make the model unusable.
+
+An **empty list is a statement** — "this one accepts everything" — and
+overrides a family pattern. Omitting the field inherits the pattern.
+
+### `reasoningEffortWhenOff` — how to say "don't reason"
+
+Normally unset: not sending `reasoning_effort` *is* how you ask for no
+reasoning. Reasoning-native models (gpt-5.x) reason by default and then
+refuse to combine that with function tools, so they need the value
+spelled out — `"none"`. Set it only for models that document that
+value; sending `none` to a model that doesn't know it is itself a 400.
 
 ### Image-only fields (when `kind: image`)
 

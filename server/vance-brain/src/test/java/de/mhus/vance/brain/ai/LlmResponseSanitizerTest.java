@@ -103,6 +103,8 @@ class LlmResponseSanitizerTest {
                 ModelInfo.DEFAULT_ACTION_LOOP_CORRECTIONS,
                 strip,
                 /*messageParser*/ null,
-                /*pricing*/ null);
+                /*pricing*/ null,
+                OutputTokenParam.MAX_TOKENS,
+                java.util.Set.of(), null);
     }
 }

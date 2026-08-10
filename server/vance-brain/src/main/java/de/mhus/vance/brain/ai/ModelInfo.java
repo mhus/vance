@@ -15,9 +15,13 @@ import org.jspecify.annotations.Nullable;
  * {@link #contextWindowTokens()}), attachment dispatch in
  * {@code StandardAiChat} (vision/PDF gate against
  * {@link #capabilities()}), per-provider thinking-config gating
- * (see {@link ModelCapability#THINKING}), and the per-call HTTP
+ * (see {@link ModelCapability#THINKING}), the per-call HTTP
  * timeout each provider applies (see
- * {@link #effectiveTimeoutSeconds(Integer)}).
+ * {@link #effectiveTimeoutSeconds(Integer)}), and the wire field that
+ * carries the output cap on OpenAI-shaped requests (see
+ * {@link OutputTokenParam}), the sampling knobs the model refuses
+ * (see {@link SamplingParam}), and how "no reasoning" has to be
+ * spelled on the wire (see {@link #reasoningEffortWhenOff()}).
  */
 public record ModelInfo(
         String provider,
@@ -30,7 +34,29 @@ public record ModelInfo(
         int actionLoopCorrections,
         boolean stripThinkTags,
         @Nullable String messageParser,
-        @Nullable Pricing pricing) {
+        @Nullable Pricing pricing,
+        OutputTokenParam outputTokenParam,
+        Set<SamplingParam> unsupportedParams,
+        @Nullable String reasoningEffortWhenOff) {
+
+    /*
+     * reasoningEffortWhenOff — the wire value to send for
+     * `reasoning_effort` when Vance wants NO reasoning. Normally null:
+     * omitting the field is how you say "don't reason".
+     *
+     * Reasoning-native models break that assumption. gpt-5.6-sol
+     * reasons by default and refuses the combination with function
+     * tools on /v1/chat/completions (verified 2026-08-10):
+     *
+     *   "Function tools with reasoning_effort are not supported for
+     *    gpt-5.6-sol in /v1/chat/completions. To use function tools,
+     *    use /v1/responses or set reasoning_effort to 'none'."
+     *
+     * Since every engine turn carries a tool manifest, such a model is
+     * unusable until the request says `reasoning_effort: "none"`
+     * out loud. That is a per-model fact, not a provider default —
+     * older o-series models don't know the value at all.
+     */
 
     /**
      * Per-million-token rates that drive cost accounting. Pulled from
@@ -95,6 +121,12 @@ public record ModelInfo(
         // Defensive copy + immutability so callers can hand the record
         // around without worrying about Set mutation.
         capabilities = capabilities == null ? Set.of() : Set.copyOf(capabilities);
+        if (outputTokenParam == null) {
+            outputTokenParam = OutputTokenParam.MAX_TOKENS;
+        }
+        unsupportedParams = unsupportedParams == null
+                ? Set.of()
+                : Set.copyOf(unsupportedParams);
         if (timeoutSeconds <= 0) {
             timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
         }

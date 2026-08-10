@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import de.mhus.vance.brain.ai.ModelCapability;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ModelSize;
+import de.mhus.vance.brain.ai.OutputTokenParam;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import dev.langchain4j.model.googleai.GeminiThinkingConfig;
 import java.util.EnumSet;
@@ -22,7 +23,9 @@ class GeminiProviderThinkingTest {
                 ModelInfo.DEFAULT_ACTION_LOOP_CORRECTIONS,
                 false,
                 /*messageParser*/ null,
-                /*pricing*/ null);
+                /*pricing*/ null,
+                OutputTokenParam.MAX_TOKENS,
+                java.util.Set.of(), null);
     }
 
     @Test

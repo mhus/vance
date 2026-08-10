@@ -11,14 +11,17 @@ class ModelInfoTest {
         return new ModelInfo(
                 "openai", "deepseek-v3.2",
                 163840, defaultMaxOutputTokens, ModelSize.LARGE,
-                Set.of(), 60, 2, false, null, null);
+                Set.of(), 60, 2, false, null, null, OutputTokenParam.MAX_TOKENS,
+                java.util.Set.of(), null);
     }
 
     private static ModelInfo modelWithTimeout(int timeoutSeconds) {
         return new ModelInfo(
                 "openai", "deepseek-v3.2",
                 163840, 8192, ModelSize.LARGE,
-                Set.of(), timeoutSeconds, 2, false, null, null);
+                Set.of(), timeoutSeconds, 2, false, null, null,
+                OutputTokenParam.MAX_TOKENS,
+                java.util.Set.of(), null);
     }
 
     @Test

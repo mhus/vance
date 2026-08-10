@@ -116,7 +116,10 @@ public class ModelCatalog {
             ModelInfo.DEFAULT_ACTION_LOOP_CORRECTIONS,
             false,
             /*messageParser*/ null,
-            /*pricing*/ null);
+            /*pricing*/ null,
+            OutputTokenParam.MAX_TOKENS,
+            /*unsupportedParams*/ Set.of(),
+            /*reasoningEffortWhenOff*/ null);
 
     private final DocumentService documentService;
     private final ModelQuirks modelQuirks;
@@ -694,7 +697,8 @@ public class ModelCatalog {
             // Chat
             "contextWindowTokens", "defaultMaxOutputTokens", "size", "kind",
             "capabilities", "stripThinkTags", "timeoutSeconds",
-            "actionLoopCorrections", "messageParser", "pricing",
+            "actionLoopCorrections", "messageParser", "outputTokenParam",
+            "unsupportedParams", "reasoningEffortWhenOff", "pricing",
             // Image
             "supportedAspectRatios", "maxPromptChars", "costPerImage",
             // Discovery markers (informational)
@@ -720,9 +724,28 @@ public class ModelCatalog {
         if (messageParser == null) {
             messageParser = modelQuirks.messageParserFor(modelName).orElse(null);
         }
+        // Same two-layer resolution as messageParser: explicit YAML
+        // field wins, family pattern fills the gap (gpt-5*, o3*, …),
+        // built-in default (max_tokens) is the floor.
+        OutputTokenParam outputTokenParam = readOutputTokenParam(
+                spec.get("outputTokenParam"), provider, modelName);
+        if (outputTokenParam == null) {
+            outputTokenParam = modelQuirks.outputTokenParamFor(modelName)
+                    .orElse(OutputTokenParam.MAX_TOKENS);
+        }
+        Set<SamplingParam> unsupported = readUnsupportedParams(
+                spec.get("unsupportedParams"), provider, modelName);
+        if (unsupported == null) {
+            unsupported = modelQuirks.unsupportedParamsFor(modelName).orElse(Set.of());
+        }
+        String reasoningOff = readString(spec.get("reasoningEffortWhenOff"));
+        if (reasoningOff == null) {
+            reasoningOff = modelQuirks.reasoningEffortWhenOffFor(modelName).orElse(null);
+        }
         ModelInfo.Pricing pricing = readPricing(spec.get("pricing"), provider, modelName);
         return new ModelInfo(provider, modelName, ctx, out, size, caps,
-                timeout, corrections, stripThinkTags, messageParser, pricing);
+                timeout, corrections, stripThinkTags, messageParser, pricing,
+                outputTokenParam, unsupported, reasoningOff);
     }
 
     /**
@@ -741,7 +764,13 @@ public class ModelCatalog {
         }
     }
 
-    private static ModelInfo fallback(@Nullable String provider, @Nullable String modelName) {
+    /**
+     * Synthetic entry for a model with no catalog document. Instance
+     * method, not static: the pattern-based quirks still apply — a
+     * model family that rejects {@code max_tokens} does so whether or
+     * not someone got around to writing its YAML.
+     */
+    private ModelInfo fallback(@Nullable String provider, @Nullable String modelName) {
         log.warn("ModelCatalog: no entry for '{}/{}' — falling back to {}-token context, "
                         + "no capabilities, {}s timeout",
                 provider, modelName, FALLBACK_TEMPLATE.contextWindowTokens(),
@@ -756,8 +785,59 @@ public class ModelCatalog {
                 FALLBACK_TEMPLATE.timeoutSeconds(),
                 FALLBACK_TEMPLATE.actionLoopCorrections(),
                 FALLBACK_TEMPLATE.stripThinkTags(),
-                /*messageParser*/ null,
-                /*pricing*/ null);
+                modelQuirks.messageParserFor(modelName).orElse(null),
+                /*pricing*/ null,
+                modelQuirks.outputTokenParamFor(modelName)
+                        .orElse(OutputTokenParam.MAX_TOKENS),
+                modelQuirks.unsupportedParamsFor(modelName).orElse(Set.of()),
+                modelQuirks.reasoningEffortWhenOffFor(modelName).orElse(null));
+    }
+
+    /**
+     * Parse the {@code unsupportedParams} list. {@code null} means "not
+     * set here" — the caller falls back to the quirk patterns. An empty
+     * list in the YAML is meaningful: it says "this model accepts
+     * everything", overriding a pattern from an outer layer.
+     */
+    private static @Nullable Set<SamplingParam> readUnsupportedParams(
+            @Nullable Object raw, String provider, String modelName) {
+        if (raw == null) return null;
+        if (!(raw instanceof List<?> list)) {
+            log.warn("ModelCatalog: '{}/{}' has non-list unsupportedParams '{}' — ignored",
+                    provider, modelName, raw);
+            return null;
+        }
+        Set<SamplingParam> out = EnumSet.noneOf(SamplingParam.class);
+        for (Object entry : list) {
+            SamplingParam parsed = SamplingParam.fromYaml(
+                    entry == null ? null : entry.toString());
+            if (parsed == null) {
+                log.warn("ModelCatalog: '{}/{}' has unknown unsupportedParams entry '{}' "
+                                + "— ignored (known: {})",
+                        provider, modelName, entry, List.of(SamplingParam.values()));
+                continue;
+            }
+            out.add(parsed);
+        }
+        return out;
+    }
+
+    /**
+     * Parse the {@code outputTokenParam} field. {@code null} means
+     * "not set here" (caller falls back to patterns); an unrecognised
+     * value is logged and treated the same way rather than failing the
+     * whole catalog entry.
+     */
+    private static @Nullable OutputTokenParam readOutputTokenParam(
+            @Nullable Object raw, String provider, String modelName) {
+        if (raw == null) return null;
+        OutputTokenParam parsed = OutputTokenParam.fromYaml(raw.toString());
+        if (parsed == null) {
+            log.warn("ModelCatalog: '{}/{}' has unknown outputTokenParam '{}' — ignored "
+                            + "(expected max_tokens / max_completion_tokens)",
+                    provider, modelName, raw);
+        }
+        return parsed;
     }
 
     /**

@@ -7,7 +7,12 @@ defaultMaxOutputTokens: 8192
 size: LARGE
 capabilities:
 - vision
-- thinking
+# NOT 'thinking': the model reasons natively, but /v1/chat/completions
+# rejects reasoning_effort together with function tools — and every
+# engine turn ships a tool manifest. The bundled quirk rule therefore
+# pins reasoning_effort to "none"; advertising THINKING here would let
+# a recipe's `thinking: medium` override that and 400 the turn.
+# Revisit when Vance speaks /v1/responses. (verified 2026-08-10)
 pricing:
   currency: USD
   inputPerMTok: 2.0

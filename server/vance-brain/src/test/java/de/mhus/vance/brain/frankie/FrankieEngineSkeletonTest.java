@@ -143,7 +143,9 @@ class FrankieEngineSkeletonTest {
                 /*actionLoopCorrections*/ 2,
                 /*stripThinkTags*/ false,
                 /*messageParser*/ null,
-                /*pricing*/ null);
+                /*pricing*/ null,
+                de.mhus.vance.brain.ai.OutputTokenParam.MAX_TOKENS,
+                java.util.Set.of(), null);
         lenient().when(modelCatalog.lookupOrDefault(
                         any(), any(), any(), any(), any()))
                 .thenReturn(fakeModelInfo);
@@ -392,7 +394,9 @@ class FrankieEngineSkeletonTest {
                 "openai", "gpt-x", 128_000, 4096,
                 de.mhus.vance.brain.ai.ModelSize.LARGE,
                 java.util.Set.of(de.mhus.vance.brain.ai.ModelCapability.VISION),
-                60, 2, false, null, null);
+                60, 2, false, null, null,
+                de.mhus.vance.brain.ai.OutputTokenParam.MAX_TOKENS,
+                java.util.Set.of(), null);
     }
 
     private static de.mhus.vance.brain.thinkengine.SteerMessage.UserChatInput userInput(

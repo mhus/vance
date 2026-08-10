@@ -452,6 +452,78 @@ class ModelCatalogTest {
         assertThat(info.pricing().outputPerMTok()).isEqualTo(2.00);
     }
 
+    // ──── outputTokenParam cascade (YAML → quirk pattern → default) ────
+
+    @Test
+    void outputTokenParam_defaults_to_maxTokens_for_ordinary_models() {
+        ModelInfo info = catalog.lookupOrDefault("openai", "gpt-4o");
+        assertThat(info.outputTokenParam()).isEqualTo(OutputTokenParam.MAX_TOKENS);
+    }
+
+    @Test
+    void outputTokenParam_comes_from_quirk_pattern_for_reasoning_families() {
+        // gpt-5.6-sol.yaml carries no outputTokenParam — the bundled
+        // "gpt-5*" quirk rule supplies it.
+        ModelInfo info = catalog.lookupOrDefault("openai", "gpt-5.6-sol");
+        assertThat(info.outputTokenParam())
+                .isEqualTo(OutputTokenParam.MAX_COMPLETION_TOKENS);
+    }
+
+    @Test
+    void outputTokenParam_quirk_pattern_applies_to_uncatalogued_model() {
+        // No YAML for this one at all — the family pattern still holds,
+        // otherwise a not-yet-catalogued gpt-5 variant would 400.
+        ModelInfo info = catalog.lookupOrDefault("openai", "gpt-5.9-ghost");
+        assertThat(info.outputTokenParam())
+                .isEqualTo(OutputTokenParam.MAX_COMPLETION_TOKENS);
+    }
+
+    @Test
+    void outputTokenParam_explicit_yaml_beats_quirk_pattern() {
+        // A gateway that proxies gpt-5 on the older wire dialect can
+        // opt back out per model.
+        stubModelDoc(TENANT, PROJECT, "openai/gpt-5.6-sol.yaml", """
+                outputTokenParam: max_tokens
+                """);
+        catalog.refresh();
+
+        ModelInfo info = catalog.lookupOrDefault(TENANT, PROJECT, "openai", "gpt-5.6-sol");
+        assertThat(info.outputTokenParam()).isEqualTo(OutputTokenParam.MAX_TOKENS);
+    }
+
+    @Test
+    void unsupportedParams_comeFromQuirkPattern_andCanBeClearedPerModel() {
+        ModelInfo bundled = catalog.lookupOrDefault("openai", "gpt-5.6-sol");
+        assertThat(bundled.unsupportedParams()).contains(SamplingParam.TEMPERATURE);
+
+        // An empty list is a statement, not a no-op: "this deployment
+        // accepts everything" has to be able to beat the pattern.
+        stubModelDoc(TENANT, PROJECT, "openai/gpt-5.6-sol.yaml", """
+                unsupportedParams: []
+                """);
+        catalog.refresh();
+
+        ModelInfo overridden = catalog.lookupOrDefault(TENANT, PROJECT, "openai", "gpt-5.6-sol");
+        assertThat(overridden.unsupportedParams()).isEmpty();
+    }
+
+    @Test
+    void reasoningEffortWhenOff_comesFromQuirkPattern() {
+        assertThat(catalog.lookupOrDefault("openai", "gpt-5.6-sol").reasoningEffortWhenOff())
+                .isEqualTo("none");
+        assertThat(catalog.lookupOrDefault("openai", "gpt-4o").reasoningEffortWhenOff())
+                .isNull();
+    }
+
+    @Test
+    void gpt56_doesNotAdvertiseThinking_soRecipesCannotReEnableReasoning() {
+        // The catalog is what gates reasoning_effort; see the comment in
+        // the model YAML. If someone re-adds the capability, tool-carrying
+        // turns start failing with HTTP 400 again.
+        assertThat(catalog.lookupOrDefault("openai", "gpt-5.6-sol").capabilities())
+                .doesNotContain(ModelCapability.THINKING);
+    }
+
     // ──── Atomic-swap refresh semantics ────────────────────────────────
 
     @Test

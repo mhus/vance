@@ -22,6 +22,7 @@ import de.mhus.vance.brain.ai.ModelCapability;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ModelSize;
+import de.mhus.vance.brain.ai.OutputTokenParam;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import de.mhus.vance.shared.llmusage.LlmUsageService;
 import de.mhus.vance.brain.recipe.RecipeLoader;
@@ -165,7 +166,9 @@ class LightLlmServiceImplTest {
                 ModelSize.LARGE, java.util.Set.<ModelCapability>of(),
                 60, 2, false,
                 /*messageParser*/ null,
-                p);
+                p,
+                OutputTokenParam.MAX_TOKENS,
+                java.util.Set.of(), null);
     }
 
     // ──────────────────── extractJson static helper ────────────────────

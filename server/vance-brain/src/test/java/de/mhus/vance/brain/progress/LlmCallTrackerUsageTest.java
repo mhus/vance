@@ -14,6 +14,7 @@ import de.mhus.vance.brain.ai.ModelCapability;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ModelSize;
+import de.mhus.vance.brain.ai.OutputTokenParam;
 import de.mhus.vance.shared.llmusage.LlmUsageService;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -132,7 +133,9 @@ class LlmCallTrackerUsageTest {
                 ModelSize.LARGE, Set.<ModelCapability>of(),
                 60, 2, false,
                 /*messageParser*/ null,
-                /*pricing*/ null);
+                /*pricing*/ null,
+                OutputTokenParam.MAX_TOKENS,
+                java.util.Set.of(), null);
         ChatResponse response = responseWith(10_000, 2_500);
 
         tracker.record(process, /*request*/ null, response, 1234L, "default:code", unpriced);
@@ -180,7 +183,9 @@ class LlmCallTrackerUsageTest {
                 ModelSize.LARGE, Set.<ModelCapability>of(),
                 60, 2, false,
                 /*messageParser*/ null,
-                new ModelInfo.Pricing("EUR", 0.355, 1.775, /*cacheR*/ null, /*cacheW*/ null));
+                new ModelInfo.Pricing("EUR", 0.355, 1.775, /*cacheR*/ null, /*cacheW*/ null),
+                OutputTokenParam.MAX_TOKENS,
+                java.util.Set.of(), null);
     }
 
     private static ChatResponse responseWith(int inputTokens, int outputTokens) {

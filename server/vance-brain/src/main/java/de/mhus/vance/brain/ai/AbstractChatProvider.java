@@ -4,6 +4,10 @@ import de.mhus.vance.brain.ai.parser.MessageParser;
 import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -85,6 +89,7 @@ public abstract class AbstractChatProvider implements AiModelProvider {
                 : gated.toBuilder()
                         .maxTokens(modelInfo.effectiveMaxOutputTokens(null))
                         .build();
+        effective = stripUnsupportedParams(effective, modelInfo);
         MessageParser parser = messageParserRegistry
                 .get(modelInfo.messageParser())
                 .orElse(null);
@@ -115,6 +120,60 @@ public abstract class AbstractChatProvider implements AiModelProvider {
             throw new AiChatException(
                     "Failed to build " + wireName + " chat for " + config.fullName(), e);
         }
+    }
+
+    /**
+     * Clear the sampling knobs the resolved model refuses, so the model
+     * runs on its own decoding defaults instead of rejecting the whole
+     * request. Reasoning models (OpenAI o-series, gpt-5+) answer a
+     * stray {@code temperature} or {@code stop} with a hard HTTP 400 —
+     * and {@link AiChatOptions} carries a {@code temperature} default,
+     * so without this every turn against such a model would die.
+     *
+     * <p>Deliberately in the template, not in a single provider: the
+     * field is a fact about the model, and the same model can arrive
+     * through more than one backend.
+     */
+    static AiChatOptions stripUnsupportedParams(
+            AiChatOptions options, ModelInfo modelInfo) {
+        Set<SamplingParam> unsupported = modelInfo.unsupportedParams();
+        if (unsupported.isEmpty()) {
+            return options;
+        }
+        AiChatOptions.AiChatOptionsBuilder builder = options.toBuilder();
+        List<String> dropped = new ArrayList<>(unsupported.size());
+        for (SamplingParam param : unsupported) {
+            boolean wasSet = switch (param) {
+                case TEMPERATURE -> clear(options.getTemperature(), builder::temperature);
+                case TOP_P -> clear(options.getTopP(), builder::topP);
+                case TOP_K -> clear(options.getTopK(), builder::topK);
+                case FREQUENCY_PENALTY ->
+                        clear(options.getFrequencyPenalty(), builder::frequencyPenalty);
+                case PRESENCE_PENALTY ->
+                        clear(options.getPresencePenalty(), builder::presencePenalty);
+                case SEED -> clear(options.getSeed(), builder::seed);
+                case STOP_SEQUENCES -> {
+                    List<String> stops = options.getStopSequences();
+                    boolean present = stops != null && !stops.isEmpty();
+                    builder.stopSequences(null);
+                    yield present;
+                }
+            };
+            if (wasSet) {
+                dropped.add(param.wireName());
+            }
+        }
+        if (!dropped.isEmpty()) {
+            TEMPLATE_LOG.debug("Model '{}/{}' does not accept {} — dropped from this call",
+                    modelInfo.provider(), modelInfo.modelName(), dropped);
+        }
+        return builder.build();
+    }
+
+    /** Null out one option field; reports whether it carried a value. */
+    private static <T> boolean clear(@Nullable T current, Consumer<@Nullable T> setter) {
+        setter.accept(null);
+        return current != null;
     }
 
     /**

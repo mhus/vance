@@ -100,6 +100,26 @@ class LiveRegionPauseGateTest {
     }
 
     @Test
+    void emitStatic_emptyString_writesBlankLine() {
+        // Markdown paragraph spacing relies on blank lines surviving
+        // the emit path — an empty payload must not be dropped.
+        region.emitStatic("before");
+        region.emitStatic("");
+        region.emitStatic("after");
+
+        assertThat(output()).isEqualTo("before\n\n\nafter\n");
+    }
+
+    @Test
+    void emitStatic_emptyString_whilePaused_isKeptInTheBacklog() {
+        region.pause();
+        region.emitStatic("");
+        region.resume();
+
+        assertThat(output()).contains("\n");
+    }
+
+    @Test
     void clearScreen_whilePaused_discardsTheBacklog() {
         region.pause();
         region.emitStatic("stale output");

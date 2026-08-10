@@ -526,7 +526,11 @@ public class LiveRegion {
      * borrowed screen.
      */
     public void emitStatic(String text) {
-        if (text == null || text.isEmpty()) return;
+        if (text == null) return;
+        // An empty string is a deliberate blank line (markdown paragraph
+        // breaks rely on it) — normalise to a bare newline so it survives
+        // the writeStatic no-newline append instead of being dropped.
+        if (text.isEmpty()) text = "\n";
         if (paused.get()) {
             deferred.add(text);
             return;

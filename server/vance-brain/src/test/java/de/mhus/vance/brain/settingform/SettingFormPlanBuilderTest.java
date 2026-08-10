@@ -15,7 +15,6 @@ import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.settings.SettingService;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class SettingFormPlanBuilderTest {
@@ -35,7 +34,7 @@ class SettingFormPlanBuilderTest {
                 List.of());
 
         List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
-                form, Map.of("provider", "anthropic"), TENANT, PROJECT, USER, "en", Set.of());
+                form, Map.of("provider", "anthropic"), TENANT, PROJECT, USER, "en", Map.of());
 
         assertThat(plan).hasSize(1);
         PlannedSettingAction a = plan.get(0);
@@ -52,7 +51,7 @@ class SettingFormPlanBuilderTest {
                 List.of());
 
         List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
-                form, Map.of("anthKey", ""), TENANT, PROJECT, USER, "en", Set.of());
+                form, Map.of("anthKey", ""), TENANT, PROJECT, USER, "en", Map.of());
 
         assertThat(plan).hasSize(1);
         assertThat(plan.get(0).action()).isEqualTo(PlannedSettingAction.Action.SKIP);
@@ -70,7 +69,7 @@ class SettingFormPlanBuilderTest {
 
         List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
                 form, Map.of("provider", "openai", "anthKey", "secret"),
-                TENANT, PROJECT, USER, "en", Set.of());
+                TENANT, PROJECT, USER, "en", Map.of());
 
         assertThat(plan).extracting(PlannedSettingAction::action, PlannedSettingAction::key)
                 .containsExactly(
@@ -89,7 +88,7 @@ class SettingFormPlanBuilderTest {
 
         List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
                 form, Map.of("provider", "openai", "anthKey", "should-be-ignored"),
-                TENANT, PROJECT, USER, "en", Set.of());
+                TENANT, PROJECT, USER, "en", Map.of());
 
         assertThat(plan).hasSize(1);
         assertThat(plan.get(0).key()).isEqualTo("ai.default.provider");
@@ -106,9 +105,9 @@ class SettingFormPlanBuilderTest {
                 List.of(cs));
 
         List<PlannedSettingAction> planSmall = planBuilder.buildApplyPlan(
-                form, Map.of("budget", "small"), TENANT, PROJECT, USER, "en", Set.of());
+                form, Map.of("budget", "small"), TENANT, PROJECT, USER, "en", Map.of());
         List<PlannedSettingAction> planLarge = planBuilder.buildApplyPlan(
-                form, Map.of("budget", "large"), TENANT, PROJECT, USER, "en", Set.of());
+                form, Map.of("budget", "large"), TENANT, PROJECT, USER, "en", Map.of());
 
         assertThat(planSmall).filteredOn(a -> a.key().equals("quota.daily_tokens"))
                 .singleElement()
@@ -128,7 +127,7 @@ class SettingFormPlanBuilderTest {
                 List.of(cs));
 
         List<PlannedSettingAction> planOff = planBuilder.buildApplyPlan(
-                form, Map.of("tracing", "false"), TENANT, PROJECT, USER, "en", Set.of());
+                form, Map.of("tracing", "false"), TENANT, PROJECT, USER, "en", Map.of());
 
         assertThat(planOff).filteredOn(a -> a.key().equals("tracing.llm.sample_rate"))
                 .singleElement()
@@ -154,7 +153,7 @@ class SettingFormPlanBuilderTest {
 
         List<PlannedSettingAction> planCustom = planBuilder.buildApplyPlan(
                 form, Map.of("mode", "custom", "customValue", "99"),
-                TENANT, PROJECT, USER, "en", Set.of());
+                TENANT, PROJECT, USER, "en", Map.of());
 
         // After merge, the single output for x.value is a WRITE with value 99.
         assertThat(planCustom).filteredOn(a -> a.key().equals("x.value"))
@@ -177,7 +176,7 @@ class SettingFormPlanBuilderTest {
         // the runtime safety net in the planner.
 
         assertThatThrownBy(() -> planBuilder.buildApplyPlan(
-                form, Map.of("a", "1", "b", "2"), TENANT, PROJECT, USER, "en", Set.of()))
+                form, Map.of("a", "1", "b", "2"), TENANT, PROJECT, USER, "en", Map.of()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("duplicate WRITE");
     }
@@ -252,7 +251,7 @@ class SettingFormPlanBuilderTest {
 
         List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
                 form, Map.of("dummy", "claude-opus-4-7"),
-                TENANT, PROJECT, USER, "en", Set.of());
+                TENANT, PROJECT, USER, "en", Map.of());
 
         assertThat(plan).filteredOn(a -> a.key().equals("ai.default.model.echo"))
                 .singleElement()
@@ -267,7 +266,7 @@ class SettingFormPlanBuilderTest {
 
         List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
                 form, Map.of("provider", "anthropic"),
-                TENANT, PROJECT, USER, "en", Set.of("provider"));
+                TENANT, PROJECT, USER, "en", Map.of("provider", new FieldLiveState(true, PROJECT)));
 
         assertThat(plan).hasSize(1);
         assertThat(plan.get(0).action()).isEqualTo(PlannedSettingAction.Action.SKIP);
@@ -286,7 +285,7 @@ class SettingFormPlanBuilderTest {
 
         List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
                 form, Map.of("enabled", "false", "model", "text-embedding-3-small"),
-                TENANT, PROJECT, USER, "en", Set.of("model"));
+                TENANT, PROJECT, USER, "en", Map.of("model", new FieldLiveState(true, PROJECT)));
 
         assertThat(plan).hasSize(1);
         assertThat(plan.get(0).action()).isEqualTo(PlannedSettingAction.Action.DELETE);
@@ -306,11 +305,121 @@ class SettingFormPlanBuilderTest {
 
         List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
                 form, Map.of("provider", "anthropic"),
-                TENANT, PROJECT, USER, "en", Set.of("provider"));
+                TENANT, PROJECT, USER, "en", Map.of("provider", new FieldLiveState(true, PROJECT)));
 
         assertThat(plan).filteredOn(a -> a.key().equals("ai.default.provider.echo"))
                 .singleElement()
                 .extracting(PlannedSettingAction::value).isEqualTo("anthropic");
+    }
+
+    // ──────────────────── empty submissions ────────────────────
+
+    @Test
+    void empty_submission_deletes_the_override_owned_by_the_edited_scope() {
+        // The project itself holds the value → emptying the field means
+        // "drop my override", so the key goes away and the outer layer wins again.
+        ResolvedSettingForm form = formWith(
+                List.of(stringField("baseUrl", "ai.provider.openai.baseUrl", null, null)),
+                List.of());
+
+        List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
+                form, Map.of("baseUrl", ""), TENANT, PROJECT, USER, "en",
+                Map.of("baseUrl", new FieldLiveState(false, PROJECT)));
+
+        assertThat(plan).hasSize(1);
+        assertThat(plan.get(0).action()).isEqualTo(PlannedSettingAction.Action.DELETE);
+        assertThat(plan.get(0).key()).isEqualTo("ai.provider.openai.baseUrl");
+    }
+
+    @Test
+    void empty_submission_writes_empty_string_when_the_value_is_inherited() {
+        // The tenant holds the value, the project is being edited → emptying
+        // the field means "no value HERE despite the tenant". An existing-but-
+        // empty setting is how the cascade expresses that; a SKIP would leave
+        // the inherited value silently in effect.
+        ResolvedSettingForm form = formWith(
+                List.of(stringField("baseUrl", "ai.provider.openai.baseUrl", null, null)),
+                List.of());
+
+        List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
+                form, Map.of("baseUrl", ""), TENANT, PROJECT, USER, "en",
+                Map.of("baseUrl", new FieldLiveState(
+                        false, HomeBootstrapService.TENANT_PROJECT_NAME)));
+
+        assertThat(plan).hasSize(1);
+        PlannedSettingAction a = plan.get(0);
+        assertThat(a.action()).isEqualTo(PlannedSettingAction.Action.WRITE);
+        assertThat(a.referenceId()).isEqualTo(PROJECT);
+        assertThat(a.value()).isEmpty();
+        assertThat(a.settingType()).isEqualTo(SettingType.STRING);
+    }
+
+    @Test
+    void empty_submission_is_SKIP_when_no_layer_holds_a_value() {
+        // Nothing to drop, nothing to shadow → writing an empty row would only
+        // pin noise into the scope.
+        ResolvedSettingForm form = formWith(
+                List.of(stringField("baseUrl", "ai.provider.openai.baseUrl", null, null)),
+                List.of());
+
+        List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
+                form, Map.of("baseUrl", ""), TENANT, PROJECT, USER, "en", Map.of());
+
+        assertThat(plan).hasSize(1);
+        assertThat(plan.get(0).action()).isEqualTo(PlannedSettingAction.Action.SKIP);
+    }
+
+    @Test
+    void empty_submission_on_inherited_non_string_field_stays_SKIP() {
+        // "" is not a parseable INT — the empty-override branch is STRING-only.
+        FormFieldDto intField = FormFieldDto.builder()
+                .name("limit")
+                .type("integer")
+                .label(Map.of("en", "Limit"))
+                .bindsTo(BindsToDto.builder().key("quota.limit").build())
+                .build();
+        ResolvedSettingForm form = formWith(List.of(intField), List.of());
+
+        List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
+                form, Map.of("limit", ""), TENANT, PROJECT, USER, "en",
+                Map.of("limit", new FieldLiveState(
+                        false, HomeBootstrapService.TENANT_PROJECT_NAME)));
+
+        assertThat(plan).hasSize(1);
+        assertThat(plan.get(0).action()).isEqualTo(PlannedSettingAction.Action.SKIP);
+    }
+
+    @Test
+    void unsubmitted_field_stays_SKIP_even_with_an_inherited_value() {
+        // Key absent from the values map → "not sent", not "cleared".
+        ResolvedSettingForm form = formWith(
+                List.of(stringField("baseUrl", "ai.provider.openai.baseUrl", null, null)),
+                List.of());
+
+        List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
+                form, Map.of(), TENANT, PROJECT, USER, "en",
+                Map.of("baseUrl", new FieldLiveState(
+                        false, HomeBootstrapService.TENANT_PROJECT_NAME)));
+
+        assertThat(plan).hasSize(1);
+        assertThat(plan.get(0).action()).isEqualTo(PlannedSettingAction.Action.SKIP);
+    }
+
+    @Test
+    void empty_password_field_stays_SKIP_even_with_an_inherited_value() {
+        // An empty password field means "keep the stored secret" (spec §6.4) —
+        // the empty-override rules must not clear credentials.
+        ResolvedSettingForm form = formWith(
+                List.of(passwordField("anthKey", "ai.provider.anthropic.apiKey")),
+                List.of());
+
+        List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
+                form, Map.of("anthKey", ""), TENANT, PROJECT, USER, "en",
+                Map.of("anthKey", new FieldLiveState(
+                        false, HomeBootstrapService.TENANT_PROJECT_NAME)));
+
+        assertThat(plan).hasSize(1);
+        assertThat(plan.get(0).action()).isEqualTo(PlannedSettingAction.Action.SKIP);
     }
 
     // ──────────────────── helpers ────────────────────

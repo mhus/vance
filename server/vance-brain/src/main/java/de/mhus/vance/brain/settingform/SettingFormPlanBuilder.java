@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -30,8 +29,10 @@ import org.springframework.stereotype.Service;
  *       {@code showIf} are kept in the Pebble context but their
  *       {@code bindsTo} is not contributed to the plan.</li>
  *   <li>For each visible direct-mapped field: emit WRITE / DELETE /
- *       SKIP according to {@code writeIf} + value-presence rules.
- *       Empty {@code password} fields skip silently (spec §6.4).</li>
+ *       SKIP according to {@code writeIf} + value-presence rules. An
+ *       empty submission is resolved against the live cascade layer —
+ *       see {@link #planForEmptySubmission}. Empty {@code password}
+ *       fields skip silently (spec §6.4).</li>
  *   <li>For each computed setting: render the Pebble {@code value}
  *       template, evaluate {@code writeIf}, emit WRITE or DELETE.</li>
  *   <li>Sanity-check that no (key, scope) tuple is targeted twice —
@@ -67,14 +68,21 @@ public class SettingFormPlanBuilder {
      * {@code FormValidator}; this method assumes structurally-valid
      * input.
      *
-     * @param unchangedFields names of direct-mapped fields whose
-     *        submitted value already equals the effective cascade value.
-     *        Their binding reduces to SKIP — writing the same value again
-     *        would be a no-op at best and, when the value is inherited
-     *        from an outer scope, would silently pin it into the scope
-     *        being edited. They stay in the Pebble context so computed
-     *        settings still see a complete value map. Determined by
-     *        {@code SettingFormService}, which owns the cascade reads.
+     * @param liveStates per-field pre-submit cascade state, keyed by field
+     *        name, determined by {@code SettingFormService} (which owns
+     *        the cascade reads). Fields missing from the map are treated
+     *        as {@link FieldLiveState#ABSENT}. Two things ride on it:
+     *        <ul>
+     *          <li>{@link FieldLiveState#unchanged()} reduces the binding
+     *              to SKIP — writing the same value again would be a
+     *              no-op at best and, when the value is inherited from an
+     *              outer scope, would silently pin it into the scope being
+     *              edited. Such fields stay in the Pebble context so
+     *              computed settings still see a complete value map.</li>
+     *          <li>{@link FieldLiveState#liveReferenceId()} disambiguates
+     *              an empty submission — see
+     *              {@link #planForEmptySubmission}.</li>
+     *        </ul>
      */
     public List<PlannedSettingAction> buildApplyPlan(
             ResolvedSettingForm form,
@@ -83,7 +91,7 @@ public class SettingFormPlanBuilder {
             @Nullable String projectId,
             @Nullable String userId,
             @Nullable String lang,
-            Set<String> unchangedFields) {
+            Map<String, FieldLiveState> liveStates) {
         Map<String, Object> ctx = buildPebbleContext(form, values, projectId, userId, lang, tenantId);
         Map<String, Boolean> shownFields = evaluateShowIf(form.fields(), ctx);
 
@@ -100,7 +108,7 @@ public class SettingFormPlanBuilder {
             }
             PlannedSettingAction action = planForField(
                     form, field, binding, values, ctx, projectId, userId, tenantId,
-                    unchangedFields.contains(field.getName()));
+                    liveStates.getOrDefault(field.getName(), FieldLiveState.ABSENT));
             if (action == null) continue;
             recordPlanned(seen, out, action);
         }
@@ -176,7 +184,7 @@ public class SettingFormPlanBuilder {
             @Nullable String projectId,
             @Nullable String userId,
             String tenantId,
-            boolean unchanged) {
+            FieldLiveState live) {
         String wireScope = binding.getScope() == null ? form.defaultScope() : binding.getScope();
         ResolvedScope scope = resolveScope(wireScope, projectId, userId);
         SettingType settingType = resolveFieldSettingType(field, binding);
@@ -199,7 +207,7 @@ public class SettingFormPlanBuilder {
         // Value equals what the cascade already yields → nothing to write.
         // Same effective outcome, minus pinning an inherited value into the
         // scope being edited.
-        if (unchanged) {
+        if (live.unchanged()) {
             return new PlannedSettingAction(
                     binding.getKey(), wireScope,
                     scope.referenceType(), scope.referenceId(),
@@ -207,16 +215,13 @@ public class SettingFormPlanBuilder {
                     null, null, masked, sourceLabel);
         }
 
-        @Nullable String raw = coerceScalar(values.get(field.getName()), field, settingType);
+        @Nullable Object submitted = values.get(field.getName());
+        @Nullable String raw = coerceScalar(submitted, field, settingType);
 
         if (raw == null) {
-            // Empty submission → no write, no delete (spec §6.4 for password;
-            // applied generally so optional fields don't accidentally write empty strings).
-            return new PlannedSettingAction(
-                    binding.getKey(), wireScope,
-                    scope.referenceType(), scope.referenceId(),
-                    PlannedSettingAction.Action.SKIP,
-                    null, null, masked, sourceLabel);
+            return planForEmptySubmission(
+                    binding, wireScope, scope, settingType, masked, sourceLabel,
+                    live, submitted != null);
         }
 
         return new PlannedSettingAction(
@@ -224,6 +229,79 @@ public class SettingFormPlanBuilder {
                 scope.referenceType(), scope.referenceId(),
                 PlannedSettingAction.Action.WRITE,
                 raw, settingType, masked, sourceLabel);
+    }
+
+    /**
+     * Turns an <em>empty</em> submission into an action. On its own an
+     * empty field is ambiguous — "leave this alone" and "make this empty
+     * here" look identical on the wire — so the live cascade layer
+     * decides:
+     *
+     * <ul>
+     *   <li><b>Value owned by the scope being edited</b> → DELETE. The
+     *       user is dropping their own override; the key goes away and
+     *       the outer layer is inherited again.</li>
+     *   <li><b>Value inherited from an outer scope</b> → WRITE {@code ""}.
+     *       The user wants no value <em>here</em> despite the outer layer.
+     *       An existing-but-empty setting is exactly how the cascade
+     *       expresses that: {@code SettingService.getStringValueCascade}
+     *       stops at any layer that has the key set (only a {@code null}
+     *       value keeps cascading), and every consumer reads blank as "not
+     *       configured" and falls back to its own default. Without this,
+     *       emptying an inherited field would silently do nothing — the
+     *       outer value would just stay in effect.</li>
+     *   <li><b>Nothing set anywhere</b> → SKIP. There is no override to
+     *       drop and no inherited value to shadow, so writing an empty row
+     *       would only pin noise into the scope.</li>
+     * </ul>
+     *
+     * <p>Three deliberate exceptions keep SKIP:
+     * <ul>
+     *   <li>Fields the caller did not submit at all ({@code submitted =
+     *       false}: key absent from the values map, or present as JSON
+     *       null). "Not sent" is not "cleared" — the Web-UI happens to
+     *       pre-fill and resubmit every field, but a partial submit is a
+     *       legitimate API call and must not delete or blank anything the
+     *       caller never mentioned.</li>
+     *   <li>PASSWORD fields — an empty password field means "keep the
+     *       stored secret" (spec §6.4), never "clear it". Clearing a
+     *       credential goes through {@code /reset} or the raw settings
+     *       editor.</li>
+     *   <li>Non-STRING types (INT / LONG / DOUBLE / BOOLEAN) with an
+     *       inherited value — {@code ""} is not a parseable value of those
+     *       types, and while the typed getters treat blank as absent, a
+     *       consumer parsing the raw cascade string would blow up. The
+     *       DELETE branch above still applies to them, which covers the
+     *       case that actually occurs (dropping one's own override).</li>
+     * </ul>
+     */
+    private PlannedSettingAction planForEmptySubmission(
+            BindsToDto binding,
+            String wireScope,
+            ResolvedScope scope,
+            SettingType settingType,
+            boolean masked,
+            String sourceLabel,
+            FieldLiveState live,
+            boolean submitted) {
+        PlannedSettingAction.Action action;
+        if (!submitted || masked || settingType == SettingType.PASSWORD || !live.hasLiveValue()) {
+            action = PlannedSettingAction.Action.SKIP;
+        } else if (live.isOwnedBy(scope.referenceId())) {
+            action = PlannedSettingAction.Action.DELETE;
+        } else if (settingType == SettingType.STRING) {
+            action = PlannedSettingAction.Action.WRITE;
+        } else {
+            action = PlannedSettingAction.Action.SKIP;
+        }
+        boolean write = action == PlannedSettingAction.Action.WRITE;
+        return new PlannedSettingAction(
+                binding.getKey(), wireScope,
+                scope.referenceType(), scope.referenceId(),
+                action,
+                write ? "" : null,
+                write ? settingType : null,
+                masked, sourceLabel);
     }
 
     private SettingType resolveFieldSettingType(FormFieldDto field, BindsToDto binding) {

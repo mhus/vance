@@ -11,6 +11,7 @@ import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.settings.SettingDocument;
 import de.mhus.vance.shared.settings.SettingService;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -70,10 +71,10 @@ public class SettingFormService {
             @Nullable String projectId,
             @Nullable String userId,
             @Nullable String lang) {
-        Set<String> unchanged = unchangedFields(form, values, tenantId, projectId, userId);
-        validateSubmitted(form, values, tenantId, projectId, unchanged);
+        Map<String, FieldLiveState> live = fieldLiveStates(form, values, tenantId, projectId, userId);
+        validateSubmitted(form, values, tenantId, projectId, live);
         List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
-                form, values, tenantId, projectId, userId, lang, unchanged);
+                form, values, tenantId, projectId, userId, lang, live);
         executePlan(tenantId, plan);
         return plan;
     }
@@ -91,10 +92,10 @@ public class SettingFormService {
             @Nullable String projectId,
             @Nullable String userId,
             @Nullable String lang) {
-        Set<String> unchanged = unchangedFields(form, values, tenantId, projectId, userId);
-        validateSubmitted(form, values, tenantId, projectId, unchanged);
+        Map<String, FieldLiveState> live = fieldLiveStates(form, values, tenantId, projectId, userId);
+        validateSubmitted(form, values, tenantId, projectId, live);
         return planBuilder.buildApplyPlan(
-                form, values, tenantId, projectId, userId, lang, unchanged);
+                form, values, tenantId, projectId, userId, lang, live);
     }
 
     /**
@@ -185,54 +186,60 @@ public class SettingFormService {
             Map<String, Object> values,
             String tenantId,
             @Nullable String projectId,
-            Set<String> unchanged) {
+            Map<String, FieldLiveState> liveStates) {
         List<FormFieldDto> resolved = resolveDynamicChoices(form.fields(), tenantId, projectId);
-        if (unchanged.isEmpty()) {
-            formValidator.validate(resolved, values);
-            return;
-        }
         List<FormFieldDto> toValidate = new ArrayList<>(resolved.size());
         for (FormFieldDto f : resolved) {
-            if (!unchanged.contains(f.getName())) toValidate.add(f);
+            FieldLiveState live = liveStates.get(f.getName());
+            if (live == null || !live.unchanged()) toValidate.add(f);
         }
         formValidator.validate(toValidate, values);
     }
 
     /**
-     * Names of direct-mapped fields whose submitted value already equals
-     * the effective cascade value — i.e. the ones the user left alone.
+     * Pre-submit cascade state per direct-mapped field: whether the
+     * submitted value already equals the effective one, and which cascade
+     * layer currently holds it. Fields with no live value in any layer are
+     * left out of the map entirely — the planner defaults those to
+     * {@link FieldLiveState#ABSENT}.
      *
-     * <p>The Web-UI pre-fills every direct-mapped field with its live
-     * cascade value so the form shows what is currently in effect. Without
-     * this check, saving the form would write all of them back into the
-     * scope being edited, pinning a dozen inherited values the user never
-     * asked to own. Comparison is on the trimmed wire string, which is
-     * what both sides are: {@link #lookupLiveValue} returns the persisted
-     * string and the client submits strings for every scalar type.
+     * <p><b>unchanged.</b> The Web-UI pre-fills every direct-mapped field
+     * with its live cascade value so the form shows what is currently in
+     * effect. Without this check, saving the form would write all of them
+     * back into the scope being edited, pinning a dozen inherited values
+     * the user never asked to own. Comparison is on the trimmed wire
+     * string, which is what both sides are: {@link #lookupLiveValue}
+     * returns the persisted string and the client submits strings for
+     * every scalar type.
      *
-     * <p>PASSWORD fields never qualify — their live value is the {@code "***"}
-     * placeholder, and an empty submission already means "keep unchanged"
-     * (spec §6.4). Fields without a live value never qualify either: there
-     * is nothing to be unchanged relative to.
+     * <p><b>liveReferenceId.</b> Tells the planner whether an empty
+     * submission means "drop my own override" (DELETE) or "be empty here
+     * despite an outer layer" (WRITE {@code ""}). See
+     * {@link SettingFormPlanBuilder#planForEmptySubmission}.
+     *
+     * <p>PASSWORD fields are excluded from both: their live value is the
+     * {@code "***"} placeholder (never comparable to a submission) and an
+     * empty submission always means "keep unchanged" (spec §6.4), so the
+     * layer they live on is irrelevant here.
      */
-    private Set<String> unchangedFields(
+    private Map<String, FieldLiveState> fieldLiveStates(
             ResolvedSettingForm form,
             Map<String, Object> values,
             String tenantId,
             @Nullable String projectId,
             @Nullable String userId) {
-        Set<String> out = new LinkedHashSet<>();
+        Map<String, FieldLiveState> out = new LinkedHashMap<>();
         for (FormFieldDto f : form.fields()) {
             BindsToDto b = f.getBindsTo();
             if (b == null) continue;
             if ("password".equals(f.getType())) continue;
-            Object submitted = values.get(f.getName());
-            if (submitted == null) continue;
-            if (!(submitted instanceof String s)) continue;
             String wireScope = b.getScope() == null ? form.defaultScope() : b.getScope();
             LiveValue live = lookupLiveValue(f, b, wireScope, tenantId, projectId, userId);
             if (live.value == null) continue;
-            if (live.value.trim().equals(s.trim())) out.add(f.getName());
+            Object submitted = values.get(f.getName());
+            boolean unchanged = submitted instanceof String s
+                    && live.value.trim().equals(s.trim());
+            out.put(f.getName(), new FieldLiveState(unchanged, live.source));
         }
         return out;
     }

@@ -235,6 +235,12 @@ function fieldDisplayValue(f: FormFieldDto): string {
   if (f.currentValue === undefined || f.currentValue === null) {
     return t('settingForms.unset');
   }
+  // An empty string is a real, deliberate state — the scope that holds it stops
+  // the cascade there instead of inheriting from an outer scope. Rendering it as
+  // blank (or as "unset") would hide exactly that distinction.
+  if (f.currentValue === '') {
+    return t('settingForms.explicitEmpty');
+  }
   return f.currentValue;
 }
 

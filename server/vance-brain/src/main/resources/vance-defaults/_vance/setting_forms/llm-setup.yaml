@@ -158,9 +158,10 @@ fields:
       key: "ai.provider.gemini.apiKey"
 
   # ─── Provider gateway / base URLs ──────────────────────────────────
-  # Per-tenant overrides for the OpenAI / Ollama / LM Studio adapters.
-  # Leave empty to use the Spring boot-time default
-  # (`vance.ai.<provider>.base-url`).
+  # Per-tenant / per-project overrides for the OpenAI / Ollama / LM Studio
+  # adapters. Leave empty to use the Spring boot-time default
+  # (`vance.ai.<provider>.base-url`) — in a project that also switches off
+  # an inherited tenant gateway (setting-forms.md §6.4).
 
   - name: openaiBaseUrl
     type: string
@@ -168,8 +169,8 @@ fields:
       de: "OpenAI Base-URL"
       en: "OpenAI Base-URL"
     help:
-      de: "Leer = api.openai.com. Beispiele: https://api.cortecs.ai/v1, https://openrouter.ai/api/v1, eigene vLLM-Instanz."
-      en: "Empty = api.openai.com. Examples: https://api.cortecs.ai/v1, https://openrouter.ai/api/v1, your own vLLM instance."
+      de: "Leer = api.openai.com — im Projekt auch dann, wenn der Mandant ein Gateway gesetzt hat. Beispiele: https://api.cortecs.ai/v1, https://openrouter.ai/api/v1, eigene vLLM-Instanz."
+      en: "Empty = api.openai.com — in a project that also overrides a gateway set on the tenant. Examples: https://api.cortecs.ai/v1, https://openrouter.ai/api/v1, your own vLLM instance."
     bindsTo:
       key: "ai.provider.openai.baseUrl"
 

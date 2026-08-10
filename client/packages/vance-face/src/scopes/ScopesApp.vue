@@ -696,6 +696,17 @@ function onProjectContentLanguageChanged(value: string | null): void {
 
 // ─── Settings actions ───
 
+/**
+ * Display label for a setting's value. A null value and an empty string mean
+ * different things in the cascade — null keeps falling through to the outer
+ * scope, "" stops the cascade here — so they must not render identically.
+ */
+function settingValueLabel(s: SettingDto): string {
+  if (s.value === null || s.value === undefined) return t('scopes.common.empty');
+  if (s.value === '') return t('scopes.settingsPanel.explicitEmpty');
+  return s.value;
+}
+
 async function addSetting(): Promise<void> {
   const scope = settingsScope.value;
   const key = newSettingKey.value.trim();
@@ -703,7 +714,13 @@ async function addSetting(): Promise<void> {
   try {
     await settingsState.upsert(
       scope.type, scope.id, key,
-      newSettingValue.value === '' ? null : newSettingValue.value,
+      // Only an empty PASSWORD means "no value": it creates the row without
+      // storing a secret. For every other type an empty value is a deliberate
+      // "explicitly empty here" — it must persist as "" so the cascade stops
+      // at this scope instead of falling through to the outer layer. Sending
+      // null would store null, which keeps cascading.
+      newSettingType.value === SettingType.PASSWORD && newSettingValue.value === ''
+        ? null : newSettingValue.value,
       newSettingType.value,
       newSettingDescription.value.trim() || null,
     );
@@ -1304,9 +1321,9 @@ const combinedError = computed<string | null>(() =>
             <template v-else>
               <div class="text-sm break-words">
                 <span v-if="s.type === SettingType.PASSWORD" class="opacity-70">
-                  {{ s.value ?? $t('scopes.common.empty') }}
+                  {{ settingValueLabel(s) }}
                 </span>
-                <span v-else>{{ s.value ?? $t('scopes.common.empty') }}</span>
+                <span v-else>{{ settingValueLabel(s) }}</span>
               </div>
               <div v-if="s.description" class="text-xs opacity-60">{{ s.description }}</div>
               <div class="flex justify-end gap-2 mt-1">

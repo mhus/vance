@@ -209,7 +209,7 @@ public class ClientFileGrepTool implements ClientTool {
                 }
             }
         } catch (IOException e) {
-            throw new RuntimeException("Walk failed: " + e.getMessage(), e);
+            throw new RuntimeException(ClientFilePaths.describeFailure(root, e, "Walk"), e);
         }
 
         Map<String, Object> out = new LinkedHashMap<>();

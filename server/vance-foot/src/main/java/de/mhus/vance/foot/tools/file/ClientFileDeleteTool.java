@@ -99,7 +99,7 @@ public class ClientFileDeleteTool implements ClientTool {
         try {
             deleted = Files.deleteIfExists(p);
         } catch (Exception e) {
-            throw new RuntimeException("Delete failed: " + e.getMessage(), e);
+            throw new RuntimeException(ClientFilePaths.describeFailure(p, e, "Delete"), e);
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("path", p.toAbsolutePath().toString());

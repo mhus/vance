@@ -5,6 +5,7 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -24,10 +25,20 @@ import org.jspecify.annotations.Nullable;
  * prefix and that the prefix is routing metadata, not part of
  * the user's actual content — see plan §5 / §6.
  *
- * <p>ASSISTANT and SYSTEM turns are passed through verbatim. They
- * have no sender identity beyond the role itself.
+ * <p>SYSTEM turns are passed through verbatim. ASSISTANT turns are
+ * passed through plus — when the turn had failed tool calls — the
+ * failure block described in {@link #renderAssistant}.
  */
 public final class ChatHistoryRenderer {
+
+    /**
+     * Opens the replayed failure block. Phrased as a fact about the
+     * past turn, not as an instruction, so it cannot be mistaken for
+     * a new task.
+     */
+    static final String FAILURE_HEADER =
+            "[vance] Tool calls that FAILED in this turn (they had no effect; "
+                    + "do not assume the work described above actually happened):";
 
     private ChatHistoryRenderer() {}
 
@@ -45,9 +56,37 @@ public final class ChatHistoryRenderer {
     public static ChatMessage toLangchain(ChatMessageDocument msg, boolean collabActive) {
         return switch (msg.getRole()) {
             case USER -> UserMessage.from(applySenderPrefix(msg, msg.getContent(), collabActive));
-            case ASSISTANT -> AiMessage.from(msg.getContent());
+            case ASSISTANT -> AiMessage.from(renderAssistant(msg));
             case SYSTEM -> SystemMessage.from(msg.getContent());
         };
+    }
+
+    /**
+     * Renders an ASSISTANT turn for LLM replay: its persisted content,
+     * plus a failure block for every tool call that failed during that
+     * turn (see {@link ChatMessageDocument#META_TOOL_FAILURES}).
+     *
+     * <p>Only tool <em>results</em> are absent from persisted history —
+     * so a turn in which a write failed replays as the model's own
+     * summary of that turn and nothing else. If the summary claimed
+     * success, every later turn inherits the false claim with no way to
+     * check it. The block is appended at replay time from persisted
+     * metadata, so it is deterministic (prompt caching stays stable) and
+     * never touches the content the user sees in the chat.
+     *
+     * <p>Turns without failures render exactly as before — byte for byte.
+     */
+    public static String renderAssistant(ChatMessageDocument msg) {
+        String body = msg.getContent() == null ? "" : msg.getContent();
+        List<String> failures = msg.toolFailures();
+        if (failures.isEmpty()) return body;
+        StringBuilder sb = new StringBuilder(body);
+        if (!body.isEmpty()) sb.append("\n\n");
+        sb.append(FAILURE_HEADER);
+        for (String f : failures) {
+            sb.append("\n- ").append(f);
+        }
+        return sb.toString();
     }
 
     /**

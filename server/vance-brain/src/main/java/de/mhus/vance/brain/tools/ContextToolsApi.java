@@ -551,6 +551,13 @@ public final class ContextToolsApi implements ToolBus {
         } catch (RuntimeException e) {
             listener.after(name, System.currentTimeMillis() - startMs, e);
             emitHistoryTags(historyTagBuilder.onError(name));
+            // The ERROR tag alone only says "something failed in this
+            // turn". Tool results are not persisted, so without the
+            // detail the failure is invisible from the next turn on —
+            // and the model's own (possibly wrong) claim about the turn
+            // is all that survives. See ChatMessageDocument
+            // .META_TOOL_FAILURES.
+            emitHistoryFailure(name, e.getMessage());
             throw e;
         }
     }
@@ -565,6 +572,16 @@ public final class ContextToolsApi implements ToolBus {
         if (historyTagSink == HistoryTagSink.NOOP || tags.isEmpty()) return;
         try {
             historyTagSink.emit(tags);
+        } catch (RuntimeException ignored) {
+            // Sink errors are non-fatal — see HistoryTagSink Javadoc.
+        }
+    }
+
+    /** Best-effort counterpart of {@link #emitHistoryTags} for failures. */
+    private void emitHistoryFailure(String toolName, @org.jspecify.annotations.Nullable String message) {
+        if (historyTagSink == HistoryTagSink.NOOP) return;
+        try {
+            historyTagSink.emitFailure(toolName, message);
         } catch (RuntimeException ignored) {
             // Sink errors are non-fatal — see HistoryTagSink Javadoc.
         }

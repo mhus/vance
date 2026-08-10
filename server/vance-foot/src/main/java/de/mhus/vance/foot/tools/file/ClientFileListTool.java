@@ -86,7 +86,7 @@ public class ClientFileListTool implements ClientTool {
                     .forEach(e -> entries.add(
                             e.getFileName().toString() + (Files.isDirectory(e) ? "/" : "")));
         } catch (Exception e) {
-            throw new RuntimeException("List failed: " + e.getMessage(), e);
+            throw new RuntimeException(ClientFilePaths.describeFailure(p, e, "List"), e);
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("path", p.toAbsolutePath().toString());

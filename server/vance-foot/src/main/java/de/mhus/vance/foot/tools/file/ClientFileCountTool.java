@@ -139,7 +139,7 @@ public class ClientFileCountTool implements ClientTool {
                     counter.consume(file, rel, pattern);
                 }
             } catch (IOException e) {
-                throw new RuntimeException("Walk failed: " + e.getMessage(), e);
+                throw new RuntimeException(ClientFilePaths.describeFailure(target, e, "Walk"), e);
             }
         }
 

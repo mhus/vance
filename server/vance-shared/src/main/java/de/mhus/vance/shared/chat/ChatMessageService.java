@@ -321,6 +321,22 @@ public class ChatMessageService {
     }
 
     /**
+     * Records the tool calls that failed during the turn which produced
+     * {@code messageId} (see {@link ChatMessageDocument#META_TOOL_FAILURES}).
+     * Written once per turn by the history sink together with the tags,
+     * hence {@code $set} rather than an append. A missing message id or
+     * an empty list is a no-op.
+     */
+    public void recordToolFailures(String messageId, java.util.List<String> failures) {
+        if (messageId == null || messageId.isBlank()) return;
+        if (failures == null || failures.isEmpty()) return;
+        Query q = new Query(Criteria.where("_id").is(messageId));
+        Update u = new Update().set(
+                "meta." + ChatMessageDocument.META_TOOL_FAILURES, failures);
+        mongoTemplate.updateFirst(q, u, ChatMessageDocument.class);
+    }
+
+    /**
      * Bulk variant of {@link #tag(String, Set)} — atomically adds a
      * single {@code tag} to every message in {@code messageIds}.
      * Idempotent on already-tagged messages ({@code $addToSet}).

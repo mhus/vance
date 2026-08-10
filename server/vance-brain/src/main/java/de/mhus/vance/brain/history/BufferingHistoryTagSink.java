@@ -1,9 +1,12 @@
 package de.mhus.vance.brain.history;
 
 import de.mhus.vance.shared.chat.ChatMessageService;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 
 /**
  * In-memory accumulator for history marker tags during a single engine
@@ -23,7 +26,20 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public final class BufferingHistoryTagSink implements HistoryTagSink {
 
+    /**
+     * How many failed calls of a turn are carried into the persisted
+     * history. A turn that fails more often than this has a systematic
+     * problem, and the first few entries describe it just as well as
+     * twenty would — while the block still has to survive being replayed
+     * in every later turn.
+     */
+    static final int MAX_FAILURES = 5;
+
+    /** Per-entry clip. Long enough for a path plus a reason. */
+    static final int MAX_FAILURE_CHARS = 300;
+
     private final Set<String> buffer = new LinkedHashSet<>();
+    private final List<String> failures = new ArrayList<>();
 
     @Override
     public synchronized void emit(Set<String> tags) {
@@ -31,19 +47,36 @@ public final class BufferingHistoryTagSink implements HistoryTagSink {
         buffer.addAll(tags);
     }
 
+    @Override
+    public synchronized void emitFailure(String toolName, @Nullable String message) {
+        if (toolName == null || toolName.isBlank()) return;
+        if (failures.size() >= MAX_FAILURES) return;
+        String reason = message == null || message.isBlank() ? "no reason reported" : message;
+        if (reason.length() > MAX_FAILURE_CHARS) {
+            reason = reason.substring(0, MAX_FAILURE_CHARS) + "…";
+        }
+        String entry = toolName + " → " + reason;
+        // Same tool failing the same way twice in a turn is one fact.
+        if (!failures.contains(entry)) failures.add(entry);
+    }
+
     /**
      * Persist all buffered tags onto {@code messageId} via
-     * {@link ChatMessageService#tag} and clear the buffer. Idempotent:
-     * a second call after the first flush is a no-op (buffer empty).
+     * {@link ChatMessageService#tag}, plus the buffered tool failures via
+     * {@link ChatMessageService#recordToolFailures}, and clear both
+     * buffers. Idempotent: a second call after the first flush is a
+     * no-op (buffers empty).
      */
     public synchronized void flushTo(String messageId, ChatMessageService service) {
-        if (buffer.isEmpty() || messageId == null || messageId.isBlank()) {
-            return;
-        }
-        Set<String> snapshot = new LinkedHashSet<>(buffer);
+        if (messageId == null || messageId.isBlank()) return;
+        if (buffer.isEmpty() && failures.isEmpty()) return;
+        Set<String> tagSnapshot = new LinkedHashSet<>(buffer);
+        List<String> failureSnapshot = List.copyOf(failures);
         buffer.clear();
+        failures.clear();
         try {
-            service.tag(messageId, snapshot);
+            service.tag(messageId, tagSnapshot);
+            service.recordToolFailures(messageId, failureSnapshot);
         } catch (RuntimeException e) {
             // Tag write failure must not cascade to the engine's
             // user-visible result. Log and move on — the assistant
@@ -57,8 +90,14 @@ public final class BufferingHistoryTagSink implements HistoryTagSink {
         return Set.copyOf(buffer);
     }
 
-    /** Drop the buffer without writing anywhere — for abort paths. */
+    /** Snapshot of currently buffered tool failures — for tests / introspection. */
+    public synchronized List<String> peekFailures() {
+        return List.copyOf(failures);
+    }
+
+    /** Drop both buffers without writing anywhere — for abort paths. */
     public synchronized void discard() {
         buffer.clear();
+        failures.clear();
     }
 }

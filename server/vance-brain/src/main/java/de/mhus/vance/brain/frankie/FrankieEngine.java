@@ -33,6 +33,7 @@ import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
+import de.mhus.vance.brain.tools.ToolErrorPayload;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
@@ -1366,7 +1367,7 @@ public class FrankieEngine implements ThinkEngine {
         } catch (ToolException e) {
             log.info("Frankie id='{}' tool='{}' returned error: {}",
                     processId, call.name(), e.getMessage());
-            return new ToolInvocationResult(errorJson(e.getMessage()), false);
+            return new ToolInvocationResult(errorJson(e), false);
         } catch (RuntimeException e) {
             log.warn("Frankie id='{}' tool='{}' unexpected failure: {}",
                     processId, call.name(), e.toString());
@@ -1380,12 +1381,18 @@ public class FrankieEngine implements ThinkEngine {
         return objectMapper.readValue(raw, Map.class);
     }
 
+    /**
+     * Renders a tool failure for the model. Delegates to
+     * {@link ToolErrorPayload} so every engine reports failures in the
+     * same, unmistakable shape.
+     */
     private String errorJson(String message) {
-        try {
-            return objectMapper.writeValueAsString(Map.of("error", message));
-        } catch (RuntimeException e) {
-            return "{\"error\":\"" + message.replace("\"", "\\\"") + "\"}";
-        }
+        return ToolErrorPayload.json(objectMapper, message);
+    }
+
+    /** Same, keeping the failing tool's troubleshooting hint. */
+    private String errorJson(ToolException e) {
+        return ToolErrorPayload.json(objectMapper, e);
     }
 
     // ──────────────────── Safety / interrupt helpers ────────────────────

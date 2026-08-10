@@ -109,7 +109,7 @@ public class ClientFileWriteTool implements ClientTool {
             Files.writeString(p, content, StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
         } catch (Exception e) {
-            throw new RuntimeException("Write failed: " + e.getMessage(), e);
+            throw new RuntimeException(ClientFilePaths.describeFailure(p, e, "Write"), e);
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("path", p.toAbsolutePath().toString());

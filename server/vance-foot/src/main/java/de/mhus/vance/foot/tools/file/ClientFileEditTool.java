@@ -102,27 +102,41 @@ public class ClientFileEditTool implements ClientTool {
             throw new IllegalArgumentException("'newText' is required");
         }
         Path p = ClientFilePaths.resolve(path);
+        // Read and write are guarded separately, and the two match failures
+        // are raised outside both: a blanket catch around the whole block
+        // rewrote "oldText not found" into "Edit failed: <that message>" and,
+        // worse, turned a NoSuchFileException into the bare path — see
+        // ClientFilePaths.describeFailure.
+        String content;
         try {
-            String content = Files.readString(p, StandardCharsets.UTF_8);
-            int first = content.indexOf(oldText);
-            if (first < 0) {
-                throw new IllegalArgumentException("oldText not found in " + p.toAbsolutePath());
-            }
-            int second = content.indexOf(oldText, first + oldText.length());
-            if (second >= 0) {
-                throw new IllegalArgumentException(
-                        "oldText appears multiple times — add context until unique");
-            }
-            String updated = content.substring(0, first) + newText
-                    + content.substring(first + oldText.length());
-            Files.writeString(p, updated, StandardCharsets.UTF_8);
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("path", p.toAbsolutePath().toString());
-            out.put("replaced", 1);
-            out.put("totalChars", updated.length());
-            return out;
+            content = Files.readString(p, StandardCharsets.UTF_8);
         } catch (Exception e) {
-            throw new RuntimeException("Edit failed: " + e.getMessage(), e);
+            throw new RuntimeException(ClientFilePaths.describeFailure(p, e, "Edit"), e);
         }
+        int first = content.indexOf(oldText);
+        if (first < 0) {
+            throw new IllegalArgumentException(
+                    "oldText not found in " + p.toAbsolutePath().normalize()
+                            + " — read the file and copy the snippet verbatim "
+                            + "(whitespace and indentation included)");
+        }
+        int second = content.indexOf(oldText, first + oldText.length());
+        if (second >= 0) {
+            throw new IllegalArgumentException(
+                    "oldText appears multiple times in " + p.toAbsolutePath().normalize()
+                            + " — add surrounding context until the match is unique");
+        }
+        String updated = content.substring(0, first) + newText
+                + content.substring(first + oldText.length());
+        try {
+            Files.writeString(p, updated, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            throw new RuntimeException(ClientFilePaths.describeFailure(p, e, "Edit"), e);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("path", p.toAbsolutePath().toString());
+        out.put("replaced", 1);
+        out.put("totalChars", updated.length());
+        return out;
     }
 }

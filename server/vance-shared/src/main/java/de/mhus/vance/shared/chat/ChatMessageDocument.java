@@ -131,6 +131,27 @@ public class ChatMessageDocument {
      */
     public static final String META_KIND = "kind";
 
+    /**
+     * {@link #meta} key, {@code List<String>}. Tool calls that FAILED in
+     * the turn that produced this message, one {@code "<tool> → <error>"}
+     * entry each, capped and clipped by the emitting sink.
+     *
+     * <p>Only USER/ASSISTANT/SYSTEM turns are persisted — tool calls and
+     * their results live in the engine's in-turn message list and are
+     * gone once the turn ends. That is fine for successful calls (their
+     * effect is in the world and the assistant text describes it), but a
+     * <em>failed</em> call left no trace at all: from the next turn on,
+     * the model saw only its own claim about what it had done. Observed
+     * consequence — a {@code client_file_edit} that never touched the
+     * file was reported as done, and the follow-up turn had no way to
+     * notice.
+     *
+     * <p>{@code ChatHistoryRenderer} replays these as a short block
+     * appended to the assistant message for the LLM only; the persisted
+     * {@link #content} the user sees stays untouched.
+     */
+    public static final String META_TOOL_FAILURES = "toolFailures";
+
     /** {@link #META_KIND} value for intermediate working-log messages — see {@link #META_KIND}. */
     public static final String KIND_INTERIM = "interim";
 
@@ -160,6 +181,25 @@ public class ChatMessageDocument {
      */
     public boolean isRemoved() {
         return KIND_REMOVED.equals(meta.get(META_KIND));
+    }
+
+    /**
+     * Failed tool calls of the producing turn (see
+     * {@link #META_TOOL_FAILURES}), or an empty list when the turn had
+     * none. Non-string entries are dropped rather than thrown on — the
+     * meta map is loosely typed and a malformed row must not break
+     * history replay.
+     */
+    public java.util.List<String> toolFailures() {
+        Object raw = meta.get(META_TOOL_FAILURES);
+        if (!(raw instanceof java.util.Collection<?> c) || c.isEmpty()) {
+            return java.util.List.of();
+        }
+        java.util.List<String> out = new java.util.ArrayList<>(c.size());
+        for (Object o : c) {
+            if (o instanceof String s && !s.isBlank()) out.add(s);
+        }
+        return java.util.List.copyOf(out);
     }
 
     @Id

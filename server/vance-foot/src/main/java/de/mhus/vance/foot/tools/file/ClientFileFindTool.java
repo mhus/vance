@@ -162,7 +162,7 @@ public class ClientFileFindTool implements ClientTool {
                 entries.add(new Entry(ClientFilePaths.toToolPath(file), size, mtime));
             }
         } catch (IOException e) {
-            throw new RuntimeException("Walk failed: " + e.getMessage(), e);
+            throw new RuntimeException(ClientFilePaths.describeFailure(root, e, "Walk"), e);
         }
 
         switch (sortBy == null ? "path" : sortBy) {

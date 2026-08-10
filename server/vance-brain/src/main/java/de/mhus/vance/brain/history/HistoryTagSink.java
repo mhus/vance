@@ -25,6 +25,20 @@ public interface HistoryTagSink {
      */
     void emit(Set<String> tags);
 
+    /**
+     * Emit the detail of a tool call that <em>failed</em>. Separate from
+     * {@link #emit} because the {@code ERROR} tag says only "something
+     * in this turn failed" — the model replaying the turn later needs to
+     * know <em>which</em> call failed and why, since tool results
+     * themselves are never persisted.
+     *
+     * <p>Default is a no-op so sinks that only care about tags (and
+     * {@link #NOOP}) stay valid without change.
+     */
+    default void emitFailure(String toolName, @org.jspecify.annotations.Nullable String message) {
+        // no-op by default
+    }
+
     /** No-op sink — the default when no engine has wired a real one. */
     HistoryTagSink NOOP = tags -> {};
 }

@@ -79,6 +79,80 @@ class ChatHistoryRendererTest {
         assertThat(msg.text()).isEqualTo("here you go");
     }
 
+    // ──────────── failed-tool-call replay (META_TOOL_FAILURES) ────────────
+
+    @Test
+    void assistantTurn_withFailedToolCalls_replaysThemBehindTheContent() {
+        ChatMessageDocument doc = assistantDocWithFailures(
+                "Done — the icon is in place.",
+                "file_edit → No such file: /tmp/x.vue",
+                "exec_run → permission denied");
+
+        AiMessage msg = (AiMessage) ChatHistoryRenderer.toLangchain(doc, false);
+
+        assertThat(msg.text())
+                .startsWith("Done — the icon is in place.")
+                .contains(ChatHistoryRenderer.FAILURE_HEADER)
+                .contains("- file_edit → No such file: /tmp/x.vue")
+                .contains("- exec_run → permission denied");
+    }
+
+    @Test
+    void assistantTurn_withoutFailures_rendersByteForByteAsBefore() {
+        ChatMessageDocument doc = new ChatMessageDocument();
+        doc.setRole(ChatRole.ASSISTANT);
+        doc.setContent("all good");
+
+        AiMessage msg = (AiMessage) ChatHistoryRenderer.toLangchain(doc, false);
+
+        assertThat(msg.text()).isEqualTo("all good");
+    }
+
+    @Test
+    void assistantTurn_emptyContentWithFailures_startsWithTheFailureBlock() {
+        ChatMessageDocument doc = assistantDocWithFailures("", "file_edit → gone");
+
+        AiMessage msg = (AiMessage) ChatHistoryRenderer.toLangchain(doc, false);
+
+        assertThat(msg.text()).startsWith(ChatHistoryRenderer.FAILURE_HEADER);
+    }
+
+    @Test
+    void assistantTurn_malformedFailureMeta_isIgnored() {
+        ChatMessageDocument doc = new ChatMessageDocument();
+        doc.setRole(ChatRole.ASSISTANT);
+        doc.setContent("body");
+        doc.getMeta().put(ChatMessageDocument.META_TOOL_FAILURES, "not-a-list");
+
+        AiMessage msg = (AiMessage) ChatHistoryRenderer.toLangchain(doc, false);
+
+        assertThat(msg.text()).isEqualTo("body");
+    }
+
+    @Test
+    void assistantTurn_failureListWithNonStringEntries_keepsOnlyTheUsableOnes() {
+        ChatMessageDocument doc = new ChatMessageDocument();
+        doc.setRole(ChatRole.ASSISTANT);
+        doc.setContent("body");
+        doc.getMeta().put(ChatMessageDocument.META_TOOL_FAILURES,
+                java.util.Arrays.asList("file_edit → gone", 42, null, "  "));
+
+        AiMessage msg = (AiMessage) ChatHistoryRenderer.toLangchain(doc, false);
+
+        assertThat(msg.text())
+                .contains("- file_edit → gone")
+                .doesNotContain("42");
+    }
+
+    private static ChatMessageDocument assistantDocWithFailures(
+            String content, String... failures) {
+        ChatMessageDocument doc = new ChatMessageDocument();
+        doc.setRole(ChatRole.ASSISTANT);
+        doc.setContent(content);
+        doc.getMeta().put(ChatMessageDocument.META_TOOL_FAILURES, java.util.List.of(failures));
+        return doc;
+    }
+
     @Test
     void systemTurnIsUnchanged() {
         ChatMessageDocument doc = new ChatMessageDocument();

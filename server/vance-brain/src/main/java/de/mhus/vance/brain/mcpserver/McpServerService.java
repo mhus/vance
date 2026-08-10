@@ -150,9 +150,13 @@ public class McpServerService {
             // JSON-RPC response carrying isError=true, so the calling agent
             // sees the error text and can react instead of getting a
             // protocol-level failure.
+            // The failure first, the troubleshooting hint behind it — the
+            // hint used to be prepended to the message and read as advice
+            // rather than as "the call did not happen".
             String msg = e.getMessage() == null ? "Tool failed" : e.getMessage();
             log.debug("MCP tools/call '{}' failed: {}", name, msg);
-            return callContent(msg, true);
+            String hint = e.getHint();
+            return callContent(hint == null ? msg : msg + " -- hint: " + hint, true);
         }
     }
 

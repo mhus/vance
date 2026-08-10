@@ -63,6 +63,20 @@ public final class ClientFilePaths {
      * one, the tool that would have worked.
      */
     public static String describeFailure(Path file, Exception e) {
+        return describeFailure(file, e, "Read");
+    }
+
+    /**
+     * Same as {@link #describeFailure(Path, Exception)}, but names the
+     * operation that failed in the fallback branch — {@code "Edit"},
+     * {@code "Write"}, {@code "Delete"}, {@code "Walk"}, … The writing
+     * tools used to build their own {@code "<Op> failed: " +
+     * e.getMessage()} string, which for a {@link NoSuchFileException}
+     * degenerates to the bare path: the model then read {@code "Edit
+     * failed: /some/file.vue"}, could not tell a missing file from a
+     * non-unique match, and treated the whole result as advisory noise.
+     */
+    public static String describeFailure(Path file, Exception e, String operation) {
         Path abs = file.toAbsolutePath().normalize();
         if (e instanceof NoSuchFileException) {
             return "No such file: " + abs
@@ -78,7 +92,7 @@ public final class ClientFilePaths {
         if (Files.isDirectory(file)) {
             return "Path is a directory, not a file: " + abs + " — use client_file_list";
         }
-        return "Read failed: " + abs + " — " + e;
+        return operation + " failed: " + abs + " — " + e;
     }
 
     private static String expandHome(String raw) {

@@ -18,6 +18,7 @@ import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.Lc4jSchema;
+import de.mhus.vance.brain.tools.ToolErrorPayload;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -1338,7 +1339,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         } catch (ToolException e) {
             log.info("{} id='{}' read-tool='{}' returned error: {}",
                     name(), processId, call.name(), e.getMessage());
-            return new ReadToolOutcome(errorJson(e.getMessage()), true);
+            return new ReadToolOutcome(errorJson(e), true);
         } catch (RuntimeException e) {
             log.warn("{} id='{}' read-tool='{}' unexpected failure: {}",
                     name(), processId, call.name(), e.toString());
@@ -1355,14 +1356,18 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         return objectMapper.readValue(raw, Map.class);
     }
 
+    /**
+     * Renders a tool failure for the model. Delegates to
+     * {@link ToolErrorPayload} so every engine reports failures in the
+     * same, unmistakable shape.
+     */
     private String errorJson(String message) {
-        try {
-            Map<String, Object> err = new LinkedHashMap<>();
-            err.put("error", message);
-            return objectMapper.writeValueAsString(err);
-        } catch (RuntimeException e) {
-            return "{\"error\":\"" + message.replace("\"", "'") + "\"}";
-        }
+        return ToolErrorPayload.json(objectMapper, message);
+    }
+
+    /** Same, keeping the failing tool's troubleshooting hint. */
+    private String errorJson(ToolException e) {
+        return ToolErrorPayload.json(objectMapper, e);
     }
 
     private static String summariseArgs(Map<String, Object> params) {

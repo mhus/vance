@@ -27,6 +27,7 @@ import de.mhus.vance.brain.thinkengine.SystemPrompts;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
+import de.mhus.vance.brain.tools.ToolErrorPayload;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
@@ -49,7 +50,6 @@ import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -955,7 +955,7 @@ public class Ford implements ThinkEngine {
         } catch (ToolException e) {
             log.info("Ford id='{}' tool='{}' returned error: {}",
                     processId, call.name(), e.getMessage());
-            return errorJson(e.getMessage());
+            return errorJson(e);
         } catch (RuntimeException e) {
             log.warn("Ford id='{}' tool='{}' unexpected failure: {}",
                     processId, call.name(), e.toString());
@@ -971,14 +971,18 @@ public class Ford implements ThinkEngine {
         return objectMapper.readValue(raw, Map.class);
     }
 
+    /**
+     * Renders a tool failure for the model. Delegates to
+     * {@link ToolErrorPayload} so every engine reports failures in the
+     * same, unmistakable shape.
+     */
     private String errorJson(String message) {
-        try {
-            Map<String, Object> err = new LinkedHashMap<>();
-            err.put("error", message);
-            return objectMapper.writeValueAsString(err);
-        } catch (RuntimeException e) {
-            return "{\"error\":\"" + message.replace("\"", "'") + "\"}";
-        }
+        return ToolErrorPayload.json(objectMapper, message);
+    }
+
+    /** Same, keeping the failing tool's troubleshooting hint. */
+    private String errorJson(ToolException e) {
+        return ToolErrorPayload.json(objectMapper, e);
     }
 
     // ──────────────────── Helpers ────────────────────

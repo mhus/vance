@@ -149,6 +149,46 @@ class ChatMessageServiceTagTest {
         assertThat(inOp.get("$in")).asList().containsExactly("m-1", "m-2");
     }
 
+    // ──────────────── recordToolFailures (meta.toolFailures) ────────────────
+
+    @Test
+    void recordToolFailures_setsMetaField() {
+        service.recordToolFailures("m-1", List.of("file_edit → No such file: /tmp/x.vue"));
+
+        String json = captureUpdateJson();
+        assertThat(json)
+                .contains("$set")
+                .contains("meta." + ChatMessageDocument.META_TOOL_FAILURES)
+                .contains("file_edit → No such file: /tmp/x.vue");
+    }
+
+    @Test
+    void recordToolFailures_emptyList_skipsMongoUpdate() {
+        service.recordToolFailures("m-1", List.of());
+
+        verify(mongoTemplate, never()).updateFirst(
+                any(Query.class), any(Update.class), eq(ChatMessageDocument.class));
+    }
+
+    @Test
+    void recordToolFailures_blankMessageId_skipsMongoUpdate() {
+        service.recordToolFailures("  ", List.of("file_edit → boom"));
+
+        verify(mongoTemplate, never()).updateFirst(
+                any(Query.class), any(Update.class), eq(ChatMessageDocument.class));
+    }
+
+    @Test
+    void recordToolFailures_queryTargetsExactMessageId() {
+        service.recordToolFailures("m-42", List.of("file_edit → boom"));
+
+        ArgumentCaptor<Query> queryCap = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).updateFirst(queryCap.capture(), any(Update.class),
+                eq(ChatMessageDocument.class));
+
+        assertThat(queryCap.getValue().getQueryObject().get("_id")).isEqualTo("m-42");
+    }
+
     // ──────────────── removeTagsWithPrefix ────────────────
 
     @Test

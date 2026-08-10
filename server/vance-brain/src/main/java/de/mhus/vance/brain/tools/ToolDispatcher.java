@@ -170,20 +170,26 @@ public class ToolDispatcher {
     }
 
     /**
-     * Prepends the tool's {@link de.mhus.vance.toolpack.Tool#troubleshootingHint()}
-     * to the exception message, if any. Wrapped in a fresh
-     * {@link ToolException} so the original cause-chain is preserved and
-     * the LLM (or any other caller reading {@code getMessage()}) sees the
-     * recovery hint right at the top: "hint: <hint> -- <original>". A
-     * {@code null}/blank hint is a no-op — the original exception passes
-     * through verbatim.
+     * Attaches the tool's {@link de.mhus.vance.toolpack.Tool#troubleshootingHint()}
+     * to the exception, if any. Wrapped in a fresh {@link ToolException}
+     * so the original cause-chain is preserved while the message stays
+     * the failure and nothing else.
+     *
+     * <p>The hint used to be prepended to the message ("hint: <hint> --
+     * <original>"). A model skimming the tool result then read advice
+     * first — observed effect: a failed {@code client_file_edit} was
+     * reported to the user as done. The hint now travels in its own
+     * field and renderers put it behind the failure; see
+     * {@link ToolErrorPayload}. A {@code null}/blank hint is a no-op —
+     * the original exception passes through verbatim.
      */
     private static ToolException withHint(
             de.mhus.vance.toolpack.Tool tool, ToolException original) {
         String hint = tool.troubleshootingHint();
         if (hint == null || hint.isBlank()) return original;
+        if (original.getHint() != null) return original;
         String orig = original.getMessage() == null ? "" : original.getMessage();
-        return new ToolException("hint: " + hint + " -- " + orig, original);
+        return new ToolException(orig, hint, original);
     }
 
     /**

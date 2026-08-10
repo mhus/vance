@@ -61,6 +61,7 @@ public class InboxItemService {
     private final InboxItemRepository repository;
     private final MongoTemplate mongoTemplate;
     private final ApplicationEventPublisher eventPublisher;
+    private final InboxEffectRegistry effectRegistry;
 
     // ────────────────── Create ──────────────────
 
@@ -273,8 +274,54 @@ public class InboxItemService {
             return findById(tenantId, itemId);
         }
         InboxItemDocument refreshed = findById(tenantId, itemId).orElse(doc);
+        // Server-side effect (permission request, kit install, …) before the
+        // process is notified: the effect IS the decision's consequence,
+        // while the process notification is only information about it.
+        // Riding the same single PENDING→ANSWERED transition makes the
+        // existing double-submit guard the effect's exactly-once guarantee.
+        runEffect(refreshed, answer);
         eventPublisher.publishEvent(new InboxItemAnsweredEvent(refreshed));
         return Optional.of(refreshed);
+    }
+
+    /**
+     * Dispatches the item's {@link InboxEffect}, if it declares one.
+     *
+     * <p>A failing effect must not undo the answer — the human decided,
+     * and losing that is worse than a failed side-effect. So the failure
+     * is recorded on the item (visible in the UI and in the audit trail)
+     * and swallowed: the answering client still gets a clean response,
+     * and the mismatch between "approved" and "nothing happened" is
+     * traceable rather than silent.
+     */
+    private void runEffect(InboxItemDocument item, AnswerPayload answer) {
+        try {
+            effectRegistry.dispatch(item, answer);
+        } catch (RuntimeException e) {
+            log.error("Inbox effect failed for item '{}' (type='{}') — item stays ANSWERED",
+                    item.getId(), item.getEffectType(), e);
+            recordEffectFailure(item, answer, e);
+        }
+    }
+
+    private void recordEffectFailure(
+            InboxItemDocument item, AnswerPayload answer, RuntimeException cause) {
+        try {
+            mongoTemplate.updateFirst(
+                    Query.query(Criteria.where(F_ID).is(item.getId())
+                            .and(F_TENANT).is(item.getTenantId())),
+                    new Update().push("history", InboxItemHistoryEntry.builder()
+                            .action("EFFECT_FAILED")
+                            .actor(answer.getAnsweredBy())
+                            .at(Instant.now())
+                            .details(cause.getMessage())
+                            .build()),
+                    InboxItemDocument.class);
+        } catch (RuntimeException e) {
+            // Nothing left to do — the error log above is the record.
+            log.warn("Could not record effect failure on item '{}': {}",
+                    item.getId(), e.toString());
+        }
     }
 
     public Optional<InboxItemDocument> dismiss(

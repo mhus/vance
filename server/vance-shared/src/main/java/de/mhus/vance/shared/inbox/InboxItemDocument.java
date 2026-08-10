@@ -81,6 +81,25 @@ public class InboxItemDocument {
     @Builder.Default
     private Map<String, Object> payload = new LinkedHashMap<>();
 
+    /**
+     * Server-side effect to run when this item is answered — the
+     * {@code effectType()} of an {@link InboxEffect} bean, or {@code null}
+     * for the ordinary case where answering only routes back to the
+     * asking process.
+     *
+     * <p>Deliberately a typed field rather than an entry in
+     * {@link #payload}: what an answer executes is a security-relevant
+     * property of the item, not type-specific render data.
+     */
+    private @Nullable String effectType;
+
+    /**
+     * Identifies what the effect should act on — typically the id of a
+     * document holding the pending mutation (e.g. a permission request).
+     * Opaque to the inbox; only the effect implementation interprets it.
+     */
+    private @Nullable String effectRef;
+
     @Builder.Default
     private InboxItemStatus status = InboxItemStatus.PENDING;
 

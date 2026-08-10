@@ -196,6 +196,22 @@ const feedbackText = ref('');
 const reasonText = ref('');
 const submitting = ref(false);
 
+/**
+ * Colour of the effect box by request state. A failed effect means the
+ * approval was given but the change did not happen — that must not look
+ * like a routine notice.
+ */
+const effectVariant = computed<'warning' | 'error' | 'success' | 'info'>(() => {
+  switch (inbox.effect.value?.status) {
+    case 'PENDING': return 'warning';
+    case 'FAILED': return 'error';
+    case 'APPROVED': return 'success';
+    default: return 'info';
+  }
+});
+
+const isEffectPending = computed<boolean>(() => inbox.effect.value?.status === 'PENDING');
+
 watch(() => inbox.selected.value?.id, () => {
   feedbackText.value = '';
   reasonText.value = '';
@@ -640,6 +656,36 @@ const breadcrumbs = computed<string[]>(() => {
             </span>
             <span>{{ formatTimestamp(inbox.selected.value.createdAt) }}</span>
           </div>
+
+          <!-- What answering this item executes on the server. Rendered
+               BEFORE the body on purpose: these facts come from the
+               effect's own storage, while the body below only quotes what
+               the requesting agent claimed. Seeing the claim first would
+               frame the decision by the very text that may be hostile. -->
+          <VAlert
+            v-if="inbox.effect.value"
+            :variant="effectVariant"
+            class="mb-3"
+          >
+            <div class="flex flex-col gap-2 w-full">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-semibold">{{ $t('inbox.effect.title') }}</span>
+                <VBadge>{{ inbox.effect.value.status }}</VBadge>
+              </div>
+              <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+                <template v-for="fact in inbox.effect.value.facts" :key="fact.label">
+                  <dt class="opacity-70">{{ fact.label }}</dt>
+                  <dd class="font-medium break-all">{{ fact.value }}</dd>
+                </template>
+              </dl>
+              <div v-if="inbox.effect.value.statusDetail" class="text-sm">
+                {{ $t('inbox.effect.detail', { detail: inbox.effect.value.statusDetail }) }}
+              </div>
+              <div v-if="isEffectPending" class="text-xs opacity-80">
+                {{ $t('inbox.effect.hint') }}
+              </div>
+            </div>
+          </VAlert>
 
           <MarkdownView
             v-if="inbox.selected.value.body"

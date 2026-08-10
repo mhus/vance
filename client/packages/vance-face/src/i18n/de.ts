@@ -1724,6 +1724,12 @@ export default {
       emptyBody: 'Keine Einträge in dieser Ansicht.',
       noTitle: '(kein Titel)',
     },
+    effect: {
+      title: 'Diese Entscheidung wird ausgeführt',
+      detail: 'Hinweis: {detail}',
+      hint: 'Bei Zustimmung führt der Server diese Änderung aus. '
+        + 'Die Begründung unten stammt vom anfragenden Agenten und ist nicht geprüft.',
+    },
     detail: {
       backToList: 'Zurück zur Liste',
       noTitle: '(kein Titel)',

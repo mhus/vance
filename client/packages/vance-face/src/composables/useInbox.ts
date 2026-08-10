@@ -2,6 +2,7 @@ import { ref, type Ref } from 'vue';
 import {
   AnswerOutcome,
   InboxItemStatus,
+  type EffectDescription,
   type InboxItemDto,
   type InboxListResponse,
   type InboxTagsResponse,
@@ -40,6 +41,8 @@ function encodeAssignedTo(a: AssignedToFilter): string | null {
 export function useInbox(): {
   items: Ref<InboxItemDto[]>;
   selected: Ref<InboxItemDto | null>;
+  /** Server-rendered facts for the selected item's effect, if it has one. */
+  effect: Ref<EffectDescription | null>;
   tags: Ref<string[]>;
   loading: Ref<boolean>;
   error: Ref<string | null>;
@@ -58,6 +61,7 @@ export function useInbox(): {
 } {
   const items = ref<InboxItemDto[]>([]);
   const selected = ref<InboxItemDto | null>(null);
+  const effect = ref<EffectDescription | null>(null);
   const tags = ref<string[]>([]);
   const loading = ref(false);
   const error = ref<string | null>(null);
@@ -99,10 +103,31 @@ export function useInbox(): {
     try {
       selected.value = await brainFetch<InboxItemDto>(
         'GET', `inbox/${encodeURIComponent(id)}`);
+      await loadEffect(id, selected.value);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load item.';
     } finally {
       loading.value = false;
+    }
+  }
+
+  /**
+   * Loads what answering this item would execute. Only items carrying an
+   * effect have one; the endpoint answers 204 otherwise, which
+   * `brainFetch` surfaces as an empty body.
+   *
+   * Failing to load must not hide the item: the caller still sees title,
+   * quoted reason and the answer buttons, just without the fact table.
+   */
+  async function loadEffect(id: string, item: InboxItemDto | null): Promise<void> {
+    effect.value = null;
+    if (!item?.effectType) return;
+    try {
+      const data = await brainFetch<EffectDescription | null>(
+        'GET', `inbox/${encodeURIComponent(id)}/effect`);
+      effect.value = data ?? null;
+    } catch (e) {
+      console.warn('Failed to load inbox effect description', e);
     }
   }
 
@@ -119,6 +144,7 @@ export function useInbox(): {
 
   function clearSelection(): void {
     selected.value = null;
+    effect.value = null;
   }
 
   /**
@@ -129,6 +155,9 @@ export function useInbox(): {
   function applyMutation(updated: InboxItemDto): boolean {
     if (selected.value?.id === updated.id) {
       selected.value = updated;
+      // The effect ran as part of answering, so its state has moved on —
+      // most importantly it may have FAILED, which the user has to see.
+      void loadEffect(updated.id, updated);
     }
     const idx = items.value.findIndex((i) => i.id === updated.id);
     if (idx >= 0) {
@@ -227,6 +256,7 @@ export function useInbox(): {
   return {
     items,
     selected,
+    effect,
     tags,
     loading,
     error,

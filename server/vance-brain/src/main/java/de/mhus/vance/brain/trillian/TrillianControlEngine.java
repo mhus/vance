@@ -130,6 +130,7 @@ public class TrillianControlEngine implements ThinkEngine {
         base.add("user_attr_set");
         base.add("user_attr_clear");
         base.add("user_attr_list");
+        base.add("user_project_request");
         ENGINE_DEFAULT_TOOLS = java.util.Collections.unmodifiableSet(base);
     }
 

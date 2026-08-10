@@ -2,6 +2,7 @@ package de.mhus.vance.brain.trillian;
 
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.session.SessionLifecycleService;
+import de.mhus.vance.shared.permission.PermissionBootstrap;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessStatusChangedEvent;
@@ -9,6 +10,7 @@ import de.mhus.vance.shared.user.UserService;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
@@ -22,8 +24,9 @@ import org.springframework.stereotype.Component;
  * engine is {@value TrillianSessionBootstrapper#CONTROL_ENGINE_NAME}
  * (Nature-agnostic), and (c) the process carries a
  * {@link TrillianSessionBootstrapper#PARAM_TRILLIAN_USER_NAME} in its
- * {@code engineParams}. Deletes the bound service-account so the
- * tenant namespace stays clean.
+ * {@code engineParams}. Revokes the account's grants and deletes it,
+ * so neither the tenant namespace nor the grant storage accumulates
+ * leftovers from finished sessions.
  *
  * <p>Nature-0 contract is ephemeral users: each session mints a
  * fresh one and tears it down on close. Persistent Trillians
@@ -37,6 +40,9 @@ public class TrillianCleanupListener {
     private final ThinkProcessService thinkProcessService;
     private final UserService userService;
     private final SessionLifecycleService sessionLifecycleService;
+
+    /** Absent unless a grant-storing permission provider is loaded. */
+    private final ObjectProvider<PermissionBootstrap> permissionBootstrapProvider;
 
     @EventListener
     public void onProcessStatusChanged(ThinkProcessStatusChangedEvent event) {
@@ -79,8 +85,20 @@ public class TrillianCleanupListener {
                     + "no user-session to cascade-close", event.processId());
         }
 
-        // 2. Delete the bound service-account.
+        // 2. Revoke the account's grants, then delete it. Order matters:
+        //    grants are keyed on the user *name*, and dropping them after the
+        //    account is gone would still work but leaves a window in which a
+        //    grant outlives its subject. UserService.delete does not cascade
+        //    into grant storage, so without this every session would leak the
+        //    project-ADMIN grant seeded at bootstrap.
         if (userNameRaw instanceof String userName && !userName.isBlank()) {
+            try {
+                permissionBootstrapProvider.ifAvailable(
+                        pb -> pb.revokeAll(event.tenantId(), userName));
+            } catch (RuntimeException e) {
+                log.warn("Trillian cleanup: revoking grants of '{}' (tenant='{}') failed: {}",
+                        userName, event.tenantId(), e.toString());
+            }
             try {
                 userService.delete(event.tenantId(), userName);
                 log.info("Trillian cleanup: deleted service-account '{}' (tenant='{}')",

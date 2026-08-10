@@ -3,10 +3,7 @@ package de.mhus.vance.simpleauth.brain;
 import de.mhus.vance.simpleauth.GrantRole;
 import de.mhus.vance.simpleauth.GrantScopeType;
 import de.mhus.vance.simpleauth.GrantSubjectType;
-import de.mhus.vance.simpleauth.PermissionGrantDocument;
-import de.mhus.vance.simpleauth.PermissionGrantService;
-import de.mhus.vance.brain.permission.SecurityContextFactory;
-import de.mhus.vance.shared.permission.PermissionService;
+import de.mhus.vance.simpleauth.PermissionRequestOperation;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.LinkedHashMap;
@@ -15,24 +12,32 @@ import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-/** Grants (or updates) a role for a subject on a scope. Requires ADMIN on that scope. */
+/**
+ * Asks for a role to be granted. Replaces the former
+ * {@code permission_grant_set}, which performed the change directly.
+ *
+ * <p>The tool cannot grant anything: it records the request and routes an
+ * approval item. That separation is the point — a tool that acts on the
+ * caller's authority acts equally on injected instructions the caller
+ * merely read somewhere.
+ */
 @Component
 @RequiredArgsConstructor
-public class PermissionGrantSetTool implements Tool {
+public class PermissionRequestGrantTool implements Tool {
 
-    private final PermissionGrantService grants;
-    private final PermissionService permissionService;
-    private final SecurityContextFactory contextFactory;
+    private final PermissionRequestSupport support;
 
     @Override
     public String name() {
-        return "permission_grant_set";
+        return "permission_request_grant";
     }
 
     @Override
     public String description() {
-        return "Grant or update a role (READER/WRITER/ADMIN) for a user or team on a "
-                + "tenant- or project-scope. Requires ADMIN on the target scope.";
+        return "Request that a role (READER/WRITER/ADMIN) be granted to a user or team on a "
+                + "tenant- or project-scope. This does NOT change any permission: it creates "
+                + "a request and asks an administrator to approve it. Report to the user that "
+                + "approval is pending — do not claim access has been granted.";
     }
 
     @Override
@@ -46,12 +51,16 @@ public class PermissionGrantSetTool implements Tool {
         props.put("scopeType", Map.of("type", "string", "enum", List.of("TENANT", "PROJECT"),
                 "description", "TENANT or PROJECT."));
         props.put("scopeId", Map.of("type", "string",
-                "description", "Project name for PROJECT scope (defaults to the current project). Ignored for TENANT."));
+                "description", "Project name for PROJECT scope (defaults to the current "
+                        + "project). Ignored for TENANT."));
         props.put("subjectType", Map.of("type", "string", "enum", List.of("USER", "TEAM"),
                 "description", "USER or TEAM."));
         props.put("subjectId", Map.of("type", "string", "description", "Username or team name."));
         props.put("role", Map.of("type", "string", "enum", List.of("READER", "WRITER", "ADMIN"),
-                "description", "The role to grant."));
+                "description", "The role to request."));
+        props.put("reason", Map.of("type", "string",
+                "description", "Why this access is needed. Shown to the approver as your "
+                        + "stated reason."));
         return Map.of("type", "object", "properties", props,
                 "required", List.of("scopeType", "subjectType", "subjectId", "role"));
     }
@@ -63,18 +72,12 @@ public class PermissionGrantSetTool implements Tool {
         GrantSubjectType subjectType = GrantToolSupport.subjectType(params);
         String subjectId = GrantToolSupport.req(params, "subjectId");
         GrantRole role = GrantToolSupport.role(params);
+        String reason = GrantToolSupport.str(params, "reason");
 
-        GrantToolSupport.enforceScopeAdmin(permissionService, contextFactory, ctx, scopeType, scopeId);
-
-        PermissionGrantDocument saved = grants.set(ctx.tenantId(), scopeType, scopeId,
-                subjectType, subjectId, role, ctx.userId());
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("granted", true);
-        out.put("scopeType", scopeType.name());
-        out.put("scopeId", scopeId);
-        out.put("subjectType", subjectType.name());
-        out.put("subjectId", subjectId);
-        out.put("role", saved.getRole().name());
-        return out;
+        // No authorization check: raising a request changes nothing, and
+        // requiring ADMIN to ask would defeat the purpose — the caller
+        // asks precisely because they cannot act themselves.
+        return support.raise(ctx, PermissionRequestOperation.GRANT,
+                scopeType, scopeId, subjectType, subjectId, role, reason);
     }
 }

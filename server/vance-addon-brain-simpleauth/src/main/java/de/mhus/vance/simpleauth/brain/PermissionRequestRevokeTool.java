@@ -2,9 +2,7 @@ package de.mhus.vance.simpleauth.brain;
 
 import de.mhus.vance.simpleauth.GrantScopeType;
 import de.mhus.vance.simpleauth.GrantSubjectType;
-import de.mhus.vance.simpleauth.PermissionGrantService;
-import de.mhus.vance.brain.permission.SecurityContextFactory;
-import de.mhus.vance.shared.permission.PermissionService;
+import de.mhus.vance.simpleauth.PermissionRequestOperation;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.LinkedHashMap;
@@ -13,24 +11,33 @@ import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-/** Removes a subject's grant on a scope. Requires ADMIN on that scope. */
+/**
+ * Asks for a subject's access to be removed. Replaces the former
+ * {@code permission_grant_remove}.
+ *
+ * <p>Revoking is approval-gated for the same reason granting is. It looks
+ * like the harmless direction, but an unwanted revoke is a clean denial of
+ * service — in the worst case it removes the last administrator of a
+ * scope, after which nobody can approve anything, including putting it
+ * back.
+ */
 @Component
 @RequiredArgsConstructor
-public class PermissionGrantRemoveTool implements Tool {
+public class PermissionRequestRevokeTool implements Tool {
 
-    private final PermissionGrantService grants;
-    private final PermissionService permissionService;
-    private final SecurityContextFactory contextFactory;
+    private final PermissionRequestSupport support;
 
     @Override
     public String name() {
-        return "permission_grant_remove";
+        return "permission_request_revoke";
     }
 
     @Override
     public String description() {
-        return "Remove a user's or team's grant on a tenant- or project-scope. "
-                + "Requires ADMIN on that scope.";
+        return "Request that a user's or team's role on a tenant- or project-scope be "
+                + "removed. This does NOT change any permission: it creates a request and "
+                + "asks an administrator to approve it. Report to the user that approval is "
+                + "pending — do not claim access has been removed.";
     }
 
     @Override
@@ -44,10 +51,14 @@ public class PermissionGrantRemoveTool implements Tool {
         props.put("scopeType", Map.of("type", "string", "enum", List.of("TENANT", "PROJECT"),
                 "description", "TENANT or PROJECT."));
         props.put("scopeId", Map.of("type", "string",
-                "description", "Project name for PROJECT scope (defaults to the current project)."));
+                "description", "Project name for PROJECT scope (defaults to the current "
+                        + "project). Ignored for TENANT."));
         props.put("subjectType", Map.of("type", "string", "enum", List.of("USER", "TEAM"),
                 "description", "USER or TEAM."));
         props.put("subjectId", Map.of("type", "string", "description", "Username or team name."));
+        props.put("reason", Map.of("type", "string",
+                "description", "Why the access should be removed. Shown to the approver as "
+                        + "your stated reason."));
         return Map.of("type", "object", "properties", props,
                 "required", List.of("scopeType", "subjectType", "subjectId"));
     }
@@ -58,12 +69,9 @@ public class PermissionGrantRemoveTool implements Tool {
         String scopeId = GrantToolSupport.scopeId(scopeType, ctx, params);
         GrantSubjectType subjectType = GrantToolSupport.subjectType(params);
         String subjectId = GrantToolSupport.req(params, "subjectId");
+        String reason = GrantToolSupport.str(params, "reason");
 
-        GrantToolSupport.enforceScopeAdmin(permissionService, contextFactory, ctx, scopeType, scopeId);
-
-        boolean removed = grants.remove(ctx.tenantId(), scopeType, scopeId, subjectType, subjectId);
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("removed", removed);
-        return out;
+        return support.raise(ctx, PermissionRequestOperation.REVOKE,
+                scopeType, scopeId, subjectType, subjectId, /*role*/ null, reason);
     }
 }

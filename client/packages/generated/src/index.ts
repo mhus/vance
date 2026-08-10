@@ -87,6 +87,8 @@ export * from './chat/ChatRole';
 export * from './chat/SessionCropRequest';
 
 export * from './inbox/AnswerOutcome';
+export * from './inbox/EffectDescription';
+export * from './inbox/EffectFact';
 export * from './inbox/AnswerPayload';
 export * from './inbox/Criticality';
 export * from './inbox/InboxAnswerRequest';

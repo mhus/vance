@@ -1717,6 +1717,12 @@ export default {
       emptyBody: 'No items in this view.',
       noTitle: '(no title)',
     },
+    effect: {
+      title: 'This decision will be executed',
+      detail: 'Note: {detail}',
+      hint: 'On approval the server performs this change. '
+        + 'The reason below is stated by the requesting agent and is not verified.',
+    },
     detail: {
       backToList: 'Back to list',
       noTitle: '(no title)',

@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -36,6 +37,23 @@ public class PermissionGrantListTool implements Tool {
     @Override
     public boolean primary() {
         return false;
+    }
+
+    /**
+     * Reading grants is harmless, but it is an administrator's tool and
+     * has no business hanging in an ordinary chat surface. The label puts
+     * it under the {@code @executive} defer rule that Arthur and Eddie
+     * already apply; {@link #deferred()} keeps it out of the default set
+     * of unrestricted engines until a recipe asks for it explicitly.
+     */
+    @Override
+    public Set<String> labels() {
+        return Set.of("executive");
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
     }
 
     @Override

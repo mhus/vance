@@ -3,12 +3,16 @@ package de.mhus.vance.brain.trillian;
 import de.mhus.vance.api.session.DisconnectPolicy;
 import de.mhus.vance.api.session.IdlePolicy;
 import de.mhus.vance.api.session.SessionLifecycleConfig;
+import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.session.SuspendPolicy;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
+import de.mhus.vance.shared.chat.ChatMessageDocument;
+import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.permission.PermissionBootstrap;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -24,6 +28,7 @@ import java.util.concurrent.ExecutionException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
@@ -121,6 +126,15 @@ public class TrillianSessionBootstrapper {
     private final ThinkEngineService thinkEngineService;
     private final RecipeResolver recipeResolver;
     private final LaneScheduler laneScheduler;
+    private final ChatMessageService chatMessageService;
+
+    /**
+     * Present only when a grant-storing permission provider is loaded
+     * (simple-auth); {@code ifAvailable} keeps the seed a no-op under an
+     * external governor that manages rights elsewhere.
+     */
+    private final ObjectProvider<PermissionBootstrap> permissionBootstrapProvider;
+
     private final SecureRandom random = new SecureRandom();
 
     /**
@@ -177,6 +191,17 @@ public class TrillianSessionBootstrapper {
         log.info("Minted Trillian service-account '{}' id='{}' for control session '{}'",
                 trillian.getName(), trillian.getId(), controlSession.getSessionId());
 
+        // 1b. Seed the account's authority. Without a grant the account
+        //     exists but may do nothing: every tool call goes through
+        //     ToolDispatcher -> PermissionService.enforce(EXECUTE), which
+        //     resolves to WRITER-on-project. Scope is deliberately the
+        //     control session's project — Trillian stands in for the human
+        //     in the project they started it in, and nowhere else. Spawning
+        //     into other projects (cross_process_create) therefore stays
+        //     denied until someone grants that explicitly.
+        permissionBootstrapProvider.ifAvailable(pb -> pb.grantProjectAdmin(
+                controlSession.getTenantId(), controlSession.getProjectId(), trillianName));
+
         // 2. Resolve the user recipe — pick the Nature variant that
         //    matches what the control process was spawned with. The
         //    Nature lives in controlProcess.engineParams.nature; we
@@ -200,9 +225,12 @@ public class TrillianSessionBootstrapper {
         // 3. Create the headless user-session owned by the service-
         //    account. system=true marks it as auto-managed (UI may
         //    filter system sessions in the user's session list).
+        // SessionDocument.userId is the UserDocument *name*, not the Mongo id
+        // — the whole authz chain (ToolDispatcher's SecurityContext, team
+        // lookup, grant matching) keys on the name.
         SessionDocument userSession = sessionService.create(
                 controlSession.getTenantId(),
-                trillian.getId(),
+                trillianName,
                 controlSession.getProjectId(),
                 /*displayName*/ "Trillian-User " + suffix,
                 /*profile*/ HEADLESS_PROFILE,
@@ -210,7 +238,7 @@ public class TrillianSessionBootstrapper {
                 CLIENT_NAME,
                 /*system*/ true);
         log.info("Trillian user-session created id='{}' owner='{}' project='{}'",
-                userSession.getSessionId(), trillian.getId(), controlSession.getProjectId());
+                userSession.getSessionId(), trillianName, controlSession.getProjectId());
 
         // 4. Spawn the primary user-process in the user-session.
         //    parentProcessId = controlProcess.id makes terminal events
@@ -285,6 +313,16 @@ public class TrillianSessionBootstrapper {
         controlParams.put(PARAM_TRILLIAN_USER_NAME, trillianName);
         thinkProcessService.replaceEngineParams(controlProcess.getId(), controlParams);
 
+        // 5b. Announce the minted identity in the control chat.
+        //     The name is generated per session and only ever appeared in
+        //     the brain log — but it is what an operator has to name when
+        //     granting the worker access to a further project, and with
+        //     several Trillians alive there is otherwise no way to tell
+        //     which '_trillian-*' belongs to which session. Persisted as a
+        //     regular chat message on purpose: a transient notification
+        //     would be gone by the time it is needed.
+        announceIdentity(controlSession, controlProcess, trillianName);
+
         // 6. Start the user-process on its own lane.
         try {
             laneScheduler.submit(userProc.getId(), () -> {
@@ -312,6 +350,33 @@ public class TrillianSessionBootstrapper {
      * Picks a fresh {@code _trillian-0XXXX} name that doesn't collide
      * in the tenant. Up to {@value #MAX_NAMING_ATTEMPTS} retries.
      */
+    /**
+     * Write the minted worker identity into the control chat as a persistent
+     * assistant message. Best-effort — a failure here must not abort a
+     * bootstrap that is otherwise complete, so it is logged and swallowed.
+     */
+    private void announceIdentity(
+            SessionDocument controlSession,
+            ThinkProcessDocument controlProcess,
+            String trillianName) {
+        try {
+            chatMessageService.append(ChatMessageDocument.builder()
+                    .tenantId(controlSession.getTenantId())
+                    .sessionId(controlSession.getSessionId())
+                    .thinkProcessId(controlProcess.getId())
+                    .role(ChatRole.ASSISTANT)
+                    .content("Trillian is ready. My background worker runs as the service"
+                            + " account `" + trillianName + "` in project `"
+                            + controlSession.getProjectId() + "`, and is removed when this"
+                            + " session closes. To let it work in another project, that"
+                            + " account needs access there.")
+                    .build());
+        } catch (RuntimeException e) {
+            log.warn("Trillian bootstrap: could not announce identity '{}' in session '{}': {}",
+                    trillianName, controlSession.getSessionId(), e.toString());
+        }
+    }
+
     private String pickUniqueTrillianName(String tenantId) {
         for (int i = 0; i < MAX_NAMING_ATTEMPTS; i++) {
             String name = NATURE_0_PREFIX

@@ -20,6 +20,12 @@ worker does the actual work and reports back asynchronously.
   Nature surfaces these in the worker's prompt.
 - `user_attr_clear()` / `user_attr_list()` — wipe / read the
   worker's attributes.
+- `user_project_request(projectId, reason)` — ask for the worker to be
+  allowed into another project. Use this when a task names a project the
+  worker reports it cannot see: it is almost always missing access, not
+  a missing project. Grants nothing by itself — an administrator of that
+  project has to approve. Say approval is pending; never say the worker
+  can now work there.
 
 Basic helpers also available: `current_time`, `whoami`,
 `manual_read`, `manual_list`, `tool_list`, `tool_description`,

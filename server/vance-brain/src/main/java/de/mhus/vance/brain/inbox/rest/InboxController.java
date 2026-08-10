@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.inbox.rest;
 
 import de.mhus.vance.api.inbox.AnswerPayload;
+import de.mhus.vance.api.inbox.EffectDescription;
 import de.mhus.vance.api.inbox.Criticality;
 import de.mhus.vance.api.inbox.InboxAnswerRequest;
 import de.mhus.vance.api.inbox.InboxDelegateRequest;
@@ -14,6 +15,7 @@ import de.mhus.vance.api.inbox.ResolvedBy;
 import de.mhus.vance.brain.inbox.InboxMapper;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
+import de.mhus.vance.shared.inbox.InboxEffectRegistry;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
 import de.mhus.vance.shared.inbox.InboxItemService;
 import de.mhus.vance.shared.permission.Action;
@@ -70,6 +72,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class InboxController {
 
     private final InboxItemService inboxItemService;
+    private final InboxEffectRegistry effectRegistry;
     private final TeamService teamService;
     private final ProjectService projectService;
     private final RequestAuthority authority;
@@ -114,6 +117,30 @@ public class InboxController {
         InboxItemDocument doc = loadAuthorized(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.READ);
         return InboxMapper.toDto(doc);
+    }
+
+    /**
+     * Server-rendered facts about what answering this item will execute —
+     * present only for items that carry an {@code InboxEffect}.
+     *
+     * <p>Separate from the item itself on purpose: these facts come from
+     * the effect's own storage and stay current (a request may have
+     * failed or lapsed since the item was written), while the item's body
+     * carries only the requester's stated reason.
+     *
+     * @return 204 when the item declares no effect, or the effect has
+     *         nothing to show
+     */
+    @GetMapping("/brain/{tenant}/inbox/{id}/effect")
+    public ResponseEntity<EffectDescription> effect(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            HttpServletRequest httpRequest) {
+        InboxItemDocument doc = loadAuthorized(tenant, id, httpRequest);
+        authority.enforce(httpRequest, inboxResource(doc), Action.READ);
+        return effectRegistry.describe(doc)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     /**

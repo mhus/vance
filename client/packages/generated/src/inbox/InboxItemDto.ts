@@ -22,6 +22,7 @@ export interface InboxItemDto {
   title: string;
   body?: string;
   payload?: Record<string, any>;
+  effectType?: string;
   status: InboxItemStatus;
   requiresAction: boolean;
   answer?: AnswerPayload;

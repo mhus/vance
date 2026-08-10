@@ -44,6 +44,14 @@ public class InboxItemDto {
     private @Nullable String body;
     private @Nullable Map<String, Object> payload;
 
+    /**
+     * Set when answering this item executes something on the server
+     * (e.g. a permission change). Clients use its presence to fetch the
+     * server-rendered facts from {@code GET .../inbox/{id}/effect} and to
+     * show that the decision has consequences beyond a reply.
+     */
+    private @Nullable String effectType;
+
     private InboxItemStatus status;
     private boolean requiresAction;
     private @Nullable AnswerPayload answer;

@@ -45,4 +45,20 @@ public interface PermissionBootstrap {
      * association into an actual permission.
      */
     void grantProjectTeamWriter(String tenant, String project, String team);
+
+    /**
+     * Drop every grant held by {@code username} in {@code tenant}, at any
+     * scope. The counterpart of the grant methods: whoever seeds rights for a
+     * short-lived account has to be able to take them back when the account
+     * goes away.
+     *
+     * <p>Needed because user deletion does <em>not</em> cascade into grant
+     * storage ({@code UserService.delete} only removes the {@code
+     * UserDocument}) — without this, every ephemeral service-account leaves a
+     * grant behind that outlives its subject.
+     *
+     * <p>Idempotent: removing grants of an unknown or already-cleaned user is
+     * a no-op.
+     */
+    void revokeAll(String tenant, String username);
 }

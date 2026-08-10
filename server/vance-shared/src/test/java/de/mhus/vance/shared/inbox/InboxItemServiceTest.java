@@ -17,6 +17,7 @@ import de.mhus.vance.api.inbox.InboxItemStatus;
 import de.mhus.vance.api.inbox.InboxItemType;
 import de.mhus.vance.api.inbox.ResolvedBy;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,7 +45,8 @@ class InboxItemServiceTest {
         repository = mock(InboxItemRepository.class);
         mongoTemplate = mock(MongoTemplate.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
-        service = new InboxItemService(repository, mongoTemplate, eventPublisher);
+        service = new InboxItemService(repository, mongoTemplate, eventPublisher,
+                new InboxEffectRegistry(List.of()));
     }
 
     // ──── Auto-default on LOW criticality ───────────────────────────────

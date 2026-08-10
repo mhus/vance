@@ -205,20 +205,23 @@ public class GenericOAuth2Provider implements OAuthProvider {
         }
 
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            String body = response.body();
-            String snippet = body == null || body.isEmpty() ? ""
-                    : (body.length() > 200 ? body.substring(0, 200) + "…" : body);
             throw new OAuthFlowException(cfg.providerId(),
                     "token endpoint returned HTTP " + response.statusCode()
-                            + " — " + snippet);
+                            + " — " + snippet(response.body()));
         }
 
         JsonNode root;
         try {
             root = json.readTree(response.body());
         } catch (RuntimeException e) {
+            // Include the body snippet, same as the non-2xx path above.
+            // Jackson redacts the source, so without this the message is
+            // just "unexpected character ('<')" and says nothing about who
+            // actually answered — a gateway HTML error page served with
+            // 200, a captive portal, or the wrong endpoint all look alike.
             throw new OAuthFlowException(cfg.providerId(),
-                    "token response is not valid JSON: " + e.getMessage(), e);
+                    "token response is not valid JSON: " + e.getMessage()
+                            + " — body was: " + snippet(response.body()), e);
         }
         // Some providers tunnel errors in a 200-OK body — RFC 6749 §5.2.
         if (root.has("error")) {
@@ -266,6 +269,16 @@ public class GenericOAuth2Provider implements OAuthProvider {
     }
 
     // ──────────────────── Helpers ────────────────────
+
+    /**
+     * First 200 characters of a response body, for error messages.
+     * Only ever applied to bodies that already failed to be a usable
+     * token response, so it cannot leak a real access token.
+     */
+    private static String snippet(@Nullable String body) {
+        if (body == null || body.isEmpty()) return "(empty body)";
+        return body.length() > 200 ? body.substring(0, 200) + "…" : body;
+    }
 
     private static @Nullable String stringOrNull(JsonNode node, String field) {
         if (node == null || !node.has(field)) return null;

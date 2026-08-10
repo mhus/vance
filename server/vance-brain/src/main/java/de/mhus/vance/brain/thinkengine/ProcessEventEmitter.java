@@ -131,6 +131,14 @@ public class ProcessEventEmitter {
      * the process's lane (caller's responsibility — typically inside
      * a {@code laneScheduler.submit} block or via
      * {@link #scheduleTurn(String)}).
+     *
+     * <p>Turn failures propagate to the caller rather than being
+     * swallowed here. Swallowing made the two call sites blind: the
+     * steer path could never send its error frame (its {@code catch}
+     * was unreachable) so the client waited forever on an ack that a
+     * failed turn never produced, and the {@code scheduleTurn} path
+     * lost the failure entirely. Both callers now report it — the
+     * steer handler with a WS error frame, the lane with an ERROR log.
      */
     public void runTurnNow(String processId) {
         Optional<ThinkProcessDocument> processOpt = thinkProcessService.findById(processId);
@@ -158,8 +166,6 @@ public class ProcessEventEmitter {
                 process.getName() + " turn start");
         try {
             thinkEngineServiceProvider.getObject().runTurn(process);
-        } catch (RuntimeException re) {
-            log.warn("runTurn failed id='{}': {}", processId, re.toString(), re);
         } finally {
             progressEmitter.emitStatus(process, StatusTag.ENGINE_TURN_END,
                     process.getName() + " turn end");

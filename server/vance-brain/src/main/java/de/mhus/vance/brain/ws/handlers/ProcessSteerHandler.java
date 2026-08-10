@@ -265,11 +265,18 @@ public class ProcessSteerHandler implements WsHandler {
             int beforeSize) {
         try {
             eventEmitter.runTurnNow(processId);
-        } catch (RuntimeException e) {
+        } catch (Throwable e) {
+            // Throwable, not RuntimeException: an Error (e.g.
+            // NoClassDefFoundError after target/classes was rebuilt under
+            // the running JVM) used to escape every catch in the turn
+            // stack, so no ack and no error frame were ever sent and the
+            // client span forever on a turn that had already died.
             log.error("Steer drain failed id='{}': {}", processId, e.toString(), e);
             try {
+                // toString(), not getMessage(): Errors frequently carry a
+                // null message, which would ship a useless "null" to the UI.
                 sender.sendError(wsSession, envelope, 500,
-                        "Engine steer failed: " + e.getMessage());
+                        "Engine steer failed: " + e);
             } catch (IOException sendErr) {
                 log.warn("Failed to send error reply: {}", sendErr.toString());
             }

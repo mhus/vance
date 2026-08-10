@@ -35,7 +35,9 @@ import org.springframework.stereotype.Service;
  * <p>Failure of one task does not poison its lane: the chain is
  * stitched with {@code exceptionally(...)} so the next task runs
  * regardless. The original failure still propagates back to the
- * submitting caller via the returned future.
+ * submitting caller via the returned future — and is logged here
+ * unconditionally, because most submitters are fire-and-forget and
+ * never inspect that future.
  */
 @Service
 @Slf4j
@@ -106,8 +108,18 @@ public class LaneScheduler {
                 result = previous.handleAsync((unused, ignoredFailure) -> {
                     try {
                         return task.call();
-                    } catch (Exception e) {
-                        throw new CompletionException(e);
+                    } catch (Throwable t) {
+                        // Throwable, not Exception: an Error (typically
+                        // NoClassDefFoundError when the running JVM's
+                        // target/classes got rebuilt underneath it) would
+                        // otherwise slip past every catch in the engine
+                        // stack and complete this future exceptionally with
+                        // nobody looking — most lane work is fire-and-forget.
+                        // The symptom is a chat turn that dies mid-flight
+                        // without a single log line. This is the last line
+                        // of defence: always leave a trace.
+                        log.error("Lane task failed lane='{}': {}", id, t.toString(), t);
+                        throw new CompletionException(t);
                     } finally {
                         depth.decrementAndGet();
                     }

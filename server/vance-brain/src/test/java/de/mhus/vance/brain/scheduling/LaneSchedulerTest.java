@@ -130,6 +130,25 @@ class LaneSchedulerTest {
     }
 
     @Test
+    void taskThrowingError_surfacesToSubmitter_andLaneKeepsDraining() throws Exception {
+        // Errors, not just Exceptions: a NoClassDefFoundError (target/classes
+        // rebuilt under the running JVM) used to slip past the lane's
+        // catch and vanish, leaving an engine turn dead with zero log output.
+        AtomicInteger ran = new AtomicInteger();
+
+        CompletableFuture<Void> failed = scheduler.submit("lane-1", () -> {
+            throw new NoClassDefFoundError("com/example/Gone");
+        });
+        CompletableFuture<Integer> next = scheduler.submit("lane-1", () -> ran.incrementAndGet());
+
+        assertThatThrownBy(() -> failed.get(5, TimeUnit.SECONDS))
+                .isInstanceOf(ExecutionException.class)
+                .hasRootCauseInstanceOf(NoClassDefFoundError.class);
+
+        assertThat(next.get(5, TimeUnit.SECONDS)).isEqualTo(1);
+    }
+
+    @Test
     void laneCount_growsWithDistinctLanes() throws Exception {
         scheduler.submit("lane-A", () -> {}).get(5, TimeUnit.SECONDS);
         scheduler.submit("lane-B", () -> {}).get(5, TimeUnit.SECONDS);

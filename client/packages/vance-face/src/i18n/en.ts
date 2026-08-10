@@ -117,6 +117,7 @@ export default {
   },
 
   processCounts: {
+    emptyTooltip: 'No other processes — open the list',
     label: '{n} process(es)',
     tooltip: '{running} running · {waiting} waiting · {blocked} blocked',
     blockedHint: '{n} process(es) waiting for you',

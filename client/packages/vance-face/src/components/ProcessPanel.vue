@@ -11,6 +11,7 @@ import type {
   ProcessSummary,
 } from '@vance/generated';
 import { VAlert, VButton, VEmptyState, VInput, VModal } from '@vance/components';
+import MarkdownView from './MarkdownView.vue';
 
 /**
  * Master/detail view of the session's think-processes: which ones exist,
@@ -27,6 +28,13 @@ import { VAlert, VButton, VEmptyState, VInput, VModal } from '@vance/components'
  * has no active-process pointer — it always addresses the chat process. A
  * button that pretended otherwise would be a lie, so steering happens from
  * inside this panel instead.
+ *
+ * <p>Message bodies go through {@link MarkdownView}, the same renderer the
+ * chat bubbles use, so a worker's fenced code, tables and {@code vance:}
+ * embeds read the same here as in the conversation. That renderer pulls the
+ * Pinia-backed document-ref store, which is why {@code EditorShell} only
+ * mounts this panel once counts have arrived — that happens exactly in the
+ * session-bearing editors (chat, cortex), and those register Pinia.
  */
 interface Props {
   modelValue: boolean;
@@ -226,7 +234,7 @@ async function toggleTerminated(): Promise<void> {
               </p>
               <div v-for="msg in detail.messages" :key="msg.messageId" class="flex flex-col">
                 <span class="text-[10px] uppercase opacity-50">{{ roleOf(msg) }}</span>
-                <span class="whitespace-pre-wrap">{{ msg.content }}</span>
+                <MarkdownView :source="msg.content ?? ''" />
               </div>
             </template>
           </div>

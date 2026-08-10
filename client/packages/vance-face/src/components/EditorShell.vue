@@ -19,6 +19,7 @@ import ReconnectOverlay from '@/ws/ReconnectOverlay.vue';
 import SessionTakeoverDialog from '@/ws/SessionTakeoverDialog.vue';
 import { useNotificationSubscription } from '@/notification/useNotificationSubscription';
 import { useProcessCountsSubscription } from '@/process/useProcessCountsSubscription';
+import { countsAvailable } from '@/process/processCountsStore';
 import { processPanelOpen } from '@/process/processPanelState';
 import ProcessPanel from './ProcessPanel.vue';
 
@@ -472,8 +473,12 @@ onBeforeUnmount(() => {
          free; the store + WebSocket subscription live elsewhere. -->
     <NotificationToasts />
     <!-- Global process panel: opened from the topbar badge, needs the
-         shell's socket for its process-list / process-messages calls. -->
-    <ProcessPanel v-model="processPanelOpen" :socket="wsSocket" />
+         shell's socket for its process-list / process-messages calls.
+         Mounted only once counts have arrived, i.e. in the session-bearing
+         editors — the panel renders message bodies with MarkdownView, which
+         depends on the Pinia document-ref store that REST-only entries don't
+         register. -->
+    <ProcessPanel v-if="countsAvailable" v-model="processPanelOpen" :socket="wsSocket" />
     <!-- Global reconnect overlay — visible whenever the tab-singleton
          WebSocket is reconnecting or down. Renders a blocking modal so
          every editor (chat, cortex, documents, …) automatically

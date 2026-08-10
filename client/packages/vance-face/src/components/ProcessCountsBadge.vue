@@ -2,14 +2,19 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VBadge } from '@vance/components';
-import { processCounts } from '@/process/processCountsStore';
+import { countsAvailable, processCounts } from '@/process/processCountsStore';
 import { openProcessPanel } from '@/process/processPanelState';
 
 /**
  * Topbar badge with the session's think-process counts — the trigger
  * information for "something is running besides my chat", and the way into
- * the process panel. Hidden entirely while no process exists, so editors
- * without a bound session (and quiet sessions) show nothing.
+ * the process panel.
+ *
+ * <p>Shown whenever the session is bound, including at zero: the panel is the
+ * only entry to the process list, and hiding the badge on a quiet session
+ * would make the list unreachable exactly when the user wants to look. In
+ * editors without a session (documents, tools, …) no frame ever arrives, so
+ * nothing renders there.
  *
  * <p>Requirement: planning/process-visibility.md §4.A / §4.B
  */
@@ -17,11 +22,14 @@ import { openProcessPanel } from '@/process/processPanelState';
 const { t } = useI18n();
 
 const counts = computed(() => processCounts.value);
-const visible = computed(() => counts.value.total > 0);
+const visible = computed(() => countsAvailable.value);
 /** Blocked means a process waits on the user — the one state worth colour. */
 const attention = computed(() => counts.value.blocked > 0);
 
 const tooltip = computed(() => {
+  if (counts.value.total === 0) {
+    return t('processCounts.emptyTooltip');
+  }
   const base = t('processCounts.tooltip', {
     running: counts.value.running,
     waiting: counts.value.waiting,

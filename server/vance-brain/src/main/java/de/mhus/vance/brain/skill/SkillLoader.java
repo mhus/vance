@@ -317,6 +317,7 @@ public class SkillLoader {
         SkillLifecycle lifecycle = parseLifecycle(spec.get("lifecycle"), stem);
         String action = parseAction(spec.get("action"), stem);
         ParsedArguments args = parseArguments(spec.get("arguments"), stem);
+        SkillRun run = parseRun(spec.get("run"), stem, lifecycle, action, triggers);
 
         // A shot skill never registers, so its only effects are the
         // activate: commands and its turn-prompt — and the auto-trigger
@@ -335,7 +336,98 @@ public class SkillLoader {
                 name, title, description, version,
                 triggers, promptExtension, tools, manualPaths, refDocs, scripts,
                 tags, enabled, scope, activate, deactivate, lifecycle,
-                args.consumes(), args.declared(), action);
+                args.consumes(), args.declared(), action, run);
+    }
+
+    /**
+     * Parses the optional {@code run:} block — where the activation takes
+     * effect. Absent means {@link SkillRun#INLINE}, the behaviour every
+     * skill had before this existed.
+     *
+     * <pre>
+     * run:
+     *   target: spawn          # inline (default) | spawn
+     *   recipe: code-review    # required for spawn
+     *   inherit: none          # default for spawn
+     * </pre>
+     *
+     * <p>Validation is strict where a misconfiguration would produce a
+     * silently useless skill:
+     * <ul>
+     *   <li>{@code spawn} without {@code recipe} — nothing to run.</li>
+     *   <li>{@code spawn} without {@code action:} — the worker would
+     *       start and idle. A spawn skill's body is the child's system
+     *       prompt, not its task; the task can only come from
+     *       {@code action:}.</li>
+     *   <li>{@code spawn} with {@code lifecycle: shot} — contradictory.
+     *       Shot means "registers nowhere", spawn means "registers sticky
+     *       in the child"; there is no reading that satisfies both.</li>
+     * </ul>
+     * Triggers only warn: the auto-trigger path deliberately fires no
+     * turn-prompt and therefore never spawns (see {@code SkillTriggerMatcher}
+     * and {@code SkillSteerProcessor}), but the explicit {@code /skill}
+     * route still works, so failing the load would be too harsh.
+     */
+    private static SkillRun parseRun(
+            Object raw,
+            String stem,
+            SkillLifecycle lifecycle,
+            @Nullable String action,
+            List<ResolvedSkill.Trigger> triggers) {
+        if (raw == null) {
+            return SkillRun.INLINE;
+        }
+        if (!(raw instanceof Map<?, ?> map)) {
+            throw new IllegalStateException("skill '" + stem + "': 'run' must be a map");
+        }
+        String targetRaw = stringOrNull(map.get("target"));
+        String recipe = stringOrNull(map.get("recipe"));
+        String inherit = stringOrNull(map.get("inherit"));
+
+        SkillRun.Target target = targetRaw == null
+                ? SkillRun.Target.INLINE
+                : switch (targetRaw.trim().toLowerCase(Locale.ROOT)) {
+                    case "inline" -> SkillRun.Target.INLINE;
+                    case "spawn" -> SkillRun.Target.SPAWN;
+                    default -> throw new IllegalStateException(
+                            "skill '" + stem + "': unknown run.target '" + targetRaw
+                                    + "' (expected inline|spawn)");
+                };
+
+        if (target == SkillRun.Target.INLINE) {
+            if (recipe != null || inherit != null) {
+                log.warn("skill '{}': run.recipe / run.inherit are ignored without "
+                        + "run.target: spawn", stem);
+            }
+            return SkillRun.INLINE;
+        }
+
+        if (recipe == null || recipe.isBlank()) {
+            throw new IllegalStateException(
+                    "skill '" + stem + "': run.target: spawn requires run.recipe");
+        }
+        if (action == null || action.isBlank()) {
+            throw new IllegalStateException(
+                    "skill '" + stem + "': run.target: spawn requires an 'action:' prompt — "
+                            + "without it the spawned worker would idle (the body is the "
+                            + "child's system prompt, not its task)");
+        }
+        if (lifecycle == SkillLifecycle.SHOT) {
+            throw new IllegalStateException(
+                    "skill '" + stem + "': run.target: spawn cannot combine with "
+                            + "lifecycle: shot — spawn registers the skill sticky in the "
+                            + "child, shot registers it nowhere");
+        }
+        if (!triggers.isEmpty()) {
+            log.warn("skill '{}': run.target: spawn with triggers — the auto-trigger path "
+                    + "never spawns (a turn is already running); triggers are a no-op here, "
+                    + "invoke explicitly via /skill", stem);
+        }
+        return new SkillRun(
+                SkillRun.Target.SPAWN,
+                recipe.trim(),
+                inherit == null || inherit.isBlank()
+                        ? SkillRun.DEFAULT_INHERIT : inherit.trim());
     }
 
     /** Outcome of {@link #parseArguments} — the two {@code arguments:} facets. */

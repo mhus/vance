@@ -1,6 +1,6 @@
 ---
-triggers: write a skill, create a skill, author a skill, SKILL.md, skill frontmatter, lifecycle sticky, lifecycle shot, prompt macro, slash command with arguments, skill arguments, args.text, skill triggers, /skill, one-shot skill, Skill schreiben, Skill anlegen, Skill mit Argumenten, eigenen Befehl anlegen
-summary: How to write a skill — the SKILL.md frontmatter, the three lifecycles (sticky mode / one-shot / shot prompt-macro), invocation arguments via arguments: + {{ args }}, and which of body / action:/ activate: fires when.
+triggers: write a skill, create a skill, author a skill, SKILL.md, skill frontmatter, lifecycle sticky, lifecycle shot, prompt macro, slash command with arguments, skill arguments, args.text, skill triggers, /skill, one-shot skill, run a skill in a separate agent, skill without chat history, spawn a worker for a skill, Skill schreiben, Skill anlegen, Skill mit Argumenten, eigenen Befehl anlegen
+summary: How to write a skill — the SKILL.md frontmatter, the three lifecycles (sticky mode / one-shot / shot prompt-macro), running a skill in a fresh worker via run.target: spawn, invocation arguments via arguments: + {{ args }}, and which of body / action:/ activate: fires when.
 ---
 # Writing a skill
 
@@ -18,6 +18,7 @@ layer wins, so a user copy overrides the project's.
 | A **command** that runs once and leaves nothing behind | `lifecycle: shot` — the body is the prompt that gets fired, the skill never registers |
 | A **configuration macro** (install a guard, set a mode) | `lifecycle: shot` with `activate:` commands and an empty body |
 | A mode for exactly one turn | `lifecycle: sticky`, invoked as `/skill <name> --once` |
+| Work that must **not** see this conversation (review, second opinion) | `run.target: spawn` — runs in a fresh worker without the chat history (see below) |
 
 `shot` and `--once` are different things, easy to mix up:
 
@@ -120,6 +121,39 @@ its turn-prompt is deliberately **not** fired (a turn is already in
 flight). Consequence: a `lifecycle: shot` skill whose only effect is a
 body does nothing on the trigger path — give it `activate:` commands, make
 it `sticky`, or expect explicit invocation only.
+
+## Running in a fresh worker (`run.target: spawn`)
+
+A skill acts in the calling process by default. Sometimes that is exactly
+wrong: a code review should judge the code, not the conversation that
+produced it — inheriting the chat history biases the verdict, costs
+context, and mixes up the roles.
+
+```yaml
+run:
+  target: spawn          # inline (default) | spawn
+  recipe: code-review    # required — the worker's engine lane
+  inherit: none          # default for spawn
+action: |
+  Review the current code changes now. Gather the diff first, then report.
+```
+
+The caller keeps **nothing**: no active skill, no injected message,
+nothing to clear. A fresh worker is spawned instead, the skill is sticky
+*there* (body = its system prompt, `tools:` granted, `args` bound on every
+turn), and `action:` is its first message. When it finishes, its last
+answer comes back to the caller as a process event, so write `action:`
+such that the worker's final message is the whole result.
+
+Rules that bite:
+
+- **`action:` is mandatory** here. The body is the worker's system prompt,
+  not its task — without `action:` it would start and idle.
+- **Not combinable with `lifecycle: shot`** — shot means "registers
+  nowhere", spawn means "registers sticky in the child".
+- **Triggers never spawn.** Only explicit `/skill <name>` does.
+- **Same session**, so project memory still applies — only the chat
+  history is left behind. That is usually what you want.
 
 ## Templating
 

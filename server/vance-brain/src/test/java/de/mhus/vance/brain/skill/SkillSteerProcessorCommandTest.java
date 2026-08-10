@@ -35,6 +35,7 @@ class SkillSteerProcessorCommandTest {
     @Mock private SkillResolver skillResolver;
     @Mock private SkillCommandRunner skillCommandRunner;
     @Mock private ProcessEventEmitter eventEmitter;
+    @Mock private SkillSpawnRunner skillSpawnRunner;
 
     @Captor private ArgumentCaptor<de.mhus.vance.shared.thinkprocess.PendingMessageDocument> pendingCaptor;
 
@@ -44,7 +45,7 @@ class SkillSteerProcessorCommandTest {
     void setUp() {
         processor = new SkillSteerProcessor(
                 thinkProcessService, sessionService, skillResolver, skillCommandRunner,
-                eventEmitter, new PromptTemplateRenderer());
+                eventEmitter, new PromptTemplateRenderer(), skillSpawnRunner);
         when(sessionService.findBySessionId(anyString())).thenReturn(Optional.empty());
     }
 

@@ -61,7 +61,43 @@ public record ResolvedSkill(
          * completion guard uses. See {@code planning/engine-commands.md} §4 and
          * {@code specification/public/skills.md} §2a.
          */
-        @Nullable String action) {
+        @Nullable String action,
+        /**
+         * Where the activation takes effect — inline in the calling
+         * process (default) or in a freshly spawned worker. See
+         * {@link SkillRun}.
+         */
+        SkillRun run) {
+
+    /**
+     * Backward-compatible constructor for call sites that predate the
+     * {@code run:} block — everything acts inline.
+     */
+    public ResolvedSkill(
+            String name,
+            String title,
+            String description,
+            String version,
+            List<Trigger> triggers,
+            @Nullable String promptExtension,
+            List<String> tools,
+            List<String> manualPaths,
+            List<ReferenceDoc> referenceDocs,
+            List<Script> scripts,
+            List<String> tags,
+            boolean enabled,
+            SkillScope source,
+            List<EngineCommand> activate,
+            List<EngineCommand> deactivate,
+            SkillLifecycle lifecycle,
+            boolean consumesArgs,
+            List<Argument> arguments,
+            @Nullable String action) {
+        this(name, title, description, version, triggers, promptExtension,
+                tools, manualPaths, referenceDocs, scripts, tags, enabled, source,
+                activate, deactivate, lifecycle, consumesArgs, arguments, action,
+                SkillRun.INLINE);
+    }
 
     /**
      * Backward-compatible constructor for call sites that predate

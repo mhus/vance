@@ -55,6 +55,14 @@ import org.springframework.stereotype.Service;
  * clients used to do themselves. Sticky skills keep the raw text on their
  * {@link ActiveSkillRefEmbedded} so later turns re-bind it.
  *
+ * <p><b>Exception — {@code run.target: spawn}.</b> A skill can declare
+ * that its work belongs in a fresh worker rather than here (review-style
+ * tasks, where inheriting the chat history biases the verdict). Such an
+ * activation registers nothing on the calling process: {@link SkillSpawnRunner}
+ * creates the child and the very same {@code activate} runs again on the
+ * child's lane, where the skill is an ordinary sticky one. See
+ * {@code specification/public/skills.md} §2c.
+ *
  * <p>Recipe-bound skills (those activated by the spawning recipe with
  * {@code fromRecipe=true}) cannot be cleared by the user when the
  * recipe is locked — see {@code specification/skills.md} §7a.
@@ -73,6 +81,7 @@ public class SkillSteerProcessor {
     private final SkillCommandRunner skillCommandRunner;
     private final ProcessEventEmitter eventEmitter;
     private final PromptTemplateRenderer templateRenderer;
+    private final SkillSpawnRunner skillSpawnRunner;
 
     /**
      * Explicit activation ({@code /skill <name>} / {@code process-skill}
@@ -128,6 +137,25 @@ public class SkillSteerProcessor {
             boolean runAction,
             @Nullable String rawArgs,
             @Nullable String senderUserId) {
+        return activate(process, skillName, oneShot, runAction, rawArgs, senderUserId,
+                /*allowSpawn*/ true);
+    }
+
+    /**
+     * @param allowSpawn whether a {@code run.target: spawn} skill may
+     *   spawn from here. {@code false} on the child-side activation the
+     *   spawn itself schedules — otherwise the child would spawn a
+     *   grandchild, and so on. This is the recursion guard for
+     *   {@code planning/skill-spawn-target.md} §2.7.
+     */
+    private ActivationResult activate(
+            ThinkProcessDocument process,
+            String skillName,
+            boolean oneShot,
+            boolean runAction,
+            @Nullable String rawArgs,
+            @Nullable String senderUserId,
+            boolean allowSpawn) {
         if (skillName == null || skillName.isBlank()) {
             throw new IllegalArgumentException("skillName is required for activate");
         }
@@ -144,6 +172,10 @@ public class SkillSteerProcessor {
         // activation, not surface later as an empty placeholder in a
         // rendered prompt. Throws SkillArgumentException.
         SkillArgumentBinder.bind(skill, args);
+
+        if (skill.run().spawns() && allowSpawn && !isActive(process, skillName)) {
+            return spawnAndActivate(process, skill, runAction, rawArgs, args, senderUserId);
+        }
 
         if (skill.lifecycle() == SkillLifecycle.SHOT) {
             // Macro: fire the activate sequence once, never persist, no
@@ -213,6 +245,53 @@ public class SkillSteerProcessor {
             injectUnconsumedArgs(process, skill, args, senderUserId);
         }
         return new ActivationResult(skill, true, active);
+    }
+
+    /**
+     * {@code run.target: spawn} — the skill does its work in a fresh
+     * worker instead of here. Nothing is registered on the calling
+     * process: it keeps no active skill, gets no injected message, and
+     * has nothing to clear afterwards. The worker reports back through
+     * the regular parent-notification path when it terminates.
+     *
+     * <p>Suppressed on the auto-trigger path ({@code runAction == false}):
+     * that activation happens inside an in-flight turn, and starting a
+     * worker as a side effect of a keyword match would be both expensive
+     * and surprising. The explicit {@code /skill} route is the only way
+     * in — {@code SkillLoader} warns about triggers on a spawn skill.
+     *
+     * @param rawArgs the unstripped trailing text, passed on so the child
+     *   activation applies the same consume rules (bound into the
+     *   template, or injected as a user message on the <em>child</em>)
+     * @param args the stripped form, for logging only
+     */
+    private ActivationResult spawnAndActivate(
+            ThinkProcessDocument process,
+            ResolvedSkill skill,
+            boolean runAction,
+            @Nullable String rawArgs,
+            @Nullable String args,
+            @Nullable String senderUserId) {
+        if (!runAction) {
+            log.debug("Skill activate id='{}' name='{}' run=spawn suppressed — "
+                            + "auto-trigger path does not spawn",
+                    process.getId(), skill.name());
+            return new ActivationResult(skill, false, mutableActive(process));
+        }
+        String childId = skillSpawnRunner.spawn(process, skill, child ->
+                activate(child, skill.name(), /*oneShot*/ false, /*runAction*/ true,
+                        rawArgs, senderUserId, /*allowSpawn*/ false));
+        log.info("Skill activate id='{}' name='{}' run=spawn recipe='{}' → child id='{}'"
+                        + " (caller unchanged{})",
+                process.getId(), skill.name(), skill.run().recipe(), childId,
+                args == null ? "" : ", args passed to child");
+        return new ActivationResult(skill, true, mutableActive(process));
+    }
+
+    private static boolean isActive(ThinkProcessDocument process, String skillName) {
+        List<ActiveSkillRefEmbedded> active = process.getActiveSkills();
+        if (active == null) return false;
+        return active.stream().anyMatch(ref -> skillName.equals(ref.getName()));
     }
 
     /**

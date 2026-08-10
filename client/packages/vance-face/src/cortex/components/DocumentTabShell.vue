@@ -658,7 +658,7 @@ function fmtDuration(ms: number | null): string {
       v-if="isAppKindBinding && viewEditMode === 'view'"
       class="flex items-center gap-2 px-3 py-1.5 border-b border-base-300 bg-base-100 text-sm"
     >
-      <span class="font-mono opacity-60 truncate flex-1">{{ document.path }}</span>
+      <span class="font-mono opacity-60 truncate flex-1 hidden md:inline">{{ document.path }}</span>
       <div
         class="flex border border-base-300 rounded overflow-hidden text-xs"
         role="group"
@@ -674,7 +674,10 @@ function fmtDuration(ms: number | null): string {
           class="px-2 py-0.5 border-l border-base-300 opacity-60 hover:bg-base-200"
           title="Raw YAML manifest editor"
           @click="viewEditMode = 'edit'"
-        >Edit</button>
+        >
+          <span class="hidden sm:inline">Edit</span>
+          <span class="sm:hidden">✏️</span>
+        </button>
       </div>
     </div>
     <!-- Full toolbar: path, View/Edit toggle, reload, download, properties.
@@ -703,7 +706,7 @@ function fmtDuration(ms: number | null): string {
         :class="accentColorDotClass(document.color)"
         :aria-label="`color ${document.color}`"
       />
-      <span class="font-mono opacity-80 truncate">{{ document.path }}</span>
+      <span class="font-mono opacity-80 truncate hidden md:inline">{{ document.path }}</span>
       <VLockBadge :locked-for="document.lockedFor" />
       <div
         v-if="showToggle"
@@ -717,14 +720,20 @@ function fmtDuration(ms: number | null): string {
           :class="viewEditMode === 'view' ? 'bg-base-300' : 'opacity-60 hover:bg-base-200'"
           :title="isAppKindBinding ? 'App view' : 'Rendered view'"
           @click="viewEditMode = 'view'"
-        >{{ isAppKindBinding ? 'App' : 'View' }}</button>
+        >
+          <span class="hidden sm:inline">{{ isAppKindBinding ? 'App' : 'View' }}</span>
+          <span class="sm:hidden">{{ isAppKindBinding ? '▶️' : '👁️' }}</span>
+        </button>
         <button
           type="button"
           class="px-2 py-0.5 border-l border-base-300"
           :class="viewEditMode === 'edit' ? 'bg-base-300' : 'opacity-60 hover:bg-base-200'"
           title="Raw source editor"
           @click="viewEditMode = 'edit'"
-        >Edit</button>
+        >
+          <span class="hidden sm:inline">Edit</span>
+          <span class="sm:hidden">✏️</span>
+        </button>
       </div>
       <!-- Run controls — only when an adapter matches this doc. The
            args input stays inline; an empty / '{}' string is the
@@ -795,7 +804,10 @@ function fmtDuration(ms: number | null): string {
         :class="{ 'bg-base-300 opacity-100': propertiesOpen }"
         :title="propertiesOpen ? 'Hide properties' : 'Show properties'"
         @click="propertiesOpen = !propertiesOpen"
-      >Properties</button>
+      >
+        <span class="hidden sm:inline">Properties</span>
+        <span class="sm:hidden">⚙️</span>
+      </button>
       <button
         type="button"
         class="opacity-60 hover:opacity-100 hover:bg-base-200 rounded px-1.5 py-0.5 text-xs"
@@ -809,7 +821,7 @@ function fmtDuration(ms: number | null): string {
       >●</span>
       <span class="flex-1" />
       <span
-        class="opacity-50 text-xs font-mono"
+        class="opacity-50 text-xs font-mono hidden lg:inline"
         :title="`binding=${binding.id} mode=${binding.mode} kind=${document.kind ?? 'null'} mime=${document.mimeType ?? 'null'}`"
       >
         [{{ binding.id }}]

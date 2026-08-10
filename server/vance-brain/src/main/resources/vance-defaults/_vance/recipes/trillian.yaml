@@ -18,6 +18,7 @@ description: |
   Trillian-User worker. Aliases to trillian-0 today.
 
 engine: trillian-control
+listed: true
 
 params:
   nature: '0'

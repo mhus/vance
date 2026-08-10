@@ -375,7 +375,7 @@ final class ComposeFileRenderer {
                   SPRING_PROFILES_ACTIVE: prod
                   VANCE_MONGODB_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME:-root}:${MONGO_INITDB_ROOT_PASSWORD:-example}@mongodb:27017/${VANCE_MONGODB_DATABASE:-vance}?authSource=admin
                   VANCE_MONGODB_DATABASE: ${VANCE_MONGODB_DATABASE:-vance}
-                  VANCE_ENCRYPTION_PASSWORD: ${VANCE_ENCRYPTION_PASSWORD:-changeit}
+                  VANCE_ENCRYPTION_PASSWORD: ${VANCE_ENCRYPTION_PASSWORD:?set VANCE_ENCRYPTION_PASSWORD in .env (no default - it is the master key for stored secrets)}
                   VANCE_INTERNAL_TOKEN: ${VANCE_INTERNAL_TOKEN:-changeit-internal}
                   VANCE_BOOTSTRAP_ACME: ${VANCE_BOOTSTRAP_ACME:-false}
                   VANCE_FOOK_ENABLED: ${VANCE_FOOK_ENABLED:-true}
@@ -556,7 +556,7 @@ final class ComposeFileRenderer {
                   SPRING_PROFILES_ACTIVE: prod
                   VANCE_MONGODB_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME:-root}:${MONGO_INITDB_ROOT_PASSWORD:-example}@mongodb:27017/${VANCE_MONGODB_DATABASE:-vance}?authSource=admin
                   VANCE_MONGODB_DATABASE: ${VANCE_MONGODB_DATABASE:-vance}
-                  VANCE_ENCRYPTION_PASSWORD: ${VANCE_ENCRYPTION_PASSWORD:-changeit}
+                  VANCE_ENCRYPTION_PASSWORD: ${VANCE_ENCRYPTION_PASSWORD:?set VANCE_ENCRYPTION_PASSWORD in .env (must match the brain's key)}
                   # Admin commands that touch the brain (e.g. project-kits import)
                   # call it over the compose network — not localhost.
                   VANCE_ANUS_BRAIN_HTTPBASE: http://brain:9990

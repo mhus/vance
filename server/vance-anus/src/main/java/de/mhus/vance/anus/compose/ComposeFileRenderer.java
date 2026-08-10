@@ -376,7 +376,7 @@ final class ComposeFileRenderer {
                   VANCE_MONGODB_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME:-root}:${MONGO_INITDB_ROOT_PASSWORD:-example}@mongodb:27017/${VANCE_MONGODB_DATABASE:-vance}?authSource=admin
                   VANCE_MONGODB_DATABASE: ${VANCE_MONGODB_DATABASE:-vance}
                   VANCE_ENCRYPTION_PASSWORD: ${VANCE_ENCRYPTION_PASSWORD:?set VANCE_ENCRYPTION_PASSWORD in .env (no default - it is the master key for stored secrets)}
-                  VANCE_INTERNAL_TOKEN: ${VANCE_INTERNAL_TOKEN:-changeit-internal}
+                  VANCE_INTERNAL_TOKEN: ${VANCE_INTERNAL_TOKEN:?set VANCE_INTERNAL_TOKEN in .env (no default - shared secret for the /internal endpoints)}
                   VANCE_BOOTSTRAP_ACME: ${VANCE_BOOTSTRAP_ACME:-false}
                   VANCE_FOOK_ENABLED: ${VANCE_FOOK_ENABLED:-true}
                   VANCE_WEB_PUBLICBASEURL: ${VANCE_WEB_PUBLICBASEURL:-http://localhost:9999}

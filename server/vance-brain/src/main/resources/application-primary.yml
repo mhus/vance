@@ -20,6 +20,12 @@ vance:
     # rejects that publicly-known key); production application.yml carries
     # no default and fails fast if the env var is unset (code-review F4).
     password: ${VANCE_ENCRYPTION_PASSWORD:vance-local-dev}
+  internal:
+    # primary + secondary form the local two-pod pair, so they need a
+    # matching /internal/** secret. Throwaway dev value — application.yml
+    # ships no default (a known shared secret would authenticate anyone
+    # against any deployment that never set the variable).
+    token: ${VANCE_INTERNAL_TOKEN:vance-local-dev-internal}
   redis:
     enabled: true
     host: localhost

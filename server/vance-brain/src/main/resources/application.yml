@@ -150,10 +150,18 @@ vance:
         retention-days: 7
   internal:
     # Shared secret used by Layer 1 to authenticate against /internal/**
-    # endpoints on a peer pod. In K8s this is mounted from a Secret; the
-    # default keeps single-pod dev workable. NEVER expose Layer 2 outside
-    # the cluster.
-    token: ${VANCE_INTERNAL_TOKEN:changeit-internal}
+    # endpoints on a peer pod. In K8s this is mounted from a Secret.
+    # NEVER expose Layer 2 outside the cluster.
+    #
+    # No shipped default: a known shared secret would let anyone who reads
+    # this file authenticate against /internal/** on any deployment that
+    # never set the variable. Empty is the safe fallback — every consumer
+    # declares `${vance.internal.token:}` and logs a startup warning, and
+    # /internal/** then rejects all callers, which is correct for a
+    # single-pod install that has no pod-to-pod traffic. Multi-pod setups
+    # MUST set the same value on every pod (dev profiles and the aitest
+    # profiles carry their own throwaway token).
+    token: ${VANCE_INTERNAL_TOKEN:}
   workspace:
     access:
       bypass-proxy: false

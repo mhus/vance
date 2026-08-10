@@ -83,10 +83,10 @@ class ForeignAccessSupportTest {
 
     @Test
     void resolveForeign_systemProject_refusedWithoutPermissionCheck() {
-        when(projectService.findByTenantAndName(TENANT, "_vance"))
-                .thenReturn(Optional.of(project("_vance", ProjectKind.SYSTEM)));
+        when(projectService.findByTenantAndName(TENANT, "_tenant"))
+                .thenReturn(Optional.of(project("_tenant", ProjectKind.SYSTEM)));
 
-        assertThatThrownBy(() -> support.resolveForeign("_vance", ctx(), Action.READ))
+        assertThatThrownBy(() -> support.resolveForeign("_tenant", ctx(), Action.READ))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("SYSTEM");
         verify(permissionService, never()).enforce(org.mockito.ArgumentMatchers.any(),
@@ -169,11 +169,15 @@ class ForeignAccessSupportTest {
     }
 
     @Test
-    void resolveTarget_vanceStagingArea_allowed() {
-        ProjectDocument vance = project("_vance", ProjectKind.SYSTEM);
-        when(projectService.findByTenantAndName(TENANT, "_vance")).thenReturn(Optional.of(vance));
+    void resolveTarget_tenantScopeProject_refused() {
+        // No SYSTEM project is a valid copy/move destination — the tenant
+        // scope (_tenant) included. There is no staging-area carve-out.
+        when(projectService.findByTenantAndName(TENANT, "_tenant"))
+                .thenReturn(Optional.of(project("_tenant", ProjectKind.SYSTEM)));
 
-        assertThat(support.resolveTarget("_vance", ctx())).isSameAs(vance);
+        assertThatThrownBy(() -> support.resolveTarget("_tenant", ctx()))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("SYSTEM");
     }
 
     // ── reserved ──────────────────────────────────────────────────

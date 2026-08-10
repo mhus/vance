@@ -113,7 +113,7 @@ class DocumentChangedBroadcasterTest {
     @Test
     void localEvent_withNoLocalSubscribers_stillPublishesToRedis() throws IOException {
         broadcaster.onLocalChanged(new DocumentLiveChangedEvent(
-                "acme", "_vance", "_vance/setting_forms/foo.yaml",
+                "acme", "_tenant", "_vance/setting_forms/foo.yaml",
                 DocumentLiveChangedEvent.Kind.UPSERTED,
                 null, null, null));
 

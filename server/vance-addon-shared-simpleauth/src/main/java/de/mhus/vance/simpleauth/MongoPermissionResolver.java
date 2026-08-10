@@ -28,7 +28,6 @@ import org.jspecify.annotations.Nullable;
 public class MongoPermissionResolver implements PermissionResolver {
 
     private static final String TENANT_PROJECT = "_tenant";
-    private static final String VANCE_PROJECT = "_vance";
     /**
      * Reserved document paths — WRITE here is server-only (R4). The whole
      * {@code _vance/} namespace is reserved: recipes, models, manuals,
@@ -153,19 +152,6 @@ public class MongoPermissionResolver implements PermissionResolver {
         // _tenant: every tenant member may READ (settings-cascade defaults);
         // writing needs tenant-ADMIN.
         if (project.equals(TENANT_PROJECT)) {
-            if (required == GrantRole.READER) {
-                return true;
-            }
-            return hasRole(tenantRole(subject, tenantId), GrantRole.ADMIN);
-        }
-        // _vance: server-owned system config (recipes, models, manuals,
-        // setting-forms). Every tenant member may READ (the recipe/model/
-        // settings cascade resolves here for all users). WRITE needs
-        // tenant-ADMIN — like _tenant. Trusted server code still writes via
-        // WriteReason.SYSTEM (short-circuited upstream by PermissionService);
-        // dedicated authoring tools keep their own ADMIN check + SYSTEM vouch
-        // as defense-in-depth.
-        if (project.equals(VANCE_PROJECT)) {
             if (required == GrantRole.READER) {
                 return true;
             }

@@ -42,12 +42,12 @@ class KindToolSupportAuthzTest {
         ToolInvocationContext ctx = new ToolInvocationContext(
                 "acme", "proj", "sess", "proc", "alice");
 
-        support.enforceDocWrite(ctx, "_vance", "_vance/scheduler/x.yaml", Action.CREATE);
+        support.enforceDocWrite(ctx, "_tenant", "_vance/scheduler/x.yaml", Action.CREATE);
 
         verify(contextFactory).forToolSubject("acme", "alice");
         verify(permissionService).enforce(
                 eq(subject),
-                eq(new Resource.Document("acme", "_vance", "_vance/scheduler/x.yaml")),
+                eq(new Resource.Document("acme", "_tenant", "_vance/scheduler/x.yaml")),
                 eq(Action.CREATE));
     }
 }

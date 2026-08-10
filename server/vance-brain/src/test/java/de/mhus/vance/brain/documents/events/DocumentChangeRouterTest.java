@@ -70,20 +70,6 @@ class DocumentChangeRouterTest {
     }
 
     @Test
-    void vanceProject_broadcasts() {
-        when(clusterService.liveClusterPods()).thenReturn(List.of(
-                pod(SELF_NODE, "10.0.0.7:8080"),
-                pod(OTHER_NODE, OTHER_ENDPOINT)));
-
-        DocumentChangeRouter.Classification c = router.classify(upserted("_vance",
-                "_vance/server-tools/zoho_imap.yaml"));
-
-        assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.BROADCAST);
-        assertThat(c.fireSelf()).isTrue();
-        assertThat(c.remoteEndpoints()).containsExactly(OTHER_ENDPOINT);
-    }
-
-    @Test
     void tenantProject_broadcast_alone_in_cluster_falls_back_to_self() {
         when(clusterService.liveClusterPods()).thenReturn(List.of(
                 pod(SELF_NODE, "10.0.0.7:8080")));

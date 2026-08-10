@@ -193,8 +193,9 @@ class ModelCatalogTest {
 
     @Test
     void systemTenant_overrides_bundled_for_all_tenants() {
-        // _vance / _tenant — global maintainer-layer.
-        stubModelDoc(ModelCatalog.MODEL_PATH_PREFIX.contains("_vance") ? "_vance" : "_vance",
+        // System TENANT _vance, tenant-scope project _tenant — the global
+        // maintainer layer that sits above every tenant's own overrides.
+        stubModelDoc(ModelCatalog.SYSTEM_TENANT,
                 VANCE_TENANT_PROJECT,
                 "anthropic/claude-sonnet-4-5.yaml", """
                 defaultMaxOutputTokens: 999
@@ -404,7 +405,7 @@ class ModelCatalogTest {
      */
     @Test
     void bundled_cortecs_workhorses_are_priced() {
-        for (String model : List.of("kimi-k3", "deepseek-v4-pro", "deepseek-v4-flash",
+        for (String model : List.of("kimi-k3", "deepseek-v4-pro", "deepseek-v4-flash-0731",
                 "glm-5", "glm-5.1")) {
             ModelInfo info = catalog.lookupOrDefault("openai", model);
             assertThat(info.pricing())

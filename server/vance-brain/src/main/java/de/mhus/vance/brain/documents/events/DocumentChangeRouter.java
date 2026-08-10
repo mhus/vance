@@ -99,10 +99,9 @@ public class DocumentChangeRouter {
     Classification classify(DocumentChangedEvent event) {
         String projectId = event.projectId();
 
-        // System projects cascade — every live pod in the tenant has a
-        // stale cascade-view if it has loaded any project in this tenant.
-        if (HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)
-                || "_vance".equals(projectId)) {
+        // The tenant-scope project cascade — every live pod in the tenant has
+        // a stale cascade-view if it has loaded any project in this tenant.
+        if (HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             return broadcast(event);
         }
 

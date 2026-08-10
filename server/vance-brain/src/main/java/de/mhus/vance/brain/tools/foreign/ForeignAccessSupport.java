@@ -69,12 +69,12 @@ public class ForeignAccessSupport {
     /**
      * Resolve the copy/move <em>destination</em> project: an explicit
      * {@code toProjectId} when given, otherwise the caller's current project
-     * ({@code ctx.projectId()}). Rejects an unknown project and any SYSTEM
-     * project except the tenant {@code _vance} staging area — the same guard
-     * the write-into-project path has always used. Authorization of the actual
-     * write happens separately via {@link #enforceDoc} (CREATE on the target
-     * document), so a READER-only caller cannot copy out of a foreign project
-     * into somewhere they can't write.
+     * ({@code ctx.projectId()}). Rejects an unknown project and every SYSTEM
+     * project — the same guard the write-into-project path has always used.
+     * Authorization of the actual write happens separately via
+     * {@link #enforceDoc} (CREATE on the target document), so a READER-only
+     * caller cannot copy out of a foreign project into somewhere they can't
+     * write.
      */
     public ProjectDocument resolveTarget(@Nullable String toProjectId, ToolInvocationContext ctx) {
         String name = (toProjectId != null && !toProjectId.isBlank())
@@ -86,8 +86,7 @@ public class ForeignAccessSupport {
         ProjectDocument target = projectService.findByTenantAndName(ctx.tenantId(), name)
                 .orElseThrow(() -> new ToolException(
                         "Target project '" + name + "' not found in tenant '" + ctx.tenantId() + "'"));
-        if (target.getKind() == ProjectKind.SYSTEM
-                && !name.equals(ProjectService.SYSTEM_NAME_PREFIX + "vance")) {
+        if (target.getKind() == ProjectKind.SYSTEM) {
             throw new ToolException("Cannot copy/move into SYSTEM project '" + name + "'");
         }
         return target;

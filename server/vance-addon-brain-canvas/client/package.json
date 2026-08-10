@@ -26,17 +26,17 @@
     "@vue-flow/core": "^1.48.2",
     "@vue-flow/node-resizer": "^1.4.0",
     "@vue-flow/node-toolbar": "^1.1.0",
-    "dompurify": "^3.4.12",
-    "marked": "^18.0.7"
+    "dompurify": "^3.4.13",
+    "marked": "^18.0.9"
   },
   "peerDependencies": {
     "vue": "^3.5.0"
   },
   "devDependencies": {
-    "@module-federation/vite": "^1.20.0",
+    "@module-federation/vite": "^1.20.4",
     "@vitejs/plugin-vue": "^6.0.8",
-    "vite": "^8.2.0",
-    "vue": "^3.5.40",
-    "vue-tsc": "^3.3.8"
+    "vite": "^8.2.1",
+    "vue": "^3.5.41",
+    "vue-tsc": "^3.3.9"
   }
 }

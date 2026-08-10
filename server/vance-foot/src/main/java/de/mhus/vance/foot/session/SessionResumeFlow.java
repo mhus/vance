@@ -6,6 +6,7 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.SessionListRequest;
 import de.mhus.vance.api.ws.SessionListResponse;
 import de.mhus.vance.api.ws.SessionSummary;
+import de.mhus.vance.foot.auth.SessionAnchor;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.BrainRestClientService;
 import de.mhus.vance.foot.connection.ConnectionService;
@@ -163,6 +164,38 @@ public class SessionResumeFlow {
 
         bootstrap.triggerNow();
         return Outcome.BOOTSTRAPPED;
+    }
+
+    /**
+     * Shows the {@code -c} local-session picker for the sessions recorded in
+     * the working directory's {@code .vancetope/session.yaml} history. The
+     * caller is expected to pass the list from
+     * {@link de.mhus.vance.foot.auth.SessionAnchorStore#loadEntries} (newest
+     * first). Returns the picked {@link LocalSessionPickerView.Result}, or
+     * {@code null} when there is nothing to pick (empty input) or the picker
+     * could not be rendered.
+     *
+     * <p>On picker failure (e.g. {@code --no-ui}, where a fullscreen Lanterna
+     * excursion cannot run) we degrade to the newest local entry rather than
+     * cancelling, so {@code -c} still resumes something sensible.
+     */
+    public LocalSessionPickerView.@Nullable Result continueFromLocal(
+            List<SessionAnchor.SessionEntry> entries) {
+        if (entries == null || entries.isEmpty()) {
+            return null;
+        }
+        LocalSessionPickerView.Result[] picked = new LocalSessionPickerView.Result[] { null };
+        try {
+            interfaceService.runFullscreen(session ->
+                    picked[0] = LocalSessionPickerView.show(
+                            session.gui(), "Continue Session", entries));
+        } catch (Exception e) {
+            terminal.warn("Could not open local session picker: " + e.getMessage()
+                    + " — resuming the most recent local session.");
+            return new LocalSessionPickerView.Result(
+                    LocalSessionPickerView.Choice.RESUME_ENTRY, entries.get(0));
+        }
+        return picked[0];
     }
 
     /**

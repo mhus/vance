@@ -79,6 +79,25 @@ public class SessionAnchorStore {
     }
 
     /**
+     * Loads all session entries from {@code dir/session.yaml}, newest first
+     * (by {@code updatedAt} descending), dropping entries whose id is null
+     * or blank. Returns an empty list when the anchor is absent or empty.
+     * Convenience for the {@code -c} local-session picker, which needs the
+     * whole local history rather than a single newest id.
+     */
+    public List<SessionAnchor.SessionEntry> loadEntries(Path dir) {
+        List<SessionAnchor.SessionEntry> entries = load(dir)
+                .map(SessionAnchor::getSessions)
+                .orElse(List.of());
+        return entries.stream()
+                .filter(e -> e != null && e.getSessionId() != null && !e.getSessionId().isBlank())
+                .sorted(Comparator.comparing(
+                        (SessionAnchor.SessionEntry e) -> e.getUpdatedAt() == null ? 0L : e.getUpdatedAt(),
+                        Comparator.reverseOrder()))
+                .toList();
+    }
+
+    /**
      * Upserts a session entry into the anchor: if an entry with the same
      * {@code sessionId} already exists, its {@code projectId}, {@code name},
      * and {@code updatedAt} are updated and it is moved to the front.

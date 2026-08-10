@@ -3,6 +3,7 @@ package de.mhus.vance.foot.cli;
 import de.mhus.vance.foot.agent.ClientAgentDocService;
 import de.mhus.vance.foot.auth.ProjectBindingApplier;
 import de.mhus.vance.foot.auth.ProjectBindingStore;
+import de.mhus.vance.foot.auth.SessionAnchor;
 import de.mhus.vance.foot.auth.SessionAnchorStore;
 import de.mhus.vance.foot.auth.VancePaths;
 import de.mhus.vance.foot.config.FootConfig;
@@ -15,6 +16,7 @@ import de.mhus.vance.foot.ide.IdeBridgeService;
 import de.mhus.vance.foot.markdown.MarkdownRenderState;
 import de.mhus.vance.foot.permission.PermissionService;
 import de.mhus.vance.foot.session.AutoBootstrapService;
+import de.mhus.vance.foot.session.LocalSessionPickerView;
 import de.mhus.vance.foot.session.SessionResumeFlow;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.tools.ClientToolService;
@@ -240,10 +242,14 @@ public class VanceFootCommand implements Callable<Integer> {
     boolean webShortcut;
 
     @Option(names = {"-c", "--continue"},
-            description = "Resume the last session bootstrapped from this directory "
-                    + "(stored in .vancetope/session.yaml). If none is stored, fall "
-                    + "back to the most recent matching session on the server. "
-                    + "Mutually exclusive with --session / --resume / --last / --eddie.")
+            description = "Resume a session from this directory's local history "
+                    + "(stored in .vancetope/session.yaml). With --session=<id> resume "
+                    + "that exact session; with --name=<n> resume the newest local entry "
+                    + "with that name. With neither, resume the single local entry, or "
+                    + "open a picker of the local sessions when there are several "
+                    + "(with All Sessions / New Session / Cancel escapes). If the local "
+                    + "history is empty, fall back to the most recent matching session "
+                    + "on the server. Mutually exclusive with --resume / --last / --eddie.")
     boolean continueSession;
 
     @Option(names = "--resume",
@@ -381,29 +387,85 @@ public class VanceFootCommand implements Callable<Integer> {
             return 2;
         }
 
-        // -c/--continue: resume this directory's last session. The anchor
-        // (.vancetope/session.yaml) is written on every bootstrap, so it is
-        // the newest session entered from here. Resolve it into the existing
-        // selectors: a stored id behaves like --session=<id>; a missing
-        // anchor falls back to --resume --last (newest from the server).
+        // -c/--continue: resume a session from this directory's local history
+        // (written to .vancetope/session.yaml on every bootstrap). Resolve it
+        // into the existing selectors:
+        //   - with an explicit --session, resume that exact session;
+        //   - with --name, resume the newest local entry whose name matches;
+        //   - with neither, resume the single local entry, or open a picker of
+        //     the local sessions when there are several;
+        //   - an empty local history falls back to --resume --last (newest
+        //     matching session from the server).
         if (continueSession) {
-            if ((sessionId != null && !sessionId.isBlank()) || resume || last || eddie) {
+            if (resume || last || eddie) {
                 terminal.error("--continue is mutually exclusive with "
-                        + "--session / --resume / --last / --eddie.");
+                        + "--resume / --last / --eddie.");
                 return 2;
             }
-            String storedId = sessionAnchorStore.loadSessionId(
-                    vancePaths.activeDir(),
-                    name != null && !name.isBlank() ? name : null);
-            if (storedId != null) {
-                sessionId = storedId;
-                terminal.info("Continuing last session " + storedId
-                        + " (" + sessionAnchorStore.file(vancePaths.activeDir()) + ").");
+            if (sessionId != null && !sessionId.isBlank()) {
+                // Explicit --session wins — resume that exact session.
+                terminal.info("Continuing session " + sessionId + " (explicit --session).");
             } else {
-                resume = true;
-                last = true;
-                terminal.info("No stored session for this directory — "
-                        + "resuming the most recent from the server.");
+                List<SessionAnchor.SessionEntry> localEntries =
+                        sessionAnchorStore.loadEntries(vancePaths.activeDir());
+                if (name != null && !name.isBlank()) {
+                    // --name filters the local history.
+                    SessionAnchor.SessionEntry byName = localEntries.stream()
+                            .filter(e -> name.equals(e.getName()))
+                            .findFirst()
+                            .orElse(null);
+                    if (byName != null) {
+                        sessionId = byName.getSessionId();
+                        terminal.info("Continuing last session " + sessionId
+                                + " (" + sessionAnchorStore.file(vancePaths.activeDir()) + ").");
+                    } else {
+                        resume = true;
+                        last = true;
+                        terminal.info("No local session named '" + name
+                                + "' — resuming the most recent from the server.");
+                    }
+                } else if (localEntries.isEmpty()) {
+                    resume = true;
+                    last = true;
+                    terminal.info("No stored session for this directory — "
+                            + "resuming the most recent from the server.");
+                } else if (localEntries.size() == 1) {
+                    sessionId = localEntries.get(0).getSessionId();
+                    terminal.info("Continuing last session " + sessionId
+                            + " (" + sessionAnchorStore.file(vancePaths.activeDir()) + ").");
+                } else {
+                    // Several local sessions and no selector — show a picker
+                    // limited to the local history (plus escape actions).
+                    LocalSessionPickerView.Result pick =
+                            resumeFlow.continueFromLocal(localEntries);
+                    if (pick == null) {
+                        // Nothing picked / picker unavailable — resume newest.
+                        sessionId = localEntries.get(0).getSessionId();
+                        terminal.info("Continuing last session " + sessionId
+                                + " (" + sessionAnchorStore.file(vancePaths.activeDir()) + ").");
+                    } else {
+                        switch (pick.choice()) {
+                            case RESUME_ENTRY -> {
+                                sessionId = pick.entry().getSessionId();
+                                terminal.info("Continuing session " + sessionId
+                                        + " (" + sessionAnchorStore.file(vancePaths.activeDir()) + ").");
+                            }
+                            case ALL_SESSIONS -> {
+                                // Full server picker at the connect stage.
+                                resume = true;
+                                terminal.info("Opening full session picker.");
+                            }
+                            case NEW_SESSION -> {
+                                // Leave sessionId null — bootstrap starts fresh.
+                                terminal.info("Starting a new session.");
+                            }
+                            case CANCEL -> {
+                                terminal.info("Continue cancelled.");
+                                return 1;
+                            }
+                        }
+                    }
+                }
             }
         }
 

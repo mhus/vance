@@ -283,4 +283,49 @@ class SessionAnchorStoreTest {
 
         assertThat(store.findName(dir, "sess_a")).isEqualTo("new-name");
     }
+
+    // ── loadEntries ──
+
+    @Test
+    void loadEntries_absentFile_returnsEmpty(@TempDir Path dir) {
+        assertThat(store.loadEntries(dir)).isEmpty();
+    }
+
+    @Test
+    void loadEntries_returnsNewestFirst(@TempDir Path dir) {
+        store.upsertSession(dir, "sess_old", "proj-1", "old", 1_000L);
+        store.upsertSession(dir, "sess_new", "proj-1", "new", 3_000L);
+        store.upsertSession(dir, "sess_mid", "proj-1", "mid", 2_000L);
+
+        assertThat(store.loadEntries(dir))
+                .extracting(SessionAnchor.SessionEntry::getSessionId)
+                .containsExactly("sess_new", "sess_mid", "sess_old");
+    }
+
+    @Test
+    void loadEntries_dropsNullAndBlankIds(@TempDir Path dir) {
+        SessionAnchor anchor = new SessionAnchor();
+        anchor.setSessions(java.util.List.of(
+                new SessionAnchor.SessionEntry("sess_ok", "proj-1", "ok", 1_000L),
+                new SessionAnchor.SessionEntry(null, "proj-2", "no-id", 2_000L),
+                new SessionAnchor.SessionEntry("   ", "proj-3", "blank-id", 3_000L)));
+        store.save(dir, anchor);
+
+        assertThat(store.loadEntries(dir))
+                .extracting(SessionAnchor.SessionEntry::getSessionId)
+                .containsExactly("sess_ok");
+    }
+
+    @Test
+    void loadEntries_nullUpdatedAt_sortsLowest(@TempDir Path dir) {
+        SessionAnchor anchor = new SessionAnchor();
+        anchor.setSessions(java.util.List.of(
+                new SessionAnchor.SessionEntry("sess_a", "proj-1", "a", null),
+                new SessionAnchor.SessionEntry("sess_b", "proj-1", "b", 5_000L)));
+        store.save(dir, anchor);
+
+        assertThat(store.loadEntries(dir))
+                .extracting(SessionAnchor.SessionEntry::getSessionId)
+                .containsExactly("sess_b", "sess_a");
+    }
 }

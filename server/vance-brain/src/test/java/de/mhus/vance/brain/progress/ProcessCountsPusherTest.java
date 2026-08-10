@@ -13,6 +13,8 @@ import de.mhus.vance.api.thinkprocess.ProcessCountsNotification;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.events.ClientEventPublisher;
+import de.mhus.vance.brain.events.SessionConnectionRegistry;
+import de.mhus.vance.brain.events.SessionRosterChangedEvent;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -36,6 +38,7 @@ class ProcessCountsPusherTest {
 
     private ThinkProcessService thinkProcessService;
     private ClientEventPublisher events;
+    private SessionConnectionRegistry connections;
     private WebSocketSender sender;
     private ProcessCountsPusher pusher;
 
@@ -43,8 +46,9 @@ class ProcessCountsPusherTest {
     void setUp() {
         thinkProcessService = mock(ThinkProcessService.class);
         events = mock(ClientEventPublisher.class);
+        connections = mock(SessionConnectionRegistry.class);
         sender = mock(WebSocketSender.class);
-        pusher = new ProcessCountsPusher(thinkProcessService, events, sender);
+        pusher = new ProcessCountsPusher(thinkProcessService, events, connections, sender);
         when(events.publish(any(), any(), any())).thenReturn(true);
     }
 
@@ -137,6 +141,35 @@ class ProcessCountsPusherTest {
                 ThinkProcessStatus.IDLE, ThinkProcessStatus.RUNNING));
 
         verify(thinkProcessService, never()).countBySession(any(), any(), any());
+    }
+
+    @Test
+    void rosterChange_withNoConnectionsLeft_forgetsTheBaseline() {
+        givenCounts(new ProcessCounts(1, 0, 0));
+        WebSocketSession ws = mock(WebSocketSession.class);
+        pusher.pushInitial(ws, TENANT, SESSION);
+        when(connections.findAll(SESSION)).thenReturn(java.util.List.of());
+
+        pusher.onRosterChanged(new SessionRosterChangedEvent(SESSION));
+        // Same numbers as the initial push: only a forgotten baseline can
+        // make this publish again.
+        pusher.onStatusChanged(event(ThinkProcessStatus.IDLE, ThinkProcessStatus.RUNNING));
+
+        verify(events).publish(eq(SESSION), eq(MessageType.PROCESS_COUNTS), any());
+    }
+
+    @Test
+    void rosterChange_withConnectionsRemaining_keepsTheBaseline() {
+        givenCounts(new ProcessCounts(1, 0, 0));
+        WebSocketSession ws = mock(WebSocketSession.class);
+        pusher.pushInitial(ws, TENANT, SESSION);
+        when(connections.findAll(SESSION)).thenReturn(java.util.List.of(ws));
+
+        pusher.onRosterChanged(new SessionRosterChangedEvent(SESSION));
+        pusher.onStatusChanged(event(ThinkProcessStatus.IDLE, ThinkProcessStatus.RUNNING));
+
+        // Baseline intact → the equal delta stays coalesced away.
+        verify(events, never()).publish(any(), any(), any());
     }
 
     private void givenCounts(ProcessCounts counts) {

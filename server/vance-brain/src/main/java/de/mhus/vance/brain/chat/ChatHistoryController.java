@@ -13,9 +13,12 @@ import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -131,9 +134,9 @@ public class ChatHistoryController {
                 : chatMessageService.activeHistoryWithInterimForSession(tenant, sessionId);
 
         int cap = (limit != null && limit > 0) ? limit : DEFAULT_LIMIT;
-        if (messages.size() > cap) {
-            messages = messages.subList(messages.size() - cap, messages.size());
-        }
+        messages = includeRemoved
+                ? tail(messages, cap)
+                : applyScrollbackCap(messages, chatProcessId, cap);
 
         // One lookup for the whole page instead of one per message: the
         // scrollback now spans every process of the session, so a per-row
@@ -142,6 +145,60 @@ public class ChatHistoryController {
         return messages.stream()
                 .map(doc -> toDto(doc, processNames.get(doc.getThinkProcessId())))
                 .toList();
+    }
+
+    /**
+     * Cap the session-wide scrollback without ever evicting the user's own
+     * conversation.
+     *
+     * <p>A plain newest-N cut over the merged stream would let one chatty
+     * worker — Frankie emits an interim note per tool batch — push the whole
+     * human conversation out of the reload window, which is precisely the
+     * data loss the session-wide history was introduced to prevent. So the
+     * chat-process rows get the budget first and worker notes fill whatever
+     * is left. A long conversation therefore shows fewer notes rather than
+     * losing itself.
+     *
+     * <p>Order is preserved by filtering the already-chronological input
+     * instead of merging two lists back together.
+     */
+    static List<ChatMessageDocument> applyScrollbackCap(
+            List<ChatMessageDocument> messages, @Nullable String chatProcessId, int cap) {
+        if (messages.size() <= cap) {
+            return messages;
+        }
+        List<ChatMessageDocument> own = new ArrayList<>();
+        List<ChatMessageDocument> notes = new ArrayList<>();
+        for (ChatMessageDocument m : messages) {
+            if (chatProcessId != null && chatProcessId.equals(m.getThinkProcessId())) {
+                own.add(m);
+            } else {
+                notes.add(m);
+            }
+        }
+        Set<String> keep = new HashSet<>();
+        for (ChatMessageDocument m : tail(own, cap)) {
+            keep.add(m.getId());
+        }
+        int remaining = cap - Math.min(own.size(), cap);
+        for (ChatMessageDocument m : tail(notes, remaining)) {
+            keep.add(m.getId());
+        }
+        List<ChatMessageDocument> out = new ArrayList<>(Math.min(cap, messages.size()));
+        for (ChatMessageDocument m : messages) {
+            if (keep.contains(m.getId())) {
+                out.add(m);
+            }
+        }
+        return out;
+    }
+
+    /** The newest {@code n} entries of an ascending list. */
+    private static List<ChatMessageDocument> tail(List<ChatMessageDocument> list, int n) {
+        if (n <= 0) {
+            return List.of();
+        }
+        return list.size() <= n ? list : list.subList(list.size() - n, list.size());
     }
 
     /** {@code thinkProcessId → name} for every process of the session. */

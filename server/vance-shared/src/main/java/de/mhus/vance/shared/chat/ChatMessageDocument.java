@@ -41,7 +41,17 @@ import org.springframework.data.mongodb.core.mapping.Document;
                 def = "{ 'tenantId': 1, 'sessionId': 1, 'thinkProcessId': 1, 'createdAt': 1 }"),
         @CompoundIndex(
                 name = "tenant_process_tags_time_idx",
-                def = "{ 'tenantId': 1, 'thinkProcessId': 1, 'tags': 1, 'createdAt': -1 }")
+                def = "{ 'tenantId': 1, 'thinkProcessId': 1, 'tags': 1, 'createdAt': -1 }"),
+        // Session-wide scrollback (every process of a session, ordered by
+        // time). tenant_session_process_time_idx cannot serve it: with
+        // thinkProcessId unbound between the equality prefix and the sort
+        // key, Mongo would fall back to a blocking in-memory sort over the
+        // whole session — which risks the 32 MB sort limit on long sessions
+        // with large bodies. See ChatMessageService
+        // .activeHistoryWithInterimForSession.
+        @CompoundIndex(
+                name = "tenant_session_time_idx",
+                def = "{ 'tenantId': 1, 'sessionId': 1, 'createdAt': 1 }")
 })
 @Data
 @Builder

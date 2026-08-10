@@ -3,6 +3,8 @@ package de.mhus.vance.brain.progress;
 import de.mhus.vance.api.thinkprocess.ProcessCountsNotification;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.events.ClientEventPublisher;
+import de.mhus.vance.brain.events.SessionConnectionRegistry;
+import de.mhus.vance.brain.events.SessionRosterChangedEvent;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -55,13 +57,17 @@ public class ProcessCountsPusher {
 
     private final ThinkProcessService thinkProcessService;
     private final ClientEventPublisher events;
+    private final SessionConnectionRegistry connections;
     private final WebSocketSender sender;
 
     /**
-     * Last counts successfully published per session — the coalescing
-     * filter. Self-cleaning: when a publish finds no connection (session
-     * closed, client gone) the entry is dropped, so this cannot grow with
-     * the pod's uptime.
+     * Last counts published per session — the coalescing filter.
+     *
+     * <p>Two eviction paths, because one alone leaks: a failed publish drops
+     * the entry (nobody listening), and {@link #onRosterChanged} drops it
+     * when the session's last connection goes away. Without the second path
+     * a chat-only session — one {@code pushInitial}, never another status
+     * transition — would keep its entry for the pod's lifetime.
      */
     private final Map<String, ProcessCounts> lastSent = new ConcurrentHashMap<>();
 
@@ -118,6 +124,22 @@ public class ProcessCountsPusher {
             // Nobody listening — forget the session so a later reconnect
             // gets a fresh frame instead of being coalesced away against
             // state no client ever saw.
+            lastSent.remove(sessionId);
+        }
+    }
+
+    /**
+     * Forget a session once nothing is connected to it any more. The registry
+     * fires this after every roster mutation, so an unbind / disconnect /
+     * session close all land here.
+     */
+    @EventListener
+    public void onRosterChanged(SessionRosterChangedEvent event) {
+        String sessionId = event.sessionId();
+        if (sessionId == null || sessionId.isBlank()) {
+            return;
+        }
+        if (connections.findAll(sessionId).isEmpty()) {
             lastSent.remove(sessionId);
         }
     }

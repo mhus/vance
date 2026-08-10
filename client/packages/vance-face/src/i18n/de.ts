@@ -85,6 +85,12 @@ export default {
     tooltip: '{n} weitere(r) Betrachter dieses Dokuments',
   },
 
+  processCounts: {
+    label: '{n} Prozess(e)',
+    tooltip: '{running} laufen · {waiting} wartend · {blocked} blockiert',
+    blockedHint: '{n} Prozess(e) warten auf dich',
+  },
+
   header: {
     connection: {
       connected: 'Verbunden — live',

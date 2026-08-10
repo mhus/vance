@@ -7,6 +7,7 @@ import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.progress.ProcessCountsPusher;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.project.ProjectManagerService.ClaimResult;
 import de.mhus.vance.brain.session.SessionLifecycleService;
@@ -45,6 +46,7 @@ public class SessionResumeHandler implements WsHandler {
     private final SessionConnectionRegistry connectionRegistry;
     private final de.mhus.vance.brain.events.SessionRosterBroadcaster rosterBroadcaster;
     private final InboxPendingSummaryPusher inboxSummaryPusher;
+    private final ProcessCountsPusher processCountsPusher;
     private final RequestAuthority authority;
     private final ThinkProcessService thinkProcessService;
     private final SessionLifecycleService sessionLifecycle;
@@ -196,6 +198,9 @@ public class SessionResumeHandler implements WsHandler {
             }
         }
         inboxSummaryPusher.pushIfAny(wsSession, ctx.getTenantId(), ctx.getUserId());
+        // Process badge: current worker counts for this session (see
+        // ProcessCountsPusher — deltas follow on status transitions).
+        processCountsPusher.pushInitial(wsSession, ctx.getTenantId(), doc.getSessionId());
         // Look up the chat-process name (typically "chat") so the
         // client can set its active-process pointer in the same round
         // trip — same convenience SessionBootstrapResponse provides.

@@ -8,6 +8,7 @@ import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.progress.ProcessCountsPusher;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.project.ProjectManagerService.ClaimResult;
@@ -55,6 +56,7 @@ public class SessionCreateHandler implements WsHandler {
     private final SessionChatBootstrapper chatBootstrapper;
     private final ChatMessageService chatMessageService;
     private final InboxPendingSummaryPusher inboxSummaryPusher;
+    private final ProcessCountsPusher processCountsPusher;
     private final HomeBootstrapService homeBootstrapService;
     private final RequestAuthority authority;
     private final ThinkProcessService thinkProcessService;
@@ -159,6 +161,10 @@ public class SessionCreateHandler implements WsHandler {
         // Heads-up: any pending inbox items? Pushed before other frames
         // so the client UI can render the counter early.
         inboxSummaryPusher.pushIfAny(wsSession, ctx.getTenantId(), ctx.getUserId());
+        // Same for the process badge. A brand-new session has no workers
+        // yet, so this is a deliberate "0" — it clears a stale badge the
+        // client may still show from a previous connection.
+        processCountsPusher.pushInitial(wsSession, ctx.getTenantId(), created.getSessionId());
 
         // Auto-spawn the session-chat think-process. Greeting is pushed
         // as chat-message-appended frames before the response so the

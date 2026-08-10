@@ -18,6 +18,7 @@ import {
 import ReconnectOverlay from '@/ws/ReconnectOverlay.vue';
 import SessionTakeoverDialog from '@/ws/SessionTakeoverDialog.vue';
 import { useNotificationSubscription } from '@/notification/useNotificationSubscription';
+import { useProcessCountsSubscription } from '@/process/useProcessCountsSubscription';
 
 // Re-export the breadcrumb segment type so existing consumers
 // (`import { type Crumb } from '@components'`) keep working without
@@ -301,6 +302,8 @@ const { socket: wsSocket, status: wsStatus } = useWsConnection();
 // stack automatically. Composable re-attaches on each socket swap
 // (after reconnect / session-rebind).
 useNotificationSubscription(wsSocket);
+// Feeds the topbar process badge; resets itself when the socket drops.
+useProcessCountsSubscription(wsSocket);
 
 const derivedConnectionState = computed<'connected' | 'idle' | 'occupied'>(() => {
   if (wsStatus.value === 'reconnecting' || wsStatus.value === 'down') return 'occupied';

@@ -13,6 +13,7 @@ import {
   logout as serverLogout,
 } from '@/platform';
 import { setUiLocale } from '@/i18n';
+import ProcessCountsBadge from './ProcessCountsBadge.vue';
 import FookSupportModal from './FookSupportModal.vue';
 import VanceLogo from './VanceLogo.vue';
 import { loadRuntimeConfig, type RuntimeConfig } from '@/platform/runtimeConfig';
@@ -225,6 +226,11 @@ function openFook(): void {
     </div>
 
     <div class="flex-none flex items-center gap-3">
+      <!-- Session process badge — self-hiding when nothing runs, so it
+           costs no space in the common case. Fed by the process-counts
+           push (see planning/process-visibility.md §4.A). -->
+      <ProcessCountsBadge />
+
       <!-- Editor-specific topbar slot — e.g. the project selector in the
            document editor. Sits between the breadcrumbs and the
            connection/user controls. Keep it compact: a single dropdown

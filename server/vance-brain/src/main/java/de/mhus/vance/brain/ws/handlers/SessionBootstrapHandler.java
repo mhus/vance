@@ -16,6 +16,7 @@ import de.mhus.vance.brain.action.TriggerKind;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.progress.ProcessCountsPusher;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
@@ -82,6 +83,7 @@ public class SessionBootstrapHandler implements WsHandler {
     private final de.mhus.vance.brain.events.SessionRosterBroadcaster rosterBroadcaster;
     private final SessionChatBootstrapper chatBootstrapper;
     private final InboxPendingSummaryPusher inboxSummaryPusher;
+    private final ProcessCountsPusher processCountsPusher;
     private final HomeBootstrapService homeBootstrapService;
     private final RequestAuthority authority;
     private final ActionExecutorRegistry actionRegistry;
@@ -176,6 +178,9 @@ public class SessionBootstrapHandler implements WsHandler {
             rosterBroadcaster.sendInitialRoster(session.getSessionId(), wsSession);
         }
         inboxSummaryPusher.pushIfAny(wsSession, ctx.getTenantId(), ctx.getUserId());
+        // Process badge: current worker counts for this session (see
+        // ProcessCountsPusher — deltas follow on status transitions).
+        processCountsPusher.pushInitial(wsSession, ctx.getTenantId(), session.getSessionId());
 
         // ── Auto-spawn the session-chat process ──────────────────────────
         // Idempotent: re-bootstrap of an existing session adopts the chat

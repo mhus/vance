@@ -56,6 +56,7 @@ public class StatusBar {
     private final FootConfig config;
     private final LiveUsageState liveUsage;
     private final ColorResolver colorResolver;
+    private final ProcessCountsState processCounts;
 
     /** Wall-clock millis when the current busy cycle started, or {@code -1} when idle. */
     private volatile long busyStartedMillis = -1;
@@ -74,7 +75,8 @@ public class StatusBar {
                      ObjectProvider<IdeSelectionState> ideSelection,
                      FootConfig config,
                      LiveUsageState liveUsage,
-                     ColorResolver colorResolver) {
+                     ColorResolver colorResolver,
+                     ProcessCountsState processCounts) {
         this.sessions = sessions;
         this.busy = busy;
         this.phrases = phrases;
@@ -82,6 +84,7 @@ public class StatusBar {
         this.config = config;
         this.liveUsage = liveUsage;
         this.colorResolver = colorResolver;
+        this.processCounts = processCounts;
     }
 
     /**
@@ -179,6 +182,27 @@ public class StatusBar {
         b.append(" · project=").append(bound.projectId());
         String active = sessions.activeProcess();
         b.append(" · process=").append(active == null ? "—" : active);
+        b.append(processCountsSegment(bound.sessionId()));
+        return b.toString();
+    }
+
+    /**
+     * {@code " · procs=1/3"} — running of total, plus {@code " blocked=n"}
+     * when processes wait on the user. Empty while the session has no
+     * process besides its chat, so the common case costs no width. Details
+     * are one {@code /process-list} away.
+     */
+    private String processCountsSegment(@Nullable String sessionId) {
+        de.mhus.vance.api.thinkprocess.ProcessCountsNotification counts =
+                processCounts.countsFor(sessionId);
+        if (counts == null) {
+            return "";
+        }
+        StringBuilder b = new StringBuilder(" · procs=");
+        b.append(counts.getRunning()).append('/').append(counts.getTotal());
+        if (counts.getBlocked() > 0) {
+            b.append(" blocked=").append(counts.getBlocked());
+        }
         return b.toString();
     }
 

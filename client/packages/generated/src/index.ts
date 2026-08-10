@@ -210,6 +210,7 @@ export * from './thinkprocess/BoundDocSelection';
 export * from './thinkprocess/IdeContext';
 export * from './thinkprocess/IdeFileRange';
 export * from './thinkprocess/PlanProposedNotification';
+export * from './thinkprocess/ProcessCountsNotification';
 export * from './thinkprocess/ProcessMode';
 export * from './thinkprocess/ProcessModeChangedNotification';
 export * from './thinkprocess/ProcessPauseRequest';

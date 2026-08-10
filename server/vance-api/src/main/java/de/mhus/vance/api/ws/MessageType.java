@@ -224,6 +224,25 @@ public final class MessageType {
      */
     public static final String PROCESS_PROGRESS = "process-progress";
 
+    // ─── Process-Counts (status-bar badge) ────────────────────────
+
+    /**
+     * Server-initiated notification: how many think-processes of the
+     * bound session are running / waiting / blocked. Payload
+     * {@link de.mhus.vance.api.thinkprocess.ProcessCountsNotification}.
+     * Pushed once at session welcome / resume and afterwards only when
+     * the numbers change — the per-turn {@code RUNNING ↔ IDLE} flapping
+     * is coalesced away server-side.
+     *
+     * <p>Counts only, no rows: it is the trigger information for a
+     * status-bar badge, from which the user opens the detail view that
+     * pulls {@link #PROCESS_LIST}. Distinct from
+     * {@link #PROCESS_PROGRESS} (what one process is doing right now).
+     *
+     * <p>See {@code planning/process-visibility.md} §4.A.
+     */
+    public static final String PROCESS_COUNTS = "process-counts";
+
     // ─── User-Notification Side-Channel ───────────────────────────
 
     /**

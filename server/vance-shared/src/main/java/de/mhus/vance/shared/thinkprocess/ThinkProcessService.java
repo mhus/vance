@@ -344,6 +344,57 @@ public class ThinkProcessService {
     }
 
     /**
+     * Coarse per-state counts of a session's think-processes — the source
+     * for the clients' status-bar badge ({@code process-counts} frame).
+     *
+     * <p>{@code excludeName} drops one process from the tally by name; the
+     * brain passes its session-chat process there, which is always present
+     * and would otherwise pin the badge at "1". Terminal ({@code CLOSED})
+     * processes never count.
+     *
+     * <p>Reads the session's processes in one query and folds them in
+     * memory — cheap enough for the status-change hot path, and it keeps
+     * the four numbers consistent with each other (four separate
+     * count-queries could observe different transitions).
+     *
+     * @see ProcessCounts
+     */
+    public ProcessCounts countBySession(
+            String tenantId, String sessionId, @Nullable String excludeName) {
+        int running = 0;
+        int waiting = 0;
+        int blocked = 0;
+        for (ThinkProcessDocument doc : repository.findByTenantIdAndSessionId(tenantId, sessionId)) {
+            if (excludeName != null && excludeName.equals(doc.getName())) {
+                continue;
+            }
+            ThinkProcessStatus status = doc.getStatus();
+            if (status == null) {
+                continue;
+            }
+            switch (status) {
+                case RUNNING -> running++;
+                case BLOCKED -> blocked++;
+                case INIT, IDLE, PAUSED, SUSPENDED -> waiting++;
+                case CLOSED -> { /* terminal — audit only, never counted */ }
+            }
+        }
+        return new ProcessCounts(running, waiting, blocked);
+    }
+
+    /**
+     * Result of {@link #countBySession}. {@link #total()} is derived, so
+     * two instances with the same three numbers are {@code equals} — which
+     * is what the brain-side coalescing filter compares against.
+     */
+    public record ProcessCounts(int running, int waiting, int blocked) {
+
+        public int total() {
+            return running + waiting + blocked;
+        }
+    }
+
+    /**
      * Sub-process workers stuck in {@link ThinkProcessStatus#BLOCKED} with
      * an empty pending queue and no progress since {@code cutoff}. These
      * are the "dangling delegation" pattern: a parent armed

@@ -182,6 +182,14 @@ public class SettingsSecretResolver implements SecretResolver {
                 ctx.tenantId(), ctx.projectId(), ctx.processId(), key);
     }
 
+    /**
+     * {@code SecretAccessDeniedException} is intentionally not caught: with the
+     * settings-backed vault as the default provider, a {@code vault:} reference
+     * can land on a {@code PASSWORD}-typed setting, and that has to surface as
+     * the named "re-type it to HIDDEN" failure just like the {@code project:} /
+     * {@code tenant:} / {@code user:} scopes do. Only transport-ish
+     * {@link VaultException}s fail closed to empty.
+     */
     private @Nullable String resolveVault(String key, ToolInvocationContext ctx) {
         try {
             return vaultService.readSecret(

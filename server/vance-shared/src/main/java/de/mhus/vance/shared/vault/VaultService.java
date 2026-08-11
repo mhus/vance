@@ -2,6 +2,7 @@ package de.mhus.vance.shared.vault;
 
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.metric.MetricService;
+import de.mhus.vance.shared.settings.SecretAccessDeniedException;
 import de.mhus.vance.shared.settings.SettingService;
 import java.security.SecureRandom;
 import java.util.ArrayList;
@@ -87,7 +88,12 @@ public class VaultService {
      *         to reach the vault. An <em>absent</em> binding is not a failure —
      *         it selects the settings-backed vault. Any lower-level
      *         failure (settings-store error, provider RuntimeException) is wrapped
-     *         as VaultException, so this method never leaks another exception type
+     *         as VaultException, with the one exception named below
+     * @throws SecretAccessDeniedException when the settings-backed vault hits a
+     *         {@code PASSWORD}-typed setting. Deliberately <em>not</em> wrapped:
+     *         callers fail closed on VaultException and substitute the empty
+     *         string, which is exactly the "denied looks like missing" outcome
+     *         this named failure exists to prevent
      */
     public @Nullable String readSecret(VaultScope scope, String key) {
         requireKey(key);
@@ -99,6 +105,13 @@ public class VaultService {
             value = bound.provider().readSecret(bound.binding(), scope, key);
         } catch (VaultException e) {
             count(METRIC_READS, "error");
+            throw e;
+        } catch (SecretAccessDeniedException e) {
+            // The settings-backed vault refused a PASSWORD-typed setting. Wrapping
+            // it as VaultException would hand it to the fail-closed-to-empty rule
+            // in SettingsSecretResolver and turn "re-type this to HIDDEN" into an
+            // opaque 401 — see planning/setting-type-hidden.md §5.
+            count(METRIC_READS, "denied");
             throw e;
         } catch (RuntimeException e) {
             count(METRIC_READS, "error");
@@ -113,8 +126,10 @@ public class VaultService {
      * Store {@code value} under {@code key} in the vault bound at {@code scope} —
      * or, with nothing bound, as a HIDDEN setting at project scope. Create-or-update
      * semantics are the provider's. Throws {@link VaultException} on any failure
-     * (no provider, read-only identity, transport, or a settings write the
-     * agent-write rules refuse).
+     * (no provider, read-only identity, transport), and
+     * {@link SecretAccessDeniedException} unwrapped when the agent-write rules
+     * refuse a settings write — same reasoning as {@link #readSecret}: the write
+     * tools render that message to the caller.
      */
     public void writeSecret(VaultScope scope, String key, String value) {
         requireKey(key);
@@ -128,6 +143,9 @@ public class VaultService {
             bound.provider().writeSecret(bound.binding(), scope, key, value);
         } catch (VaultException e) {
             count(METRIC_WRITES, "error");
+            throw e;
+        } catch (SecretAccessDeniedException e) {
+            count(METRIC_WRITES, "denied");
             throw e;
         } catch (RuntimeException e) {
             count(METRIC_WRITES, "error");

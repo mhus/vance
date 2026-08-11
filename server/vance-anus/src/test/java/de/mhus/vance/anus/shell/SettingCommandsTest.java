@@ -2,11 +2,23 @@ package de.mhus.vance.anus.shell;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import de.mhus.vance.anus.shell.SettingCommands.StorageRef;
+import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.settings.SettingDocument;
 import de.mhus.vance.shared.settings.SettingService;
+import java.util.Map;
+import org.jline.reader.LineReader;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 class SettingCommandsTest {
 
@@ -105,5 +117,114 @@ class SettingCommandsTest {
 
         assertThat(wire.type()).isEqualTo(SettingService.SCOPE_THINK_PROCESS);
         assertThat(wire.id()).isEqualTo("tp-7");
+    }
+
+    // ──────────────── encrypted types ────────────────
+    //
+    // Every branch below used to compare against SettingType.PASSWORD, which
+    // treats HIDDEN as a plaintext type: the ciphertext gets printed, the write
+    // is refused deep inside SettingService, and a dry-run echoes the plaintext.
+    // These pin the predicate instead of the constant.
+
+    private static SettingDocument doc(SettingType type, @Nullable String value) {
+        SettingDocument d = new SettingDocument();
+        d.setType(type);
+        d.setValue(value);
+        return d;
+    }
+
+    @Test
+    void displayValue_hiddenSetting_isMaskedLikePassword() {
+        assertThat(SettingCommands.displayValue(doc(SettingType.HIDDEN, "AES-ciphertext")))
+                .isEqualTo("[set]");
+    }
+
+    @Test
+    void displayValue_passwordSetting_isMasked() {
+        assertThat(SettingCommands.displayValue(doc(SettingType.PASSWORD, "AES-ciphertext")))
+                .isEqualTo("[set]");
+    }
+
+    @Test
+    void displayValue_plaintextSetting_isShown() {
+        assertThat(SettingCommands.displayValue(doc(SettingType.STRING, "plain")))
+                .isEqualTo("plain");
+    }
+
+    @Test
+    void set_hiddenType_isRefusedWithAPointerAtSetSecret() {
+        SettingService settings = mock(SettingService.class);
+        SettingCommands commands = new SettingCommands(settings, emptyLineReader());
+
+        String out = commands.set("acme", SettingService.SCOPE_TENANT, null,
+                "smtp.password", "s3cret", SettingType.HIDDEN, null);
+
+        assertThat(out).contains("set-secret").contains("HIDDEN");
+        verifyNoInteractions(settings);
+    }
+
+    @Test
+    void setSecret_hiddenType_writesThroughTheEncryptedPathKeepingTheType() {
+        SettingService settings = mock(SettingService.class);
+        when(settings.setEncryptedSecret(any(), any(), any(), any(), any(), any()))
+                .thenReturn(doc(SettingType.HIDDEN, "cipher"));
+        SettingCommands commands = new SettingCommands(settings, emptyLineReader());
+
+        commands.setSecret("acme", SettingService.SCOPE_TENANT, null,
+                "smtp.password", "s3cret", SettingType.HIDDEN);
+
+        verify(settings).setEncryptedSecret(
+                "acme", SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME,
+                "smtp.password", "s3cret", SettingType.HIDDEN);
+    }
+
+    @Test
+    void setSecret_plaintextType_isRefusedWithAPointerAtSet() {
+        SettingService settings = mock(SettingService.class);
+        SettingCommands commands = new SettingCommands(settings, emptyLineReader());
+
+        String out = commands.setSecret("acme", SettingService.SCOPE_TENANT, null,
+                "retries", "3", SettingType.INT);
+
+        assertThat(out).contains("setting set");
+        verifyNoInteractions(settings);
+    }
+
+    @Test
+    void importYaml_hiddenEntry_isEncryptedAndKeepsItsType() {
+        SettingService settings = mock(SettingService.class);
+        SettingCommands commands = new SettingCommands(settings, emptyLineReader());
+
+        SettingCommands.Outcome outcome = commands.applyOne(
+                "acme", SettingCommands.mapToStorage(SettingService.SCOPE_TENANT, null),
+                "imap.password", Map.of("type", "HIDDEN", "value", "s3cret"), false);
+
+        assertThat(outcome.applied()).isTrue();
+        verify(settings).setEncryptedSecret(
+                "acme", SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME,
+                "imap.password", "s3cret", SettingType.HIDDEN);
+        verify(settings, never()).set(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void importYaml_dryRun_neverEchoesAnEncryptedPlaintext() {
+        SettingService settings = mock(SettingService.class);
+        SettingCommands commands = new SettingCommands(settings, emptyLineReader());
+
+        for (SettingType type : new SettingType[] {SettingType.PASSWORD, SettingType.HIDDEN}) {
+            SettingCommands.Outcome outcome = commands.applyOne(
+                    "acme", SettingCommands.mapToStorage(SettingService.SCOPE_TENANT, null),
+                    "k", Map.of("type", type.name(), "value", "s3cret"), true);
+
+            assertThat(outcome.line()).doesNotContain("s3cret").contains("<encrypted>");
+        }
+        verifyNoInteractions(settings);
+    }
+
+    /** The prompt fallback is never reached in these tests — --value is always set. */
+    private static ObjectProvider<LineReader> emptyLineReader() {
+        @SuppressWarnings("unchecked")
+        ObjectProvider<LineReader> provider = mock(ObjectProvider.class);
+        return provider;
     }
 }

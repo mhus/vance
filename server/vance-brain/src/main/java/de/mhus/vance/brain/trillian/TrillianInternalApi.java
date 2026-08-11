@@ -326,26 +326,29 @@ public class TrillianInternalApi {
     }
 
     /**
-     * Resumes a paused peer and schedules a turn so queued work is
-     * picked up without waiting for the next event. Only a PAUSED peer
-     * moves; anything else is returned unchanged.
+     * Resumes a paused peer and schedules a turn so queued work is picked up
+     * without waiting for the next event. Only a PAUSED peer changes status;
+     * anything else keeps the one it has.
+     *
+     * <p>The wake-up is <b>not</b> conditional on a status change. An IDLE peer
+     * with a non-empty inbox is precisely the case a human reaches for
+     * {@code //trillian continue} / {@code user_continue}: nothing to un-pause,
+     * but a lane-turn is exactly what is missing. Only CLOSED (gone) and RUNNING
+     * (already turning) are left completely alone.
      *
      * @return the peer's status after the call
      */
     public ThinkProcessStatus resumePeer(ThinkProcessDocument peer) {
         ThinkProcessStatus current = peer.getStatus();
-        // Already going, or gone for good — nothing to resume. Notably
-        // this leaves a RUNNING peer alone instead of knocking it back to
-        // IDLE behind its own turn.
-        if (current == ThinkProcessStatus.CLOSED
-                || current == ThinkProcessStatus.IDLE
-                || current == ThinkProcessStatus.RUNNING) {
+        if (current == ThinkProcessStatus.CLOSED || current == ThinkProcessStatus.RUNNING) {
             return current;
         }
-        ThinkProcessStatus now = setPeerStatus(peer, ThinkProcessStatus.IDLE,
-                java.util.Set.of(ThinkProcessStatus.CLOSED));
-        // Queued work should start moving again without waiting for the
-        // next inbound event.
+        // Leaves a non-PAUSED peer's status alone (setPeerStatus is a no-op for
+        // CLOSED, and IDLE → IDLE is a write we don't need), then wakes it.
+        ThinkProcessStatus now = current == ThinkProcessStatus.IDLE
+                ? current
+                : setPeerStatus(peer, ThinkProcessStatus.IDLE,
+                        java.util.Set.of(ThinkProcessStatus.CLOSED));
         wakePeer(peer.getId());
         return now;
     }

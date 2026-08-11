@@ -6,8 +6,10 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.metric.MetricService;
+import de.mhus.vance.shared.settings.SecretAccessDeniedException;
 import de.mhus.vance.shared.settings.SettingService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.HashMap;
@@ -327,6 +329,57 @@ class VaultServiceTest {
     void generateValue_nonPositiveLength_throws() {
         assertThatThrownBy(() -> VaultService.generateValue(VaultService.SecretFormat.ALPHANUMERIC, 0))
                 .isInstanceOf(VaultException.class);
+    }
+
+    // ──────────────── denial propagates unwrapped ────────────────
+    //
+    // With the settings-backed vault as the default provider, a vault: reference
+    // can hit a PASSWORD-typed setting. SettingsSecretResolver fails closed to the
+    // empty string on VaultException, so wrapping the denial there would turn
+    // "re-type it to HIDDEN" back into the opaque 401 the named exception exists
+    // to prevent.
+
+    @Test
+    void readSecret_providerDeniesAccess_propagatesUnwrapped() {
+        VaultService service = serviceWith(new DenyingProvider());
+        setting(PROJECT, "vault.type", "denying");
+
+        assertThatThrownBy(() -> service.readSecret(SCOPE, "smtp.password"))
+                .isInstanceOf(SecretAccessDeniedException.class)
+                .isNotInstanceOf(VaultException.class);
+    }
+
+    @Test
+    void writeSecret_providerDeniesAccess_propagatesUnwrapped() {
+        VaultService service = serviceWith(new DenyingProvider());
+        setting(PROJECT, "vault.type", "denying");
+
+        assertThatThrownBy(() -> service.writeSecret(SCOPE, "ai.provider.default.apiKey", "v"))
+                .isInstanceOf(SecretAccessDeniedException.class)
+                .isNotInstanceOf(VaultException.class);
+    }
+
+    /** Stands in for the settings-backed provider hitting a PASSWORD setting. */
+    private static class DenyingProvider implements VaultProvider {
+        @Override
+        public String type() {
+            return "denying";
+        }
+
+        @Override
+        public boolean requiresEndpoint() {
+            return false;
+        }
+
+        @Override
+        public @Nullable String readSecret(VaultBinding binding, VaultScope scope, String key) {
+            throw new SecretAccessDeniedException(key, SettingType.PASSWORD);
+        }
+
+        @Override
+        public void writeSecret(VaultBinding binding, VaultScope scope, String key, String value) {
+            throw new SecretAccessDeniedException("reserved key '" + key + "'");
+        }
     }
 
     /** In-memory {@link VaultProvider} that records the last binding/write it saw. */

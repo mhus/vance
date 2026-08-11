@@ -32,11 +32,16 @@ import org.yaml.snakeyaml.Yaml;
  * {@code user} onto the project layer under {@code _tenant} /
  * {@code _user_<login>}.
  *
- * <p>{@code setting set} writes any non-password type with a plaintext value;
- * {@code setting set-password} encrypts via the shared
- * {@link de.mhus.vance.shared.crypto.AesEncryptionService}. Password values
- * never leak through {@code list} / {@code show} — they are rendered as
- * {@value #PASSWORD_MASK}.
+ * <p>{@code setting set} writes any plaintext type; {@code setting set-secret}
+ * writes either encrypted type ({@code PASSWORD} / {@code HIDDEN}), encrypting
+ * via the shared {@link de.mhus.vance.shared.crypto.AesEncryptionService}.
+ * Encrypted values never leak through {@code list} / {@code show} — they are
+ * rendered as {@value #PASSWORD_MASK}.
+ *
+ * <p>Every type decision here goes through
+ * {@link SettingType#encrypted()} rather than a comparison against a single
+ * constant: {@code == PASSWORD} would treat {@code HIDDEN} as plaintext and
+ * print its ciphertext, refuse its writes, or echo its plaintext in a dry-run.
  */
 @Component
 @RequiresAuth
@@ -114,7 +119,7 @@ public class SettingCommands {
     }
 
     @Command(name = {"setting", "set"},
-            description = "Set a non-password value. Use 'setting set-password' for PASSWORD.")
+            description = "Set a plaintext value. Use 'setting set-secret' for PASSWORD / HIDDEN.")
     public String set(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "scope", shortName = 's', required = true) String scope,
@@ -124,13 +129,18 @@ public class SettingCommands {
                     description = "Plain string value. Omit to clear the value while keeping the document.")
             @Nullable String value,
             @Option(longName = "type", shortName = 't',
-                    description = "STRING | INT | LONG | DOUBLE | BOOLEAN — PASSWORD is rejected here.",
+                    description = "STRING | INT | LONG | DOUBLE | BOOLEAN — the encrypted types "
+                            + "(PASSWORD, HIDDEN) are rejected here.",
                     defaultValue = "STRING")
             SettingType type,
             @Option(longName = "description", shortName = 'd') @Nullable String description) {
 
-        if (type == SettingType.PASSWORD) {
-            return "Refusing to set PASSWORD via 'setting set' — use 'setting set-password' instead.";
+        // Every encrypted type, not just PASSWORD: SettingService.set() throws
+        // for those, so a type-specific guard would let HIDDEN through into an
+        // IllegalArgumentException instead of this message.
+        if (type.encrypted()) {
+            return "Refusing to set " + type + " via 'setting set' — use "
+                    + "'setting set-secret --type " + type + "' instead.";
         }
         StorageRef storage;
         try {
@@ -146,17 +156,28 @@ public class SettingCommands {
         return "Set:\n" + renderOne(saved);
     }
 
-    @Command(name = {"setting", "set-password"},
-            description = "Store an encrypted PASSWORD setting. Plaintext is prompted (masked) when --value is omitted.")
-    public String setPassword(
+    @Command(name = {"setting", "set-secret"},
+            description = "Store an encrypted setting (PASSWORD or HIDDEN). "
+                    + "Plaintext is prompted (masked) when --value is omitted.")
+    public String setSecret(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "scope", shortName = 's', required = true) String scope,
             @Option(longName = "ref", shortName = 'r') @Nullable String ref,
             @Option(longName = "key", shortName = 'k', required = true) String key,
             @Option(longName = "value", shortName = 'v',
                     description = "Plaintext. Stored AES-GCM-encrypted with the shared encryption key.")
-            @Nullable String value) {
+            @Nullable String value,
+            @Option(longName = "type", shortName = 't',
+                    description = "PASSWORD (server-internal only) or HIDDEN (also resolvable "
+                            + "through a {{secret:...}} reference, i.e. usable by tool documents, "
+                            + "compose manifests and scripts).",
+                    defaultValue = "PASSWORD")
+            SettingType type) {
 
+        if (!type.encrypted()) {
+            return "'" + type + "' is not an encrypted type — use 'setting set --type "
+                    + type + "' for plaintext values.";
+        }
         StorageRef storage;
         try {
             storage = mapToStorage(scope, ref);
@@ -165,14 +186,29 @@ public class SettingCommands {
         }
         String plain = value;
         if (plain == null) {
-            plain = lineReader.getObject().readLine("Password for '" + key + "': ", '*');
+            plain = lineReader.getObject().readLine("Value for '" + key + "': ", '*');
         }
         if (StringUtils.isBlank(plain)) {
-            return "Empty password — refusing.";
+            return "Empty value — refusing.";
         }
-        SettingDocument saved = settingService.setEncryptedPassword(
-                tenant, storage.type(), storage.id(), key, plain);
+        SettingDocument saved = settingService.setEncryptedSecret(
+                tenant, storage.type(), storage.id(), key, plain, type);
         return "Set (encrypted):\n" + renderOne(saved);
+    }
+
+    @Command(name = {"setting", "set-password"},
+            description = "Deprecated alias for 'setting set-secret --type PASSWORD'.")
+    public String setPassword(
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "scope", shortName = 's', required = true) String scope,
+            @Option(longName = "ref", shortName = 'r') @Nullable String ref,
+            @Option(longName = "key", shortName = 'k', required = true) String key,
+            @Option(longName = "value", shortName = 'v',
+                    description = "Plaintext. Stored AES-GCM-encrypted with the shared encryption key.")
+            @Nullable String value) {
+        // Kept so existing scripts and docs keep working; one implementation,
+        // two entrances, so the two can never drift apart.
+        return setSecret(tenant, scope, ref, key, value, SettingType.PASSWORD);
     }
 
     @Command(name = {"setting", "import"},
@@ -287,7 +323,9 @@ public class SettingCommands {
      * {@code [dry]}); throws on hard errors so the caller increments
      * the failure counter.
      */
-    private Outcome applyOne(
+    // Package-private for SettingCommandsTest: the type dispatch here decides
+    // whether a value is encrypted or lands in Mongo as plaintext.
+    Outcome applyOne(
             String tenant, StorageRef storage,
             String key, Map<?, ?> spec, boolean dryRun) {
         String typeStr = spec.get("type") == null ? "STRING" : spec.get("type").toString();
@@ -306,22 +344,26 @@ public class SettingCommands {
         String description = spec.get("description") == null
                 ? null : spec.get("description").toString();
         if (dryRun) {
-            String valueRender = type == SettingType.PASSWORD
-                    ? "<encrypted>" : value;
+            // Every encrypted type, not just PASSWORD — a dry-run that echoes a
+            // HIDDEN plaintext to stdout defeats the point of the type.
+            String valueRender = type.encrypted() ? "<encrypted>" : value;
             return new Outcome(true,
                     "[dry] " + tenant + "/" + key + " (" + type + ") = " + valueRender);
         }
-        if (type == SettingType.PASSWORD) {
-            settingService.setEncryptedPassword(
-                    tenant, storage.type(), storage.id(), key, value);
-            return new Outcome(true, "[ok] " + tenant + "/" + key + " (PASSWORD, encrypted)");
+        if (type.encrypted()) {
+            // The YAML's declared type is preserved: a HIDDEN entry must not be
+            // promoted to PASSWORD (it would stop resolving through the
+            // {{secret:…}} references the same file's tools rely on).
+            settingService.setEncryptedSecret(
+                    tenant, storage.type(), storage.id(), key, value, type);
+            return new Outcome(true, "[ok] " + tenant + "/" + key + " (" + type + ", encrypted)");
         }
         settingService.set(
                 tenant, storage.type(), storage.id(), key, value, type, description);
         return new Outcome(true, "[ok] " + tenant + "/" + key + " (" + type + ")");
     }
 
-    private record Outcome(boolean applied, String line) {}
+    record Outcome(boolean applied, String line) {}
 
     /**
      * Locates {@code fileArg} as an absolute path, then as a path
@@ -456,8 +498,16 @@ public class SettingCommands {
                 + "  id          : " + (d.getId() == null ? "" : d.getId());
     }
 
-    private static String displayValue(SettingDocument d) {
-        if (d.getType() == SettingType.PASSWORD) {
+    /**
+     * Rendered value for {@code list} / {@code show}. Masks <em>every</em>
+     * encrypted type, not just PASSWORD: the stored value is AES ciphertext, so
+     * a type-specific comparison here would print a HIDDEN setting's raw
+     * ciphertext instead of the mask.
+     */
+    // Package-private so SettingCommandsTest can pin the masking rule per type
+    // directly — it is the single place a leak would show up.
+    static String displayValue(SettingDocument d) {
+        if (d.getType().encrypted()) {
             return d.getValue() == null ? "" : PASSWORD_MASK;
         }
         return d.getValue() == null ? "" : d.getValue();
@@ -478,7 +528,7 @@ public class SettingCommands {
                         return false;
                     }
                 }
-                case STRING, PASSWORD -> { /* always parseable */ }
+                case STRING, PASSWORD, HIDDEN -> { /* always parseable */ }
             }
             return true;
         } catch (NumberFormatException e) {

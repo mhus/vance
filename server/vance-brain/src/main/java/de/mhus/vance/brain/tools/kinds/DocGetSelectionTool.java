@@ -25,9 +25,15 @@ import org.springframework.stereotype.Component;
  *   <li><b>No args</b> — use the selection that came with the current
  *       message (via {@link CortexTurnSelectionHolder}). Errors when the
  *       turn carried none.</li>
- *   <li><b>{@code path}/{@code id} + {@code from} + {@code to}</b> — read
- *       an explicit character range from any accessible document.</li>
+ *   <li><b>{@code path}/{@code id} + {@code fromChar} + {@code toChar}</b> —
+ *       read an explicit character range from any accessible document.</li>
  * </ul>
+ *
+ * <p>The range is measured in <b>characters</b> ({@code body.substring}), not
+ * lines. Hence {@code fromChar}/{@code toChar} rather than the
+ * {@code fromLine}/{@code toLine} the rest of the doc-tool family uses for line
+ * windows — the same name for a different unit is how a caller ends up reading
+ * the wrong text with no error to show for it.
  */
 @Component
 @RequiredArgsConstructor
@@ -42,10 +48,10 @@ public class DocGetSelectionTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("fromLine", Map.of("type", "integer",
-                "description", "0-based start character offset. Omit (with `to`) to use "
+        p.put("fromChar", Map.of("type", "integer",
+                "description", "0-based start character offset. Omit (with `toChar`) to use "
                         + "the selection that arrived with the current message."));
-        p.put("toLine", Map.of("type", "integer",
+        p.put("toChar", Map.of("type", "integer",
                 "description", "End character offset (exclusive). Omit to use the "
                         + "current message's selection."));
         p.put("head", Map.of("type", "integer",
@@ -64,8 +70,9 @@ public class DocGetSelectionTool implements Tool {
         return "Read the text the user has selected in the chat-bound Cortex document. "
                 + "Call with NO arguments to read the selection that came with the current "
                 + "message — that's what the user means by \"the selected part\" / \"diesen "
-                + "Teil\". Or pass `path`/`id` + `from` + `to` for an explicit character "
-                + "range. Use `head`/`tail` to page a large selection. Errors if called "
+                + "Teil\". Or pass `path`/`id` + `fromChar` + `toChar` for an explicit "
+                + "character range (offsets into the body, NOT line numbers). Use "
+                + "`head`/`tail` to page a large selection. Errors if called "
                 + "with no args when no selection was sent this turn.";
     }
 
@@ -79,11 +86,14 @@ public class DocGetSelectionTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        // fromLine/toLine is what doc_replace_lines calls the same inclusive
-        // range; bare from/to collided with the time ranges of the calendar and
-        // journal tools.
-        Integer from = KindToolSupport.paramIntAliased(params, "fromLine", "from");
-        Integer to = KindToolSupport.paramIntAliased(params, "toLine", "to");
+        // Character offsets, not lines — this tool slices the body with
+        // substring(). Bare from/to collided with the time ranges of the calendar
+        // and journal tools, and the fromLine/toLine spelling this briefly
+        // carried was worse: it invites a model to pass line numbers, which the
+        // clamp below silently accepts and answers with the wrong text. Both old
+        // spellings stay readable as undeclared aliases.
+        Integer from = KindToolSupport.paramIntAliased(params, "fromChar", "fromLine", "from");
+        Integer to = KindToolSupport.paramIntAliased(params, "toChar", "toLine", "to");
         String id = KindToolSupport.paramString(params, "id");
         String path = KindToolSupport.paramString(params, "path");
 

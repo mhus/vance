@@ -59,8 +59,12 @@ class ToolVocabularyTest {
     /** Deprecated spelling → the name that replaced it, and why it exists. */
     private static final Map<String, String> RENAMED = Map.of(
             "offset", "startLine (line window start; `offset` also read as a byte offset elsewhere)",
-            "from", "fromLine (inclusive line range; bare `from` is a time range in calendar tools)",
-            "to", "toLine (inclusive line range)",
+            // One concept per name, but also one *unit* per name: a line window is
+            // fromLine/toLine, a character range is fromChar/toChar. Naming a
+            // character offset `fromLine` is worse than the bare `from` it
+            // replaced — it reads as correct and answers with the wrong slice.
+            "from", "fromLine / fromChar by unit (bare `from` is a time range in calendar tools)",
+            "to", "toLine / toChar by unit",
             "folder", "pathPrefix (path scope; `folder` is an app's folder in the application tools)",
             "parentPath", "pathPrefix (path scope)",
             "targetPath", "newPath (write destination; `targetPath` is the image tools' output file)",
@@ -113,8 +117,11 @@ class ToolVocabularyTest {
         Map<String, Tool> tools = coveredTools();
         assertThat(declaredParams(tools.get("doc_read_lines")))
                 .contains("startLine", "maxLines");
+        // Character offsets, so *Char — not the *Line spelling used for line
+        // windows. See the RENAMED note above.
         assertThat(declaredParams(tools.get("doc_get_selection")))
-                .contains("fromLine", "toLine");
+                .contains("fromChar", "toChar")
+                .doesNotContain("fromLine", "toLine");
         assertThat(declaredParams(tools.get("doc_edit")))
                 .contains("oldText", "newText", "replaceAll");
         assertThat(declaredParams(tools.get("doc_concat"))).contains("newPath");

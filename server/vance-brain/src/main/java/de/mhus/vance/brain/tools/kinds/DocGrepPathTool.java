@@ -52,6 +52,10 @@ public class DocGrepPathTool implements Tool {
                 "description", "Java regex pattern. Use plain substrings for literal match."));
         p.put("caseInsensitive", Map.of("type", "boolean",
                 "description", "Match case-insensitively. Default: false."));
+        p.put("contextBefore", Map.of("type", "integer",
+                "description", "Number of lines to include before each match. Default: 0."));
+        p.put("contextAfter", Map.of("type", "integer",
+                "description", "Number of lines to include after each match. Default: 0."));
         p.put("outputMode", Map.of("type", "string", "enum", List.of("content", "files_with_matches"),
                 "description", "`content` returns matching lines with line numbers; "
                         + "`files_with_matches` returns just the document paths. Default: content."));
@@ -66,8 +70,9 @@ public class DocGrepPathTool implements Tool {
     @Override public String name() { return "doc_grep_path"; }
     @Override public String description() {
         return "Search every inline document under a path prefix for lines matching a regex. "
-                + "Returns either matching lines (with documentId, path, line number) or just the "
-                + "list of files containing at least one match. Capped at " + MAX_LIMIT + " matches.";
+                + "Returns either matching lines (with documentId, path, line number, optionally "
+                + "context lines before/after) or just the list of files containing at least one "
+                + "match. Capped at " + MAX_LIMIT + " matches.";
     }
     @Override public boolean primary() { return true; }
     @Override public Set<String> labels() { return Set.of("text-search", "eddie", "read-only"); }
@@ -80,6 +85,10 @@ public class DocGrepPathTool implements Tool {
         String pathPrefix = de.mhus.vance.shared.document.DocumentService.resolveScope(
                 KindToolSupport.paramString(params, "pathPrefix"));
         boolean ci = Boolean.TRUE.equals(KindToolSupport.paramBoolean(params, "caseInsensitive"));
+        Integer beforeParam = KindToolSupport.paramInt(params, "contextBefore");
+        Integer afterParam = KindToolSupport.paramInt(params, "contextAfter");
+        int before = beforeParam == null ? 0 : Math.max(0, beforeParam);
+        int after = afterParam == null ? 0 : Math.max(0, afterParam);
         String outputMode = KindToolSupport.paramString(params, "outputMode");
         if (outputMode == null) outputMode = "content";
         Integer limitParam = KindToolSupport.paramInt(params, "limit");
@@ -142,6 +151,20 @@ public class DocGrepPathTool implements Tool {
                 hit.put("path", d.getPath());
                 hit.put("lineNumber", i + 1);
                 hit.put("line", lines[i]);
+                // Same context shape as doc_grep: a sibling list of
+                // {lineNumber,line} excluding the match itself. Searching many
+                // documents is exactly where a bare hit line is least useful,
+                // yet this was the tool that couldn't produce context.
+                if (before > 0 || after > 0) {
+                    List<Map<String, Object>> context = new ArrayList<>();
+                    int from = Math.max(0, i - before);
+                    int to = Math.min(lines.length - 1, i + after);
+                    for (int j = from; j <= to; j++) {
+                        if (j == i) continue;
+                        context.add(Map.of("lineNumber", j + 1, "line", lines[j]));
+                    }
+                    if (!context.isEmpty()) hit.put("context", context);
+                }
                 hits.add(hit);
             }
         }

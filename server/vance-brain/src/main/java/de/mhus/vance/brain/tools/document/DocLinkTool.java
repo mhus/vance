@@ -59,7 +59,7 @@ public class DocLinkTool implements Tool {
         p.put("id", Map.of(
                 "type", "string",
                 "description", "Alternative: Mongo id of the document. Use one of path/id."));
-        p.put("project", Map.of(
+        p.put("projectId", Map.of(
                 "type", "string",
                 "description",
                 "Optional project name for cross-project links (same tenant). "
@@ -90,7 +90,15 @@ public class DocLinkTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String id = KindToolSupport.paramString(params, "id");
         String path = KindToolSupport.paramString(params, "path");
-        String requestedProject = KindToolSupport.paramString(params, "project");
+        // 'projectId' is what every other doc_* tool calls this; 'project' is
+        // the name this one shipped with and stays readable so existing
+        // prompts and saved calls keep working. Without the alias the old
+        // spelling would silently resolve to the current project — a wrong
+        // link with no error, which is how this was found.
+        String requestedProject = KindToolSupport.paramString(params, "projectId");
+        if (requestedProject == null) {
+            requestedProject = KindToolSupport.paramString(params, "project");
+        }
         String textOverride = KindToolSupport.paramString(params, "text");
         String modeOverride = KindToolSupport.paramString(params, "mode");
         Boolean imageStyleOverride = KindToolSupport.paramBoolean(params, "imageStyle");

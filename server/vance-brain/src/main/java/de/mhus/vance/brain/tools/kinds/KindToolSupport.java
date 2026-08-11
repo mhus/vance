@@ -11,6 +11,7 @@ import de.mhus.vance.shared.document.kind.validate.Finding;
 import de.mhus.vance.shared.document.kind.validate.KindValidationResult;
 import de.mhus.vance.shared.document.kind.validate.KindValidationService;
 import de.mhus.vance.shared.project.ProjectDocument;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -423,5 +424,40 @@ public class KindToolSupport {
                 "id", Map.of(
                         "type", "string",
                         "description", "Alternative: Mongo id of the document. Use one of path/id."));
+    }
+
+    /**
+     * {@link #documentSelectorProperties()} plus the legacy {@code documentId}
+     * spelling, for the handful of tools that shipped with id-only addressing
+     * ({@code doc_lock_*}, {@code doc_set_summary}).
+     *
+     * <p>Those tools forced a caller who knows the path — which is every
+     * caller, since paths are what the LLM works with — to fetch a Mongo id
+     * first via {@code doc_find}/{@code doc_info}. One extra round trip for
+     * addressing the same document the other 22 doc tools address directly.
+     * They now take the standard selector; {@code documentId} keeps working so
+     * existing prompts and saved calls don't break.
+     */
+    public static Map<String, Object> documentSelectorPropertiesWithIdAlias() {
+        Map<String, Object> p = new LinkedHashMap<>(documentSelectorProperties());
+        p.put("documentId", Map.of(
+                "type", "string",
+                "description", "Deprecated alias for 'id'. Prefer path or id."));
+        return p;
+    }
+
+    /**
+     * Maps the legacy {@code documentId} selector onto the family-standard
+     * {@code id} so {@link #loadDocument} can resolve it. An explicit
+     * {@code id} wins; the input map is never mutated.
+     */
+    public static Map<String, Object> withIdAlias(@Nullable Map<String, Object> params) {
+        if (params == null) return Map.of();
+        if (paramString(params, "id") != null) return params;
+        String legacy = paramString(params, "documentId");
+        if (legacy == null) return params;
+        Map<String, Object> copy = new LinkedHashMap<>(params);
+        copy.put("id", legacy);
+        return copy;
     }
 }

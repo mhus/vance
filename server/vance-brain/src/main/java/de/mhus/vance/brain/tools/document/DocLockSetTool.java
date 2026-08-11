@@ -28,25 +28,30 @@ public class DocLockSetTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "documentId", Map.of(
-                            "type", "string",
-                            "description", "Document id (use the id from `doc_find` / `doc_list`)."),
-                    "lockedFor", Map.of(
-                            "type", "array",
-                            "items", Map.of("type", "string", "enum", List.of("AI", "USER", "KIT")),
-                            "description",
-                            "Writer roles to block. Empty array clears the lock. "
-                                    + "Each role is independently selectable.")),
-            "required", List.of("documentId", "lockedFor"));
+            "properties", buildProps(),
+            "required", List.of("lockedFor"));
+
+    private static Map<String, Object> buildProps() {
+        Map<String, Object> p = new java.util.LinkedHashMap<>(de.mhus.vance.brain.tools.kinds.KindToolSupport.documentSelectorPropertiesWithIdAlias());
+        p.put("lockedFor", Map.of(
+                "type", "array",
+                "items", Map.of("type", "string", "enum", List.of("AI", "USER", "KIT")),
+                "description",
+                "Writer roles to block. Empty array clears the lock. "
+                        + "Each role is independently selectable."));
+        return p;
+    }
 
     private final DocumentService documentService;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
+    private final de.mhus.vance.brain.tools.kinds.KindToolSupport support;
 
     public DocLockSetTool(DocumentService documentService,
-            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory,
+            de.mhus.vance.brain.tools.kinds.KindToolSupport support) {
         this.documentService = documentService;
         this.contextFactory = contextFactory;
+        this.support = support;
     }
 
     @Override public String name() { return "doc_lock_set"; }
@@ -74,16 +79,12 @@ public class DocLockSetTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        String documentId = paramString(params, "documentId");
-        if (documentId == null) throw new ToolException("documentId is required");
         Set<WriterRole> requested = parseRoles(params == null ? null : params.get("lockedFor"));
-
-        DocumentDocument doc = documentService.findById(documentId)
-                .orElseThrow(() -> new ToolException(
-                        "Unknown document id '" + documentId + "'"));
-        if (!ctx.tenantId().equals(doc.getTenantId())) {
-            throw new ToolException("Unknown document id '" + documentId + "'");
-        }
+        // Standard doc selector (path | id, plus the legacy documentId alias).
+        // Resolution, tenant scoping and the READ check live in loadDocument.
+        DocumentDocument doc = support.loadDocument(
+                de.mhus.vance.brain.tools.kinds.KindToolSupport.withIdAlias(params), ctx);
+        String documentId = doc.getId();
 
         DocumentDocument saved = documentService.setLockedFor(documentId, requested,
                 contextFactory.writeActor(ctx.tenantId(), ctx.userId(), doc.getPath()));

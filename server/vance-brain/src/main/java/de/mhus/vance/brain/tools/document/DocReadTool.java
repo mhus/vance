@@ -59,7 +59,19 @@ public class DocReadTool implements Tool {
         return "Read a document's text content. Identify it by path "
                 + "(within the active project) or by id. Returns title, "
                 + "tags, mimeType, content (text). Long documents are "
-                + "truncated past " + MAX_BODY_CHARS + " characters.";
+                + "truncated past " + MAX_BODY_CHARS + " characters — when "
+                + "'truncated' is true, page on with doc_read_lines "
+                + "(offset/limit); re-reading here returns the same prefix.";
+    }
+
+    @Override
+    public @org.jspecify.annotations.Nullable String troubleshootingHint() {
+        // A truncated read used to be a dead end: the cap is not a parameter,
+        // so there is nothing to raise, and the tool that *can* page lives
+        // under a different name. Say so where the truncation is observed.
+        return "Not found = check path/id and the project; truncated=true = "
+                + "continue with doc_read_lines(offset, limit), not by calling "
+                + "doc_read again.";
     }
 
     @Override

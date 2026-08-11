@@ -27,23 +27,28 @@ public class DocLockAddTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "documentId", Map.of(
-                            "type", "string",
-                            "description", "Document id (use the id from `doc_find` / `doc_list`)."),
-                    "role", Map.of(
-                            "type", "string",
-                            "enum", List.of("AI", "USER", "KIT"),
-                            "description", "Writer role to block.")),
-            "required", List.of("documentId", "role"));
+            "properties", buildProps(),
+            "required", List.of("role"));
+
+    private static Map<String, Object> buildProps() {
+        Map<String, Object> p = new java.util.LinkedHashMap<>(de.mhus.vance.brain.tools.kinds.KindToolSupport.documentSelectorPropertiesWithIdAlias());
+        p.put("role", Map.of(
+                "type", "string",
+                "enum", List.of("AI", "USER", "KIT"),
+                "description", "Writer role to block."));
+        return p;
+    }
 
     private final DocumentService documentService;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
+    private final de.mhus.vance.brain.tools.kinds.KindToolSupport support;
 
     public DocLockAddTool(DocumentService documentService,
-            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory,
+            de.mhus.vance.brain.tools.kinds.KindToolSupport support) {
         this.documentService = documentService;
         this.contextFactory = contextFactory;
+        this.support = support;
     }
 
     @Override public String name() { return "doc_lock_add"; }
@@ -70,16 +75,12 @@ public class DocLockAddTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        String documentId = paramString(params, "documentId");
-        if (documentId == null) throw new ToolException("documentId is required");
         WriterRole role = parseRole(params == null ? null : params.get("role"));
-
-        DocumentDocument doc = documentService.findById(documentId)
-                .orElseThrow(() -> new ToolException(
-                        "Unknown document id '" + documentId + "'"));
-        if (!ctx.tenantId().equals(doc.getTenantId())) {
-            throw new ToolException("Unknown document id '" + documentId + "'");
-        }
+        // Standard doc selector (path | id, plus the legacy documentId alias).
+        // Resolution, tenant scoping and the READ check live in loadDocument.
+        DocumentDocument doc = support.loadDocument(
+                de.mhus.vance.brain.tools.kinds.KindToolSupport.withIdAlias(params), ctx);
+        String documentId = doc.getId();
 
         EnumSet<WriterRole> next = doc.getLockedFor() == null
                 ? EnumSet.noneOf(WriterRole.class)

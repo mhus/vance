@@ -29,25 +29,28 @@ public class DocSetSummaryTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "documentId", Map.of(
-                            "type", "string",
-                            "description", "Document id to update. Use the "
-                                    + "id returned by `doc_import_url` / "
-                                    + "`doc_find` / `doc_list`."),
-                    "summary", Map.of(
-                            "type", "string",
-                            "description", "Summary text. Pass an empty "
-                                    + "string to clear an existing summary.")),
-            "required", List.of("documentId", "summary"));
+            "properties", buildProps(),
+            "required", List.of("summary"));
+
+    private static Map<String, Object> buildProps() {
+        Map<String, Object> p = new java.util.LinkedHashMap<>(de.mhus.vance.brain.tools.kinds.KindToolSupport.documentSelectorPropertiesWithIdAlias());
+        p.put("summary", Map.of(
+                "type", "string",
+                "description", "Summary text. Pass an empty "
+                        + "string to clear an existing summary."));
+        return p;
+    }
 
     private final DocumentService documentService;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
+    private final de.mhus.vance.brain.tools.kinds.KindToolSupport support;
 
     public DocSetSummaryTool(DocumentService documentService,
-            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory,
+            de.mhus.vance.brain.tools.kinds.KindToolSupport support) {
         this.documentService = documentService;
         this.contextFactory = contextFactory;
+        this.support = support;
     }
 
     @Override public String name() { return "doc_set_summary"; }
@@ -76,8 +79,6 @@ public class DocSetSummaryTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        String documentId = paramString(params, "documentId");
-        if (documentId == null) throw new ToolException("documentId is required");
         // `summary` is required but allowed to be blank — that's
         // how the caller clears the field.
         Object summaryRaw = params == null ? null : params.get("summary");
@@ -85,14 +86,11 @@ public class DocSetSummaryTool implements Tool {
             throw new ToolException("summary is required (pass an empty string to clear)");
         }
 
-        DocumentDocument doc = documentService.findById(documentId)
-                .orElseThrow(() -> new ToolException(
-                        "Unknown document id '" + documentId + "'"));
-        if (!ctx.tenantId().equals(doc.getTenantId())) {
-            // Mirror the controller-side tenant guard so a guessed
-            // id from a different tenant can't be touched.
-            throw new ToolException("Unknown document id '" + documentId + "'");
-        }
+        // Standard doc selector (path | id, plus the legacy documentId alias).
+        // Resolution, tenant scoping and the READ check live in loadDocument.
+        DocumentDocument doc = support.loadDocument(
+                de.mhus.vance.brain.tools.kinds.KindToolSupport.withIdAlias(params), ctx);
+        String documentId = doc.getId();
 
         documentService.setSummary(documentId, summary,
                 contextFactory.writeActor(ctx.tenantId(), ctx.userId(), doc.getPath()));

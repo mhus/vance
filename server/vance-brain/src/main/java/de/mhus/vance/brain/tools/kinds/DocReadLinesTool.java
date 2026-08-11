@@ -53,6 +53,13 @@ public class DocReadLinesTool implements Tool {
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override
+    public @org.jspecify.annotations.Nullable String troubleshootingHint() {
+        return "Empty result = offset past the end of the document; this is the "
+                + "paging counterpart to doc_read — use it when doc_read reports "
+                + "truncated=true.";
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         DocumentDocument doc = support.requireInline(support.loadDocument(params, ctx));
         Integer offsetParam = KindToolSupport.paramInt(params, "offset");

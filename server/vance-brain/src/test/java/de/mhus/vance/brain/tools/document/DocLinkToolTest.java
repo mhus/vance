@@ -88,6 +88,38 @@ class DocLinkToolTest {
     }
 
     @Test
+    void invoke_crossProject_acceptsProjectIdTheNameEveryOtherDocToolUses() {
+        // This tool shipped with 'project' while all 39 other doc_* tools take
+        // 'projectId'. A caller using the family-standard name got the param
+        // silently dropped and a link into the *current* project — wrong result,
+        // no error. 'projectId' is now the documented name, 'project' stays a
+        // readable alias so existing prompts keep working.
+        DocumentDocument doc = newDoc("templates-shared", "reports/q.md", "markdown", "Template");
+        when(projectService.findByTenantAndName("acme", "templates-shared"))
+                .thenReturn(Optional.of(newProject("templates-shared")));
+        when(documentService.findByPath("acme", "templates-shared", "reports/q.md"))
+                .thenReturn(Optional.of(doc));
+
+        Map<String, Object> out = tool.invoke(
+                Map.of("path", "reports/q.md", "projectId", "templates-shared"), CTX);
+
+        assertThat((String) out.get("markdownLink"))
+                .isEqualTo("[Template](vance://templates-shared/reports/q.md?kind=markdown)");
+        assertThat(out).containsEntry("project", "templates-shared");
+    }
+
+    @Test
+    void paramsSchema_declaresProjectId_notTheLegacySpelling() {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> props =
+                (Map<String, Object>) tool.paramsSchema().get("properties");
+
+        // The alias is deliberately undeclared: it exists for calls already in
+        // flight, not as a second name to choose from.
+        assertThat(props).containsKey("projectId").doesNotContainKey("project");
+    }
+
+    @Test
     void invoke_textOverride_winsOverTitle() {
         DocumentDocument doc = newDoc("proj-a", "x.md", "markdown", "OriginalTitle");
         when(documentService.findByPath(eq("acme"), eq("proj-a"), eq("x.md")))

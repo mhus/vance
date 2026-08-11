@@ -75,6 +75,9 @@ parameters:
   password: "{{secret:user:imap.password}}"
 ```
 
+The referenced settings must be typed **`HIDDEN`** (encrypted, but resolvable
+through a reference), not `PASSWORD` — see `manual_read('vault-secrets')`.
+
 ## Minimal config
 
 ```yaml

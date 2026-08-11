@@ -21,6 +21,26 @@ The value is resolved **server-side at call time** and never enters your context
 If nothing is bound or the key is missing, it substitutes empty (the call then
 fails with a 401), it does not error loudly.
 
+### Settings referenced this way must be HIDDEN, not PASSWORD
+
+Besides `vault:`, a reference can name a **setting** (`{{secret:project:<key>}}`,
+`tenant:`, `user:`, or a bare key for the cascade). Settings come in two
+encrypted types, and only one of them is resolvable here:
+
+| Type | Encrypted at rest | Resolvable via `{{secret:…}}` | For |
+|---|---|---|---|
+| `HIDDEN` | yes | **yes** | credentials a tool, compose task or script uses |
+| `PASSWORD` | yes | no | secrets only server code reads (LLM provider keys, `vault.clientSecret`) |
+
+Referencing a PASSWORD setting fails with a named error — *"setting X is
+PASSWORD-typed and cannot be resolved through a secret reference"* — not with an
+empty substitution. That is a configuration mistake, not a missing secret: the
+setting has to be re-typed to `HIDDEN`. A human does that in the settings editor
+or the corresponding setting form; you cannot change a setting's type yourself.
+
+`vault:` references are unaffected — they address the external manager, so no
+setting type is involved.
+
 ## 2. Inject into a compose `exec` task (env)
 
 A `secrets:` block on an `exec` task maps env-var names to secret references. The

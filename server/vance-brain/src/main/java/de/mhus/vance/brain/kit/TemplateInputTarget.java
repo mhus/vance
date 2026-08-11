@@ -15,6 +15,12 @@ import org.jspecify.annotations.Nullable;
  * secret never lands inline in a YAML document. The apply code
  * enforces this — a PASSWORD input without a target is rejected at
  * parse time.
+ *
+ * <p>Such a setting is persisted as
+ * {@link de.mhus.vance.api.settings.SettingType#HIDDEN}, not {@code PASSWORD}:
+ * being referenced by the kit's documents is the whole purpose of
+ * {@link Kind#SETTING}, and a {@code PASSWORD}-typed setting is not
+ * reference-readable. See {@code planning/setting-type-hidden.md} §7.
  */
 public record TemplateInputTarget(
         Kind kind,

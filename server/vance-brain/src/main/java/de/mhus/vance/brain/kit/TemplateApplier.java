@@ -472,7 +472,9 @@ public class TemplateApplier {
         return out.toString();
     }
 
-    private void persistSetting(String tenantId, String applyProject, SettingTarget st) {
+    // Package-private so TemplateApplierSettingTypeTest can pin the PASSWORD -> HIDDEN
+    // rule directly instead of driving a whole kit apply for it.
+    void persistSetting(String tenantId, String applyProject, SettingTarget st) {
         String project = resolveProjectFor(st.input.target(), applyProject);
         // Security (code-review-2): a kit template's setting target must stay within
         // the project the kit is applied to. An untrusted template.yaml could
@@ -488,8 +490,20 @@ public class TemplateApplier {
         }
         String key = st.input.target().key();
         if (st.input.type() == TemplateInputType.PASSWORD) {
-            settingService.setEncryptedPassword(
-                    tenantId, SettingService.SCOPE_PROJECT, project, key, st.value);
+            // HIDDEN, not PASSWORD: a kit template stores a secret precisely so
+            // the kit's own documents can reference it via {{secret:...}} at
+            // runtime (see TemplateInputTarget's javadoc — that is what
+            // Kind.SETTING is for). A PASSWORD-typed setting is not
+            // reference-readable, so writing one here would install a credential
+            // the installed tool cannot use.
+            //
+            // Keys that only compiled code reads (ai.provider.*, vault.*) do not
+            // come from kits — they are operator config set through setting-forms,
+            // and the confinement check above already blocks a template from
+            // reaching the _tenant scope where they live.
+            settingService.setEncryptedSecret(
+                    tenantId, SettingService.SCOPE_PROJECT, project, key,
+                    st.value, SettingType.HIDDEN);
         } else {
             settingService.set(
                     tenantId, SettingService.SCOPE_PROJECT, project, key,
@@ -515,7 +529,7 @@ public class TemplateApplier {
         };
     }
 
-    private record SettingTarget(TemplateInput input, String value) {}
+    record SettingTarget(TemplateInput input, String value) {}
 
     /**
      * Returns the project-document path under which the applied-state

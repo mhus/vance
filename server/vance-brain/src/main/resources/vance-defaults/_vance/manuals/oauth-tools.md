@@ -31,10 +31,16 @@ them to open Web-UI → Connected Accounts.
 | Form | Where the value comes from |
 |---|---|
 | `{{secret:<key>}}` | Cascade: think-process → project → `_tenant` |
-| `{{secret:user:<key>}}` | The connecting user's PASSWORD setting |
+| `{{secret:user:<key>}}` | The connecting user's HIDDEN setting |
 | `{{secret:user:oauth.<providerId>.access_token}}` | OAuth access token (auto-refresh) |
-| `{{secret:tenant:<key>}}` | Tenant-scope PASSWORD setting |
-| `{{secret:project:<key>}}` | Current-project PASSWORD setting |
+| `{{secret:tenant:<key>}}` | Tenant-scope HIDDEN setting |
+| `{{secret:project:<key>}}` | Current-project HIDDEN setting |
+
+A referenced setting must be typed **`HIDDEN`**, not `PASSWORD` — see
+`manual_read('vault-secrets')`. A PASSWORD-typed target fails with a named
+error telling the operator to re-type it. The OAuth access-token form is the
+exception: it goes through the refresher, not through a setting read, so its
+type does not matter.
 
 Use the OAuth form only with the literal pattern
 `oauth.<providerId>.access_token` — only this triggers the refresh

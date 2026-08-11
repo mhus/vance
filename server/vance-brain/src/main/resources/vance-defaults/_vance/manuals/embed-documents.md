@@ -51,7 +51,7 @@ their response. Copy it into your reply verbatim — no extra call:
 - `doc_write` → `{ path, markdownLink, … }`
 - `image_generate` → `{ path, markdownLink, … }`
 
-Example after `doc_write(kind="mindmap", name="onboarding-plan", content=…)`:
+Example after `doc_write(kind="mindmap", path="mindmaps/onboarding-plan", content=…)`:
 
 ```
 I drafted a mindmap of the onboarding plan:

@@ -53,7 +53,7 @@ render.
 ### Stored document — raw JSON or YAML, NO fence
 
 To *save* the chart, pass the **same payload without the fence** to
-`doc_write(kind="chart", path="<…>.yaml", body=<raw schema>)`. The
+`doc_write(kind="chart", path="<…>.yaml", content=<raw schema>)`. The
 fence is the inline-only wrapper: fence-wrapped stored bodies parse,
 but the Web-UI falls back to the Raw editor and never renders the
 chart tab. Path extension must be `.json` or `.yaml` — Markdown is

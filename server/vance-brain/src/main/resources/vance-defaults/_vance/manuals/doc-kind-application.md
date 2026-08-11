@@ -73,7 +73,7 @@ Read first, edit, write back:
 doc_read(path="projects/website/calendars/_app.yaml")
 # → existing YAML body
 
-doc_edit(
+doc_write(
   path="projects/website/calendars/_app.yaml",
   content="<full new YAML body>"
 )

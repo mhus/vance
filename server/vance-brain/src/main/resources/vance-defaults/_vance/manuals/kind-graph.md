@@ -58,7 +58,7 @@ render.
 
 When the user wants to *save* the graph to a file via
 `doc_write(kind="graph", path="<…>.json"` or `.yaml`,
-`body=<raw schema>)`, **the body must NOT be wrapped in a
+`content=<raw schema>)`, **the body must NOT be wrapped in a
 ```` ```graph ```` fence** — that's the inline-only form. Markdown
 bodies are rejected for stored graphs: the codec stores the file
 but the Web-UI falls back to the Raw editor and never renders the

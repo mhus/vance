@@ -7,6 +7,39 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
  * through the public API ({@link #encrypted()}); all others round-trip as plain
  * text.
  *
+ * <h2>Two dimensions in one enum</h2>
+ * A deliberate compromise, and the reason the constant names do not form one
+ * clean series. This enum carries a <b>value type</b> ({@link #STRING},
+ * {@link #INT}, {@link #LONG}, {@link #DOUBLE}, {@link #BOOLEAN} — how the value
+ * is parsed) <em>and</em> a <b>protection class</b>:
+ *
+ * <pre>
+ *   STRING  →  HIDDEN  →  PASSWORD        increasing protection
+ * </pre>
+ *
+ * {@link #HIDDEN} and {@link #PASSWORD} are not value types at all — they are
+ * properties of a string, and modelled cleanly they would be a flag on any type.
+ * A flag would have cost a DTO field, a UI checkbox, a kit round-trip case and a
+ * "who may raise it" rule; a level on the existing enum fits the concept the rest
+ * of the settings code already has. The price is that there is <b>no protected
+ * {@code INT} or {@code BOOLEAN}</b> — irrelevant in practice, but it is the
+ * boundary.
+ *
+ * <p>The two predicates below are exactly the two thresholds on that scale, and
+ * both are monotone along it:
+ *
+ * <table border="1">
+ *   <caption>Predicate values along the protection scale</caption>
+ *   <tr><th>Level</th><th>{@code encrypted()}</th><th>{@code referenceReadable()}</th></tr>
+ *   <tr><td>{@code STRING} (and the other value types)</td><td>false</td><td>true</td></tr>
+ *   <tr><td>{@code HIDDEN}</td><td>true</td><td>true</td></tr>
+ *   <tr><td>{@code PASSWORD}</td><td>true</td><td>false</td></tr>
+ * </table>
+ *
+ * <p>So a future level is placed by saying <em>between which thresholds</em> it
+ * sits — append the constant, set the two predicates, done. No third comparison
+ * anywhere in the tree.
+ *
  * <h2>PASSWORD vs. HIDDEN</h2>
  * Both are stored encrypted with the server key and are never returned through
  * the generic string-read path. They differ in <b>which channel</b> may resolve

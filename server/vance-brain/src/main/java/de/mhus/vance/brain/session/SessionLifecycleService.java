@@ -359,9 +359,7 @@ public class SessionLifecycleService {
         List<String> pausedNames = new ArrayList<>();
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         for (ThinkProcessDocument p : processes) {
-            ThinkProcessStatus s = p.getStatus();
-            if (s == ThinkProcessStatus.CLOSED
-                    || s == ThinkProcessStatus.PAUSED) {
+            if (!isInterruptible(p)) {
                 continue;
             }
             pausedNames.add(p.getName());
@@ -381,6 +379,34 @@ public class SessionLifecycleService {
         log.info("Paused {} process(es) in session='{}': {}",
                 pausedNames.size(), sessionId, pausedNames);
         return pausedNames;
+    }
+
+    /**
+     * Whether a user-driven pause has anything to interrupt on this
+     * process — {@code true} only for {@code RUNNING} (mid-turn) and
+     * {@code INIT} (spawned, first turn queued).
+     *
+     * <p>This is the authoritative answer for the "was anything actually
+     * running?" question that clients must not try to answer themselves:
+     * foot sends the ESC pause unconditionally (its busy counter is a
+     * reconstruction from turn-boundary pings and goes stale on a
+     * reconnect), so the filter has to sit here. Everything else is
+     * deliberately left alone:
+     * <ul>
+     *   <li>{@code IDLE} — nothing to halt, and flipping it to
+     *       {@code PAUSED} would mint a bogus "USER INTERRUPTED —
+     *       RECONSIDER" preamble on the user's next message
+     *       ({@code ProcessSteerHandler#buildResumeContext}).</li>
+     *   <li>{@code BLOCKED} — waiting on an answer (inbox / delegation);
+     *       pausing would strand the party that owes the reply. Use
+     *       {@code /stop} to end it.</li>
+     *   <li>{@code PAUSED} / {@code SUSPENDED} / {@code CLOSED} — already
+     *       halted.</li>
+     * </ul>
+     */
+    public static boolean isInterruptible(ThinkProcessDocument process) {
+        ThinkProcessStatus s = process.getStatus();
+        return s == ThinkProcessStatus.RUNNING || s == ThinkProcessStatus.INIT;
     }
 
     /**

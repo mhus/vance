@@ -1,6 +1,8 @@
 package de.mhus.vance.foot.ui;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +37,16 @@ import org.springframework.stereotype.Component;
 public class BusyIndicator {
 
     private final AtomicInteger inFlight = new AtomicInteger();
+
+    /**
+     * Keys of the currently-open keyed operations (see
+     * {@link #enterKeyed(String, String)}). Lives here rather than in the
+     * caller so {@link #clear()} resets counter <em>and</em> key set in one
+     * step — a split between the two is unrecoverable: a key left behind
+     * after a clear() de-duplicates the next open away and the indicator
+     * can never go busy again.
+     */
+    private final Set<String> openKeys = new HashSet<>();
 
     /**
      * Edge listeners (e.g. the sleep inhibitor). Notified only on the
@@ -76,18 +88,59 @@ public class BusyIndicator {
     }
 
     /**
+     * Enter for an operation with a natural identity (e.g. one engine
+     * turn per think-process). A second enter for the same {@code key}
+     * is ignored, so duplicate open events — WS retries, a reconnect
+     * replaying a start — cannot inflate the counter.
+     *
+     * @return {@code true} when this call actually opened the key
+     */
+    public boolean enterKeyed(String key, String source) {
+        synchronized (openKeys) {
+            if (!openKeys.add(key)) {
+                log.trace("BUSY enterKeyed ignored — key='{}' already open", key);
+                return false;
+            }
+            enter(source);
+            return true;
+        }
+    }
+
+    /**
+     * Exit for a key opened by {@link #enterKeyed(String, String)}.
+     * Ignored when the key isn't open — an unpaired close event (or one
+     * arriving after a {@link #clear()}) must not push the counter
+     * below the work that is genuinely in flight.
+     *
+     * @return {@code true} when this call actually closed the key
+     */
+    public boolean exitKeyed(String key, String source) {
+        synchronized (openKeys) {
+            if (!openKeys.remove(key)) {
+                log.trace("BUSY exitKeyed ignored — key='{}' not open", key);
+                return false;
+            }
+            exit(source);
+            return true;
+        }
+    }
+
+    /**
      * Hard reset to "not busy" — used by user-driven halt commands
-     * (ESC / {@code /pause} / {@code /stop}) so the animation goes
-     * away immediately even though the underlying chat round-trip
-     * may still be in flight on the WebSocket. Lingering
+     * (ESC / {@code /pause} / {@code /stop}) and by a session (re-)bind,
+     * so the animation goes away immediately even though the underlying
+     * chat round-trip may still be in flight on the WebSocket. Lingering
      * {@link #exit(String)} calls are absorbed by the {@code n > 0}
-     * guard.
+     * guard, lingering {@link #exitKeyed} calls by the key set.
      */
     public void clear() {
-        int prior = inFlight.getAndSet(0);
-        if (prior > 0) {
-            log.info("BUSY clear (prior depth={})", prior);
-            fire(false);
+        synchronized (openKeys) {
+            openKeys.clear();
+            int prior = inFlight.getAndSet(0);
+            if (prior > 0) {
+                log.info("BUSY clear (prior depth={})", prior);
+                fire(false);
+            }
         }
     }
 

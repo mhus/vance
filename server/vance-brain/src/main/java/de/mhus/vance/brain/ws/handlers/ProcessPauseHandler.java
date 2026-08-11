@@ -158,17 +158,19 @@ public class ProcessPauseHandler implements WsHandler {
     }
 
     /**
-     * Walks every non-CLOSED, non-PAUSED process in the session and
-     * emits an ENGINE_HALT_REQUESTED ping. Decoupled from the actual
-     * pause path so the user gets immediate "I heard you" feedback
-     * even when the lane queue is busy.
+     * Emits an ENGINE_HALT_REQUESTED ping for every process the ensuing
+     * {@link SessionLifecycleService#pauseActiveInSession} will actually
+     * touch. Decoupled from the pause path so the user gets immediate
+     * "I heard you" feedback even when the lane queue is busy — but it
+     * uses the same {@link SessionLifecycleService#isInterruptible}
+     * filter, so an ESC on an idle session stays silent instead of
+     * announcing a pause that never happens.
      */
     private void emitHaltRequestedForActiveProcesses(String tenantId, String sessionId) {
         java.util.List<ThinkProcessDocument> all =
                 thinkProcessService.findBySession(tenantId, sessionId);
         for (ThinkProcessDocument p : all) {
-            ThinkProcessStatus s = p.getStatus();
-            if (s == ThinkProcessStatus.CLOSED || s == ThinkProcessStatus.PAUSED) {
+            if (!SessionLifecycleService.isInterruptible(p)) {
                 continue;
             }
             progressEmitter.emitStatus(p, StatusTag.ENGINE_HALT_REQUESTED,

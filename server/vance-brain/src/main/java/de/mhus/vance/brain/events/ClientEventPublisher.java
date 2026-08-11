@@ -44,7 +44,17 @@ public class ClientEventPublisher {
             try {
                 sender.sendNotification(ws, type, data);
                 sent++;
-            } catch (IOException e) {
+            } catch (IOException | RuntimeException e) {
+                // RuntimeException matters as much as IOException here: a
+                // container write on a closed/half-written endpoint throws
+                // IllegalStateException ("session has been closed",
+                // "TEXT_PARTIAL_WRITING"), which used to escape this loop
+                // into whatever emitted the event. A progress ping raised
+                // from inside a tool invocation then surfaced to the engine
+                // as "TOOL CALL FAILED", so a client disconnect wrote a
+                // bogus tool error into the conversation. This channel is
+                // optimistic rendering — a failed frame is never the
+                // caller's problem.
                 log.debug("Publish to session='{}' type='{}' ws='{}' failed: {}",
                         sessionId, type, ws.getId(), e.toString());
             }

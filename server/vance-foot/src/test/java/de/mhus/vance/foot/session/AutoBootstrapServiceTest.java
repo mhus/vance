@@ -18,6 +18,7 @@ import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.BrainException;
 import de.mhus.vance.foot.connection.BrainRestClientService;
 import de.mhus.vance.foot.connection.ConnectionService;
+import de.mhus.vance.foot.ui.BusyIndicator;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -53,7 +54,7 @@ class AutoBootstrapServiceTest {
     private AutoBootstrapService service(FootConfig config) {
         return new AutoBootstrapService(
                 config, connection, rest, sessions, terminal,
-                paths, anchorStore, nameGenerator);
+                paths, anchorStore, nameGenerator, new BusyIndicator());
     }
 
     private FootConfig configWithBootstrap() {

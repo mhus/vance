@@ -61,6 +61,46 @@ class BusyIndicatorEdgeTest {
     }
 
     @Test
+    void enterKeyed_secondEnterForSameKeyIsIgnored() {
+        BusyIndicator busy = new BusyIndicator();
+
+        assertThat(busy.enterKeyed("p1", "turn-start")).isTrue();
+        assertThat(busy.enterKeyed("p1", "turn-start-again")).isFalse();
+
+        assertThat(busy.depth()).isEqualTo(1);
+    }
+
+    @Test
+    void exitKeyed_unpairedCloseIsIgnored() {
+        BusyIndicator busy = new BusyIndicator();
+
+        busy.enter("chat-roundtrip");
+        // END for a process we never saw a START for must not eat the
+        // round-trip's own enter.
+        assertThat(busy.exitKeyed("p1", "turn-end")).isFalse();
+
+        assertThat(busy.depth()).isEqualTo(1);
+    }
+
+    @Test
+    void clear_dropsOpenKeysSoTheNextTurnCanGoBusyAgain() {
+        BusyIndicator busy = new BusyIndicator();
+        busy.enterKeyed("p1", "turn-start");
+
+        // Session (re-)bind after a reconnect — engine keeps running.
+        busy.clear();
+        assertThat(busy.isBusy()).isFalse();
+
+        // The stale END from before the clear is absorbed …
+        assertThat(busy.exitKeyed("p1", "turn-end")).isFalse();
+        // … and the next turn of the SAME process goes busy again. With the
+        // key set living outside the indicator this stayed false forever and
+        // the spinner (plus everything gated on it) never came back.
+        assertThat(busy.enterKeyed("p1", "turn-start")).isTrue();
+        assertThat(busy.isBusy()).isTrue();
+    }
+
+    @Test
     void throwingListener_doesNotBreakCounter() {
         BusyListener boom = new BusyListener() {
             @Override

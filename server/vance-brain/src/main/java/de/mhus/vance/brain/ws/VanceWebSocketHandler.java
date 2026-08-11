@@ -170,12 +170,44 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
     public void dispatch(WebSocketSession wsSession, ConnectionContext ctx, WebSocketEnvelope envelope)
             throws Exception {
         if (ctx.hasSession()
-                && !sessionService.heartbeat(ctx.getSessionId(), ctx.getEditorId())) {
+                && !sessionService.heartbeat(ctx.getSessionId(), ctx.getEditorId())
+                && !reclaimLapsedBind(ctx)) {
             // Another pod took the session over, or it was closed. Drop this connection.
             wsSession.close(CloseStatus.POLICY_VIOLATION.withReason("Session no longer bound"));
             return;
         }
 
+        dispatchToHandler(wsSession, ctx, envelope);
+    }
+
+    /**
+     * Second chance for a heartbeat that missed because the bind lease
+     * lapsed rather than because somebody else took the session.
+     *
+     * <p>The frame we are holding is proof this client is alive, so killing
+     * the connection over an expired lease throws away a working session:
+     * the client reconnects, re-adopts with {@code takeover}, and loses its
+     * per-connection state (registered client-tools, in-flight tool
+     * dispatches, busy/progress tracking) while the engine keeps running
+     * on the brain. {@code tryBind} only grants the lease when nobody holds
+     * it, when we hold it already, or when the current holder itself went
+     * stale — a session genuinely taken over by another connection still
+     * fails here and the caller closes as before.
+     */
+    private boolean reclaimLapsedBind(ConnectionContext ctx) {
+        String sessionId = ctx.getSessionId();
+        if (sessionId == null) return false;
+        boolean reclaimed = sessionService.tryBind(sessionId, ctx.getEditorId());
+        if (reclaimed) {
+            log.info("Re-bound live connection to session '{}' after lease lapse (editor='{}')",
+                    sessionId, ctx.getEditorId());
+        }
+        return reclaimed;
+    }
+
+    private void dispatchToHandler(
+            WebSocketSession wsSession, ConnectionContext ctx, WebSocketEnvelope envelope)
+            throws Exception {
         String type = envelope.getType();
         WsHandler handler = handlers.get(type);
         if (handler == null) {

@@ -20,9 +20,7 @@ import de.mhus.vance.foot.ui.Verbosity;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
@@ -65,16 +63,6 @@ public class ProcessProgressHandler implements MessageHandler {
      * server-side {@code usage.elapsedMs} reflects only brain-internal time.
      */
     private final Map<String, Instant> operationStarts = new ConcurrentHashMap<>();
-
-    /**
-     * Set of process-ids that currently have an open
-     * {@link StatusTag#ENGINE_TURN_START} we entered into the
-     * {@link BusyIndicator}. We track them so we can both deduplicate
-     * (a duplicate START shouldn't double-enter) and exit cleanly when
-     * the matching END arrives — even if it gets delivered out of the
-     * normal pair-order under WS retries.
-     */
-    private final Set<String> activeTurns = new HashSet<>();
 
     public ProcessProgressHandler(
             ChatTerminal terminal,
@@ -155,9 +143,12 @@ public class ProcessProgressHandler implements MessageHandler {
      * worker turns run async after the original chat round-trip
      * has already returned.
      *
-     * <p>Counter-based via the indicator's enter/exit; a per-process
-     * de-duplication set guards against double-START / double-END
-     * events (rare under retries / reconnect).
+     * <p>Keyed on the process-id via
+     * {@link BusyIndicator#enterKeyed}/{@link BusyIndicator#exitKeyed},
+     * which de-duplicates double-START / double-END events (rare under
+     * retries / reconnect) and — because the key set lives inside the
+     * indicator — is reset together with the counter on
+     * {@link BusyIndicator#clear()}.
      */
     private void updateBusyState(ProcessProgressNotification msg) {
         StatusPayload status = msg.getStatus();
@@ -166,20 +157,10 @@ public class ProcessProgressHandler implements MessageHandler {
         String processId = msg.getProcessId();
         if (processId == null || processId.isBlank()) return;
         switch (tag) {
-            case ENGINE_TURN_START -> {
-                synchronized (activeTurns) {
-                    if (activeTurns.add(processId)) {
-                        busyIndicator.enter("engine_turn_start:" + safeName(msg));
-                    }
-                }
-            }
-            case ENGINE_TURN_END -> {
-                synchronized (activeTurns) {
-                    if (activeTurns.remove(processId)) {
-                        busyIndicator.exit("engine_turn_end:" + safeName(msg));
-                    }
-                }
-            }
+            case ENGINE_TURN_START ->
+                    busyIndicator.enterKeyed(processId, "engine_turn_start:" + safeName(msg));
+            case ENGINE_TURN_END ->
+                    busyIndicator.exitKeyed(processId, "engine_turn_end:" + safeName(msg));
             default -> { /* tool_start/end, plan tags etc. don't affect busy */ }
         }
     }

@@ -430,6 +430,34 @@ class SessionLifecycleServiceTest {
         verify(sessionService).delete("s-del");
     }
 
+    // ─── user-driven pause (ESC) ────────────────────────────────────────
+
+    @Test
+    void pauseActiveInSession_pausesOnlyProcessesWithSomethingToInterrupt() {
+        stubSession("s-1", SessionStatus.RUNNING, DisconnectPolicy.KEEP_OPEN);
+        when(thinkProcessService.findBySession("acme", "s-1")).thenReturn(List.of(
+                process("p-running", ThinkProcessStatus.RUNNING),
+                process("p-init", ThinkProcessStatus.INIT),
+                process("p-idle", ThinkProcessStatus.IDLE),
+                process("p-blocked", ThinkProcessStatus.BLOCKED),
+                process("p-paused", ThinkProcessStatus.PAUSED),
+                process("p-closed", ThinkProcessStatus.CLOSED)));
+
+        List<String> paused = lifecycle.pauseActiveInSession("s-1");
+
+        assertThat(paused).hasSize(2);
+        verify(thinkProcessService).requestHalt("p-running");
+        verify(thinkProcessService).requestHalt("p-init");
+        // An IDLE chat-process must stay IDLE: flipping it to PAUSED puts a
+        // bogus "USER INTERRUPTED — RECONSIDER" preamble on the user's next
+        // message. foot sends ESC unconditionally, so this filter is what
+        // keeps an idle ESC harmless.
+        verify(thinkProcessService, never()).requestHalt("p-idle");
+        verify(thinkProcessService, never()).requestHalt("p-blocked");
+        verify(thinkProcessService, never()).requestHalt("p-paused");
+        verify(thinkProcessService, never()).requestHalt("p-closed");
+    }
+
     private void stubSession(String sessionId, SessionStatus status,
                              DisconnectPolicy policy) {
         SessionDocument doc = new SessionDocument();

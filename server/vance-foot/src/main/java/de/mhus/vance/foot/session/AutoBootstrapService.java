@@ -2,9 +2,13 @@ package de.mhus.vance.foot.session;
 
 import de.mhus.vance.api.chat.ChatMessageDto;
 import de.mhus.vance.api.thinkprocess.BootstrappedProcess;
+import de.mhus.vance.api.thinkprocess.ProcessListRequest;
+import de.mhus.vance.api.thinkprocess.ProcessListResponse;
 import de.mhus.vance.api.thinkprocess.ProcessSpec;
+import de.mhus.vance.api.thinkprocess.ProcessSummary;
 import de.mhus.vance.api.thinkprocess.SessionBootstrapRequest;
 import de.mhus.vance.api.thinkprocess.SessionBootstrapResponse;
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.SessionResumeRequest;
 import de.mhus.vance.api.ws.SessionResumeResponse;
@@ -15,6 +19,7 @@ import de.mhus.vance.foot.connection.BrainException;
 import de.mhus.vance.foot.connection.BrainRestClientService;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.session.RandomSessionNameGenerator;
+import de.mhus.vance.foot.ui.BusyIndicator;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
@@ -71,6 +76,7 @@ public class AutoBootstrapService {
     private final VancePaths paths;
     private final SessionAnchorStore anchorStore;
     private final RandomSessionNameGenerator nameGenerator;
+    private final BusyIndicator busyIndicator;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "vance-foot-bootstrap");
@@ -94,7 +100,8 @@ public class AutoBootstrapService {
                                 ChatTerminal terminal,
                                 VancePaths paths,
                                 SessionAnchorStore anchorStore,
-                                RandomSessionNameGenerator nameGenerator) {
+                                RandomSessionNameGenerator nameGenerator,
+                                BusyIndicator busyIndicator) {
         this.config = config;
         this.connection = connection;
         this.rest = rest;
@@ -103,6 +110,7 @@ public class AutoBootstrapService {
         this.paths = paths;
         this.anchorStore = anchorStore;
         this.nameGenerator = nameGenerator;
+        this.busyIndicator = busyIndicator;
     }
 
     /**
@@ -191,6 +199,51 @@ public class AutoBootstrapService {
         }
         terminal.info("Reconnected → session re-adopted: " + response.getSessionId()
                 + " (project=" + response.getProjectId() + ", name=" + clientName + ")");
+        resyncBusyState();
+    }
+
+    /**
+     * Rebuilds the busy/spinner state from the brain after a reconnect.
+     *
+     * <p>The engine keeps running while the transport is down, so the
+     * {@code engine_turn_start}/{@code _end} pairs the {@link BusyIndicator}
+     * counts get cut in half: the bind (which cannot know whether the
+     * engine survived) resets the counter, and the matching END arrives on
+     * a connection that no longer has the START. Asking the brain which
+     * processes are mid-turn is the only authoritative answer — guessing
+     * either leaves a dead spinner over a working engine or spins forever
+     * over an idle one.
+     *
+     * <p>Best-effort: a failed list leaves the indicator idle, which the
+     * next turn boundary corrects on its own.
+     */
+    private void resyncBusyState() {
+        ProcessListResponse list;
+        try {
+            list = connection.request(
+                    MessageType.PROCESS_LIST,
+                    ProcessListRequest.builder().build(),
+                    ProcessListResponse.class,
+                    Duration.ofSeconds(10));
+        } catch (Exception e) {
+            terminal.verbose("Busy-state resync skipped: " + e.getMessage());
+            return;
+        }
+        if (list == null || list.getProcesses() == null) {
+            return;
+        }
+        int running = 0;
+        for (ProcessSummary p : list.getProcesses()) {
+            if (p.getStatus() != ThinkProcessStatus.RUNNING || p.getId() == null) continue;
+            // Same key the progress handler uses (process-id), so the
+            // ENGINE_TURN_END that eventually arrives closes this entry.
+            if (busyIndicator.enterKeyed(p.getId(), "reconnect-resync:" + p.getName())) {
+                running++;
+            }
+        }
+        if (running > 0) {
+            terminal.info("  ° " + running + " process(es) still running — spinner restored");
+        }
     }
 
     private void runBootstrap(FootConfig.Bootstrap b) {

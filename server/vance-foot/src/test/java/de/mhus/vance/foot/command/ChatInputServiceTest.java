@@ -43,16 +43,19 @@ class ChatInputServiceTest {
     }
 
     @Test
-    void requestPauseFromInterrupt_whenIdle_sendsNothing() {
+    void requestPauseFromInterrupt_whileNotBusy_stillSendsPause() {
+        // The busy counter is a client-side reconstruction from turn
+        // boundary pings and goes stale on a reconnect mid-turn. ESC must
+        // reach the brain regardless — the brain decides what is actually
+        // interruptible (SessionLifecycleService#isInterruptible).
         when(busyIndicator.isBusy()).thenReturn(false);
+        when(sessions.current())
+                .thenReturn(new SessionService.BoundSession("s1", "p1", null, null));
+        when(connection.send(any())).thenReturn(true);
 
         newService().requestPauseFromInterrupt();
 
-        // No process-pause frame — a lone ESC while idle must not flip
-        // an IDLE process to PAUSED (which would mint a bogus
-        // "USER INTERRUPTED — RECONSIDER" banner on the next turn).
-        verify(connection, never()).send(any());
-        verify(sessions, never()).current();
+        verify(connection).send(any());
     }
 
     @Test
@@ -65,5 +68,14 @@ class ChatInputServiceTest {
         newService().requestPauseFromInterrupt();
 
         verify(connection).send(any());
+    }
+
+    @Test
+    void requestPauseFromInterrupt_withoutBoundSession_sendsNothing() {
+        when(sessions.current()).thenReturn(null);
+
+        newService().requestPauseFromInterrupt();
+
+        verify(connection, never()).send(any());
     }
 }

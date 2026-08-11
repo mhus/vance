@@ -230,18 +230,20 @@ public class ChatInputService {
     }
 
     /**
-     * ESC-triggered pause. Sends a {@code process-pause} <b>only</b> when
-     * a chat turn / tool round-trip is actually in flight. A lone ESC
-     * while idle — including a stray ESC byte the terminal injects on
-     * focus change or sleep-wake — is a no-op: pausing an IDLE process
-     * would flip it to PAUSED and mint a bogus "USER INTERRUPTED —
-     * RECONSIDER" banner on the next user turn. Explicit {@code /pause}
-     * ({@link #requestPause()}) stays unconditional.
+     * ESC-triggered pause. Always sends the {@code process-pause} —
+     * identical to explicit {@code /pause}.
+     *
+     * <p>This used to be gated on {@link BusyIndicator#isBusy()} to keep a
+     * lone idle ESC from flipping an IDLE process to PAUSED and minting a
+     * bogus "USER INTERRUPTED — RECONSIDER" banner on the next user turn.
+     * That put the decision on the wrong side of the wire: foot's busy
+     * counter is a guess reconstructed from turn-boundary pings, so any
+     * hole in it (a reconnect mid-turn, a dropped END frame) silently
+     * disarmed the user's only stop button while the engine kept running.
+     * The brain knows which processes are actually interruptible and
+     * skips the rest — see {@code SessionLifecycleService.isInterruptible}.
      */
     public void requestPauseFromInterrupt() {
-        if (!busyIndicator.isBusy()) {
-            return;
-        }
         requestPause();
     }
 

@@ -91,6 +91,12 @@ public class ConnectionService {
      */
     private volatile @Nullable ReconnectTarget reconnectTarget;
     private final AtomicLong requestCounter = new AtomicLong();
+    /**
+     * Wall-clock of the last frame we successfully handed to the socket.
+     * Drives the keep-alive skip — see {@link #sendKeepAlivePing()} for why
+     * outbound (not inbound) is the relevant signal.
+     */
+    private final AtomicLong lastOutboundAtMs = new AtomicLong();
 
     /** The session (and its active process) to re-adopt after an auto-reconnect. */
     public record ReconnectTarget(String sessionId,
@@ -462,16 +468,19 @@ public class ConnectionService {
         if (!isOpen()) {
             return;
         }
-        // Liveness-aware: recent inbound traffic (streamed chat chunks,
-        // tool results, PONGs, …) proves the connection is alive, so skip
-        // the ping. The ping — and its dead-detection — only fires after a
-        // full quiet interval with no inbound, so a heavy streaming turn
-        // can no longer trip a false "connection looks dead" reconnect
-        // while data is actively flowing.
-        long sinceInboundMs = System.currentTimeMillis() - dispatcher.lastInboundAtMs();
-        if (keepAliveIntervalMs > 0 && sinceInboundMs < keepAliveIntervalMs) {
+        // Skip on recent OUTBOUND traffic, never on inbound. The brain's
+        // session-bind lease (SessionDocument.lastActivityAt, default 2min)
+        // is refreshed by frames arriving AT the brain — i.e. by what we
+        // send. Downstream streaming (chat chunks, progress pings) proves
+        // the socket is alive but does nothing for the lease, so gating on
+        // inbound made foot go quiet for the whole of a long engine turn:
+        // the stale-bind sweeper released the binding, the next frame we
+        // sent failed the heartbeat check, and the brain closed the
+        // connection underneath a still-running engine.
+        long sinceOutboundMs = System.currentTimeMillis() - lastOutboundAtMs.get();
+        if (keepAliveIntervalMs > 0 && sinceOutboundMs < keepAliveIntervalMs) {
             terminal.println(Verbosity.DEBUG,
-                    "keepalive skipped — inbound %dms ago (connection alive)", sinceInboundMs);
+                    "keepalive skipped — outbound %dms ago (lease fresh)", sinceOutboundMs);
             return;
         }
         long sent = System.currentTimeMillis();
@@ -486,7 +495,18 @@ public class ConnectionService {
             terminal.println(Verbosity.DEBUG,
                     "ping rtt=%dms one-way=%dms", rtt, oneWay);
         } catch (Exception e) {
-            // No pong inside the window: the socket is wedged — typically a
+            // Pong overdue. Inbound traffic in the meantime says the brain
+            // is alive and simply queued our pong behind a busy stream —
+            // that must not tear down a healthy connection (the ping still
+            // did its real job: it refreshed the lease).
+            long sinceInboundMs = System.currentTimeMillis() - dispatcher.lastInboundAtMs();
+            if (keepAliveIntervalMs > 0 && sinceInboundMs < keepAliveIntervalMs) {
+                terminal.println(Verbosity.DEBUG,
+                        "ping unanswered (%s) but inbound %dms ago — keeping connection",
+                        describe(e), sinceInboundMs);
+                return;
+            }
+            // Nothing in either direction: the socket is wedged — typically a
             // half-open TCP left behind when a middlebox dropped the idle
             // connection without a FIN, so onClose never fired. Tear it down
             // and let the reconnect campaign take over instead of pinging a
@@ -537,6 +557,7 @@ public class ConnectionService {
         }
         try {
             c.send(envelope).get(2, java.util.concurrent.TimeUnit.SECONDS);
+            lastOutboundAtMs.set(System.currentTimeMillis());
             return true;
         } catch (java.util.concurrent.TimeoutException e) {
             log.warn("send timed out after 2s — frame likely lost");

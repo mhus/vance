@@ -197,6 +197,7 @@ const settingTypeOptions = computed(() => [
   { value: SettingType.DOUBLE, label: t('scopes.settingsPanel.types.double') },
   { value: SettingType.BOOLEAN, label: t('scopes.settingsPanel.types.boolean') },
   { value: SettingType.PASSWORD, label: t('scopes.settingsPanel.types.password') },
+  { value: SettingType.HIDDEN, label: t('scopes.settingsPanel.types.hidden') },
 ]);
 
 // ─── Derived state ───

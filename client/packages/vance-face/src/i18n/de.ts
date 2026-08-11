@@ -1690,7 +1690,8 @@ export default {
         long: 'Long',
         double: 'Double',
         boolean: 'Boolean',
-        password: 'Passwort',
+        password: 'Passwort (nur serverintern)',
+        hidden: 'Hidden (für Agenten/Skripte lesbar)',
       },
     },
     settingFormsPanel: {

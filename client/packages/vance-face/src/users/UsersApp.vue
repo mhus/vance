@@ -42,7 +42,11 @@ const settingTypeOptions = [
   { value: SettingType.LONG, label: 'LONG' },
   { value: SettingType.DOUBLE, label: 'DOUBLE' },
   { value: SettingType.BOOLEAN, label: 'BOOLEAN' },
-  { value: SettingType.PASSWORD, label: 'PASSWORD' },
+  // The two encrypted types differ only in whether an authored
+  // {{secret:…}} reference may resolve them, so the qualifier is part of
+  // the label — 'HIDDEN' alone reads as *more* secret than PASSWORD.
+  { value: SettingType.PASSWORD, label: 'PASSWORD (server-internal only)' },
+  { value: SettingType.HIDDEN, label: 'HIDDEN (agent/script readable)' },
 ];
 const editingKey = ref<string | null>(null);
 const editValue = ref('');

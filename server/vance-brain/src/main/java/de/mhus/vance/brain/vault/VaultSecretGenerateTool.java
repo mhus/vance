@@ -15,7 +15,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Server tool {@code vault_secret_generate} — generates a cryptographically
- * random secret server-side, stores it in the bound vault under {@code key}, and
+ * random secret server-side, stores it in the vault bound at the scope — or, with
+ * no external manager configured, as a HIDDEN setting — under {@code key}, and
  * returns <b>only its reference</b>, never the value. The leak-free way to
  * provision a fresh credential (DB password, API token) and wire it into
  * compose {@code secrets:} / tool templates via {@code {{secret:vault:<key>}}}
@@ -65,11 +66,12 @@ public class VaultSecretGenerateTool implements Tool {
 
     @Override
     public String description() {
-        return "Generate a random secret server-side, store it in the bound vault "
-                + "under <key>, and return only its reference (never the value). Use "
+        return "Generate a random secret server-side, store it in the vault under "
+                + "<key>, and return only its reference (never the value). Use "
                 + "to provision fresh credentials the model must not see — then "
-                + "reference them with {{secret:vault:<key>}}. Requires a bound vault "
-                + "and project-scope write.";
+                + "reference them with {{secret:vault:<key>}}. Needs project-scope "
+                + "write; no external secret manager has to be configured — without "
+                + "one the secret is stored as a HIDDEN setting.";
     }
 
     @Override

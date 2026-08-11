@@ -15,7 +15,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Server tool {@code vault_secret_set} — stores a caller-provided value in the
- * bound vault under {@code key}.
+ * vault bound at the scope — or, with no external manager configured, as a HIDDEN
+ * setting — under {@code key}.
  *
  * <p><b>By the time this is called the value has already passed through the model
  * context</b> — gating it buys nothing against that. If a secret must stay hidden
@@ -59,11 +60,12 @@ public class VaultSecretSetTool implements Tool {
 
     @Override
     public String description() {
-        return "Store a secret value in the bound vault under <key>. WARNING: the "
+        return "Store a secret value in the vault under <key>. WARNING: the "
                 + "value passes through the model context — by the time you call this "
                 + "it is already in the conversation. For a secret that must stay "
-                + "hidden from the model, use vault_secret_generate. Requires a bound "
-                + "vault and project-scope write.";
+                + "hidden from the model, use vault_secret_generate. Needs "
+                + "project-scope write; no external secret manager has to be "
+                + "configured — without one the value is stored as a HIDDEN setting.";
     }
 
     @Override

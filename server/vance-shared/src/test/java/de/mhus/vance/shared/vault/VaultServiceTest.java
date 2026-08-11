@@ -135,13 +135,58 @@ class VaultServiceTest {
     }
 
     @Test
-    void readSecret_noVaultBound_throwsVaultException() {
-        // vault.type unset on every layer → no binding layer found
+    void readSecret_noVaultBound_fallsBackToTheSettingsVault() {
+        // vault.type unset on every layer → no binding layer found. That is not an
+        // error: {{secret:vault:<key>}} has to work before anyone configures an
+        // external manager, so the settings-backed vault takes over.
         RecordingProvider infisical = new RecordingProvider("infisical");
+        RecordingProvider settings = new RecordingProvider(SettingsVaultProvider.TYPE);
+        settings.store.put("k", "from-settings");
 
-        assertThatThrownBy(() -> serviceWith(infisical).readSecret(SCOPE, "k"))
+        assertThat(serviceWith(infisical, settings).readSecret(SCOPE, "k"))
+                .isEqualTo("from-settings");
+        assertThat(infisical.lastBinding).as("external provider untouched").isNull();
+        assertThat(settings.lastBinding).isNotNull()
+                .extracting(VaultBinding::type).isEqualTo(SettingsVaultProvider.TYPE);
+    }
+
+    @Test
+    void readSecret_boundVaultWinsOverTheSettingsFallback() {
+        setting(PROJECT, "vault.type", "infisical");
+        setting(PROJECT, "vault.baseUrl", "https://vault.example.tld");
+        RecordingProvider infisical = new RecordingProvider("infisical");
+        infisical.store.put("k", "from-infisical");
+        RecordingProvider settings = new RecordingProvider(SettingsVaultProvider.TYPE);
+        settings.store.put("k", "from-settings");
+
+        assertThat(serviceWith(infisical, settings).readSecret(SCOPE, "k"))
+                .isEqualTo("from-infisical");
+        assertThat(settings.lastBinding).as("fallback not consulted").isNull();
+    }
+
+    @Test
+    void readSecret_settingsTypeSetExplicitly_needsNoBaseUrl() {
+        // requiresEndpoint()=false — demanding a URL for a locally resolving vault
+        // would be a made-up requirement.
+        setting(PROJECT, "vault.type", SettingsVaultProvider.TYPE);
+        RecordingProvider settings = new RecordingProvider(SettingsVaultProvider.TYPE) {
+            @Override
+            public boolean requiresEndpoint() {
+                return false;
+            }
+        };
+        settings.store.put("k", "v");
+
+        assertThat(serviceWith(settings).readSecret(SCOPE, "k")).isEqualTo("v");
+    }
+
+    @Test
+    void readSecret_remoteTypeWithoutBaseUrl_stillThrows() {
+        setting(PROJECT, "vault.type", "infisical");
+
+        assertThatThrownBy(() -> serviceWith(new RecordingProvider("infisical")).readSecret(SCOPE, "k"))
                 .isInstanceOf(VaultException.class)
-                .hasMessageContaining("No vault bound");
+                .hasMessageContaining("vault.baseUrl");
     }
 
     @Test
@@ -201,13 +246,13 @@ class VaultServiceTest {
             }
 
             @Override
-            public @Nullable String readSecret(VaultBinding binding, String key) {
+            public @Nullable String readSecret(VaultBinding binding, VaultScope scope, String key) {
                 return null;
             }
         };
 
         assertThatThrownBy(() -> readOnly.writeSecret(
-                new VaultBinding("readonly", "https://x", Map.of(), null), "k", "v"))
+                new VaultBinding("readonly", "https://x", Map.of(), null), SCOPE, "k", "v"))
                 .isInstanceOf(UnsupportedOperationException.class)
                 .hasMessageContaining("readonly");
     }
@@ -227,10 +272,24 @@ class VaultServiceTest {
     }
 
     @Test
-    void writeSecret_noVaultBound_throwsVaultException() {
-        assertThatThrownBy(() -> serviceWith(new RecordingProvider("infisical")).writeSecret(SCOPE, "k", "v"))
-                .isInstanceOf(VaultException.class)
-                .hasMessageContaining("No vault bound");
+    void writeSecret_noVaultBound_fallsBackToTheSettingsVault() {
+        RecordingProvider settings = new RecordingProvider(SettingsVaultProvider.TYPE);
+
+        serviceWith(new RecordingProvider("infisical"), settings).writeSecret(SCOPE, "k", "v");
+
+        assertThat(settings.lastWriteKey).isEqualTo("k");
+        assertThat(settings.lastWriteValue).isEqualTo("v");
+    }
+
+    @Test
+    void writeSecret_passesTheScopeThroughToTheProvider() {
+        // The settings-backed provider resolves inside Vancetope, so it needs the
+        // tenant/project — the binding alone cannot tell it where to write.
+        RecordingProvider settings = new RecordingProvider(SettingsVaultProvider.TYPE);
+
+        serviceWith(settings).writeSecret(SCOPE, "k", "v");
+
+        assertThat(settings.lastScope).isEqualTo(SCOPE);
     }
 
     @Test
@@ -271,10 +330,11 @@ class VaultServiceTest {
     }
 
     /** In-memory {@link VaultProvider} that records the last binding/write it saw. */
-    private static final class RecordingProvider implements VaultProvider {
+    private static class RecordingProvider implements VaultProvider {
         private final String type;
         private final Map<String, String> store = new HashMap<>();
         private @Nullable VaultBinding lastBinding;
+        private @Nullable VaultScope lastScope;
         private @Nullable String lastWriteKey;
         private @Nullable String lastWriteValue;
 
@@ -288,14 +348,16 @@ class VaultServiceTest {
         }
 
         @Override
-        public @Nullable String readSecret(VaultBinding binding, String key) {
+        public @Nullable String readSecret(VaultBinding binding, VaultScope scope, String key) {
             this.lastBinding = binding;
+            this.lastScope = scope;
             return store.get(key);
         }
 
         @Override
-        public void writeSecret(VaultBinding binding, String key, String value) {
+        public void writeSecret(VaultBinding binding, VaultScope scope, String key, String value) {
             this.lastBinding = binding;
+            this.lastScope = scope;
             this.lastWriteKey = key;
             this.lastWriteValue = value;
             store.put(key, value);

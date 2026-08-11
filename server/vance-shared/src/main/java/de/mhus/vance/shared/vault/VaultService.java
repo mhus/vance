@@ -23,7 +23,13 @@ import org.springframework.stereotype.Service;
  * {@code {{secret:vault:...}}} resolver, compose secret injection and the
  * write tools all go through here, so scope resolution and provider selection
  * live in one place. There is exactly one binding per scope layer (no named
- * instances in v1) — {@code vault.type} being blank means "no vault bound".
+ * instances in v1).
+ *
+ * <p><b>No binding is not an error.</b> With {@code vault.type} unset anywhere
+ * along the cascade, access falls back to {@link SettingsVaultProvider} — the
+ * vault that is Vancetope's own HIDDEN settings. A {@code vault:} reference
+ * therefore resolves out of the box, and a document written against it stays
+ * valid when an external manager is bound later.
  *
  * <p>Only one bean per {@code type} may be registered; a second provider
  * claiming an already-taken {@code type} is a wiring error caught at first use.
@@ -53,6 +59,14 @@ public class VaultService {
     static final String METRIC_READS = "vance.vault.reads";
     static final String METRIC_WRITES = "vance.vault.writes";
 
+    /**
+     * Binding used when no {@code vault.type} is set anywhere along the cascade:
+     * the settings-backed vault ({@link SettingsVaultProvider}). No endpoint and
+     * no credential — it resolves inside Vancetope against HIDDEN settings.
+     */
+    private static final VaultBinding SETTINGS_FALLBACK = new VaultBinding(
+            SettingsVaultProvider.TYPE, /*baseUrl*/ "", Map.of(), /*secret*/ null);
+
     private final SettingService settingService;
     private final List<VaultProvider> providers;
     private final MetricService metricService;
@@ -68,9 +82,10 @@ public class VaultService {
      * Reads {@code key} from the vault bound at {@code scope}.
      *
      * @return the secret value, or {@code null} if the vault has no such key
-     * @throws VaultException if no vault is bound at the scope, no provider is
-     *         registered for the configured type, a required binding setting is
-     *         missing, or the provider fails to reach the vault. Any lower-level
+     * @throws VaultException if no provider is registered for the configured
+     *         type, a required binding setting is missing, or the provider fails
+     *         to reach the vault. An <em>absent</em> binding is not a failure —
+     *         it selects the settings-backed vault. Any lower-level
      *         failure (settings-store error, provider RuntimeException) is wrapped
      *         as VaultException, so this method never leaks another exception type
      */
@@ -81,7 +96,7 @@ public class VaultService {
                 bound.binding().type(), key, scope.tenantId(), scope.projectId(), scope.userId());
         String value;
         try {
-            value = bound.provider().readSecret(bound.binding(), key);
+            value = bound.provider().readSecret(bound.binding(), scope, key);
         } catch (VaultException e) {
             count(METRIC_READS, "error");
             throw e;
@@ -95,9 +110,11 @@ public class VaultService {
     }
 
     /**
-     * Store {@code value} under {@code key} in the vault bound at {@code scope}.
-     * Create-or-update semantics are the provider's. Throws {@link VaultException}
-     * on any failure (no vault bound, no provider, read-only identity, transport).
+     * Store {@code value} under {@code key} in the vault bound at {@code scope} —
+     * or, with nothing bound, as a HIDDEN setting at project scope. Create-or-update
+     * semantics are the provider's. Throws {@link VaultException} on any failure
+     * (no provider, read-only identity, transport, or a settings write the
+     * agent-write rules refuse).
      */
     public void writeSecret(VaultScope scope, String key, String value) {
         requireKey(key);
@@ -108,7 +125,7 @@ public class VaultService {
         log.trace("Vault write: type='{}' key='{}' scope(tenant='{}',project='{}',user='{}')",
                 bound.binding().type(), key, scope.tenantId(), scope.projectId(), scope.userId());
         try {
-            bound.provider().writeSecret(bound.binding(), key, value);
+            bound.provider().writeSecret(bound.binding(), scope, key, value);
         } catch (VaultException e) {
             count(METRIC_WRITES, "error");
             throw e;
@@ -154,12 +171,13 @@ public class VaultService {
             throw new VaultException("Vault binding resolution failed: " + e.getMessage(), e);
         }
         if (binding == null) {
-            count(metric, "not_configured");
-            throw new VaultException(
-                    "No vault bound at scope (tenant='" + scope.tenantId()
-                            + "', project='" + scope.projectId()
-                            + "', user='" + scope.userId()
-                            + "'): set '" + KEY_TYPE + "' to bind one");
+            // No external manager bound → the settings-backed vault. So a
+            // {{secret:vault:<key>}} reference works from day one, and a document
+            // written against it stays valid when Infisical is bound later.
+            // Counted separately from a real binding so the metric still shows how
+            // many installations run without an external manager.
+            count(metric, "settings_fallback");
+            binding = SETTINGS_FALLBACK;
         }
         VaultProvider provider;
         try {
@@ -209,9 +227,13 @@ public class VaultService {
     }
 
     /**
-     * Whether a vault is bound at {@code scope} — i.e. {@code vault.type} is set
-     * somewhere along the cascade. Cheap check for callers that want to skip the
-     * whole vault path when nothing is configured.
+     * Whether an <b>external</b> vault is bound at {@code scope} — i.e.
+     * {@code vault.type} is set somewhere along the cascade.
+     *
+     * <p>Not a precondition for {@link #readSecret}: with nothing bound, access
+     * falls back to the settings-backed vault. Use this only to tell "external
+     * manager configured" from "local settings", e.g. in a status surface — never
+     * to skip the vault path.
      */
     public boolean isConfigured(VaultScope scope) {
         return findBindingLayer(scope) != null;
@@ -243,8 +265,14 @@ public class VaultService {
         String baseUrl = trimToNull(
                 settingService.getStringValue(tenant, SettingService.SCOPE_PROJECT, layer, KEY_BASE_URL));
         if (baseUrl == null) {
-            throw new VaultException(
-                    "Vault '" + type + "' is missing required setting '" + KEY_BASE_URL + "'");
+            // Only remote providers need an endpoint. The settings-backed vault
+            // resolves locally, so demanding a URL there would be a made-up
+            // requirement — ask the provider instead of assuming.
+            if (type != null && selectProvider(type).requiresEndpoint()) {
+                throw new VaultException(
+                        "Vault '" + type + "' is missing required setting '" + KEY_BASE_URL + "'");
+            }
+            baseUrl = "";
         }
         Map<String, String> config = new LinkedHashMap<>();
         for (String suffix : CONFIG_SUFFIXES) {

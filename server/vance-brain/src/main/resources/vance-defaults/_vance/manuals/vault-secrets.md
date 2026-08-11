@@ -1,12 +1,18 @@
 ---
 triggers: vault, secret, infisical, api token, api key, credential, password, store a secret, save a secret, generate a secret, provision a credential, rotate a token, {{secret:vault, compose secrets, secret manager, wo speichere ich das token, secret ablegen, PASSWORD-typed, cannot be resolved through a secret reference, reserved for operator configuration, cannot be overwritten by an agent, SecretAccessDenied, hidden setting
-summary: Reference, inject, and provision secrets held in an external secret manager (Infisical). Read anywhere via {{secret:vault:<key>}}, inject into compose exec via a secrets: block, and create secrets with vault_secret_generate / vault_secret_set. Also explains the HIDDEN-vs-PASSWORD setting types and the three write rules — read this before reporting any "secret access denied" error as a dead end.
+summary: Reference, inject, and provision secrets — held either in Vancetope's own hidden settings (the default, no setup) or in an external manager (Infisical). Read anywhere via {{secret:vault:<key>}}, inject into compose exec via a secrets: block, and create secrets with vault_secret_generate / vault_secret_set. Also explains the HIDDEN-vs-PASSWORD setting types and the three write rules — read this before reporting any "secret access denied" error as a dead end.
 ---
 # Vault Secrets — reference, inject, provision
 
-Secrets (API tokens, DB passwords, credentials) live in an external secret
-manager bound to this scope — never in Vance documents or settings in plaintext.
-You interact with them three ways.
+Secrets (API tokens, DB passwords, credentials) live in a secret manager bound to
+this scope — never in Vance documents in plaintext. You interact with them three
+ways.
+
+**There is always a vault.** With no external manager configured, `vault:`
+resolves against Vancetope's own `hidden` settings — so
+`{{secret:vault:<key>}}` and `vault_secret_generate` work out of the box. Never
+say a secret cannot be stored because no vault is set up. A later switch to an
+external manager keeps every reference valid; only the values move.
 
 ## 1. Reference a secret (read)
 
@@ -18,8 +24,8 @@ Authorization: Bearer {{secret:vault:my-api-token}}
 ```
 
 The value is resolved **server-side at call time** and never enters your context.
-If nothing is bound or the key is missing, it substitutes empty (the call then
-fails with a 401), it does not error loudly.
+If the key is missing, it substitutes empty (the call then fails with a 401), it
+does not error loudly.
 
 ### Settings referenced this way must be HIDDEN, not PASSWORD
 
@@ -38,8 +44,10 @@ empty substitution. That is a configuration mistake, not a missing secret: the
 setting has to be re-typed to `HIDDEN`. A human does that in the settings editor
 or the corresponding setting form; you cannot change a setting's type yourself.
 
-`vault:` references are unaffected — they address the external manager, so no
-setting type is involved.
+For `vault:` it depends on what is bound. An external manager has no setting type
+in play. The **default** settings-backed vault does resolve settings, and there too
+only `HIDDEN` comes out — so the rule above holds for `vault:` as well whenever no
+external manager is configured. Either way you write the same reference.
 
 ## 2. Inject into a compose `exec` task (env)
 
@@ -62,7 +70,8 @@ exact injected value is masked from the log.
 ## 3. Provision or store a secret (write)
 
 These two tools are **deferred** — activate with `tool_description` first. Both need
-a bound vault and project-scope write permission.
+project-scope write permission. They do **not** need an external manager: without
+one they write a `hidden` setting (§5).
 
 - **`vault_secret_generate(key, [format], [length])`** — the safe choice.
   Generates the value server-side (`alphanumeric`/`hex`/`uuid`), stores it, and
@@ -85,12 +94,17 @@ token = vance.secret('vault:jira-token')           # Python (vance.py)
 ```
 
 Same grammar (`vault:` / `project:` / `tenant:` / `user:` / bare key); returns
-`null`/`None` when nothing is bound or it doesn't resolve. Available on
+`null`/`None` when the key doesn't resolve. Available on
 Cortex-run scripts (where `vance.documents` etc. also work). Pulled values are
 masked out of a JS string return / Python stdout — but don't echo or persist
 them needlessly.
 
-## 5. What you may and may not write into settings
+## 5. What you may and may not write
+
+Whether a write lands in an external manager or in a setting depends on the
+binding, and you cannot tell from the reference — that is the point. With the
+default (settings-backed) vault, `vault_secret_generate` / `vault_secret_set`
+write a `hidden` setting at project scope, so the rules below apply to them too.
 
 Installing a credential through `tool_template_apply` or a kit install writes a
 setting. Three rules apply to those writes because *you* triggered them, and each
@@ -112,10 +126,11 @@ to provision something yourself.
 
 ## Don't refuse without checking
 
-Never say "I can't store/generate a secret" or "I have no way to keep this
-credential safe" — you do: `vault_secret_generate` provisions one without ever
-exposing it, and `{{secret:vault:<key>}}` references it. A vault must be bound at
-the scope first (Profile/Workspace → *Vault* setting form); if none is, say so.
+Never say "I can't store/generate a secret", "I have no way to keep this
+credential safe", or "no vault is configured" — there is always one:
+`vault_secret_generate` provisions a secret without ever exposing it, and
+`{{secret:vault:<key>}}` references it. Configuring an external manager
+(Profile/Workspace → *Vault* setting form) is optional.
 
 Equally, don't report one of the §5 denials as "the system is broken" or retry it
 in a loop. Each one is a deliberate boundary with a named next step — state which

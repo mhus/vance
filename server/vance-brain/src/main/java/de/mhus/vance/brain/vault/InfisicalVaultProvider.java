@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.vault;
 
 import de.mhus.vance.shared.vault.VaultBinding;
+import de.mhus.vance.shared.vault.VaultScope;
 import de.mhus.vance.shared.vault.VaultProvider;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
@@ -29,12 +30,12 @@ public class InfisicalVaultProvider implements VaultProvider {
     }
 
     @Override
-    public @Nullable String readSecret(VaultBinding binding, String key) {
+    public @Nullable String readSecret(VaultBinding binding, VaultScope scope, String key) {
         return client.readSecret(binding, key);
     }
 
     @Override
-    public void writeSecret(VaultBinding binding, String key, String value) {
+    public void writeSecret(VaultBinding binding, VaultScope scope, String key, String value) {
         client.writeSecret(binding, key, value);
     }
 }

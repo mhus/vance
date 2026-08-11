@@ -30,24 +30,35 @@ fields:
   - name: type
     type: select
     required: true
-    defaultValue: "infisical"
+    defaultValue: "settings"
     label:
       de: "Secret-Manager"
       en: "Secret manager"
     help:
-      de: "Welches System die Secrets hält. v1 unterstützt nur Infisical
-           (self-hostbar); weitere Manager folgen als Addons."
-      en: "Which system holds the secrets. v1 supports Infisical only
-           (self-hostable); more managers follow as addons."
+      de: "Welches System die Secrets hält. `Vancetope-Settings` ist der
+           Default und braucht keine Konfiguration: `{{secret:vault:<key>}}`
+           löst dann gegen Settings vom Typ `hidden` im Projekt-Cascade auf.
+           `Infisical` (self-hostbar) hält die Secrets extern — die Referenzen
+           in Dokumenten bleiben beim Wechsel gültig, nur die Werte ziehen um."
+      en: "Which system holds the secrets. `Vancetope settings` is the default
+           and needs no configuration: `{{secret:vault:<key>}}` then resolves
+           against `hidden`-typed settings along the project cascade.
+           `Infisical` (self-hostable) holds them externally — references in
+           documents stay valid across a switch, only the values move."
     bindsTo:
       key: "vault.type"
     choices:
+      - value: "settings"
+        label:
+          de: "Vancetope-Settings (kein externer Manager)"
+          en: "Vancetope settings (no external manager)"
       - value: "infisical"
         label: { de: "Infisical", en: "Infisical" }
 
   # ─── Connection ──────────────────────────────────────────────────
 
   - name: baseUrl
+    showIf: "type == 'infisical'"
     type: string
     required: true
     defaultValue: "https://app.infisical.com"
@@ -63,6 +74,7 @@ fields:
       key: "vault.baseUrl"
 
   - name: project
+    showIf: "type == 'infisical'"
     type: string
     required: true
     label:
@@ -75,6 +87,7 @@ fields:
       key: "vault.project"
 
   - name: environment
+    showIf: "type == 'infisical'"
     type: string
     required: true
     defaultValue: "prod"
@@ -88,6 +101,7 @@ fields:
       key: "vault.environment"
 
   - name: path
+    showIf: "type == 'infisical'"
     type: string
     defaultValue: "/"
     label:
@@ -102,6 +116,7 @@ fields:
   # ─── Machine identity (Universal Auth) ───────────────────────────
 
   - name: clientId
+    showIf: "type == 'infisical'"
     type: string
     required: true
     label:
@@ -118,6 +133,7 @@ fields:
       key: "vault.clientId"
 
   - name: clientSecret
+    showIf: "type == 'infisical'"
     type: password
     required: true
     label:

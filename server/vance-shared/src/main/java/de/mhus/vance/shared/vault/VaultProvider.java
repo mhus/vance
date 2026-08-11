@@ -26,12 +26,28 @@ public interface VaultProvider {
     String type();
 
     /**
+     * Whether this provider addresses a remote endpoint and therefore needs
+     * {@code vault.baseUrl} to be set. {@code false} for a provider that resolves
+     * locally (the settings-backed one), so the operator is not asked for a URL
+     * that has no meaning.
+     */
+    default boolean requiresEndpoint() {
+        return true;
+    }
+
+    /**
      * Read the value of {@code key} from the vault described by {@code binding}.
+     *
+     * <p>{@code scope} is passed through because a provider may resolve
+     * <em>inside</em> Vancetope rather than against a remote endpoint — the
+     * settings-backed provider needs the tenant/project to look the value up. A
+     * remote provider ignores it: the binding already encodes which remote
+     * project/environment it points at.
      *
      * @return the secret value, or {@code null} if the vault has no such key
      * @throws VaultException on transport / auth failure
      */
-    @Nullable String readSecret(VaultBinding binding, String key);
+    @Nullable String readSecret(VaultBinding binding, VaultScope scope, String key);
 
     /**
      * Create or update {@code key} = {@code value} in the vault.
@@ -41,7 +57,7 @@ public interface VaultProvider {
      * backstop is the credential's own scope: a read-only machine identity
      * makes the underlying call fail regardless.
      */
-    default void writeSecret(VaultBinding binding, String key, String value) {
+    default void writeSecret(VaultBinding binding, VaultScope scope, String key, String value) {
         throw new UnsupportedOperationException(
                 "Vault provider '" + type() + "' does not support writing secrets");
     }

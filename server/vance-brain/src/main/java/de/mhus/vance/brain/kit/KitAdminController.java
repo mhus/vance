@@ -9,6 +9,7 @@ import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -110,7 +111,8 @@ public class KitAdminController {
         body.setProjectId(projectId);
         body.setMode(mode);
         try {
-            return kitService.importKit(tenant, body, actor(request));
+            return kitService.importKit(tenant, body, actor(request),
+                    SettingWriteOrigin.USER);
         } catch (KitException e) {
             throw kitError(e);
         }

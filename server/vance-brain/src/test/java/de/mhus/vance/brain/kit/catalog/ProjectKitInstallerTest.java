@@ -17,6 +17,7 @@ import de.mhus.vance.api.kit.ProjectKitEntry;
 import de.mhus.vance.brain.kit.KitException;
 import de.mhus.vance.brain.kit.KitService;
 import de.mhus.vance.shared.kit.catalog.ProjectKitsCatalogService;
+import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -53,7 +54,7 @@ class ProjectKitInstallerTest {
         assertThat(installer.installFromCatalog("t", "p", "  ", "actor")).isNull();
 
         verify(catalogService, never()).findByName(any(), any());
-        verify(kitService, never()).importKit(any(), any(), any());
+        verify(kitService, never()).importKit(any(), any(), any(), any());
     }
 
     @Test
@@ -68,7 +69,7 @@ class ProjectKitInstallerTest {
                 .hasMessageContaining("did not match any catalog entry")
                 .hasMessageContaining("kit_install");
 
-        verify(kitService, never()).importKit(any(), any(), any());
+        verify(kitService, never()).importKit(any(), any(), any(), any());
     }
 
     @Test
@@ -85,14 +86,15 @@ class ProjectKitInstallerTest {
                 .build();
         when(catalogService.findByName("acme", "base/research")).thenReturn(entry);
         KitOperationResultDto opResult = mock(KitOperationResultDto.class);
-        when(kitService.importKit(eq("acme"), any(), eq("actor"))).thenReturn(opResult);
+        when(kitService.importKit(eq("acme"), any(), eq("actor"), any())).thenReturn(opResult);
 
         KitOperationResultDto returned = installer.installFromCatalog(
                 "acme", "new-project", "base/research", "actor");
 
         assertThat(returned).isSameAs(opResult);
         ArgumentCaptor<KitImportRequestDto> reqCap = ArgumentCaptor.forClass(KitImportRequestDto.class);
-        verify(kitService).importKit(eq("acme"), reqCap.capture(), eq("actor"));
+        verify(kitService).importKit(eq("acme"), reqCap.capture(), eq("actor"),
+                eq(SettingWriteOrigin.USER));
         KitImportRequestDto sent = reqCap.getValue();
         assertThat(sent.getProjectId()).isEqualTo("new-project");
         assertThat(sent.getMode()).isEqualTo(KitImportMode.INSTALL);

@@ -8,6 +8,7 @@ import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.KitManifestDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.shared.project.ProjectService;
+import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -41,7 +42,8 @@ public class KitService {
      * {@code UPDATE} requires one; {@code APPLY} ignores the manifest.
      */
     public KitOperationResultDto importKit(
-            String tenantId, KitImportRequestDto request, @Nullable String actor) {
+            String tenantId, KitImportRequestDto request, @Nullable String actor,
+            SettingWriteOrigin origin) {
         validateImport(request);
         // The kit installer writes documents/settings/tools under
         // request.projectId. If no ProjectDocument with that name
@@ -79,6 +81,7 @@ public class KitService {
                     request.isPrune(),
                     request.isKeepPasswords(),
                     request.getVaultPassword(),
+                    origin,
                     actor);
         } finally {
             if (resolved != null) resolved.cleanup(workspace);
@@ -106,23 +109,26 @@ public class KitService {
 
     /** Convenience wrapper: forces {@link KitImportMode#INSTALL}. */
     public KitOperationResultDto install(
-            String tenantId, KitImportRequestDto request, @Nullable String actor) {
+            String tenantId, KitImportRequestDto request, @Nullable String actor,
+            SettingWriteOrigin origin) {
         request.setMode(KitImportMode.INSTALL);
-        return importKit(tenantId, request, actor);
+        return importKit(tenantId, request, actor, origin);
     }
 
     /** Convenience wrapper: forces {@link KitImportMode#UPDATE}. */
     public KitOperationResultDto update(
-            String tenantId, KitImportRequestDto request, @Nullable String actor) {
+            String tenantId, KitImportRequestDto request, @Nullable String actor,
+            SettingWriteOrigin origin) {
         request.setMode(KitImportMode.UPDATE);
-        return importKit(tenantId, request, actor);
+        return importKit(tenantId, request, actor, origin);
     }
 
     /** Convenience wrapper: forces {@link KitImportMode#APPLY}. */
     public KitOperationResultDto apply(
-            String tenantId, KitImportRequestDto request, @Nullable String actor) {
+            String tenantId, KitImportRequestDto request, @Nullable String actor,
+            SettingWriteOrigin origin) {
         request.setMode(KitImportMode.APPLY);
-        return importKit(tenantId, request, actor);
+        return importKit(tenantId, request, actor, origin);
     }
 
     /**
@@ -147,7 +153,8 @@ public class KitService {
             KitInheritDto source,
             java.util.Map<String, String> inputs,
             @Nullable String token,
-            @Nullable String actor) {
+            @Nullable String actor,
+            SettingWriteOrigin origin) {
         if (projectService.findByTenantAndName(tenantId, projectId).isEmpty()) {
             throw new KitException("project '" + projectId
                     + "' does not exist in tenant '" + tenantId
@@ -164,7 +171,7 @@ public class KitService {
                         resolved.topLayer().getName());
             }
             return templateApplier.applyTemplate(
-                    tenantId, projectId, source, resolved, inputs, actor);
+                    tenantId, projectId, source, resolved, inputs, actor, origin);
         } finally {
             if (resolved != null) resolved.cleanup(workspace);
         }

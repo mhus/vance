@@ -58,7 +58,7 @@ class ToolTemplateApplyToolAuthzTest {
         when(contextFactory.forToolSubject("acme", "alice")).thenReturn(SUBJECT);
         when(catalogService.findByName("acme", "jira"))
                 .thenReturn(mock(ToolTemplateCatalogEntry.class));
-        when(kitService.applyTemplate(any(), any(), any(), any(), any(), any()))
+        when(kitService.applyTemplate(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new TemplateApplier.ApplyResult(null, null, "jira"));
 
         tool.invoke(params(), CTX);
@@ -81,7 +81,7 @@ class ToolTemplateApplyToolAuthzTest {
                 .isInstanceOf(PermissionDeniedException.class);
 
         verifyNoInteractions(catalogService);
-        verify(kitService, never()).applyTemplate(any(), any(), any(), any(), any(), any());
+        verify(kitService, never()).applyTemplate(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test

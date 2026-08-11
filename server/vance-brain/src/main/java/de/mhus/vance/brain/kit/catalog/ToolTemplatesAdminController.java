@@ -16,6 +16,7 @@ import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.kit.catalog.ToolTemplateCatalogService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.Optional;
@@ -161,7 +162,8 @@ public class ToolTemplatesAdminController {
                     entry.getSource(),
                     body.getInputs() == null ? java.util.Map.of() : body.getInputs(),
                     body.getToken(),
-                    actor);
+                    actor,
+                    SettingWriteOrigin.USER);
             return ToolTemplateApplyResultDto.builder()
                     .templateName(result.templateName())
                     .installer(result.installer())

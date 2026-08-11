@@ -6,6 +6,7 @@ import de.mhus.vance.brain.kit.KitService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -86,6 +87,7 @@ public class KitInstallTool implements Tool {
                 .mode(KitImportMode.INSTALL)
                 .build();
         return KitToolSupport.resultToMap(
-                kitService.importKit(ctx.tenantId(), request, ctx.userId()));
+                kitService.importKit(ctx.tenantId(), request, ctx.userId(),
+                        SettingWriteOrigin.AGENT));
     }
 }

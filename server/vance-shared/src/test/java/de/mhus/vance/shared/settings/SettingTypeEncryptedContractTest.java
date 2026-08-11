@@ -42,7 +42,8 @@ class SettingTypeEncryptedContractTest {
     void setUp() {
         repository = mock(SettingRepository.class);
         service = new SettingService(repository, mock(MongoTemplate.class),
-                new AesEncryptionService("unit-test-master-key"), mock(AuditService.class));
+                new AesEncryptionService("unit-test-master-key"), mock(AuditService.class),
+                new AgentSettingKeyPolicy(""));
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 

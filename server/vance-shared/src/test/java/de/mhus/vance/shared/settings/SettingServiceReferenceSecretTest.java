@@ -43,7 +43,7 @@ class SettingServiceReferenceSecretTest {
         repository = mock(SettingRepository.class);
         encryption = new AesEncryptionService("unit-test-master-key");
         service = new SettingService(repository, mock(MongoTemplate.class),
-                encryption, mock(AuditService.class));
+                encryption, mock(AuditService.class), new AgentSettingKeyPolicy(""));
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 

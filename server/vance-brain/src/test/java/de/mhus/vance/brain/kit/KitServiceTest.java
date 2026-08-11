@@ -19,6 +19,7 @@ import de.mhus.vance.api.kit.KitMetadataDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
+import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -76,21 +77,21 @@ class KitServiceTest {
     void importKit_topLayerNotInstallable_rejectsInstall() {
         stubResolved(descriptor("base-kit").installable(false).build());
 
-        assertThatThrownBy(() -> service.importKit(TENANT, importRequest(KitImportMode.INSTALL), null))
+        assertThatThrownBy(() -> service.importKit(TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("base-kit")
                 .hasMessageContaining("installable=false");
-        verify(installer, never()).apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any());
+        verify(installer, never()).apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any(), any());
     }
 
     @Test
     void importKit_topLayerNotInstallable_rejectsApply() {
         stubResolved(descriptor("base-kit").installable(false).build());
 
-        assertThatThrownBy(() -> service.importKit(TENANT, importRequest(KitImportMode.APPLY), null))
+        assertThatThrownBy(() -> service.importKit(TENANT, importRequest(KitImportMode.APPLY), null, SettingWriteOrigin.USER))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("installable=false");
-        verify(installer, never()).apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any());
+        verify(installer, never()).apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any(), any());
     }
 
     // ── artifact=true ────────────────────────────────────────────────
@@ -99,11 +100,11 @@ class KitServiceTest {
     void importKit_artifactKit_rejectsInstall() {
         stubResolved(descriptor("tuning-kit").artifact(true).build());
 
-        assertThatThrownBy(() -> service.importKit(TENANT, importRequest(KitImportMode.INSTALL), null))
+        assertThatThrownBy(() -> service.importKit(TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("tuning-kit")
                 .hasMessageContaining("artifact");
-        verify(installer, never()).apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any());
+        verify(installer, never()).apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any(), any());
     }
 
     @Test
@@ -113,21 +114,21 @@ class KitServiceTest {
         when(installer.loadManifest(eq(TENANT), eq(PROJECT))).thenReturn(stubManifest());
         stubResolved(descriptor("tuning-kit").artifact(true).build());
 
-        assertThatThrownBy(() -> service.importKit(TENANT, importRequest(KitImportMode.UPDATE), null))
+        assertThatThrownBy(() -> service.importKit(TENANT, importRequest(KitImportMode.UPDATE), null, SettingWriteOrigin.USER))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("artifact");
-        verify(installer, never()).apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any());
+        verify(installer, never()).apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any(), any());
     }
 
     @Test
     void importKit_artifactKit_acceptsApply() {
         stubResolved(descriptor("tuning-kit").artifact(true).build());
-        when(installer.apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any()))
+        when(installer.apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any(), any()))
                 .thenReturn(KitOperationResultDto.builder().build());
 
-        assertThatCode(() -> service.importKit(TENANT, importRequest(KitImportMode.APPLY), null))
+        assertThatCode(() -> service.importKit(TENANT, importRequest(KitImportMode.APPLY), null, SettingWriteOrigin.USER))
                 .doesNotThrowAnyException();
-        verify(installer).apply(any(), any(), any(), any(), eq(KitImportMode.APPLY), anyBoolean(), anyBoolean(), any(), any());
+        verify(installer).apply(any(), any(), any(), any(), eq(KitImportMode.APPLY), anyBoolean(), anyBoolean(), any(), any(), any());
     }
 
     // ── happy path ───────────────────────────────────────────────────
@@ -135,12 +136,12 @@ class KitServiceTest {
     @Test
     void importKit_normalKit_install_callsInstaller() {
         stubResolved(descriptor("normal-kit").build());
-        when(installer.apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any()))
+        when(installer.apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any(), any()))
                 .thenReturn(KitOperationResultDto.builder().build());
 
-        service.importKit(TENANT, importRequest(KitImportMode.INSTALL), null);
+        service.importKit(TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER);
 
-        verify(installer).apply(any(), any(), any(), any(), eq(KitImportMode.INSTALL), anyBoolean(), anyBoolean(), any(), any());
+        verify(installer).apply(any(), any(), any(), any(), eq(KitImportMode.INSTALL), anyBoolean(), anyBoolean(), any(), any(), any());
     }
 
     // ── helpers ──────────────────────────────────────────────────────

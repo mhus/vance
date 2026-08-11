@@ -12,6 +12,7 @@ import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -121,7 +122,7 @@ public class ToolTemplateApplyTool implements Tool {
         try {
             result = kitService.applyTemplate(
                     ctx.tenantId(), projectId, entry.getSource(),
-                    inputs, token, ctx.userId());
+                    inputs, token, ctx.userId(), SettingWriteOrigin.AGENT);
         } catch (KitException e) {
             log.warn("apply template '{}' for project='{}' failed: {}",
                     templateName, projectId, e.getMessage());

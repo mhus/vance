@@ -66,6 +66,23 @@ vance:
       # localhost / a LAN service while testing — it re-opens SSRF and logs a
       # startup warning. Operator config only; never an LLM-controllable flag.
       allowPrivate: false
+  settings:
+    # Setting keys an agent may never write — through a kit install or a tool
+    # template, the two LLM-reachable setting-write paths. Applies regardless of
+    # the setting's type and regardless of whether it already exists.
+    #
+    # Without this an agent could create ai.provider.x.apiKey itself as a HIDDEN
+    # setting and then read it back through a secret reference, in this session
+    # and every later one — turning a transient exposure into a permanent one.
+    # Infrastructure credentials are operator territory and get set through
+    # setting forms.
+    #
+    # Comma-separated; each entry is an exact key or a prefix ending in '*'.
+    # Operator config only; never an LLM-controllable flag — deliberately a
+    # property and not a setting, since an agent with settings write access could
+    # otherwise widen its own permissions.
+    # See planning/setting-type-hidden.md §6.4 (rule W3).
+    agentWriteDenyKeys: "ai.provider.*,vault.*"
   fook:
     # Master on/off switch for the Fook feedback/triage subsystem —
     # the vance_support_request LLM tool, the web user-menu feedback

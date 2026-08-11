@@ -13,7 +13,9 @@ import de.mhus.vance.brain.servertool.ServerToolRegistry;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.servertool.ServerToolLoader;
+import de.mhus.vance.shared.settings.AgentSettingKeyPolicy;
 import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -64,6 +66,7 @@ public class KitInstaller {
     private final DocumentService documentService;
     private final SettingService settingService;
     private final ServerToolRegistry serverToolRegistry;
+    private final AgentSettingKeyPolicy agentKeyPolicy;
 
     public KitOperationResultDto apply(
             String tenantId,
@@ -74,6 +77,7 @@ public class KitInstaller {
             boolean prune,
             boolean keepPasswords,
             @Nullable String vaultPassword,
+            SettingWriteOrigin origin,
             @Nullable String actor) {
 
         KitDescriptorDto top = resolved.topLayer();
@@ -98,7 +102,7 @@ public class KitInstaller {
 
         // ── Settings.
         applySettings(tenantId, projectId, scan, previous, mode,
-                prune, keepPasswords, vaultPassword, top.isHasEncryptedSecrets(), result);
+                prune, keepPasswords, vaultPassword, top.isHasEncryptedSecrets(), origin, result);
 
         // ── Tools were once a kit-level concept; they now live as documents
         // under `documents/server-tools/<name>.yaml`. Existing kits that still
@@ -305,6 +309,7 @@ public class KitInstaller {
             @Nullable KitManifestDto previous, KitImportMode mode,
             boolean prune, boolean keepPasswords,
             @Nullable String vaultPassword, boolean kitDeclaresEncrypted,
+            SettingWriteOrigin origin,
             KitOperationResultDto.KitOperationResultDtoBuilder result) {
 
         Set<String> previousKeys = unionAcrossLayers(previous,
@@ -319,6 +324,19 @@ public class KitInstaller {
         for (Map.Entry<String, KitYamlMapper.ParsedSetting> entry : scan.settings().entrySet()) {
             String key = entry.getKey();
             KitYamlMapper.ParsedSetting parsed = entry.getValue();
+            // W3 — an agent picks the kit's git URL, so a crafted kit must not be
+            // able to write reserved operator keys. Applies to every type, not
+            // just the encrypted ones: overwriting ai.provider.*.apiKey with a
+            // plain STRING would be just as destructive. Skip + report rather
+            // than abort, matching how this loop handles every other refusal.
+            if (origin == SettingWriteOrigin.AGENT && agentKeyPolicy.isDenied(key)) {
+                log.warn("Kit install: refusing agent-originated write to reserved "
+                        + "setting key '{}' (tenant='{}' project='{}')", key, tenantId, projectId);
+                result.warnings(addWarning(result.build().getWarnings(),
+                        "setting '" + key + "' is reserved for operator configuration "
+                                + "and was not written"));
+                continue;
+            }
             boolean existed = settingService.exists(
                     tenantId, SettingService.SCOPE_PROJECT, projectId, key);
 

@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.settings;
 
 import de.mhus.vance.api.settings.SettingType;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Thrown when an authored {@code {{secret:…}}} reference tries to resolve a
@@ -22,7 +23,7 @@ import de.mhus.vance.api.settings.SettingType;
  */
 public class SecretAccessDeniedException extends RuntimeException {
 
-    private final String key;
+    private final @Nullable String key;
 
     public SecretAccessDeniedException(String key, SettingType type) {
         super("setting '" + key + "' is " + type + "-typed and cannot be resolved through a "
@@ -32,8 +33,20 @@ public class SecretAccessDeniedException extends RuntimeException {
         this.key = key;
     }
 
-    /** The setting key that was refused — for callers rendering a hint. */
-    public String getKey() {
+    /**
+     * Free-form variant for the write-side denials, which need their own wording
+     * (overwrite refused / key reserved) rather than the read-side sentence.
+     */
+    public SecretAccessDeniedException(String message) {
+        super(message);
+        this.key = null;
+    }
+
+    /**
+     * The setting key that was refused — for callers rendering a hint.
+     * {@code null} for the free-form variant, whose message already names it.
+     */
+    public @Nullable String getKey() {
         return key;
     }
 }

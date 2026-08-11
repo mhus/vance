@@ -37,6 +37,7 @@ public class SettingService {
     private final MongoTemplate mongoTemplate;
     private final AesEncryptionService encryption;
     private final AuditService auditService;
+    private final AgentSettingKeyPolicy agentKeyPolicy;
 
     // ──────────────────── Raw lookup ────────────────────
 
@@ -564,9 +565,52 @@ public class SettingService {
     }
 
     /**
+     * Stores a secret whose value passed through an agent's context. Enforces the
+     * three agent-write rules from {@code planning/setting-type-hidden.md} §6:
+     *
+     * <ul>
+     *   <li><b>W3</b> — a deny-listed key ({@link AgentSettingKeyPolicy}) is
+     *       refused outright, whatever its type and whether or not it exists.</li>
+     *   <li><b>W1</b> — an existing {@link SettingType#PASSWORD} setting is never
+     *       overwritten. Otherwise an agent could clobber a credential with a
+     *       value of its own and read it back; confidentiality would survive (it
+     *       only reads its own value) but the real credential would be gone.</li>
+     *   <li><b>W2</b> — the result is always {@link SettingType#HIDDEN}. The
+     *       value already travelled through the model context, so PASSWORD would
+     *       be a protection claim rather than protection.</li>
+     * </ul>
+     *
+     * <p>Only for values the agent itself supplied. A value the agent never saw —
+     * a kit's vault-encrypted blob, for instance — keeps its declared type; see
+     * §6.2.
+     *
+     * @throws SecretAccessDeniedException on a W1 or W3 violation
+     */
+    public SettingDocument setAgentSecret(
+            String tenantId, String referenceType, String referenceId, String key,
+            @Nullable String plaintext) {
+        agentKeyPolicy.requireAgentWritable(key);
+        Optional<SettingDocument> existing = find(tenantId, referenceType, referenceId, key);
+        if (existing.isPresent() && existing.get().getType() == SettingType.PASSWORD) {
+            log.warn("Refusing agent-originated overwrite of PASSWORD setting: "
+                            + "tenant='{}' ref='{}:{}' key='{}'",
+                    tenantId, referenceType, referenceId, key);
+            throw new SecretAccessDeniedException(
+                    "setting '" + key + "' exists as PASSWORD and cannot be overwritten by an "
+                            + "agent: PASSWORD settings can neither be read nor written through "
+                            + "an agent-reachable path. A human has to change it.");
+        }
+        return setEncryptedSecret(
+                tenantId, referenceType, referenceId, key, plaintext, SettingType.HIDDEN);
+    }
+
+    /**
      * Stores {@code plaintext} encrypted under the given encrypted {@code type}
      * ({@link SettingType#PASSWORD} or {@link SettingType#HIDDEN}). The only
      * write path for encrypted values — {@link #set} rejects them.
+     *
+     * <p>Carries no agent-write restriction: callers on an agent-reachable path
+     * use {@link #setAgentSecret} instead.
      *
      * @throws IllegalArgumentException if {@code type} is not an encrypted type
      */

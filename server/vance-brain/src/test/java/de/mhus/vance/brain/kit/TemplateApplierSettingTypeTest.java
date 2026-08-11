@@ -8,7 +8,10 @@ import static org.mockito.Mockito.verify;
 
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.settings.AgentSettingKeyPolicy;
+import de.mhus.vance.shared.settings.SecretAccessDeniedException;
 import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -16,9 +19,14 @@ import org.junit.jupiter.api.Test;
  * A kit template stores a secret so the kit's own documents can reference it via
  * {@code {{secret:…}}} at runtime — that is the documented purpose of
  * {@link TemplateInputTarget.Kind#SETTING}. Since PASSWORD-typed settings are not
- * reference-readable, such a write must land as
- * {@link SettingType#HIDDEN}; writing PASSWORD would install a credential the
+ * reference-readable, such a write must land as {@link SettingType#HIDDEN}
+ * whichever origin triggered it; writing PASSWORD would install a credential the
  * installed tool cannot use.
+ *
+ * <p>The origins differ in the guards, not in the resulting type: an
+ * {@link SettingWriteOrigin#AGENT} write goes through
+ * {@code setAgentSecret} (W1: no overwrite of an existing PASSWORD) and is
+ * checked against the reserved-key deny-list (W3).
  */
 class TemplateApplierSettingTypeTest {
 
@@ -26,26 +34,66 @@ class TemplateApplierSettingTypeTest {
     private static final String PROJECT = "instant-hole";
 
     private final SettingService settingService = mock(SettingService.class);
-    private final TemplateApplier applier = new TemplateApplier(
-            mock(KitInstaller.class), settingService, mock(DocumentService.class));
+
+    private TemplateApplier applierWith(String denyKeys) {
+        return new TemplateApplier(
+                mock(KitInstaller.class), settingService, mock(DocumentService.class),
+                new AgentSettingKeyPolicy(denyKeys));
+    }
 
     @Test
-    void password_input_is_stored_as_hidden_so_the_kit_document_can_reference_it() {
-        applier.persistSetting(TENANT, PROJECT, settingTarget(
-                TemplateInputType.PASSWORD, "smtp.password", "s3cr3t"));
+    void an_agent_write_goes_through_the_agent_secret_path() {
+        applierWith("").persistSetting(TENANT, PROJECT,
+                settingTarget(TemplateInputType.PASSWORD, "smtp.password", "s3cr3t"),
+                SettingWriteOrigin.AGENT);
 
-        verify(settingService).setEncryptedSecret(
-                eq(TENANT), eq(SettingService.SCOPE_PROJECT), eq(PROJECT),
-                eq("smtp.password"), eq("s3cr3t"), eq(SettingType.HIDDEN));
-        verify(settingService, never()).setEncryptedPassword(
+        verify(settingService).setAgentSecret(
                 eq(TENANT), eq(SettingService.SCOPE_PROJECT), eq(PROJECT),
                 eq("smtp.password"), eq("s3cr3t"));
     }
 
     @Test
+    void a_human_write_stores_hidden_directly_without_the_agent_guards() {
+        applierWith("").persistSetting(TENANT, PROJECT,
+                settingTarget(TemplateInputType.PASSWORD, "smtp.password", "s3cr3t"),
+                SettingWriteOrigin.USER);
+
+        verify(settingService).setEncryptedSecret(
+                eq(TENANT), eq(SettingService.SCOPE_PROJECT), eq(PROJECT),
+                eq("smtp.password"), eq("s3cr3t"), eq(SettingType.HIDDEN));
+        verify(settingService, never()).setAgentSecret(
+                eq(TENANT), eq(SettingService.SCOPE_PROJECT), eq(PROJECT),
+                eq("smtp.password"), eq("s3cr3t"));
+    }
+
+    @Test
+    void an_agent_write_to_a_reserved_key_is_refused_before_it_reaches_the_service() {
+        assertThatThrownBy(() -> applierWith("ai.provider.*,vault.*")
+                .persistSetting(TENANT, PROJECT,
+                        settingTarget(TemplateInputType.PASSWORD,
+                                "ai.provider.default.apiKey", "sk-agent"),
+                        SettingWriteOrigin.AGENT))
+                .isInstanceOf(SecretAccessDeniedException.class)
+                .hasMessageContaining("reserved for operator configuration");
+    }
+
+    @Test
+    void the_same_reserved_key_is_writable_on_the_human_path() {
+        // W3 constrains the agent, not the operator applying a template by hand.
+        applierWith("ai.provider.*,vault.*").persistSetting(TENANT, PROJECT,
+                settingTarget(TemplateInputType.PASSWORD, "ai.provider.default.apiKey", "sk-human"),
+                SettingWriteOrigin.USER);
+
+        verify(settingService).setEncryptedSecret(
+                eq(TENANT), eq(SettingService.SCOPE_PROJECT), eq(PROJECT),
+                eq("ai.provider.default.apiKey"), eq("sk-human"), eq(SettingType.HIDDEN));
+    }
+
+    @Test
     void non_password_input_still_lands_as_a_plain_string_setting() {
-        applier.persistSetting(TENANT, PROJECT, settingTarget(
-                TemplateInputType.STRING, "smtp.host", "smtp.example.com"));
+        applierWith("").persistSetting(TENANT, PROJECT,
+                settingTarget(TemplateInputType.STRING, "smtp.host", "smtp.example.com"),
+                SettingWriteOrigin.AGENT);
 
         verify(settingService).set(
                 eq(TENANT), eq(SettingService.SCOPE_PROJECT), eq(PROJECT),
@@ -54,7 +102,7 @@ class TemplateApplierSettingTypeTest {
 
     @Test
     void a_target_outside_the_apply_project_is_still_rejected() {
-        // The confinement guard predates this change and must survive it — a
+        // The confinement guard predates all of this and must survive it — a
         // template must not reach _tenant, where the compiled-read secrets live.
         TemplateApplier.SettingTarget st = new TemplateApplier.SettingTarget(
                 new TemplateInput(
@@ -65,7 +113,8 @@ class TemplateApplierSettingTypeTest {
                                 "ai.provider.default.apiKey")),
                 "stolen");
 
-        assertThatThrownBy(() -> applier.persistSetting(TENANT, PROJECT, st))
+        assertThatThrownBy(() -> applierWith("")
+                .persistSetting(TENANT, PROJECT, st, SettingWriteOrigin.AGENT))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("outside the apply-project");
     }

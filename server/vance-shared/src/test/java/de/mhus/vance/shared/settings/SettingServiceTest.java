@@ -45,7 +45,8 @@ class SettingServiceTest {
         mongoTemplate = mock(org.springframework.data.mongodb.core.MongoTemplate.class);
         audit = mock(AuditService.class);
         encryption = new AesEncryptionService("unit-test-master-key");
-        service = new SettingService(repository, mongoTemplate, encryption, audit);
+        service = new SettingService(repository, mongoTemplate, encryption, audit,
+                new AgentSettingKeyPolicy(""));
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 

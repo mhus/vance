@@ -8,6 +8,7 @@ import de.mhus.vance.api.kit.ProjectKitsCatalogDto;
 import de.mhus.vance.brain.kit.KitException;
 import de.mhus.vance.brain.kit.KitService;
 import de.mhus.vance.shared.kit.catalog.ProjectKitsCatalogService;
+import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import java.util.List;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -84,7 +85,7 @@ public class ProjectKitInstaller {
                 .build();
         log.info("Installing catalog kit '{}' into tenantId='{}' projectId='{}' (wish='{}')",
                 entry.getName(), tenantId, projectId, kitNameOrWish);
-        return kitService.importKit(tenantId, request, actor);
+        return kitService.importKit(tenantId, request, actor, SettingWriteOrigin.USER);
     }
 
     /**

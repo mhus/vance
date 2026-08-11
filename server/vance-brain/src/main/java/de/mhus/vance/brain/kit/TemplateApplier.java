@@ -6,7 +6,9 @@ import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.settings.AgentSettingKeyPolicy;
 import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -70,6 +72,7 @@ public class TemplateApplier {
     private final KitInstaller installer;
     private final SettingService settingService;
     private final DocumentService documentService;
+    private final AgentSettingKeyPolicy agentKeyPolicy;
 
     /**
      * Applies {@code resolved} as a template-driven kit. The build tree
@@ -92,7 +95,8 @@ public class TemplateApplier {
             KitInheritDto source,
             KitResolver.ResolvedKit resolved,
             Map<String, String> inputs,
-            @Nullable String actor) {
+            @Nullable String actor,
+            SettingWriteOrigin origin) {
 
         Path buildRoot = resolved.buildRoot();
         Path templatePath = buildRoot.resolve(TEMPLATE_FILENAME);
@@ -150,13 +154,14 @@ public class TemplateApplier {
                 /*prune*/ false,
                 /*keepPasswords*/ false,
                 /*vaultPassword*/ null,
+                origin,
                 actor);
 
         // Persist setting-targeted inputs after the documents land —
         // settings reference templates that may live in those documents
         // (e.g. cascade lookups expect the project doc tree to exist).
         for (SettingTarget st : settingWrites.values()) {
-            persistSetting(tenantId, projectId, st);
+            persistSetting(tenantId, projectId, st, origin);
         }
 
         // Persist the post-apply audit blob — pre-fill cache for the
@@ -474,7 +479,8 @@ public class TemplateApplier {
 
     // Package-private so TemplateApplierSettingTypeTest can pin the PASSWORD -> HIDDEN
     // rule directly instead of driving a whole kit apply for it.
-    void persistSetting(String tenantId, String applyProject, SettingTarget st) {
+    void persistSetting(String tenantId, String applyProject, SettingTarget st,
+            SettingWriteOrigin origin) {
         String project = resolveProjectFor(st.input.target(), applyProject);
         // Security (code-review-2): a kit template's setting target must stay within
         // the project the kit is applied to. An untrusted template.yaml could
@@ -489,21 +495,29 @@ public class TemplateApplier {
                     + "' — cross-project/tenant setting targets are not allowed");
         }
         String key = st.input.target().key();
+        if (origin == SettingWriteOrigin.AGENT) {
+            // The value came out of the model's context (tool_template_apply
+            // passes the agent's `inputs` straight through), so the agent-write
+            // rules apply: no overwrite of an existing PASSWORD setting, no
+            // deny-listed key, result always HIDDEN. W1-W3, §6.
+            agentKeyPolicy.requireAgentWritable(key);
+        }
         if (st.input.type() == TemplateInputType.PASSWORD) {
             // HIDDEN, not PASSWORD: a kit template stores a secret precisely so
             // the kit's own documents can reference it via {{secret:...}} at
             // runtime (see TemplateInputTarget's javadoc — that is what
             // Kind.SETTING is for). A PASSWORD-typed setting is not
             // reference-readable, so writing one here would install a credential
-            // the installed tool cannot use.
-            //
-            // Keys that only compiled code reads (ai.provider.*, vault.*) do not
-            // come from kits — they are operator config set through setting-forms,
-            // and the confinement check above already blocks a template from
-            // reaching the _tenant scope where they live.
-            settingService.setEncryptedSecret(
-                    tenantId, SettingService.SCOPE_PROJECT, project, key,
-                    st.value, SettingType.HIDDEN);
+            // the installed tool cannot use. Both origins agree on that; they
+            // differ only in the W1/W3 guards above and below.
+            if (origin == SettingWriteOrigin.AGENT) {
+                settingService.setAgentSecret(
+                        tenantId, SettingService.SCOPE_PROJECT, project, key, st.value);
+            } else {
+                settingService.setEncryptedSecret(
+                        tenantId, SettingService.SCOPE_PROJECT, project, key,
+                        st.value, SettingType.HIDDEN);
+            }
         } else {
             settingService.set(
                     tenantId, SettingService.SCOPE_PROJECT, project, key,

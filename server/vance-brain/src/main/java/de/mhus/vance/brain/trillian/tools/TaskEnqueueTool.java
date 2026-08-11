@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -92,30 +91,19 @@ public class TaskEnqueueTool implements Tool {
                             + "inside a Trillian-Control session");
         }
         ThinkProcessDocument peer = peerOpt.get();
-        String taskId = UUID.randomUUID().toString();
-        String humanSummary = "Task request: " + truncate(description, 240);
-
-        Optional<String> eventId = api.dispatchTaskEvent(
-                ctx.processId(),
-                peer.getId(),
-                TrillianInternalApi.TASK_EVENT_REQUEST,
-                taskId,
-                humanSummary,
-                Map.of(TrillianInternalApi.PAYLOAD_KEY_DESCRIPTION, description));
-        if (eventId.isEmpty()) {
+        // Shared with the //trillian task command, so a task raised by
+        // hand is indistinguishable from one Control raised.
+        Optional<String> taskId = api.enqueueTask(ctx.processId(), peer, description);
+        if (taskId.isEmpty()) {
             throw new ToolException(
                     "Failed to dispatch task to Trillian User — see brain logs for detail");
         }
 
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("taskId", taskId);
+        out.put("taskId", taskId.get());
         out.put("status", "queued");
         out.put("peerProcessName", peer.getName());
-        out.put("eventId", eventId.get());
         return out;
     }
 
-    private static String truncate(String s, int max) {
-        return s.length() <= max ? s : s.substring(0, max - 1) + "…";
-    }
 }

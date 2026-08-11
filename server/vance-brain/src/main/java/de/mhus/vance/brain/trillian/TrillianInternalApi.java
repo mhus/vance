@@ -14,6 +14,7 @@ import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -179,18 +180,120 @@ public class TrillianInternalApi {
      * yet.
      */
     public int clearPending(String targetProcessId) {
-        List<EngineMessageDocument> queued = engineMessageService.drainInbox(targetProcessId);
+        return clearPending(targetProcessId, /*onlyTaskRequests*/ false).total();
+    }
+
+    /**
+     * Drops queued messages from the peer's inbox.
+     *
+     * <p>The inbox is not a task list — it also carries the worker's
+     * result events (task_done / worker replies). Dropping those loses
+     * work that was already finished: the loop never learns the outcome
+     * and the task stays "open" forever. Hence {@code onlyTaskRequests},
+     * which removes what is still waiting to be started and leaves
+     * results alone.
+     *
+     * @return counts, so a caller can say what it actually threw away
+     */
+    public ClearResult clearPending(String targetProcessId, boolean onlyTaskRequests) {
+        List<EngineMessageDocument> queued =
+                engineMessageService.findInboxedByTargets(List.of(targetProcessId));
         if (queued.isEmpty()) {
-            return 0;
+            return new ClearResult(0, 0, 0);
         }
-        List<String> ids = queued.stream()
-                .map(EngineMessageDocument::getMessageId)
-                .filter(java.util.Objects::nonNull)
-                .toList();
+        List<String> ids = new ArrayList<>();
+        int requests = 0;
+        int other = 0;
+        for (EngineMessageDocument m : queued) {
+            boolean isRequest = TASK_EVENT_REQUEST.equals(taskEventOf(m));
+            if (onlyTaskRequests && !isRequest) {
+                continue;
+            }
+            if (m.getMessageId() != null) {
+                ids.add(m.getMessageId());
+                if (isRequest) {
+                    requests++;
+                } else {
+                    other++;
+                }
+            }
+        }
+        if (ids.isEmpty()) {
+            return new ClearResult(0, 0, 0);
+        }
         engineMessageService.markDrained(ids);
-        log.info("Trillian cleared {} pending messages for process id='{}'",
-                ids.size(), targetProcessId);
-        return ids.size();
+        log.info("Trillian cleared {} pending message(s) for process id='{}' (onlyTaskRequests={})",
+                ids.size(), targetProcessId, onlyTaskRequests);
+        return new ClearResult(ids.size(), requests, other);
+    }
+
+    /** Outcome of {@link #clearPending(String, boolean)}. */
+    public record ClearResult(int total, int taskRequests, int other) {
+    }
+
+    /**
+     * The peer's inbox as it stands, without consuming it — what is
+     * waiting to be picked up on the next turn.
+     *
+     * <p>{@code info} can only report a depth; a number says nothing
+     * about whether those are unstarted tasks or results waiting to be
+     * reported back.
+     */
+    public List<PendingEntry> listPending(String targetProcessId) {
+        List<PendingEntry> entries = new ArrayList<>();
+        for (EngineMessageDocument m :
+                engineMessageService.findInboxedByTargets(List.of(targetProcessId))) {
+            entries.add(new PendingEntry(
+                    m.getMessageId(),
+                    taskEventOf(m),
+                    stringPayload(m, PAYLOAD_KEY_TASK_ID),
+                    stringPayload(m, PAYLOAD_KEY_DESCRIPTION),
+                    m.getCreatedAt()));
+        }
+        return entries;
+    }
+
+    /**
+     * One queued message. {@code taskEvent} is null for anything that is
+     * not a Trillian task event — user input, plain replies.
+     */
+    public record PendingEntry(
+            String messageId,
+            @Nullable String taskEvent,
+            @Nullable String taskId,
+            @Nullable String description,
+            @Nullable Instant queuedAt) {
+    }
+
+    /**
+     * Queues a task for the peer. Shared by {@code task_enqueue} and the
+     * {@code //trillian task} command so a task raised by hand is
+     * indistinguishable from one Control raised.
+     *
+     * @return the generated task id, or empty when dispatch failed
+     */
+    public Optional<String> enqueueTask(
+            String senderProcessId, ThinkProcessDocument peer, String description) {
+        String taskId = UUID.randomUUID().toString();
+        String humanSummary = "Task request: "
+                + (description.length() <= 240 ? description : description.substring(0, 237) + "...");
+        Optional<String> eventId = dispatchTaskEvent(
+                senderProcessId, peer.getId(), TASK_EVENT_REQUEST, taskId, humanSummary,
+                Map.of(PAYLOAD_KEY_DESCRIPTION, description));
+        return eventId.isEmpty() ? Optional.empty() : Optional.of(taskId);
+    }
+
+    private static @Nullable String taskEventOf(EngineMessageDocument m) {
+        return stringPayload(m, PAYLOAD_KEY_TASK_EVENT);
+    }
+
+    private static @Nullable String stringPayload(EngineMessageDocument m, String key) {
+        Map<String, Object> payload = m.getPayload();
+        if (payload == null) {
+            return null;
+        }
+        Object v = payload.get(key);
+        return v == null ? null : v.toString();
     }
 
     /**

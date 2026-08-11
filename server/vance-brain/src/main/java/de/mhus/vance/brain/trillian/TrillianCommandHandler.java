@@ -69,13 +69,18 @@ public class TrillianCommandHandler implements EngineCommandHandler {
         }
         ThinkProcessDocument peer = peerOpt.get();
 
+        String rest = head[1];
         return switch (sub) {
             case "info" -> info(process, peer);
+            case "queue" -> queue(peer);
+            case "task" -> task(process, peer, rest);
             case "stop" -> stop(peer);
             case "continue", "resume" -> resume(peer);
-            case "clear" -> clear(peer);
+            case "clear" -> clear(peer, rest);
             default -> EngineCommandResult.error(
-                    "unknown subcommand '" + sub + "' (info | stop | continue | clear)");
+                    "unknown subcommand '" + sub
+                            + "' (info | queue | task <description> | stop | continue "
+                            + "| clear [all])");
         };
     }
 
@@ -137,6 +142,52 @@ public class TrillianCommandHandler implements EngineCommandHandler {
         return workers;
     }
 
+    /**
+     * The queue itself, not just its depth. The inbox mixes unstarted
+     * task requests with results the worker still has to report, and
+     * which of the two is waiting changes what you should do about it.
+     */
+    private EngineCommandResult queue(ThinkProcessDocument peer) {
+        List<TrillianInternalApi.PendingEntry> pending = api.listPending(peer.getId());
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (TrillianInternalApi.PendingEntry e : pending) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("kind", e.taskEvent() == null ? "message" : e.taskEvent());
+            row.put("taskId", e.taskId());
+            row.put("description", abbreviate(e.description()));
+            row.put("queued", age(e.queuedAt()));
+            rows.add(row);
+        }
+        long requests = pending.stream()
+                .filter(e -> TrillianInternalApi.TASK_EVENT_REQUEST.equals(e.taskEvent()))
+                .count();
+        return EngineCommandResult.ok(
+                pending.size() + " queued (" + requests + " waiting task(s), "
+                        + (pending.size() - requests) + " other)",
+                Map.of("pending", rows));
+    }
+
+    /**
+     * Queues a task without going through Control's LLM. Useful when the
+     * wording is already settled — and the only way to exercise the
+     * worker loop when the chat side is wedged or slow.
+     */
+    private EngineCommandResult task(
+            ThinkProcessDocument control, ThinkProcessDocument peer, String description) {
+        String desc = description.trim();
+        if (desc.isEmpty()) {
+            return EngineCommandResult.error("usage: //trillian task <description>");
+        }
+        Optional<String> taskId = api.enqueueTask(control.getId(), peer, desc);
+        if (taskId.isEmpty()) {
+            return EngineCommandResult.error(
+                    "Failed to queue the task — see brain logs for detail");
+        }
+        return EngineCommandResult.ok(
+                "Queued (taskId=" + taskId.get() + ").",
+                Map.of("taskId", taskId.get()));
+    }
+
     private EngineCommandResult stop(ThinkProcessDocument peer) {
         try {
             ThinkProcessStatus now = api.pausePeer(peer);
@@ -160,11 +211,32 @@ public class TrillianCommandHandler implements EngineCommandHandler {
         }
     }
 
-    private EngineCommandResult clear(ThinkProcessDocument peer) {
-        int dropped = api.clearPending(peer.getId());
-        return EngineCommandResult.ok(
-                "Dropped " + dropped + " queued message(s) from the worker's inbox.",
-                Map.of("dropped", dropped));
+    /**
+     * Drops waiting task requests. Result events stay unless {@code all}
+     * is given: throwing those away loses work that already happened —
+     * the loop never learns the outcome, and the task stays open for
+     * good.
+     */
+    private EngineCommandResult clear(ThinkProcessDocument peer, String rest) {
+        boolean all = "all".equalsIgnoreCase(rest.trim());
+        TrillianInternalApi.ClearResult result = api.clearPending(peer.getId(), !all);
+        String message = all
+                ? "Dropped " + result.total() + " message(s) — the whole inbox, results included."
+                : "Dropped " + result.taskRequests() + " waiting task(s); "
+                        + "result events left in place (//trillian clear all drops those too).";
+        return EngineCommandResult.ok(message, Map.of(
+                "dropped", result.total(),
+                "taskRequests", result.taskRequests(),
+                "other", result.other()));
+    }
+
+    private static @org.jspecify.annotations.Nullable String abbreviate(
+            @org.jspecify.annotations.Nullable String s) {
+        if (s == null) {
+            return null;
+        }
+        String t = s.strip().replace('\n', ' ');
+        return t.length() <= 80 ? t : t.substring(0, 77) + "...";
     }
 
     /** One line for the terminal; the structured value carries the rest. */

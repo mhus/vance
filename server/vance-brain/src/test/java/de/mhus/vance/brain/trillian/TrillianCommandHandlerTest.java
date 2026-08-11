@@ -163,14 +163,109 @@ class TrillianCommandHandlerTest {
         verify(api).resumePeer(any());
     }
 
+    // ──── queue ─────────────────────────────────────────────────────────
+
     @Test
-    void clear_dropsQueuedMessagesAndReportsHowMany() {
-        when(api.clearPending("worker-proc")).thenReturn(4);
+    void queue_listsWhatIsWaitingWithItsKind() {
+        when(api.listPending("worker-proc")).thenReturn(List.of(
+                request("t-1", "count the markdown docs"),
+                done("t-0")));
+
+        EngineCommandResult result = handler.handle(control(), command("queue"));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows =
+                (List<Map<String, Object>>) value(result).get("pending");
+        assertThat(rows).hasSize(2);
+        assertThat(rows.get(0))
+                .containsEntry("kind", "task_request")
+                .containsEntry("taskId", "t-1")
+                .containsEntry("description", "count the markdown docs");
+        assertThat(rows.get(1)).containsEntry("kind", "task_done");
+    }
+
+    @Test
+    void queue_separatesWaitingTasksFromOtherMessages() {
+        when(api.listPending("worker-proc")).thenReturn(List.of(
+                request("t-1", "a"), request("t-2", "b"), done("t-0")));
+
+        EngineCommandResult result = handler.handle(control(), command("queue"));
+
+        // A depth of 3 says nothing about whether anything is still to be
+        // started — this does.
+        assertThat(result.message()).contains("2 waiting task(s)").contains("1 other");
+    }
+
+    @Test
+    void queue_abbreviatesLongDescriptions() {
+        when(api.listPending("worker-proc"))
+                .thenReturn(List.of(request("t-1", "x".repeat(200))));
+
+        EngineCommandResult result = handler.handle(control(), command("queue"));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows =
+                (List<Map<String, Object>>) value(result).get("pending");
+        assertThat((String) rows.get(0).get("description")).hasSizeLessThan(85).endsWith("...");
+    }
+
+    // ──── task ──────────────────────────────────────────────────────────
+
+    @Test
+    void task_queuesThroughTheSharedApi() {
+        when(api.enqueueTask(any(), any(), any())).thenReturn(Optional.of("t-9"));
+
+        EngineCommandResult result = handler.handle(
+                control(), command("task count all markdown docs"));
+
+        // Same call task_enqueue makes, so a hand-raised task is
+        // indistinguishable from one Control raised.
+        verify(api).enqueueTask(eq("control-proc"), any(), eq("count all markdown docs"));
+        assertThat(result.message()).contains("t-9");
+    }
+
+    @Test
+    void task_withoutDescription_explainsUsage() {
+        EngineCommandResult result = handler.handle(control(), command("task"));
+
+        assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.ERROR);
+        assertThat(result.message()).contains("//trillian task <description>");
+        verify(api, never()).enqueueTask(any(), any(), any());
+    }
+
+    @Test
+    void task_dispatchFailure_isReported() {
+        when(api.enqueueTask(any(), any(), any())).thenReturn(Optional.empty());
+
+        assertThat(handler.handle(control(), command("task do a thing")).outcome())
+                .isEqualTo(EngineCommandOutcome.ERROR);
+    }
+
+    // ──── clear ─────────────────────────────────────────────────────────
+
+    @Test
+    void clear_dropsWaitingTasksButKeepsResults() {
+        when(api.clearPending("worker-proc", true))
+                .thenReturn(new TrillianInternalApi.ClearResult(2, 2, 0));
 
         EngineCommandResult result = handler.handle(control(), command("clear"));
 
-        assertThat(result.message()).contains("4");
-        assertThat(value(result)).containsEntry("dropped", 4);
+        // Dropping a task_done would lose work that already happened —
+        // the loop never learns the outcome and the task stays open.
+        verify(api).clearPending("worker-proc", true);
+        assertThat(result.message()).contains("2 waiting task(s)").contains("left in place");
+    }
+
+    @Test
+    void clearAll_dropsEverythingAndSaysSo() {
+        when(api.clearPending("worker-proc", false))
+                .thenReturn(new TrillianInternalApi.ClearResult(3, 2, 1));
+
+        EngineCommandResult result = handler.handle(control(), command("clear all"));
+
+        verify(api).clearPending("worker-proc", false);
+        assertThat(result.message()).contains("results included");
+        assertThat(value(result)).containsEntry("other", 1);
     }
 
     @Test
@@ -203,6 +298,22 @@ class TrillianCommandHandlerTest {
     }
 
     // ──── helpers ───────────────────────────────────────────────────────
+
+    private static TrillianInternalApi.PendingEntry request(String taskId, String description) {
+        return new TrillianInternalApi.PendingEntry(
+                "m-" + taskId, TrillianInternalApi.TASK_EVENT_REQUEST, taskId, description,
+                java.time.Instant.now());
+    }
+
+    private static TrillianInternalApi.PendingEntry done(String taskId) {
+        return new TrillianInternalApi.PendingEntry(
+                "m-" + taskId, TrillianInternalApi.TASK_EVENT_DONE, taskId, "finished",
+                java.time.Instant.now());
+    }
+
+    private static <T> T eq(T value) {
+        return org.mockito.ArgumentMatchers.eq(value);
+    }
 
     private static EngineCommand command(String text) {
         return new EngineCommand("trillian", Map.of("text", text));

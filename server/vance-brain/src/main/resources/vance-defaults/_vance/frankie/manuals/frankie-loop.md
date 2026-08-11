@@ -11,9 +11,12 @@ when:
 
 1. **You stop calling tools.** Your final assistant message is taken
    as the answer to the parent / user, and the process closes as DONE.
-2. **A tool returns `_terminate: true`.** Use this when you have a
-   task-complete signal (e.g. `task_complete(summary=...)`); the
-   engine closes after the current batch.
+2. **A tool returns `_terminate: true`.** Some recipes ship a
+   terminate tool for a structured outcome — `code_review_decide(...)`
+   under `code-review`, `trillian_done(summary=...)` under
+   `trillian-worker-0`. The engine closes after the current batch.
+   Check your tool list rather than guessing a name; most recipes
+   (including `coding`) have none and end via path 1.
 3. **An external party stops you.** A parent engine or the user can
    call `process_stop` or `process_pause` against your process id;
    you finish the current turn and exit cleanly.

@@ -4,7 +4,11 @@ import de.mhus.vance.api.kit.ToolTemplateCatalogEntry;
 import de.mhus.vance.brain.kit.KitException;
 import de.mhus.vance.brain.kit.KitService;
 import de.mhus.vance.brain.kit.TemplateApplier;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.kit.catalog.ToolTemplateCatalogService;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.PermissionService;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -26,6 +30,17 @@ import org.springframework.stereotype.Component;
  * a template writes documents (oauth-config, server-tool-config) and
  * settings (encrypted secrets). Conversational engines defer it to the
  * discovery block; recipes explicitly for tool-setup promote it.
+ *
+ * <p><b>Authorization.</b> {@code projectId} is a tool parameter, so the
+ * dispatcher's caller-scope check does not cover the write target — the
+ * per-target grant is enforced here, the same way {@code KitToolSupport}
+ * does it for the kit tools. The action is {@link Action#ADMIN}, symmetric
+ * with the REST twin {@code ToolTemplatesAdminController}: applying a
+ * template writes {@code _vance/server-tools/} documents (reserved prefix,
+ * ADMIN by resolver rule R4) and encrypted settings (ADMIN on
+ * {@code Resource.Setting} in {@code AdminSettingsController}), so a weaker
+ * gate here would make the agent path more permissive than the human path
+ * for the identical operation.
  */
 @Component
 @RequiredArgsConstructor
@@ -51,6 +66,8 @@ public class ToolTemplateApplyTool implements Tool {
 
     private final ToolTemplateCatalogService catalogService;
     private final KitService kitService;
+    private final PermissionService permissionService;
+    private final SecurityContextFactory contextFactory;
 
     @Override public String name() { return "tool_template_apply"; }
 
@@ -72,8 +89,17 @@ public class ToolTemplateApplyTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         if (params == null) params = Map.of();
+        if (ctx.tenantId() == null || ctx.tenantId().isBlank()) {
+            throw new ToolException("tool_template_apply requires a tenant scope");
+        }
         String templateName = stringOrThrow(params.get("name"), "name");
         String projectId = stringOrThrow(params.get("projectId"), "projectId");
+        // Authorize the target project before touching anything — see the
+        // class javadoc for why this is ADMIN and not WRITE.
+        permissionService.enforce(
+                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                new Resource.Project(ctx.tenantId(), projectId),
+                Action.ADMIN);
         Object inputsRaw = params.get("inputs");
         if (!(inputsRaw instanceof Map<?, ?> inputsMap)) {
             throw new ToolException("'inputs' must be an object");

@@ -13,9 +13,14 @@ import org.springframework.stereotype.Component;
 
 /**
  * Reads a UTF-8 file from the foot host. With {@code startLine} /
- * {@code maxLines} you can page through large files; without them
- * the response is capped at {@value #DEFAULT_CHAR_CAP} characters
- * and {@code truncated=true} signals that the LLM should page.
+ * {@code maxLines} you can page through large files; the response is
+ * capped at {@code maxChars} (default {@value #DEFAULT_CHAR_CAP}) and
+ * {@code truncated=true} signals that the LLM should page.
+ *
+ * <p>{@code totalChars} describes the <em>requested region</em>: the
+ * whole file for an unwindowed read, the selected line window
+ * otherwise. That keeps {@code truncated} and {@code totalChars}
+ * talking about the same thing.
  */
 @Component
 public class ClientFileReadTool implements ClientTool {
@@ -33,7 +38,12 @@ public class ClientFileReadTool implements ClientTool {
                             "description", "1-based start line. Omit to start from the beginning."),
                     "maxLines", Map.of(
                             "type", "integer",
-                            "description", "Maximum lines to return. Omit for the default char cap.")),
+                            "description", "Maximum lines to return. Omit for the default char cap."),
+                    "maxChars", Map.of(
+                            "type", "integer",
+                            "description",
+                                    "Maximum characters to return. 0 or negative means "
+                                            + "the default cap of " + DEFAULT_CHAR_CAP + ".")),
             "required", List.of("path"));
 
     @Override
@@ -44,8 +54,8 @@ public class ClientFileReadTool implements ClientTool {
     @Override
     public String description() {
         return "Read a text file on the user's machine (foot host). "
-                + "Use startLine + maxLines to page large files; "
-                + "without them the result is capped at ~8 000 chars.";
+                + "Use startLine + maxLines to page large files; the result "
+                + "is capped at maxChars (default ~8 000).";
     }
 
     @Override
@@ -70,7 +80,7 @@ public class ClientFileReadTool implements ClientTool {
 
     @Override
     public @org.jspecify.annotations.Nullable String troubleshootingHint() {
-        return "Requires CLIENT target — Foot must be connected. File missing/permission denied = check path; large file = use file_head_tail.";
+        return "Requires CLIENT target — Foot must be connected. File missing/permission denied = check path; large file = page with startLine + maxLines.";
     }
 
     @Override
@@ -88,30 +98,29 @@ public class ClientFileReadTool implements ClientTool {
         String path = stringOrThrow(params, "path");
         Integer startLine = integerOrNull(params, "startLine");
         Integer maxLines = integerOrNull(params, "maxLines");
+        Integer maxChars = integerOrNull(params, "maxChars");
+        int cap = maxChars != null && maxChars > 0 ? maxChars : DEFAULT_CHAR_CAP;
         Path p = ClientFilePaths.resolve(path);
         try {
-            String content;
-            boolean truncated = false;
-            int totalChars;
+            // Read the requested region — a line window when asked for, the
+            // whole file otherwise — then cap it. The cap applies to both
+            // paths: a wide line window is just as capable of returning a
+            // megabyte as an uncapped whole-file read.
+            String region;
             if (startLine != null || maxLines != null) {
                 int from = startLine == null ? 1 : Math.max(1, startLine);
                 int count = maxLines == null ? Integer.MAX_VALUE : Math.max(0, maxLines);
                 try (Stream<String> lines = Files.lines(p, StandardCharsets.UTF_8)) {
-                    content = lines.skip(from - 1)
+                    region = lines.skip(from - 1)
                             .limit(count)
                             .collect(Collectors.joining("\n"));
                 }
-                totalChars = content.length();
             } else {
-                String full = Files.readString(p, StandardCharsets.UTF_8);
-                totalChars = full.length();
-                if (full.length() > DEFAULT_CHAR_CAP) {
-                    content = full.substring(0, DEFAULT_CHAR_CAP);
-                    truncated = true;
-                } else {
-                    content = full;
-                }
+                region = Files.readString(p, StandardCharsets.UTF_8);
             }
+            int totalChars = region.length();
+            boolean truncated = totalChars > cap;
+            String content = truncated ? region.substring(0, cap) : region;
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("path", ClientFilePaths.toToolPath(p));
             out.put("content", content);

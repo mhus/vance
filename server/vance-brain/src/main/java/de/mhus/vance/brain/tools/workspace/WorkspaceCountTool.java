@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.workspace;
 
+import de.mhus.vance.api.tools.FileWalkDefaults;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -42,20 +43,29 @@ public class WorkspaceCountTool implements Tool {
         Map<String, Object> p = new LinkedHashMap<>();
         p.put("path", Map.of("type", "string",
                 "description",
-                        "Optional single file (relative path inside the RootDir). "
-                                + "When omitted, counts across all files matching pathGlob."));
+                        "File or subdirectory inside the RootDir. Directories are "
+                                + "walked recursively. Default: the whole RootDir."));
         p.put("dirName", Map.of("type", "string",
                 "description", "Optional RootDir name. Defaults to the current process's temp RootDir."));
         p.put("pathGlob", Map.of("type", "string",
                 "description",
-                        "Glob filter on file paths. Default: all files. Ignored "
-                                + "when 'path' is set."));
+                        "Glob filter on file paths relative to 'path'. Default: all "
+                                + "files. Ignored when 'path' names a single file."));
         p.put("pattern", Map.of("type", "string",
                 "description",
                         "Optional regex. When set, 'lines' counts only matching lines "
                                 + "and 'chars'/'bytes' aggregate the matched line text."));
         p.put("caseInsensitive", Map.of("type", "boolean",
                 "description", "Match the regex case-insensitively. Default: false."));
+        p.put("maxDepth", Map.of("type", "integer",
+                "description",
+                        "Recursion depth cap when 'path' is a directory. Default: "
+                                + FileWalkDefaults.DEFAULT_MAX_DEPTH + "."));
+        p.put("includeGenerated", Map.of("type", "boolean",
+                "description",
+                        "Also count dependency and build directories "
+                                + "(node_modules, target, dist, .git, …), which are "
+                                + "skipped by default."));
         return p;
     }
 
@@ -84,10 +94,13 @@ public class WorkspaceCountTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String dirName = WorkspaceDirResolver.resolve(workspace, ctx, stringOrNull(params, "dirName"));
-        String singlePath = stringOrNull(params, "path");
+        String pathArg = stringOrNull(params, "path");
         String pathGlob = stringOrNull(params, "pathGlob");
         String patternStr = stringOrNull(params, "pattern");
         boolean ci = Boolean.TRUE.equals(params == null ? null : params.get("caseInsensitive"));
+        int maxDepth = FileWalkDefaults.clampDepth(intOrNull(params, "maxDepth"));
+        boolean includeGenerated = Boolean.TRUE.equals(
+                params == null ? null : params.get("includeGenerated"));
 
         Pattern pattern;
         try {
@@ -98,9 +111,22 @@ public class WorkspaceCountTool implements Tool {
             throw new ToolException("Invalid regex: " + e.getMessage());
         }
 
+        // 'path' is a file *or* a directory, like the CLIENT backend: naming
+        // a file counts just that file, naming a directory walks its subtree,
+        // omitting it walks the whole RootDir.
+        boolean singleFile = false;
+        if (pathArg != null) {
+            try {
+                singleFile = Files.isRegularFile(
+                        workspace.resolve(ctx.tenantId(), ctx.projectId(), dirName, pathArg));
+            } catch (WorkspaceException e) {
+                throw new ToolException(e.getMessage(), e);
+            }
+        }
+        String prefix = singleFile ? "" : WorkspaceSubPath.prefix(pathArg);
         List<String> files;
-        if (singlePath != null) {
-            files = List.of(singlePath);
+        if (singleFile) {
+            files = List.of(pathArg);
         } else {
             try {
                 files = workspace.list(ctx.tenantId(), ctx.projectId(), dirName);
@@ -108,9 +134,7 @@ public class WorkspaceCountTool implements Tool {
                 throw new ToolException(e.getMessage(), e);
             }
         }
-        PathMatcher matcher = singlePath == null
-                ? GlobMatchers.buildGlobMatcher(pathGlob)
-                : null;
+        PathMatcher matcher = singleFile ? null : GlobMatchers.buildGlobMatcher(pathGlob);
 
         long totalLines = 0;
         long totalMatchingLines = 0;
@@ -118,18 +142,29 @@ public class WorkspaceCountTool implements Tool {
         long totalBytes = 0;
         int filesCounted = 0;
         int filesSkipped = 0;
+        int generatedSkipped = 0;
         for (String relPath : files) {
-            if (matcher != null && !matcher.matches(Path.of(relPath))) continue;
+            if (!singleFile) {
+                String under = WorkspaceSubPath.under(relPath, prefix);
+                if (under == null) continue;
+                Path underPath = Path.of(under);
+                if (!includeGenerated && FileWalkDefaults.isGenerated(underPath)) {
+                    generatedSkipped++;
+                    continue;
+                }
+                if (FileWalkDefaults.depthOf(underPath) > maxDepth) continue;
+                if (matcher != null && !matcher.matches(underPath)) continue;
+            }
             Path abs;
             try {
                 abs = workspace.resolve(ctx.tenantId(), ctx.projectId(), dirName, relPath);
             } catch (WorkspaceException e) {
-                if (singlePath != null) throw new ToolException(e.getMessage(), e);
+                if (singleFile) throw new ToolException(e.getMessage(), e);
                 filesSkipped++;
                 continue;
             }
             if (!Files.exists(abs) || !Files.isRegularFile(abs)) {
-                if (singlePath != null) {
+                if (singleFile) {
                     throw new ToolException("Not a regular file: " + relPath);
                 }
                 filesSkipped++;
@@ -139,7 +174,7 @@ public class WorkspaceCountTool implements Tool {
             try {
                 bytes = Files.size(abs);
             } catch (IOException e) {
-                if (singlePath != null) {
+                if (singleFile) {
                     throw new ToolException("Stat failed: " + e.getMessage(), e);
                 }
                 filesSkipped++;
@@ -167,7 +202,7 @@ public class WorkspaceCountTool implements Tool {
             try {
                 content = Files.readString(abs, StandardCharsets.UTF_8);
             } catch (IOException e) {
-                if (singlePath != null) {
+                if (singleFile) {
                     throw new ToolException("Read failed: " + e.getMessage(), e);
                 }
                 filesSkipped++;
@@ -197,16 +232,26 @@ public class WorkspaceCountTool implements Tool {
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("dirName", dirName);
-        if (singlePath != null) out.put("path", singlePath);
-        if (pathGlob != null && singlePath == null) out.put("pathGlob", pathGlob);
+        out.put("path", pathArg == null ? "." : pathArg);
+        if (pathGlob != null && !singleFile) out.put("pathGlob", pathGlob);
         if (patternStr != null) out.put("pattern", patternStr);
         out.put("filesCounted", filesCounted);
         out.put("filesSkipped", filesSkipped);
+        if (generatedSkipped > 0) {
+            out.put("generatedFilesSkipped", generatedSkipped);
+            out.put("generatedFilesHint",
+                    "Dependency/build directories were skipped — pass includeGenerated=true to count them.");
+        }
         out.put("lines", pattern == null ? totalLines : totalMatchingLines);
         if (pattern != null) out.put("totalLinesScanned", totalLines);
         out.put("chars", totalChars);
         out.put("bytes", totalBytes);
         return out;
+    }
+
+    private static Integer intOrNull(Map<String, Object> params, String key) {
+        Object raw = params == null ? null : params.get(key);
+        return raw instanceof Number n ? n.intValue() : null;
     }
 
     private static String stringOrNull(Map<String, Object> params, String key) {

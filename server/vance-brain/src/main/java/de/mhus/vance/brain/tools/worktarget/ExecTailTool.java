@@ -13,9 +13,13 @@ public class ExecTailTool extends AbstractWorkTargetTool {
                     "id", Map.of(
                             "type", "string",
                             "description", "Job id returned by exec_run."),
-                    "lines", Map.of(
+                    "n", Map.of(
                             "type", "integer",
-                            "description", "Number of trailing lines to return (per stream).")),
+                            "description", "Number of trailing lines to return (default 10, max 500)."),
+                    "stream", Map.of(
+                            "type", "string",
+                            "enum", List.of("stdout", "stderr"),
+                            "description", "Which stream to tail; default stdout.")),
             "required", List.of("id"));
 
     public ExecTailTool(WorkTargetDispatcher dispatcher) { super(dispatcher); }

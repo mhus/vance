@@ -104,6 +104,22 @@ allowedToolsDefer:
   - work_exec_tail
   - work_exec_kill
 
+# Tool self-diagnosis is not a coding worker's job. Observed 2026-08-11:
+# a file_read whose maxChars did nothing (schema drift, since fixed) sent
+# the worker into `tool_probe_as_user` / `tool_probe_as_system` instead of
+# looking for another way to read the file. Each probe spawns an Agrajag
+# diagnostic process — four of them in one turn — and every one of those
+# came back with a permission denial, which invited the next probe. The
+# correct reaction to a failing tool here is a different tool or a
+# question to the user, not an investigation.
+#
+# Agrajag itself keeps the probes (they are its purpose, see
+# recipes/agrajag.yaml). tool_health_read stays: it is read-only, cheap
+# and does not spawn anything.
+allowedToolsRemove:
+  - tool_probe_as_user
+  - tool_probe_as_system
+
 params:
   model: default:code,default:fast
   manualPaths:
@@ -159,10 +175,14 @@ params:
       `**`) for orientation.** It walks the whole tree and returns
       thousands of entries — useless and slow. `file_find` is for
       locating a file you already know exists by name pattern
-      (`file_find glob="**/SettingsService.java"`).
+      (`file_find pathGlob="**/SettingsService.java"`).
     - **Never call `file_list` repeatedly on the same directory.**
       One call per directory per session is enough; the result
       stays in your context.
+    - **Never re-read the same file with a larger `maxChars` after
+      `truncated: true`.** The cap bounds the response size, not
+      where the read starts — you get the identical prefix back.
+      Page on with `startLine` + `maxLines` instead.
     - If the project layout is unfamiliar after the first
       `file_list`, ask the user one short question — don't
       fabricate, don't recursively probe.

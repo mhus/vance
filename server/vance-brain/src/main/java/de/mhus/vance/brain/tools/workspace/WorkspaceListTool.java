@@ -8,13 +8,24 @@ import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Lists files inside a project workspace RootDir (recursive). Returns
- * relative paths, sorted. Directories are not included. When {@code
- * dirName} is omitted, the per-process temp RootDir is used.
+ * Lists one directory level inside a project workspace RootDir — the WORK
+ * half of the {@code file_list} wrapper.
+ *
+ * <p>Deliberately <b>not</b> recursive, and deliberately including
+ * directories (marked with a trailing {@code /}): the CLIENT half
+ * ({@code client_file_list}) has always behaved that way, and one wrapper
+ * name that returns a flat directory listing on one target and every file in
+ * the tree on the other is a trap. Recursive listing is what
+ * {@code file_find} is for.
+ *
+ * <p>When {@code dirName} is omitted, the per-process temp RootDir is used;
+ * when {@code path} is omitted, the RootDir root is listed.
  */
 @Component
 @RequiredArgsConstructor
@@ -27,7 +38,12 @@ public class WorkspaceListTool implements Tool {
                             "type", "string",
                             "description",
                                     "Optional RootDir name. Defaults to the "
-                                            + "current process's temp RootDir.")),
+                                            + "current process's temp RootDir."),
+                    "path", Map.of(
+                            "type", "string",
+                            "description",
+                                    "Subdirectory inside the RootDir to list. "
+                                            + "Default: the RootDir root.")),
             "required", List.of());
 
     private final WorkspaceService workspace;
@@ -39,8 +55,9 @@ public class WorkspaceListTool implements Tool {
 
     @Override
     public String description() {
-        return "List files in a project workspace RootDir (recursive). "
-                + "Returns relative paths.";
+        return "List one directory level in a project workspace RootDir. "
+                + "Returns entry names, directories marked with a trailing '/'. "
+                + "Use file_find for a recursive listing.";
     }
 
     @Override
@@ -71,16 +88,30 @@ public class WorkspaceListTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String dirName = WorkspaceDirResolver.resolve(workspace, ctx, stringOrNull(params, "dirName"));
+        String subPath = stringOrNull(params, "path");
+        String prefix = WorkspaceSubPath.prefix(subPath);
+        List<String> all;
         try {
-            List<String> files = workspace.list(ctx.tenantId(), ctx.projectId(), dirName);
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("dirName", dirName);
-            out.put("files", files);
-            out.put("count", files.size());
-            return out;
+            all = workspace.list(ctx.tenantId(), ctx.projectId(), dirName);
         } catch (WorkspaceException e) {
             throw new ToolException(e.getMessage(), e);
         }
+        // WorkspaceService.list is recursive and file-only; fold it back to a
+        // single level. The first segment below the prefix is the entry name,
+        // and anything with a further segment is a directory.
+        Set<String> entries = new TreeSet<>();
+        for (String relPath : all) {
+            String under = WorkspaceSubPath.under(relPath, prefix);
+            if (under == null) continue;
+            int slash = under.indexOf('/');
+            entries.add(slash < 0 ? under : under.substring(0, slash) + "/");
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("dirName", dirName);
+        out.put("path", subPath == null ? "." : subPath);
+        out.put("entries", List.copyOf(entries));
+        out.put("count", entries.size());
+        return out;
     }
 
     private static String stringOrNull(Map<String, Object> params, String key) {

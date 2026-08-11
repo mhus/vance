@@ -84,7 +84,7 @@ verbs you'd use for any shell job.
 python_run file="train.py" args=["--epochs=10", "--lr=1e-4"]
 → { "status": "RUNNING", "id": "abc12345", "stdoutPath": "…/stdout.log", ... }
 work_exec_status id="abc12345"
-work_exec_tail   id="abc12345" lines=50
+work_exec_tail   id="abc12345" n=50
 ```
 
 `args` is a string list (escaped per-element). `flags` carries
@@ -185,7 +185,7 @@ python_run file="train.py" args=["--epochs=50"] waitMs=2000
 # … in a later turn:
 work_exec_status id="job123"
 # when status=COMPLETED:
-work_exec_tail id="job123" lines=80
+work_exec_tail id="job123" n=80
 ```
 
 ### Switch interpreter, keep code + deps

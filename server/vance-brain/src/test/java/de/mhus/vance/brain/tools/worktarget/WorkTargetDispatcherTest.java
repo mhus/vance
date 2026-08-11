@@ -16,6 +16,7 @@ import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.worktarget.WorkTarget;
+import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolBus;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -38,19 +39,23 @@ class WorkTargetDispatcherTest {
     private ClientToolRegistry clientToolRegistry;
     private WorkTargetService workTargetService;
     private DaemonToolInvoker daemonToolInvoker;
+    private de.mhus.vance.brain.tools.ToolDispatcher toolDispatcher;
     private WorkTargetDispatcher dispatcher;
     private ToolBus bus;
     private ToolInvocationContext ctx;
     private ThinkProcessDocument process;
+    private Tool wrapper;
 
     @BeforeEach
     void setUp() {
         thinkProcessService = mock(ThinkProcessService.class);
         clientToolRegistry = mock(ClientToolRegistry.class);
         daemonToolInvoker = mock(DaemonToolInvoker.class);
+        toolDispatcher = mock(de.mhus.vance.brain.tools.ToolDispatcher.class);
         workTargetService = new WorkTargetService(thinkProcessService, clientToolRegistry);
         dispatcher = new WorkTargetDispatcher(workTargetService, thinkProcessService,
-                mock(de.mhus.vance.brain.tools.ToolDispatcher.class), daemonToolInvoker);
+                toolDispatcher, daemonToolInvoker);
+        wrapper = stubTool("file_read", "path", "dirName", "maxChars");
         bus = mock(ToolBus.class);
         ctx = mock(ToolInvocationContext.class);
         lenient().when(ctx.processId()).thenReturn(PROC_ID);
@@ -72,7 +77,7 @@ class WorkTargetDispatcherTest {
         process.setEngineParams(new LinkedHashMap<>(Map.of(
                 WorkTarget.KEY, Map.of("kind", "WORK"))));
 
-        dispatcher.dispatch(ctx, bus, "client_file_read", "work_file_read",
+        dispatcher.dispatch(ctx, bus, wrapper, "client_file_read", "work_file_read",
                 Map.of("path", "a.txt"));
 
         verify(bus).invokeDelegate(eq("work_file_read"), any());
@@ -90,7 +95,7 @@ class WorkTargetDispatcherTest {
         params.put("path", "Foo.java");
         params.put("dirName", "leftover");
 
-        dispatcher.dispatch(ctx, bus, "client_file_read", "work_file_read", params);
+        dispatcher.dispatch(ctx, bus, wrapper, "client_file_read", "work_file_read", params);
 
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
         verify(bus).invokeDelegate(eq("client_file_read"), captor.capture());
@@ -107,7 +112,7 @@ class WorkTargetDispatcherTest {
 
         Map<String, Object> params = Map.of("path", "src/Foo.java");
 
-        dispatcher.dispatch(ctx, bus, "client_file_read", "work_file_read", params);
+        dispatcher.dispatch(ctx, bus, wrapper, "client_file_read", "work_file_read", params);
 
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
         verify(bus).invokeDelegate(eq("work_file_read"), captor.capture());
@@ -123,7 +128,7 @@ class WorkTargetDispatcherTest {
 
         Map<String, Object> params = Map.of("path", "Foo.java", "dirName", "build-output");
 
-        dispatcher.dispatch(ctx, bus, "client_file_read", "work_file_read", params);
+        dispatcher.dispatch(ctx, bus, wrapper, "client_file_read", "work_file_read", params);
 
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
         verify(bus).invokeDelegate(eq("work_file_read"), captor.capture());
@@ -138,7 +143,7 @@ class WorkTargetDispatcherTest {
 
         Map<String, Object> params = Map.of("path", "Foo.java");
 
-        dispatcher.dispatch(ctx, bus, "client_file_read", "work_file_read", params);
+        dispatcher.dispatch(ctx, bus, wrapper, "client_file_read", "work_file_read", params);
 
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
         verify(bus).invokeDelegate(eq("work_file_read"), captor.capture());
@@ -154,7 +159,7 @@ class WorkTargetDispatcherTest {
         when(clientToolRegistry.entry(SESSION_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() ->
-                dispatcher.dispatch(ctx, bus, "client_file_read", "work_file_read",
+                dispatcher.dispatch(ctx, bus, wrapper, "client_file_read", "work_file_read",
                         Map.of("path", "Foo.java")))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("CLIENT")
@@ -167,7 +172,7 @@ class WorkTargetDispatcherTest {
         when(clientToolRegistry.entry(SESSION_ID))
                 .thenReturn(Optional.of(mock(ClientToolRegistry.Entry.class)));
 
-        dispatcher.dispatch(ctx, bus, "client_file_read", "work_file_read",
+        dispatcher.dispatch(ctx, bus, wrapper, "client_file_read", "work_file_read",
                 Map.of("path", "Foo.java"));
 
         verify(bus).invokeDelegate(eq("client_file_read"), any());
@@ -177,7 +182,7 @@ class WorkTargetDispatcherTest {
     void defaultResolution_noEngineParams_picksWorkWhenNoFoot() {
         when(clientToolRegistry.entry(SESSION_ID)).thenReturn(Optional.empty());
 
-        dispatcher.dispatch(ctx, bus, "client_file_read", "work_file_read",
+        dispatcher.dispatch(ctx, bus, wrapper, "client_file_read", "work_file_read",
                 Map.of("path", "Foo.java"));
 
         verify(bus).invokeDelegate(eq("work_file_read"), any());
@@ -195,7 +200,7 @@ class WorkTargetDispatcherTest {
         params.put("dirName", "leftover");
 
         Map<String, Object> result =
-                dispatcher.dispatch(ctx, bus, "client_file_read", "work_file_read", params);
+                dispatcher.dispatch(ctx, bus, wrapper, "client_file_read", "work_file_read", params);
 
         assertThat(result).containsEntry("ok", true);
         // DAEMON routes the client_* tool over the daemon's WS — never the bus.
@@ -214,5 +219,85 @@ class WorkTargetDispatcherTest {
         // Foot client tools don't take dirName.
         assertThat(paramsCaptor.getValue()).containsEntry("path", "Foo.java")
                 .doesNotContainKey("dirName");
+    }
+
+    // ─── Param validation: report instead of silently dropping ──────────
+
+    @Test
+    void unknownParam_isRejectedWithTheAcceptedNames() {
+        // The wrapper, its CLIENT backend and its WORK backend are three
+        // separate schemas that drift. A param none of them knows used to
+        // travel along and vanish, leaving the caller unable to tell
+        // "ignored" from "no effect" — and re-trying with variations.
+        process.setEngineParams(new LinkedHashMap<>(Map.of(
+                WorkTarget.KEY, Map.of("kind", "WORK", "targetName", "main"))));
+        backendIs("work_file_read", stubTool("work_file_read", "path", "dirName", "maxChars"));
+
+        assertThatThrownBy(() -> dispatcher.dispatch(ctx, bus, wrapper,
+                "client_file_read", "work_file_read",
+                Map.of("path", "Foo.java", "offset", 200)))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("file_read")
+                .hasMessageContaining("offset")
+                .hasMessageContaining("maxChars");
+        verify(bus, never()).invokeDelegate(any(), any());
+    }
+
+    @Test
+    void backendOnlyParam_isAccepted_wrapperSchemaIsNotTheWholeContract() {
+        // Backends legitimately expose more than the wrapper advertises
+        // (caseInsensitive on grep, startLine on the client reader). Those
+        // calls have always worked; validation must not take them away.
+        process.setEngineParams(new LinkedHashMap<>(Map.of(
+                WorkTarget.KEY, Map.of("kind", "CLIENT"))));
+        when(clientToolRegistry.entry(SESSION_ID))
+                .thenReturn(Optional.of(mock(ClientToolRegistry.Entry.class)));
+        backendIs("client_file_read",
+                stubTool("client_file_read", "path", "startLine", "maxLines"));
+
+        dispatcher.dispatch(ctx, bus, wrapper, "client_file_read", "work_file_read",
+                Map.of("path", "Foo.java", "startLine", 300));
+
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(bus).invokeDelegate(eq("client_file_read"), captor.capture());
+        assertThat(captor.getValue()).containsEntry("startLine", 300);
+    }
+
+    @Test
+    void unresolvableBackend_failsOpen_ratherThanBlockingTheCall() {
+        // Validation exists to help; it must never be the reason a working
+        // call starts failing. No backend schema → no rejection.
+        process.setEngineParams(new LinkedHashMap<>(Map.of(
+                WorkTarget.KEY, Map.of("kind", "WORK", "targetName", "main"))));
+        when(toolDispatcher.resolve(any(), any())).thenReturn(Optional.empty());
+
+        dispatcher.dispatch(ctx, bus, wrapper, "client_file_read", "work_file_read",
+                Map.of("path", "Foo.java", "totallyMadeUp", 1));
+
+        verify(bus).invokeDelegate(eq("work_file_read"), any());
+    }
+
+    private void backendIs(String name, Tool tool) {
+        when(toolDispatcher.resolve(eq(name), any())).thenReturn(
+                Optional.of(new de.mhus.vance.brain.tools.ToolDispatcher.Resolved(tool, null)));
+    }
+
+    /** Minimal {@link Tool} that only carries a name and a param schema. */
+    private static Tool stubTool(String name, String... params) {
+        Map<String, Object> props = new LinkedHashMap<>();
+        for (String p : params) {
+            props.put(p, Map.of("type", "string"));
+        }
+        Map<String, Object> schema = Map.of("type", "object", "properties", props);
+        return new Tool() {
+            @Override public String name() { return name; }
+            @Override public String description() { return name; }
+            @Override public boolean primary() { return true; }
+            @Override public Map<String, Object> paramsSchema() { return schema; }
+            @Override public Map<String, Object> invoke(
+                    Map<String, Object> p, ToolInvocationContext c) {
+                return Map.of();
+            }
+        };
     }
 }

@@ -7,12 +7,16 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.worktarget.WorkTarget;
 import de.mhus.vance.shared.worktarget.WorkTargetKind;
+import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolBus;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,6 +34,14 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class WorkTargetDispatcher {
+
+    /**
+     * Wrapper params that legitimately have no counterpart on every backend.
+     * {@code dirName} names a workspace RootDir — a WORK concept — and is
+     * stripped before a CLIENT/DAEMON call; every wrapper documents it as
+     * ignored there. The one declared exception to "declared means it works".
+     */
+    private static final Set<String> WORK_ONLY_PARAMS = Set.of("dirName");
 
     private final WorkTargetService workTargetService;
     private final ThinkProcessService thinkProcessService;
@@ -72,6 +84,7 @@ public class WorkTargetDispatcher {
      */
     public Map<String, Object> dispatch(ToolInvocationContext ctx,
                                         ToolBus bus,
+                                        Tool wrapper,
                                         String clientName,
                                         String workName,
                                         @Nullable Map<String, Object> params) {
@@ -89,6 +102,7 @@ public class WorkTargetDispatcher {
                                 + "session — call work_target_set(kind=\"WORK\") or "
                                 + "reconnect the foot CLI.");
             }
+            rejectUnknownParams(ctx, wrapper, clientName, p);
             // Foot tools don't take dirName — strip if the LLM passed one through.
             p.remove("dirName");
             backendName = clientName;
@@ -97,12 +111,14 @@ public class WorkTargetDispatcher {
             // instead of the session-bound Foot. The daemon announced its
             // tools under the same client_* names, so clientName is the
             // wire name. Foot client tools don't take dirName.
+            rejectUnknownParams(ctx, wrapper, clientName, p);
             p.remove("dirName");
             DaemonRegistry.DaemonKey key = daemonKey(process, target.targetName());
             return daemonToolInvoker.invoke(
                     key, clientName, p, Duration.ofSeconds(daemonTimeoutSeconds));
         } else {
             // WorkTargetKind.WORK
+            rejectUnknownParams(ctx, wrapper, workName, p);
             if (!p.containsKey("dirName")
                     && target.targetName() != null && !target.targetName().isBlank()) {
                 p.put("dirName", target.targetName());
@@ -122,6 +138,110 @@ public class WorkTargetDispatcher {
         // would then show file_read AND work_file_read, which is the exact
         // ambiguity this wrapper removes.
         return bus.invokeDelegate(backendName, p);
+    }
+
+    /**
+     * Rejects params that neither the wrapper nor the backend it routes to
+     * declares — instead of passing them along to be silently dropped.
+     *
+     * <p>Why this is worth an exception: the wrapper and its two backends
+     * are three separate schemas, and they drift. A param that exists in
+     * one but not the other used to vanish without a trace, which leaves
+     * the caller with a result that looks like the tool ignored it — and
+     * a model that cannot tell "ignored" from "did nothing" re-tries with
+     * a bigger number, then a different number, then starts diagnosing the
+     * tool. One clear error ends that in a single turn. (2026-08-11: a
+     * Frankie turn spent 8 iterations and four spawned diagnostic workers
+     * on a {@code file_read maxChars} that the CLIENT backend never read.)
+     *
+     * <p>Two distinct failures, both silent before:
+     *
+     * <ul>
+     *   <li><b>Unknown to everyone</b> — neither the wrapper nor the backend
+     *       declares it. A hallucinated param name.</li>
+     *   <li><b>Declared but inert</b> — the wrapper advertises it, the active
+     *       backend does not implement it. This is the more dangerous half,
+     *       because the caller read the name off the schema and has every
+     *       reason to trust it. {@code file_read maxChars} on CLIENT was
+     *       exactly this shape.</li>
+     * </ul>
+     *
+     * <p>Params only the <em>backend</em> declares stay allowed: backends
+     * legitimately expose extras the wrapper doesn't advertise, and those
+     * calls have always worked. {@code dirName} is the one declared
+     * exception — WORK-only by design, stripped for CLIENT/DAEMON, and
+     * documented as ignored there by every wrapper.
+     *
+     * <p>Fail-open: when the backend can't be resolved or declares no
+     * properties, nothing is rejected. A validation layer must not be the
+     * reason a working call starts failing.
+     *
+     * <p>The steady state is that neither case can occur —
+     * {@code WorkTargetToolSymmetryTest} in {@code qa/} keeps the three
+     * schemas aligned. This is the runtime net for the drift that slips
+     * past it, e.g. a client-supplied tool pack overriding a backend name.
+     */
+    private void rejectUnknownParams(ToolInvocationContext ctx,
+                                     Tool wrapper,
+                                     String backendName,
+                                     Map<String, Object> params) {
+        if (params.isEmpty()) return;
+        Set<String> backendParams = declaredParams(resolveBackend(backendName, ctx));
+        if (backendParams.isEmpty()) return;
+        Set<String> wrapperParams = declaredParams(wrapper);
+
+        List<String> unknown = params.keySet().stream()
+                .filter(k -> !wrapperParams.contains(k) && !backendParams.contains(k))
+                .sorted()
+                .toList();
+        if (!unknown.isEmpty()) {
+            Set<String> accepted = new LinkedHashSet<>(wrapperParams);
+            accepted.addAll(backendParams);
+            throw new ToolException(wrapper.name() + " does not accept parameter(s) "
+                    + unknown + " — accepted: " + accepted.stream().sorted().toList()
+                    + ". The call was rejected instead of ignoring them silently; "
+                    + "re-call with a supported parameter.");
+        }
+
+        List<String> inert = params.keySet().stream()
+                .filter(k -> !backendParams.contains(k) && !WORK_ONLY_PARAMS.contains(k))
+                .sorted()
+                .toList();
+        if (!inert.isEmpty()) {
+            throw new ToolException(wrapper.name() + ": parameter(s) " + inert
+                    + " are not supported by the active backend '" + backendName
+                    + "' and would have had no effect. Supported there: "
+                    + backendParams.stream().sorted().toList()
+                    + ". This is a schema mismatch, not your mistake — report it; "
+                    + "meanwhile use one of the supported parameters.");
+        }
+    }
+
+    /** The wrapper's or backend's declared property names; empty when unknown. */
+    private static Set<String> declaredParams(@Nullable Tool tool) {
+        if (tool == null) return Set.of();
+        Map<String, Object> schema = tool.paramsSchema();
+        Object props = schema == null ? null : schema.get("properties");
+        if (props instanceof Map<?, ?> m) {
+            Set<String> out = new LinkedHashSet<>();
+            for (Object k : m.keySet()) {
+                if (k instanceof String s) out.add(s);
+            }
+            return out;
+        }
+        return Set.of();
+    }
+
+    private @Nullable Tool resolveBackend(String backendName, ToolInvocationContext ctx) {
+        try {
+            return toolDispatcher.resolve(backendName, ctx)
+                    .map(ToolDispatcher.Resolved::tool)
+                    .orElse(null);
+        } catch (RuntimeException e) {
+            // Resolution is a convenience for the error message — never let
+            // it turn into the failure of the actual call.
+            return null;
+        }
     }
 
     /**

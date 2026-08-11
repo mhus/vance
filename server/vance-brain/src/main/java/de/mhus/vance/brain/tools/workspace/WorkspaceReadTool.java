@@ -37,7 +37,18 @@ public class WorkspaceReadTool implements Tool {
                             "type", "integer",
                             "description",
                                     "Maximum characters to return. 0 or negative "
-                                            + "means use the server default cap.")),
+                                            + "means use the server default cap."),
+                    "startLine", Map.of(
+                            "type", "integer",
+                            "description",
+                                    "1-based first line to return. Omit to start "
+                                            + "at the beginning."),
+                    "maxLines", Map.of(
+                            "type", "integer",
+                            "description",
+                                    "Maximum number of lines to return. Combine "
+                                            + "with startLine to page through a "
+                                            + "file that exceeds the char cap.")),
             "required", List.of("path"));
 
     private final WorkspaceService workspace;
@@ -89,8 +100,16 @@ public class WorkspaceReadTool implements Tool {
         if (rawMax instanceof Number n && n.intValue() > 0) {
             cap = n.intValue();
         }
+        int startLine = intOrZero(params, "startLine");
+        int maxLines = intOrZero(params, "maxLines");
         try {
-            WorkspaceService.ReadResult r = workspace.read(ctx.tenantId(), ctx.projectId(), dirName, path, cap);
+            // Line window when asked for, whole file (capped) otherwise —
+            // paging is the only way to reach the middle of a file that is
+            // larger than the cap.
+            WorkspaceService.ReadResult r = startLine > 0 || maxLines > 0
+                    ? workspace.readLines(ctx.tenantId(), ctx.projectId(), dirName,
+                            path, cap, startLine, maxLines)
+                    : workspace.read(ctx.tenantId(), ctx.projectId(), dirName, path, cap);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("path", path);
             out.put("dirName", dirName);
@@ -114,5 +133,11 @@ public class WorkspaceReadTool implements Tool {
     private static String stringOrNull(Map<String, Object> params, String key) {
         Object raw = params == null ? null : params.get(key);
         return raw instanceof String s && !s.isBlank() ? s : null;
+    }
+
+    /** Missing / non-numeric / negative all mean "not requested". */
+    private static int intOrZero(Map<String, Object> params, String key) {
+        Object raw = params == null ? null : params.get(key);
+        return raw instanceof Number n && n.intValue() > 0 ? n.intValue() : 0;
     }
 }

@@ -41,14 +41,15 @@ public class ClientFileCountTool implements ClientTool {
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
             "properties", buildProps(),
-            "required", List.of("path"));
+            "required", List.of());
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>();
         p.put("path", Map.of("type", "string",
                 "description",
                         "File or directory on the foot host. Directories are walked "
-                                + "recursively. Supports a leading '~/' for home."));
+                                + "recursively. Default: current working directory. "
+                                + "Supports a leading '~/' for home."));
         p.put("pathGlob", Map.of("type", "string",
                 "description",
                         "Glob filter on file paths under 'path' (directories only). "
@@ -93,7 +94,10 @@ public class ClientFileCountTool implements ClientTool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params) {
-        String pathRaw = stringOrThrow(params, "path");
+        // Optional, like the sibling walkers (grep/find): "no path" means
+        // "here". Requiring it on this one tool and not the others is the
+        // kind of asymmetry that costs a turn to discover.
+        String pathRaw = stringOrNull(params, "path");
         String pathGlob = stringOrNull(params, "pathGlob");
         String patternStr = stringOrNull(params, "pattern");
         boolean ci = Boolean.TRUE.equals(params == null ? null : params.get("caseInsensitive"));
@@ -110,7 +114,7 @@ public class ClientFileCountTool implements ClientTool {
             throw new IllegalArgumentException("Invalid regex: " + e.getMessage());
         }
 
-        Path target = ClientFilePaths.resolve(pathRaw);
+        Path target = pathRaw == null ? Path.of(".") : ClientFilePaths.resolve(pathRaw);
         if (!Files.exists(target)) {
             throw new IllegalArgumentException("Not found: " + target.toAbsolutePath());
         }
@@ -219,14 +223,6 @@ public class ClientFileCountTool implements ClientTool {
     private static int clampDepth(Integer raw) {
         if (raw == null) return DEFAULT_MAX_DEPTH;
         return Math.min(50, Math.max(1, raw));
-    }
-
-    private static String stringOrThrow(Map<String, Object> params, String key) {
-        Object raw = params == null ? null : params.get(key);
-        if (!(raw instanceof String s) || s.isBlank()) {
-            throw new IllegalArgumentException("'" + key + "' is required and must be a non-empty string");
-        }
-        return s;
     }
 
     private static String stringOrNull(Map<String, Object> params, String key) {

@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.workspace;
 
+import de.mhus.vance.api.tools.FileWalkDefaults;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -45,9 +46,13 @@ public class WorkspaceGrepTool implements Tool {
                 "description", "Java regular expression. Plain substrings are fine."));
         p.put("dirName", Map.of("type", "string",
                 "description", "Optional RootDir name. Defaults to the current process's temp RootDir."));
+        p.put("path", Map.of("type", "string",
+                "description",
+                        "Subdirectory inside the RootDir to search (recursive). "
+                                + "Default: the whole RootDir."));
         p.put("pathGlob", Map.of("type", "string",
                 "description",
-                        "Optional glob filter on file paths within the RootDir, "
+                        "Optional glob filter on file paths relative to 'path', "
                                 + "e.g. '**/*.java'. Default: all files."));
         p.put("caseInsensitive", Map.of("type", "boolean",
                 "description", "Match case-insensitively. Default: false."));
@@ -55,10 +60,21 @@ public class WorkspaceGrepTool implements Tool {
                 "description", "Number of lines before each match. Default: 0."));
         p.put("contextAfter", Map.of("type", "integer",
                 "description", "Number of lines after each match. Default: 0."));
+        p.put("maxDepth", Map.of("type", "integer",
+                "description",
+                        "Recursion depth cap below 'path'. Default: "
+                                + FileWalkDefaults.DEFAULT_MAX_DEPTH
+                                + ". Use 1 to scan a flat directory."));
         p.put("limit", Map.of("type", "integer",
                 "description",
                         "Cap on total match rows returned. Default: " + DEFAULT_LIMIT
                                 + ", max: " + MAX_LIMIT + "."));
+        p.put("includeGenerated", Map.of("type", "boolean",
+                "description",
+                        "Also search dependency and build directories "
+                                + "(node_modules, target, dist, .git, …), which are "
+                                + "skipped by default. Set true to search inside a "
+                                + "dependency on purpose."));
         return p;
     }
 
@@ -88,11 +104,15 @@ public class WorkspaceGrepTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String patternStr = stringOrThrow(params, "pattern");
         String dirName = WorkspaceDirResolver.resolve(workspace, ctx, stringOrNull(params, "dirName"));
+        String subPath = stringOrNull(params, "path");
         String pathGlob = stringOrNull(params, "pathGlob");
         boolean ci = Boolean.TRUE.equals(params == null ? null : params.get("caseInsensitive"));
         int before = clampNonNeg(intOrNull(params, "contextBefore"));
         int after = clampNonNeg(intOrNull(params, "contextAfter"));
         int limit = clampLimit(intOrNull(params, "limit"));
+        int maxDepth = FileWalkDefaults.clampDepth(intOrNull(params, "maxDepth"));
+        boolean includeGenerated = Boolean.TRUE.equals(
+                params == null ? null : params.get("includeGenerated"));
 
         Pattern pattern;
         try {
@@ -110,13 +130,26 @@ public class WorkspaceGrepTool implements Tool {
             throw new ToolException(e.getMessage(), e);
         }
 
+        // 'path' narrows the search to a subtree; glob, depth and the
+        // generated-filter judge the part below it — the same contract the
+        // CLIENT backend documents.
+        String prefix = WorkspaceSubPath.prefix(subPath);
         List<Map<String, Object>> matches = new ArrayList<>();
         int filesScanned = 0;
         int filesSkipped = 0;
+        int generatedSkipped = 0;
         boolean truncated = false;
         for (String relPath : files) {
             if (matches.size() >= limit) { truncated = true; break; }
-            if (matcher != null && !matcher.matches(Path.of(relPath))) continue;
+            String under = WorkspaceSubPath.under(relPath, prefix);
+            if (under == null) continue;
+            Path underPath = Path.of(under);
+            if (!includeGenerated && FileWalkDefaults.isGenerated(underPath)) {
+                generatedSkipped++;
+                continue;
+            }
+            if (FileWalkDefaults.depthOf(underPath) > maxDepth) continue;
+            if (matcher != null && !matcher.matches(underPath)) continue;
 
             Path absolute;
             try {
@@ -167,9 +200,17 @@ public class WorkspaceGrepTool implements Tool {
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("dirName", dirName);
+        out.put("path", subPath == null ? "." : subPath);
         out.put("pattern", patternStr);
         out.put("filesScanned", filesScanned);
         out.put("filesSkipped", filesSkipped);
+        // Report what the default filter removed rather than letting the
+        // caller read the result as a complete sweep.
+        if (generatedSkipped > 0) {
+            out.put("generatedFilesSkipped", generatedSkipped);
+            out.put("generatedFilesHint",
+                    "Dependency/build directories were skipped — pass includeGenerated=true to search them.");
+        }
         out.put("matchCount", matches.size());
         out.put("truncated", truncated);
         out.put("matches", matches);

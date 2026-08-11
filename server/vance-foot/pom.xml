@@ -86,6 +86,31 @@
                     <mainClass>de.mhus.vance.foot.VanceFootApplication</mainClass>
                 </configuration>
             </plugin>
+            <!-- Secondary `classes` artefact: the main jar is a Spring Boot
+                 fat jar, whose classes sit under BOOT-INF/classes and are
+                 therefore unreachable as a normal dependency. qa/ needs them
+                 on a real classpath to check that the client_* tool schemas
+                 match their work_* counterparts (WorkTargetToolSymmetryTest) —
+                 the two families live in modules that cannot see each other,
+                 so qa is the only place the comparison can happen. The boot
+                 jar keeps its name and stays the artefact ProcessBuilder
+                 spawns; this only adds a sibling. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>plain-classes</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <classifier>classes</classifier>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <!-- Lets debug scripts run via `mvn exec:java -Dexec.args="..."`
                  like vance-cli does, without forking a JVM (which can break
                  JLine's TTY detection and the status bar). -->

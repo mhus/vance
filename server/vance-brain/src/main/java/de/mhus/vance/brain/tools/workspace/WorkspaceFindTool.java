@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.workspace;
 
+import de.mhus.vance.api.tools.FileWalkDefaults;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -43,10 +44,13 @@ public class WorkspaceFindTool implements Tool {
         Map<String, Object> p = new LinkedHashMap<>();
         p.put("dirName", Map.of("type", "string",
                 "description", "Optional RootDir name. Defaults to the current process's temp RootDir."));
+        p.put("path", Map.of("type", "string",
+                "description",
+                        "Subdirectory inside the RootDir to walk. Default: the whole RootDir."));
         p.put("pathGlob", Map.of("type", "string",
                 "description",
-                        "Glob pattern matched against the relative path inside the "
-                                + "RootDir, e.g. '**/*.md' or 'src/**/*.java'. Default: all files."));
+                        "Glob pattern matched against the relative path under 'path', "
+                                + "e.g. '**/*.md' or 'src/**/*.java'. Default: all files."));
         p.put("minSizeBytes", Map.of("type", "integer",
                 "description", "Skip files smaller than this. Default: no lower bound."));
         p.put("maxSizeBytes", Map.of("type", "integer",
@@ -60,9 +64,19 @@ public class WorkspaceFindTool implements Tool {
         p.put("sortBy", Map.of("type", "string",
                 "enum", List.of("path", "mtime", "size"),
                 "description", "Sort key. 'path' (default), 'mtime' (descending), 'size' (descending)."));
+        p.put("maxDepth", Map.of("type", "integer",
+                "description",
+                        "Recursion depth cap below 'path'. Default: "
+                                + FileWalkDefaults.DEFAULT_MAX_DEPTH
+                                + ". Use 1 to scan a flat directory."));
         p.put("limit", Map.of("type", "integer",
                 "description", "Cap on entries returned. Default: " + DEFAULT_LIMIT
                         + ", max: " + MAX_LIMIT + "."));
+        p.put("includeGenerated", Map.of("type", "boolean",
+                "description",
+                        "Also walk dependency and build directories "
+                                + "(node_modules, target, dist, .git, …), which are "
+                                + "skipped by default."));
         return p;
     }
 
@@ -91,6 +105,7 @@ public class WorkspaceFindTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String dirName = WorkspaceDirResolver.resolve(workspace, ctx, stringOrNull(params, "dirName"));
+        String subPath = stringOrNull(params, "path");
         String pathGlob = stringOrNull(params, "pathGlob");
         Long minSize = longOrNull(params, "minSizeBytes");
         Long maxSize = longOrNull(params, "maxSizeBytes");
@@ -98,6 +113,9 @@ public class WorkspaceFindTool implements Tool {
         Instant before = parseInstant(stringOrNull(params, "modifiedBefore"), "modifiedBefore");
         String sortBy = stringOrNull(params, "sortBy");
         int limit = clampLimit(intOrNull(params, "limit"));
+        int maxDepth = FileWalkDefaults.clampDepth(intOrNull(params, "maxDepth"));
+        boolean includeGenerated = Boolean.TRUE.equals(
+                params == null ? null : params.get("includeGenerated"));
 
         PathMatcher matcher = GlobMatchers.buildGlobMatcher(pathGlob);
 
@@ -108,11 +126,25 @@ public class WorkspaceFindTool implements Tool {
             throw new ToolException(e.getMessage(), e);
         }
 
+        // 'path' narrows the walk to a subtree; glob, depth and the
+        // generated-filter all judge the part *below* it — same contract the
+        // CLIENT backend documents, so file_find means one thing on both
+        // targets.
+        String prefix = WorkspaceSubPath.prefix(subPath);
         List<Entry> entries = new ArrayList<>();
         int totalConsidered = 0;
+        int generatedSkipped = 0;
         for (String relPath : all) {
+            String under = WorkspaceSubPath.under(relPath, prefix);
+            if (under == null) continue;
+            Path underPath = Path.of(under);
+            if (!includeGenerated && FileWalkDefaults.isGenerated(underPath)) {
+                generatedSkipped++;
+                continue;
+            }
+            if (FileWalkDefaults.depthOf(underPath) > maxDepth) continue;
             totalConsidered++;
-            if (matcher != null && !matcher.matches(Path.of(relPath))) continue;
+            if (matcher != null && !matcher.matches(underPath)) continue;
             Path abs;
             try {
                 abs = workspace.resolve(ctx.tenantId(), ctx.projectId(), dirName, relPath);
@@ -152,7 +184,15 @@ public class WorkspaceFindTool implements Tool {
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("dirName", dirName);
+        out.put("path", subPath == null ? "." : subPath);
         out.put("totalConsidered", totalConsidered);
+        // Report what the default filter removed rather than letting the
+        // caller read the result as a complete sweep.
+        if (generatedSkipped > 0) {
+            out.put("generatedFilesSkipped", generatedSkipped);
+            out.put("generatedFilesHint",
+                    "Dependency/build directories were skipped — pass includeGenerated=true to walk them.");
+        }
         out.put("matchCount", entries.size());
         out.put("returned", rows.size());
         out.put("truncated", truncated);

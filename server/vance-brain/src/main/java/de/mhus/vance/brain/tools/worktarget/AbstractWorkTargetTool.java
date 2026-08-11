@@ -36,12 +36,12 @@ abstract class AbstractWorkTargetTool implements Tool {
     public final Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         // 2-arg path (Agrajag probes, internal callers). The dispatcher
         // falls back to ToolDispatcher when no bus is available.
-        return dispatcher.dispatch(ctx, null, clientBackend(), workBackend(), params);
+        return dispatcher.dispatch(ctx, null, this, clientBackend(), workBackend(), params);
     }
 
     @Override
     public final Map<String, Object> invoke(
             Map<String, Object> params, ToolInvocationContext ctx, ToolBus bus) {
-        return dispatcher.dispatch(ctx, bus, clientBackend(), workBackend(), params);
+        return dispatcher.dispatch(ctx, bus, this, clientBackend(), workBackend(), params);
     }
 }

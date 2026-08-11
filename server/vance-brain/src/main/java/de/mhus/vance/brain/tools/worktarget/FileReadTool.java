@@ -31,9 +31,21 @@ public class FileReadTool extends AbstractWorkTargetTool {
                     "maxChars", Map.of(
                             "type", "integer",
                             "description",
-                                    "WORK only: maximum characters to return. "
-                                            + "0 or negative means use the server "
-                                            + "default cap.")),
+                                    "Maximum characters to return. 0 or negative "
+                                            + "means use the server default cap."),
+                    "startLine", Map.of(
+                            "type", "integer",
+                            "description",
+                                    "1-based first line to return. Omit to start "
+                                            + "at the beginning."),
+                    "maxLines", Map.of(
+                            "type", "integer",
+                            "description",
+                                    "Maximum number of lines to return. Combine "
+                                            + "with startLine to page through a file "
+                                            + "larger than the char cap — raising "
+                                            + "maxChars alone cannot reach past the "
+                                            + "start of the file.")),
             "required", List.of("path"));
 
     public FileReadTool(WorkTargetDispatcher dispatcher) {
@@ -52,7 +64,9 @@ public class FileReadTool extends AbstractWorkTargetTool {
 
     @Override
     public @org.jspecify.annotations.Nullable String troubleshootingHint() {
-        return "File missing = check path; CLIENT target needs Foot connected; large file = use file_head_tail.";
+        return "File missing = check path; CLIENT target needs Foot connected; "
+                + "truncated=true = page on with startLine + maxLines (re-reading "
+                + "with a bigger maxChars returns the same prefix).";
     }
 
     @Override

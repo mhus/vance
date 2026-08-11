@@ -1,6 +1,6 @@
 ---
-triggers: vault, secret, infisical, api token, api key, credential, password, store a secret, save a secret, generate a secret, provision a credential, rotate a token, {{secret:vault, compose secrets, secret manager, wo speichere ich das token, secret ablegen
-summary: Reference, inject, and provision secrets held in an external secret manager (Infisical). Read anywhere via {{secret:vault:<key>}}, inject into compose exec via a secrets: block, and create secrets with vault_secret_generate / vault_secret_set. Never claim you can't store a secret without reading this.
+triggers: vault, secret, infisical, api token, api key, credential, password, store a secret, save a secret, generate a secret, provision a credential, rotate a token, {{secret:vault, compose secrets, secret manager, wo speichere ich das token, secret ablegen, PASSWORD-typed, cannot be resolved through a secret reference, reserved for operator configuration, cannot be overwritten by an agent, SecretAccessDenied, hidden setting
+summary: Reference, inject, and provision secrets held in an external secret manager (Infisical). Read anywhere via {{secret:vault:<key>}}, inject into compose exec via a secrets: block, and create secrets with vault_secret_generate / vault_secret_set. Also explains the HIDDEN-vs-PASSWORD setting types and the three write rules — read this before reporting any "secret access denied" error as a dead end.
 ---
 # Vault Secrets — reference, inject, provision
 
@@ -90,9 +90,33 @@ Cortex-run scripts (where `vance.documents` etc. also work). Pulled values are
 masked out of a JS string return / Python stdout — but don't echo or persist
 them needlessly.
 
+## 5. What you may and may not write into settings
+
+Installing a credential through `tool_template_apply` or a kit install writes a
+setting. Three rules apply to those writes because *you* triggered them, and each
+one has a distinct error:
+
+| Error says | Meaning | What to do |
+|---|---|---|
+| *"exists as PASSWORD and cannot be overwritten by an agent"* | a real secret is already there | don't retry. Ask the human to change it, or use a different key |
+| *"reserved for operator configuration"* | the key is on the operator deny-list (`ai.provider.*`, `vault.*`) | don't retry, not with another spelling either. LLM provider keys and vault credentials are set by a human in the setting forms |
+| *"PASSWORD-typed and cannot be resolved…"* | you are **reading**, and the target is the wrong type (§1) | a human re-types it to HIDDEN |
+
+A credential you install this way lands as **HIDDEN**, so the tool document from
+the same template can resolve it — that part needs no action from you.
+
+Nothing here can be worked around by choosing a different type or scope: you
+cannot set a setting's type, and the deny-list is server configuration, not a
+setting. A vault secret (`vault_secret_generate`) is the alternative when you need
+to provision something yourself.
+
 ## Don't refuse without checking
 
 Never say "I can't store/generate a secret" or "I have no way to keep this
 credential safe" — you do: `vault_secret_generate` provisions one without ever
 exposing it, and `{{secret:vault:<key>}}` references it. A vault must be bound at
 the scope first (Profile/Workspace → *Vault* setting form); if none is, say so.
+
+Equally, don't report one of the §5 denials as "the system is broken" or retry it
+in a loop. Each one is a deliberate boundary with a named next step — state which
+one you hit and what the human has to do.

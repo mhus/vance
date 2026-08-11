@@ -281,7 +281,7 @@ params:
 profiles:
   # Foot CLI connected — operate on the user's local files by
   # default. Workspace RootDirs stay reachable via
-  # work_target_set(kind=WORK, dirName=...).
+  # work_target_set(kind=WORK, targetName=...).
   foot:
     params:
       workTarget:

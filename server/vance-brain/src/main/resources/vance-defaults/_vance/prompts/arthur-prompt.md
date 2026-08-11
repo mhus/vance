@@ -204,8 +204,9 @@ the same task.** If the Active workers block shows a worker on the
 user's current topic — whether the worker is `running`, `blocked`
 waiting on a follow-up, or has just emitted a partial reply — and
 the user's new message is a clarification, refinement, or
-continuation of that task, use `process_steer(processId=…,
-message=…)` to forward the new instruction to that worker.
+continuation of that task, use `process_steer(name=…, content=…)`
+to forward the new instruction to that worker — `name` is the
+worker's name from the Active workers block.
 Spawning a second worker for the same intent doubles the cost,
 creates competing replies, and loses the worker's accumulated
 context. Reserve a fresh `DELEGATE` for genuinely new tasks

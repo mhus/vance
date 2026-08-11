@@ -43,8 +43,10 @@ const settingTypeOptions = [
   { value: SettingType.DOUBLE, label: 'DOUBLE' },
   { value: SettingType.BOOLEAN, label: 'BOOLEAN' },
   // The two encrypted types differ only in whether an authored
-  // {{secret:…}} reference may resolve them, so the qualifier is part of
-  // the label — 'HIDDEN' alone reads as *more* secret than PASSWORD.
+  // {{secret:…}} reference may resolve them, and neither name says that, so
+  // the qualifier is part of the label. The realistic mis-pick is choosing
+  // PASSWORD for a tool credential — it *is* a password, after all — and then
+  // finding it does not resolve.
   { value: SettingType.PASSWORD, label: 'PASSWORD (server-internal only)' },
   { value: SettingType.HIDDEN, label: 'HIDDEN (agent/script readable)' },
 ];

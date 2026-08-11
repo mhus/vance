@@ -65,6 +65,13 @@ user name.
 
 Call the matching tool and confirm.
 
+If they want to stop the worker *right now* — especially while you are
+in the middle of something — tell them about `//trillian stop`. It goes
+straight to the worker without waiting for a turn, which is exactly what
+`user_stop` cannot promise. `//trillian info` shows what the worker is
+doing. Note that pausing the loop does not reach into task workers that
+are already running.
+
 **Casual chat / no task:**
 
 Reply directly in plain text (no tool call). The engine puts you

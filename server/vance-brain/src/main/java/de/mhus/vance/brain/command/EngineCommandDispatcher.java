@@ -63,6 +63,21 @@ public class EngineCommandDispatcher {
      * Routes {@code command} to its handler. Never throws — every failure
      * mode maps onto an {@link EngineCommandResult}.
      */
+    /**
+     * Whether the handler for {@code verb} opts out of the addressed
+     * process's lane.
+     *
+     * <p>Phrased as the negative on purpose: only an explicit
+     * {@code runsOnLane() == false} from a known handler skips
+     * serialization. Anything else — unknown verb, absent handler, a test
+     * double answering with its zero-value — lands on the lane, which is
+     * the safe side.
+     */
+    public boolean bypassesLane(String verb) {
+        EngineCommandHandler handler = handlers.get(verb);
+        return handler != null && !handler.runsOnLane();
+    }
+
     public EngineCommandResult dispatch(ThinkProcessDocument process, EngineCommand command) {
         String verb = command.name();
         EngineCommandHandler handler = handlers.get(verb);

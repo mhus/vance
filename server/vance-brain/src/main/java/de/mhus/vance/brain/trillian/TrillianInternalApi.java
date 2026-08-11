@@ -84,6 +84,7 @@ public class TrillianInternalApi {
     private final EngineMessageService engineMessageService;
     private final ProcessEventEmitter eventEmitter;
     private final ChatMessageService chatMessageService;
+    private final de.mhus.vance.brain.scheduling.LaneScheduler laneScheduler;
 
     /**
      * Resolves the peer-process for {@code callingProcessId} via its
@@ -203,6 +204,72 @@ public class TrillianInternalApi {
                 peer.getName(),
                 peer.getStatus(),
                 pending);
+    }
+
+    /**
+     * Pauses the peer worker loop. Runs the status change on the
+     * <b>peer's</b> lane, not the caller's — the mutated process is the
+     * peer, so that is where serialization belongs, and it keeps the
+     * pause working while the caller's own lane is busy.
+     *
+     * <p>Idempotent: an already PAUSED or CLOSED peer is returned
+     * unchanged.
+     *
+     * @return the peer's status after the call
+     */
+    public ThinkProcessStatus pausePeer(ThinkProcessDocument peer) {
+        return setPeerStatus(peer, ThinkProcessStatus.PAUSED,
+                java.util.Set.of(ThinkProcessStatus.PAUSED, ThinkProcessStatus.CLOSED));
+    }
+
+    /**
+     * Resumes a paused peer and schedules a turn so queued work is
+     * picked up without waiting for the next event. Only a PAUSED peer
+     * moves; anything else is returned unchanged.
+     *
+     * @return the peer's status after the call
+     */
+    public ThinkProcessStatus resumePeer(ThinkProcessDocument peer) {
+        ThinkProcessStatus current = peer.getStatus();
+        // Already going, or gone for good — nothing to resume. Notably
+        // this leaves a RUNNING peer alone instead of knocking it back to
+        // IDLE behind its own turn.
+        if (current == ThinkProcessStatus.CLOSED
+                || current == ThinkProcessStatus.IDLE
+                || current == ThinkProcessStatus.RUNNING) {
+            return current;
+        }
+        ThinkProcessStatus now = setPeerStatus(peer, ThinkProcessStatus.IDLE,
+                java.util.Set.of(ThinkProcessStatus.CLOSED));
+        // Queued work should start moving again without waiting for the
+        // next inbound event.
+        wakePeer(peer.getId());
+        return now;
+    }
+
+    private ThinkProcessStatus setPeerStatus(
+            ThinkProcessDocument peer, ThinkProcessStatus target,
+            java.util.Set<ThinkProcessStatus> noOpWhen) {
+        ThinkProcessStatus current = peer.getStatus();
+        if (noOpWhen.contains(current)) {
+            return current;
+        }
+        try {
+            laneScheduler.submit(peer.getId(), () -> {
+                thinkProcessService.updateStatus(peer.getId(), target);
+                return null;
+            }).get();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(
+                    "Interrupted setting peer '" + peer.getId() + "' to " + target, ie);
+        } catch (java.util.concurrent.ExecutionException ee) {
+            Throwable cause = ee.getCause() == null ? ee : ee.getCause();
+            throw new IllegalStateException(
+                    "Failed to set peer '" + peer.getId() + "' to " + target
+                            + ": " + cause.getMessage(), cause);
+        }
+        return target;
     }
 
     /**

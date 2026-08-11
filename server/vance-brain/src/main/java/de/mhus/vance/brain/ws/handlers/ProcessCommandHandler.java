@@ -105,8 +105,17 @@ public class ProcessCommandHandler implements WsHandler {
         Map<String, Object> params =
                 request.getParams() == null ? Map.of() : request.getParams();
 
-        laneScheduler.submit(processId, () -> runLaneDispatch(
-                wsSession, envelope, processId, request.getProcessName(), verb, params));
+        if (dispatcher.bypassesLane(verb)) {
+            // Verb declares it doesn't touch this process — run it right
+            // here. Queueing it behind the lane would make diagnostics and
+            // cross-process stops unavailable precisely when the addressed
+            // process is stuck mid-turn.
+            runLaneDispatch(wsSession, envelope, processId,
+                    request.getProcessName(), verb, params);
+        } else {
+            laneScheduler.submit(processId, () -> runLaneDispatch(
+                    wsSession, envelope, processId, request.getProcessName(), verb, params));
+        }
     }
 
     /**

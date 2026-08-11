@@ -26,8 +26,31 @@ public interface EngineCommandHandler {
     String verb();
 
     /**
-     * Processes the command. The {@code process} is a fresh read taken
-     * on the lane immediately before dispatch.
+     * Whether this verb needs the addressed process's lane.
+     *
+     * <p>Default {@code true}, which is right for anything that reads or
+     * mutates the addressed process: the lane is what keeps it from
+     * racing an in-flight turn.
+     *
+     * <p>Returning {@code false} is for verbs that do <b>not</b> touch the
+     * addressed process — pure queries, or commands whose target is a
+     * different process (which then serialize on <em>that</em> process's
+     * lane instead). Those must not queue behind the addressed process's
+     * turn: a diagnostic verb that blocks while a turn is stuck is
+     * useless exactly when it is needed, and a stop that waits for the
+     * thing it is meant to interrupt is no stop at all.
+     *
+     * <p>A handler returning {@code false} must not mutate
+     * {@code process}.
+     */
+    default boolean runsOnLane() {
+        return true;
+    }
+
+    /**
+     * Processes the command. The {@code process} is a fresh read; it is
+     * taken on the lane immediately before dispatch unless
+     * {@link #runsOnLane()} says otherwise.
      */
     EngineCommandResult handle(ThinkProcessDocument process, EngineCommand command);
 }

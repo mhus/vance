@@ -99,6 +99,34 @@ class EngineCommandDispatcherTest {
         EngineCommandResult apply(ThinkProcessDocument process, EngineCommand command);
     }
 
+    @Test
+    void bypassesLane_onlyWhenAHandlerExplicitlyOptsOut() {
+        EngineCommandHandler laneFree = new EngineCommandHandler() {
+            @Override
+            public String verb() {
+                return "peek";
+            }
+
+            @Override
+            public boolean runsOnLane() {
+                return false;
+            }
+
+            @Override
+            public EngineCommandResult handle(ThinkProcessDocument p, EngineCommand c) {
+                return EngineCommandResult.ok();
+            }
+        };
+        EngineCommandDispatcher dispatcher = dispatcher(
+                handler("mutate", (p, c) -> EngineCommandResult.ok()), laneFree);
+
+        assertThat(dispatcher.bypassesLane("peek")).isTrue();
+        assertThat(dispatcher.bypassesLane("mutate")).isFalse();
+        // Unknown verbs still need a dispatch (to report "no handler"),
+        // and serializing is the safe side.
+        assertThat(dispatcher.bypassesLane("nope")).isFalse();
+    }
+
     private static EngineCommandHandler handler(String verb, HandleFn fn) {
         return new EngineCommandHandler() {
             @Override

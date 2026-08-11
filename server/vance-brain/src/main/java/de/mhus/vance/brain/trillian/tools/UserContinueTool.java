@@ -1,11 +1,9 @@
 package de.mhus.vance.brain.trillian.tools;
 
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
-import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.trillian.TrillianControlEngine;
 import de.mhus.vance.brain.trillian.TrillianInternalApi;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -13,7 +11,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -31,8 +28,6 @@ public class UserContinueTool implements Tool {
             "properties", Map.of());
 
     private final TrillianInternalApi api;
-    private final ThinkProcessService thinkProcessService;
-    private final LaneScheduler laneScheduler;
 
     @Override
     public String name() {
@@ -82,24 +77,18 @@ public class UserContinueTool implements Tool {
             throw new ToolException(
                     "Trillian User worker is CLOSED — use user_reset to recreate it");
         }
+        ThinkProcessStatus now;
         try {
-            laneScheduler.submit(peer.getId(), () -> {
-                thinkProcessService.updateStatus(peer.getId(), ThinkProcessStatus.IDLE);
-                return null;
-            }).get();
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            throw new ToolException("Interrupted waiting for user_continue");
-        } catch (ExecutionException ee) {
-            Throwable cause = ee.getCause() == null ? ee : ee.getCause();
-            throw new ToolException("user_continue failed: " + cause.getMessage(), cause);
+            // Shared with the //trillian continue command; resumePeer also
+            // wakes the lane so queued task_requests move immediately.
+            now = api.resumePeer(peer);
+        } catch (RuntimeException e) {
+            throw new ToolException("user_continue failed: " + e.getMessage(), e);
         }
-        // Wake the lane so queued task_request events are picked up now.
-        api.wakePeer(peer.getId());
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("peerProcessName", peer.getName());
-        out.put("status", ThinkProcessStatus.IDLE.name());
+        out.put("status", now.name());
         return out;
     }
 }

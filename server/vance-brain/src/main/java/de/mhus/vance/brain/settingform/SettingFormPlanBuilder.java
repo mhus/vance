@@ -446,21 +446,29 @@ public class SettingFormPlanBuilder {
      * {@code tenant}) into the persisted reference-type +
      * reference-id pair that {@link SettingService} expects.
      *
-     * @throws IllegalStateException when {@code projectId}/{@code userId}
-     *         is not provided for a scope that requires it.
+     * <p>A missing {@code projectId} is the tenant-wide context, not an
+     * error: the whole subsystem reads "no project in the request" as
+     * {@code _tenant} — the loader skips the project tier and filters
+     * {@code availableIn} against {@code _tenant}, and the live-cascade
+     * reads in {@code SettingFormService} land on {@code _tenant} too.
+     * Writes have to agree, otherwise a {@code defaultScope: project}
+     * form that is deliberately offered in the tenant context
+     * ({@code llm-setup}, {@code vault}, {@code fenchurch-style}) would
+     * render its values fine and then fail on save.
+     *
+     * @throws IllegalStateException when {@code userId} is not provided
+     *         for the {@code user} scope, or the scope is unknown.
      */
     public ResolvedScope resolveScope(
             String wireScope,
             @Nullable String projectId,
             @Nullable String userId) {
         return switch (wireScope) {
-            case SettingService.SCOPE_PROJECT -> {
-                if (projectId == null || projectId.isBlank()) {
-                    throw new IllegalStateException(
-                            "scope 'project' requires a projectId in the request context");
-                }
-                yield new ResolvedScope(SettingService.SCOPE_PROJECT, projectId);
-            }
+            case SettingService.SCOPE_PROJECT -> new ResolvedScope(
+                    SettingService.SCOPE_PROJECT,
+                    (projectId == null || projectId.isBlank())
+                            ? HomeBootstrapService.TENANT_PROJECT_NAME
+                            : projectId);
             case SettingService.SCOPE_USER -> {
                 if (userId == null || userId.isBlank()) {
                     throw new IllegalStateException(

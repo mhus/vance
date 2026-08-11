@@ -221,8 +221,8 @@ public class SettingFormController {
             try {
                 scope = settingFormService.resolveScope(wireScope, projectId, userId);
             } catch (IllegalStateException e) {
-                // Scope precondition failure (e.g. a project-scoped form applied
-                // without a projectId). Left blind before, this produced a bare
+                // Scope precondition failure (e.g. a user-scoped form applied
+                // without an authenticated subject). Left blind before, this produced a bare
                 // HTTP 400 with no log and — because of Spring's default
                 // server.error.include-message=never — no message in the body.
                 // Log it and route through FormValidationExceptionAdvice so the

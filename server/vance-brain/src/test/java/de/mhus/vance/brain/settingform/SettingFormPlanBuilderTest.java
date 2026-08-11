@@ -200,11 +200,15 @@ class SettingFormPlanBuilderTest {
     }
 
     @Test
-    void scope_project_without_projectId_rejects() {
-        assertThatThrownBy(() -> planBuilder.resolveScope(
-                SettingService.SCOPE_PROJECT, null, USER))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("projectId");
+    void scope_project_without_projectId_falls_back_to_tenant_project() {
+        // "No project in the request" is the tenant-wide context — the same
+        // reading the loader and the live-cascade reads use. A project-scoped
+        // form offered in the _tenant context must save there, not fail.
+        SettingFormPlanBuilder.ResolvedScope scope =
+                planBuilder.resolveScope(SettingService.SCOPE_PROJECT, null, USER);
+
+        assertThat(scope.referenceType()).isEqualTo(SettingService.SCOPE_PROJECT);
+        assertThat(scope.referenceId()).isEqualTo(HomeBootstrapService.TENANT_PROJECT_NAME);
     }
 
     @Test

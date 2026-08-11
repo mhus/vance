@@ -249,6 +249,31 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
+                    <!--
+                        Test classes are distributed over four reusing forks.
+                        Tests are the dominant build cost (~52% of a full
+                        `mvn clean install`), and they concentrate in the two
+                        modules on the reactor's critical path: vance-shared
+                        (1098 tests) and vance-brain (4260). Splitting them
+                        measured 36s -> 26s for brain and 25s -> 18s for
+                        shared on an 18-core machine.
+
+                        Second effect: it caps how many test classes share a
+                        single JVM. Running all 4260 brain tests in one fork
+                        was hitting a metaspace flake (NoClassDefFoundError
+                        on inner classes) — four forks keep each JVM well
+                        below that threshold.
+
+                        Requires tests to not share process-global state
+                        across classes (fixed ports, fixed temp paths,
+                        static singletons written by one class and read by
+                        another). That holds today; a new test that breaks it
+                        shows up as a failure only under forking, so keep it
+                        in mind when a test passes solo but fails in the
+                        reactor.
+                    -->
+                    <forkCount>4</forkCount>
+                    <reuseForks>true</reuseForks>
                     <argLine>
                         -XX:+EnableDynamicAgentLoading
                         --add-opens java.base/java.lang=ALL-UNNAMED

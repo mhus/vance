@@ -9,11 +9,16 @@
  *
  * <p>Values are stored as strings plus a
  * {@link de.mhus.vance.api.settings.SettingType}. The
- * {@link de.mhus.vance.api.settings.SettingType#PASSWORD} type is encrypted
- * at rest via {@link de.mhus.vance.shared.crypto.AesEncryptionService} and
- * never returned in plaintext through generic read paths — use
+ * encrypted types ({@link de.mhus.vance.api.settings.SettingType#encrypted()} —
+ * {@code PASSWORD} and {@code HIDDEN}) are encrypted at rest via
+ * {@link de.mhus.vance.shared.crypto.AesEncryptionService} and never returned in
+ * plaintext through generic read paths — use
  * {@link SettingService#getDecryptedPassword(String, String, String, String)}
  * explicitly.
+ *
+ * <p>{@code PASSWORD} vs. {@code HIDDEN} decides whether an authored
+ * {@code {{secret:…}}} reference may resolve the value; that gate sits on the
+ * reference-resolution path in {@code vance-brain}, not in this package.
  */
 @NullMarked
 package de.mhus.vance.shared.settings;

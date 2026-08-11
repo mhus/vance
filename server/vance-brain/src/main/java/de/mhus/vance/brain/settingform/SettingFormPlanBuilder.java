@@ -166,7 +166,7 @@ public class SettingFormPlanBuilder {
                     PlannedSettingAction.Action.DELETE,
                     null,
                     null,
-                    cs.settingType() == SettingType.PASSWORD,
+                    cs.settingType().encrypted(),
                     "settings[" + i + "]");
             recordPlanned(seen, out, action);
         }
@@ -189,7 +189,7 @@ public class SettingFormPlanBuilder {
         ResolvedScope scope = resolveScope(wireScope, projectId, userId);
         SettingType settingType = resolveFieldSettingType(field, binding);
         String sourceLabel = "fields[" + field.getName() + "]";
-        boolean masked = "password".equals(field.getType()) || settingType == SettingType.PASSWORD;
+        boolean masked = "password".equals(field.getType()) || settingType.encrypted();
 
         boolean writeAllowed = evaluateBooleanExpression(
                 field.getWriteIf(), ctx, "fields[" + field.getName() + "].writeIf");
@@ -285,7 +285,7 @@ public class SettingFormPlanBuilder {
             FieldLiveState live,
             boolean submitted) {
         PlannedSettingAction.Action action;
-        if (!submitted || masked || settingType == SettingType.PASSWORD || !live.hasLiveValue()) {
+        if (!submitted || masked || settingType.encrypted() || !live.hasLiveValue()) {
             action = PlannedSettingAction.Action.SKIP;
         } else if (live.isOwnedBy(scope.referenceId())) {
             action = PlannedSettingAction.Action.DELETE;
@@ -304,7 +304,13 @@ public class SettingFormPlanBuilder {
                 masked, sourceLabel);
     }
 
-    private SettingType resolveFieldSettingType(FormFieldDto field, BindsToDto binding) {
+    /**
+     * The {@link SettingType} a bound field writes. Package-private because
+     * {@code SettingFormService} must resolve it identically when reading the
+     * live value — reading a field through the wrong type silently reports
+     * "not set" for an existing encrypted setting.
+     */
+    static SettingType resolveFieldSettingType(FormFieldDto field, BindsToDto binding) {
         if (binding.getSettingType() != null && !binding.getSettingType().isBlank()) {
             try {
                 return SettingType.valueOf(binding.getSettingType().trim().toUpperCase(Locale.ROOT));
@@ -333,7 +339,9 @@ public class SettingFormPlanBuilder {
             return null;
         }
         return switch (settingType) {
-            case STRING, PASSWORD -> s;
+            // Encrypted types pass through verbatim — the plaintext is coerced
+            // by nobody, it is handed to the encrypted-write path as typed.
+            case STRING, PASSWORD, HIDDEN -> s;
             case INT, LONG -> {
                 try {
                     yield Long.toString(Long.parseLong(s));
@@ -371,7 +379,7 @@ public class SettingFormPlanBuilder {
         String wireScope = cs.scope() == null ? form.defaultScope() : cs.scope();
         ResolvedScope scope = resolveScope(wireScope, projectId, userId);
         String sourceLabel = "settings[" + index + "]";
-        boolean masked = cs.settingType() == SettingType.PASSWORD;
+        boolean masked = cs.settingType().encrypted();
 
         boolean writeAllowed = evaluateBooleanExpression(
                 cs.writeIfExpression(), ctx, sourceLabel + ".writeIf");
@@ -411,7 +419,7 @@ public class SettingFormPlanBuilder {
         String trimmed = rendered.trim();
         if (trimmed.isEmpty()) return null;
         return switch (settingType) {
-            case STRING, PASSWORD -> trimmed;
+            case STRING, PASSWORD, HIDDEN -> trimmed;
             case INT, LONG -> {
                 try {
                     yield Long.toString(Long.parseLong(trimmed));
@@ -592,7 +600,7 @@ public class SettingFormPlanBuilder {
             if (value != null) out.put(b.getKey(), value);
         }
         for (ResolvedComputedSetting cs : form.computedSettings()) {
-            if (cs.settingType() == SettingType.PASSWORD) continue;
+            if (cs.settingType().encrypted()) continue;
             String value = settingService.getStringValueCascade(
                     tenantId, projectId, null, cs.key());
             if (value != null) out.putIfAbsent(cs.key(), value);

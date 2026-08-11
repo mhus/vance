@@ -12,9 +12,11 @@ import org.jspecify.annotations.Nullable;
 /**
  * Read view of a single setting.
  *
- * <p>For {@link SettingType#PASSWORD} the {@link #value} is masked as
- * {@code "[set]"} if a ciphertext exists and {@code null} if the setting is
- * empty — the plaintext never leaves the server through this endpoint.
+ * <p>For encrypted types ({@link SettingType#encrypted()}) the {@link #value} is
+ * masked as {@code "[set]"} if a ciphertext exists and {@code null} if the
+ * setting is empty — the plaintext never leaves the server through this
+ * endpoint. That holds for {@code HIDDEN} too: it is agent-resolvable through a
+ * secret reference, not readable through the settings API.
  */
 @Data
 @Builder

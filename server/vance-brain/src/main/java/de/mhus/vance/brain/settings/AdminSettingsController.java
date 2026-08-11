@@ -123,8 +123,9 @@ public class AdminSettingsController {
         authority.enforce(httpRequest,
                 new Resource.Setting(tenant, referenceType, referenceId, key), Action.ADMIN);
         StorageRef ref = mapToStorage(referenceType, referenceId);
-        SettingDocument saved = request.getType() == SettingType.PASSWORD
-                ? settingService.setEncryptedPassword(tenant, ref.type(), ref.id(), key, request.getValue())
+        SettingDocument saved = request.getType().encrypted()
+                ? settingService.setEncryptedSecret(tenant, ref.type(), ref.id(), key,
+                        request.getValue(), request.getType())
                 : settingService.set(tenant, ref.type(), ref.id(), key,
                         request.getValue(), request.getType(), request.getDescription());
 
@@ -207,7 +208,7 @@ public class AdminSettingsController {
 
     private static SettingDto toDto(
             SettingDocument doc, String wireType, String wireId) {
-        boolean isPassword = doc.getType() == SettingType.PASSWORD;
+        boolean isPassword = doc.getType().encrypted();
         return SettingDto.builder()
                 .tenantId(doc.getTenantId())
                 .referenceType(wireType)

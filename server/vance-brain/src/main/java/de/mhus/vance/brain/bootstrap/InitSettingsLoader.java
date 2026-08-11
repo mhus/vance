@@ -136,9 +136,9 @@ public class InitSettingsLoader {
         }
         String description = spec.get("description") == null
                 ? null : spec.get("description").toString();
-        if (type == SettingType.PASSWORD) {
-            settingService.setEncryptedPassword(
-                    tenant, SETTINGS_REF_TYPE, SETTINGS_REF_ID, key, value);
+        if (type.encrypted()) {
+            settingService.setEncryptedSecret(
+                    tenant, SETTINGS_REF_TYPE, SETTINGS_REF_ID, key, value, type);
         } else {
             settingService.set(
                     tenant, SETTINGS_REF_TYPE, SETTINGS_REF_ID, key, value, type, description);

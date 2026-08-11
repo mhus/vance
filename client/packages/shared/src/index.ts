@@ -4,6 +4,7 @@ export * from './documentHeaderCodec';
 export * from './facelift/index';
 export * from './rest/index';
 export * from './platform/index';
+export * from './settingType';
 export * from './speech/index';
 export * from './storage/keys';
 export * from './ws/index';

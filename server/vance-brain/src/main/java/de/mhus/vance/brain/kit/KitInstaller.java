@@ -322,23 +322,27 @@ public class KitInstaller {
             boolean existed = settingService.exists(
                     tenantId, SettingService.SCOPE_PROJECT, projectId, key);
 
-            if (parsed.type() == SettingType.PASSWORD) {
+            if (parsed.type().encrypted()) {
                 if (mode == KitImportMode.APPLY && keepPasswords) {
-                    log.debug("Skipping password '{}' due to --keep-passwords", key);
+                    log.debug("Skipping encrypted setting '{}' due to --keep-passwords", key);
                     continue;
                 }
                 if (vaultPassword == null || vaultPassword.isBlank()) {
                     if (!haveWarnedAboutMissingVault && kitDeclaresEncrypted) {
                         result.warnings(addWarning(result.build().getWarnings(),
-                                "vault password not provided — PASSWORD settings skipped"));
+                                "vault password not provided — encrypted settings skipped"));
                         haveWarnedAboutMissingVault = true;
                     }
                     skippedPw.add(key);
                     continue;
                 }
+                // The kit's declared type is preserved — never promoted to
+                // PASSWORD (it would stop resolving through the tool documents
+                // the same kit installs) and never demoted to HIDDEN (the value
+                // came from the repo, not from anyone's context).
                 boolean ok = settingService.encryptFromImport(
                         tenantId, SettingService.SCOPE_PROJECT, projectId, key,
-                        vaultPassword, parsed.value());
+                        vaultPassword, parsed.value(), parsed.type());
                 if (!ok) {
                     skippedPw.add(key);
                     continue;
@@ -431,13 +435,13 @@ public class KitInstaller {
                         ? Collections.emptyList() : top.getInherits()))
                 .resolvedInherits(new ArrayList<>(resolved.resolvedInherits()))
                 .inheritArtefacts(inheritArtefacts)
-                .hasEncryptedSecrets(hasAnyPasswordSetting(scan))
+                .hasEncryptedSecrets(hasAnyEncryptedSetting(scan))
                 .build();
     }
 
-    private static boolean hasAnyPasswordSetting(BuildTreeScan scan) {
+    private static boolean hasAnyEncryptedSetting(BuildTreeScan scan) {
         for (KitYamlMapper.ParsedSetting s : scan.settings().values()) {
-            if (s.type() == SettingType.PASSWORD) return true;
+            if (s.type().encrypted()) return true;
         }
         return false;
     }

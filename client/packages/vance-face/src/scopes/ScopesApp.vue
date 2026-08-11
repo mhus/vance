@@ -17,7 +17,7 @@ import {
   VSelect,
   VTextarea,
 } from '@/components';
-import { listSettingForms, RestError } from '@vance/shared';
+import { listSettingForms, RestError, isEncryptedSettingType } from '@vance/shared';
 import { useAdminTenant } from '@/composables/useAdminTenant';
 import { useAdminProjectGroups } from '@/composables/useAdminProjectGroups';
 import { useAdminProjects } from '@/composables/useAdminProjects';
@@ -719,7 +719,7 @@ async function addSetting(): Promise<void> {
       // "explicitly empty here" — it must persist as "" so the cascade stops
       // at this scope instead of falling through to the outer layer. Sending
       // null would store null, which keeps cascading.
-      newSettingType.value === SettingType.PASSWORD && newSettingValue.value === ''
+      isEncryptedSettingType(newSettingType.value) && newSettingValue.value === ''
         ? null : newSettingValue.value,
       newSettingType.value,
       newSettingDescription.value.trim() || null,
@@ -734,7 +734,7 @@ function startEditSetting(s: SettingDto): void {
   editingKey.value = s.key;
   // Password values come back masked as "[set]" — clear the edit field so the
   // operator types a fresh password instead of editing the mask.
-  editValue.value = s.type === SettingType.PASSWORD ? '' : (s.value ?? '');
+  editValue.value = isEncryptedSettingType(s.type) ? '' : (s.value ?? '');
   editDescription.value = s.description ?? '';
 }
 
@@ -744,7 +744,7 @@ async function saveEditSetting(s: SettingDto): Promise<void> {
   try {
     await settingsState.upsert(
       scope.type, scope.id, s.key,
-      editValue.value === '' && s.type === SettingType.PASSWORD ? null : editValue.value,
+      editValue.value === '' && isEncryptedSettingType(s.type) ? null : editValue.value,
       s.type,
       editDescription.value || null,
     );
@@ -1290,7 +1290,7 @@ const combinedError = computed<string | null>(() =>
             </div>
             <template v-if="editingKey === s.key">
               <VInput
-                v-if="s.type !== SettingType.PASSWORD"
+                v-if="!isEncryptedSettingType(s.type)"
                 v-model="editValue"
                 :label="$t('scopes.settingsPanel.valueLabel')"
               />
@@ -1320,7 +1320,7 @@ const combinedError = computed<string | null>(() =>
             </template>
             <template v-else>
               <div class="text-sm break-words">
-                <span v-if="s.type === SettingType.PASSWORD" class="opacity-70">
+                <span v-if="isEncryptedSettingType(s.type)" class="opacity-70">
                   {{ settingValueLabel(s) }}
                 </span>
                 <span v-else>{{ settingValueLabel(s) }}</span>
@@ -1351,7 +1351,7 @@ const combinedError = computed<string | null>(() =>
             :options="settingTypeOptions"
           />
           <VInput
-            v-if="newSettingType !== SettingType.PASSWORD"
+            v-if="!isEncryptedSettingType(newSettingType)"
             v-model="newSettingValue"
             :label="$t('scopes.settingsPanel.valueLabel')"
           />

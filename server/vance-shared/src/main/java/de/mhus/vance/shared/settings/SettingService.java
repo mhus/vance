@@ -21,9 +21,12 @@ import org.springframework.stereotype.Service;
  * Setting CRUD and typed getters/setters. All reads and writes are scoped by
  * {@code (tenantId, referenceType, referenceId, key)}.
  *
- * <p>{@link SettingType#PASSWORD} values are encrypted on write and are never
- * returned via the generic {@link #getStringValue} path — use
- * {@link #getDecryptedPassword} explicitly.
+ * <p>Encrypted types ({@link SettingType#encrypted()} — {@code PASSWORD} and
+ * {@code HIDDEN}) are encrypted on write and are never returned via the generic
+ * {@link #getStringValue} path — use {@link #getDecryptedPassword} explicitly.
+ * Which of the two a value carries decides whether an authored
+ * {@code {{secret:…}}} reference may resolve it; that gate lives on the
+ * resolution path, not here.
  */
 @Service
 @RequiredArgsConstructor
@@ -97,10 +100,9 @@ public class SettingService {
     // ──────────────────── Set / upsert ────────────────────
 
     /**
-     * Sets {@code key} to {@code value} with the given type. For
-     * {@link SettingType#PASSWORD} the caller must pass the already-encrypted
-     * blob; higher-level password handling goes through
-     * {@link #setEncryptedPassword}.
+     * Sets {@code key} to {@code value} with the given type. Encrypted types
+     * ({@link SettingType#encrypted()}) are rejected here — they go through
+     * {@link #setEncryptedSecret}.
      */
     public SettingDocument set(
             String tenantId,
@@ -110,12 +112,12 @@ public class SettingService {
             @Nullable String value,
             SettingType type,
             @Nullable String description) {
-        if (type == SettingType.PASSWORD) {
-            // PASSWORD values must be encrypted at rest — route through
-            // setEncryptedPassword so nothing can persist a plaintext secret
+        if (type.encrypted()) {
+            // Encrypted values must be encrypted at rest — route through
+            // setEncryptedSecret so nothing can persist a plaintext secret
             // via the generic setter (code-review F4).
             throw new IllegalArgumentException(
-                    "PASSWORD settings must be written via setEncryptedPassword(), not set()");
+                    type + " settings must be written via setEncryptedSecret(), not set()");
         }
         return setInternal(tenantId, referenceType, referenceId, key, value, type, description);
     }
@@ -152,8 +154,10 @@ public class SettingService {
 
     /**
      * Returns the raw string value, or {@code null} if the setting does not
-     * exist. Refuses to read {@link SettingType#PASSWORD} — use
-     * {@link #getDecryptedPassword} for those.
+     * exist. Refuses to read encrypted types ({@link SettingType#encrypted()})
+     * — use {@link #getDecryptedPassword} for those. This is also what keeps
+     * the script surface ({@code vance.settings.get}) blind to secrets of
+     * either encrypted type.
      */
     public @Nullable String getStringValue(
             String tenantId, String referenceType, String referenceId, String key) {
@@ -162,9 +166,9 @@ public class SettingService {
             return null;
         }
         SettingDocument doc = opt.get();
-        if (doc.getType() == SettingType.PASSWORD) {
-            log.warn("Refusing to read password setting via getStringValue: tenant='{}' ref='{}:{}' key='{}'",
-                    tenantId, referenceType, referenceId, key);
+        if (doc.getType().encrypted()) {
+            log.warn("Refusing to read {} setting via getStringValue: tenant='{}' ref='{}:{}' key='{}'",
+                    doc.getType(), tenantId, referenceType, referenceId, key);
             return null;
         }
         return doc.getValue();
@@ -537,28 +541,58 @@ public class SettingService {
         for (SettingDocument doc : findAll(tenantId, referenceType, referenceId)) {
             String key = doc.getKey();
             if (key == null || !key.startsWith(keyPrefix)) continue;
-            if (doc.getType() == SettingType.PASSWORD) continue;
+            if (doc.getType().encrypted()) continue;
             acc.put(key, doc.getValue() == null ? "" : doc.getValue());
         }
     }
 
     /**
-     * Stores {@code plaintext} encrypted. Passing {@code null} stores a
-     * {@code null} value but keeps the setting as {@link SettingType#PASSWORD}.
+     * Stores {@code plaintext} encrypted as {@link SettingType#PASSWORD}.
+     * Passing {@code null} stores a {@code null} value but keeps the type.
+     *
+     * <p>Convenience overload of {@link #setEncryptedSecret} for the many
+     * callers that write a real secret (OAuth tokens, bootstrap credentials,
+     * human-driven admin/form writes). Anything that has to preserve a
+     * declared type — or that writes {@link SettingType#HIDDEN} — calls
+     * {@link #setEncryptedSecret} directly.
      */
     public SettingDocument setEncryptedPassword(
             String tenantId, String referenceType, String referenceId, String key,
             @Nullable String plaintext) {
-        String ciphertext = encryption.encrypt(plaintext);
-        return setInternal(
-                tenantId, referenceType, referenceId, key, ciphertext, SettingType.PASSWORD, null);
+        return setEncryptedSecret(
+                tenantId, referenceType, referenceId, key, plaintext, SettingType.PASSWORD);
     }
 
     /**
-     * Decrypts and returns the password, or {@code null} if the setting does
-     * not exist / is not a password / cannot be decrypted. A decrypt failure
+     * Stores {@code plaintext} encrypted under the given encrypted {@code type}
+     * ({@link SettingType#PASSWORD} or {@link SettingType#HIDDEN}). The only
+     * write path for encrypted values — {@link #set} rejects them.
+     *
+     * @throws IllegalArgumentException if {@code type} is not an encrypted type
+     */
+    public SettingDocument setEncryptedSecret(
+            String tenantId, String referenceType, String referenceId, String key,
+            @Nullable String plaintext, SettingType type) {
+        if (!type.encrypted()) {
+            throw new IllegalArgumentException(
+                    "setEncryptedSecret() requires an encrypted type, got " + type);
+        }
+        String ciphertext = encryption.encrypt(plaintext);
+        return setInternal(
+                tenantId, referenceType, referenceId, key, ciphertext, type, null);
+    }
+
+    /**
+     * Decrypts and returns the secret, or {@code null} if the setting does not
+     * exist / is not an encrypted type / cannot be decrypted. A decrypt failure
      * is logged at warn level — callers must treat the result as the truth,
      * not assume success.
+     *
+     * <p>Reads both encrypted types on purpose: this is the path compiled
+     * server code uses with a fixed key, and it must keep working regardless of
+     * whether the operator classified the value as PASSWORD or HIDDEN. The
+     * PASSWORD-vs-HIDDEN gate lives on the reference-resolution path instead —
+     * see {@code planning/setting-type-hidden.md} §5.
      */
     public @Nullable String getDecryptedPassword(
             String tenantId, String referenceType, String referenceId, String key) {
@@ -567,8 +601,8 @@ public class SettingService {
             return null;
         }
         SettingDocument doc = opt.get();
-        if (doc.getType() != SettingType.PASSWORD) {
-            log.warn("Setting is not a password: tenant='{}' ref='{}:{}' key='{}' type='{}'",
+        if (!doc.getType().encrypted()) {
+            log.warn("Setting is not an encrypted secret: tenant='{}' ref='{}:{}' key='{}' type='{}'",
                     tenantId, referenceType, referenceId, key, doc.getType());
             return null;
         }
@@ -586,16 +620,16 @@ public class SettingService {
     // ──────────────────── Transcrypt for kit export/import ────────────────────
 
     /**
-     * Reads a PASSWORD-setting, decrypts with the server key, re-encrypts with
+     * Reads an encrypted setting, decrypts with the server key, re-encrypts with
      * a user-supplied {@code vaultPassword}, and returns the portable blob.
      * The plaintext never leaves this method.
      *
-     * <p>Used by the kit subsystem to export PASSWORD-settings into a portable
+     * <p>Used by the kit subsystem to export encrypted settings into a portable
      * git repository — the resulting ciphertext is decryptable only with the
      * same vault passphrase, not with any server key.
      *
-     * <p>Returns {@code null} when the setting does not exist, is not a
-     * password, or cannot be decrypted with the server key.
+     * <p>Returns {@code null} when the setting does not exist, is not an
+     * encrypted type, or cannot be decrypted with the server key.
      */
     public @Nullable String decryptForExport(
             String tenantId, String referenceType, String referenceId,
@@ -615,8 +649,16 @@ public class SettingService {
 
     /**
      * Decrypts a portable vault-blob with {@code vaultPassword}, then persists
-     * it as a normal PASSWORD-setting (re-encrypted with the server key).
-     * Counterpart to {@link #decryptForExport}.
+     * it under {@code type} (re-encrypted with the server key). Counterpart to
+     * {@link #decryptForExport}.
+     *
+     * <p>{@code type} comes from the kit's own declaration and is preserved on
+     * purpose: a kit that ships a HIDDEN setting must not have it silently
+     * promoted to PASSWORD (it would stop resolving through the tool documents
+     * the same kit installs), and a kit that ships a PASSWORD setting must not
+     * have it demoted to HIDDEN (the value never passed through anyone's
+     * context — demoting it would make an unseen secret agent-readable). See
+     * {@code planning/setting-type-hidden.md} §6.2.
      *
      * <p>Returns {@code true} on success, {@code false} when decryption with
      * the supplied vault passphrase fails. A failure is logged at warn level
@@ -624,9 +666,10 @@ public class SettingService {
      */
     public boolean encryptFromImport(
             String tenantId, String referenceType, String referenceId,
-            String key, String vaultPassword, @Nullable String vaultCiphertext) {
+            String key, String vaultPassword, @Nullable String vaultCiphertext,
+            SettingType type) {
         if (vaultCiphertext == null) {
-            setEncryptedPassword(tenantId, referenceType, referenceId, key, null);
+            setEncryptedSecret(tenantId, referenceType, referenceId, key, null, type);
             return true;
         }
         String plaintext;
@@ -637,7 +680,7 @@ public class SettingService {
                     referenceType, referenceId, key, e.getMessage());
             return false;
         }
-        setEncryptedPassword(tenantId, referenceType, referenceId, key, plaintext);
+        setEncryptedSecret(tenantId, referenceType, referenceId, key, plaintext, type);
         return true;
     }
 }

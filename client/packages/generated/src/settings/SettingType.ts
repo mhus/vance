@@ -9,5 +9,6 @@ export enum SettingType {
   LONG = 'LONG',
   DOUBLE = 'DOUBLE',
   BOOLEAN = 'BOOLEAN',
-  PASSWORD = 'PASSWORD'
+  PASSWORD = 'PASSWORD',
+  HIDDEN = 'HIDDEN'
 }

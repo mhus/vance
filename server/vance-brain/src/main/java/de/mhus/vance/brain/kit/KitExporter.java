@@ -155,15 +155,15 @@ public class KitExporter {
             }
             SettingDocument setting = opt.get();
             String exportedValue;
-            if (setting.getType() == SettingType.PASSWORD) {
+            if (setting.getType().encrypted()) {
                 if (vaultPassword == null || vaultPassword.isBlank()) {
-                    log.warn("skipping password-setting '{}' — no vault password", key);
+                    log.warn("skipping encrypted setting '{}' — no vault password", key);
                     continue;
                 }
                 exportedValue = settingService.decryptForExport(
                         tenantId, SettingService.SCOPE_PROJECT, projectId, key, vaultPassword);
                 if (exportedValue == null) {
-                    log.warn("failed to re-encrypt password-setting '{}' for export", key);
+                    log.warn("failed to re-encrypt encrypted setting '{}' for export", key);
                     continue;
                 }
             } else {

@@ -164,12 +164,12 @@ public class ModelDiscoveryService {
                         tenantId, projectId, instance, typeWire);
                 continue;
             }
-            // ApiKey: PASSWORD-typed; decrypt at this exact scope. For
+            // ApiKey: an encrypted type; decrypt at this exact scope. For
             // providers that don't require auth (Ollama, LM Studio) a
             // blank apiKey is acceptable — they get an empty string.
             SettingDocument apiKeyDoc = fields.get("apiKey");
             String apiKey = "";
-            if (apiKeyDoc != null && apiKeyDoc.getType() == SettingType.PASSWORD) {
+            if (apiKeyDoc != null && apiKeyDoc.getType().encrypted()) {
                 String decrypted = settingService.getDecryptedPassword(
                         tenantId, SettingService.SCOPE_PROJECT, projectId,
                         PROVIDER_KEY_PREFIX + instance + ".apiKey");

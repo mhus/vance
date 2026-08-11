@@ -12,8 +12,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * Body of {@code PUT /brain/{tenant}/admin/settings/{referenceType}/{referenceId}/{key}}.
  *
- * <p>For {@link SettingType#PASSWORD} the {@link #value} is the plaintext; it
- * gets encrypted on the server before persistence and is never logged.
+ * <p>For encrypted types ({@link SettingType#encrypted()}) the {@link #value} is
+ * the plaintext; it gets encrypted on the server before persistence and is
+ * never logged.
  */
 @Data
 @Builder

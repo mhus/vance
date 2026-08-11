@@ -9,7 +9,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * Outcome of {@link OAuthProvider#exchangeCode} or
  * {@link OAuthProvider#refresh}. Stored across two
- * {@code SettingType.PASSWORD} user-settings (access + refresh) plus
+ * {@code SettingType.PASSWORD} user-settings (access + refresh; PASSWORD because
+ * the refresher reads them by a fixed key in compiled code, never through an
+ * authored secret reference) plus
  * {@code STRING} settings for the public-side metadata; see
  * {@code planning/tool-oauth.md §3.2}.
  *

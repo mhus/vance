@@ -317,9 +317,11 @@ public class SettingFormService {
     private LiveValue lookupLiveValue(
             FormFieldDto field, BindsToDto binding, String wireScope,
             String tenantId, @Nullable String projectId, @Nullable String userId) {
-        SettingType type = field.getType().equals("password")
-                ? SettingType.PASSWORD
-                : SettingType.STRING;
+        // Must match what the planner will write — an explicit
+        // bindsTo.settingType (e.g. HIDDEN) has to route through the encrypted
+        // read path, otherwise getStringValue refuses the value and the form
+        // renders an existing secret as "not set".
+        SettingType type = SettingFormPlanBuilder.resolveFieldSettingType(field, binding);
         return switch (wireScope) {
             case SettingService.SCOPE_PROJECT -> readCascadeProject(
                     tenantId, projectId, binding.getKey(), type);
@@ -333,7 +335,7 @@ public class SettingFormService {
 
     private LiveValue readCascadeProject(
             String tenantId, @Nullable String projectId, String key, SettingType type) {
-        if (type == SettingType.PASSWORD) {
+        if (type.encrypted()) {
             return findFirstPassword(tenantId, projectId, key);
         }
         // Walk: project (if any) → _tenant
@@ -354,7 +356,7 @@ public class SettingFormService {
             String tenantId, @Nullable String userId, String key, SettingType type) {
         if (userId == null || userId.isBlank()) return new LiveValue(null, null);
         String userProject = HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId;
-        if (type == SettingType.PASSWORD) {
+        if (type.encrypted()) {
             Optional<SettingDocument> doc = settingService.find(
                     tenantId, SettingService.SCOPE_PROJECT, userProject, key);
             if (doc.isPresent() && doc.get().getValue() != null) {
@@ -368,7 +370,7 @@ public class SettingFormService {
 
     private LiveValue readTenant(String tenantId, String key, SettingType type) {
         String ref = HomeBootstrapService.TENANT_PROJECT_NAME;
-        if (type == SettingType.PASSWORD) {
+        if (type.encrypted()) {
             Optional<SettingDocument> doc = settingService.find(
                     tenantId, SettingService.SCOPE_PROJECT, ref, key);
             if (doc.isPresent() && doc.get().getValue() != null) {
@@ -435,10 +437,10 @@ public class SettingFormService {
                             + "' is missing settingType — planner bug");
         }
         String value = action.value();
-        if (type == SettingType.PASSWORD) {
-            settingService.setEncryptedPassword(
+        if (type.encrypted()) {
+            settingService.setEncryptedSecret(
                     tenantId, action.referenceType(), action.referenceId(),
-                    action.key(), value);
+                    action.key(), value, type);
         } else {
             settingService.set(
                     tenantId, action.referenceType(), action.referenceId(),

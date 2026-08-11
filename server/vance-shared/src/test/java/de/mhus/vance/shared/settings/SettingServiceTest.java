@@ -57,7 +57,7 @@ class SettingServiceTest {
                 TENANT, PROJECT, "proj", "api.key",
                 "some-ciphertext", SettingType.PASSWORD, null))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("setEncryptedPassword");
+                .hasMessageContaining("setEncryptedSecret");
     }
 
     @Test

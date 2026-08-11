@@ -23,9 +23,12 @@ import org.springframework.data.mongodb.core.mapping.Document;
  * (e.g. {@code "project" / "literature-review"}). Look-up is always by
  * {@code name}-style identifiers, never by Mongo id.
  *
- * <p>When {@link #type} is {@link SettingType#PASSWORD}, {@link #value} holds
- * the AES-GCM ciphertext produced by
- * {@link de.mhus.vance.shared.crypto.AesEncryptionService}.
+ * <p>When {@link #type} is an encrypted one ({@link SettingType#encrypted()} —
+ * {@code PASSWORD} or {@code HIDDEN}), {@link #value} holds the AES-GCM
+ * ciphertext produced by
+ * {@link de.mhus.vance.shared.crypto.AesEncryptionService}. Both use the same
+ * ciphertext format, so switching a setting between the two types is a pure
+ * type update and does not require re-entering the value.
  */
 @Document(collection = "settings")
 @CompoundIndexes({
@@ -55,7 +58,7 @@ public class SettingDocument {
     @Indexed
     private String key = "";
 
-    /** Plaintext for non-password types; ciphertext for {@link SettingType#PASSWORD}. */
+    /** Plaintext for plain types; ciphertext when {@link SettingType#encrypted()}. */
     private @Nullable String value;
 
     private SettingType type = SettingType.STRING;

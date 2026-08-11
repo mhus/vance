@@ -19,7 +19,7 @@ import { useAdminUsers } from '@/composables/useAdminUsers';
 import { useAdminTeams } from '@/composables/useAdminTeams';
 import { useScopeSettings } from '@/composables/useScopeSettings';
 import { useHelp } from '@/composables/useHelp';
-import { getUsername } from '@vance/shared';
+import { getUsername, isEncryptedSettingType } from '@vance/shared';
 import {
   SettingType,
   type SettingDto,
@@ -194,7 +194,7 @@ async function addUserSetting(): Promise<void> {
 
 function startEditUserSetting(s: SettingDto): void {
   editingKey.value = s.key;
-  editValue.value = s.type === SettingType.PASSWORD ? '' : (s.value ?? '');
+  editValue.value = isEncryptedSettingType(s.type) ? '' : (s.value ?? '');
   editDescription.value = s.description ?? '';
 }
 
@@ -209,7 +209,7 @@ async function saveEditUserSetting(s: SettingDto): Promise<void> {
       'user',
       selection.value.name,
       s.key,
-      editValue.value === '' && s.type === SettingType.PASSWORD ? null : editValue.value,
+      editValue.value === '' && isEncryptedSettingType(s.type) ? null : editValue.value,
       s.type,
       editDescription.value || null,
     );
@@ -630,7 +630,7 @@ function fmt(value: unknown): string {
                 </div>
                 <template v-if="editingKey === s.key">
                   <VInput
-                    v-if="s.type !== SettingType.PASSWORD"
+                    v-if="!isEncryptedSettingType(s.type)"
                     v-model="editValue"
                     :label="$t('users.user.settings.valueLabel')"
                   />
@@ -690,7 +690,7 @@ function fmt(value: unknown): string {
                 :options="settingTypeOptions"
               />
               <VInput
-                v-if="newSettingType !== SettingType.PASSWORD"
+                v-if="!isEncryptedSettingType(newSettingType)"
                 v-model="newSettingValue"
                 :label="$t('users.user.settings.valueLabel')"
               />

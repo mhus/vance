@@ -256,7 +256,7 @@ public class AuditService {
         // settings collection via tenantId + referenceType + referenceId + key.
         record(AuditEventDto.builder()
                 .action("settings.update")
-                .severity(type == SettingType.PASSWORD
+                .severity(type.encrypted()
                         ? AuditSeverity.WARN
                         : AuditSeverity.INFO)
                 .tenantId(tenantId)

@@ -37,8 +37,8 @@ class SchemaMigrationServiceTest {
     /** Contexts the fixtures were handed. */
     static final List<SchemaMigrationContext> CONTEXTS = new ArrayList<>();
 
-    private static final String FIRST = "2026-08-01";
-    private static final String SECOND = "2026-08-05";
+    private static final String FIRST = "2026-08-01_001";
+    private static final String SECOND = "2026-08-05_001";
 
     private MongoTemplate mongoTemplate;
     private SchemaMigrationLockStore lockStore;
@@ -144,12 +144,12 @@ class SchemaMigrationServiceTest {
     @Test
     void runPending_treatsAnUnknownAppliedMarkerAsTheCurrentVersion() {
         // Rollback: a newer build migrated past us. Warn, do not re-run, do not fail.
-        markers(applied("2026-12-01"));
+        markers(applied("2026-12-01_001"));
 
         SchemaMigrationReport report = service(entry(FIRST, First.class)).runPending();
 
         assertThat(report.noop()).isTrue();
-        assertThat(report.version()).isEqualTo("2026-12-01");
+        assertThat(report.version()).isEqualTo("2026-12-01_001");
         assertThat(EXECUTED).isEmpty();
     }
 

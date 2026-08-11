@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.schema;
 
+import de.mhus.vance.shared.schema.migrations.Migrator_2026_08_11_001_HiddenSettingType;
 import jakarta.annotation.PostConstruct;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -26,7 +27,8 @@ import org.springframework.stereotype.Service;
  * Linear and derived, never hand-maintained: the <b>required</b> version is the
  * last entry of {@link #MIGRATIONS}, the <b>current</b> version is the highest
  * id carrying an {@code APPLIED} marker, and pending is everything in between.
- * Ids are ISO dates, so lexicographic order is chronological order.
+ * Ids are {@code YYYY-MM-DD_NNN} (see {@link #MIGRATIONS}), so lexicographic
+ * order is chronological order.
  *
  * <h2>Ordering</h2>
  * {@link SchemaMigrationOrderingPostProcessor} makes every Mongo repository bean
@@ -60,25 +62,32 @@ public class SchemaMigrationService {
      * Every migration this build knows, in ascending id order.
      *
      * <p><b>To add one:</b> write a {@link SchemaMigration} implementation (a
-     * plain public class, no bean) and append one line here. The id is the ISO
-     * date of the release it ships with, becomes the {@code _id} of the marker
-     * document, and is never changed afterwards — a renamed id re-runs the
-     * migration. A second migration on the same day gets a suffix
-     * ({@code "2026-08-01-b"}).
+     * plain public class, no bean) and append one line here. The id becomes the
+     * {@code _id} of the marker document and is never changed afterwards — a
+     * renamed id re-runs the migration.
+     *
+     * <p><b>Id format {@code YYYY-MM-DD_NNN}</b>: ISO date of the release plus a
+     * three-digit counter, counting from {@code _001} within the day. The counter
+     * is mandatory, not "only when there are two on one day" — a single id shape
+     * means a single comparison rule, and zero padding keeps lexicographic order
+     * equal to numeric order ({@code _002} before {@code _010}).
      *
      * <pre>
      * private static final List&lt;RegisteredMigration&gt; MIGRATIONS = List.of(
-     *         new RegisteredMigration("2026-08-01", Migrator_2026_08_01_NewSecretSettingsType.class));
+     *         new RegisteredMigration("2026-08-01_001", Migrator_2026_08_01_001_NewSecretSettingsType.class),
+     *         new RegisteredMigration("2026-08-01_002", Migrator_2026_08_01_002_DropLegacyTrashPaths.class));
      * </pre>
      *
      * <p>Integrity of this list — unique, ascending, instantiable — is asserted by
      * {@code SchemaMigrationRegistryTest}, not re-checked on every boot.
      *
-     * <p>Empty for now: nothing has been moved onto this framework yet, and the
-     * three hand-written {@code @PostConstruct} backfills in vance-brain still
-     * run the old way ({@code planning/schema-migration.md} §3).
+     * <p>The three hand-written {@code @PostConstruct} backfills in vance-brain
+     * still run the old way ({@code planning/schema-migration.md} §3) — moving
+     * them over is a separate track.
      */
-    static final List<RegisteredMigration> MIGRATIONS = List.of();
+    static final List<RegisteredMigration> MIGRATIONS = List.of(
+            new RegisteredMigration("2026-08-11_001",
+                    Migrator_2026_08_11_001_HiddenSettingType.class));
 
     /** One registry line: the id that becomes the marker, and the class to run. */
     record RegisteredMigration(String id, Class<? extends SchemaMigration> type) {}

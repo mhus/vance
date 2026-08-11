@@ -44,12 +44,15 @@ class SchemaMigrationRegistryTest {
     }
 
     @Test
-    void idsAreIsoDatePrefixed() {
-        // Lexicographic order is only chronological order while the ids are dates.
+    void idsFollowTheIsoDateCounterFormat() {
+        // YYYY-MM-DD_NNN, counter mandatory: one id shape means one comparison
+        // rule, and the fixed-width counter keeps lexicographic order equal to
+        // numeric order (_002 before _010). Without this, "ascending" above would
+        // not imply "chronological".
         assertThat(REGISTRY).allSatisfy(entry ->
                 assertThat(entry.id())
                         .as("id of %s", entry.type().getName())
-                        .matches("\\d{4}-\\d{2}-\\d{2}(-.+)?"));
+                        .matches("\\d{4}-\\d{2}-\\d{2}_\\d{3}"));
     }
 
     @Test

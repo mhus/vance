@@ -25,7 +25,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @AllArgsConstructor
 public class SchemaMigrationDocument {
 
-    /** Registry id, e.g. {@code "2026-08-01"}. */
+    /** Registry id — {@code YYYY-MM-DD_NNN}, e.g. {@code "2026-08-01_001"}. */
     @Id
     private String id = "";
 

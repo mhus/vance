@@ -75,7 +75,7 @@ class AuditServiceTest {
     }
 
     @Test
-    void setMode_asyncToSync_drainsQueueBeforeFlipping() throws Exception {
+    void setMode_asyncToSync_losesNoQueuedEvent() throws Exception {
         // Use a blocking consumer so events pile up in the queue while async
         BlockingConsumer blocker = new BlockingConsumer();
         service = new AuditService(propsWith(AuditMode.ASYNC, 100, 5_000),
@@ -85,16 +85,23 @@ class AuditServiceTest {
         for (int i = 0; i < 5; i++) {
             service.record(AuditEventDto.builder().action("ev." + i).build());
         }
-        // Let the worker pick one up — it'll block on the latch
-        Thread.sleep(100);
+        // Wait for the worker to have actually taken one and entered dispatch,
+        // rather than sleeping and assuming it did.
+        assertThat(blocker.entered.await(2, TimeUnit.SECONDS)).isTrue();
         // Release the consumer so subsequent dispatches can run
         blocker.gate.countDown();
 
         service.setMode(AuditMode.SYNC);
 
         assertThat(service.getMode()).isEqualTo(AuditMode.SYNC);
+        // setMode drains the queue on the caller thread but deliberately does not
+        // join the worker (only shutdown() does), so the event the worker had
+        // already taken out of the queue may still be in dispatch when setMode
+        // returns — and getQueueDepth() cannot see it. Wait for the count instead
+        // of asserting it immediately: the invariant under test is that the flip
+        // loses nothing, and a genuinely lost event still fails here, by timeout.
+        waitUntilTrue(() -> blocker.count.get() == 5, 2_000);
         assertThat(service.getQueueDepth()).isZero();
-        assertThat(blocker.count.get()).isEqualTo(5);
     }
 
     @Test
@@ -387,10 +394,16 @@ class AuditServiceTest {
 
     private static class BlockingConsumer implements AuditConsumer {
         final CountDownLatch gate = new CountDownLatch(1);
+        /**
+         * Counted down once a dispatch has actually started, so a test can wait for
+         * "the worker has taken an event" instead of sleeping and hoping.
+         */
+        final CountDownLatch entered = new CountDownLatch(1);
         final AtomicInteger count = new AtomicInteger();
 
         @Override
         public void consume(AuditEventDto event) {
+            entered.countDown();
             try {
                 gate.await(2, TimeUnit.SECONDS);
             } catch (InterruptedException e) {

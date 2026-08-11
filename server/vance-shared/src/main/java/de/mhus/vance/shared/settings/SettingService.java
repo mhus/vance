@@ -606,15 +606,107 @@ public class SettingService {
                     tenantId, referenceType, referenceId, key, doc.getType());
             return null;
         }
+        return decryptSecret(doc, tenantId, referenceType, referenceId, key);
+    }
+
+    private @Nullable String decryptSecret(
+            SettingDocument doc, String tenantId, String referenceType, String referenceId,
+            String key) {
         try {
             String plaintext = encryption.decrypt(doc.getValue());
             auditService.settingsPasswordRead(tenantId, referenceType, referenceId, key);
             return plaintext;
         } catch (AesEncryptionService.EncryptionException e) {
-            log.warn("Failed to decrypt password for tenant='{}' ref='{}:{}' key='{}': {}",
+            log.warn("Failed to decrypt secret for tenant='{}' ref='{}:{}' key='{}': {}",
                     tenantId, referenceType, referenceId, key, e.getMessage());
             return null;
         }
+    }
+
+    // ──────────────────── Reference-resolution reads ────────────────────
+    //
+    // The read path behind an *authored* {{secret:…}} reference — a tool
+    // document, a compose manifest, a script. All three are agent-writable, so
+    // unlike getDecryptedPassword (compiled callers, fixed keys) these refuse
+    // PASSWORD-typed values and only hand out HIDDEN ones.
+    // See planning/setting-type-hidden.md §5.
+
+    /**
+     * Reads an encrypted setting on behalf of a secret reference at one exact
+     * scope.
+     *
+     * @return the plaintext for a reference-readable ({@code HIDDEN}) setting;
+     *         {@code null} when the setting does not exist, is not an encrypted
+     *         type, or cannot be decrypted
+     * @throws SecretAccessDeniedException when the setting exists as
+     *         {@link SettingType#PASSWORD}
+     */
+    public @Nullable String getReferenceSecret(
+            String tenantId, String referenceType, String referenceId, String key) {
+        return readReferenceSecretAt(tenantId, referenceType, referenceId, key);
+    }
+
+    /**
+     * Cascade variant of {@link #getReferenceSecret}: walks
+     * {@code think-process → project → _tenant} and returns the first layer that
+     * carries {@code key} as a reference-readable secret.
+     *
+     * <p><b>A PASSWORD layer stops the walk</b> rather than being skipped. The
+     * cascade means "innermost wins", so if the innermost layer binds the key as
+     * PASSWORD then that is the configured value and it is denied — falling
+     * through to an outer HIDDEN would silently resolve a <em>different</em>
+     * value than the one configured. A non-encrypted layer is treated as absent
+     * and the walk continues, unchanged from {@link #getDecryptedPasswordCascade}.
+     */
+    public @Nullable String getReferenceSecretCascade(
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String thinkProcessId,
+            String key) {
+        if (thinkProcessId != null && !thinkProcessId.isBlank()) {
+            String v = readReferenceSecretAt(tenantId, SCOPE_THINK_PROCESS, thinkProcessId, key);
+            if (v != null) return v;
+        }
+        if (projectId != null && !projectId.isBlank()
+                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
+            String v = readReferenceSecretAt(tenantId, SCOPE_PROJECT, projectId, key);
+            if (v != null) return v;
+        }
+        return readReferenceSecretAt(tenantId, SCOPE_PROJECT,
+                HomeBootstrapService.TENANT_PROJECT_NAME, key);
+    }
+
+    /**
+     * User-scope variant of {@link #getReferenceSecret} — reads from the
+     * {@code _user_<userId>} hub project. No fallback to other scopes, matching
+     * {@link #getDecryptedUserPassword}.
+     */
+    public @Nullable String getReferenceUserSecret(
+            String tenantId, @Nullable String userId, String key) {
+        if (userId == null || userId.isBlank()) return null;
+        return readReferenceSecretAt(tenantId, SCOPE_PROJECT,
+                HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId, key);
+    }
+
+    private @Nullable String readReferenceSecretAt(
+            String tenantId, String referenceType, String referenceId, String key) {
+        Optional<SettingDocument> opt = find(tenantId, referenceType, referenceId, key);
+        if (opt.isEmpty()) {
+            return null;
+        }
+        SettingDocument doc = opt.get();
+        if (!doc.getType().encrypted()) {
+            // Not a secret here — indistinguishable from absent for this path,
+            // so a cascade keeps walking outward.
+            return null;
+        }
+        if (!doc.getType().referenceReadable()) {
+            log.warn("Refusing to resolve {} setting through a secret reference: "
+                            + "tenant='{}' ref='{}:{}' key='{}'",
+                    doc.getType(), tenantId, referenceType, referenceId, key);
+            throw new SecretAccessDeniedException(key, doc.getType());
+        }
+        return decryptSecret(doc, tenantId, referenceType, referenceId, key);
     }
 
     // ──────────────────── Transcrypt for kit export/import ────────────────────

@@ -9,8 +9,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.brain.oauth.OAuthExpiredException;
 import de.mhus.vance.brain.oauth.OAuthTokenRefresher;
+import de.mhus.vance.shared.settings.SecretAccessDeniedException;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.vault.VaultException;
 import de.mhus.vance.shared.vault.VaultScope;
@@ -59,14 +61,14 @@ class SettingsSecretResolverTest {
         String input = "Bearer fixed-token; X-Trace: 42";
 
         assertThat(resolver.resolve(input, ctx)).isEqualTo(input);
-        verify(settings, never()).getDecryptedPasswordCascade(any(), any(), any(), any());
+        verify(settings, never()).getReferenceSecretCascade(any(), any(), any(), any());
     }
 
     // ─────── Cascade (default scope) ───────
 
     @Test
     void cascade_scope_is_the_default() {
-        when(settings.getDecryptedPasswordCascade(TENANT, PROJECT, PROCESS, "api.key"))
+        when(settings.getReferenceSecretCascade(TENANT, PROJECT, PROCESS, "api.key"))
                 .thenReturn("super-secret");
 
         String out = resolver.resolve("Bearer {{secret:api.key}}", ctx());
@@ -76,7 +78,7 @@ class SettingsSecretResolverTest {
 
     @Test
     void cascade_unresolved_substitutes_empty_with_warn() {
-        when(settings.getDecryptedPasswordCascade(any(), any(), any(), any())).thenReturn(null);
+        when(settings.getReferenceSecretCascade(any(), any(), any(), any())).thenReturn(null);
 
         String out = resolver.resolve("X-Key: {{secret:missing.key}}", ctx());
 
@@ -87,19 +89,19 @@ class SettingsSecretResolverTest {
 
     @Test
     void tenant_scope_routes_to_tenant_project() {
-        when(settings.getDecryptedPassword(TENANT, SettingService.SCOPE_PROJECT,
+        when(settings.getReferenceSecret(TENANT, SettingService.SCOPE_PROJECT,
                 "_tenant", "vance.api.key"))
                 .thenReturn("tenant-secret");
 
         String out = resolver.resolve("Bearer {{secret:tenant:vance.api.key}}", ctx());
 
         assertThat(out).isEqualTo("Bearer tenant-secret");
-        verify(settings, never()).getDecryptedPasswordCascade(any(), any(), any(), any());
+        verify(settings, never()).getReferenceSecretCascade(any(), any(), any(), any());
     }
 
     @Test
     void project_scope_routes_to_current_project() {
-        when(settings.getDecryptedPassword(TENANT, SettingService.SCOPE_PROJECT,
+        when(settings.getReferenceSecret(TENANT, SettingService.SCOPE_PROJECT,
                 PROJECT, "db.password"))
                 .thenReturn("project-secret");
 
@@ -110,7 +112,7 @@ class SettingsSecretResolverTest {
 
     @Test
     void user_scope_routes_to_user_settings() {
-        when(settings.getDecryptedUserPassword(TENANT, USER, "github.pat"))
+        when(settings.getReferenceUserSecret(TENANT, USER, "github.pat"))
                 .thenReturn("user-pat");
 
         String out = resolver.resolve("Auth: {{secret:user:github.pat}}", ctx());
@@ -127,7 +129,7 @@ class SettingsSecretResolverTest {
         String out = resolver.resolve("Auth: {{secret:user:github.pat}}", ctxNoUser);
 
         assertThat(out).isEqualTo("Auth: ");
-        verify(settings, never()).getDecryptedUserPassword(any(), any(), any());
+        verify(settings, never()).getReferenceUserSecret(any(), any(), any());
     }
 
     @Test
@@ -151,14 +153,14 @@ class SettingsSecretResolverTest {
                 "Authorization: Bearer {{secret:user:oauth.slack.access_token}}", ctx());
 
         assertThat(out).isEqualTo("Authorization: Bearer fresh-slack-token");
-        verify(settings, never()).getDecryptedUserPassword(any(), any(), any());
+        verify(settings, never()).getReferenceUserSecret(any(), any(), any());
     }
 
     @Test
     void oauth_refresh_token_does_not_route_through_refresher() {
         // Only the access_token form triggers refresh — refresh_token /
         // expires_at / scopes / extra fall through to direct user-setting reads.
-        when(settings.getDecryptedUserPassword(TENANT, USER, "oauth.slack.refresh_token"))
+        when(settings.getReferenceUserSecret(TENANT, USER, "oauth.slack.refresh_token"))
                 .thenReturn("stored-refresh");
 
         String out = resolver.resolve("{{secret:user:oauth.slack.refresh_token}}", ctx());
@@ -200,7 +202,7 @@ class SettingsSecretResolverTest {
         String out = resolver.resolve("Bearer {{secret:vault:jira-token}}", ctx());
 
         assertThat(out).isEqualTo("Bearer vault-secret");
-        verify(settings, never()).getDecryptedPasswordCascade(any(), any(), any(), any());
+        verify(settings, never()).getReferenceSecretCascade(any(), any(), any(), any());
     }
 
     @Test
@@ -228,9 +230,9 @@ class SettingsSecretResolverTest {
 
     @Test
     void multiple_placeholders_in_one_string_all_resolve() {
-        when(settings.getDecryptedPasswordCascade(TENANT, PROJECT, PROCESS, "a"))
+        when(settings.getReferenceSecretCascade(TENANT, PROJECT, PROCESS, "a"))
                 .thenReturn("A-VAL");
-        when(settings.getDecryptedPassword(TENANT, SettingService.SCOPE_PROJECT,
+        when(settings.getReferenceSecret(TENANT, SettingService.SCOPE_PROJECT,
                 "_tenant", "b")).thenReturn("B-VAL");
         when(refresher.resolveAccessToken(TENANT, USER, "slack")).thenReturn("SLACK-VAL");
 
@@ -246,7 +248,7 @@ class SettingsSecretResolverTest {
         // "foo:bar" — "foo" isn't a recognised scope; the resolver
         // forwards the whole body as the cascade key. Defensive against
         // future keys that include a colon and shouldn't be misparsed.
-        when(settings.getDecryptedPasswordCascade(TENANT, PROJECT, PROCESS, "foo:bar"))
+        when(settings.getReferenceSecretCascade(TENANT, PROJECT, PROCESS, "foo:bar"))
                 .thenReturn("ok");
 
         String out = resolver.resolve("{{secret:foo:bar}}", ctx());
@@ -264,7 +266,83 @@ class SettingsSecretResolverTest {
         String out = resolver.resolve("X={{secret:api.key}}", ctxNoTenant);
 
         assertThat(out).isEqualTo("X=");
-        verify(settings, never()).getDecryptedPasswordCascade(any(), any(), any(), any());
+        verify(settings, never()).getReferenceSecretCascade(any(), any(), any(), any());
+    }
+
+    // ─────── PASSWORD-typed targets are denied, not silently empty ───────
+    //
+    // The reference-readability gate lives in SettingService.getReferenceSecret*;
+    // what this class owns is that the denial *propagates* instead of being
+    // folded into the fail-closed-to-empty rule for genuinely absent secrets.
+    // Otherwise a re-typing mistake would look like a missing setting and
+    // surface as an opaque downstream 401.
+
+    @Test
+    void cascade_scope_denial_propagates_instead_of_substituting_empty() {
+        when(settings.getReferenceSecretCascade(TENANT, PROJECT, PROCESS, "ai.provider.default.apiKey"))
+                .thenThrow(new SecretAccessDeniedException(
+                        "ai.provider.default.apiKey", SettingType.PASSWORD));
+
+        assertThatThrownBy(() -> resolver.resolve(
+                "Bearer {{secret:ai.provider.default.apiKey}}", ctx()))
+                .isInstanceOf(SecretAccessDeniedException.class)
+                .hasMessageContaining("HIDDEN");
+    }
+
+    @Test
+    void project_scope_denial_propagates() {
+        when(settings.getReferenceSecret(TENANT, SettingService.SCOPE_PROJECT, PROJECT, "db.password"))
+                .thenThrow(new SecretAccessDeniedException("db.password", SettingType.PASSWORD));
+
+        assertThatThrownBy(() -> resolver.resolve("Pass={{secret:project:db.password}}", ctx()))
+                .isInstanceOf(SecretAccessDeniedException.class);
+    }
+
+    @Test
+    void tenant_scope_denial_propagates() {
+        when(settings.getReferenceSecret(TENANT, SettingService.SCOPE_PROJECT,
+                "_tenant", "vault.clientSecret"))
+                .thenThrow(new SecretAccessDeniedException("vault.clientSecret", SettingType.PASSWORD));
+
+        assertThatThrownBy(() -> resolver.resolve("{{secret:tenant:vault.clientSecret}}", ctx()))
+                .isInstanceOf(SecretAccessDeniedException.class)
+                .extracting("key").isEqualTo("vault.clientSecret");
+    }
+
+    @Test
+    void user_scope_denial_propagates() {
+        when(settings.getReferenceUserSecret(TENANT, USER, "github.pat"))
+                .thenThrow(new SecretAccessDeniedException("github.pat", SettingType.PASSWORD));
+
+        assertThatThrownBy(() -> resolver.resolve("Auth: {{secret:user:github.pat}}", ctx()))
+                .isInstanceOf(SecretAccessDeniedException.class);
+    }
+
+    @Test
+    void denial_in_one_reference_aborts_the_whole_input() {
+        // No partial substitution: a template with a good and a denied reference
+        // must not emit the resolved half of an auth header.
+        when(settings.getReferenceSecretCascade(TENANT, PROJECT, PROCESS, "ok.key"))
+                .thenReturn("fine");
+        when(settings.getReferenceSecretCascade(TENANT, PROJECT, PROCESS, "denied.key"))
+                .thenThrow(new SecretAccessDeniedException("denied.key", SettingType.PASSWORD));
+
+        assertThatThrownBy(() -> resolver.resolve(
+                "a={{secret:ok.key}}&b={{secret:denied.key}}", ctx()))
+                .isInstanceOf(SecretAccessDeniedException.class);
+    }
+
+    @Test
+    void vault_references_are_unaffected_by_the_setting_type_gate() {
+        // vault: goes to the external manager, not to a setting — the gate has
+        // no say there, and that stays the agent-facing secret channel.
+        when(vault.readSecret(new VaultScope(TENANT, USER, PROJECT), "deploy-token"))
+                .thenReturn("from-vault");
+
+        assertThat(resolver.resolve("Bearer {{secret:vault:deploy-token}}", ctx()))
+                .isEqualTo("Bearer from-vault");
+        verify(settings, never()).getReferenceSecretCascade(any(), any(), any(), any());
+        verify(settings, never()).getReferenceSecret(any(), any(), any(), any());
     }
 
     // ─────── Helpers ───────

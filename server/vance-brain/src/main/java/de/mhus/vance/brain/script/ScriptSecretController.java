@@ -60,7 +60,14 @@ public class ScriptSecretController {
         ToolInvocationContext scope = new ToolInvocationContext(
                 claims.tenantId(), claims.projectId(), claims.sessionId(), null, claims.username());
         String wrapped = "{{secret:" + ref + "}}";
-        String resolved = secretResolver.resolve(wrapped, scope);
+        String resolved;
+        try {
+            resolved = secretResolver.resolve(wrapped, scope);
+        } catch (de.mhus.vance.shared.settings.SecretAccessDeniedException e) {
+            // The setting exists but is PASSWORD-typed — a denial, not a miss.
+            // 403 with the actionable message rather than a 500.
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, e.getMessage(), e);
+        }
         // resolved.equals(wrapped) == no substitution (unbound / non-matching ref).
         @Nullable String value =
                 (resolved == null || resolved.isEmpty() || resolved.equals(wrapped)) ? null : resolved;

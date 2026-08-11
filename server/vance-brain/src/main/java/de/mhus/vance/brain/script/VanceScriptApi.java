@@ -1448,7 +1448,14 @@ public final class VanceScriptApi {
                 throw new ScriptHostException("vance.secret requires a tenant-scoped run", null);
             }
             String wrapped = "{{secret:" + ref + "}}";
-            String resolved = resolver.resolve(wrapped, scope);
+            String resolved;
+            try {
+                resolved = resolver.resolve(wrapped, scope);
+            } catch (de.mhus.vance.shared.settings.SecretAccessDeniedException e) {
+                // Surface as a regular JS Error with the actionable message
+                // instead of letting a host RuntimeException escape the run.
+                throw new ScriptHostException("vance.secret: " + e.getMessage(), e);
+            }
             // resolved.equals(wrapped) == no substitution (unbound, or a ref whose
             // shape the resolver's pattern can't match) — treat as unresolved and
             // return null rather than leak a literal placeholder.

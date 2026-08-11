@@ -47,12 +47,28 @@ import org.springframework.stereotype.Service;
  * {@link OAuthTokenRefresher}, which transparently refreshes the
  * token when it's about to expire.
  *
+ * <h2>This class is the reference-readability chokepoint</h2>
+ * Every setting-backed scope reads through
+ * {@code SettingService.getReferenceSecret*}, which hands out
+ * {@link de.mhus.vance.api.settings.SettingType#HIDDEN} values and refuses
+ * {@code PASSWORD} ones. That is the whole enforcement of the split: the three
+ * agent-writable surfaces — script {@code vance.secret(…)}, the Python
+ * equivalent, and compose {@code secrets:} — all wrap their input into
+ * {@code {{secret:…}}} and land here, so none of them needs its own guard.
+ * Compiled server code reading a fixed key stays on
+ * {@code getDecryptedPassword} and is unaffected. See
+ * {@code planning/setting-type-hidden.md} §5.
+ *
  * <p>Unresolved references substitute to the empty string with a
  * {@code WARN} log line — REST calls that depend on the auth header
  * will then fail with a 401, the right escalation path for the LLM.
- * The exception is {@link OAuthExpiredException}: that propagates
- * unchanged so the Web-UI can render a "Reconnect Provider" banner
- * instead of letting the tool fail with an opaque blank header.
+ * Two exceptions propagate unchanged instead, because both carry a
+ * "a human has to change something" signal that the fail-closed-to-empty rule
+ * would hide: {@link OAuthExpiredException} (Web-UI renders a "Reconnect
+ * Provider" banner) and
+ * {@link de.mhus.vance.shared.settings.SecretAccessDeniedException} (the
+ * referenced setting is PASSWORD-typed and has to be re-typed as HIDDEN to be
+ * usable here).
  */
 @Service
 @RequiredArgsConstructor
@@ -137,7 +153,7 @@ public class SettingsSecretResolver implements SecretResolver {
             return oauthTokenRefresher.resolveAccessToken(
                     ctx.tenantId(), ctx.userId(), providerId);
         }
-        String pw = settings.getDecryptedUserPassword(ctx.tenantId(), ctx.userId(), key);
+        String pw = settings.getReferenceUserSecret(ctx.tenantId(), ctx.userId(), key);
         if (pw != null) return pw;
         // Fall back to STRING-typed user settings — non-secret OAuth
         // metadata (cloud_id, site_url, …) is stored as STRING by the
@@ -148,7 +164,7 @@ public class SettingsSecretResolver implements SecretResolver {
     }
 
     private @Nullable String resolveTenant(String key, ToolInvocationContext ctx) {
-        return settings.getDecryptedPassword(ctx.tenantId(),
+        return settings.getReferenceSecret(ctx.tenantId(),
                 SettingService.SCOPE_PROJECT,
                 HomeBootstrapService.TENANT_PROJECT_NAME, key);
     }
@@ -157,12 +173,12 @@ public class SettingsSecretResolver implements SecretResolver {
         if (ctx.projectId() == null || ctx.projectId().isBlank()) {
             return null;
         }
-        return settings.getDecryptedPassword(ctx.tenantId(),
+        return settings.getReferenceSecret(ctx.tenantId(),
                 SettingService.SCOPE_PROJECT, ctx.projectId(), key);
     }
 
     private @Nullable String resolveCascade(String key, ToolInvocationContext ctx) {
-        return settings.getDecryptedPasswordCascade(
+        return settings.getReferenceSecretCascade(
                 ctx.tenantId(), ctx.projectId(), ctx.processId(), key);
     }
 

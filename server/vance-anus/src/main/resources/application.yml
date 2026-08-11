@@ -47,6 +47,12 @@ vance:
       # which prints decrypted PASSWORD plaintext to stdout. Refuses to
       # start when a 'prod' / 'production' Spring profile is also active.
       enabled: ${VANCE_ANUS_DEV_MODE:false}
+  schema:
+    # Anus shares the migration engine with brain (SchemaMigrationService is
+    # component-scanned from vance-shared) but must never migrate on its own:
+    # a schema migration belongs to a brain deployment, not to whichever CLI
+    # invocation happens to run first.
+    migrate-on-boot: false
   audit:
     # Delivery mode after @PostConstruct (SYNC before that). Anus runs
     # short interactive shells, so SYNC is the safer default: no worker

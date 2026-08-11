@@ -36,7 +36,10 @@ import org.springframework.data.mongodb.repository.config.EnableMongoRepositorie
 // is Anus's own; AnusExceptionResolver and AuthAspect rely on it being a bean.
 @EnableConfigurationProperties({WorkspaceProperties.class, AccessProperties.class,
         AnusBrainProperties.class, DevModeProperties.class,
-        de.mhus.vance.shared.audit.AuditServiceProperties.class})
+        de.mhus.vance.shared.audit.AuditServiceProperties.class,
+        // Anus shares the migration engine (SchemaMigrationService is component-scanned
+        // from vance-shared) but has no boot trigger — it never migrates on its own.
+        de.mhus.vance.shared.schema.SchemaMigrationProperties.class})
 @EnableAspectJAutoProxy
 public class VanceAnusApplication {
 

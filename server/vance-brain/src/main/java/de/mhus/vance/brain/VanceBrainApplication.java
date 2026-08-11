@@ -59,6 +59,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
         StreamingProperties.class,
         BootstrapProperties.class,
         InitSettingsProperties.class,
+        de.mhus.vance.shared.schema.SchemaMigrationProperties.class,
         FordProperties.class,
         ArthurProperties.class,
         MarvinProperties.class,

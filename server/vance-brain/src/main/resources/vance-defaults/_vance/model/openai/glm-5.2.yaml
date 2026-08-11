@@ -1,6 +1,15 @@
 # Text-only (vision lives in the separate glm-5v-turbo model).
 contextWindowTokens: 1048576
-defaultMaxOutputTokens: 8192
+
+# Reasoning model. On the OpenAI wire, `reasoning_content` tokens count
+# against `max_tokens` — a cap sized for the visible answer alone gets
+# eaten by the thinking pass and the response arrives as finish=LENGTH
+# with empty content and no tool call. Observed 2026-08-11: five turns in
+# a row spent all 8192 output tokens on reasoning (reasoningTokens=8192)
+# and returned nothing, which parked the worker BLOCKED. The cap has to
+# cover thinking + answer, so keep it generous for every reasoning-capable
+# model in this catalog.
+defaultMaxOutputTokens: 32768
 size: LARGE
 pricing:
   currency: EUR

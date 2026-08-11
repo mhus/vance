@@ -38,6 +38,7 @@ import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
+import dev.langchain4j.model.output.FinishReason;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -243,6 +244,30 @@ class FrankieEngineSkeletonTest {
         // Reply emitted so a parent (worker mode) or UI (session-primary)
         // sees the error too.
         verify(ctx).emitReply(org.mockito.ArgumentMatchers.contains("empty response"), any(), any());
+    }
+
+    @Test
+    void emptyLlmResponseAtOutputCap_namesTheTokenLimitInsteadOfAGlitch() {
+        // GLM/DeepSeek-style truncation: the reasoning pass consumed the
+        // whole max_tokens budget, so the completion arrives empty with
+        // finish=LENGTH. Deterministic — telling the user to "try again"
+        // would send them in circles.
+        chatModel.script(AiMessage.from(""));
+        chatModel.finishReason(FinishReason.LENGTH);
+
+        engine.runTurn(process, ctx);
+
+        verify(thinkProcessService).updateStatus(PROC_ID, ThinkProcessStatus.BLOCKED);
+        verify(chatMessageService).append(any());
+        // Message names the real cause and the actionable knob, and does
+        // NOT claim a transient glitch.
+        org.mockito.ArgumentCaptor<String> reply =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(ctx).emitReply(reply.capture(), any(), any());
+        assertThat(reply.getValue())
+                .contains("output-token limit")
+                .contains("maxTokens")
+                .doesNotContain("transient");
     }
 
     // ─── Stop path 2: tool-driven terminate (mode-aware) ────────────────
@@ -729,10 +754,16 @@ class FrankieEngineSkeletonTest {
         private final Deque<AiMessage> queue = new ArrayDeque<>();
         private final List<ChatRequest> requests = new java.util.ArrayList<>();
         private @org.jspecify.annotations.Nullable AiMessage repeating;
+        private @org.jspecify.annotations.Nullable FinishReason finishReason;
         private int calls;
 
         void script(AiMessage msg) {
             queue.add(msg);
+        }
+
+        /** Finish reason stamped on every scripted completion. */
+        void finishReason(FinishReason reason) {
+            this.finishReason = reason;
         }
 
         void scriptRepeating(AiMessage msg) {
@@ -762,7 +793,11 @@ class FrankieEngineSkeletonTest {
                         "ScriptedStreamingChatModel: no more scripted responses"));
                 return;
             }
-            ChatResponse response = ChatResponse.builder().aiMessage(msg).build();
+            ChatResponse.Builder builder = ChatResponse.builder().aiMessage(msg);
+            if (finishReason != null) {
+                builder.finishReason(finishReason);
+            }
+            ChatResponse response = builder.build();
             String text = msg.text();
             if (text != null && !text.isEmpty()) {
                 handler.onPartialResponse(text);

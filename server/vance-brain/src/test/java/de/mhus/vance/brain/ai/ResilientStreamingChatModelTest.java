@@ -8,6 +8,7 @@ import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
+import dev.langchain4j.model.output.FinishReason;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -20,7 +21,9 @@ import org.junit.jupiter.api.Test;
  * Retry behaviour of {@link ResilientStreamingChatModel} for the
  * successful-but-empty completion path — the Gemini-style empty response
  * that arrives via {@code onCompleteResponse} rather than {@code onError}
- * and therefore bypasses the exception-based retry.
+ * and therefore bypasses the exception-based retry. Covers both flavours:
+ * the retriable glitch, and the deterministic {@code finish=LENGTH}
+ * truncation that must not be retried.
  */
 class ResilientStreamingChatModelTest {
 
@@ -34,6 +37,14 @@ class ResilientStreamingChatModelTest {
 
     private static ChatResponse response(String text) {
         return ChatResponse.builder().aiMessage(AiMessage.from(text)).build();
+    }
+
+    /** Empty completion cut off by the output-token cap. */
+    private static ChatResponse truncatedEmpty() {
+        return ChatResponse.builder()
+                .aiMessage(AiMessage.from(""))
+                .finishReason(FinishReason.LENGTH)
+                .build();
     }
 
     /** Delegate that plays a scripted sequence of completions, one per call. */
@@ -90,6 +101,62 @@ class ResilientStreamingChatModelTest {
         assertThat(delivered.get()).isEmpty();
         // min(maxAttempts=3, EMPTY_MAX_ATTEMPTS=3) = 3 total tries.
         assertThat(calls.get()).isEqualTo(3);
+    }
+
+    @Test
+    void emptyAtOutputCap_isNotRetried_andDeliveredAsEmpty() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        StreamingChatModel delegate = scripted(calls, truncatedEmpty());
+        ResilientStreamingChatModel model = new ResilientStreamingChatModel(
+                List.of(new ChainEntry(delegate, "primary", FAST)));
+
+        AtomicReference<ChatResponse> delivered = new AtomicReference<>();
+        AtomicReference<Throwable> errored = new AtomicReference<>();
+        CountDownLatch done = new CountDownLatch(1);
+        model.chat(REQUEST, new StreamingChatResponseHandler() {
+            @Override public void onPartialResponse(String partial) { }
+            @Override public void onCompleteResponse(ChatResponse complete) {
+                delivered.set(complete);
+                done.countDown();
+            }
+            @Override public void onError(Throwable error) {
+                errored.set(error);
+                done.countDown();
+            }
+        });
+
+        assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(errored.get()).isNull();
+        // finish=LENGTH is deterministic — a re-issue hits the same cap, so
+        // the retry budget is skipped entirely (contrast: 3 calls in
+        // persistentEmpty_isDeliveredAsEmpty_notAsError).
+        assertThat(calls.get()).isEqualTo(1);
+        // Finish reason travels to the caller so the engine can word its
+        // user-facing message correctly.
+        assertThat(delivered.get().finishReason()).isEqualTo(FinishReason.LENGTH);
+        assertThat(delivered.get().aiMessage().text()).isEmpty();
+    }
+
+    @Test
+    void emptyAtOutputCap_stillAdvancesToNextChainEntry() throws Exception {
+        AtomicInteger primaryCalls = new AtomicInteger();
+        AtomicInteger fallbackCalls = new AtomicInteger();
+        StreamingChatModel primary = scripted(primaryCalls, truncatedEmpty());
+        StreamingChatModel fallback = scripted(fallbackCalls, response("fallback answer"));
+        ResilientStreamingChatModel model = new ResilientStreamingChatModel(List.of(
+                new ChainEntry(primary, "primary", FAST),
+                new ChainEntry(fallback, "fallback", FAST)));
+
+        AtomicReference<String> delivered = new AtomicReference<>();
+        CountDownLatch done = new CountDownLatch(1);
+        model.chat(REQUEST, completeOnly(delivered, done));
+
+        assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+        // No retry on the primary, but a fallback with a bigger cap can
+        // still save the turn.
+        assertThat(primaryCalls.get()).isEqualTo(1);
+        assertThat(fallbackCalls.get()).isEqualTo(1);
+        assertThat(delivered.get()).isEqualTo("fallback answer");
     }
 
     @Test

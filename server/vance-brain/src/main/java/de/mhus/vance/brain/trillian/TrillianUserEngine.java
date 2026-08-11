@@ -10,6 +10,7 @@ import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.brain.ai.StreamedReply;
 import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
@@ -341,8 +342,9 @@ public class TrillianUserEngine implements ThinkEngine {
                 log.trace("TrillianUser id='{}' iter={} ▶ LLM call (model='{}', messages={}, toolSpecs={})",
                         process.getId(), iter, modelAlias, messages.size(), toolSpecs.size());
                 long callStartMs = System.currentTimeMillis();
-                AiMessage reply = streamOneIteration(
+                StreamedReply streamed = streamOneIteration(
                         aiChat, req.build(), ctx, process, modelAlias);
+                AiMessage reply = streamed.message();
                 if (log.isTraceEnabled()) {
                     int textLen = reply.text() == null ? 0 : reply.text().length();
                     int toolCalls = reply.hasToolExecutionRequests()
@@ -356,6 +358,15 @@ public class TrillianUserEngine implements ThinkEngine {
                     String finalText = reply.text() == null ? "" : reply.text();
                     if (!finalText.isBlank()) {
                         persistAssistantReply(process, chatLog, finalText);
+                    } else if (streamed.atOutputCap()) {
+                        // Headless worker — a quiet turn is normal and there
+                        // is no user to message. But an output-cap truncation
+                        // is a config problem masquerading as a quiet turn, so
+                        // leave a trace that isn't at TRACE level.
+                        log.warn("TrillianUser id='{}' turn produced nothing: hit the "
+                                        + "output-token cap (finish=LENGTH, maxOutputTokens={}, "
+                                        + "model='{}')",
+                                process.getId(), streamed.maxOutputTokens(), modelAlias);
                     }
                     log.info("TrillianUser id='{}' natural stop ({} chars, {}ms) — IDLE",
                             process.getId(), finalText.length(),
@@ -618,7 +629,7 @@ public class TrillianUserEngine implements ThinkEngine {
 
     // ──────────────────── LLM call ────────────────────
 
-    private AiMessage streamOneIteration(
+    private StreamedReply streamOneIteration(
             AiChat aiChat,
             ChatRequest request,
             ThinkEngineContext ctx,
@@ -669,7 +680,7 @@ public class TrillianUserEngine implements ThinkEngine {
             llmCallTracker.record(
                     process, request, response,
                     System.currentTimeMillis() - startMs, modelAlias);
-            return response.aiMessage();
+            return StreamedReply.of(response, request);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new AiChatException("TrillianUser streaming failed: " + cause.getMessage(), cause);

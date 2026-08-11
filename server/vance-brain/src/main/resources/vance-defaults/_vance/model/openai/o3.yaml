@@ -1,5 +1,7 @@
 contextWindowTokens: 200000
-defaultMaxOutputTokens: 8192
+# Reasoning model — the cap must cover the thinking pass, not just the
+# visible answer (see glm-5.2.yaml for the failure mode).
+defaultMaxOutputTokens: 32768
 size: LARGE
 capabilities:
 - thinking

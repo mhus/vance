@@ -10,6 +10,7 @@ import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.brain.ai.StreamedReply;
 import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
@@ -146,6 +147,14 @@ public class TrillianControlEngine implements ThinkEngine {
                     + "operational tasks to the paired Trillian-User worker via "
                     + "`task_enqueue`. You do not execute work yourself.";
 
+    /**
+     * Surfaced when the model returns nothing and the stream ended on its
+     * own terms. The output-cap variant (empty + {@code finish=LENGTH}) is
+     * a different diagnosis and is worded by
+     * {@link StreamedReply#emptyReplyMessage(String, String)} — telling a
+     * user to "rephrase" when the request was truncated at the token cap
+     * sends them in circles.
+     */
     private static final String MODEL_COLLAPSE_MESSAGE =
             "_The model returned an empty response — "
                     + "likely context too large, a provider timeout, "
@@ -330,8 +339,9 @@ public class TrillianControlEngine implements ThinkEngine {
                 log.trace("TrillianControl id='{}' iter={} ▶ LLM call (model='{}', messages={}, toolSpecs={})",
                         process.getId(), iter, modelAlias, messages.size(), toolSpecs.size());
                 long callStartMs = System.currentTimeMillis();
-                AiMessage reply = streamOneIteration(
+                StreamedReply streamed = streamOneIteration(
                         aiChat, req.build(), ctx, process, modelAlias);
+                AiMessage reply = streamed.message();
                 if (log.isTraceEnabled()) {
                     int textLen = reply.text() == null ? 0 : reply.text().length();
                     int toolCalls = reply.hasToolExecutionRequests()
@@ -349,16 +359,26 @@ public class TrillianControlEngine implements ThinkEngine {
                         // return finish=STOP with no output. Retry
                         // once; if it stays empty, surface the
                         // collapse message.
-                        if (!emptyRetryUsed) {
+                        //
+                        // finish=LENGTH is exempt: the model burned its
+                        // whole output-token budget before emitting
+                        // anything (on reasoning models the thinking pass
+                        // alone can do that), so the extra attempt hits
+                        // the same wall for another full budget of
+                        // tokens. Skip straight to surfacing it.
+                        if (!emptyRetryUsed && !streamed.atOutputCap()) {
                             emptyRetryUsed = true;
                             log.warn("TrillianControl id='{}' iter={} empty LLM response — retrying once (model='{}')",
                                     process.getId(), iter, modelAlias);
                             continue;
                         }
-                        log.warn("TrillianControl id='{}' empty LLM response after retry — surfacing (model='{}')",
-                                process.getId(), modelAlias);
+                        log.warn("TrillianControl id='{}' empty LLM response — surfacing "
+                                        + "(model='{}', finish={}, maxOutputTokens={})",
+                                process.getId(), modelAlias, streamed.finishReason(),
+                                streamed.maxOutputTokens());
                         persistAssistantReply(process, chatLog, ctx,
-                                MODEL_COLLAPSE_MESSAGE, drained);
+                                streamed.emptyReplyMessage(MODEL_COLLAPSE_MESSAGE, null),
+                                drained);
                         exitStatus = ThinkProcessStatus.IDLE;
                         return;
                     }
@@ -628,7 +648,7 @@ public class TrillianControlEngine implements ThinkEngine {
 
     // ──────────────────── LLM call ────────────────────
 
-    private AiMessage streamOneIteration(
+    private StreamedReply streamOneIteration(
             AiChat aiChat,
             ChatRequest request,
             ThinkEngineContext ctx,
@@ -681,7 +701,7 @@ public class TrillianControlEngine implements ThinkEngine {
             llmCallTracker.record(
                     process, request, response,
                     System.currentTimeMillis() - startMs, modelAlias);
-            return response.aiMessage();
+            return StreamedReply.of(response, request);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new AiChatException("TrillianControl streaming failed: " + cause.getMessage(), cause);

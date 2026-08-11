@@ -6,6 +6,7 @@ import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.PartialThinking;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
+import dev.langchain4j.model.output.FinishReason;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
@@ -41,6 +42,14 @@ import org.slf4j.LoggerFactory;
  *       they are just as recoverable. On exhaustion the empty response is
  *       still delivered to the caller so downstream empty-reply handling
  *       (e.g. an engine parking the worker) is unchanged.</li>
+ *   <li><b>Exception:</b> an empty completion that reports
+ *       {@link FinishReason#LENGTH} is <em>not</em> retried. It means the
+ *       model hit its output-token cap before producing anything visible —
+ *       typically a reasoning model whose {@code reasoning_content} ate the
+ *       whole {@code max_tokens} budget. Re-issuing the identical request
+ *       hits the identical wall, so the retries only burn tokens and
+ *       wall-clock. Chain-advance still applies: a fallback entry may carry
+ *       a larger cap and actually succeed.</li>
  *   <li>After an entry's attempts are exhausted (or the error isn't in
  *       the retry pattern set), the next chain entry is tried fresh.</li>
  *   <li>If all chain entries fail, the last error is forwarded to the
@@ -71,6 +80,16 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
      */
     private static final AiChatException EMPTY_RESPONSE = new AiChatException(
             "streaming completed with an empty response (neither text nor a tool call)");
+
+    /**
+     * Variant of {@link #EMPTY_RESPONSE} for the deterministic case: the
+     * completion is empty <em>and</em> reports {@link FinishReason#LENGTH},
+     * i.e. the output-token cap was reached before any visible content.
+     * Also never thrown to the caller.
+     */
+    private static final AiChatException EMPTY_AT_OUTPUT_CAP = new AiChatException(
+            "streaming hit the output-token cap before emitting text or a tool call "
+                    + "(finish=LENGTH) — raise maxTokens or reduce reasoning effort");
 
     /**
      * Single shared scheduler — used only to delay the retry trigger.
@@ -246,29 +265,39 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
                                      StreamingChatResponseHandler caller,
                                      ChainEntry entry,
                                      ChatResponse complete) {
+        // finish=LENGTH is a deterministic wall, not a glitch: the model
+        // spent its whole output-token budget before emitting anything
+        // visible. Re-issuing the same request reproduces it exactly, so
+        // skip straight to chain-advance / delivery.
+        boolean atOutputCap = isAtOutputCap(complete);
+        AiChatException cause = atOutputCap ? EMPTY_AT_OUTPUT_CAP : EMPTY_RESPONSE;
         int maxAttempts = Math.min(entry.policy().maxAttempts(), EMPTY_MAX_ATTEMPTS);
-        if (attempt < maxAttempts) {
+        if (!atOutputCap && attempt < maxAttempts) {
             long backoffMs = entry.policy().backoffFor(attempt).toMillis();
             log.warn("ResilientChatModel '{}': empty response (attempt {}/{}), retry in {}ms",
                     entry.label(), attempt, maxAttempts, backoffMs);
-            notifyRetry(entry, attempt, backoffMs, EMPTY_RESPONSE);
+            notifyRetry(entry, attempt, backoffMs, cause);
             CompletableFuture.runAsync(
-                    () -> attempt(chainIdx, attempt + 1, request, caller, EMPTY_RESPONSE),
+                    () -> attempt(chainIdx, attempt + 1, request, caller, cause),
                     delayed(backoffMs));
             return;
         }
+        String why = atOutputCap
+                ? "empty response at the output-token cap (finish=LENGTH, maxOutputTokens="
+                        + maxOutputTokens(request) + ") — not retriable"
+                : "empty response, retry budget exhausted after " + attempt + " attempt(s)";
         if (chainIdx + 1 < chain.size()) {
-            log.warn("ResilientChatModel '{}': empty response, budget exhausted → advance",
-                    entry.label());
-            notifyChainAdvance(entry, chainIdx, EMPTY_RESPONSE);
-            attempt(chainIdx + 1, 1, request, caller, EMPTY_RESPONSE);
+            log.warn("ResilientChatModel '{}': {} → advance", entry.label(), why);
+            notifyChainAdvance(entry, chainIdx, cause);
+            attempt(chainIdx + 1, 1, request, caller, cause);
             return;
         }
         // No provider produced a non-empty reply. Deliver the empty
         // response unchanged — the caller (e.g. the engine loop) decides
-        // how to treat a genuine empty completion.
-        log.warn("ResilientChatModel '{}': empty response after {} attempt(s) — delivering empty",
-                entry.label(), attempt);
+        // how to treat a genuine empty completion. The finish reason
+        // travels with it, so the engine can tell "hit the cap" from
+        // "provider returned blanks" when it words its user-facing message.
+        log.warn("ResilientChatModel '{}': {} — delivering empty", entry.label(), why);
         caller.onCompleteResponse(complete);
     }
 
@@ -280,6 +309,22 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
         if (message.hasToolExecutionRequests()) return false;
         String text = message.text();
         return text == null || text.isBlank();
+    }
+
+    /**
+     * True when the (already known-empty) response was cut off by the
+     * output-token cap rather than ending on its own. Reasoning models on
+     * the OpenAI wire hit this whenever {@code reasoning_content} consumes
+     * the whole {@code max_tokens} budget: a well-formed 200 response with
+     * {@code finish_reason: "length"} and no content at all.
+     */
+    private static boolean isAtOutputCap(@Nullable ChatResponse response) {
+        return response != null && response.finishReason() == FinishReason.LENGTH;
+    }
+
+    /** The request's output cap, for the log line; {@code null} when unset. */
+    private static @Nullable Integer maxOutputTokens(ChatRequest request) {
+        return request.parameters() == null ? null : request.parameters().maxOutputTokens();
     }
 
     private void notifyRetry(ChainEntry entry, int attempt, long backoffMs, Throwable error) {

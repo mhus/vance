@@ -13,6 +13,7 @@ import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.brain.ai.StreamedReply;
 import de.mhus.vance.brain.ai.VanceSystemMessage;
 import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
@@ -55,6 +56,7 @@ import de.mhus.vance.brain.thinkengine.action.ThinkStreamSplitter;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.PartialThinking;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
+import dev.langchain4j.model.output.FinishReason;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -201,9 +203,12 @@ public class FrankieEngine implements ThinkEngine {
 
     /**
      * Surfaced as the assistant message when the LLM returns neither
-     * text nor tool calls — a model-side collapse, not a clean
-     * natural stop. Without this message the user just sees the
-     * turn stall silently and has no clue the worker bailed.
+     * text nor tool calls and the stream ended on its own terms — a
+     * model-side collapse, not a clean natural stop. Without this
+     * message the user just sees the turn stall silently and has no
+     * clue the worker bailed. The output-cap variant is worded
+     * separately, see
+     * {@link StreamedReply#emptyReplyMessage(String, String)}.
      */
     private static final String MODEL_COLLAPSE_MESSAGE =
             "_The model returned an empty response (no text, no tool call) "
@@ -211,6 +216,13 @@ public class FrankieEngine implements ThinkEngine {
                     + "glitch or a model-side collapse. Try again, or switch "
                     + "the model. The worker stays BLOCKED until the next "
                     + "input._";
+
+    /**
+     * Appended to the shared output-cap diagnosis so it carries the same
+     * "where did my turn go" hint {@link #MODEL_COLLAPSE_MESSAGE} does.
+     */
+    private static final String WORKER_PARKED_NOTE =
+            "The worker stays BLOCKED until the next input.";
 
     /**
      * Last-resort hardcoded system prompt — used only when neither the
@@ -526,8 +538,9 @@ public class FrankieEngine implements ThinkEngine {
                 if (!toolSpecs.isEmpty()) {
                     req.toolSpecifications(toolSpecs);
                 }
-                AiMessage reply = streamOneIteration(
+                StreamedReply streamed = streamOneIteration(
                         aiChat, req.build(), ctx, process, modelAlias, modelInfo);
+                AiMessage reply = streamed.message();
 
                 // Accumulate the model's reasoning across the turn's
                 // iterations so persistAssistantReply can snapshot it into
@@ -550,25 +563,35 @@ public class FrankieEngine implements ThinkEngine {
                 // tool-terminate below.
                 //
                 // Edge case: empty LLM response. When the model returns
-                // neither text nor tool calls — a transient provider glitch
-                // (notably Gemini returning a successful empty completion)
-                // or a model-side collapse — the standard natural-stop path
+                // neither text nor tool calls the standard natural-stop path
                 // would silently drop the turn (nothing persisted, user
-                // sees no reply). ResilientStreamingChatModel already
-                // retried the empty completion upstream; reaching here means
-                // it stayed empty across retries. Treat it as a stall:
-                // surface a clear assistant message so the user knows the
-                // worker bailed, and park BLOCKED so the attention is on the
+                // sees no reply). Two distinct causes reach here:
+                //
+                //  * finish=LENGTH — the model burned its whole output-token
+                //    budget before emitting anything visible, typically a
+                //    reasoning model whose reasoning_content ate max_tokens.
+                //    Deterministic; ResilientStreamingChatModel deliberately
+                //    skips retries for it.
+                //  * anything else — a transient provider glitch (notably
+                //    Gemini returning a successful empty completion) or a
+                //    model-side collapse, already retried upstream.
+                //
+                // Either way treat it as a stall: surface an assistant
+                // message that names the actual cause so the user knows what
+                // to change, and park BLOCKED so the attention is on the
                 // broken state rather than looking ready for the next input.
                 if (!reply.hasToolExecutionRequests()) {
                     String finalText = reply.text() == null ? "" : reply.text();
                     if (finalText.isBlank()) {
                         log.warn(
-                                "Frankie id='{}' empty LLM response after retries "
-                                        + "(no text, no tool calls) — BLOCKED",
-                                process.getId());
+                                "Frankie id='{}' empty LLM response (no text, no tool calls) "
+                                        + "finish={} maxOutputTokens={} — BLOCKED",
+                                process.getId(), streamed.finishReason(),
+                                streamed.maxOutputTokens());
                         persistAssistantReply(process, chatLog, ctx,
-                                MODEL_COLLAPSE_MESSAGE, drained, tools, toolsThisTurn);
+                                streamed.emptyReplyMessage(
+                                        MODEL_COLLAPSE_MESSAGE, WORKER_PARKED_NOTE),
+                                drained, tools, toolsThisTurn);
                         exitStatus = ThinkProcessStatus.BLOCKED;
                         return;
                     }
@@ -1204,7 +1227,7 @@ public class FrankieEngine implements ThinkEngine {
 
     // ──────────────────── LLM call ────────────────────
 
-    private AiMessage streamOneIteration(
+    private StreamedReply streamOneIteration(
             AiChat aiChat,
             ChatRequest request,
             ThinkEngineContext ctx,
@@ -1309,7 +1332,7 @@ public class FrankieEngine implements ThinkEngine {
                     process, request, response,
                     System.currentTimeMillis() - startMs, modelAlias,
                     modelInfo);
-            return response.aiMessage();
+            return StreamedReply.of(response, request);
         } catch (TimeoutException e) {
             done.cancel(true);
             throw new AiChatException(

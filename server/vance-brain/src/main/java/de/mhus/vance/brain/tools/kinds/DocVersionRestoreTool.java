@@ -47,9 +47,9 @@ public class DocVersionRestoreTool implements Tool {
                 "description", "Version to restore — an archiveId from doc_version_list."));
         p.put("newFile", Map.of("type", "boolean",
                 "description", "When true, restore into a NEW file beside the current one "
-                        + "instead of overwriting it. Implied when targetPath is set. "
+                        + "instead of overwriting it. Implied when newPath is set. "
                         + "Default false (overwrite the live document)."));
-        p.put("targetPath", Map.of("type", "string",
+        p.put("newPath", Map.of("type", "string",
                 "description", "Optional path for the new file (implies newFile). "
                         + "Omit to auto-generate foo-version-<N>-<date>.<ext>."));
         return p;
@@ -85,7 +85,9 @@ public class DocVersionRestoreTool implements Tool {
         String archiveId = KindToolSupport.paramString(params, "archiveId");
         if (archiveId == null) throw new ToolException("archiveId is required");
 
-        String targetPath = KindToolSupport.paramString(params, "targetPath");
+        // newPath is what doc_move / doc_copy / doc_restore call the same
+        // thing; targetPath belonged to the image_* family.
+        String targetPath = KindToolSupport.paramStringAliased(params, "newPath", "targetPath");
         Boolean newFile = KindToolSupport.paramBoolean(params, "newFile");
         boolean asCopy = targetPath != null || Boolean.TRUE.equals(newFile);
 

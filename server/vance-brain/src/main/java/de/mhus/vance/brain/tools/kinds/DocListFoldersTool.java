@@ -21,7 +21,7 @@ public class DocListFoldersTool implements Tool {
             "properties", Map.of(
                     "projectId", Map.of("type", "string",
                             "description", "Optional project name. Defaults to the active project."),
-                    "parentPath", Map.of("type", "string",
+                    "pathPrefix", Map.of("type", "string",
                             "description", "Optional parent folder path; empty/omitted lists "
                                     + "folders at every depth.")),
             "required", List.of());
@@ -46,7 +46,7 @@ public class DocListFoldersTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         ProjectDocument project = support.eddieContext().resolveProject(params, ctx, false);
-        String parent = KindToolSupport.paramString(params, "parentPath");
+        String parent = KindToolSupport.paramStringAliased(params, "pathPrefix", "parentPath");
         List<FolderInfo> folders = support.documentService()
                 .extractFolders(ctx.tenantId(), project.getName(), parent);
         List<Map<String, Object>> rows = new ArrayList<>(folders.size());

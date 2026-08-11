@@ -26,7 +26,7 @@ public class DocListInFolderTool implements Tool {
             "properties", Map.of(
                     "projectId", Map.of("type", "string",
                             "description", "Optional project name. Defaults to the active project."),
-                    "folder", Map.of("type", "string",
+                    "pathPrefix", Map.of("type", "string",
                             "description", "Folder path inside the project (e.g. "
                                     + "'documents/notes/2024'). Omitted/blank → defaults to "
                                     + "'documents/' (excludes trash and system folders). "
@@ -55,7 +55,7 @@ public class DocListInFolderTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         ProjectDocument project = support.eddieContext().resolveProject(params, ctx, false);
         String folder = DocumentService.resolveScope(
-                KindToolSupport.paramString(params, "folder"));
+                KindToolSupport.paramStringAliased(params, "pathPrefix", "folder"));
         boolean recursive = Boolean.TRUE.equals(KindToolSupport.paramBoolean(params, "recursive"));
 
         // resolveScope returns "documents/" with the trailing slash, ""

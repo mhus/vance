@@ -19,7 +19,7 @@ version history explicitly.
 - `doc_version_restore` — write a chosen version back onto the live
   document. The current content is archived first, so a restore is itself
   undoable. Needs an `archiveId` from `doc_version_list`. Pass `newFile:true`
-  (or a `targetPath`) to restore into a **new file beside** the current one
+  (or a `newPath`) to restore into a **new file beside** the current one
   instead of overwriting it — the name is auto-generated
   (`foo.yaml` → `foo-version-<N>-<date>.yaml`), so nothing is overwritten.
   Use this when the user wants to compare an old version next to the current

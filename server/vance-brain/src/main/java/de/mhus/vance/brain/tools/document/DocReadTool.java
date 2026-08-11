@@ -61,7 +61,7 @@ public class DocReadTool implements Tool {
                 + "tags, mimeType, content (text). Long documents are "
                 + "truncated past " + MAX_BODY_CHARS + " characters — when "
                 + "'truncated' is true, page on with doc_read_lines "
-                + "(offset/limit); re-reading here returns the same prefix.";
+                + "(startLine/maxLines); re-reading here returns the same prefix.";
     }
 
     @Override
@@ -70,8 +70,8 @@ public class DocReadTool implements Tool {
         // so there is nothing to raise, and the tool that *can* page lives
         // under a different name. Say so where the truncation is observed.
         return "Not found = check path/id and the project; truncated=true = "
-                + "continue with doc_read_lines(offset, limit), not by calling "
-                + "doc_read again.";
+                + "continue with doc_read_lines(startLine, maxLines), not by "
+                + "calling doc_read again.";
     }
 
     @Override

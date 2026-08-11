@@ -446,6 +446,75 @@ public class KindToolSupport {
         return p;
     }
 
+    /*
+     * ── Renamed parameters ──────────────────────────────────────────────
+     *
+     * The doc_* / file_* families accumulated several names for the same
+     * concept: a line window was `offset`/`limit` in one tool and
+     * `startLine`/`maxLines` in another, a path scope was `folder`,
+     * `parentPath` or `pathPrefix` depending on which tool you reached for.
+     * Each variant costs a model a guess, and a wrong guess is silent — the
+     * unknown key is dropped and the tool answers about something else.
+     *
+     * The canonical names now win, and the old spellings keep being read
+     * through the helpers below so prompts, manuals and saved calls don't
+     * break. Aliases are deliberately NOT declared in the schemas: they exist
+     * for calls already in flight, not as a second name to choose from.
+     * `WorkTargetToolVocabularyTest` guards the declared side.
+     */
+
+    /** {@link #paramString} that also accepts renamed-away spellings. */
+    public static @Nullable String paramStringAliased(
+            @Nullable Map<String, Object> params, String canonical, String... legacy) {
+        String v = paramString(params, canonical);
+        if (v != null) return v;
+        for (String l : legacy) {
+            v = paramString(params, l);
+            if (v != null) return v;
+        }
+        return null;
+    }
+
+    /** {@link #paramInt} that also accepts renamed-away spellings. */
+    public static @Nullable Integer paramIntAliased(
+            @Nullable Map<String, Object> params, String canonical, String... legacy) {
+        Integer v = paramInt(params, canonical);
+        if (v != null) return v;
+        for (String l : legacy) {
+            v = paramInt(params, l);
+            if (v != null) return v;
+        }
+        return null;
+    }
+
+    /**
+     * {@link #requireRawString} that also accepts renamed-away spellings. Raw
+     * (un-trimmed) because an edit's search text may legitimately start or end
+     * with whitespace.
+     */
+    public static String requireRawStringAliased(
+            @Nullable Map<String, Object> params, String canonical, String... legacy) {
+        String v = paramRawString(params, canonical);
+        if (v != null) return v;
+        for (String l : legacy) {
+            v = paramRawString(params, l);
+            if (v != null) return v;
+        }
+        throw new ToolException("'" + canonical + "' is required");
+    }
+
+    /** {@link #paramBoolean} that also accepts renamed-away spellings. */
+    public static @Nullable Boolean paramBooleanAliased(
+            @Nullable Map<String, Object> params, String canonical, String... legacy) {
+        Boolean v = paramBoolean(params, canonical);
+        if (v != null) return v;
+        for (String l : legacy) {
+            v = paramBoolean(params, l);
+            if (v != null) return v;
+        }
+        return null;
+    }
+
     /**
      * Maps the legacy {@code documentId} selector onto the family-standard
      * {@code id} so {@link #loadDocument} can resolve it. An explicit

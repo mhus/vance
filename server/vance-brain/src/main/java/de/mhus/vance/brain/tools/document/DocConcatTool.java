@@ -49,10 +49,10 @@ public class DocConcatTool implements Tool {
                             "items", Map.of("type", "string"),
                             "description", "Ordered list of source document "
                                     + "paths to concatenate."),
-                    "target", Map.of(
+                    "newPath", Map.of(
                             "type", "string",
-                            "description", "Target document path. Must not "
-                                    + "exist yet."),
+                            "description", "Path of the document to write. Must "
+                                    + "not exist yet."),
                     "separator", Map.of(
                             "type", "string",
                             "description", "String inserted between source "
@@ -72,7 +72,7 @@ public class DocConcatTool implements Tool {
                             "type", "array",
                             "items", Map.of("type", "string"),
                             "description", "Optional tag list for the target.")),
-            "required", List.of("sources", "target"));
+            "required", List.of("sources", "newPath"));
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
@@ -113,7 +113,10 @@ public class DocConcatTool implements Tool {
         if (sources == null || sources.isEmpty()) {
             throw new ToolException("'sources' must be a non-empty list of paths");
         }
-        String target = paramString(params, "target");
+        // newPath like doc_move / doc_copy / doc_restore; `target` meant an
+        // edge endpoint in the graph and relations tools.
+        String target = de.mhus.vance.brain.tools.kinds.KindToolSupport
+                .paramStringAliased(params, "newPath", "target");
         if (target == null) throw new ToolException("'target' is required");
         String separator = params != null && params.get("separator") instanceof String s
                 ? s : DEFAULT_SEPARATOR;

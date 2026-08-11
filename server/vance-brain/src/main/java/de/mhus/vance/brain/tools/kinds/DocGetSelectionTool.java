@@ -42,10 +42,10 @@ public class DocGetSelectionTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("from", Map.of("type", "integer",
+        p.put("fromLine", Map.of("type", "integer",
                 "description", "0-based start character offset. Omit (with `to`) to use "
                         + "the selection that arrived with the current message."));
-        p.put("to", Map.of("type", "integer",
+        p.put("toLine", Map.of("type", "integer",
                 "description", "End character offset (exclusive). Omit to use the "
                         + "current message's selection."));
         p.put("head", Map.of("type", "integer",
@@ -79,8 +79,11 @@ public class DocGetSelectionTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        Integer from = KindToolSupport.paramInt(params, "from");
-        Integer to = KindToolSupport.paramInt(params, "to");
+        // fromLine/toLine is what doc_replace_lines calls the same inclusive
+        // range; bare from/to collided with the time ranges of the calendar and
+        // journal tools.
+        Integer from = KindToolSupport.paramIntAliased(params, "fromLine", "from");
+        Integer to = KindToolSupport.paramIntAliased(params, "toLine", "to");
         String id = KindToolSupport.paramString(params, "id");
         String path = KindToolSupport.paramString(params, "path");
 

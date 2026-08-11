@@ -32,17 +32,17 @@ public class DocEditTool implements Tool {
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
             "properties", buildProps(),
-            "required", List.of("old_string", "new_string"));
+            "required", List.of("oldText", "newText"));
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("old_string", Map.of("type", "string",
+        p.put("oldText", Map.of("type", "string",
                 "description", "The text to replace. Must be unique within the document, "
                         + "or set replace_all=true."));
-        p.put("new_string", Map.of("type", "string",
-                "description", "The replacement text (must differ from old_string)."));
-        p.put("replace_all", Map.of("type", "boolean",
-                "description", "Replace every occurrence of old_string. Default: false."));
+        p.put("newText", Map.of("type", "string",
+                "description", "The replacement text (must differ from oldText)."));
+        p.put("replaceAll", Map.of("type", "boolean",
+                "description", "Replace every occurrence of oldText. Default: false."));
         return p;
     }
 
@@ -63,9 +63,12 @@ public class DocEditTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         DocumentDocument doc = support.requireInline(support.loadDocument(params, ctx));
-        String oldString = KindToolSupport.requireRawString(params, "old_string");
-        String newString = KindToolSupport.requireRawString(params, "new_string");
-        boolean replaceAll = Boolean.TRUE.equals(KindToolSupport.paramBoolean(params, "replace_all"));
+        // camelCase like file_edit and the rest of the tool surface; this one
+        // shipped in snake_case, so the same operation had two spellings.
+        String oldString = KindToolSupport.requireRawStringAliased(params, "oldText", "old_string");
+        String newString = KindToolSupport.requireRawStringAliased(params, "newText", "new_string");
+        boolean replaceAll = Boolean.TRUE.equals(
+                KindToolSupport.paramBooleanAliased(params, "replaceAll", "replace_all"));
 
         if (oldString.equals(newString)) {
             throw new ToolException("old_string and new_string are identical — nothing to do");

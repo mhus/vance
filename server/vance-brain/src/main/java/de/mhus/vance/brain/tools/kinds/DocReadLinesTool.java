@@ -31,9 +31,9 @@ public class DocReadLinesTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("offset", Map.of("type", "integer",
+        p.put("startLine", Map.of("type", "integer",
                 "description", "1-based line number to start from. Default: 1."));
-        p.put("limit", Map.of("type", "integer",
+        p.put("maxLines", Map.of("type", "integer",
                 "description", "Number of lines to return. Default: " + DEFAULT_LIMIT
                         + ", max: " + MAX_LIMIT + "."));
         return p;
@@ -44,7 +44,7 @@ public class DocReadLinesTool implements Tool {
     @Override public String name() { return "doc_read_lines"; }
     @Override public String description() {
         return "Read a slice of an inline document by line range, prefixed with line numbers "
-                + "in `<n>\\t<line>` format. Use `offset` (1-based) and `limit` to page through "
+                + "in `<n>\\t<line>` format. Use `startLine` (1-based) and `maxLines` to page through "
                 + "large bodies without loading the whole thing into context.";
     }
     @Override public boolean primary() { return true; }
@@ -54,7 +54,7 @@ public class DocReadLinesTool implements Tool {
 
     @Override
     public @org.jspecify.annotations.Nullable String troubleshootingHint() {
-        return "Empty result = offset past the end of the document; this is the "
+        return "Empty result = startLine past the end of the document; this is the "
                 + "paging counterpart to doc_read — use it when doc_read reports "
                 + "truncated=true.";
     }
@@ -62,8 +62,11 @@ public class DocReadLinesTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         DocumentDocument doc = support.requireInline(support.loadDocument(params, ctx));
-        Integer offsetParam = KindToolSupport.paramInt(params, "offset");
-        Integer limitParam = KindToolSupport.paramInt(params, "limit");
+        // startLine/maxLines is what file_read calls the same window; this
+        // tool shipped with offset/limit, where `limit` also collided with the
+        // result-cap meaning it has in doc_find / doc_grep / file_find.
+        Integer offsetParam = KindToolSupport.paramIntAliased(params, "startLine", "offset");
+        Integer limitParam = KindToolSupport.paramIntAliased(params, "maxLines", "limit");
         int offset = offsetParam == null ? 1 : Math.max(1, offsetParam);
         int limit = limitParam == null ? DEFAULT_LIMIT : Math.min(MAX_LIMIT, Math.max(1, limitParam));
 
@@ -72,7 +75,7 @@ public class DocReadLinesTool implements Tool {
         if (offset > total) {
             return Map.of("documentId", doc.getId(),
                     "totalLines", total,
-                    "offset", offset,
+                    "startLine", offset,
                     "returnedLines", 0,
                     "content", "",
                     "truncated", false);
@@ -86,7 +89,7 @@ public class DocReadLinesTool implements Tool {
         result.put("documentId", doc.getId());
         result.put("path", doc.getPath());
         result.put("totalLines", total);
-        result.put("offset", offset);
+        result.put("startLine", offset);
         result.put("returnedLines", end - (offset - 1));
         result.put("truncated", end < total);
         result.put("content", out.toString());

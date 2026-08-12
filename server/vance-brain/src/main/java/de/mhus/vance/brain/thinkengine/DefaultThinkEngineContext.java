@@ -139,7 +139,11 @@ record DefaultThinkEngineContext(
                 toolResultStorage,
                 toolHealthService,
                 imageHarvester,
-                attachmentSink);
+                attachmentSink)
+                // Carry the budget so a later withAdditional (skill tools
+                // land in primary after the classification) re-fits
+                // instead of overflowing the endpoint's cap.
+                .withBudget(budget, familyHints);
     }
 
     /**

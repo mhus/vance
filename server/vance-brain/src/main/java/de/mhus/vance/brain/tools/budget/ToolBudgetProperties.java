@@ -24,12 +24,20 @@ public class ToolBudgetProperties {
     private boolean enabled = true;
 
     /**
-     * Slots held back for tools the model activates mid-turn through
-     * {@code tool_description}. Without headroom a surface filled to
-     * exactly {@code maxTools} would blow the limit on the first
-     * activation — the same provider 400, only later and harder to read.
+     * Extra slots held back on top of {@link #externalReserve}.
+     *
+     * <p>Default 0, and that is not an oversight: every path that grows
+     * the manifest after the classification runs through the triage again
+     * — a {@code tool_description} activation because {@code tools()}
+     * re-classifies, and {@code withAdditional} (skill tools) because it
+     * re-fits explicitly. A standing cushion would therefore only park
+     * capability in the discovery block for nothing.
+     *
+     * <p>Raise it when a deployment adds a manifest path that the budget
+     * does not see — the symptom would be a provider 400 despite a
+     * configured {@code maxTools}.
      */
-    private int activationHeadroom = 8;
+    private int activationHeadroom = 0;
 
     /**
      * Slots held back for schemas appended outside the classification.

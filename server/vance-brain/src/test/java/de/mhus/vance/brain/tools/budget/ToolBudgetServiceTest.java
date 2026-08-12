@@ -104,6 +104,21 @@ class ToolBudgetServiceTest {
     }
 
     @Test
+    void byDefault_onlyTheEngineActionToolIsReserved() {
+        // Headroom is 0 on purpose: every path that grows the manifest
+        // after the classification re-runs the triage, so a standing
+        // cushion would park capability in the discovery block for
+        // nothing. The one reserved slot is the action tool the engine
+        // appends outside primaryAsLc4j().
+        stubModel("openai:gpt-x", "openai", "gpt-x", 128);
+
+        ToolBudget budget = service.forProcess(process("openai:gpt-x", List.of()), "proj", Map.of());
+
+        assertThat(budget.reserved()).isEqualTo(1);
+        assertThat(budget.effectiveLimit()).isEqualTo(127);
+    }
+
+    @Test
     void budgetReservesHeadroomForRuntimeActivations() {
         stubModel("openai:gpt-x", "openai", "gpt-x", 128);
         properties.setActivationHeadroom(8);

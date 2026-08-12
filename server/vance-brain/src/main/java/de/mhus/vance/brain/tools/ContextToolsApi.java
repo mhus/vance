@@ -133,6 +133,21 @@ public final class ContextToolsApi implements ToolBus {
      */
     private final @org.jspecify.annotations.Nullable ToolHealthService toolHealthService;
 
+    /**
+     * The budget this surface was classified under, carried so that
+     * post-classification additions ({@link #withAdditional}) can be
+     * re-fitted instead of overflowing the endpoint's cap. {@code null}
+     * = no budget known; every surface behaves as it did before the
+     * budget existed. Set via {@link #withBudget}.
+     */
+    private final @org.jspecify.annotations.Nullable BudgetContext budgetContext;
+
+    /**
+     * Limit + ranking inputs of the classification, kept together so a
+     * re-fit uses exactly the same rules as the original cut.
+     */
+    private record BudgetContext(ToolBudget budget, ToolTriage.Hints hints) {}
+
     public ContextToolsApi(ToolDispatcher dispatcher, ToolInvocationContext ctx) {
         this(dispatcher, ctx, Set.of(), Set.of(), Set.of(), Set.of(),
                 ToolInvocationListener.NOOP, null, null, HistoryTagSink.NOOP, null);
@@ -309,6 +324,49 @@ public final class ContextToolsApi implements ToolBus {
         this.imageHarvester = imageHarvester;
         this.attachmentSink = attachmentSink == null
                 ? de.mhus.vance.brain.ai.attachment.ToolAttachmentSink.NOOP : attachmentSink;
+        this.budgetContext = null;
+    }
+
+    /**
+     * Private copy-constructor used by {@link #copyWith} — same state,
+     * new visibility sets, budget carried forward.
+     */
+    private ContextToolsApi(ContextToolsApi src,
+            Set<String> allowed, Set<String> primary,
+            Set<String> deferred, Set<String> activatedDeferred,
+            @org.jspecify.annotations.Nullable BudgetContext budgetContext) {
+        this.dispatcher = src.dispatcher;
+        this.ctx = src.ctx;
+        this.allowed = allowed == null ? Set.of() : Set.copyOf(allowed);
+        this.primary = primary == null ? Set.of() : Set.copyOf(primary);
+        this.deferred = deferred == null ? Set.of() : Set.copyOf(deferred);
+        this.activatedDeferred = activatedDeferred == null
+                ? Set.of() : Set.copyOf(activatedDeferred);
+        this.listener = src.listener;
+        this.activationRefresh = src.activationRefresh;
+        this.historyTagBuilder = src.historyTagBuilder;
+        this.historyTagSink = src.historyTagSink;
+        this.toolResultStorage = src.toolResultStorage;
+        this.toolHealthService = src.toolHealthService;
+        this.imageHarvester = src.imageHarvester;
+        this.attachmentSink = src.attachmentSink;
+        this.budgetContext = budgetContext;
+    }
+
+    /**
+     * Attaches the budget this surface was classified under. Called by
+     * {@code DefaultThinkEngineContext.tools()} right after
+     * {@link #classify}; without it a later {@link #withAdditional} has
+     * no way to know the cap it must stay under.
+     */
+    public ContextToolsApi withBudget(
+            @org.jspecify.annotations.Nullable ToolBudget budget,
+            ToolTriage.@org.jspecify.annotations.Nullable Hints familyHints) {
+        if (budget == null || !budget.hasLimit()) return this;
+        BudgetContext bc = new BudgetContext(
+                budget, familyHints == null ? ToolTriage.Hints.EMPTY : familyHints);
+        return new ContextToolsApi(
+                this, allowed, primary, deferred, activatedDeferred, bc);
     }
 
     /** All tools visible in this scope (after the engine's allow-filter). */
@@ -845,6 +903,16 @@ public final class ContextToolsApi implements ToolBus {
      * returned as-is — adding tools to "see everything" is a no-op.
      * If {@code extra} is null/empty, the surface is also returned
      * as-is.
+     *
+     * <p><b>Budget-aware.</b> This is the one path that grows the
+     * manifest <em>after</em> {@link #classify} already fitted it to the
+     * endpoint's {@code tools} cap, so it re-runs the triage on the
+     * merged set (see {@code planning/tool-surface-budget.md}). The
+     * added tools rank as "keep" — a skill is explicitly active, so its
+     * tools outrank whatever the recipe left in the manifest by default
+     * — and the overflow moves to deferred. Without this the surface
+     * would silently exceed the cap and the provider would answer 400,
+     * which is exactly the failure the budget exists to prevent.
      */
     public ContextToolsApi withAdditional(Set<String> extra) {
         if (allowed.isEmpty() || extra == null || extra.isEmpty()) {
@@ -858,7 +926,40 @@ public final class ContextToolsApi implements ToolBus {
             if (mergedPrimary.add(e)) changed = true;
         }
         if (!changed) return this;
-        return copyWith(mergedAllowed, mergedPrimary, deferred, activatedDeferred);
+        if (budgetContext == null) {
+            return copyWith(mergedAllowed, mergedPrimary, deferred, activatedDeferred);
+        }
+        return refitToBudget(mergedAllowed, mergedPrimary, extra);
+    }
+
+    /**
+     * Re-runs {@link ToolTriage} after {@link #withAdditional} widened the
+     * primary bucket. {@code priorityNames} (the freshly added tools) are
+     * merged into the keep list for this run only — the stored hints are
+     * not mutated, so a later re-fit starts from the same baseline.
+     */
+    private ContextToolsApi refitToBudget(
+            Set<String> mergedAllowed, Set<String> mergedPrimary, Set<String> priorityNames) {
+        BudgetContext bc = budgetContext;
+        Set<String> keep = new LinkedHashSet<>(bc.hints().keep());
+        keep.addAll(priorityNames);
+        ToolTriage.Hints hints = new ToolTriage.Hints(
+                keep, bc.hints().add(), bc.hints().dropFirst(),
+                bc.hints().keepFamilies(), bc.hints().dropFirstFamilies());
+        Set<String> floor = new LinkedHashSet<>(MANDATORY_TOOLS);
+        floor.retainAll(mergedPrimary);
+        ToolTriage.Result triaged = ToolTriage.apply(
+                mergedPrimary, activatedDeferred, floor, hints, bc.budget());
+        if (!triaged.changed()) {
+            return copyWith(mergedAllowed, mergedPrimary, deferred, activatedDeferred);
+        }
+        Set<String> mergedDeferred = new LinkedHashSet<>(deferred);
+        for (String name : triaged.demoted()) {
+            if (mergedPrimary.contains(name)) mergedDeferred.add(name);
+        }
+        logDemotion(ctx, triaged,
+                mergedPrimary.size() + activatedDeferred.size(), bc.budget());
+        return copyWith(mergedAllowed, triaged.primary(), mergedDeferred, triaged.activated());
     }
 
     /**
@@ -873,9 +974,7 @@ public final class ContextToolsApi implements ToolBus {
             Set<String> newAllowed, Set<String> newPrimary,
             Set<String> newDeferred, Set<String> newActivated) {
         return new ContextToolsApi(
-                dispatcher, ctx, newAllowed, newPrimary, newDeferred, newActivated,
-                listener, activationRefresh, historyTagBuilder, historyTagSink,
-                toolResultStorage, toolHealthService, imageHarvester, attachmentSink);
+                this, newAllowed, newPrimary, newDeferred, newActivated, budgetContext);
     }
 
     /**

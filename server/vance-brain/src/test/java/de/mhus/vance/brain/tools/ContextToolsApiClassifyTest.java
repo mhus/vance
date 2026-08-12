@@ -546,6 +546,85 @@ class ContextToolsApiClassifyTest {
         assertThat(c.primary()).containsExactly("gmail_rest__a");
     }
 
+    // ─── budget-aware withAdditional (skill tools after the cut) ───
+
+    @Test
+    void withAdditional_refitsToTheBudget_insteadOfOverflowing() {
+        // Skill tools land in primary *after* classify already fitted the
+        // surface. Without the re-fit the manifest would exceed the cap
+        // and the provider would answer 400 — the very failure the budget
+        // exists to prevent.
+        stubResolve("doc_read", false);
+        stubResolve("doc_write", false);
+        stubResolve("skill_alpha", false);
+        when(dispatcher.resolveAll(any())).thenReturn(List.of(
+                resolved("doc_read"), resolved("doc_write"), resolved("skill_alpha")));
+
+        ContextToolsApi base = new ContextToolsApi(
+                dispatcher, ctx,
+                /*allowed*/ Set.of("doc_read", "doc_write"),
+                /*primary*/ Set.of("doc_read", "doc_write"),
+                /*deferred*/ Set.of(),
+                /*activatedDeferred*/ Set.of(),
+                ToolInvocationListener.NOOP)
+                .withBudget(new ToolBudget(2, 0), null);
+
+        ContextToolsApi withSkill = base.withAdditional(Set.of("skill_alpha"));
+
+        assertThat(withSkill.primary()).hasSizeLessThanOrEqualTo(2);
+        // The skill's tool ranks as "keep" — it is explicitly active.
+        assertThat(withSkill.primary()).contains("skill_alpha");
+        // Nothing is lost: the displaced tool is still invocable.
+        assertThat(withSkill.invocableToolNames()).contains("doc_read", "doc_write");
+    }
+
+    @Test
+    void withAdditional_withoutABudget_keepsTheOldBehaviour() {
+        stubResolve("doc_read", false);
+        stubResolve("skill_alpha", false);
+
+        ContextToolsApi base = new ContextToolsApi(
+                dispatcher, ctx,
+                Set.of("doc_read"), Set.of("doc_read"), Set.of(), Set.of(),
+                ToolInvocationListener.NOOP);
+
+        ContextToolsApi withSkill = base.withAdditional(Set.of("skill_alpha"));
+
+        assertThat(withSkill.primary()).containsExactlyInAnyOrder("doc_read", "skill_alpha");
+    }
+
+    @Test
+    void withAdditional_thatStillFits_demotesNothing() {
+        stubResolve("doc_read", false);
+        stubResolve("skill_alpha", false);
+
+        ContextToolsApi base = new ContextToolsApi(
+                dispatcher, ctx,
+                Set.of("doc_read"), Set.of("doc_read"), Set.of(), Set.of(),
+                ToolInvocationListener.NOOP)
+                .withBudget(new ToolBudget(50, 1), null);
+
+        ContextToolsApi withSkill = base.withAdditional(Set.of("skill_alpha"));
+
+        assertThat(withSkill.primary()).containsExactlyInAnyOrder("doc_read", "skill_alpha");
+        assertThat(withSkill.deferred()).isEmpty();
+    }
+
+    @Test
+    void withBudget_isANoOpWithoutALimit() {
+        stubResolve("doc_read", false);
+        stubResolve("skill_alpha", false);
+
+        ContextToolsApi base = new ContextToolsApi(
+                dispatcher, ctx,
+                Set.of("doc_read"), Set.of("doc_read"), Set.of(), Set.of(),
+                ToolInvocationListener.NOOP)
+                .withBudget(ToolBudget.UNLIMITED, null);
+
+        assertThat(base.withAdditional(Set.of("skill_alpha")).primary())
+                .containsExactlyInAnyOrder("doc_read", "skill_alpha");
+    }
+
     private void stubResolve(String name, boolean deferred) {
         when(dispatcher.resolve(eq(name), any())).thenReturn(Optional.of(resolved(name, deferred)));
     }

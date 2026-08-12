@@ -322,7 +322,7 @@ importers:
         specifier: ^6.43.8
         version: 6.43.8
       '@dagrejs/dagre':
-        specifier: ^3.1.0
+        specifier: ^3.1.1
         version: 3.1.1
       '@marp-team/marpit':
         specifier: ^3.2.2
@@ -358,8 +358,8 @@ importers:
         specifier: ^4.1.1
         version: 4.2.0
       katex:
-        specifier: ^0.18.1
-        version: 0.18.1
+        specifier: ^0.18.2
+        version: 0.18.4
       leaflet:
         specifier: ^1.9.4
         version: 1.9.4
@@ -422,7 +422,7 @@ importers:
         specifier: ^5.7.16
         version: 5.7.16
       esbuild:
-        specifier: ^0.28.1
+        specifier: ^0.28.2
         version: 0.28.2
       postcss:
         specifier: ^8.5.26
@@ -3783,8 +3783,8 @@ packages:
     resolution: {integrity: sha512-Eeo8Ys1doU1z+x8AZsPpQu+p/QcZBI5PeOo7QGQdy2x2m0MU/hYagBbGOmXwr5KVbEfVuWv9LpnQWeehogurjg==}
     hasBin: true
 
-  katex@0.18.1:
-    resolution: {integrity: sha512-Td8GCYSxDAoMhHOlKmCFMJ/hz5qlAAb71n66Dryw9nfCVfumLo7nhuotbvKom/XPADmrYC3O5QR71EPq4DarJQ==}
+  katex@0.18.4:
+    resolution: {integrity: sha512-IMPntbRLOU+eu88XDiFKqQ8Akhr9Tv7jDMXqPhjG9SI1JMA4DIgXk4x9k4skJz2NZJXBRbC+2pYBLj9olqcZow==}
     hasBin: true
 
   keyv@4.5.4:
@@ -8893,7 +8893,7 @@ snapshots:
     dependencies:
       commander: 8.3.0
 
-  katex@0.18.1:
+  katex@0.18.4:
     dependencies:
       commander: 8.3.0
 

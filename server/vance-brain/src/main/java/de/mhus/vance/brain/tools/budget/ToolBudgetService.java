@@ -94,14 +94,30 @@ public class ToolBudgetService {
         }
         int reserved = Math.max(0, properties.getExternalReserve())
                 + Math.max(0, properties.getActivationHeadroom());
-        Map<String, Long> demand =
-                toolUsageService.demandByTool(process.getTenantId(), projectId);
+        // Demand is read per role: the ordering inside a class should
+        // reflect what *this* recipe needs, not what the busiest worker in
+        // the project happens to call.
+        Map<String, Long> demand = toolUsageService.demandByTool(
+                process.getTenantId(), projectId, usageRole(process));
         return new ToolBudget(
                 limit.getAsInt(),
                 reserved,
                 activationRecency == null ? Map.of() : activationRecency,
                 demand,
                 properties.getMaxActivatedTools());
+    }
+
+    /**
+     * Role key for the demand counters — recipe first, engine as fallback.
+     * Mirrors {@code ThinkEngineService.usageRole}: both sides have to
+     * agree or the read would miss the writes.
+     */
+    private static String usageRole(ThinkProcessDocument process) {
+        String recipe = process.getRecipeName();
+        if (recipe != null && !recipe.isBlank()) return recipe.trim();
+        String engine = process.getThinkEngine();
+        return (engine != null && !engine.isBlank())
+                ? engine.trim() : ToolUsageService.ROLE_UNKNOWN;
     }
 
     /** Family-level priority overrides from {@code vance.tools.budget.*}. */

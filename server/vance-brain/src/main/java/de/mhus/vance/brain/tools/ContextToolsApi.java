@@ -551,7 +551,14 @@ public final class ContextToolsApi implements ToolBus {
      */
     @Override
     public Map<String, Object> invokeDelegate(String name, Map<String, Object> params) {
-        return invokeInternal(name, params);
+        if (!isInDispatch(name)) {
+            throw new ToolException(
+                    "Tool '" + name + "' is not in this engine's dispatch pool");
+        }
+        // Marked as delegated so demand-measuring listeners can skip it —
+        // the wrapper call was already counted, and the backend leg is a
+        // mechanical consequence of it, not a second ask.
+        return doInvoke(name, params, /*delegated*/ true);
     }
 
     /**
@@ -573,7 +580,13 @@ public final class ContextToolsApi implements ToolBus {
     }
 
     private Map<String, Object> doInvoke(String name, Map<String, Object> params) {
-        listener.before(name);
+        return doInvoke(name, params, /*delegated*/ false);
+    }
+
+    private Map<String, Object> doInvoke(
+            String name, Map<String, Object> params, boolean delegated) {
+        if (delegated) listener.beforeDelegate(name);
+        else listener.before(name);
         long startMs = System.currentTimeMillis();
         // Resolve once up-front so the history hook can inspect the
         // tool's labels without a second resolve. Cheap (map lookup).
@@ -581,7 +594,7 @@ public final class ContextToolsApi implements ToolBus {
         try {
             Map<String, Object> result = harvestImages(
                     name, dispatcher.invoke(name, params, ctx, this));
-            listener.after(name, System.currentTimeMillis() - startMs, null);
+            notifyAfter(delegated, name, System.currentTimeMillis() - startMs, null);
             // Sliding TTL: bump the activation timestamp on every use of
             // an activated deferred tool so the discovery cycle doesn't
             // rip a frequently-used tool out from under the LLM.
@@ -609,7 +622,7 @@ public final class ContextToolsApi implements ToolBus {
                     .orElse(false);
             return bypass ? result : maybeTruncateResult(name, result);
         } catch (RuntimeException e) {
-            listener.after(name, System.currentTimeMillis() - startMs, e);
+            notifyAfter(delegated, name, System.currentTimeMillis() - startMs, e);
             emitHistoryTags(historyTagBuilder.onError(name));
             // The ERROR tag alone only says "something failed in this
             // turn". Tool results are not persisted, so without the
@@ -671,6 +684,13 @@ public final class ContextToolsApi implements ToolBus {
                     toolName, e.toString());
             return result;
         }
+    }
+
+    private void notifyAfter(
+            boolean delegated, String name, long elapsedMs,
+            @org.jspecify.annotations.Nullable Throwable error) {
+        if (delegated) listener.afterDelegate(name, elapsedMs, error);
+        else listener.after(name, elapsedMs, error);
     }
 
     /**

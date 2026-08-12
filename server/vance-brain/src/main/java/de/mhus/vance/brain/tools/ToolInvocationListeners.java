@@ -49,14 +49,30 @@ public final class ToolInvocationListeners {
 
     /**
      * Counts successful dispatches into {@link ToolUsageService}, which
-     * feeds the tool-surface budget's tie-break ordering. Failures are not
-     * counted: a tool that raised didn't do the job the model wanted, and
-     * a broken tool should not earn a manifest slot by being retried.
+     * feeds the tool-surface budget's tie-break ordering.
+     *
+     * <p>Two things are deliberately not counted:
+     *
+     * <ul>
+     *   <li><b>Failures.</b> A tool that raised didn't do the job the model
+     *       wanted, and a broken tool should not earn a manifest slot by
+     *       being retried.</li>
+     *   <li><b>Delegated legs.</b> A wrapper call ({@code file_read}) is
+     *       counted once; the backend it dispatches to
+     *       ({@code client_file_read}) is the same ask, not a second one.
+     *       Counting both showed every wrapper call twice in
+     *       {@code tool_usage_stats} — measured 2026-08-12: 9 pairs with
+     *       identical counts.</li>
+     * </ul>
+     *
+     * @param recipeName role the counters are attributed to (see
+     *                   {@link ToolUsageService})
      */
     public static ToolInvocationListener usageRecorder(
             ToolUsageService usageService,
             @Nullable String tenantId,
-            @Nullable String projectId) {
+            @Nullable String projectId,
+            @Nullable String recipeName) {
         return new ToolInvocationListener() {
             @Override
             public void before(String toolName) {
@@ -67,7 +83,18 @@ public final class ToolInvocationListeners {
             public void after(String toolName, long elapsedMs, @Nullable Throwable error) {
                 if (error != null) return;
                 usageService.recordCall(
-                        tenantId, projectId, toolName, ToolFamily.of(toolName));
+                        tenantId, projectId, recipeName, toolName, ToolFamily.of(toolName));
+            }
+
+            @Override
+            public void beforeDelegate(String toolName) {
+                // no-op: the wrapper's own call is the demand signal
+            }
+
+            @Override
+            public void afterDelegate(
+                    String toolName, long elapsedMs, @Nullable Throwable error) {
+                // no-op — see beforeDelegate
             }
         };
     }

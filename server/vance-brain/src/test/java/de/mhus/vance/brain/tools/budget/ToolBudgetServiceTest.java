@@ -41,7 +41,7 @@ class ToolBudgetServiceTest {
         catalog = mock(ModelCatalog.class);
         observed = new ObservedToolLimitRegistry();
         usage = mock(ToolUsageService.class);
-        when(usage.demandByTool(any(), any())).thenReturn(Map.of());
+        when(usage.demandByTool(any(), any(), any())).thenReturn(Map.of());
         properties = new ToolBudgetProperties();
         service = new ToolBudgetService(resolver, catalog, observed, usage, properties);
     }
@@ -147,6 +147,33 @@ class ToolBudgetServiceTest {
                 .thenThrow(new IllegalStateException("no api key"));
 
         assertThat(service.limitFor(process("broken", List.of()), "proj")).isEmpty();
+    }
+
+    @Test
+    void demandIsReadPerRole_recipeFirst() {
+        stubModel("openai:gpt-x", "openai", "gpt-x", 128);
+        ThinkProcessDocument p = process("openai:gpt-x", List.of());
+        p.setRecipeName("arthur");
+        p.setThinkEngine("arthur-engine");
+        when(usage.demandByTool("acme", "proj", "arthur"))
+                .thenReturn(Map.of("doc_read", 7L));
+
+        ToolBudget budget = service.forProcess(p, "proj", Map.of());
+
+        assertThat(budget.usage()).containsEntry("doc_read", 7L);
+    }
+
+    @Test
+    void demandRole_fallsBackToTheEngine_whenNoRecipeIsSet() {
+        stubModel("openai:gpt-x", "openai", "gpt-x", 128);
+        ThinkProcessDocument p = process("openai:gpt-x", List.of());
+        p.setThinkEngine("frankie");
+        when(usage.demandByTool("acme", "proj", "frankie"))
+                .thenReturn(Map.of("file_read", 153L));
+
+        ToolBudget budget = service.forProcess(p, "proj", Map.of());
+
+        assertThat(budget.usage()).containsEntry("file_read", 153L);
     }
 
     @Test

@@ -24,18 +24,23 @@ import org.springframework.data.mongodb.core.mapping.Document;
  * a demoted tool is harder to reach, so it gets called less, so it stays
  * demoted. The discovery counter is the honest signal.
  *
+ * <p><b>Keyed per role.</b> {@code recipeName} is part of the key because
+ * demand is role-specific: a coding worker hammering {@code file_read} says
+ * nothing about what the chat orchestrator in the same project needs. Without
+ * it the busiest worker would train everyone else's ranking.
+ *
  * <p>{@code family} is denormalised so an operator can group by it in a
  * Mongo query without re-deriving the name rule.
  */
 @Document(collection = "tool_usage_stats")
 @CompoundIndexes({
         @CompoundIndex(
-                name = "tenant_project_tool_uidx",
-                def = "{ 'tenantId': 1, 'projectId': 1, 'toolName': 1 }",
+                name = "tenant_project_recipe_tool_uidx",
+                def = "{ 'tenantId': 1, 'projectId': 1, 'recipeName': 1, 'toolName': 1 }",
                 unique = true),
         @CompoundIndex(
-                name = "tenant_project_family_idx",
-                def = "{ 'tenantId': 1, 'projectId': 1, 'family': 1 }")
+                name = "tenant_project_recipe_family_idx",
+                def = "{ 'tenantId': 1, 'projectId': 1, 'recipeName': 1, 'family': 1 }")
 })
 @Data
 @Builder(toBuilder = true)
@@ -50,6 +55,13 @@ public class ToolUsageDocument {
 
     /** Project the counters belong to. Never null — system scopes use {@code _tenant}. */
     private String projectId;
+
+    /**
+     * Role the counters belong to: the process's recipe name, falling back
+     * to the engine name when a process carries no recipe. Never null —
+     * unattributable writes use {@link ToolUsageService#ROLE_UNKNOWN}.
+     */
+    private String recipeName;
 
     private String toolName;
 

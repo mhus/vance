@@ -249,8 +249,12 @@ public class ThinkEngineService {
                 // composed so neither concern has to know about the other.
                 ToolInvocationListeners.of(
                         progressToolListener.forProcess(process),
+                        // Role for the demand counters: the recipe, or the
+                        // engine when a process carries none. Frankie's
+                        // file_read flood must not train Arthur's ranking.
                         ToolInvocationListeners.usageRecorder(
-                                toolUsageService, process.getTenantId(), projectId)),
+                                toolUsageService, process.getTenantId(), projectId,
+                                usageRole(process))),
                 decayTtl,
                 traceLlm,
                 llmTraceService,
@@ -263,6 +267,22 @@ public class ThinkEngineService {
                 imageHarvester,
                 attachmentSink,
                 toolBudgetService);
+    }
+
+    /**
+     * Role a process's tool usage is attributed to: its recipe name, or the
+     * engine name when the process carries no recipe (legacy spawns, direct
+     * engine invocations). Demand counters are per role — a coding worker's
+     * {@code file_read} flood must not train the chat orchestrator's
+     * ranking. See {@code ToolUsageService}.
+     */
+    private static String usageRole(ThinkProcessDocument process) {
+        String recipe = process.getRecipeName();
+        if (recipe != null && !recipe.isBlank()) return recipe.trim();
+        String engine = process.getThinkEngine();
+        return (engine != null && !engine.isBlank())
+                ? engine.trim()
+                : de.mhus.vance.shared.toolusage.ToolUsageService.ROLE_UNKNOWN;
     }
 
     /**

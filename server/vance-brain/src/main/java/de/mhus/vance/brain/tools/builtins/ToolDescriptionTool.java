@@ -176,6 +176,29 @@ public class ToolDescriptionTool implements Tool {
         return out;
     }
 
+    /**
+     * Role the discovery hit is attributed to — recipe first, engine as
+     * fallback. Mirrors {@code ThinkEngineService.usageRole}; a process
+     * that cannot be read lands in {@code ROLE_UNKNOWN} rather than
+     * polluting a real role.
+     */
+    private @Nullable String usageRole(@Nullable String processId) {
+        if (processId == null || processId.isBlank()) return null;
+        try {
+            return thinkProcessService.findById(processId)
+                    .map(p -> {
+                        String recipe = p.getRecipeName();
+                        if (recipe != null && !recipe.isBlank()) return recipe.trim();
+                        String engine = p.getThinkEngine();
+                        return (engine != null && !engine.isBlank()) ? engine.trim() : null;
+                    })
+                    .orElse(null);
+        } catch (RuntimeException e) {
+            // A ranking hint is never worth failing the lookup for.
+            return null;
+        }
+    }
+
     private Map<String, Object> describe(
             ToolDispatcher.Resolved r, String name, ToolInvocationContext ctx, ToolBus bus) {
         Tool tool = r.tool();
@@ -196,8 +219,13 @@ public class ToolDescriptionTool implements Tool {
         // invocations would make the tool-surface budget self-reinforcing:
         // a demoted tool is harder to reach, gets called less, and stays
         // demoted. Asking for the schema is the honest signal.
+        //
+        // The role comes from the process, not from the ToolInvocationContext
+        // (which carries no recipe): one point-read next to a full LLM turn,
+        // and without it every lookup would land in the unattributed bucket.
         toolUsageService.recordDiscovery(
-                ctx.tenantId(), ctx.projectId(), name, ToolFamily.of(name));
+                ctx.tenantId(), ctx.projectId(), usageRole(ctx.processId()),
+                name, ToolFamily.of(name));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", tool.name());
         out.put("description", tool.description());

@@ -102,6 +102,68 @@ _destructive_excludes: &destructive_excludes
   # surface entirely so Arthur doesn't propose it.
   - foreign_doc_move
 
+# Tool-surface budget: ranking only, no visibility effect.
+# OpenAI-wire endpoints reject a `tools` array longer than 128 entries
+# (request validation, before inference — see
+# planning/tool-surface-budget.md). Arthur's surface has grown past that
+# with connected accounts, so when the cap binds something has to move to
+# the deferred discovery block. This list says *what goes first* instead
+# of leaving the cut to the alphabet.
+#
+# Chosen along Arthur's own job description: he is a chat orchestrator
+# who delegates operational work ("You are not the worker"), so the
+# app-query families are the ones a worker recipe pulls, not Arthur. They
+# stay fully callable — a demoted tool keeps its discovery-block line and
+# auto-activates on a direct call; the cost is one round-trip in the rare
+# turn where Arthur wants one himself.
+#
+# Unioned across the profile/mode cascade (unlike the visibility lists
+# above, which are first-match-wins), so this one entry covers every mode.
+# Without a cap in the model catalog the list does nothing at all.
+allowedToolsDropFirst:
+  - "calendar_*"
+  - "canvas_*"
+  - "data_*"
+  - "event_*"
+  - "finance_*"
+  - "graph_*"
+  - "gtd_*"
+  - "hook_*"
+  - "image_*"
+  - "issue_*"
+  - "journal_*"
+  - "kanban_*"
+  - "list_*"
+  - "pdf_*"
+  - "records_*"
+  - "scheduler_*"
+  - "sheet_*"
+  - "tree_*"
+  - "video_*"
+  - "workbook_*"
+  - "workpage_*"
+
+# Counterpart: the tools Arthur cannot do his job without. Held in the
+# manifest even when the budget is tight — talking to the user,
+# delegating, and finding out what else exists.
+allowedToolsKeep:
+  - respond
+  - process_spawn
+  - process_status
+  - process_list
+  - how_do_i
+  - manual_read
+  - manual_list
+  - memory_search
+  - whoami
+  - current_time
+  - "doc_read*"
+  - doc_find
+  - doc_list
+  - doc_grep
+  - doc_write
+  - doc_edit
+
 modes:
   NORMAL:
     allowedToolsRemove: *destructive_excludes

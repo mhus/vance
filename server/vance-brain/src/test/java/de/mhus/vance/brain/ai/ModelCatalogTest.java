@@ -837,6 +837,52 @@ class ModelCatalogTest {
      * Call {@link ModelCatalog#refresh()} afterwards for the change to
      * take effect.
      */
+    // ──── maxTools (tool-surface budget) ──────────────────────────────
+
+    @Test
+    void bundled_openAiProviderSidecar_suppliesTheToolCap() {
+        // Endpoint property, stated once per provider instead of in every
+        // one of the ~100 model documents behind the same gateway.
+        ModelInfo info = catalog.lookupOrDefault(TENANT, PROJECT, "openai", "gpt-5.6-sol");
+
+        assertThat(info.maxTools()).isEqualTo(128);
+    }
+
+    @Test
+    void providerWithoutACap_leavesMaxToolsUnset() {
+        ModelInfo info = catalog.lookupOrDefault(
+                TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
+
+        assertThat(info.maxTools()).isNull();
+    }
+
+    @Test
+    void perModelMaxTools_overridesTheProviderDefault() {
+        stubModelDoc(TENANT, PROJECT, "openai/gpt-5.6-sol.yaml", """
+                maxTools: 64
+                """);
+        catalog.refresh();
+
+        ModelInfo info = catalog.lookupOrDefault(TENANT, PROJECT, "openai", "gpt-5.6-sol");
+
+        assertThat(info.maxTools()).isEqualTo(64);
+    }
+
+    @Test
+    void explicitZeroMaxTools_meansNoCap_andSuppressesTheProviderDefault() {
+        // Same convention as an empty `unsupportedParams` list: absent
+        // falls through to the outer layer, present-but-empty is a
+        // deliberate "this model has no cap".
+        stubModelDoc(TENANT, PROJECT, "openai/gpt-5.6-sol.yaml", """
+                maxTools: 0
+                """);
+        catalog.refresh();
+
+        ModelInfo info = catalog.lookupOrDefault(TENANT, PROJECT, "openai", "gpt-5.6-sol");
+
+        assertThat(info.maxTools()).isNull();
+    }
+
     private void stubModelDoc(String tenantId, String projectId, String relPath, String yamlBody) {
         stubDocAtPrefix(ModelCatalog.MODEL_PATH_PREFIX,
                 tenantId, projectId, relPath, yamlBody);

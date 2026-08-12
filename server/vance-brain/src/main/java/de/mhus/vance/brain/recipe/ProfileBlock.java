@@ -37,16 +37,45 @@ public record ProfileBlock(
         List<String> allowedToolsAdd,
         List<String> allowedToolsRemove,
         List<String> allowedToolsDefer,
+        List<String> allowedToolsKeep,
+        List<String> allowedToolsDropFirst,
         Map<String, RecipeModeBlock> modes,
         @Nullable String promptPrefixAppend,
         Map<String, Object> params,
         @Nullable SessionLifecycleConfig sessionLifecycleConfig) {
 
     /** Reusable empty block for profiles that have no overlay. */
-    public static final ProfileBlock EMPTY =
-            new ProfileBlock(List.of(), List.of(), List.of(), Map.of(), null, Map.of(), null);
+    public static final ProfileBlock EMPTY = new ProfileBlock(
+            List.of(), List.of(), List.of(), List.of(), List.of(),
+            Map.of(), null, Map.of(), null);
 
-    /** {@code true} when neither tool-list nor any mode-block carries an entry. */
+    /**
+     * Block without budget-priority hints — the shape that existed
+     * before {@code allowedToolsKeep} / {@code allowedToolsDropFirst}.
+     */
+    public ProfileBlock(
+            List<String> allowedToolsAdd,
+            List<String> allowedToolsRemove,
+            List<String> allowedToolsDefer,
+            Map<String, RecipeModeBlock> modes,
+            @Nullable String promptPrefixAppend,
+            Map<String, Object> params,
+            @Nullable SessionLifecycleConfig sessionLifecycleConfig) {
+        this(allowedToolsAdd, allowedToolsRemove, allowedToolsDefer,
+                List.of(), List.of(), modes, promptPrefixAppend, params,
+                sessionLifecycleConfig);
+    }
+
+    /**
+     * {@code true} when this block carries a <em>visibility</em> overlay.
+     *
+     * <p>Deliberately blind to {@code allowedToolsKeep} /
+     * {@code allowedToolsDropFirst}: visibility resolves first-hit-wins
+     * down the cascade, so counting a priority-only block here would let
+     * it shadow the recipe's add/defer lists. Priority hints are unioned
+     * across the cascade instead — see
+     * {@link RecipeResolver#toolFilterFor}.
+     */
     public boolean hasToolFilter() {
         return (allowedToolsAdd != null && !allowedToolsAdd.isEmpty())
                 || (allowedToolsRemove != null && !allowedToolsRemove.isEmpty())

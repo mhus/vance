@@ -30,6 +30,22 @@ public record ResolvedRecipe(
          */
         List<String> allowedToolsDefer,
         /**
+         * Budget-priority hint: hold these tools in the manifest when the
+         * endpoint's {@code tools}-array cap forces a cut ("important").
+         * No visibility effect — a tool listed here still needs to be in
+         * the allow-set to be primary at all, and without a cap the list
+         * does nothing. Unioned across the profile/mode cascade rather
+         * than resolved first-hit-wins, because ranking layers cannot
+         * contradict each other. See {@code planning/tool-surface-budget.md}.
+         */
+        List<String> allowedToolsKeep,
+        /**
+         * Budget-priority hint: give these up first ("less important").
+         * Same semantics as {@link #allowedToolsKeep}, opposite direction;
+         * {@code keep} wins if a tool appears in both.
+         */
+        List<String> allowedToolsDropFirst,
+        /**
          * Engine-mode overlay at the recipe-base level. Used when the
          * recipe doesn't have profile-specific mode blocks but still
          * wants per-mode tool restrictions. The cascade in
@@ -106,8 +122,45 @@ public record ResolvedRecipe(
         RecipeSource source) {
 
     /**
+     * Backward-compatible constructor for call sites that predate the
+     * tool-surface budget — no {@code allowedToolsKeep} /
+     * {@code allowedToolsDropFirst}.
+     */
+    public ResolvedRecipe(
+            String name,
+            String description,
+            String engine,
+            Map<String, Object> params,
+            @Nullable String promptPrefix,
+            PromptMode promptMode,
+            @Nullable String dataRelayCorrection,
+            List<String> allowedToolsAdd,
+            List<String> allowedToolsRemove,
+            List<String> allowedToolsDefer,
+            Map<String, RecipeModeBlock> modes,
+            Map<String, ProfileBlock> profiles,
+            List<String> defaultActiveSkills,
+            @Nullable List<String> allowedSkills,
+            List<String> triggerKeywords,
+            boolean locked,
+            boolean internal,
+            boolean listed,
+            @Nullable String title,
+            List<String> tags,
+            @Nullable PostCompletionHookConfig postCompletionHook,
+            List<GuardConfig> guards,
+            RecipeSource source) {
+        this(name, description, engine, params, promptPrefix, promptMode,
+                dataRelayCorrection, allowedToolsAdd, allowedToolsRemove,
+                allowedToolsDefer, List.of(), List.of(), modes, profiles,
+                defaultActiveSkills, allowedSkills,
+                triggerKeywords, locked, internal, listed, title, tags,
+                postCompletionHook, guards, source);
+    }
+
+    /**
      * Backward-compatible constructor for call sites that predate
-     * completion guards — no {@code guards}.
+     * completion guards — no {@code guards}, no budget-priority hints.
      */
     public ResolvedRecipe(
             String name,
@@ -134,7 +187,8 @@ public record ResolvedRecipe(
             RecipeSource source) {
         this(name, description, engine, params, promptPrefix, promptMode,
                 dataRelayCorrection, allowedToolsAdd, allowedToolsRemove,
-                allowedToolsDefer, modes, profiles, defaultActiveSkills, allowedSkills,
+                allowedToolsDefer, List.of(), List.of(), modes, profiles,
+                defaultActiveSkills, allowedSkills,
                 triggerKeywords, locked, internal, listed, title, tags,
                 postCompletionHook, List.of(), source);
     }

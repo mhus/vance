@@ -39,6 +39,7 @@ class ToolDescriptionToolTest {
 
     private ToolDispatcher dispatcher;
     private ThinkProcessService thinkProcessService;
+    private de.mhus.vance.shared.toolusage.ToolUsageService toolUsageService;
     private ToolDescriptionTool tool;
 
     @BeforeEach
@@ -48,9 +49,11 @@ class ToolDescriptionToolTest {
         thinkProcessService = mock(ThinkProcessService.class);
         when(thinkProcessService.activateDeferredTool(any(), any())).thenReturn(true);
 
+        toolUsageService = mock(de.mhus.vance.shared.toolusage.ToolUsageService.class);
+
         ObjectProvider<ToolDispatcher> provider = mock(ObjectProvider.class);
         when(provider.getObject()).thenReturn(dispatcher);
-        tool = new ToolDescriptionTool(provider, thinkProcessService);
+        tool = new ToolDescriptionTool(provider, thinkProcessService, toolUsageService);
     }
 
     /** Registers a resolvable tool under its own name. */

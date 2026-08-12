@@ -104,13 +104,22 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
 
     private final List<ChainEntry> chain;
     private final @Nullable Consumer<String> userNotifier;
+    private final @Nullable ToolLimitLearner toolLimitLearner;
 
     public ResilientStreamingChatModel(List<ChainEntry> chain) {
-        this(chain, null);
+        this(chain, null, null);
+    }
+
+    public ResilientStreamingChatModel(
+            List<ChainEntry> chain, @Nullable Consumer<String> userNotifier) {
+        this(chain, userNotifier, null);
     }
 
     /**
      * @param chain         non-empty fallback chain
+     * @param toolLimitLearner optional sink for a learned {@code tools}-array
+     *                      cap (see {@link ToolLimitError}); {@code null}
+     *                      only skips the learning, not the fast-fail
      * @param userNotifier  optional human-readable feedback hook fired on
      *                      every retry and chain-advance — used by the
      *                      engine call-site to push a status ping into
@@ -118,12 +127,16 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
      *                      understands why a turn is taking longer.
      *                      {@code null} disables the hook.
      */
-    public ResilientStreamingChatModel(List<ChainEntry> chain, @Nullable Consumer<String> userNotifier) {
+    public ResilientStreamingChatModel(
+            List<ChainEntry> chain,
+            @Nullable Consumer<String> userNotifier,
+            @Nullable ToolLimitLearner toolLimitLearner) {
         if (chain == null || chain.isEmpty()) {
             throw new IllegalArgumentException("chain must contain at least one entry");
         }
         this.chain = List.copyOf(chain);
         this.userNotifier = userNotifier;
+        this.toolLimitLearner = toolLimitLearner;
     }
 
     @Override
@@ -220,6 +233,32 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
             log.warn("ResilientChatModel '{}': mid-stream error after first partial — "
                     + "propagating without retry: {}", entry.label(), errorSummary(error));
             caller.onError(error);
+            return;
+        }
+        String errorText = ToolLimitError.messageOf(error);
+        if (ToolLimitError.isTooManyTools(errorText)) {
+            // Request-shape rejection, not a provider hiccup: the endpoint
+            // never looked at the model, and every remaining chain entry
+            // will answer the same way. Advancing would burn the fallback
+            // for nothing (2026-08-12: both entries died on the identical
+            // 400), so fail now — and remember the real cap so the next
+            // turn's tool-surface budget cuts to fit.
+            int requested = request.toolSpecifications() == null
+                    ? 0 : request.toolSpecifications().size();
+            if (toolLimitLearner != null) {
+                try {
+                    toolLimitLearner.learn(entry.label(), errorText, requested);
+                } catch (RuntimeException learnFail) {
+                    log.debug("toolLimitLearner threw: {}", learnFail.toString());
+                }
+            }
+            log.warn("ResilientChatModel '{}': endpoint rejected {} tool schemas as too many — "
+                            + "not advancing the chain (same request shape everywhere): {}",
+                    entry.label(), requested, errorSummary(error));
+            caller.onError(new AiChatException(
+                    "Tool manifest too large for " + entry.label() + " (" + requested
+                            + " schemas). The surface budget has been tightened — retry the turn.",
+                    error));
             return;
         }
         if (!entry.policy().shouldRetry(error)) {

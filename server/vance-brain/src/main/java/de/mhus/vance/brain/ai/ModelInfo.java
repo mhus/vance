@@ -37,7 +37,54 @@ public record ModelInfo(
         @Nullable Pricing pricing,
         OutputTokenParam outputTokenParam,
         Set<SamplingParam> unsupportedParams,
-        @Nullable String reasoningEffortWhenOff) {
+        @Nullable String reasoningEffortWhenOff,
+        @Nullable Integer maxTools) {
+
+    /*
+     * maxTools — hard cap the endpoint enforces on the `tools` array.
+     * Not a model property: it is request validation, applied before the
+     * model sees anything. An OpenAI-wire gateway answers an oversized
+     * manifest with
+     *
+     *   "Invalid 'tools': array too long. Expected an array with maximum
+     *    length 128, but got an array with length 163 instead."
+     *
+     * — HTTP 400, no tokens spent, and every fallback entry with the same
+     * limit fails identically. Since it belongs to the endpoint, the
+     * default lives in the provider sidecar (`_provider.yaml`) and a
+     * per-model entry only overrides it.
+     *
+     * null = no known limit (Anthropic today); the tool-surface budget is
+     * then a no-op and the token budget is the only ceiling. Never
+     * populated by auto-discovery: no listing API reports it, so it is
+     * manual-layer metadata like pricing.
+     */
+
+    /**
+     * Legacy constructor for the many call sites that predate the tool
+     * cap — leaves {@code maxTools} unset, i.e. "no known limit". New
+     * code should pass the field explicitly.
+     */
+    public ModelInfo(
+            String provider,
+            String modelName,
+            int contextWindowTokens,
+            int defaultMaxOutputTokens,
+            ModelSize size,
+            Set<ModelCapability> capabilities,
+            int timeoutSeconds,
+            int actionLoopCorrections,
+            boolean stripThinkTags,
+            @Nullable String messageParser,
+            @Nullable Pricing pricing,
+            OutputTokenParam outputTokenParam,
+            Set<SamplingParam> unsupportedParams,
+            @Nullable String reasoningEffortWhenOff) {
+        this(provider, modelName, contextWindowTokens, defaultMaxOutputTokens, size,
+                capabilities, timeoutSeconds, actionLoopCorrections, stripThinkTags,
+                messageParser, pricing, outputTokenParam, unsupportedParams,
+                reasoningEffortWhenOff, /*maxTools*/ null);
+    }
 
     /*
      * reasoningEffortWhenOff — the wire value to send for
@@ -121,6 +168,11 @@ public record ModelInfo(
         // Defensive copy + immutability so callers can hand the record
         // around without worrying about Set mutation.
         capabilities = capabilities == null ? Set.of() : Set.copyOf(capabilities);
+        // 0 / negative in YAML means the same as absent: no known cap.
+        // Normalising here keeps every reader from re-checking the sign.
+        if (maxTools != null && maxTools <= 0) {
+            maxTools = null;
+        }
         if (outputTokenParam == null) {
             outputTokenParam = OutputTokenParam.MAX_TOKENS;
         }

@@ -20,7 +20,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.toolhealth.ToolHealthService;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -72,7 +72,14 @@ record DefaultThinkEngineContext(
         ToolHealthService toolHealthService,
         Set<String> engineRoles,
         de.mhus.vance.brain.ai.attachment.@Nullable ToolImageHarvester imageHarvester,
-        de.mhus.vance.brain.ai.attachment.ToolAttachmentSink attachmentSink
+        de.mhus.vance.brain.ai.attachment.ToolAttachmentSink attachmentSink,
+        /**
+         * Resolves the endpoint's {@code tools}-array cap plus the ranking
+         * signals for the budget stage in {@code classify}. {@code null}
+         * disables the budget entirely (test contexts). See
+         * {@code planning/tool-surface-budget.md}.
+         */
+        de.mhus.vance.brain.tools.budget.@Nullable ToolBudgetService toolBudgetService
 ) implements ThinkEngineContext {
 
     @Override
@@ -104,11 +111,22 @@ record DefaultThinkEngineContext(
         // Re-resolve the tool filter every call against the process's
         // current mode — see class doc for why a snapshot won't do.
         RecipeResolver.ToolFilter filter = toolFilterResolver.apply(process.getMode(), scope);
-        Set<String> activated = liveActivatedDeferredTools();
+        Map<String, Instant> activations = liveActivations();
+        Set<String> activated = activations.keySet();
+        // Budget stage inputs. Resolving the cap reads the model-alias
+        // cascade, so ToolBudgetService memoises it — tools() runs once per
+        // action-loop iteration, not once per turn.
+        de.mhus.vance.brain.tools.budget.ToolBudget budget = null;
+        de.mhus.vance.brain.tools.budget.ToolTriage.Hints familyHints = null;
+        if (toolBudgetService != null) {
+            budget = toolBudgetService.forProcess(process, projectId, activations);
+            familyHints = toolBudgetService.familyHints();
+        }
         ContextToolsApi.Classification c = ContextToolsApi.classify(
                 toolDispatcher, scope, baseAllowedTools, filter, activated,
                 process.getBoundProfile(),
-                engineRoles);
+                engineRoles,
+                budget, familyHints);
         // Sliding-TTL refresh: when the LLM invokes an activated
         // deferred tool, bump its timestamp so frequent use beats decay.
         java.util.function.Consumer<String> refresh = name ->
@@ -126,7 +144,9 @@ record DefaultThinkEngineContext(
 
     /**
      * Reads the {@code activatedDeferredTools} map fresh from Mongo and
-     * applies the TTL decay filter. Sourcing this from the DB (not from
+     * applies the TTL decay filter. Timestamps are kept, not just the
+     * names: activation recency is the budget stage's strongest ranking
+     * signal (see {@code planning/tool-surface-budget.md} §4). Sourcing this from the DB (not from
      * the in-memory {@code process} snapshot) lets within-turn
      * activations from {@code tool_description} take effect on the very
      * next {@link #tools()} call — the action-loop refreshes its
@@ -136,20 +156,20 @@ record DefaultThinkEngineContext(
      * caller's job (see {@link ThinkProcessService#cleanupDecayedActivations}).
      * Zero TTL disables decay.
      */
-    private Set<String> liveActivatedDeferredTools() {
+    private Map<String, Instant> liveActivations() {
         Map<String, Instant> map = thinkProcessService.getActivatedDeferredTools(process.getId());
-        if (map == null || map.isEmpty()) return Set.of();
+        if (map == null || map.isEmpty()) return Map.of();
         if (activationDecayTtl == null || activationDecayTtl.isZero() || activationDecayTtl.isNegative()) {
-            return Set.copyOf(map.keySet());
+            return Map.copyOf(map);
         }
         Instant cutoff = Instant.now().minus(activationDecayTtl);
-        Set<String> out = new LinkedHashSet<>();
+        Map<String, Instant> out = new LinkedHashMap<>();
         for (Map.Entry<String, Instant> e : map.entrySet()) {
             if (e.getValue() != null && e.getValue().isAfter(cutoff)) {
-                out.add(e.getKey());
+                out.put(e.getKey(), e.getValue());
             }
         }
-        return Set.copyOf(out);
+        return Map.copyOf(out);
     }
 
     @Override

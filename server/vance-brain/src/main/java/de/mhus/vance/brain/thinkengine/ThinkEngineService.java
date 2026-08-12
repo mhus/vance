@@ -6,6 +6,7 @@ import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.progress.ProgressToolListener;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.tools.ToolDispatcher;
+import de.mhus.vance.brain.tools.ToolInvocationListeners;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.llmtrace.LlmTraceService;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -55,6 +56,8 @@ public class ThinkEngineService {
     private final de.mhus.vance.brain.tools.ToolResultStorage toolResultStorage;
     private final de.mhus.vance.brain.ai.attachment.ToolImageHarvester imageHarvester;
     private final de.mhus.vance.shared.toolhealth.ToolHealthService toolHealthService;
+    private final de.mhus.vance.brain.tools.budget.ToolBudgetService toolBudgetService;
+    private final de.mhus.vance.shared.toolusage.ToolUsageService toolUsageService;
     /** Lazy provider — RecipeResolver depends on us, so the bean graph cycles otherwise. */
     private final ObjectProvider<RecipeResolver> recipeResolverProvider;
 
@@ -75,6 +78,8 @@ public class ThinkEngineService {
             de.mhus.vance.brain.tools.ToolResultStorage toolResultStorage,
             de.mhus.vance.shared.toolhealth.ToolHealthService toolHealthService,
             de.mhus.vance.brain.ai.attachment.ToolImageHarvester imageHarvester,
+            de.mhus.vance.brain.tools.budget.ToolBudgetService toolBudgetService,
+            de.mhus.vance.shared.toolusage.ToolUsageService toolUsageService,
             ObjectProvider<RecipeResolver> recipeResolverProvider) {
         this.engines = engineBeans.stream().collect(
                 Collectors.toMap(ThinkEngine::name, e -> e, (a, b) -> {
@@ -97,6 +102,8 @@ public class ThinkEngineService {
         this.toolResultStorage = toolResultStorage;
         this.imageHarvester = imageHarvester;
         this.toolHealthService = toolHealthService;
+        this.toolBudgetService = toolBudgetService;
+        this.toolUsageService = toolUsageService;
         this.recipeResolverProvider = recipeResolverProvider;
     }
 
@@ -238,7 +245,12 @@ public class ThinkEngineService {
                 thinkProcessService, processEventEmitter,
                 progressEmitter,
                 toolFilterResolver,
-                progressToolListener.forProcess(process),
+                // Progress pings plus usage counting — one listener each,
+                // composed so neither concern has to know about the other.
+                ToolInvocationListeners.of(
+                        progressToolListener.forProcess(process),
+                        ToolInvocationListeners.usageRecorder(
+                                toolUsageService, process.getTenantId(), projectId)),
                 decayTtl,
                 traceLlm,
                 llmTraceService,
@@ -249,7 +261,8 @@ public class ThinkEngineService {
                 toolHealthService,
                 engineRoles,
                 imageHarvester,
-                attachmentSink);
+                attachmentSink,
+                toolBudgetService);
     }
 
     /**

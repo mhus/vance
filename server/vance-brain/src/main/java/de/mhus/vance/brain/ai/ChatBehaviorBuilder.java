@@ -31,6 +31,11 @@ import org.slf4j.LoggerFactory;
  * fallback's provider has no key configured, that entry is dropped from
  * the chain with a warning — the chain still works as long as at least
  * one entry is reachable.
+ *
+ * <p>Which settings layers all of that is read from is decided by
+ * {@code params.aiScope} — see {@link AiConfigScope}. Default is the full
+ * project cascade; {@code tenant} pins model <em>and</em> endpoint to the
+ * {@code _tenant} layer.
  */
 public final class ChatBehaviorBuilder {
 
@@ -53,7 +58,7 @@ public final class ChatBehaviorBuilder {
     /**
      * Reads the optional per-tenant base-URL override for the given provider
      * <em>instance</em> via the project cascade ({@code process → project →
-     * _vance}). Returns {@code null} when nothing is configured — the provider
+     * _tenant}). Returns {@code null} when nothing is configured — the provider
      * then keeps its Spring boot-time default.
      */
     public static @Nullable String resolveBaseUrl(
@@ -78,11 +83,21 @@ public final class ChatBehaviorBuilder {
             SettingService settings,
             AiModelResolver resolver) {
         String tenantId = process.getTenantId();
-        String processId = process.getId();
+        // A tenant-pinned recipe resolves its whole endpoint (alias,
+        // default, apiKey, baseUrl) from the _tenant layer: passing null
+        // for both inner scopes collapses the cascade to its base layer,
+        // so model and endpoint cannot come from different layers.
+        AiConfigScope aiScope = readAiConfigScope(process);
+        boolean pinned = aiScope == AiConfigScope.TENANT;
+        @Nullable String processId = pinned ? null : process.getId();
         // projectId is denormalised onto ThinkProcessDocument at spawn
         // time — empty string means "unknown / system-wide", which the
-        // cascade collapses to the _vance layer only.
-        @Nullable String projectId = process.getProjectId();
+        // cascade collapses to the _tenant layer only.
+        @Nullable String projectId = pinned ? null : process.getProjectId();
+        if (pinned) {
+            log.debug("ChatBehaviorBuilder: process {} pins AI config to the tenant layer "
+                    + "(project '{}' ignored)", process.getId(), process.getProjectId());
+        }
         List<ChatBehavior.Entry> entries = new ArrayList<>();
 
         // Primary
@@ -111,7 +126,7 @@ public final class ChatBehaviorBuilder {
     /**
      * Resolve a single alias / spec into an {@link AiChatConfig}, including
      * the matching API key. Reads through the project cascade
-     * ({@code process → project → _vance}).
+     * ({@code process → project → _tenant}).
      */
     public static AiChatConfig resolveOne(
             @Nullable String spec,
@@ -188,16 +203,21 @@ public final class ChatBehaviorBuilder {
      * {@link #resolveOne} pipeline (alias → API-key + base-URL cascade
      * via settings). Engines should prefer this over inlining the
      * provider-key / base-URL / model-spec lookup themselves.
+     *
+     * <p>Honours {@code params.aiScope} exactly like
+     * {@link #fromProcess} — a tenant-pinned process must not leak the
+     * project layer in through the single-config path.
      */
     public static AiChatConfig resolveForProcess(
             ThinkProcessDocument process,
             SettingService settings,
             AiModelResolver resolver) {
         String spec = readModelSpec(process);
+        boolean pinned = readAiConfigScope(process) == AiConfigScope.TENANT;
         return resolveOne(spec,
                 process.getTenantId(),
-                process.getProjectId(),
-                process.getId(),
+                pinned ? null : process.getProjectId(),
+                pinned ? null : process.getId(),
                 settings,
                 resolver);
     }
@@ -212,8 +232,44 @@ public final class ChatBehaviorBuilder {
         return AiModelResolver.parseModelSpec(process.getEngineParams());
     }
 
+    /**
+     * Resolve the effective {@link AiConfigScope} for this process from
+     * {@code params.aiScope}, read through
+     * {@link EngineChatFactory#effectiveParams} so a runtime override is
+     * honoured the same way {@code params.thinking} /
+     * {@code params.temperature} are.
+     *
+     * <p>Unknown or wrongly-typed values fall back to
+     * {@link AiConfigScope#CASCADE} with a warning rather than failing the
+     * turn — a typo in a recipe must not take the engine down, and the
+     * cascade is the behaviour every engine had before the param existed.
+     */
+    public static AiConfigScope readAiConfigScope(ThinkProcessDocument process) {
+        Object v = EngineChatFactory.effectiveParams(process).get(AiConfigScope.PARAM_KEY);
+        if (v == null) {
+            return AiConfigScope.CASCADE;
+        }
+        if (v instanceof String s) {
+            return AiConfigScope.fromString(s).orElseGet(() -> {
+                log.warn("Unknown params.aiScope='{}' on process '{}' — falling back to {}",
+                        s, process.getId(), AiConfigScope.CASCADE);
+                return AiConfigScope.CASCADE;
+            });
+        }
+        log.warn("params.aiScope on process '{}' has unexpected type {} — ignoring",
+                process.getId(), v.getClass().getSimpleName());
+        return AiConfigScope.CASCADE;
+    }
+
+    /**
+     * Fallback aliases from {@code params.fallbackModels}. Public because
+     * the tool-surface budget has to know the <em>whole</em> chain: the
+     * manifest is built once per turn but the resilient layer may advance
+     * to a fallback afterwards, so the cap is the minimum over all
+     * entries (see {@code ToolBudgetService}).
+     */
     @SuppressWarnings("unchecked")
-    private static List<String> readFallbackAliases(ThinkProcessDocument process) {
+    public static List<String> readFallbackAliases(ThinkProcessDocument process) {
         Object raw = param(process, "fallbackModels");
         if (raw instanceof List<?> list) {
             List<String> out = new ArrayList<>(list.size());

@@ -10,6 +10,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.recipe.RecipeResolver;
+import de.mhus.vance.brain.tools.budget.ToolBudget;
+import de.mhus.vance.brain.tools.budget.ToolTriage;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -397,6 +399,151 @@ class ContextToolsApiClassifyTest {
 
         assertThat(c.primary()).containsExactly("kit_install");
         assertThat(c.deferred()).isEmpty();
+    }
+
+    // ─── tool-surface budget (planning/tool-surface-budget.md) ───
+
+    @Test
+    void budget_demotesWholeFamiliesUntilTheSurfaceFits() {
+        stubResolve("tool_list", false);
+        stubResolve("tool_description", false);
+        stubResolve("doc_read", false);
+        stubResolve("slack_rest__a", false);
+        stubResolve("slack_rest__b", false);
+
+        // 4 slots for classified tools; the floor takes 2, doc_read fits,
+        // the 2-tool pack does not.
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx,
+                Set.of("tool_list", "tool_description", "doc_read",
+                        "slack_rest__a", "slack_rest__b"),
+                RecipeResolver.ToolFilter.EMPTY, Set.of(), null, null,
+                new ToolBudget(5, 1), null);
+
+        assertThat(c.primary()).containsExactlyInAnyOrder(
+                "tool_list", "tool_description", "doc_read");
+        assertThat(c.deferred()).containsExactlyInAnyOrder("slack_rest__a", "slack_rest__b");
+        // Demotion never narrows what the engine may invoke — the tools
+        // stay reachable via tool_list / a direct call.
+        assertThat(c.allowed()).contains("slack_rest__a", "slack_rest__b");
+    }
+
+    @Test
+    void budget_thatFits_changesNothing() {
+        stubResolve("doc_read", false);
+        stubResolve("doc_write", false);
+
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx, Set.of("doc_read", "doc_write"),
+                RecipeResolver.ToolFilter.EMPTY, Set.of(), null, null,
+                new ToolBudget(50, 1), null);
+
+        assertThat(c.primary()).containsExactlyInAnyOrder("doc_read", "doc_write");
+        assertThat(c.deferred()).isEmpty();
+    }
+
+    @Test
+    void budget_neverDemotesTheMandatoryFloor() {
+        stubResolve("tool_list", false);
+        stubResolve("tool_description", false);
+        stubResolve("doc_read", false);
+        stubResolve("doc_write", false);
+
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx,
+                Set.of("tool_list", "tool_description", "doc_read", "doc_write"),
+                RecipeResolver.ToolFilter.EMPTY, Set.of(), null, null,
+                new ToolBudget(2, 0), null);
+
+        assertThat(c.primary()).containsExactlyInAnyOrder("tool_list", "tool_description");
+        assertThat(c.deferred()).contains("doc_read", "doc_write");
+    }
+
+    @Test
+    void budget_honoursRecipeKeepAndDropFirst() {
+        stubResolve("doc_read", false);
+        stubResolve("slack_rest__a", false);
+
+        // The recipe says the connector matters here and doc_* does not —
+        // the derived order (built-ins over packs) is overruled.
+        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
+                List.of(), List.of(), List.of(),
+                List.of("slack_rest__a"), List.of("doc_read"));
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx, Set.of("doc_read", "slack_rest__a"),
+                filter, Set.of(), null, null,
+                new ToolBudget(1, 0), null);
+
+        assertThat(c.primary()).containsExactly("slack_rest__a");
+        assertThat(c.deferred()).containsExactly("doc_read");
+    }
+
+    @Test
+    void budget_keepsAnActivatedDeferredToolOverAnUntouchedBuiltin() {
+        stubResolve("doc_read", false);
+        stubResolve("slack_rest__a", true);
+
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx, Set.of("doc_read", "slack_rest__a"),
+                RecipeResolver.ToolFilter.EMPTY,
+                Set.of("slack_rest__a"), null, null,
+                new ToolBudget(1, 0), null);
+
+        assertThat(c.activatedDeferred()).containsExactly("slack_rest__a");
+        assertThat(c.primary()).isEmpty();
+    }
+
+    @Test
+    void budget_onUnrestrictedEngine_onlyMaterialisesWhenItOverflows() {
+        // Ford-style: no allow-set, no filter. The cheap path (empty
+        // classification, per-tool primary()) must survive an ample budget.
+        // Two different families, so the "whole family or nothing" rule
+        // still leaves exactly one survivor at a limit of one.
+        when(dispatcher.resolvePrimary(any())).thenReturn(List.of(
+                resolved("doc_read"), resolved("whoami")));
+        when(dispatcher.resolveAll(any())).thenReturn(List.of(
+                resolved("doc_read"), resolved("whoami")));
+
+        ContextToolsApi.Classification ample = ContextToolsApi.classify(
+                dispatcher, ctx, Set.of(), RecipeResolver.ToolFilter.EMPTY,
+                Set.of(), null, null, new ToolBudget(50, 1), null);
+
+        assertThat(ample.primary()).isEmpty();
+        assertThat(ample.deferred()).isEmpty();
+
+        ContextToolsApi.Classification tight = ContextToolsApi.classify(
+                dispatcher, ctx, Set.of(), RecipeResolver.ToolFilter.EMPTY,
+                Set.of(), null, null, new ToolBudget(1, 0), null);
+
+        assertThat(tight.primary()).hasSize(1);
+        assertThat(tight.deferred()).hasSize(1);
+    }
+
+    @Test
+    void budget_withoutALimit_behavesLikeNoBudget() {
+        stubResolve("doc_read", false);
+
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx, Set.of("doc_read"),
+                RecipeResolver.ToolFilter.EMPTY, Set.of(), null, null,
+                ToolBudget.UNLIMITED, null);
+
+        assertThat(c.primary()).containsExactly("doc_read");
+    }
+
+    @Test
+    void budget_familyHintsFromDeploymentApply() {
+        stubResolve("doc_read", false);
+        stubResolve("gmail_rest__a", false);
+
+        ToolTriage.Hints familyHints = new ToolTriage.Hints(
+                Set.of(), Set.of(), Set.of(), Set.of("gmail_rest"), Set.of("doc"));
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx, Set.of("doc_read", "gmail_rest__a"),
+                RecipeResolver.ToolFilter.EMPTY, Set.of(), null, null,
+                new ToolBudget(1, 0), familyHints);
+
+        assertThat(c.primary()).containsExactly("gmail_rest__a");
     }
 
     private void stubResolve(String name, boolean deferred) {

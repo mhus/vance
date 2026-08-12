@@ -73,14 +73,30 @@ public class RecipeResolver {
     public record ToolFilter(
             List<String> remove,
             List<String> add,
-            List<String> defer) {
+            List<String> defer,
+            List<String> keep,
+            List<String> dropFirst) {
 
         /** Empty filter — no overlays applied. */
         public static final ToolFilter EMPTY =
-                new ToolFilter(List.of(), List.of(), List.of());
+                new ToolFilter(List.of(), List.of(), List.of(), List.of(), List.of());
 
+        /**
+         * Visibility-only filter without budget-priority hints. Keeps the
+         * three-list call sites that predate the tool-surface budget.
+         */
+        public ToolFilter(List<String> remove, List<String> add, List<String> defer) {
+            this(remove, add, defer, List.of(), List.of());
+        }
+
+        /**
+         * {@code true} when no overlay applies. {@code keep}/{@code dropFirst}
+         * count: they carry no visibility effect, but a recipe that only
+         * ranks tools still has something to say to the budget stage.
+         */
         public boolean isEmpty() {
-            return remove.isEmpty() && add.isEmpty() && defer.isEmpty();
+            return remove.isEmpty() && add.isEmpty() && defer.isEmpty()
+                    && keep.isEmpty() && dropFirst.isEmpty();
         }
     }
 
@@ -443,20 +459,38 @@ public class RecipeResolver {
         }
         ResolvedRecipe r = resolved.get();
         String modeKey = (mode == null) ? null : mode.name();
-
-        // Cascade lookup: first matching block wins.
+        ProfileBlock profileBlock = resolveProfileBlock(r, connectionProfile);
         RecipeModeBlock hit = lookupModeBlock(r, connectionProfile, modeKey);
+
+        // Budget-priority hints are unioned along the cascade instead of
+        // resolved first-hit-wins. They carry no visibility effect, so two
+        // layers ranking different tools cannot contradict each other —
+        // and a priority-only block must not shadow an outer add/defer.
+        List<String> keep = new ArrayList<>();
+        List<String> dropFirst = new ArrayList<>();
+        collectPriority(tenantId, projectId, ctx,
+                r.allowedToolsKeep(), r.allowedToolsDropFirst(), keep, dropFirst);
+        collectPriority(tenantId, projectId, ctx,
+                profileBlock.allowedToolsKeep(), profileBlock.allowedToolsDropFirst(),
+                keep, dropFirst);
+        if (hit != null) {
+            collectPriority(tenantId, projectId, ctx,
+                    hit.allowedToolsKeep(), hit.allowedToolsDropFirst(), keep, dropFirst);
+        }
+
+        // Visibility cascade: first matching block wins.
         if (hit != null && !hit.isEmpty()) {
-            return expandFilter(tenantId, projectId, hit, ctx);
+            return expandFilter(tenantId, projectId, hit, ctx, keep, dropFirst);
         }
 
         // No mode-block hit. Fall through to profile-base / recipe-base.
-        ProfileBlock profileBlock = resolveProfileBlock(r, connectionProfile);
         if (profileBlock.hasToolFilter()) {
             return new ToolFilter(
                     expandLabelSelectors(tenantId, projectId, profileBlock.allowedToolsRemove(), ctx),
                     expandLabelSelectors(tenantId, projectId, profileBlock.allowedToolsAdd(), ctx),
-                    expandLabelSelectors(tenantId, projectId, profileBlock.allowedToolsDefer(), ctx));
+                    expandLabelSelectors(tenantId, projectId, profileBlock.allowedToolsDefer(), ctx),
+                    List.copyOf(keep),
+                    List.copyOf(dropFirst));
         }
         if (!r.allowedToolsAdd().isEmpty()
                 || !r.allowedToolsRemove().isEmpty()
@@ -464,9 +498,38 @@ public class RecipeResolver {
             return new ToolFilter(
                     expandLabelSelectors(tenantId, projectId, r.allowedToolsRemove(), ctx),
                     expandLabelSelectors(tenantId, projectId, r.allowedToolsAdd(), ctx),
-                    expandLabelSelectors(tenantId, projectId, r.allowedToolsDefer(), ctx));
+                    expandLabelSelectors(tenantId, projectId, r.allowedToolsDefer(), ctx),
+                    List.copyOf(keep),
+                    List.copyOf(dropFirst));
+        }
+        if (!keep.isEmpty() || !dropFirst.isEmpty()) {
+            // Ranking-only recipe: no visibility overlay, but the budget
+            // stage still has something to go by.
+            return new ToolFilter(List.of(), List.of(), List.of(),
+                    List.copyOf(keep), List.copyOf(dropFirst));
         }
         return ToolFilter.EMPTY;
+    }
+
+    /**
+     * Expands one layer's priority lists (label selectors included) into
+     * the accumulating keep / drop-first sets. Duplicates are dropped so
+     * repeated entries across layers stay harmless.
+     */
+    private void collectPriority(
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable ToolInvocationContext ctx,
+            @Nullable List<String> keepIn,
+            @Nullable List<String> dropFirstIn,
+            List<String> keepOut,
+            List<String> dropFirstOut) {
+        for (String name : expandLabelSelectors(tenantId, projectId, keepIn, ctx)) {
+            if (!keepOut.contains(name)) keepOut.add(name);
+        }
+        for (String name : expandLabelSelectors(tenantId, projectId, dropFirstIn, ctx)) {
+            if (!dropFirstOut.contains(name)) dropFirstOut.add(name);
+        }
     }
 
     /**
@@ -514,10 +577,24 @@ public class RecipeResolver {
     private ToolFilter expandFilter(
             String tenantId, @Nullable String projectId, RecipeModeBlock block,
             @Nullable ToolInvocationContext ctx) {
+        return expandFilter(tenantId, projectId, block, ctx, List.of(), List.of());
+    }
+
+    /**
+     * Variant that carries pre-resolved priority hints — those are unioned
+     * across the cascade by {@link #toolFilterFor} rather than taken from
+     * the winning block alone.
+     */
+    private ToolFilter expandFilter(
+            String tenantId, @Nullable String projectId, RecipeModeBlock block,
+            @Nullable ToolInvocationContext ctx,
+            List<String> keep, List<String> dropFirst) {
         return new ToolFilter(
                 expandLabelSelectors(tenantId, projectId, block.allowedToolsRemove(), ctx),
                 expandLabelSelectors(tenantId, projectId, block.allowedToolsAdd(), ctx),
-                expandLabelSelectors(tenantId, projectId, block.allowedToolsDefer(), ctx));
+                expandLabelSelectors(tenantId, projectId, block.allowedToolsDefer(), ctx),
+                List.copyOf(keep),
+                List.copyOf(dropFirst));
     }
 
     /**

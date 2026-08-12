@@ -1,3 +1,13 @@
 displayName: OpenAI (and OpenAI-wire gateways)
 wireType: openai
 authType: api-key
+
+# Hard cap on the `tools` array, enforced by request validation before
+# the model sees anything: an oversized manifest comes back as HTTP 400
+# `array_above_max_length`, and every chain entry behind the same
+# endpoint fails identically. Observed 2026-08-12 with 163 schemas.
+# Endpoint property, not a model property — hence the provider default;
+# a single model overrides it with its own `maxTools:`. Gateways on this
+# wire type (Cortecs, OpenRouter, vLLM, …) inherit it; one that allows
+# more can raise it per tenant in its own `_provider.yaml`.
+maxTools: 128

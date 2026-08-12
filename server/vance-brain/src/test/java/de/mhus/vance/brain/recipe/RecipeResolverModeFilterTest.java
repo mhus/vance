@@ -294,6 +294,97 @@ class RecipeResolverModeFilterTest {
 
     // ─────── Helpers ───────
 
+    // ─────── Budget-priority hints (planning/tool-surface-budget.md) ───────
+
+    @Test
+    void priorityHints_areUnionedAcrossTheCascade_notFirstMatchWins() {
+        // Visibility resolves first-match-wins, but keep/dropFirst carry
+        // no visibility effect — two layers ranking different tools cannot
+        // contradict each other, so both are honoured. Otherwise a mode
+        // block that only ranks tools would silently drop the recipe's
+        // own ranking.
+        ResolvedRecipe r = recipeWithPriority(
+                /*base keep*/ List.of("respond"),
+                /*base dropFirst*/ List.of("gtd_*"),
+                Map.of("foot", new ProfileBlock(
+                        List.of(), List.of(), List.of(),
+                        /*keep*/ List.of("process_spawn"),
+                        /*dropFirst*/ List.of("kanban_*"),
+                        Map.of("NORMAL", new RecipeModeBlock(
+                                /*add*/ List.of("mode_add"),
+                                /*remove*/ List.of(),
+                                /*defer*/ List.of(),
+                                /*keep*/ List.of("doc_read"),
+                                /*dropFirst*/ List.of("sheet_*"))),
+                        null, Map.of(), null)));
+        when(loader.load(any(), any(), eq("arthur"))).thenReturn(Optional.of(r));
+
+        RecipeResolver.ToolFilter f = resolver.toolFilterFor(
+                TENANT, PROJECT, "arthur", "foot", ProcessMode.NORMAL);
+
+        assertThat(f.add()).containsExactly("mode_add");
+        assertThat(f.keep()).containsExactlyInAnyOrder(
+                "respond", "process_spawn", "doc_read");
+        assertThat(f.dropFirst()).containsExactlyInAnyOrder(
+                "gtd_*", "kanban_*", "sheet_*");
+    }
+
+    @Test
+    void priorityOnlyRecipe_stillYieldsAFilter() {
+        // No visibility overlay anywhere — but the budget stage still has
+        // something to go by, so this must not collapse to EMPTY.
+        ResolvedRecipe r = recipeWithPriority(
+                List.of("respond"), List.of("gtd_*"), Map.of());
+        when(loader.load(any(), any(), eq("arthur"))).thenReturn(Optional.of(r));
+
+        RecipeResolver.ToolFilter f = resolver.toolFilterFor(
+                TENANT, PROJECT, "arthur", "foot", ProcessMode.NORMAL);
+
+        assertThat(f.remove()).isEmpty();
+        assertThat(f.add()).isEmpty();
+        assertThat(f.defer()).isEmpty();
+        assertThat(f.keep()).containsExactly("respond");
+        assertThat(f.dropFirst()).containsExactly("gtd_*");
+    }
+
+    @Test
+    void priorityOnlyModeBlock_doesNotShadowTheRecipeVisibilityLists() {
+        // A mode block that only ranks tools must not win the visibility
+        // lookup — otherwise it would hide the recipe's defer list.
+        ResolvedRecipe r = recipeWithPriority(
+                List.of(), List.of(),
+                Map.of("foot", new ProfileBlock(
+                        List.of(), List.of(), List.of("recipe_defer"),
+                        List.of(), List.of(),
+                        Map.of("NORMAL", new RecipeModeBlock(
+                                /*add*/ List.of(), /*remove*/ List.of(),
+                                /*defer*/ List.of(),
+                                /*keep*/ List.of("doc_read"),
+                                /*dropFirst*/ List.of())),
+                        null, Map.of(), null)));
+        when(loader.load(any(), any(), eq("arthur"))).thenReturn(Optional.of(r));
+
+        RecipeResolver.ToolFilter f = resolver.toolFilterFor(
+                TENANT, PROJECT, "arthur", "foot", ProcessMode.NORMAL);
+
+        assertThat(f.defer()).containsExactly("recipe_defer");
+        assertThat(f.keep()).containsExactly("doc_read");
+    }
+
+    private static ResolvedRecipe recipeWithPriority(
+            List<String> baseKeep,
+            List<String> baseDropFirst,
+            Map<String, ProfileBlock> profiles) {
+        return new ResolvedRecipe(
+                "arthur", "test recipe", "arthur", Map.of(),
+                null, PromptMode.APPEND, null,
+                /*add*/ List.of(), /*remove*/ List.of(), /*defer*/ List.of(),
+                baseKeep, baseDropFirst,
+                /*modes*/ Map.of(), profiles,
+                List.of(), null, List.of(), false, false, false, null, List.of(),
+                null, List.of(), RecipeSource.RESOURCE);
+    }
+
     private static ResolvedRecipe recipe(
             List<String> baseRemove,
             List<String> baseAdd,

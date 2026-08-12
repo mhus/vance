@@ -197,7 +197,8 @@ public class ModelCatalog {
         if (spec == null || !isChatKind(spec)) {
             return Optional.empty();
         }
-        return Optional.of(buildInfo(provider, modelName, spec));
+        return Optional.of(buildInfo(provider, modelName, spec,
+                providerSpec(tenantId, projectId, provider)));
     }
 
     public Optional<ImageModelInfo> lookupImage(
@@ -258,7 +259,8 @@ public class ModelCatalog {
             if (!isChatKind(spec)) continue;
             String[] parts = splitKey(entry.getKey());
             if (parts == null) continue;
-            out.add(buildInfo(parts[0], originalCaseName(spec, parts[1]), spec));
+            out.add(buildInfo(parts[0], originalCaseName(spec, parts[1]), spec,
+                    providerSpec(tenantId, projectId, parts[0])));
         }
         return out;
     }
@@ -283,6 +285,19 @@ public class ModelCatalog {
             String providerInstance) {
         Map<String, Map<String, Object>> view = snapshot.providerViewFor(tenantId, projectId);
         return Optional.ofNullable(view.get(providerInstance.toLowerCase(Locale.ROOT)));
+    }
+
+    /**
+     * Provider sidecar for the scope, or {@code null}. Used to inherit
+     * endpoint-level facts ({@code maxTools}) that hold for every model
+     * behind the same instance — a gateway serving 100 models should
+     * state its tool cap once, not in 100 documents.
+     */
+    private @Nullable Map<String, Object> providerSpec(
+            @Nullable String tenantId, @Nullable String projectId, @Nullable String provider) {
+        if (provider == null || provider.isBlank()) return null;
+        return snapshot.providerViewFor(tenantId, projectId)
+                .get(provider.toLowerCase(Locale.ROOT));
     }
 
     // ──────────────────── Snapshot build ────────────────────
@@ -698,13 +713,19 @@ public class ModelCatalog {
             "contextWindowTokens", "defaultMaxOutputTokens", "size", "kind",
             "capabilities", "stripThinkTags", "timeoutSeconds",
             "actionLoopCorrections", "messageParser", "outputTokenParam",
-            "unsupportedParams", "reasoningEffortWhenOff", "pricing",
+            "unsupportedParams", "reasoningEffortWhenOff", "pricing", "maxTools",
             // Image
             "supportedAspectRatios", "maxPromptChars", "costPerImage",
             // Discovery markers (informational)
             "discoveredBy", "discoveredAt");
 
     private ModelInfo buildInfo(String provider, String modelName, Map<String, Object> spec) {
+        return buildInfo(provider, modelName, spec, /*providerSpec*/ null);
+    }
+
+    private ModelInfo buildInfo(
+            String provider, String modelName, Map<String, Object> spec,
+            @Nullable Map<String, Object> providerSpec) {
         checkUnknownFields(provider, modelName, spec);
         int ctx = readInt(spec.get("contextWindowTokens"),
                 FALLBACK_TEMPLATE.contextWindowTokens());
@@ -743,9 +764,46 @@ public class ModelCatalog {
             reasoningOff = modelQuirks.reasoningEffortWhenOffFor(modelName).orElse(null);
         }
         ModelInfo.Pricing pricing = readPricing(spec.get("pricing"), provider, modelName);
+        // Endpoint-level tool cap: per-model value wins, provider sidecar
+        // fills the gap, absent in both = no known limit. A *present*
+        // per-model `maxTools: 0` is meaningful — it says "this model has
+        // no cap" and suppresses the provider default (same convention as
+        // an empty `unsupportedParams` list).
+        Integer maxTools;
+        if (spec.containsKey("maxTools")) {
+            maxTools = readPositiveInt(spec.get("maxTools"), provider, modelName, "maxTools");
+        } else {
+            maxTools = providerSpec == null ? null : readPositiveInt(
+                    providerSpec.get("maxTools"), provider, "_provider", "maxTools");
+        }
         return new ModelInfo(provider, modelName, ctx, out, size, caps,
                 timeout, corrections, stripThinkTags, messageParser, pricing,
-                outputTokenParam, unsupported, reasoningOff);
+                outputTokenParam, unsupported, reasoningOff, maxTools);
+    }
+
+    /**
+     * Reads an optional positive integer. {@code null} means "not set
+     * here" so the caller can fall back to an outer layer; a present but
+     * unusable value is logged rather than silently treated as absent.
+     */
+    private static @Nullable Integer readPositiveInt(
+            @Nullable Object raw, String provider, String modelName, String field) {
+        if (raw == null) return null;
+        if (raw instanceof Number n) {
+            int value = n.intValue();
+            return value > 0 ? value : null;
+        }
+        if (raw instanceof String s && !s.isBlank()) {
+            try {
+                int value = Integer.parseInt(s.trim());
+                return value > 0 ? value : null;
+            } catch (NumberFormatException ignored) {
+                // fall through to the warning
+            }
+        }
+        log.warn("ModelCatalog: '{}/{}' has non-numeric {} '{}' — ignored",
+                provider, modelName, field, raw);
+        return null;
     }
 
     /**

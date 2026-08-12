@@ -49,7 +49,7 @@ import org.springframework.stereotype.Service;
 public class EngineChatFactory {
 
     /**
-     * Cascade-Setting key (process → project → _vance) carrying a
+     * Cascade-Setting key (process → project → _tenant) carrying a
      * comma-separated list of recipe names that may use Anthropic's
      * 1h cache TTL. Default empty: every recipe uses 5min — the
      * cheap, no-overhead variant. Operators add a recipe to this list
@@ -63,6 +63,7 @@ public class EngineChatFactory {
     private final ProgressEmitter progressEmitter;
     private final MetricService metricService;
     private final AuditService auditService;
+    private final de.mhus.vance.brain.tools.budget.ObservedToolLimitRegistry observedToolLimits;
 
     /**
      * Build the {@link EngineChatBundle} the engine should drive its
@@ -120,7 +121,13 @@ public class EngineChatFactory {
         if (base.getTenantId() == null) {
             base.setTenantId(process.getTenantId());
         }
-        if (base.getProjectId() == null) {
+        // A tenant-pinned process (params.aiScope: tenant) keeps projectId
+        // unset on purpose: ChatBehaviorBuilder resolved the endpoint from
+        // the _tenant layer, so the catalog must be read with the same view.
+        // A project-scoped catalog lookup on a tenant-scoped endpoint is the
+        // very layer-mixing the pinning exists to prevent.
+        if (base.getProjectId() == null
+                && ChatBehaviorBuilder.readAiConfigScope(process) == AiConfigScope.CASCADE) {
             base.setProjectId(process.getProjectId());
         }
         // Default user-notifier — only fires for resilience events
@@ -160,6 +167,13 @@ public class EngineChatFactory {
                         tokensIn, tokensOut,
                         ms, resp != null, null);
             });
+        }
+        // Learn the endpoint's real tools-array cap from its own
+        // rejection. Without this a stale/missing `maxTools:` keeps
+        // failing every turn; with it the next turn's surface fits.
+        if (base.getToolLimitLearner() == null) {
+            base.setToolLimitLearner((label, errorText, requested) ->
+                    observedToolLimits.learnFrom(label, errorText, requested));
         }
         // Default metric-service — always set so every engine-spawned
         // chat pushes char-length distribution summaries to Prometheus.
@@ -410,7 +424,7 @@ public class EngineChatFactory {
      * Is the process's recipe in the tenant's allowlist for the 1h
      * Anthropic cache TTL? Allowlist is a comma-separated string at
      * setting key {@link #SETTING_CACHE_TTL_LONG_RECIPES} (cascade
-     * process → project → _vance). Empty / missing → no recipe gets
+     * process → project → _tenant). Empty / missing → no recipe gets
      * 1h TTL.
      *
      * <p>Anthropic charges ~2× write tokens for the 1h TTL up front —

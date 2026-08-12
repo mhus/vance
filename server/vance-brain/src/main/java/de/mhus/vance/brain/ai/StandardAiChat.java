@@ -164,7 +164,8 @@ public class StandardAiChat implements AiChat {
                 name, raw, options.getLlmTraceWriter(), options.getMetricService());
         StreamingChatModel resilient = new ResilientStreamingChatModel(
                 List.of(new ChainEntry(logged, name, RetryPolicy.DEFAULT)),
-                options.getUserNotifier());
+                options.getUserNotifier(),
+                options.getToolLimitLearner());
         return SanitizingStreamingChatModel.wrapIfNeeded(resilient, messageParser);
     }
 

@@ -2,7 +2,9 @@ package de.mhus.vance.brain.tools.builtins;
 
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
+import de.mhus.vance.brain.tools.budget.ToolFamily;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.shared.toolusage.ToolUsageService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolBus;
 import de.mhus.vance.toolpack.ToolException;
@@ -63,12 +65,15 @@ public class ToolDescriptionTool implements Tool {
 
     private final ObjectProvider<ToolDispatcher> dispatcher;
     private final ThinkProcessService thinkProcessService;
+    private final ToolUsageService toolUsageService;
 
     public ToolDescriptionTool(
             ObjectProvider<ToolDispatcher> dispatcher,
-            ThinkProcessService thinkProcessService) {
+            ThinkProcessService thinkProcessService,
+            ToolUsageService toolUsageService) {
         this.dispatcher = dispatcher;
         this.thinkProcessService = thinkProcessService;
+        this.toolUsageService = toolUsageService;
     }
 
     @Override
@@ -187,6 +192,12 @@ public class ToolDescriptionTool implements Tool {
         if (wasDeferred && ctx.processId() != null && !ctx.processId().isBlank()) {
             activated = thinkProcessService.activateDeferredTool(ctx.processId(), name);
         }
+        // Demand measured *before* the deferral hurdle. Counting only
+        // invocations would make the tool-surface budget self-reinforcing:
+        // a demoted tool is harder to reach, gets called less, and stays
+        // demoted. Asking for the schema is the honest signal.
+        toolUsageService.recordDiscovery(
+                ctx.tenantId(), ctx.projectId(), name, ToolFamily.of(name));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", tool.name());
         out.put("description", tool.description());

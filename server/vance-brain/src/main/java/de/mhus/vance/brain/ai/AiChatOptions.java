@@ -122,6 +122,16 @@ public class AiChatOptions {
     private @Nullable Consumer<String> userNotifier;
 
     /**
+     * Optional hook fired by {@link ResilientStreamingChatModel} when the
+     * endpoint rejects the request for carrying too many tool schemas.
+     * Wired by {@code EngineChatFactory} to
+     * {@code ObservedToolLimitRegistry} so the next turn's tool-surface
+     * budget knows the real cap even when the model catalog doesn't.
+     * {@code null} disables learning — the rejection is then only logged.
+     */
+    private @Nullable ToolLimitLearner toolLimitLearner;
+
+    /**
      * Optional hook fired by {@link LoggingChatModel} /
      * {@link LoggingStreamingChatModel} after each LLM round-trip.
      * Engines pass a Lambda closing over their {@code process},

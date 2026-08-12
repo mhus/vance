@@ -197,6 +197,9 @@ public class RecipeLoader {
         List<String> add = stringList(spec.get("allowedToolsAdd"), "allowedToolsAdd");
         List<String> remove = stringList(spec.get("allowedToolsRemove"), "allowedToolsRemove");
         List<String> defer = stringList(spec.get("allowedToolsDefer"), "allowedToolsDefer");
+        List<String> keep = stringList(spec.get("allowedToolsKeep"), "allowedToolsKeep");
+        List<String> dropFirst = stringList(
+                spec.get("allowedToolsDropFirst"), "allowedToolsDropFirst");
         Map<String, RecipeModeBlock> baseModes = parseModes(spec.get("modes"), "modes");
         Map<String, ProfileBlock> profiles = parseProfiles(spec.get("profiles"), renderer);
         List<String> defaultActiveSkills = stringList(
@@ -217,7 +220,7 @@ public class RecipeLoader {
                 name, description, engine, params,
                 promptPrefix, promptMode,
                 dataRelayCorrection,
-                add, remove, defer, baseModes, profiles,
+                add, remove, defer, keep, dropFirst, baseModes, profiles,
                 defaultActiveSkills, allowedSkills,
                 triggerKeywords,
                 locked, internal, listed, title, tags,
@@ -475,6 +478,12 @@ public class RecipeLoader {
             List<String> blockDefer = stringList(
                     blockMap.get("allowedToolsDefer"),
                     "profiles." + key + ".allowedToolsDefer");
+            List<String> blockKeep = stringList(
+                    blockMap.get("allowedToolsKeep"),
+                    "profiles." + key + ".allowedToolsKeep");
+            List<String> blockDropFirst = stringList(
+                    blockMap.get("allowedToolsDropFirst"),
+                    "profiles." + key + ".allowedToolsDropFirst");
             Map<String, RecipeModeBlock> blockModes = parseModes(
                     blockMap.get("modes"), "profiles." + key + ".modes");
             String blockAppend = stringOrNull(blockMap.get("promptPrefixAppend"));
@@ -493,8 +502,8 @@ public class RecipeLoader {
             SessionLifecycleConfig sessionCfg = parseSessionBlock(
                     blockMap.get("session"), "profiles." + key + ".session");
             out.put(key, new ProfileBlock(
-                    blockAdd, blockRemove, blockDefer, blockModes,
-                    blockAppend, Map.copyOf(blockParams), sessionCfg));
+                    blockAdd, blockRemove, blockDefer, blockKeep, blockDropFirst,
+                    blockModes, blockAppend, Map.copyOf(blockParams), sessionCfg));
         }
         return Map.copyOf(out);
     }
@@ -539,7 +548,13 @@ public class RecipeLoader {
             List<String> defer = stringList(
                     blockMap.get("allowedToolsDefer"),
                     fieldName + "." + key + ".allowedToolsDefer");
-            out.put(key, new RecipeModeBlock(add, remove, defer));
+            List<String> keep = stringList(
+                    blockMap.get("allowedToolsKeep"),
+                    fieldName + "." + key + ".allowedToolsKeep");
+            List<String> dropFirst = stringList(
+                    blockMap.get("allowedToolsDropFirst"),
+                    fieldName + "." + key + ".allowedToolsDropFirst");
+            out.put(key, new RecipeModeBlock(add, remove, defer, keep, dropFirst));
         }
         return Map.copyOf(out);
     }

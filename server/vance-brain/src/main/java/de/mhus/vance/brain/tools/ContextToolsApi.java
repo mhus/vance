@@ -4,6 +4,8 @@ import de.mhus.vance.api.tools.ToolSpec;
 import de.mhus.vance.api.toolhealth.ToolHealthStatus;
 import de.mhus.vance.brain.history.HistoryTagBuilder;
 import de.mhus.vance.brain.history.HistoryTagSink;
+import de.mhus.vance.brain.tools.budget.ToolBudget;
+import de.mhus.vance.brain.tools.budget.ToolTriage;
 import de.mhus.vance.shared.toolhealth.ToolHealthDocument;
 import de.mhus.vance.shared.toolhealth.ToolHealthService;
 import de.mhus.vance.toolpack.Tool;
@@ -1049,6 +1051,38 @@ public final class ContextToolsApi implements ToolBus {
             Set<String> activatedDeferred,
             @org.jspecify.annotations.Nullable String profile,
             @org.jspecify.annotations.Nullable Set<String> engineRoles) {
+        return classify(dispatcher, ctx, base, filter, activatedDeferred, profile, engineRoles,
+                /*budget*/ null, /*familyHints*/ null);
+    }
+
+    /**
+     * Variant that enforces a tool-surface budget (see
+     * {@code planning/tool-surface-budget.md}). After the buckets are
+     * decided, {@link ToolTriage} demotes whole tool families from
+     * primary to deferred until {@code primary ∪ activated} fits the
+     * endpoint's {@code tools}-array cap. Demoted tools keep their
+     * discovery-block line and stay invocable — the cost of a wrong
+     * demotion is one round-trip, not a lost capability.
+     *
+     * <p>{@code budget == null} or {@link ToolBudget#hasLimit()} false
+     * reproduces the unbudgeted behaviour exactly, including the
+     * "unrestricted engine" short-circuit.
+     *
+     * @param budget      limit + measured ranking signals for this turn
+     * @param familyHints deployment-level family overrides
+     *                    ({@code vance.tools.budget.*}); the per-name
+     *                    hints are taken from {@code filter}
+     */
+    public static Classification classify(
+            ToolDispatcher dispatcher,
+            ToolInvocationContext ctx,
+            Set<String> base,
+            de.mhus.vance.brain.recipe.RecipeResolver.ToolFilter filter,
+            Set<String> activatedDeferred,
+            @org.jspecify.annotations.Nullable String profile,
+            @org.jspecify.annotations.Nullable Set<String> engineRoles,
+            @org.jspecify.annotations.Nullable ToolBudget budget,
+            ToolTriage.@org.jspecify.annotations.Nullable Hints familyHints) {
         Set<String> remove = filter == null ? Set.of() : Set.copyOf(filter.remove());
         Set<String> add = filter == null ? Set.of() : Set.copyOf(filter.add());
         Set<String> defer = filter == null ? Set.of() : Set.copyOf(filter.defer());
@@ -1058,7 +1092,17 @@ public final class ContextToolsApi implements ToolBus {
             if (filterEmpty) {
                 // No engine restriction and no per-turn overlay — caller
                 // falls back to per-tool primary() via visibleResolved.
-                return new Classification(Set.of(), Set.of(), Set.of(), Set.of());
+                // With a budget in play the surface still has to fit, so
+                // materialise the same set the fallback would produce —
+                // but only when it actually overflows, so an unrestricted
+                // engine under a comfortable limit keeps the cheap path.
+                Classification unrestricted =
+                        new Classification(Set.of(), Set.of(), Set.of(), Set.of());
+                if (budget == null || !budget.hasLimit()) {
+                    return unrestricted;
+                }
+                return budgetUnrestricted(
+                        dispatcher, ctx, activatedDeferred, budget, familyHints, unrestricted);
             }
             // Engine doesn't restrict, but the recipe carries a filter.
             // Expand the base to every dispatchable tool so add/remove/defer
@@ -1167,7 +1211,124 @@ public final class ContextToolsApi implements ToolBus {
                 : activatedDeferred.stream()
                         .filter(deferred::contains)
                         .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+
+        // Budget stage — last, so it sees the final buckets and can never
+        // be undone by a later overlay.
+        if (budget != null && budget.hasLimit()) {
+            Set<String> floor = new LinkedHashSet<>(MANDATORY_TOOLS);
+            floor.retainAll(primary);
+            ToolTriage.Result triaged = ToolTriage.apply(
+                    primary, activated, floor,
+                    hintsFrom(filter, familyHints), budget);
+            if (triaged.changed()) {
+                Set<String> demotedToDeferred = new LinkedHashSet<>(triaged.demoted());
+                demotedToDeferred.retainAll(primary);
+                deferred.addAll(demotedToDeferred);
+                logDemotion(ctx, triaged, primary.size() + activated.size(), budget);
+                primary = triaged.primary();
+                activated = triaged.activated();
+            }
+        }
         return new Classification(effective, primary, deferred, activated);
+    }
+
+    /**
+     * Budget path for an engine that doesn't restrict its tools (Ford
+     * style). Materialises the implicit classification — primary = the
+     * per-tool {@link Tool#primary()} flag, deferred = the rest — and
+     * triages it. Returns {@code unrestricted} unchanged while the
+     * surface fits, so the cheap path stays cheap and behaviour only
+     * changes where it has to.
+     */
+    private static Classification budgetUnrestricted(
+            ToolDispatcher dispatcher,
+            ToolInvocationContext ctx,
+            @org.jspecify.annotations.Nullable Set<String> activatedDeferred,
+            ToolBudget budget,
+            ToolTriage.@org.jspecify.annotations.Nullable Hints familyHints,
+            Classification unrestricted) {
+        Set<String> primary = new LinkedHashSet<>();
+        for (ToolDispatcher.Resolved r : dispatcher.resolvePrimary(ctx)) {
+            primary.add(r.tool().name());
+        }
+        Set<String> all = new LinkedHashSet<>();
+        for (ToolDispatcher.Resolved r : dispatcher.resolveAll(ctx)) {
+            all.add(r.tool().name());
+        }
+        Set<String> deferred = new LinkedHashSet<>(all);
+        deferred.removeAll(primary);
+        Set<String> activated = activatedDeferred == null
+                ? Set.of()
+                : activatedDeferred.stream()
+                        .filter(deferred::contains)
+                        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        if (primary.size() + activated.size() <= budget.effectiveLimit()) {
+            return unrestricted;
+        }
+        Set<String> floor = new LinkedHashSet<>(MANDATORY_TOOLS);
+        floor.retainAll(primary);
+        ToolTriage.Result triaged = ToolTriage.apply(
+                primary, activated, floor,
+                hintsFrom(null, familyHints), budget);
+        Set<String> demotedToDeferred = new LinkedHashSet<>(triaged.demoted());
+        demotedToDeferred.retainAll(primary);
+        deferred.addAll(demotedToDeferred);
+        logDemotion(ctx, triaged, primary.size() + activated.size(), budget);
+        return new Classification(all, triaged.primary(), deferred, triaged.activated());
+    }
+
+    /**
+     * Merges the recipe's per-name priority hints with the deployment's
+     * family-level overrides into one {@link ToolTriage.Hints}.
+     */
+    private static ToolTriage.Hints hintsFrom(
+            de.mhus.vance.brain.recipe.RecipeResolver.@org.jspecify.annotations.Nullable
+                    ToolFilter filter,
+            ToolTriage.@org.jspecify.annotations.Nullable Hints familyHints) {
+        Set<String> keep = filter == null ? Set.of() : Set.copyOf(filter.keep());
+        Set<String> add = filter == null ? Set.of() : Set.copyOf(filter.add());
+        Set<String> dropFirst = filter == null ? Set.of() : Set.copyOf(filter.dropFirst());
+        Set<String> keepFamilies = familyHints == null ? Set.of() : familyHints.keepFamilies();
+        Set<String> dropFirstFamilies =
+                familyHints == null ? Set.of() : familyHints.dropFirstFamilies();
+        return new ToolTriage.Hints(keep, add, dropFirst, keepFamilies, dropFirstFamilies);
+    }
+
+    /**
+     * One INFO line per demotion, plus the full name list at TRACE. Loud
+     * on purpose: a silently truncated manifest reads to the model like
+     * "that tool does not exist", and then it tells the user exactly
+     * that. Whoever debugs such a report has to be able to see in the log
+     * <em>which</em> tools left the manifest and in what order they were
+     * given up — the INFO line names the families, TRACE names every
+     * tool.
+     */
+    private static void logDemotion(
+            ToolInvocationContext ctx,
+            ToolTriage.Result triaged,
+            int surfaceBefore,
+            ToolBudget budget) {
+        log.info("Tool-surface budget: {} → {} schemas (maxTools={} reserved={}) "
+                        + "tenant='{}' project='{}' process='{}' — demoted {} tool(s) "
+                        + "in families {} to deferred; still reachable via tool_list",
+                surfaceBefore, triaged.primary().size() + triaged.activated().size(),
+                budget.maxTools(), budget.reserved(),
+                ctx == null ? "?" : ctx.tenantId(),
+                ctx == null ? "?" : ctx.projectId(),
+                ctx == null ? "?" : ctx.processId(),
+                triaged.demoted().size(), triaged.demotedFamilies());
+        if (log.isTraceEnabled()) {
+            // Demotion order = the order the families were given up, so
+            // the list reads as "this went first, then this".
+            log.trace("Tool-surface budget: demoted process='{}' limit={} → {}",
+                    ctx == null ? "?" : ctx.processId(),
+                    triaged.limit(),
+                    String.join(",", triaged.demoted()));
+            log.trace("Tool-surface budget: kept process='{}' primary={} activated={}",
+                    ctx == null ? "?" : ctx.processId(),
+                    String.join(",", triaged.primary()),
+                    String.join(",", triaged.activated()));
+        }
     }
 
     /**

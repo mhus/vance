@@ -3,6 +3,8 @@ package de.mhus.vance.brain.agrajag;
 import de.mhus.vance.api.toolhealth.ToolHealthScope;
 import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.agrajag.engine.AgrajagEngine;
+import de.mhus.vance.brain.recipe.AppliedRecipe;
+import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -32,6 +34,15 @@ import org.springframework.stereotype.Service;
  *
  * <p>Failure to spawn is logged and swallowed; the original tool error
  * always reaches the LLM regardless of whether Agrajag could be launched.
+ *
+ * <p>Like every other spawn path, the process is configured through
+ * {@link RecipeResolver#applyDefaulting} against the {@code agrajag}
+ * recipe: the failure context assembled here is passed as caller-params
+ * and merged <em>over</em> the recipe defaults, so the recipe stays the
+ * source of truth for {@code model}, {@code maxProbes} and
+ * {@code aiScope}. Without that step the recipe name would be a label
+ * only and the engine would silently fall back to
+ * {@code ai.default.provider}/{@code ai.default.model}.
  */
 @Service
 @RequiredArgsConstructor
@@ -46,6 +57,11 @@ public class AgrajagSpawnerService {
     private final LaneScheduler laneScheduler;
     /** Lazy provider — ThinkEngineService transitively reaches us via the dispatcher cycle. */
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
+    /**
+     * Lazy for the same reason: RecipeResolver reaches ThinkEngineService,
+     * which reaches the ToolDispatcher, which reaches AgrajagChecker → us.
+     */
+    private final ObjectProvider<RecipeResolver> recipeResolverProvider;
 
     /**
      * Spawn a Agrajag diagnostic process for the given tool error. Idempotent
@@ -66,13 +82,19 @@ public class AgrajagSpawnerService {
             SessionDocument session = ensureAgrajagSession(tenantId,
                     projectId == null ? "" : projectId);
 
-            Map<String, Object> engineParams = new LinkedHashMap<>();
-            engineParams.put("toolName", toolName);
-            engineParams.put("scope", scope.name());
-            engineParams.put("scopeId", scopeId);
-            engineParams.put("errorSignature", errorSignature);
-            engineParams.put("originatingUserId", originatingUserId);
-            if (note != null) engineParams.put("note", note);
+            Map<String, Object> callerParams = new LinkedHashMap<>();
+            callerParams.put("toolName", toolName);
+            callerParams.put("scope", scope.name());
+            callerParams.put("scopeId", scopeId);
+            callerParams.put("errorSignature", errorSignature);
+            callerParams.put("originatingUserId", originatingUserId);
+            if (note != null) callerParams.put("note", note);
+
+            // Recipe first — a broken project-level override of the
+            // agrajag recipe aborts the spawn (caught below) instead of
+            // silently degrading to raw caller-params, which would put us
+            // back on ai.default.* with no model of our own.
+            AppliedRecipe applied = applyRecipe(tenantId, projectId, callerParams);
 
             String processName = "diagnose-" + toolName + "-"
                     + UUID.randomUUID().toString().substring(0, 8);
@@ -89,11 +111,14 @@ public class AgrajagSpawnerService {
                         /*title*/ "Agrajag: " + toolName,
                         /*goal*/ "Diagnose tool-error signature='" + errorSignature + "'",
                         /*parentProcessId*/ null,
-                        engineParams,
-                        /*recipeName*/ AgrajagEngine.NAME,
+                        applied.params(),
+                        /*recipeName*/ applied.name(),
+                        // No promptOverride: Agrajag's system prompt is
+                        // engine-owned (fixed probe/diagnose loop with a
+                        // strict output schema), so the recipe carries none.
                         /*promptOverride*/ null,
                         /*promptMode*/ null,
-                        /*allowedToolsOverride*/ null);
+                        applied.effectiveAllowedTools());
             } catch (ThinkProcessAlreadyExistsException dup) {
                 // Should not happen with the UUID suffix, but be defensive.
                 log.debug("Agrajag spawn name clash — skipping: {}", dup.getMessage());
@@ -114,6 +139,43 @@ public class AgrajagSpawnerService {
             log.warn("Agrajag spawnDiagnosis failed tool='{}' tenant='{}' project='{}': {}",
                     toolName, tenantId, projectId, e.toString());
         }
+    }
+
+    /**
+     * Merge the failure context over the {@code agrajag} recipe defaults.
+     * Caller-params win per key (they carry the incident, the recipe
+     * carries the configuration) — none of the two sets overlap today.
+     *
+     * <p>The recipe cascade stays project-aware on purpose: an operator
+     * may tune probe budgets per project. Only the resulting AI
+     * configuration is tenant-pinned, and that happens later via
+     * {@code params.aiScope} when the chat is built.
+     *
+     * <p>The engine is <b>not</b> taken from the recipe. This spawner
+     * <em>is</em> the tool-health service; a project-level override that
+     * repoints the recipe at another engine would silently turn a
+     * diagnosis into something else. We log it and stay on
+     * {@link AgrajagEngine}.
+     */
+    private AppliedRecipe applyRecipe(
+            String tenantId,
+            @Nullable String projectId,
+            Map<String, Object> callerParams) {
+        AppliedRecipe applied = recipeResolverProvider.getObject().applyDefaulting(
+                tenantId, projectId,
+                /*recipeName*/ AgrajagEngine.NAME,
+                // No connection profile: nothing is connected to a
+                // diagnostic process, so the recipe's "default" block
+                // applies. Open-string semantics make this a no-op for the
+                // bundled recipe, which carries no profiles at all.
+                /*connectionProfile*/ null,
+                callerParams);
+        if (!AgrajagEngine.NAME.equals(applied.engine())) {
+            log.warn("Agrajag recipe '{}' (source={}) declares engine '{}' — ignoring, "
+                            + "diagnostics always run on '{}'",
+                    applied.name(), applied.source(), applied.engine(), AgrajagEngine.NAME);
+        }
+        return applied;
     }
 
     /** Lazy-create the per-project _agrajag system session. Thread-safe via Mongo upsert semantics. */

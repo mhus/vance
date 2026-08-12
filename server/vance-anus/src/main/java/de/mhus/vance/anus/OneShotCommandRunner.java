@@ -7,8 +7,8 @@ import de.mhus.vance.anus.sudo.SudoBootstrap;
 import java.io.PrintWriter;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.shell.core.NonInteractiveShellRunner;
@@ -21,13 +21,19 @@ import org.springframework.stereotype.Component;
  *
  * <p>Spring Shell 4 dropped the 3.x dispatch model (a list of
  * {@code ShellRunner}s each asked {@code canRun}); there is now a single
- * framework {@code ShellRunner} that owns the interactive/non-interactive
- * choice, and it starts on {@link ApplicationReadyEvent}. Rather than compete
- * with that bean, anus listens for the same event at
- * {@link Ordered#HIGHEST_PRECEDENCE} — ahead of the shell's own listener — and,
- * in a one-shot mode, does its work and calls {@link System#exit(int)}. That
+ * framework {@code ShellRunner}, started by the {@code springShellApplicationRunner}
+ * {@link ApplicationRunner} bean, that owns the interactive/non-interactive
+ * choice. Rather than compete with that bean, anus is an
+ * {@code ApplicationRunner} itself at {@link Ordered#HIGHEST_PRECEDENCE} —
+ * the framework's runner carries no order, so it sorts last — and, in a
+ * one-shot mode, does its work and calls {@link System#exit(int)}. That
  * short-circuits the REPL entirely; the Spring shutdown hook still closes the
  * context (audit flush et al.), so the exit stays clean.
+ *
+ * <p>It has to be a runner, not an {@code ApplicationReadyEvent} listener:
+ * runners execute <em>before</em> that event is published, so the interactive
+ * REPL would already own the terminal and block forever — {@code --setup}
+ * would drop the caller at a {@code shell:>} prompt instead of the wizard.
  *
  * <p>Command execution reuses the framework's {@link NonInteractiveShellRunner}
  * (parse + execute a single line, throwing on a non-OK exit status) so anus
@@ -41,8 +47,9 @@ import org.springframework.stereotype.Component;
  * {@code --setup} when both are (oddly) present.
  */
 @Component
+@Order(Ordered.HIGHEST_PRECEDENCE)
 @Slf4j
-public class OneShotCommandRunner {
+public class OneShotCommandRunner implements ApplicationRunner {
 
     private final CommandParser commandParser;
     private final CommandRegistry commandRegistry;
@@ -60,9 +67,8 @@ public class OneShotCommandRunner {
         this.setupWizard = setupWizard;
     }
 
-    @EventListener
-    @Order(Ordered.HIGHEST_PRECEDENCE)
-    public void onReady(ApplicationReadyEvent event) {
+    @Override
+    public void run(ApplicationArguments args) {
         if (SudoBootstrap.isSudoMode()) {
             System.exit(runSudo(SudoBootstrap.commands()));
         } else if (SetupBootstrap.isSetupMode()) {

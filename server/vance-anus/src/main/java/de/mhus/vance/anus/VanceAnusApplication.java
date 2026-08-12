@@ -13,6 +13,9 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration;
+import org.springframework.boot.data.redis.autoconfigure.DataRedisReactiveAutoConfiguration;
+import org.springframework.boot.data.redis.autoconfigure.DataRedisRepositoriesAutoConfiguration;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.data.mongodb.config.EnableMongoAuditing;
 import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
@@ -27,7 +30,19 @@ import org.springframework.data.mongodb.repository.config.EnableMongoRepositorie
  * No web server, no AI stack, no scheduling — Anus is interactive
  * REPL-only.
  */
-@SpringBootApplication(scanBasePackages = {"de.mhus.vance.anus", "de.mhus.vance.shared"})
+// Exclude Spring Boot's default Redis auto-configuration entirely — same
+// reasoning as in VanceBrainApplication. All Redis is owned by VanceRedisConfig
+// (vance* beans, gated on vance.redis.enabled); the Boot defaults contribute
+// `redisMessageListenerContainer` + `stringRedisTemplate`, which make the
+// ObjectProvider lookups in VanceRedisMessagingService ambiguous as soon as
+// vance.redis.enabled=true (Anus fails to start), and open a localhost:6379
+// connection even when Redis is disabled.
+@SpringBootApplication(
+        scanBasePackages = {"de.mhus.vance.anus", "de.mhus.vance.shared"},
+        exclude = {
+                DataRedisAutoConfiguration.class,
+                DataRedisReactiveAutoConfiguration.class,
+                DataRedisRepositoriesAutoConfiguration.class})
 @EnableMongoRepositories(basePackages = {"de.mhus.vance.shared"})
 @EnableMongoAuditing
 // vance-shared declares WorkspaceProperties as the only @ConfigurationProperties

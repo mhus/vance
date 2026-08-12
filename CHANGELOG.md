@@ -9,6 +9,8 @@ breaking changes; a patch bump (`0.1.0` → `0.1.1`) is fixes only.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-12
+
 ### Added
 
 - **Completion guard** — a generic, script-based post-completion check that can

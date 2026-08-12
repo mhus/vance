@@ -7,6 +7,7 @@ import {
   setActiveSessionId,
   WebSocketRequestError,
 } from '@vance/shared';
+import { getSessionData } from '@/platform/webUiSession';
 
 /**
  * Server {@code ErrorData.reason} value flagging a resume refused because
@@ -331,6 +332,17 @@ let sessionDeadHandled = false;
  * refreshes (→ keep reconnecting), a dead one fails (→ redirect to login,
  * exactly like the REST path). Returns {@code true} when the session is gone
  * and the login redirect was triggered.
+ *
+ * <p>Crucially, a {@code false} return from {@code refreshAccess} is
+ * ambiguous: it covers both a genuine auth refusal (server returned 401/403
+ * → {@code refreshAccessCookie} cleared the data cookie) and an unreachable
+ * brain (network error → data cookie left standing). Only the former is a
+ * dead session; the latter is a transient outage. We disambiguate by
+ * re-reading the session data after the refresh attempt — if it's gone, the
+ * server proved the session dead; if it survives, the brain was unreachable
+ * and we must NOT redirect to login (that would bounce the user to index,
+ * which sees the still-alive cookie and bounces right back, creating an
+ * infinite redirect loop while the brain is down).
  */
 async function redirectIfSessionDead(): Promise<boolean> {
   if (sessionDeadHandled) return true;
@@ -339,6 +351,17 @@ async function redirectIfSessionDead(): Promise<boolean> {
   } catch {
     // Refresh itself errored (network) — treat as transient, let the caller
     // fall back to the normal reconnect loop rather than bouncing to login.
+    return false;
+  }
+  // Refresh returned false. Distinguish a genuine auth refusal (data cookie
+  // was cleared by refreshAccessCookie on 'rejected') from an unreachable
+  // brain (data cookie survives — 'failed'). Only redirect to login when the
+  // session is provably dead; otherwise let the reconnect loop keep trying.
+  if (getSessionData()) {
+    // Session data still present → brain was unreachable, not unauthenticated.
+    // Redirecting to login would loop: index.html sees the alive access cookie
+    // and bounces back to the editor, which fails to connect again. Instead,
+    // let the caller fall through to scheduleReconnect().
     return false;
   }
   sessionDeadHandled = true;

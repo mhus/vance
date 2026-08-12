@@ -34,5 +34,8 @@
   },
   "peerDependencies": {
     "@capacitor/core": "^6.0.0"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
   }
 }

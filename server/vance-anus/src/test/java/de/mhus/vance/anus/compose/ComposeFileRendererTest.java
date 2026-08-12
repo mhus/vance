@@ -133,14 +133,14 @@ class ComposeFileRendererTest {
     @Test
     void env_reflectsToggles() {
         ComposeSetupState s = new ComposeSetupState();
-        s.setFookEnabled(false);
+        s.setFookEnabled(true);
         s.setRedisEnabled(false);
         s.setLanguageName("German");
         s.setLanguageCode("de");
 
         Map<String, String> env = ComposeFileRenderer.renderEnv(s);
 
-        assertThat(env).containsEntry("VANCE_FOOK_ENABLED", "false");
+        assertThat(env).containsEntry("VANCE_FOOK_ENABLED", "true");
         assertThat(env).containsEntry("VANCE_REDIS_ENABLED", "false");
         assertThat(env).containsEntry("VANCE_DEFAULT_LANGUAGE", "German");
         assertThat(env).containsEntry("VANCE_DEFAULT_LANGUAGE_CODE", "de");

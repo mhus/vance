@@ -46,8 +46,8 @@ class ComposeSetupState {
     private String anusPasswordHash = "";
 
     // ── feature toggles ───────────────────────────────────────────
-    /** Fook bug/feature triage. */
-    private boolean fookEnabled = true;
+    /** Fook bug/feature triage. Default off — opt-in, it reports out. */
+    private boolean fookEnabled = false;
     /** Redis live-features. Expert-only to disable. */
     private boolean redisEnabled = true;
     /** Debug/admin UIs (mongo-express + redis-commander) under a compose profile. Expert-only. */

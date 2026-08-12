@@ -25,17 +25,17 @@
     "@capacitor/ios": "^6.2.0",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/share": "^6.0.3",
-    "@capacitor/splash-screen": "^6.0.3",
+    "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^6.0.2",
     "@capawesome/capacitor-file-picker": "^6.2.0",
     "@vance/facelift-account-webview": "workspace:*",
     "pinia": "^4.0.2",
     "vue": "^3.5.40",
-    "vue-router": "^4.4.5"
+    "vue-router": "^5.2.0"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
-    "@capacitor/cli": "^6.2.0",
+    "@capacitor/cli": "^8.4.2",
     "@vitejs/plugin-vue": "^6.0.8",
     "postcss": "^8.5.23",
     "sharp": "^0.35.3",

@@ -520,6 +520,32 @@ class ContextToolsApiClassifyTest {
     }
 
     @Test
+    void budget_onUnrestrictedEngine_stillHonoursARankingOnlyRecipe() {
+        // The exact combination a ranking-only recipe produces: no allow-set
+        // (Ford-style engine) and no visibility overlay, but keep/dropFirst
+        // set. Those carry no visibility effect by design, so this is the
+        // *normal* shape for such a recipe — not an edge case. Ignoring the
+        // hints here would silently discard the author's only statement
+        // about what to give up, on the widest surface there is.
+        when(dispatcher.resolvePrimary(any())).thenReturn(List.of(
+                resolved("doc_read"), resolved("slack_rest__a")));
+        when(dispatcher.resolveAll(any())).thenReturn(List.of(
+                resolved("doc_read"), resolved("slack_rest__a")));
+
+        RecipeResolver.ToolFilter rankingOnly = new RecipeResolver.ToolFilter(
+                List.of(), List.of(), List.of(),
+                List.of("slack_rest__a"), List.of("doc_read"));
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx, Set.of(), rankingOnly,
+                Set.of(), null, null, new ToolBudget(1, 0), null);
+
+        // Without the hints the derived order (built-in over pack) would
+        // have kept doc_read instead.
+        assertThat(c.primary()).containsExactly("slack_rest__a");
+        assertThat(c.deferred()).containsExactly("doc_read");
+    }
+
+    @Test
     void budget_withoutALimit_behavesLikeNoBudget() {
         stubResolve("doc_read", false);
 

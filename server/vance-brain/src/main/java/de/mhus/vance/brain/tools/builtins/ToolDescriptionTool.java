@@ -139,6 +139,12 @@ public class ToolDescriptionTool implements Tool {
         // unrestricted engine → no filter.
         Set<String> invocable = bus.invocableToolNames();
 
+        // Resolve the demand-counter role once for the whole batch: it is a
+        // property of the calling process, not of the tool being described,
+        // so a 20-name lookup would otherwise repeat the same point-read 20
+        // times.
+        String usageRole = usageRole(ctx.processId());
+
         List<Map<String, Object>> tools = new ArrayList<>();
         List<String> unknown = new ArrayList<>();
         for (String name : names) {
@@ -156,7 +162,7 @@ public class ToolDescriptionTool implements Tool {
                 unknown.add(name);
                 continue;
             }
-            tools.add(describe(resolved.get(), name, ctx, bus));
+            tools.add(describe(resolved.get(), name, ctx, bus, usageRole));
         }
         if (tools.isEmpty()) {
             // Nothing resolved — surface it on the error channel rather
@@ -177,21 +183,18 @@ public class ToolDescriptionTool implements Tool {
     }
 
     /**
-     * Role the discovery hit is attributed to — recipe first, engine as
-     * fallback. Mirrors {@code ThinkEngineService.usageRole}; a process
-     * that cannot be read lands in {@code ROLE_UNKNOWN} rather than
-     * polluting a real role.
+     * Role the discovery hit is attributed to. The rule itself lives in
+     * {@link ToolUsageService#roleOf} — writers and the budget's reader
+     * have to derive the same key or the triage reads past its own
+     * counters. A process that cannot be read yields {@code null}, which
+     * the write path turns into {@code ROLE_UNKNOWN} rather than letting
+     * it pollute a real role.
      */
     private @Nullable String usageRole(@Nullable String processId) {
         if (processId == null || processId.isBlank()) return null;
         try {
             return thinkProcessService.findById(processId)
-                    .map(p -> {
-                        String recipe = p.getRecipeName();
-                        if (recipe != null && !recipe.isBlank()) return recipe.trim();
-                        String engine = p.getThinkEngine();
-                        return (engine != null && !engine.isBlank()) ? engine.trim() : null;
-                    })
+                    .map(ToolUsageService::roleOf)
                     .orElse(null);
         } catch (RuntimeException e) {
             // A ranking hint is never worth failing the lookup for.
@@ -200,7 +203,8 @@ public class ToolDescriptionTool implements Tool {
     }
 
     private Map<String, Object> describe(
-            ToolDispatcher.Resolved r, String name, ToolInvocationContext ctx, ToolBus bus) {
+            ToolDispatcher.Resolved r, String name, ToolInvocationContext ctx, ToolBus bus,
+            @Nullable String usageRole) {
         Tool tool = r.tool();
         // Engine-context deferral wins over the tool's static default:
         // a recipe-driven ToolFilter can demote a tool whose default is
@@ -221,11 +225,10 @@ public class ToolDescriptionTool implements Tool {
         // demoted. Asking for the schema is the honest signal.
         //
         // The role comes from the process, not from the ToolInvocationContext
-        // (which carries no recipe): one point-read next to a full LLM turn,
-        // and without it every lookup would land in the unattributed bucket.
+        // (which carries no recipe) — resolved once per batch by the caller,
+        // since it is the same for every name in this invocation.
         toolUsageService.recordDiscovery(
-                ctx.tenantId(), ctx.projectId(), usageRole(ctx.processId()),
-                name, ToolFamily.of(name));
+                ctx.tenantId(), ctx.projectId(), usageRole, name, ToolFamily.of(name));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", tool.name());
         out.put("description", tool.description());

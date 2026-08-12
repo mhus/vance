@@ -5,8 +5,17 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Thrown when an authored {@code {{secret:…}}} reference tries to resolve a
- * setting that is not reference-readable — i.e. a
- * {@link SettingType#PASSWORD}-typed one.
+ * setting it may not read. Two independent reasons:
+ *
+ * <ul>
+ *   <li><b>Type.</b> The setting is {@link SettingType#PASSWORD}-typed and the
+ *       caller is on the restricted path (a script, a compose task, an agent).
+ *       Re-typing it to {@code HIDDEN} makes it work.</li>
+ *   <li><b>Key.</b> {@link SecretReferenceKeyPolicy} reserves the name for
+ *       compiled server code, whatever its type and whoever asks — including
+ *       connectors, which may otherwise read PASSWORD. Nothing makes this one
+ *       work; the key is not meant to travel through a reference.</li>
+ * </ul>
  *
  * <p>Deliberately an exception rather than a {@code null} return: the
  * reference-resolution path treats {@code null} as "unresolved" and substitutes
@@ -40,6 +49,15 @@ public class SecretAccessDeniedException extends RuntimeException {
     public SecretAccessDeniedException(String message) {
         super(message);
         this.key = null;
+    }
+
+    /**
+     * Free-form wording that still carries the key, so a caller rendering a
+     * hint does not have to parse it back out of the sentence.
+     */
+    public SecretAccessDeniedException(String key, String message) {
+        super(message);
+        this.key = key;
     }
 
     /**

@@ -245,9 +245,10 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
             // turn's tool-surface budget cuts to fit.
             int requested = request.toolSpecifications() == null
                     ? 0 : request.toolSpecifications().size();
+            java.util.OptionalInt learned = java.util.OptionalInt.empty();
             if (toolLimitLearner != null) {
                 try {
-                    toolLimitLearner.learn(entry.label(), errorText, requested);
+                    learned = toolLimitLearner.learn(entry.label(), errorText, requested);
                 } catch (RuntimeException learnFail) {
                     log.debug("toolLimitLearner threw: {}", learnFail.toString());
                 }
@@ -255,9 +256,18 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
             log.warn("ResilientChatModel '{}': endpoint rejected {} tool schemas as too many — "
                             + "not advancing the chain (same request shape everywhere): {}",
                     entry.label(), requested, errorSummary(error));
+            // Only promise a different outcome when the cap is actually known
+            // now. Without a learned number the next turn builds the very same
+            // manifest, and "retry" would send the caller into an identical
+            // failure — the durable fix is `maxTools:` in the model document.
+            String remedy = learned.isPresent()
+                    ? " The endpoint's limit of " + learned.getAsInt()
+                            + " is now known — retry the turn."
+                    : " The endpoint stated no limit, so a retry would fail the same way:"
+                            + " set 'maxTools:' for this model (or its provider) first.";
             caller.onError(new AiChatException(
                     "Tool manifest too large for " + entry.label() + " (" + requested
-                            + " schemas). The surface budget has been tightened — retry the turn.",
+                            + " schemas)." + remedy,
                     error));
             return;
         }

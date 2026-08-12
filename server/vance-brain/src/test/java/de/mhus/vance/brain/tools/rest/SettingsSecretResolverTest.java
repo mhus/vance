@@ -13,6 +13,7 @@ import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.brain.oauth.OAuthExpiredException;
 import de.mhus.vance.brain.oauth.OAuthTokenRefresher;
 import de.mhus.vance.shared.settings.SecretAccessDeniedException;
+import de.mhus.vance.shared.settings.SecretReferenceKeyPolicy;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.vault.VaultException;
 import de.mhus.vance.shared.vault.VaultScope;
@@ -43,7 +44,8 @@ class SettingsSecretResolverTest {
         settings = mock(SettingService.class);
         refresher = mock(OAuthTokenRefresher.class);
         vault = mock(VaultService.class);
-        resolver = new SettingsSecretResolver(settings, refresher, vault);
+        resolver = new SettingsSecretResolver(settings, refresher, vault,
+                new SecretReferenceKeyPolicy("ai.provider.*,vault.*"));
     }
 
     // ─────── No-op paths ───────
@@ -277,14 +279,19 @@ class SettingsSecretResolverTest {
     // Otherwise a re-typing mistake would look like a missing setting and
     // surface as an opaque downstream 401.
 
+    // These use ordinary credential keys on purpose. A reserved key
+    // (ai.provider.*, vault.*) is refused by SecretReferenceKeyPolicy before
+    // any lookup happens, so it would exercise the name guard rather than the
+    // type guard these tests are about.
+
     @Test
     void cascade_scope_denial_propagates_instead_of_substituting_empty() {
-        when(settings.getReferenceSecretCascade(TENANT, PROJECT, PROCESS, "ai.provider.default.apiKey"))
+        when(settings.getReferenceSecretCascade(TENANT, PROJECT, PROCESS, "smtp.password"))
                 .thenThrow(new SecretAccessDeniedException(
-                        "ai.provider.default.apiKey", SettingType.PASSWORD));
+                        "smtp.password", SettingType.PASSWORD));
 
         assertThatThrownBy(() -> resolver.resolve(
-                "Bearer {{secret:ai.provider.default.apiKey}}", ctx()))
+                "Bearer {{secret:smtp.password}}", ctx()))
                 .isInstanceOf(SecretAccessDeniedException.class)
                 .hasMessageContaining("HIDDEN");
     }
@@ -301,12 +308,14 @@ class SettingsSecretResolverTest {
     @Test
     void tenant_scope_denial_propagates() {
         when(settings.getReferenceSecret(TENANT, SettingService.SCOPE_PROJECT,
-                "_tenant", "vault.clientSecret"))
-                .thenThrow(new SecretAccessDeniedException("vault.clientSecret", SettingType.PASSWORD));
+                "_tenant", "credentials.jira.api_token"))
+                .thenThrow(new SecretAccessDeniedException(
+                        "credentials.jira.api_token", SettingType.PASSWORD));
 
-        assertThatThrownBy(() -> resolver.resolve("{{secret:tenant:vault.clientSecret}}", ctx()))
+        assertThatThrownBy(() ->
+                resolver.resolve("{{secret:tenant:credentials.jira.api_token}}", ctx()))
                 .isInstanceOf(SecretAccessDeniedException.class)
-                .extracting("key").isEqualTo("vault.clientSecret");
+                .extracting("key").isEqualTo("credentials.jira.api_token");
     }
 
     @Test
@@ -346,6 +355,80 @@ class SettingsSecretResolverTest {
     }
 
     // ─────── Helpers ───────
+
+    // ─────── Reserved keys are unreachable through any reference ───────
+
+    @Test
+    void reservedKey_isRefusedOnTheConnectorPath() {
+        // The connector path reads PASSWORD by design, so the type is no
+        // longer what keeps a reference away from the provider key. A REST
+        // tool document declares its target URL next to its headers — this
+        // reference would ship the key wherever that document points.
+        assertThatThrownBy(() -> resolver.resolveForConnector(
+                "Bearer {{secret:project:ai.provider.openai.apiKey}}", ctx()))
+                .isInstanceOf(SecretAccessDeniedException.class)
+                .hasMessageContaining("ai.provider.openai.apiKey");
+
+        verify(settings, never()).getDecryptedPassword(any(), any(), any(), any());
+    }
+
+    @Test
+    void reservedKey_isRefusedOnTheRestrictedPathToo() {
+        // Defence in depth: HIDDEN-only would already stop a correctly typed
+        // provider key, but a hand-typed one must not become readable just
+        // because someone classified it wrongly.
+        assertThatThrownBy(() -> resolver.resolve("{{secret:vault.clientSecret}}", ctx()))
+                .isInstanceOf(SecretAccessDeniedException.class);
+
+        verify(settings, never()).getReferenceSecretCascade(any(), any(), any(), any());
+    }
+
+    @Test
+    void reservedKey_isRefusedInEveryScope() {
+        for (String ref : new String[] {
+                "{{secret:ai.provider.openai.apiKey}}",
+                "{{secret:tenant:ai.provider.openai.apiKey}}",
+                "{{secret:user:ai.provider.openai.apiKey}}",
+                "{{secret:project:vault.clientId}}"}) {
+            assertThatThrownBy(() -> resolver.resolveForConnector(ref, ctx()))
+                    .as(ref)
+                    .isInstanceOf(SecretAccessDeniedException.class);
+        }
+    }
+
+    @Test
+    void vaultScope_isNotMatchedAgainstSettingPatterns() {
+        // `vault:` names an entry in the vault's own namespace, not a
+        // setting. A key that merely spells like the reserved prefix must
+        // still resolve — the deny-list governs setting keys.
+        when(vault.readSecret(any(VaultScope.class), eq("vault.clientId")))
+                .thenReturn("from-vault");
+
+        assertThat(resolver.resolveForConnector("{{secret:vault:vault.clientId}}", ctx()))
+                .isEqualTo("from-vault");
+    }
+
+    @Test
+    void nameGuardRunsBeforeAnyLookup() {
+        // The refusal must not depend on the setting existing, or on how it
+        // is typed — a reserved key is unreachable even if nothing is stored
+        // under it, so an agent cannot probe for one either.
+        assertThatThrownBy(() -> resolver.resolve("{{secret:ai.provider.openai.apiKey}}", ctx()))
+                .isInstanceOf(SecretAccessDeniedException.class)
+                .extracting("key").isEqualTo("ai.provider.openai.apiKey");
+
+        verify(settings, never()).getReferenceSecretCascade(any(), any(), any(), any());
+        verify(settings, never()).getDecryptedPasswordCascade(any(), any(), any(), any());
+    }
+
+    @Test
+    void ordinaryConnectorCredential_stillResolves() {
+        when(settings.getDecryptedPassword(TENANT, "project", PROJECT, "smtp.password"))
+                .thenReturn("hunter2");
+
+        assertThat(resolver.resolveForConnector("{{secret:project:smtp.password}}", ctx()))
+                .isEqualTo("hunter2");
+    }
 
     private static ToolInvocationContext ctx() {
         return new ToolInvocationContext(TENANT, PROJECT, "s-1", PROCESS, USER);

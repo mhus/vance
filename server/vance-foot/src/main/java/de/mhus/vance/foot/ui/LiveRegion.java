@@ -483,11 +483,31 @@ public class LiveRegion {
         // The restarted input loop instead discards a short, quiet hand-off
         // window before it starts interpreting user input.
 
-        // Re-apply soft-raw attributes (ICANON / ECHO off, OPOST left on).
-        Attributes mod = new Attributes(t.getAttributes());
-        mod.setLocalFlag(LocalFlag.ICANON, false);
-        mod.setLocalFlag(LocalFlag.ECHO, false);
-        t.setAttributes(mod);
+        // Re-applying the terminal attributes may fail, but everything below
+        // it is what gives the user their prompt back. Bailing out here would
+        // leave the region paused with no input thread — a terminal that
+        // accepts nothing at all, which is strictly worse than one whose
+        // ICANON/ECHO flags are off. So: report it, then restart regardless.
+        try {
+            // Soft-raw attributes (ICANON / ECHO off, OPOST left on).
+            Attributes mod = new Attributes(t.getAttributes());
+            mod.setLocalFlag(LocalFlag.ICANON, false);
+            mod.setLocalFlag(LocalFlag.ECHO, false);
+            t.setAttributes(mod);
+        } catch (RuntimeException e) {
+            log.warn("LiveRegion.resume: could not re-apply terminal attributes "
+                    + "— input may echo until the next excursion: {}", e.toString());
+        } finally {
+            restartAfterResume();
+        }
+    }
+
+    /**
+     * The second half of {@link #resume()}: re-enable bracketed paste, replay
+     * the backlog, repaint, and bring the animator + input threads back. Split
+     * out so an attribute failure above cannot skip it.
+     */
+    private void restartAfterResume() {
         synchronized (writeLock) {
             writeRaw(ESC + "[?2004h");   // re-enable bracketed paste
         }

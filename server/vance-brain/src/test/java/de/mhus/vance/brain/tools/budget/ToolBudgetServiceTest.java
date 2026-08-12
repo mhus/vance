@@ -3,7 +3,9 @@ package de.mhus.vance.brain.tools.budget;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.ai.AiModelResolver;
@@ -174,6 +176,46 @@ class ToolBudgetServiceTest {
         ToolBudget budget = service.forProcess(p, "proj", Map.of());
 
         assertThat(budget.usage()).containsEntry("file_read", 153L);
+    }
+
+    @Test
+    void tenantPinnedProcess_resolvesTheChainFromTheTenantLayerOnly() {
+        // params.aiScope: tenant makes the chat resolve alias, endpoint and
+        // catalog from _tenant. The budget has to look at the same layer or
+        // it may cap a model the request is never sent to.
+        stubModel("openai:gpt-x", "openai", "gpt-x", 128);
+        ThinkProcessDocument p = process("openai:gpt-x", List.of());
+        p.getEngineParams().put("aiScope", "tenant");
+
+        assertThat(service.limitFor(p, "proj")).hasValue(128);
+
+        verify(resolver).resolveOrDefault(eq("openai:gpt-x"), eq("acme"), isNull(), isNull());
+        verify(catalog).lookupOrDefault(
+                eq("acme"), isNull(), eq("openai"), eq("openai"), eq("gpt-x"));
+    }
+
+    @Test
+    void unpinnedProcess_stillResolvesThroughTheProjectCascade() {
+        stubModel("openai:gpt-x", "openai", "gpt-x", 128);
+
+        assertThat(service.limitFor(process("openai:gpt-x", List.of()), "proj")).hasValue(128);
+
+        verify(resolver).resolveOrDefault(eq("openai:gpt-x"), eq("acme"), eq("proj"), eq("p-1"));
+    }
+
+    @Test
+    void pinnedAndUnpinnedProcesses_doNotShareAMemoEntry() {
+        // Same tenant, same spec — but different scopes, so the cached
+        // limit of one must not be served to the other.
+        stubModel("openai:gpt-x", "openai", "gpt-x", 128);
+        ThinkProcessDocument pinned = process("openai:gpt-x", List.of());
+        pinned.getEngineParams().put("aiScope", "tenant");
+
+        service.limitFor(process("openai:gpt-x", List.of()), "proj");
+        service.limitFor(pinned, "proj");
+
+        verify(resolver).resolveOrDefault(eq("openai:gpt-x"), eq("acme"), eq("proj"), eq("p-1"));
+        verify(resolver).resolveOrDefault(eq("openai:gpt-x"), eq("acme"), isNull(), isNull());
     }
 
     @Test

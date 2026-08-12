@@ -57,6 +57,16 @@ class ObservedToolLimitRegistryTest {
     }
 
     @Test
+    void returnsTheEffectiveLimit_whenTheRejectionWouldRaiseIt() {
+        registry.learnFrom("openai:m", "maximum length 64", 100);
+
+        // The caller (ResilientStreamingChatModel) turns this into the
+        // user-facing "the limit is now known" message, so it has to be the
+        // limit actually in force — not the looser one this rejection stated.
+        assertThat(registry.learnFrom("openai:m", BODY, 163)).hasValue(64);
+    }
+
+    @Test
     void messageWithoutANumber_learnsNothing() {
         assertThat(registry.learnFrom("openai:m", "tools array too long", 163)).isEmpty();
         assertThat(registry.observedFor("openai:m")).isEmpty();

@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.budget;
 
+import de.mhus.vance.brain.ai.AiConfigScope;
 import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.ChatBehaviorBuilder;
 import de.mhus.vance.brain.ai.ModelCatalog;
@@ -98,26 +99,13 @@ public class ToolBudgetService {
         // reflect what *this* recipe needs, not what the busiest worker in
         // the project happens to call.
         Map<String, Long> demand = toolUsageService.demandByTool(
-                process.getTenantId(), projectId, usageRole(process));
+                process.getTenantId(), projectId, ToolUsageService.roleOf(process));
         return new ToolBudget(
                 limit.getAsInt(),
                 reserved,
                 activationRecency == null ? Map.of() : activationRecency,
                 demand,
                 properties.getMaxActivatedTools());
-    }
-
-    /**
-     * Role key for the demand counters — recipe first, engine as fallback.
-     * Mirrors {@code ThinkEngineService.usageRole}: both sides have to
-     * agree or the read would miss the writes.
-     */
-    private static String usageRole(ThinkProcessDocument process) {
-        String recipe = process.getRecipeName();
-        if (recipe != null && !recipe.isBlank()) return recipe.trim();
-        String engine = process.getThinkEngine();
-        return (engine != null && !engine.isBlank())
-                ? engine.trim() : ToolUsageService.ROLE_UNKNOWN;
     }
 
     /** Family-level priority overrides from {@code vance.tools.budget.*}. */
@@ -135,7 +123,14 @@ public class ToolBudgetService {
     public OptionalInt limitFor(ThinkProcessDocument process, @Nullable String projectId) {
         String spec = ChatBehaviorBuilder.readModelSpec(process);
         List<String> fallbacks = ChatBehaviorBuilder.readFallbackAliases(process);
-        String cacheKey = process.getTenantId() + "|" + projectId + "|" + spec
+        // Same settings view the chat itself will be built from: a
+        // tenant-pinned process (params.aiScope) resolves alias, endpoint
+        // and catalog from _tenant only. Reading the cap through the
+        // project cascade instead could land on a different model than the
+        // one the request will actually be sent to — and then budget the
+        // wrong endpoint's limit. See ChatBehaviorBuilder.fromProcess.
+        ScopeView scope = scopeFor(process, projectId);
+        String cacheKey = process.getTenantId() + "|" + scope.projectId() + "|" + spec
                 + "|" + String.join(",", fallbacks);
         long version = observedLimits.version();
         Instant now = Instant.now();
@@ -145,14 +140,29 @@ public class ToolBudgetService {
                 && cached.readAt().plus(LIMIT_CACHE_TTL).isAfter(now)) {
             return cached.limit();
         }
-        OptionalInt resolved = resolveChainLimit(process, projectId, spec, fallbacks);
+        OptionalInt resolved = resolveChainLimit(process, scope, spec, fallbacks);
         limitCache.put(cacheKey, new CachedLimit(resolved, version, now));
         return resolved;
     }
 
+    /**
+     * The settings scope the AI config of this process resolves from —
+     * the full cascade, or the {@code _tenant} layer alone when the recipe
+     * pins it via {@code params.aiScope}. Pinning is expressed the same
+     * way {@link ChatBehaviorBuilder} expresses it: {@code null} for both
+     * inner scopes collapses the cascade to its base layer.
+     */
+    private static ScopeView scopeFor(
+            ThinkProcessDocument process, @Nullable String projectId) {
+        boolean pinned = ChatBehaviorBuilder.readAiConfigScope(process) == AiConfigScope.TENANT;
+        return pinned
+                ? new ScopeView(null, null)
+                : new ScopeView(projectId, process.getId());
+    }
+
     private OptionalInt resolveChainLimit(
             ThinkProcessDocument process,
-            @Nullable String projectId,
+            ScopeView scope,
             @Nullable String spec,
             List<String> fallbacks) {
         List<String> specs = new ArrayList<>();
@@ -160,7 +170,7 @@ public class ToolBudgetService {
         specs.addAll(fallbacks);
         int min = Integer.MAX_VALUE;
         for (String entry : specs) {
-            OptionalInt entryLimit = limitForSpec(process, projectId, entry);
+            OptionalInt entryLimit = limitForSpec(process, scope, entry);
             if (entryLimit.isEmpty()) continue;
             min = Math.min(min, entryLimit.getAsInt());
         }
@@ -173,11 +183,11 @@ public class ToolBudgetService {
      * a learned limit works without catalog metadata, and vice versa.
      */
     private OptionalInt limitForSpec(
-            ThinkProcessDocument process, @Nullable String projectId, @Nullable String spec) {
+            ThinkProcessDocument process, ScopeView scope, @Nullable String spec) {
         AiModelResolver.Resolved resolved;
         try {
             resolved = aiModelResolver.resolveOrDefault(
-                    spec, process.getTenantId(), projectId, process.getId());
+                    spec, process.getTenantId(), scope.projectId(), scope.processId());
         } catch (RuntimeException e) {
             log.trace("ToolBudgetService: cannot resolve model spec '{}' for process '{}': {}",
                     spec, process.getId(), e.toString());
@@ -187,7 +197,7 @@ public class ToolBudgetService {
         Integer configured = null;
         try {
             ModelInfo info = modelCatalog.lookupOrDefault(
-                    process.getTenantId(), projectId,
+                    process.getTenantId(), scope.projectId(),
                     resolved.providerInstance(), resolved.provider(), resolved.modelName());
             configured = info.maxTools();
         } catch (RuntimeException e) {
@@ -218,4 +228,7 @@ public class ToolBudgetService {
     }
 
     private record CachedLimit(OptionalInt limit, long version, Instant readAt) {}
+
+    /** Inner settings scopes to read the AI config through — both null = tenant layer only. */
+    private record ScopeView(@Nullable String projectId, @Nullable String processId) {}
 }

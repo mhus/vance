@@ -1,6 +1,5 @@
 package de.mhus.vance.shared.settings;
 
-import java.util.Arrays;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -10,6 +9,10 @@ import org.springframework.stereotype.Component;
  * Setting keys an agent may never write, regardless of type and regardless of
  * whether the setting already exists (rule W3 in
  * {@code planning/setting-type-hidden.md} §6.4).
+ *
+ * <p>The read-side counterpart is {@link SecretReferenceKeyPolicy}: this one
+ * stops a key from being <em>created</em> by an agent, that one stops any key
+ * from being <em>resolved</em> through a {@code {{secret:…}}} reference.
  *
  * <p>Rules W1 and W2 alone leave a gap: if {@code ai.provider.x.apiKey} does not
  * exist yet, an agent could create it as {@link
@@ -32,32 +35,17 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class AgentSettingKeyPolicy {
 
-    /** Suffix marking a prefix pattern. */
-    private static final String WILDCARD = "*";
-
     private final List<String> denyPatterns;
 
     public AgentSettingKeyPolicy(
             @Value("${vance.settings.agentWriteDenyKeys:ai.provider.*,vault.*}") String raw) {
-        this.denyPatterns = parse(raw);
+        this.denyPatterns = SettingKeyPatterns.parse(raw);
         log.debug("AgentSettingKeyPolicy: {} deny pattern(s): {}", denyPatterns.size(), denyPatterns);
     }
 
     /** Whether {@code key} is off-limits for agent-originated writes. */
     public boolean isDenied(String key) {
-        if (key == null || key.isBlank()) {
-            return false;
-        }
-        for (String pattern : denyPatterns) {
-            if (pattern.endsWith(WILDCARD)) {
-                if (key.startsWith(pattern.substring(0, pattern.length() - WILDCARD.length()))) {
-                    return true;
-                }
-            } else if (pattern.equals(key)) {
-                return true;
-            }
-        }
-        return false;
+        return SettingKeyPatterns.matches(denyPatterns, key);
     }
 
     /**
@@ -78,15 +66,5 @@ public class AgentSettingKeyPolicy {
     /** Visible for tests and for the exact patterns in effect. */
     public List<String> denyPatterns() {
         return denyPatterns;
-    }
-
-    static List<String> parse(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return List.of();
-        }
-        return Arrays.stream(raw.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .toList();
     }
 }

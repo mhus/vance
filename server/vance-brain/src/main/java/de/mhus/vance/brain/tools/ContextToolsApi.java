@@ -1220,8 +1220,12 @@ public final class ContextToolsApi implements ToolBus {
                 if (budget == null || !budget.hasLimit()) {
                     return unrestricted;
                 }
+                // filter is visibility-empty here, but may still carry
+                // keep/dropFirst — those are ranking-only and have to
+                // survive into the triage.
                 return budgetUnrestricted(
-                        dispatcher, ctx, activatedDeferred, budget, familyHints, unrestricted);
+                        dispatcher, ctx, filter, activatedDeferred, budget,
+                        familyHints, unrestricted);
             }
             // Engine doesn't restrict, but the recipe carries a filter.
             // Expand the base to every dispatchable tool so add/remove/defer
@@ -1358,10 +1362,20 @@ public final class ContextToolsApi implements ToolBus {
      * triages it. Returns {@code unrestricted} unchanged while the
      * surface fits, so the cheap path stays cheap and behaviour only
      * changes where it has to.
+     *
+     * <p>{@code filter} reaches here <em>ranking-only</em>: this path is
+     * taken precisely when the recipe carries no visibility overlay, but
+     * {@code allowedToolsKeep} / {@code allowedToolsDropFirst} carry no
+     * visibility effect by design, so a recipe may well hold nothing but
+     * those. Dropping them would silently ignore the one statement the
+     * author made about what to give up first — on the engines with the
+     * widest surface, which are exactly the ones the cut hits.
      */
     private static Classification budgetUnrestricted(
             ToolDispatcher dispatcher,
             ToolInvocationContext ctx,
+            de.mhus.vance.brain.recipe.RecipeResolver.@org.jspecify.annotations.Nullable
+                    ToolFilter filter,
             @org.jspecify.annotations.Nullable Set<String> activatedDeferred,
             ToolBudget budget,
             ToolTriage.@org.jspecify.annotations.Nullable Hints familyHints,
@@ -1388,7 +1402,7 @@ public final class ContextToolsApi implements ToolBus {
         floor.retainAll(primary);
         ToolTriage.Result triaged = ToolTriage.apply(
                 primary, activated, floor,
-                hintsFrom(null, familyHints), budget);
+                hintsFrom(filter, familyHints), budget);
         Set<String> demotedToDeferred = new LinkedHashSet<>(triaged.demoted());
         demotedToDeferred.retainAll(primary);
         deferred.addAll(demotedToDeferred);

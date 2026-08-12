@@ -1,11 +1,12 @@
 package de.mhus.vance.shared.toolusage;
 
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -32,7 +33,10 @@ import org.springframework.stereotype.Service;
  * <p><b>Reads are memoised.</b> The triage runs on every turn — for some
  * engines on every action-loop iteration — while these counters move
  * slowly and only break ties. A short TTL keeps the hot path off Mongo
- * without making the ranking stale in any way that matters.
+ * without making the ranking stale in any way that matters. The memo is
+ * a <em>bounded</em> LRU: a TTL alone never removes an entry, so a brain
+ * serving many tenants × projects × roles would accumulate one snapshot
+ * per combination for the lifetime of the pod.
  */
 @Service
 @Slf4j
@@ -40,6 +44,14 @@ public class ToolUsageService {
 
     /** How long a per-project/role counter snapshot is reused. */
     static final Duration READ_CACHE_TTL = Duration.ofMinutes(5);
+
+    /**
+     * Upper bound on memoised snapshots — least-recently-used evicted past
+     * this. The TTL decides whether an entry is still <em>valid</em>; this
+     * decides how many may exist at all, because an expired entry is
+     * overwritten but never dropped on its own.
+     */
+    static final int READ_CACHE_MAX = 512;
 
     /**
      * Role bucket for writes that cannot be attributed — no recipe and no
@@ -55,7 +67,16 @@ public class ToolUsageService {
 
     private final MongoTemplate mongoTemplate;
     private final ToolUsageRepository repository;
-    private final Map<String, Snapshot> readCache = new ConcurrentHashMap<>();
+    // Access-order LRU behind a synchronized wrapper: both get() (which
+    // reorders) and put() (which may evict) mutate, so a plain map would
+    // not be safe across the concurrent turns that read it.
+    private final Map<String, Snapshot> readCache = Collections.synchronizedMap(
+            new LinkedHashMap<>(64, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, Snapshot> eldest) {
+                    return size() > READ_CACHE_MAX;
+                }
+            });
 
     public ToolUsageService(MongoTemplate mongoTemplate, ToolUsageRepository repository) {
         this.mongoTemplate = mongoTemplate;
@@ -172,6 +193,27 @@ public class ToolUsageService {
     /** Drops the memoised read snapshots — tests and admin refresh. */
     public void invalidateCache() {
         readCache.clear();
+    }
+
+    /**
+     * Role a process's tool usage is attributed to: its recipe name, or the
+     * engine name when the process carries none (legacy spawns, direct
+     * engine invocations).
+     *
+     * <p><b>The single derivation site.</b> Writers ({@code ThinkEngineService},
+     * {@code ToolDescriptionTool}) and the reader ({@code ToolBudgetService})
+     * have to agree on this key or the triage reads past its own counters —
+     * so they all call here rather than each spelling out the rule.
+     *
+     * @return the role, or {@code null} when neither field is set; the write
+     *         paths turn that into {@link #ROLE_UNKNOWN}
+     */
+    public static @Nullable String roleOf(@Nullable ThinkProcessDocument process) {
+        if (process == null) return null;
+        String recipe = process.getRecipeName();
+        if (!isBlank(recipe)) return recipe.trim();
+        String engine = process.getThinkEngine();
+        return isBlank(engine) ? null : engine.trim();
     }
 
     private static String role(@Nullable String recipeName) {

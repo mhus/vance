@@ -10,6 +10,7 @@ import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -93,6 +94,7 @@ class ResilientStreamingChatModelToolLimitTest {
                     label.set(l);
                     text.set(t);
                     requested.set(count);
+                    return OptionalInt.of(128);
                 });
 
         CountDownLatch done = new CountDownLatch(1);
@@ -102,6 +104,59 @@ class ResilientStreamingChatModelToolLimitTest {
         assertThat(label.get()).isEqualTo("openai:sol");
         assertThat(ToolLimitError.parseLimit(text.get())).hasValue(128);
         assertThat(requested.get()).isEqualTo(163);
+    }
+
+    @Test
+    void learnedLimit_isNamedAndTheTurnIsWorthRetrying() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        ResilientStreamingChatModel model = new ResilientStreamingChatModel(
+                List.of(new ChainEntry(failing(calls, REJECTION), "openai:sol", FAST)),
+                null,
+                (l, t, count) -> OptionalInt.of(128));
+
+        AtomicReference<Throwable> error = new AtomicReference<>();
+        CountDownLatch done = new CountDownLatch(1);
+        model.chat(requestWithTools(163), errorOnly(error, done));
+
+        assertThat(done.await(2, TimeUnit.SECONDS)).isTrue();
+        assertThat(error.get().getMessage())
+                .contains("128")
+                .contains("retry the turn");
+    }
+
+    @Test
+    void nothingLearned_doesNotPromiseThatARetryHelps() throws Exception {
+        // The next turn would build the identical manifest, so telling the
+        // caller to retry sends them into the same 400. The message has to
+        // point at the durable fix instead.
+        AtomicInteger calls = new AtomicInteger();
+        ResilientStreamingChatModel model = new ResilientStreamingChatModel(
+                List.of(new ChainEntry(failing(calls, REJECTION), "openai:sol", FAST)),
+                null,
+                (l, t, count) -> OptionalInt.empty());
+
+        AtomicReference<Throwable> error = new AtomicReference<>();
+        CountDownLatch done = new CountDownLatch(1);
+        model.chat(requestWithTools(163), errorOnly(error, done));
+
+        assertThat(done.await(2, TimeUnit.SECONDS)).isTrue();
+        assertThat(error.get().getMessage())
+                .doesNotContain("retry the turn")
+                .contains("maxTools");
+    }
+
+    @Test
+    void withoutALearner_alsoDoesNotPromiseARetry() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        ResilientStreamingChatModel model = new ResilientStreamingChatModel(
+                List.of(new ChainEntry(failing(calls, REJECTION), "openai:sol", FAST)));
+
+        AtomicReference<Throwable> error = new AtomicReference<>();
+        CountDownLatch done = new CountDownLatch(1);
+        model.chat(requestWithTools(163), errorOnly(error, done));
+
+        assertThat(done.await(2, TimeUnit.SECONDS)).isTrue();
+        assertThat(error.get().getMessage()).doesNotContain("retry the turn");
     }
 
     @Test

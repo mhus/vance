@@ -23,9 +23,11 @@ package de.mhus.vance.brain.tools.budget;
  * <p>Rule 2 is deliberately coarse. It groups {@code work_file_*} with
  * {@code work_exec_*} (both address the brain workspace) and leaves
  * single-word tools in a family of one. Operators who need a different
- * split order families explicitly via
- * {@code vance.tools.budget.family-priority} instead of getting a
- * cleverer heuristic here.
+ * split rank families explicitly via
+ * {@code vance.tools.budget.keep-families} /
+ * {@code vance.tools.budget.drop-first-families} (see
+ * {@link ToolBudgetProperties}) instead of getting a cleverer heuristic
+ * here.
  */
 public final class ToolFamily {
 

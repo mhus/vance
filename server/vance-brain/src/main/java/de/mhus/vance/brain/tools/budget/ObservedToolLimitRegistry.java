@@ -5,6 +5,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +34,9 @@ import org.springframework.stereotype.Component;
 public class ObservedToolLimitRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(ObservedToolLimitRegistry.class);
+
+    /** Sentinel for "no limit was known before this call" — every real limit is positive. */
+    private static final int NONE = -1;
 
     private final Map<String, Integer> observed = new ConcurrentHashMap<>();
 
@@ -65,12 +69,22 @@ public class ObservedToolLimitRegistry {
         }
         int limit = parsed.getAsInt();
         String key = normalize(modelLabel);
-        Integer previous = observed.get(key);
-        if (previous != null && previous <= limit) {
-            // Already know an equal or stricter limit — nothing to learn.
-            return OptionalInt.of(previous);
+        // Atomic min. Two turns can be rejected concurrently by the same
+        // endpoint, and a get-then-put would let the larger of the two land
+        // last — breaking the "smallest ever seen" invariant this registry
+        // rests on. The prior value is captured inside the same atomic step
+        // so "did we actually learn something" stays decidable: re-learning
+        // a known limit must not bump the version (that would invalidate
+        // ToolBudgetService's memo) nor repeat the WARN.
+        AtomicInteger prior = new AtomicInteger(NONE);
+        int effective = observed.compute(key, (k, known) -> {
+            prior.set(known == null ? NONE : known);
+            return known == null ? limit : Math.min(known, limit);
+        });
+        if (prior.get() != NONE && effective == prior.get()) {
+            // Already knew an equal or stricter limit — nothing to learn.
+            return OptionalInt.of(effective);
         }
-        observed.put(key, limit);
         version.incrementAndGet();
         log.warn("Tool-surface: endpoint '{}' enforces maxTools={} but received {} schemas — "
                         + "learned the limit for this pod; the durable fix is 'maxTools: {}' in "

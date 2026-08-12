@@ -3,6 +3,7 @@ package de.mhus.vance.brain.tools.rest;
 import de.mhus.vance.brain.oauth.OAuthExpiredException;
 import de.mhus.vance.brain.oauth.OAuthTokenRefresher;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.settings.SecretReferenceKeyPolicy;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.vault.VaultException;
 import de.mhus.vance.shared.vault.VaultScope;
@@ -48,16 +49,26 @@ import org.springframework.stereotype.Service;
  * token when it's about to expire.
  *
  * <h2>This class is the reference-readability chokepoint</h2>
- * Every setting-backed scope reads through
+ * Two guards sit here, and they answer different questions.
+ *
+ * <p><b>Who may read this type?</b> {@link #resolve} — the restrictive default —
+ * routes every setting-backed scope through
  * {@code SettingService.getReferenceSecret*}, which hands out
  * {@link de.mhus.vance.api.settings.SettingType#HIDDEN} values and refuses
  * {@code PASSWORD} ones. That is the whole enforcement of the split: the three
  * agent-writable surfaces — script {@code vance.secret(…)}, the Python
  * equivalent, and compose {@code secrets:} — all wrap their input into
  * {@code {{secret:…}}} and land here, so none of them needs its own guard.
- * Compiled server code reading a fixed key stays on
- * {@code getDecryptedPassword} and is unaffected. See
- * {@code planning/setting-type-hidden.md} §5.
+ * {@link #resolveForConnector} reads both encrypted types instead, because an
+ * operator-authored connector config is not a dynamic element. Compiled server
+ * code reading a fixed key stays on {@code getDecryptedPassword} and is
+ * unaffected. See {@code planning/setting-type-hidden.md} §5.
+ *
+ * <p><b>May this key be referenced at all?</b> {@link SecretReferenceKeyPolicy}
+ * applies to <em>both</em> paths. Once connectors can resolve PASSWORD, the type
+ * no longer keeps a reference away from {@code ai.provider.*.apiKey} — and a
+ * connector document declares its target URL next to its headers. Reserved keys
+ * are refused by name, before any scope is consulted.
  *
  * <p>Unresolved references substitute to the empty string with a
  * {@code WARN} log line — REST calls that depend on the auth header
@@ -92,6 +103,7 @@ public class SettingsSecretResolver implements SecretResolver {
     private final SettingService settings;
     private final OAuthTokenRefresher oauthTokenRefresher;
     private final VaultService vaultService;
+    private final SecretReferenceKeyPolicy referenceKeyPolicy;
 
     @Override
     public @Nullable String resolve(@Nullable String input, ToolInvocationContext ctx) {
@@ -140,6 +152,20 @@ public class SettingsSecretResolver implements SecretResolver {
             return null;
         }
         Scoped scoped = parseScope(body);
+        if (!SCOPE_VAULT.equals(scoped.scope())) {
+            // Reserved server-internal keys are off-limits to every reference,
+            // whichever scope names them and whoever asks. On the connector
+            // path this is the *only* guard: PASSWORD is readable there by
+            // design, so the type no longer keeps a tool document from
+            // pointing an Authorization header at ai.provider.*.apiKey and
+            // sending it to whatever URL that same document declares.
+            //
+            // Not applied to `vault:` — that key names an entry in the vault's
+            // own namespace, not a setting, and its resolution reads HIDDEN
+            // settings at most. Matching setting patterns against it would
+            // deny an unrelated key that merely spells the same.
+            referenceKeyPolicy.requireReferenceReadable(scoped.key());
+        }
         return switch (scoped.scope()) {
             case SCOPE_USER -> resolveUser(scoped.key(), ctx, connector);
             case SCOPE_TENANT -> resolveTenant(scoped.key(), ctx, connector);

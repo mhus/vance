@@ -3,6 +3,7 @@ package de.mhus.vance.brain.tools;
 import de.mhus.vance.brain.tools.budget.ToolFamily;
 import de.mhus.vance.shared.toolusage.ToolUsageService;
 import java.util.List;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -19,32 +20,52 @@ public final class ToolInvocationListeners {
      * Fan out to all listeners in order. A listener that throws must not
      * take down the tool call or stop the remaining listeners: these are
      * observers, and the dispatch is the thing that matters.
+     *
+     * <p><b>Forwards the delegate hooks as delegate hooks.</b> Relying on
+     * their default (which routes to {@code before}/{@code after}) would
+     * flatten the distinction right here: every child would see a
+     * delegated dispatch as a normal one, and a listener that opted out of
+     * delegated legs would still be called. Measured 2026-08-12: the
+     * demand counter kept recording {@code client_file_edit} next to
+     * {@code file_edit} even though the recorder no-ops on delegates —
+     * because this composite never asked it.
      */
     public static ToolInvocationListener of(ToolInvocationListener... listeners) {
         List<ToolInvocationListener> chain = List.of(listeners);
         return new ToolInvocationListener() {
             @Override
             public void before(String toolName) {
-                for (ToolInvocationListener l : chain) {
-                    try {
-                        l.before(toolName);
-                    } catch (RuntimeException ignored) {
-                        // observer failure — keep dispatching
-                    }
-                }
+                fanOut(chain, l -> l.before(toolName));
             }
 
             @Override
             public void after(String toolName, long elapsedMs, @Nullable Throwable error) {
-                for (ToolInvocationListener l : chain) {
-                    try {
-                        l.after(toolName, elapsedMs, error);
-                    } catch (RuntimeException ignored) {
-                        // observer failure — keep dispatching
-                    }
-                }
+                fanOut(chain, l -> l.after(toolName, elapsedMs, error));
+            }
+
+            @Override
+            public void beforeDelegate(String toolName) {
+                fanOut(chain, l -> l.beforeDelegate(toolName));
+            }
+
+            @Override
+            public void afterDelegate(
+                    String toolName, long elapsedMs, @Nullable Throwable error) {
+                fanOut(chain, l -> l.afterDelegate(toolName, elapsedMs, error));
             }
         };
+    }
+
+    /** Calls every listener, swallowing individual observer failures. */
+    private static void fanOut(
+            List<ToolInvocationListener> chain, Consumer<ToolInvocationListener> call) {
+        for (ToolInvocationListener l : chain) {
+            try {
+                call.accept(l);
+            } catch (RuntimeException ignored) {
+                // observer failure — keep dispatching
+            }
+        }
     }
 
     /**

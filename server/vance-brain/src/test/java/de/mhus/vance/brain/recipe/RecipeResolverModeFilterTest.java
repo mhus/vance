@@ -382,7 +382,7 @@ class RecipeResolverModeFilterTest {
                 baseKeep, baseDropFirst,
                 /*modes*/ Map.of(), profiles,
                 List.of(), null, List.of(), false, false, false, null, List.of(),
-                null, List.of(), RecipeSource.RESOURCE);
+                List.of(), RecipeSource.RESOURCE);
     }
 
     private static ResolvedRecipe recipe(

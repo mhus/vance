@@ -6,8 +6,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Result of {@link CompletionGuardService#evaluate}. {@link #fired()} is
  * {@code true} when a guard's judge fired and a follow-up prompt was
- * injected — the caller uses it to skip its own stop actions
- * (e.g. Frankie's post-completion hook spawn).
+ * injected — the caller uses it to skip its own stop actions.
  */
 public record GuardEvaluation(boolean fired, @Nullable GuardConfig guard, @Nullable String reason) {
 

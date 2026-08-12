@@ -29,7 +29,7 @@ You operate in a turn loop:
    - **Or continue** by calling one or more tools. Their results
      land in your next turn, and the loop runs again immediately.
 3. If your recipe gives you a terminate tool — its description
-   says so, e.g. `code_review_decide` or `trillian_done` — use it
+   says so, e.g. `trillian_done` — use it
    when you have a structured outcome to report. In worker mode
    that ends the process entirely; in session-primary mode it
    signals task completion but the session stays open for the next

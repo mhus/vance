@@ -25,8 +25,8 @@ import org.springframework.stereotype.Component;
  * — no lost wake-up.
  *
  * <p>Semantics are "first settle wins": the latch trips on the first
- * {@code busy → idle} edge after arming. A follow-up turn (completion
- * guard, post-completion hook) that starts after that edge is not waited
+ * {@code busy → idle} edge after arming. A follow-up turn started by a
+ * completion guard after that edge is not waited
  * for — for a one-shot the primary turn having produced its output is the
  * completion criterion.
  */

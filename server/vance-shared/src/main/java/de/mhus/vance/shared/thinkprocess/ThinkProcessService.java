@@ -305,7 +305,6 @@ public class ThinkProcessService {
                 .shownOnce(new LinkedHashSet<>())
                 .haltRequested(false)
                 .lastPrakAt(null)
-                .postCompletionHookRounds(0)
                 .build();
         ThinkProcessDocument saved = repository.save(copy);
         log.info("Duplicated think-process source='{}' → copy='{}' session='{}'",
@@ -572,45 +571,8 @@ public class ThinkProcessService {
     }
 
     /**
-     * Atomically increments the post-completion hook round counter on
-     * the given process and returns the new value. Used by
-     * {@code FrankieEngine} before spawning a hook-process so the
-     * Round-Cap check (against the recipe's
-     * {@code postCompletionHook.maxRounds}) is race-free even when the
-     * worker is concurrently resumed on a different pod.
-     *
-     * <p>Returns the post-increment value so callers can log + compare
-     * in one step. Returns {@code -1} when the row does not exist.
-     */
-    public int incrementPostCompletionHookRounds(String id) {
-        Query query = new Query(Criteria.where("_id").is(id));
-        Update update = new Update().inc("postCompletionHookRounds", 1);
-        ThinkProcessDocument updated = mongoTemplate.findAndModify(
-                query, update,
-                new org.springframework.data.mongodb.core.FindAndModifyOptions().returnNew(true),
-                ThinkProcessDocument.class);
-        return updated == null ? -1 : updated.getPostCompletionHookRounds();
-    }
-
-    /**
-     * Sets (or, when {@code template} is {@code null}, clears) the
-     * runtime override for the Frankie post-completion hook goal
-     * template. Atomic {@code $set}/{@code $unset}. Returns {@code true}
-     * when the process existed.
-     */
-    public boolean setPostCompletionHookGoalOverride(String id, @Nullable String template) {
-        Query query = new Query(Criteria.where("_id").is(id));
-        Update update = template == null
-                ? new Update().unset("postCompletionHookGoalOverride")
-                : new Update().set("postCompletionHookGoalOverride", template);
-        return mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class)
-                .getMatchedCount() > 0;
-    }
-
-    /**
      * Atomically increments the completion-guard round counter and
      * returns the new value (or {@code -1} when the process is gone).
-     * Mirrors {@link #incrementPostCompletionHookRounds}.
      */
     public int incrementGuardRounds(String id) {
         Query query = new Query(Criteria.where("_id").is(id));

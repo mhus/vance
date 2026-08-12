@@ -18,8 +18,6 @@ is the tool that opts in, not the engine.
 **Not every recipe has one.** Check your tool list; do not guess a
 name. The recipes that ship with one:
 
-- **code-review** — `code_review_decide(outcome="approve", summary="…")`
-  or `code_review_decide(outcome="reopen", reason="…", followUp="…")`.
   Must be called exactly once; natural-stop is not accepted there.
 - **trillian-worker-0** — `trillian_done(summary="…")`, optionally with
   `data` for a structured payload.

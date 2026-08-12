@@ -105,14 +105,6 @@ public record ResolvedRecipe(
         @Nullable String title,
         List<String> tags,
         /**
-         * Optional post-completion hook config. When set on a Frankie
-         * recipe, the engine spawns the configured follow-up process
-         * after the worker reaches the configured stop signal — see
-         * {@code planning/frankie-post-completion-hook.md}. Ignored
-         * by non-Frankie engines.
-         */
-        @Nullable PostCompletionHookConfig postCompletionHook,
-        /**
          * Completion guards (recipe {@code guard:} block). Engine-agnostic:
          * any engine that calls {@code CompletionGuardService.evaluate} at
          * its yield point honours these. Empty list = no guards. See
@@ -147,7 +139,6 @@ public record ResolvedRecipe(
             boolean listed,
             @Nullable String title,
             List<String> tags,
-            @Nullable PostCompletionHookConfig postCompletionHook,
             List<GuardConfig> guards,
             RecipeSource source) {
         this(name, description, engine, params, promptPrefix, promptMode,
@@ -155,41 +146,6 @@ public record ResolvedRecipe(
                 allowedToolsDefer, List.of(), List.of(), modes, profiles,
                 defaultActiveSkills, allowedSkills,
                 triggerKeywords, locked, internal, listed, title, tags,
-                postCompletionHook, guards, source);
-    }
-
-    /**
-     * Backward-compatible constructor for call sites that predate
-     * completion guards — no {@code guards}, no budget-priority hints.
-     */
-    public ResolvedRecipe(
-            String name,
-            String description,
-            String engine,
-            Map<String, Object> params,
-            @Nullable String promptPrefix,
-            PromptMode promptMode,
-            @Nullable String dataRelayCorrection,
-            List<String> allowedToolsAdd,
-            List<String> allowedToolsRemove,
-            List<String> allowedToolsDefer,
-            Map<String, RecipeModeBlock> modes,
-            Map<String, ProfileBlock> profiles,
-            List<String> defaultActiveSkills,
-            @Nullable List<String> allowedSkills,
-            List<String> triggerKeywords,
-            boolean locked,
-            boolean internal,
-            boolean listed,
-            @Nullable String title,
-            List<String> tags,
-            @Nullable PostCompletionHookConfig postCompletionHook,
-            RecipeSource source) {
-        this(name, description, engine, params, promptPrefix, promptMode,
-                dataRelayCorrection, allowedToolsAdd, allowedToolsRemove,
-                allowedToolsDefer, List.of(), List.of(), modes, profiles,
-                defaultActiveSkills, allowedSkills,
-                triggerKeywords, locked, internal, listed, title, tags,
-                postCompletionHook, List.of(), source);
+                guards, source);
     }
 }

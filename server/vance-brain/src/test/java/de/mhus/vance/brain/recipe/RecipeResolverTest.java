@@ -182,7 +182,6 @@ class RecipeResolverTest {
                 false, // listed
                 null, // title
                 List.of(),
-                null, // postCompletionHook
-                RecipeSource.RESOURCE);
+                List.of(), RecipeSource.RESOURCE);
     }
 }

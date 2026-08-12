@@ -423,8 +423,7 @@ class LightLlmServiceImplTest {
                 false,        // listed
                 null,         // title
                 List.of(),
-                null,         // postCompletionHook
-                RecipeSource.PROJECT);
+                List.of(), RecipeSource.PROJECT);
     }
 
     private static ResolvedRecipe stubRecipeWithoutPrompt(String name) {
@@ -446,8 +445,7 @@ class LightLlmServiceImplTest {
                 false,        // listed
                 null,         // title
                 List.of(),
-                null,         // postCompletionHook
-                RecipeSource.PROJECT);
+                List.of(), RecipeSource.PROJECT);
     }
 
     private static final class ScriptedChatModel implements ChatModel {

@@ -417,35 +417,9 @@ public class ThinkProcessDocument {
     private @Nullable Instant lastPrakAt;
 
     /**
-     * Number of post-completion hook rounds the Frankie engine has
-     * already spawned for this process. Incremented atomically by
-     * {@code ThinkProcessService.incrementPostCompletionHookRounds}
-     * each time the engine spawns a hook-process after a natural
-     * stop / tool-terminate. The engine compares this counter against
-     * the recipe's {@code postCompletionHook.maxRounds} cap before
-     * deciding to spawn — see
-     * {@code planning/frankie-post-completion-hook.md} §4 / §9.
-     *
-     * <p>Engine-internal state, not recipe config. Survives process
-     * restarts so the cap is respected even when the worker is
-     * resumed across pods.
-     */
-    private int postCompletionHookRounds = 0;
-
-    /**
-     * Runtime override for the Frankie post-completion hook's goal
-     * template (the {@code goalTemplate} that a recipe otherwise
-     * supplies). Set/cleared live via the {@code frankie.hook} engine
-     * command; {@code null} falls back to the recipe template, then the
-     * built-in default. See {@code planning/engine-commands.md} §4 and
-     * {@code specification/frankie-engine.md} §14.
-     */
-    private @Nullable String postCompletionHookGoalOverride;
-
-    /**
      * Number of completion-guard injections fired for this process —
      * capped against each guard's {@code maxRounds}. Engine-internal
-     * state (like {@link #postCompletionHookRounds}), atomically
+     * state, atomically
      * {@code $inc}-remented before injection. See
      * {@code planning/completion-guard.md} §2.3.
      */

@@ -393,8 +393,7 @@ class SpawnActionExecutorTest {
                 /*listed*/ false,
                 /*title*/ null,
                 /*tags*/ List.of(),
-                /*postCompletionHook*/ null,
-                RecipeSource.PROJECT);
+                List.of(), RecipeSource.PROJECT);
     }
 
     @SuppressWarnings("unchecked")

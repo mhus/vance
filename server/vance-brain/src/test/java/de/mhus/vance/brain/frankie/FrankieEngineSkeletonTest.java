@@ -156,10 +156,6 @@ class FrankieEngineSkeletonTest {
                 .thenReturn(de.mhus.vance.brain.memory.CompactionResult.noop("test"));
 
         attachmentResolver = mock(de.mhus.vance.brain.ai.attachment.AttachmentResolver.class);
-        FrankiePostCompletionHookHandler hookHandler =
-                mock(FrankiePostCompletionHookHandler.class);
-        lenient().when(hookHandler.maybeSpawn(any(), any(), any(), anyBoolean()))
-                .thenReturn(false);
         de.mhus.vance.brain.guard.CompletionGuardService completionGuard =
                 mock(de.mhus.vance.brain.guard.CompletionGuardService.class);
         lenient().when(completionGuard.evaluate(any(), any(), anyBoolean()))
@@ -174,7 +170,7 @@ class FrankieEngineSkeletonTest {
                 memoryContextLoader,
                 modelCatalog, memoryCompactionService,
                 new de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry(java.util.List.of()),
-                hookHandler, completionGuard,
+                completionGuard,
                 new de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer(
                                 attachmentResolver));
 

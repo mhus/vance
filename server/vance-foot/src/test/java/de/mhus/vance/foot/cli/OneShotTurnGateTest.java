@@ -96,7 +96,7 @@ class OneShotTurnGateTest {
 
     @Test
     void followUpTurnAfterTheFirstSettle_isNotWaitedFor() throws Exception {
-        // "First settle wins": a completion guard or post-completion hook
+        // "First settle wins": a completion guard
         // may start another turn afterwards, but the one-shot's output
         // criterion is the primary turn.
         gate.arm();

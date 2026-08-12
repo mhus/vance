@@ -37,6 +37,9 @@ class SchemaMigrationServiceTest {
     /** Contexts the fixtures were handed. */
     static final List<SchemaMigrationContext> CONTEXTS = new ArrayList<>();
 
+    /** Stands for "this database has been seen before"; sorts below everything. */
+    private static final String ANCHOR = "2026-07-01_001";
+
     private static final String FIRST = "2026-08-01_001";
     private static final String SECOND = "2026-08-05_001";
 
@@ -170,7 +173,7 @@ class SchemaMigrationServiceTest {
         // First read: nothing applied. Second read (under the lock): the pod that
         // held it before us finished the first migration.
         when(mongoTemplate.findAll(SchemaMigrationDocument.class))
-                .thenReturn(List.of(), List.of(applied(FIRST)));
+                .thenReturn(List.of(baselined(ANCHOR)), List.of(baselined(ANCHOR), applied(FIRST)));
         acquireSucceeds();
 
         SchemaMigrationReport report =
@@ -178,6 +181,64 @@ class SchemaMigrationServiceTest {
 
         assertThat(EXECUTED).containsExactly(SECOND);
         assertThat(report.applied()).containsExactly(SECOND);
+    }
+
+    // ─── baseline (a database nobody has stamped yet) ───────────────
+
+    @Test
+    void runPending_baselinesWithoutRunning_whenTheDatabaseHasNoMarkerAtAll() {
+        // No marker means "new database": it was written by the current code, so
+        // historical transforms have nothing to do there.
+        noMarkers();
+
+        SchemaMigrationReport report =
+                service(entry(FIRST, First.class), entry(SECOND, Second.class)).runPending();
+
+        assertThat(EXECUTED).isEmpty();
+        assertThat(report.baselined()).isTrue();
+        assertThat(report.applied()).isEmpty();
+        assertThat(report.version()).isEqualTo(SECOND);
+        assertThat(report.noop()).isFalse();
+    }
+
+    @Test
+    void runPending_baseline_marksEveryRegisteredMigration_asBaselined() {
+        // Not APPLIED: the history must not claim work that never happened. And
+        // every entry gets a marker, otherwise the ones below the version would be
+        // reported as skipped on the next boot.
+        noMarkers();
+
+        service(entry(FIRST, First.class), entry(SECOND, Second.class)).runPending();
+
+        assertThat(savedMarkers()).hasSize(2);
+        assertThat(savedMarkers()).allSatisfy(marker ->
+                assertThat(marker.getStatus()).isEqualTo(SchemaMigrationState.BASELINED));
+        assertThat(savedMarkers()).extracting(SchemaMigrationDocument::getId)
+                .containsExactly(FIRST, SECOND);
+    }
+
+    @Test
+    void runPending_baseline_neverTakesTheLock() {
+        // Concurrent baselining writes byte-identical markers keyed by _id.
+        noMarkers();
+
+        service(entry(FIRST, First.class)).runPending();
+
+        verifyNoInteractions(lockStore);
+    }
+
+    @Test
+    void runPending_doesNotBaseline_whenOnlyAFailedMarkerExists() {
+        // A failed marker is proof the database has been seen before — baselining
+        // it would silently drop the migration that is trying to run.
+        when(mongoTemplate.findAll(SchemaMigrationDocument.class))
+                .thenReturn(List.of(failed(FIRST)));
+        acquireSucceeds();
+
+        SchemaMigrationReport report = service(entry(FIRST, First.class)).runPending();
+
+        assertThat(report.baselined()).isFalse();
+        assertThat(EXECUTED).containsExactly(FIRST);
     }
 
     // ─── failure handling ───────────────────────────────────────────
@@ -223,7 +284,7 @@ class SchemaMigrationServiceTest {
     @Test
     void runPending_reportsAppliedByOtherPod_whenTheHolderFinishesWhileWeWait() {
         when(mongoTemplate.findAll(SchemaMigrationDocument.class))
-                .thenReturn(List.of(), List.of(applied(FIRST)));
+                .thenReturn(List.of(baselined(ANCHOR)), List.of(baselined(ANCHOR), applied(FIRST)));
         when(lockStore.tryAcquire(anyString(), any(), any())).thenReturn(false);
 
         SchemaMigrationReport report = service(entry(FIRST, First.class)).runPending();
@@ -284,8 +345,23 @@ class SchemaMigrationServiceTest {
         return new RegisteredMigration(id, type);
     }
 
+    /**
+     * Stubs the marker collection. The no-arg form is <em>not</em> empty: it
+     * carries an anchor marker, because a genuinely empty collection means "new
+     * database" and takes the baseline short-circuit. Use {@link #noMarkers()} for
+     * that case. The anchor sorts below {@link #FIRST}, so everything registered
+     * is pending — which is what the run tests want.
+     */
     private void markers(SchemaMigrationDocument... docs) {
-        when(mongoTemplate.findAll(SchemaMigrationDocument.class)).thenReturn(List.of(docs));
+        List<SchemaMigrationDocument> all = new ArrayList<>();
+        all.add(baselined(ANCHOR));
+        all.addAll(List.of(docs));
+        when(mongoTemplate.findAll(SchemaMigrationDocument.class)).thenReturn(all);
+    }
+
+    /** A database this framework has never seen. */
+    private void noMarkers() {
+        when(mongoTemplate.findAll(SchemaMigrationDocument.class)).thenReturn(List.of());
     }
 
     private void acquireSucceeds() {
@@ -306,6 +382,10 @@ class SchemaMigrationServiceTest {
 
     private static SchemaMigrationDocument failed(String id) {
         return marker(id, SchemaMigrationState.FAILED);
+    }
+
+    private static SchemaMigrationDocument baselined(String id) {
+        return marker(id, SchemaMigrationState.BASELINED);
     }
 
     private static SchemaMigrationDocument marker(String id, SchemaMigrationState state) {

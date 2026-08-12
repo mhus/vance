@@ -1,6 +1,6 @@
 package de.mhus.vance.shared.schema;
 
-import de.mhus.vance.shared.schema.migrations.Migrator_2026_08_11_001_HiddenSettingType;
+import de.mhus.vance.shared.schema.migrations.Migrator_2026_08_12_001_Baseline;
 import jakarta.annotation.PostConstruct;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -26,9 +26,15 @@ import org.springframework.stereotype.Service;
  * <h2>Version model</h2>
  * Linear and derived, never hand-maintained: the <b>required</b> version is the
  * last entry of {@link #MIGRATIONS}, the <b>current</b> version is the highest
- * id carrying an {@code APPLIED} marker, and pending is everything in between.
- * Ids are {@code YYYY-MM-DD_NNN} (see {@link #MIGRATIONS}), so lexicographic
- * order is chronological order.
+ * id carrying an {@code APPLIED} or {@code BASELINED} marker, and pending is
+ * everything in between. Ids are {@code YYYY-MM-DD_NNN} (see {@link #MIGRATIONS}),
+ * so lexicographic order is chronological order.
+ *
+ * <p>A database with <b>no marker at all</b> is taken to be new and is
+ * <b>baselined</b> — stamped at the current version without running anything, on
+ * the grounds that a database written by the current code has nothing historical
+ * to transform. This is why the registry ships an anchor before the first real
+ * migration exists; see {@link #baseline()}.
  *
  * <h2>Ordering</h2>
  * {@link SchemaMigrationOrderingPostProcessor} makes every Mongo repository bean
@@ -81,13 +87,15 @@ public class SchemaMigrationService {
      * <p>Integrity of this list — unique, ascending, instantiable — is asserted by
      * {@code SchemaMigrationRegistryTest}, not re-checked on every boot.
      *
-     * <p>The three hand-written {@code @PostConstruct} backfills in vance-brain
-     * still run the old way ({@code planning/schema-migration.md} §3) — moving
-     * them over is a separate track.
+     * <p>The only entry today is the anchor
+     * {@link Migrator_2026_08_12_001_Baseline}: it does nothing and exists so a
+     * database is "known" before the first real migration ever ships — see its
+     * class comment. The three hand-written {@code @PostConstruct} backfills in
+     * vance-brain still run the old way ({@code planning/schema-migration.md} §3)
+     * — moving them over is a separate track.
      */
     static final List<RegisteredMigration> MIGRATIONS = List.of(
-            new RegisteredMigration("2026-08-11_001",
-                    Migrator_2026_08_11_001_HiddenSettingType.class));
+            new RegisteredMigration("2026-08-12_001", Migrator_2026_08_12_001_Baseline.class));
 
     /** One registry line: the id that becomes the marker, and the class to run. */
     record RegisteredMigration(String id, Class<? extends SchemaMigration> type) {}
@@ -154,6 +162,9 @@ public class SchemaMigrationService {
         if (report.noop()) {
             log.debug("Schema migrations: nothing pending, database at version '{}' ({} declared)",
                     report.version(), report.declared());
+        } else if (report.baselined()) {
+            // baseline() already logged the details at WARN.
+            log.info("Schema migrations: new database baselined at version '{}'", report.version());
         } else if (report.appliedByOtherPod()) {
             log.info("Schema migrations: brought to version '{}' by another pod", report.version());
         } else {
@@ -176,6 +187,9 @@ public class SchemaMigrationService {
      */
     public SchemaMigrationReport runPending() {
         Map<String, SchemaMigrationDocument> markers = loadMarkers();
+        if (markers.isEmpty() && !migrations.isEmpty()) {
+            return baseline();
+        }
         String current = currentVersion(markers);
         warnAboutUnknown(markers);
         warnAboutSkipped(markers, current);
@@ -187,6 +201,40 @@ public class SchemaMigrationService {
         log.info("Schema migrations: database at version '{}', {} pending: {}",
                 current, pending.size(), pending);
         return runLocked(pending);
+    }
+
+    /**
+     * Stamps every registered migration as {@link SchemaMigrationState#BASELINED}
+     * without running it, and thereby puts the database at the current version.
+     *
+     * <p>Triggered by "no marker at all". A database that has never been seen by
+     * this framework is taken to be a <b>new</b> database: its collections were
+     * written by the current code, so historical transforms have nothing to do
+     * there. Running them would be pointless work that grows with every release.
+     *
+     * <p><b>The one case this gets wrong</b> is a database that predates the
+     * framework and does hold old-shaped data — from here it looks exactly like a
+     * new one and gets baselined instead of migrated. Harmless as long as the
+     * anchor {@link Migrator_2026_08_12_001_Baseline} is the only thing baselined
+     * away, which is why the anchor ships <em>before</em> the first real
+     * migration: afterwards every database is known, and nothing is ever silently
+     * skipped again. See {@code specification/schema-migration.md} §2.2.
+     *
+     * <p>No lease is taken: two pods baselining a fresh database concurrently
+     * write byte-identical markers keyed by {@code _id}.
+     */
+    private SchemaMigrationReport baseline() {
+        List<String> ids = List.copyOf(migrations.keySet());
+        for (String id : ids) {
+            writeMarker(id, SchemaMigrationState.BASELINED, 0L, null);
+        }
+        String version = ids.get(ids.size() - 1);
+        log.warn("Schema migrations: no marker found — treating this as a new database and "
+                        + "baselining it at version '{}' without running anything ({} migration(s) "
+                        + "marked BASELINED). If this database actually predates the migration "
+                        + "framework, its data has NOT been migrated.",
+                version, ids.size());
+        return new SchemaMigrationReport(List.of(), migrations.size(), version, false, true);
     }
 
     /**
@@ -310,7 +358,7 @@ public class SchemaMigrationService {
      */
     private static String currentVersion(Map<String, SchemaMigrationDocument> markers) {
         return markers.values().stream()
-                .filter(SchemaMigrationService::isApplied)
+                .filter(SchemaMigrationService::isDone)
                 .map(SchemaMigrationDocument::getId)
                 .max(String::compareTo)
                 .orElse("");
@@ -323,9 +371,15 @@ public class SchemaMigrationService {
                 .toList();
     }
 
-    /** A FAILED marker is a breadcrumb, not "done" — the migration is retried. */
-    private static boolean isApplied(@Nullable SchemaMigrationDocument marker) {
-        return marker != null && marker.getStatus() == SchemaMigrationState.APPLIED;
+    /**
+     * APPLIED (ran) and BASELINED (deliberately not run on a new database) both
+     * count as done and both raise the version. A FAILED marker is a breadcrumb,
+     * not "done" — that migration is retried.
+     */
+    private static boolean isDone(@Nullable SchemaMigrationDocument marker) {
+        return marker != null
+                && (marker.getStatus() == SchemaMigrationState.APPLIED
+                        || marker.getStatus() == SchemaMigrationState.BASELINED);
     }
 
     /**
@@ -337,7 +391,7 @@ public class SchemaMigrationService {
      */
     private void warnAboutUnknown(Map<String, SchemaMigrationDocument> markers) {
         List<String> unknown = markers.values().stream()
-                .filter(SchemaMigrationService::isApplied)
+                .filter(SchemaMigrationService::isDone)
                 .map(SchemaMigrationDocument::getId)
                 .filter(id -> !migrations.containsKey(id))
                 .sorted()
@@ -359,7 +413,7 @@ public class SchemaMigrationService {
     private void warnAboutSkipped(Map<String, SchemaMigrationDocument> markers, String current) {
         List<String> skipped = migrations.keySet().stream()
                 .filter(id -> id.compareTo(current) <= 0)
-                .filter(id -> !isApplied(markers.get(id)))
+                .filter(id -> !isDone(markers.get(id)))
                 .toList();
         if (!skipped.isEmpty()) {
             log.warn("Schema migrations: {} registered migration(s) sit below the current database "
@@ -386,7 +440,8 @@ public class SchemaMigrationService {
 
     private SchemaMigrationReport report(
             List<String> applied, String version, boolean appliedByOtherPod) {
-        return new SchemaMigrationReport(applied, migrations.size(), version, appliedByOtherPod);
+        return new SchemaMigrationReport(
+                applied, migrations.size(), version, appliedByOtherPod, false);
     }
 
     // ─── helpers ────────────────────────────────────────────────────

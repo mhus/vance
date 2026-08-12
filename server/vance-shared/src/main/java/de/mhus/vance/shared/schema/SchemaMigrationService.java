@@ -1,7 +1,6 @@
 package de.mhus.vance.shared.schema;
 
 import de.mhus.vance.shared.schema.migrations.Migrator_2026_08_12_001_Baseline;
-import de.mhus.vance.shared.schema.migrations.Migrator_2026_08_12_002_ToolUsageStatsPerRole;
 import jakarta.annotation.PostConstruct;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -88,7 +87,7 @@ public class SchemaMigrationService {
      * <p>Integrity of this list — unique, ascending, instantiable — is asserted by
      * {@code SchemaMigrationRegistryTest}, not re-checked on every boot.
      *
-     * <p>The first entry is the anchor
+     * <p>The only entry today is the anchor
      * {@link Migrator_2026_08_12_001_Baseline}: it does nothing and exists so a
      * database is "known" before the first real migration ever ships — see its
      * class comment. The three hand-written {@code @PostConstruct} backfills in
@@ -96,9 +95,7 @@ public class SchemaMigrationService {
      * — moving them over is a separate track.
      */
     static final List<RegisteredMigration> MIGRATIONS = List.of(
-            new RegisteredMigration("2026-08-12_001", Migrator_2026_08_12_001_Baseline.class),
-            new RegisteredMigration("2026-08-12_002",
-                    Migrator_2026_08_12_002_ToolUsageStatsPerRole.class));
+            new RegisteredMigration("2026-08-12_001", Migrator_2026_08_12_001_Baseline.class));
 
     /** One registry line: the id that becomes the marker, and the class to run. */
     record RegisteredMigration(String id, Class<? extends SchemaMigration> type) {}

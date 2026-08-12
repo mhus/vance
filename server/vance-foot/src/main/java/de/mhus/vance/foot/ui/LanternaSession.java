@@ -30,11 +30,36 @@ public final class LanternaSession implements AutoCloseable {
     }
 
     public static LanternaSession open() throws IOException {
-        Terminal terminal = new DefaultTerminalFactory().createTerminal();
-        Screen screen = new TerminalScreen(terminal);
-        screen.startScreen();
-        WindowBasedTextGUI gui = new MultiWindowTextGUI(screen);
-        return new LanternaSession(terminal, screen, gui);
+        Terminal terminal = null;
+        Screen screen = null;
+        try {
+            terminal = new DefaultTerminalFactory().createTerminal();
+            screen = new TerminalScreen(terminal);
+            screen.startScreen();
+            WindowBasedTextGUI gui = new MultiWindowTextGUI(screen);
+            return new LanternaSession(terminal, screen, gui);
+        } catch (IOException | RuntimeException failure) {
+            closeAfterFailedOpen(screen, terminal, failure);
+            throw failure;
+        }
+    }
+
+    private static void closeAfterFailedOpen(
+            Screen screen, Terminal terminal, Throwable failure) {
+        if (screen != null) {
+            try {
+                screen.stopScreen();
+            } catch (IOException | RuntimeException cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+        }
+        if (terminal != null) {
+            try {
+                terminal.close();
+            } catch (IOException | RuntimeException cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+        }
     }
 
     public WindowBasedTextGUI gui() {
@@ -47,10 +72,32 @@ public final class LanternaSession implements AutoCloseable {
 
     @Override
     public void close() throws IOException {
+        IOException failure = null;
         try {
             screen.stopScreen();
-        } finally {
+        } catch (IOException e) {
+            failure = e;
+        } catch (RuntimeException e) {
+            failure = new IOException("Could not stop the Lanterna screen", e);
+        }
+        try {
             terminal.close();
+        } catch (IOException e) {
+            if (failure == null) {
+                failure = e;
+            } else {
+                failure.addSuppressed(e);
+            }
+        } catch (RuntimeException e) {
+            IOException wrapped = new IOException("Could not close the Lanterna terminal", e);
+            if (failure == null) {
+                failure = wrapped;
+            } else {
+                failure.addSuppressed(wrapped);
+            }
+        }
+        if (failure != null) {
+            throw failure;
         }
     }
 }

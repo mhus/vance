@@ -354,8 +354,8 @@ public class LiveRegion {
 
         Thread it = new Thread(this::inputLoop, "foot-live-region-input");
         it.setDaemon(true);
-        it.start();
         inputThread = it;
+        it.start();
     }
 
     /** Tears down the region: stops threads, restores terminal attributes. */
@@ -476,19 +476,23 @@ public class LiveRegion {
             flushDeferred();
             return;
         }
+        // Lanterna talks directly to System.in while JLine's pump remains
+        // alive. Do not drain JLine's reader here: the pump may deliver bytes
+        // slightly after Lanterna has closed, so a point-in-time drain races
+        // with the hand-off and can still leave CSI tails such as "[A".
+        // The restarted input loop instead discards a short, quiet hand-off
+        // window before it starts interpreting user input.
+
         // Re-apply soft-raw attributes (ICANON / ECHO off, OPOST left on).
         Attributes mod = new Attributes(t.getAttributes());
         mod.setLocalFlag(LocalFlag.ICANON, false);
         mod.setLocalFlag(LocalFlag.ECHO, false);
-        try {
-            t.setAttributes(mod);
-        } catch (RuntimeException ignored) {
-            // best-effort
-        }
+        t.setAttributes(mod);
         synchronized (writeLock) {
             writeRaw(ESC + "[?2004h");   // re-enable bracketed paste
         }
-        paused.set(false);
+        // Keep the pause gate set until the replacement reader has drained
+        // the asynchronous hand-off residue. inputLoop clears it once ready.
         // Backlog first, live region second — the replayed lines have to
         // land in the scrollback *above* the pinned block, exactly where
         // they would have gone had the excursion never happened.
@@ -504,10 +508,12 @@ public class LiveRegion {
                 ANIMATION_INTERVAL_MS, ANIMATION_INTERVAL_MS, TimeUnit.MILLISECONDS);
         animator = anim;
 
+        // Publish the thread before starting it: pause()/detach() must never
+        // miss a reader that has already begun consuming terminal bytes.
         Thread it = new Thread(this::inputLoop, "foot-live-region-input");
         it.setDaemon(true);
-        it.start();
         inputThread = it;
+        it.start();
     }
 
     /** Request a redraw of the live region (e.g., when status state changed). */
@@ -710,6 +716,15 @@ public class LiveRegion {
         NonBlockingReader r = this.reader;
         if (r == null) return;
         try {
+            // After a fullscreen hand-off, JLine's pump can publish bytes
+            // asynchronously even after Lanterna has closed. Wait for a
+            // short quiet period and discard all hand-off residue before
+            // treating bytes as user input. This avoids orphaned arrow-key
+            // tails ("[A", "[[B") appearing literally at the prompt.
+            if (paused.get()) {
+                drainReaderUntilQuiet(r, 25L, 250L);
+                paused.set(false);
+            }
             while (!stopRequested.get() && !paused.get()) {
                 int b;
                 try {
@@ -1263,6 +1278,23 @@ public class LiveRegion {
             return reader.read(timeoutMs);
         } catch (java.nio.BufferUnderflowException bue) {
             return -1;
+        }
+    }
+
+    /**
+     * Drains until no byte arrives for {@code quietMs}, bounded by
+     * {@code maxMs}. The quiet period is important because JLine's pump can
+     * publish the final bytes of an escape sequence after Lanterna closes.
+     */
+    static void drainReaderUntilQuiet(NonBlockingReader reader, long quietMs, long maxMs) {
+        if (reader == null) return;
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(maxMs);
+        try {
+            while (System.nanoTime() < deadline && reader.read(quietMs) >= 0) {
+                // Each byte restarts the quiet wait on the next read.
+            }
+        } catch (IOException | java.nio.BufferUnderflowException ignored) {
+            // Best effort: the normal input loop handles subsequent bytes.
         }
     }
 

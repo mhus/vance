@@ -11,10 +11,10 @@ import org.springframework.stereotype.Service;
  * UI mode controller. Tracks whether the {@link UiMode#CHAT} REPL or a
  * {@link UiMode#FULLSCREEN} Lanterna excursion currently owns the terminal.
  *
- * <p>The hybrid pattern: JLine and Lanterna cannot share the TTY at the same
- * time. {@code runFullscreen} pauses JLine, runs the supplied Lanterna
- * interaction in the alternate screen buffer, and resumes JLine on return —
- * even on exception or interrupt.
+ * <p>The hybrid pattern: the live JLine-backed region and Lanterna cannot
+ * consume the TTY at the same time. {@code runFullscreen} pauses the live
+ * region, runs the supplied Lanterna interaction in the alternate screen
+ * buffer, and resumes the region on return — even on exception or interrupt.
  *
  * <p>Exactly one of the two surfaces is live, and that includes output:
  * while the excursion runs, background text (chat turns pushed by the
@@ -46,10 +46,10 @@ public class InterfaceService {
     }
 
     /**
-     * Runs a Lanterna excursion. JLine is paused, Lanterna takes over the
-     * alternate screen buffer, control returns when {@code excursion} exits.
-     * The mode is restored to {@link UiMode#CHAT} regardless of how the
-     * excursion finished.
+     * Runs a Lanterna excursion. The live region releases input, Lanterna
+     * takes over the alternate screen buffer, and the region reclaims input
+     * when {@code excursion} exits. The mode is restored to
+     * {@link UiMode#CHAT} regardless of how the excursion finished.
      */
     public void runFullscreen(LanternaExcursion excursion) throws IOException {
         Terminal t = jlineTerminal.get();
@@ -73,27 +73,19 @@ public class InterfaceService {
         // into Lanterna's alternate screen buffer would corrupt it for
         // good, since Lanterna only ever repaints deltas.
         liveRegion.pause();
-        // pause(true) joins JLine's input pump thread before Lanterna
-        // takes over System.in — without the join JLine keeps pumping
-        // bytes into its NonBlockingReader's char buffer, leaving it
-        // mid-decode when Lanterna grabs the TTY. After resume() that
-        // half-decoded state surfaces as BufferUnderflowException on
-        // the next multi-byte read (e.g. an Esc-sequence from an
-        // arrow key).
-        try {
-            t.pause(true);
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            liveRegion.resume();
-            mode.set(UiMode.CHAT);
-            throw new IOException("Interrupted while pausing JLine for fullscreen excursion", ie);
-        }
+        // LiveRegion reads from JLine's Terminal.reader(). It is therefore
+        // itself the only input consumer; pausing the Terminal's internal
+        // pump would interrupt the very reader we want to reuse afterwards
+        // and can leave its decoder between ESC bytes. Lanterna temporarily
+        // owns System.in only after LiveRegion's reader thread has stopped.
         try (LanternaSession session = LanternaSession.open()) {
             excursion.run(session);
         } finally {
-            t.resume();
-            liveRegion.resume();
-            mode.set(UiMode.CHAT);
+            try {
+                liveRegion.resume();
+            } finally {
+                mode.set(UiMode.CHAT);
+            }
         }
     }
 

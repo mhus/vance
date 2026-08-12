@@ -1,13 +1,9 @@
 package de.mhus.vance.foot.command;
 
 import de.mhus.vance.api.ws.MessageType;
-import de.mhus.vance.api.ws.SessionCreateRequest;
-import de.mhus.vance.api.ws.SessionCreateResponse;
-import de.mhus.vance.foot.auth.SessionAnchorStore;
-import de.mhus.vance.foot.auth.VancePaths;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.ConnectionService;
-import de.mhus.vance.foot.session.RandomSessionNameGenerator;
+import de.mhus.vance.foot.session.AutoBootstrapService;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import java.time.Duration;
@@ -27,25 +23,19 @@ public class ClearCommand implements SlashCommand {
     private final ChatTerminal terminal;
     private final ConnectionService connection;
     private final SessionService sessions;
-    private final SessionAnchorStore anchorStore;
-    private final VancePaths paths;
     private final FootConfig config;
-    private final RandomSessionNameGenerator nameGenerator;
+    private final AutoBootstrapService autoBootstrap;
 
     public ClearCommand(ChatTerminal terminal,
                         ConnectionService connection,
                         SessionService sessions,
-                        SessionAnchorStore anchorStore,
-                        VancePaths paths,
                         FootConfig config,
-                        RandomSessionNameGenerator nameGenerator) {
+                        AutoBootstrapService autoBootstrap) {
         this.terminal = terminal;
         this.connection = connection;
         this.sessions = sessions;
-        this.anchorStore = anchorStore;
-        this.paths = paths;
         this.config = config;
-        this.nameGenerator = nameGenerator;
+        this.autoBootstrap = autoBootstrap;
     }
 
     @Override
@@ -79,34 +69,13 @@ public class ClearCommand implements SlashCommand {
                 Duration.ofSeconds(10));
         sessions.clear();
 
-        SessionCreateResponse response = connection.request(
-                MessageType.SESSION_CREATE,
-                SessionCreateRequest.builder().projectId(projectId).build(),
-                SessionCreateResponse.class,
-                Duration.ofSeconds(10));
-
-        sessions.bind(response.getSessionId(), response.getProjectId());
-
-        // Persist the new session anchor so that .vancetope/session.yaml
-        // reflects the session created by /clear (mirrors AutoBootstrapService).
-        // When no explicit client name is configured, generate a random
-        // adjective-noun name so the session is identifiable in the history.
-        String sessionName = config.getClient().getName();
-        if (sessionName == null || sessionName.isBlank()) {
-            sessionName = nameGenerator.generate();
+        FootConfig.Bootstrap bootstrap = config.getBootstrap();
+        if (bootstrap == null) {
+            bootstrap = new FootConfig.Bootstrap();
+            config.setBootstrap(bootstrap);
         }
-        anchorStore.upsertSession(
-                paths.activeDir(),
-                response.getSessionId(),
-                response.getProjectId(),
-                sessionName);
-
-        String chatProcessName = response.getChatProcessName();
-        if (chatProcessName != null && !chatProcessName.isBlank()) {
-            sessions.setActiveProcess(chatProcessName);
-        }
-
-        terminal.info("New session: " + response.getSessionId()
-                + " (project=" + response.getProjectId() + ")");
+        bootstrap.setProjectId(projectId);
+        bootstrap.setSessionId(null);
+        autoBootstrap.triggerNow();
     }
 }

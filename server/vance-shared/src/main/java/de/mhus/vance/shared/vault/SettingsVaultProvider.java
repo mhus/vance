@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.vault;
 
+import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.settings.SettingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -82,7 +83,11 @@ public class SettingsVaultProvider implements VaultProvider {
         }
         log.trace("Settings vault write: key='{}' tenant='{}' project='{}'",
                 key, scope.tenantId(), projectId);
+        // HIDDEN: a vault secret exists to be resolved by the very agents and
+        // scripts that write it (vault_secret_generate → {{secret:vault:…}}).
+        // That is the use, so that is the type.
         settingService.setAgentSecret(
-                scope.tenantId(), SettingService.SCOPE_PROJECT, projectId, key, value);
+                scope.tenantId(), SettingService.SCOPE_PROJECT, projectId, key,
+                value, SettingType.HIDDEN);
     }
 }

@@ -42,13 +42,13 @@ const settingTypeOptions = [
   { value: SettingType.LONG, label: 'LONG' },
   { value: SettingType.DOUBLE, label: 'DOUBLE' },
   { value: SettingType.BOOLEAN, label: 'BOOLEAN' },
-  // The two encrypted types differ only in whether an authored
-  // {{secret:…}} reference may resolve them, and neither name says that, so
-  // the qualifier is part of the label. The realistic mis-pick is choosing
-  // PASSWORD for a tool credential — it *is* a password, after all — and then
-  // finding it does not resolve.
-  { value: SettingType.PASSWORD, label: 'PASSWORD (server-internal only)' },
-  { value: SettingType.HIDDEN, label: 'HIDDEN (agent/script readable)' },
+  // The two encrypted types differ only in who may read them, and neither name
+  // says that, so the qualifier is part of the label. PASSWORD is usable by
+  // connectors (SMTP/IMAP, REST/MCP packs) — it is only agents and scripts that
+  // cannot see it. The realistic mis-pick is HIDDEN, taken for the harmless
+  // choice, which weakens a connector credential for nothing.
+  { value: SettingType.PASSWORD, label: 'PASSWORD (server & connectors only)' },
+  { value: SettingType.HIDDEN, label: 'HIDDEN (agents/scripts too)' },
 ];
 const editingKey = ref<string | null>(null);
 const editValue = ref('');

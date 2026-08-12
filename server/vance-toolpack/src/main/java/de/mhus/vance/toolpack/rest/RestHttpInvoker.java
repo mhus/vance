@@ -204,7 +204,7 @@ public final class RestHttpInvoker {
 
     private @Nullable String resolveValue(@Nullable String input, ToolInvocationContext ctx) {
         if (input == null) return null;
-        return secretResolver.resolve(input, ctx);
+        return secretResolver.resolveForConnector(input, ctx);
     }
 
     private static String serialiseBody(@Nullable Object body, String contentType) {

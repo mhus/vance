@@ -95,6 +95,17 @@ public class SettingsSecretResolver implements SecretResolver {
 
     @Override
     public @Nullable String resolve(@Nullable String input, ToolInvocationContext ctx) {
+        return substitute(input, ctx, /*connector*/ false);
+    }
+
+    @Override
+    public @Nullable String resolveForConnector(
+            @Nullable String input, ToolInvocationContext ctx) {
+        return substitute(input, ctx, /*connector*/ true);
+    }
+
+    private @Nullable String substitute(
+            @Nullable String input, ToolInvocationContext ctx, boolean connector) {
         if (input == null || input.isEmpty()) return input;
         Matcher m = REF.matcher(input);
         if (!m.find()) return input;
@@ -104,7 +115,7 @@ public class SettingsSecretResolver implements SecretResolver {
         while (m.find()) {
             out.append(input, last, m.start());
             String body = m.group(1);
-            String resolved = resolveOne(body, ctx);
+            String resolved = resolveOne(body, ctx, connector);
             if (resolved == null) {
                 log.warn("SettingsSecretResolver: no value found for '{}' "
                                 + "(tenant='{}', project='{}', process='{}', user='{}') "
@@ -123,21 +134,23 @@ public class SettingsSecretResolver implements SecretResolver {
         return out.toString();
     }
 
-    private @Nullable String resolveOne(String body, @Nullable ToolInvocationContext ctx) {
+    private @Nullable String resolveOne(
+            String body, @Nullable ToolInvocationContext ctx, boolean connector) {
         if (ctx == null || ctx.tenantId() == null || ctx.tenantId().isBlank()) {
             return null;
         }
         Scoped scoped = parseScope(body);
         return switch (scoped.scope()) {
-            case SCOPE_USER -> resolveUser(scoped.key(), ctx);
-            case SCOPE_TENANT -> resolveTenant(scoped.key(), ctx);
-            case SCOPE_PROJECT -> resolveProject(scoped.key(), ctx);
+            case SCOPE_USER -> resolveUser(scoped.key(), ctx, connector);
+            case SCOPE_TENANT -> resolveTenant(scoped.key(), ctx, connector);
+            case SCOPE_PROJECT -> resolveProject(scoped.key(), ctx, connector);
             case SCOPE_VAULT -> resolveVault(scoped.key(), ctx);
-            default -> resolveCascade(scoped.key(), ctx);
+            default -> resolveCascade(scoped.key(), ctx, connector);
         };
     }
 
-    private @Nullable String resolveUser(String key, ToolInvocationContext ctx) {
+    private @Nullable String resolveUser(
+            String key, ToolInvocationContext ctx, boolean connector) {
         if (ctx.userId() == null || ctx.userId().isBlank()) {
             log.warn("SettingsSecretResolver: user-scope lookup '{}' requested without a userId "
                             + "in ToolInvocationContext (tenant='{}', project='{}')",
@@ -153,7 +166,9 @@ public class SettingsSecretResolver implements SecretResolver {
             return oauthTokenRefresher.resolveAccessToken(
                     ctx.tenantId(), ctx.userId(), providerId);
         }
-        String pw = settings.getReferenceUserSecret(ctx.tenantId(), ctx.userId(), key);
+        String pw = connector
+                ? settings.getDecryptedUserPassword(ctx.tenantId(), ctx.userId(), key)
+                : settings.getReferenceUserSecret(ctx.tenantId(), ctx.userId(), key);
         if (pw != null) return pw;
         // Fall back to STRING-typed user settings — non-secret OAuth
         // metadata (cloud_id, site_url, …) is stored as STRING by the
@@ -163,23 +178,34 @@ public class SettingsSecretResolver implements SecretResolver {
         return settings.getUserStringValue(ctx.tenantId(), ctx.userId(), key);
     }
 
-    private @Nullable String resolveTenant(String key, ToolInvocationContext ctx) {
-        return settings.getReferenceSecret(ctx.tenantId(),
-                SettingService.SCOPE_PROJECT,
-                HomeBootstrapService.TENANT_PROJECT_NAME, key);
+    private @Nullable String resolveTenant(
+            String key, ToolInvocationContext ctx, boolean connector) {
+        return connector
+                ? settings.getDecryptedPassword(ctx.tenantId(), SettingService.SCOPE_PROJECT,
+                        HomeBootstrapService.TENANT_PROJECT_NAME, key)
+                : settings.getReferenceSecret(ctx.tenantId(), SettingService.SCOPE_PROJECT,
+                        HomeBootstrapService.TENANT_PROJECT_NAME, key);
     }
 
-    private @Nullable String resolveProject(String key, ToolInvocationContext ctx) {
+    private @Nullable String resolveProject(
+            String key, ToolInvocationContext ctx, boolean connector) {
         if (ctx.projectId() == null || ctx.projectId().isBlank()) {
             return null;
         }
-        return settings.getReferenceSecret(ctx.tenantId(),
-                SettingService.SCOPE_PROJECT, ctx.projectId(), key);
+        return connector
+                ? settings.getDecryptedPassword(ctx.tenantId(),
+                        SettingService.SCOPE_PROJECT, ctx.projectId(), key)
+                : settings.getReferenceSecret(ctx.tenantId(),
+                        SettingService.SCOPE_PROJECT, ctx.projectId(), key);
     }
 
-    private @Nullable String resolveCascade(String key, ToolInvocationContext ctx) {
-        return settings.getReferenceSecretCascade(
-                ctx.tenantId(), ctx.projectId(), ctx.processId(), key);
+    private @Nullable String resolveCascade(
+            String key, ToolInvocationContext ctx, boolean connector) {
+        return connector
+                ? settings.getDecryptedPasswordCascade(
+                        ctx.tenantId(), ctx.projectId(), ctx.processId(), key)
+                : settings.getReferenceSecretCascade(
+                        ctx.tenantId(), ctx.projectId(), ctx.processId(), key);
     }
 
     /**

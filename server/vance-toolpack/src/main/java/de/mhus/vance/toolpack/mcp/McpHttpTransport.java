@@ -215,18 +215,18 @@ public final class McpHttpTransport implements McpTransport {
         switch (auth.type()) {
             case NONE -> { /* no auth */ }
             case BEARER -> {
-                String token = secretResolver.resolve(auth.token(), ctx);
+                String token = secretResolver.resolveForConnector(auth.token(), ctx);
                 if (token != null) rb.header("Authorization", PackHttpClient.bearerAuthHeader(token));
             }
             case BASIC -> {
-                String user = secretResolver.resolve(auth.user(), ctx);
-                String pwd = secretResolver.resolve(auth.password(), ctx);
+                String user = secretResolver.resolveForConnector(auth.user(), ctx);
+                String pwd = secretResolver.resolveForConnector(auth.password(), ctx);
                 rb.header("Authorization",
                         PackHttpClient.basicAuthHeader(user == null ? "" : user, pwd == null ? "" : pwd));
             }
             case API_KEY -> {
                 if (auth.headerName() != null && !auth.headerName().isBlank()) {
-                    String value = secretResolver.resolve(auth.value(), ctx);
+                    String value = secretResolver.resolveForConnector(auth.value(), ctx);
                     if (value != null) rb.header(auth.headerName(), value);
                 }
                 // queryParamName variant — MCP-HTTP doesn't use query-string

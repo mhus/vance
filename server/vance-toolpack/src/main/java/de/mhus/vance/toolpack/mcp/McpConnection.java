@@ -222,7 +222,7 @@ public final class McpConnection implements AutoCloseable {
         if (llmArgs != null) out.putAll(llmArgs);
         for (Map.Entry<String, String> e : defaults.entrySet()) {
             if (!allowed.contains(e.getKey())) continue;
-            String resolved = secretResolver.resolve(e.getValue(), ctx);
+            String resolved = secretResolver.resolveForConnector(e.getValue(), ctx);
             if (resolved == null || resolved.isEmpty()) continue;
             // Defaults-win on key collision. defaultArgs is meant for
             // tech-identity values (cloudId, tenant id, …) that the

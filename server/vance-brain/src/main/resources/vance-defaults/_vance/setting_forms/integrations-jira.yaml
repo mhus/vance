@@ -49,11 +49,6 @@ fields:
     writeIf: "authMode == 'oauth2'"
     bindsTo:
       key: "credentials.jira.access_token"
-      # HIDDEN, not PASSWORD: the Jira REST-tool document resolves this at call
-      # time via {{secret:project:credentials.jira.access_token}}, and PASSWORD
-      # settings are not reference-readable. The input stays masked either way —
-      # `type: password` drives the widget, `settingType` drives storage.
-      settingType: HIDDEN
 
   - name: oauthRefreshToken
     type: password
@@ -77,7 +72,6 @@ fields:
     writeIf: "authMode == 'api_token'"
     bindsTo:
       key: "credentials.jira.api_token"
-      settingType: HIDDEN
 
   - name: userEmail
     type: string

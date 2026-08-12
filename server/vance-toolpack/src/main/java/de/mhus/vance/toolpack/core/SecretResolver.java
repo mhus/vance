@@ -35,4 +35,21 @@ public interface SecretResolver {
      *               the tenant/project/process settings cascade
      */
     @Nullable String resolve(@Nullable String input, ToolInvocationContext ctx);
+
+    /**
+     * Same substitution, but for <b>connector configuration</b> — an SMTP/IMAP
+     * tool document, a REST or MCP tool pack. Those are operator-authored config,
+     * not dynamic elements, so they may resolve a real secret
+     * ({@code SettingType.PASSWORD}) as well.
+     *
+     * <p>{@link #resolve} is the restricted path and stays the default on purpose:
+     * an implementation that does not distinguish the two only ever ends up
+     * <em>narrower</em> here, never wider. The distinction is what makes PASSWORD
+     * worth having — a credential a connector uses is unreadable and unwritable
+     * for agents and scripts, yet still usable.
+     */
+    default @Nullable String resolveForConnector(
+            @Nullable String input, ToolInvocationContext ctx) {
+        return resolve(input, ctx);
+    }
 }

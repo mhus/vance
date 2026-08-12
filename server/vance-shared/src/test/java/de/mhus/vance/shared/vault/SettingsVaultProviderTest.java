@@ -90,10 +90,12 @@ class SettingsVaultProviderTest {
     void write_goes_through_the_agent_write_rules() {
         provider.writeSecret(BINDING, SCOPE, "deploy-token", "s3cr3t");
 
-        // setAgentSecret carries W1 (no PASSWORD overwrite), W2 (result HIDDEN)
-        // and W3 (deny-list) — the right gate, since the callers are LLM tools.
+        // setAgentSecret carries W1 (no PASSWORD overwrite) and W3 (deny-list) —
+        // the right gate, since the callers are LLM tools. HIDDEN because a vault
+        // secret exists to be resolved by scripts and compose tasks.
         verify(settingService).setAgentSecret(
-                TENANT, SettingService.SCOPE_PROJECT, PROJECT, "deploy-token", "s3cr3t");
+                TENANT, SettingService.SCOPE_PROJECT, PROJECT, "deploy-token", "s3cr3t",
+                SettingType.HIDDEN);
     }
 
     @Test

@@ -27,27 +27,31 @@ The value is resolved **server-side at call time** and never enters your context
 If the key is missing, it substitutes empty (the call then fails with a 401), it
 does not error loudly.
 
-### Settings referenced this way must be HIDDEN, not PASSWORD
+### Which settings you can resolve: HIDDEN, not PASSWORD
 
 Besides `vault:`, a reference can name a **setting** (`{{secret:project:<key>}}`,
-`tenant:`, `user:`, or a bare key for the cascade). Settings come in two
-encrypted types, and only one of them is resolvable here:
+`tenant:`, `user:`, or a bare key for the cascade). Settings come in two encrypted
+types, and **you** can only resolve one of them:
 
-| Type | Encrypted at rest | Resolvable via `{{secret:…}}` | For |
+| Type | Encrypted at rest | You (agent/script) can resolve | Used by |
 |---|---|---|---|
-| `HIDDEN` | yes | **yes** | credentials a tool, compose task or script uses |
-| `PASSWORD` | yes | no | secrets only server code reads (LLM provider keys, `vault.clientSecret`) |
+| `HIDDEN` | yes | **yes** | secrets a script or a compose task resolves itself |
+| `PASSWORD` | yes | no | connectors (SMTP/IMAP, REST and MCP tool packs) and compiled server code |
 
-Referencing a PASSWORD setting fails with a named error — *"setting X is
-PASSWORD-typed and cannot be resolved through a secret reference"* — not with an
-empty substitution. That is a configuration mistake, not a missing secret: the
-setting has to be re-typed to `HIDDEN`. A human does that in the settings editor
-or the corresponding setting form; you cannot change a setting's type yourself.
+**A PASSWORD setting is not unusable — it is unusable by you.** A connector
+resolves it perfectly well; that is the whole point of the type. So if a tool
+authenticates fine but you cannot read its credential, nothing is broken.
+
+Referencing a PASSWORD setting yourself fails with a named error — *"setting X is
+PASSWORD-typed and cannot be resolved through a secret reference"*. Do not
+"fix" this by asking for the type to be changed: check first whether a connector
+already uses the value, in which case it is correct as it is. Only a secret you
+genuinely have to resolve in a script or a compose block belongs in `HIDDEN`, and
+only a human can change a type.
 
 For `vault:` it depends on what is bound. An external manager has no setting type
 in play. The **default** settings-backed vault does resolve settings, and there too
-only `HIDDEN` comes out — so the rule above holds for `vault:` as well whenever no
-external manager is configured. Either way you write the same reference.
+only `HIDDEN` comes out. Either way you write the same reference.
 
 ## 2. Inject into a compose `exec` task (env)
 
@@ -107,17 +111,18 @@ default (settings-backed) vault, `vault_secret_generate` / `vault_secret_set`
 write a `hidden` setting at project scope, so the rules below apply to them too.
 
 Installing a credential through `tool_template_apply` or a kit install writes a
-setting. Three rules apply to those writes because *you* triggered them, and each
-one has a distinct error:
+setting. Two rules apply to those writes because *you* triggered them, plus the
+read-side error for completeness:
 
 | Error says | Meaning | What to do |
 |---|---|---|
 | *"exists as PASSWORD and cannot be overwritten by an agent"* | a real secret is already there | don't retry. Ask the human to change it, or use a different key |
 | *"reserved for operator configuration"* | the key is on the operator deny-list (`ai.provider.*`, `vault.*`) | don't retry, not with another spelling either. LLM provider keys and vault credentials are set by a human in the setting forms |
-| *"PASSWORD-typed and cannot be resolved…"* | you are **reading**, and the target is the wrong type (§1) | a human re-types it to HIDDEN |
+| *"PASSWORD-typed and cannot be resolved…"* | you are **reading** a secret meant for a connector (§1) | usually nothing — check whether a connector already uses it |
 
-A credential you install this way lands as **HIDDEN**, so the tool document from
-the same template can resolve it — that part needs no action from you.
+A credential you install this way lands as **PASSWORD**: the connector installed
+alongside it resolves the value, you cannot. That is intended and needs no action
+from you.
 
 Nothing here can be worked around by choosing a different type or scope: you
 cannot set a setting's type, and the deny-list is server configuration, not a
@@ -132,6 +137,6 @@ credential safe", or "no vault is configured" — there is always one:
 `{{secret:vault:<key>}}` references it. Configuring an external manager
 (Profile/Workspace → *Vault* setting form) is optional.
 
-Equally, don't report one of the §5 denials as "the system is broken" or retry it
-in a loop. Each one is a deliberate boundary with a named next step — state which
+Equally, don't report a §5 denial as "the system is broken" or retry it in a
+loop. Each one is a deliberate boundary with a named next step — state which
 one you hit and what the human has to do.

@@ -36,26 +36,40 @@ class AgentSettingWriteTest {
         return s;
     }
 
-    // ─────── W2 — always HIDDEN ───────
+    // ─────── the type follows the use, not the origin ───────
 
     @Test
-    void a_new_agent_secret_is_stored_hidden() {
+    void a_connector_credential_stays_password_even_though_an_agent_wrote_it() {
+        // The whole point of PASSWORD: a connector can use it, agents and scripts
+        // cannot read it back. A value having passed through the model context
+        // once is no reason to weaken it forever.
         SettingService service = serviceWith("");
         stub("smtp.password", null);
 
         SettingDocument saved = service.setAgentSecret(
-                TENANT, PROJECT, REF, "smtp.password", "s3cr3t");
+                TENANT, PROJECT, REF, "smtp.password", "s3cr3t", SettingType.PASSWORD);
 
-        assertThat(saved.getType()).isEqualTo(SettingType.HIDDEN);
+        assertThat(saved.getType()).isEqualTo(SettingType.PASSWORD);
         assertThat(saved.getValue()).isNotNull().isNotEqualTo("s3cr3t");
     }
 
     @Test
-    void an_existing_hidden_secret_is_overwritten_and_stays_hidden() {
+    void a_secret_a_script_has_to_resolve_is_written_hidden() {
         SettingService service = serviceWith("");
-        stub("smtp.password", doc(SettingType.HIDDEN, encryption.encrypt("old")));
+        stub("deploy-token", null);
 
-        assertThat(service.setAgentSecret(TENANT, PROJECT, REF, "smtp.password", "new").getType())
+        assertThat(service.setAgentSecret(
+                TENANT, PROJECT, REF, "deploy-token", "s3cr3t", SettingType.HIDDEN).getType())
+                .isEqualTo(SettingType.HIDDEN);
+    }
+
+    @Test
+    void an_existing_hidden_secret_may_be_overwritten() {
+        SettingService service = serviceWith("");
+        stub("deploy-token", doc(SettingType.HIDDEN, encryption.encrypt("old")));
+
+        assertThat(service.setAgentSecret(
+                TENANT, PROJECT, REF, "deploy-token", "new", SettingType.HIDDEN).getType())
                 .isEqualTo(SettingType.HIDDEN);
     }
 
@@ -67,7 +81,7 @@ class AgentSettingWriteTest {
         stub("smtp.password", doc(SettingType.PASSWORD, encryption.encrypt("real-credential")));
 
         assertThatThrownBy(() -> service.setAgentSecret(
-                TENANT, PROJECT, REF, "smtp.password", "agent-value"))
+                TENANT, PROJECT, REF, "smtp.password", "agent-value", SettingType.PASSWORD))
                 .isInstanceOf(SecretAccessDeniedException.class)
                 .hasMessageContaining("cannot be overwritten by an agent");
     }
@@ -94,7 +108,8 @@ class AgentSettingWriteTest {
         stub("ai.provider.default.apiKey", null);
 
         assertThatThrownBy(() -> service.setAgentSecret(
-                TENANT, PROJECT, REF, "ai.provider.default.apiKey", "sk-agent-chosen"))
+                TENANT, PROJECT, REF, "ai.provider.default.apiKey", "sk-agent-chosen",
+                SettingType.PASSWORD))
                 .isInstanceOf(SecretAccessDeniedException.class)
                 .hasMessageContaining("reserved for operator configuration");
     }
@@ -105,8 +120,9 @@ class AgentSettingWriteTest {
         stub("credentials.jira.api_token", null);
 
         assertThat(service.setAgentSecret(
-                TENANT, PROJECT, REF, "credentials.jira.api_token", "tok").getType())
-                .isEqualTo(SettingType.HIDDEN);
+                TENANT, PROJECT, REF, "credentials.jira.api_token", "tok",
+                SettingType.PASSWORD).getType())
+                .isEqualTo(SettingType.PASSWORD);
     }
 
     // ─────── the deny-list grammar ───────

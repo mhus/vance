@@ -503,20 +503,19 @@ public class TemplateApplier {
             agentKeyPolicy.requireAgentWritable(key);
         }
         if (st.input.type() == TemplateInputType.PASSWORD) {
-            // HIDDEN, not PASSWORD: a kit template stores a secret precisely so
-            // the kit's own documents can reference it via {{secret:...}} at
-            // runtime (see TemplateInputTarget's javadoc — that is what
-            // Kind.SETTING is for). A PASSWORD-typed setting is not
-            // reference-readable, so writing one here would install a credential
-            // the installed tool cannot use. Both origins agree on that; they
-            // differ only in the W1/W3 guards above and below.
+            // PASSWORD: a kit installs a credential its connector uses — an SMTP
+            // password, a REST token. The connector resolves it through
+            // SecretResolver.resolveForConnector, which reads both encrypted
+            // types, so there is no reason to make it readable for agents and
+            // scripts on top. The two origins differ only in the W1/W3 guards.
             if (origin == SettingWriteOrigin.AGENT) {
                 settingService.setAgentSecret(
-                        tenantId, SettingService.SCOPE_PROJECT, project, key, st.value);
+                        tenantId, SettingService.SCOPE_PROJECT, project, key,
+                        st.value, SettingType.PASSWORD);
             } else {
                 settingService.setEncryptedSecret(
                         tenantId, SettingService.SCOPE_PROJECT, project, key,
-                        st.value, SettingType.HIDDEN);
+                        st.value, SettingType.PASSWORD);
             }
         } else {
             settingService.set(

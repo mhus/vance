@@ -122,12 +122,13 @@ class BundledSettingFormsTest {
         assertThat(f.computedSettings().get(0).key())
                 .isEqualTo("credentials.jira.configured");
 
-        // The two credentials the Jira REST-tool document resolves at call time
-        // must be stored HIDDEN — a PASSWORD-typed setting is not
-        // reference-readable, so the tool could not use them. The refresh token
-        // stays PASSWORD (nothing references it; no reason to expose it).
-        assertThat(settingTypeOf(f, "oauthAccessToken")).isEqualTo("HIDDEN");
-        assertThat(settingTypeOf(f, "apiToken")).isEqualTo("HIDDEN");
+        // All three credentials stay PASSWORD (the default for a `password` field):
+        // the Jira connector uses them, and a connector resolves through
+        // SecretResolver.resolveForConnector, which reads PASSWORD too. Declaring
+        // HIDDEN here would make them readable for agents and scripts for no gain
+        // — the type follows the use, not the mechanism that resolves it.
+        assertThat(settingTypeOf(f, "oauthAccessToken")).isNull();
+        assertThat(settingTypeOf(f, "apiToken")).isNull();
         assertThat(settingTypeOf(f, "oauthRefreshToken")).isNull();
     }
 

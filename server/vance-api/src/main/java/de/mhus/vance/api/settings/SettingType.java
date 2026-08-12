@@ -42,19 +42,26 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
  *
  * <h2>PASSWORD vs. HIDDEN</h2>
  * Both are stored encrypted with the server key and are never returned through
- * the generic string-read path. They differ in <b>which channel</b> may resolve
- * them:
+ * the generic string-read path. They differ in <b>who reads them</b>:
  *
  * <ul>
- *   <li>{@link #PASSWORD} — a real secret. Only compiled server code reads it
- *       by a fixed key (LLM provider API keys, {@code vault.clientSecret},
- *       search-provider keys, OAuth client secrets). It can neither be read nor
- *       overwritten through an agent-reachable path.</li>
+ *   <li>{@link #PASSWORD} — a real secret. Read by compiled server code with a
+ *       fixed key (LLM provider API keys, {@code vault.clientSecret}) <b>and by
+ *       connectors</b>: an SMTP/IMAP tool document, a REST or MCP tool pack. For
+ *       <b>dynamic elements</b> — agents and scripts — it can neither be read
+ *       nor written. Usable, but invisible to them.</li>
  *   <li>{@link #HIDDEN} — merely concealed, not a real secret. Same encryption,
- *       but resolvable through an authored {@code {{secret:…}}} reference, so
- *       tool documents (REST/SMTP/IMAP templates), compose {@code secrets:}
- *       blocks and scripts ({@code vance.secret(…)}) can use it.</li>
+ *       additionally resolvable by dynamic elements: {@code vance.secret(…)} in a
+ *       script, a compose {@code secrets:} block, a secret provisioned through
+ *       {@code vault_secret_generate}.</li>
  * </ul>
+ *
+ * <p>A connector is <b>not</b> a dynamic element, even though its config contains
+ * a {@code {{secret:…}}} reference — that config is operator-authored. Were every
+ * reference treated as dynamic, every tool credential an operator sets up would
+ * become HIDDEN and PASSWORD would shrink to compiled-only reads, which hollows
+ * out the distinction. The type follows the <b>use</b> — not the mechanism that
+ * resolves it, and not the provenance of the value.
  *
  * <p>The distinction is deliberately <em>not</em> a permission: an agent runs
  * with the human's own {@code SecurityContext}, so no role check can tell
@@ -88,9 +95,9 @@ public enum SettingType {
     }
 
     /**
-     * Whether a value of this type may be resolved through an authored
-     * {@code {{secret:…}}} reference — i.e. from a tool document, a compose
-     * manifest or a script, all of which an agent can write.
+     * Whether a <b>dynamic element</b> — a script, a compose task, an agent — may
+     * resolve a value of this type. Connectors are not bound by this; they read
+     * through {@code SecretResolver.resolveForConnector}.
      *
      * <p>True for every plaintext type (those carry no secret to leak) and for
      * {@link #HIDDEN}; false only for {@link #PASSWORD}.

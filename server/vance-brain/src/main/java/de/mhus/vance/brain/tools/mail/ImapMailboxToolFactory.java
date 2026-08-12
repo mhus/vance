@@ -177,7 +177,7 @@ public class ImapMailboxToolFactory implements ToolFactory {
             for (Map.Entry<String, Object> e : rawParams.entrySet()) {
                 Object v = e.getValue();
                 if (v instanceof String s) {
-                    resolved.put(e.getKey(), secretResolver.resolve(s, ctx));
+                    resolved.put(e.getKey(), secretResolver.resolveForConnector(s, ctx));
                 } else {
                     resolved.put(e.getKey(), v);
                 }

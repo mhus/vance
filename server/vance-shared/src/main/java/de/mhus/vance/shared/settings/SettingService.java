@@ -575,20 +575,21 @@ public class SettingService {
      *       overwritten. Otherwise an agent could clobber a credential with a
      *       value of its own and read it back; confidentiality would survive (it
      *       only reads its own value) but the real credential would be gone.</li>
-     *   <li><b>W2</b> — the result is always {@link SettingType#HIDDEN}. The
-     *       value already travelled through the model context, so PASSWORD would
-     *       be a protection claim rather than protection.</li>
      * </ul>
      *
-     * <p>Only for values the agent itself supplied. A value the agent never saw —
-     * a kit's vault-encrypted blob, for instance — keeps its declared type; see
-     * §6.2.
+     * <p><b>The type follows the use, not the origin.</b> The caller declares it:
+     * a credential a connector will use is {@link SettingType#PASSWORD} even
+     * though an agent triggered the write, because agents and scripts must not be
+     * able to read it back. Only a secret that a script or a compose task has to
+     * resolve itself is {@link SettingType#HIDDEN}. A value having passed through
+     * the model context once is <em>not</em> a reason to weaken it forever.
      *
      * @throws SecretAccessDeniedException on a W1 or W3 violation
+     * @throws IllegalArgumentException if {@code type} is not an encrypted type
      */
     public SettingDocument setAgentSecret(
             String tenantId, String referenceType, String referenceId, String key,
-            @Nullable String plaintext) {
+            @Nullable String plaintext, SettingType type) {
         agentKeyPolicy.requireAgentWritable(key);
         Optional<SettingDocument> existing = find(tenantId, referenceType, referenceId, key);
         if (existing.isPresent() && existing.get().getType() == SettingType.PASSWORD) {
@@ -601,7 +602,7 @@ public class SettingService {
                             + "an agent-reachable path. A human has to change it.");
         }
         return setEncryptedSecret(
-                tenantId, referenceType, referenceId, key, plaintext, SettingType.HIDDEN);
+                tenantId, referenceType, referenceId, key, plaintext, type);
     }
 
     /**

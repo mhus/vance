@@ -16,17 +16,17 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * A kit template stores a secret so the kit's own documents can reference it via
- * {@code {{secret:…}}} at runtime — that is the documented purpose of
- * {@link TemplateInputTarget.Kind#SETTING}. Since PASSWORD-typed settings are not
- * reference-readable, such a write must land as {@link SettingType#HIDDEN}
- * whichever origin triggered it; writing PASSWORD would install a credential the
- * installed tool cannot use.
+ * A kit installs a credential its own connector uses — an SMTP password, a REST
+ * token. The connector resolves it through
+ * {@code SecretResolver.resolveForConnector}, which reads both encrypted types,
+ * so the credential stays {@link SettingType#PASSWORD}: agents and scripts must
+ * not be able to read it back, and the fact that an agent triggered the install
+ * does not change what the value is used for.
  *
  * <p>The origins differ in the guards, not in the resulting type: an
- * {@link SettingWriteOrigin#AGENT} write goes through
- * {@code setAgentSecret} (W1: no overwrite of an existing PASSWORD) and is
- * checked against the reserved-key deny-list (W3).
+ * {@link SettingWriteOrigin#AGENT} write goes through {@code setAgentSecret}
+ * (W1: no overwrite of an existing PASSWORD) and is checked against the
+ * reserved-key deny-list (W3).
  */
 class TemplateApplierSettingTypeTest {
 
@@ -42,28 +42,28 @@ class TemplateApplierSettingTypeTest {
     }
 
     @Test
-    void an_agent_write_goes_through_the_agent_secret_path() {
+    void an_agent_write_goes_through_the_agent_secret_path_and_stays_password() {
         applierWith("").persistSetting(TENANT, PROJECT,
                 settingTarget(TemplateInputType.PASSWORD, "smtp.password", "s3cr3t"),
                 SettingWriteOrigin.AGENT);
 
         verify(settingService).setAgentSecret(
                 eq(TENANT), eq(SettingService.SCOPE_PROJECT), eq(PROJECT),
-                eq("smtp.password"), eq("s3cr3t"));
+                eq("smtp.password"), eq("s3cr3t"), eq(SettingType.PASSWORD));
     }
 
     @Test
-    void a_human_write_stores_hidden_directly_without_the_agent_guards() {
+    void a_human_write_stores_password_directly_without_the_agent_guards() {
         applierWith("").persistSetting(TENANT, PROJECT,
                 settingTarget(TemplateInputType.PASSWORD, "smtp.password", "s3cr3t"),
                 SettingWriteOrigin.USER);
 
         verify(settingService).setEncryptedSecret(
                 eq(TENANT), eq(SettingService.SCOPE_PROJECT), eq(PROJECT),
-                eq("smtp.password"), eq("s3cr3t"), eq(SettingType.HIDDEN));
+                eq("smtp.password"), eq("s3cr3t"), eq(SettingType.PASSWORD));
         verify(settingService, never()).setAgentSecret(
                 eq(TENANT), eq(SettingService.SCOPE_PROJECT), eq(PROJECT),
-                eq("smtp.password"), eq("s3cr3t"));
+                eq("smtp.password"), eq("s3cr3t"), eq(SettingType.PASSWORD));
     }
 
     @Test
@@ -86,7 +86,7 @@ class TemplateApplierSettingTypeTest {
 
         verify(settingService).setEncryptedSecret(
                 eq(TENANT), eq(SettingService.SCOPE_PROJECT), eq(PROJECT),
-                eq("ai.provider.default.apiKey"), eq("sk-human"), eq(SettingType.HIDDEN));
+                eq("ai.provider.default.apiKey"), eq("sk-human"), eq(SettingType.PASSWORD));
     }
 
     @Test

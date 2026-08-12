@@ -199,6 +199,7 @@ public class FootConfig {
         private WindowTitle windowTitle = new WindowTitle();
         private ToolOutput toolOutput = new ToolOutput();
         private Markdown markdown = new Markdown();
+        private SyntaxHighlight syntaxHighlight = new SyntaxHighlight();
         private FollowUp followUp = new FollowUp();
         /**
          * Render the model's reasoning ("thoughts") for assistant turns
@@ -259,6 +260,16 @@ public class FootConfig {
          * over-long line rather than mid-word-cut.
          */
         private int wrapWidth = 120;
+    }
+
+    /** Foreground-only palette shared by Markdown fences and file diffs. */
+    @Data
+    public static class SyntaxHighlight {
+        private String keyword = "fg:magenta,bold";
+        private String string = "fg:green";
+        private String comment = "fg:bright-black,italic";
+        private String number = "fg:cyan";
+        private String annotation = "fg:yellow";
     }
 
     /**

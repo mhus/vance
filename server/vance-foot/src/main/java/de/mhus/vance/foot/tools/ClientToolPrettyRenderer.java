@@ -3,6 +3,7 @@ package de.mhus.vance.foot.tools;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.tools.file.ClientFilePaths;
 import de.mhus.vance.foot.ui.ChatTerminal;
+import de.mhus.vance.foot.ui.SourceLanguage;
 import de.mhus.vance.foot.ui.StyleParser;
 import de.mhus.vance.foot.ui.Verbosity;
 import java.nio.charset.StandardCharsets;
@@ -52,7 +53,8 @@ public class ClientToolPrettyRenderer {
         FootConfig.ToolOutput cfg = config.getUi().getToolOutput();
         this.headerStyle = StyleParser.parse(cfg.getHeader());
         this.resultStyle = StyleParser.parse(cfg.getResult());
-        this.diffRenderer = new FileDiffRenderer(terminal, cfg);
+        this.diffRenderer = new FileDiffRenderer(
+                terminal, cfg, config.getUi().getSyntaxHighlight());
     }
 
     public boolean isEnabled() {
@@ -152,7 +154,8 @@ public class ClientToolPrettyRenderer {
         String postContent = computePostContent(state, result);
         if (postContent == null) return;
         String pre = state.preContent == null ? "" : state.preContent;
-        diffRenderer.render(pre, postContent);
+        SourceLanguage language = SourceLanguage.fromPath(string(state.params, "path"));
+        diffRenderer.render(pre, postContent, language);
     }
 
     /**

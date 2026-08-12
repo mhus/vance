@@ -1,6 +1,8 @@
 package de.mhus.vance.foot.markdown;
 
 import de.mhus.vance.foot.config.FootConfig;
+import de.mhus.vance.foot.ui.SourceLanguage;
+import de.mhus.vance.foot.ui.SourceSyntaxHighlighter;
 import de.mhus.vance.foot.ui.StyleParser;
 import de.mhus.vance.foot.ui.TerminalSanitizer;
 import java.util.ArrayList;
@@ -60,6 +62,7 @@ public class MarkdownAnsiRenderer {
     private final @Nullable AttributedStyle codeStyle;
     private final @Nullable AttributedStyle blockquoteStyle;
     private final @Nullable AttributedStyle tableBorderStyle;
+    private final SourceSyntaxHighlighter syntaxHighlighter;
     private final int wrapWidth;
 
     private static final Pattern HEADING = Pattern.compile("^(#{1,6})\\s+(.+?)\\s*#*\\s*$");
@@ -74,6 +77,7 @@ public class MarkdownAnsiRenderer {
         this.codeStyle = StyleParser.parse(md.getCode());
         this.blockquoteStyle = StyleParser.parse(md.getBlockquote());
         this.tableBorderStyle = StyleParser.parse(md.getTableBorder());
+        this.syntaxHighlighter = new SourceSyntaxHighlighter(config.getUi().getSyntaxHighlight());
         this.wrapWidth = md.getWrapWidth();
     }
 
@@ -108,6 +112,9 @@ public class MarkdownAnsiRenderer {
         while (i < raw.length) {
             String line = stripTrailing(raw[i]);
             if (FENCE.matcher(line).matches()) {
+                String fenceInfo = line.stripLeading().substring(3);
+                SourceLanguage language = SourceLanguage.fromFence(fenceInfo);
+                SourceSyntaxHighlighter.State syntaxState = new SourceSyntaxHighlighter.State();
                 out.add(styled(line, codeStyle));
                 i++;
                 while (i < raw.length) {
@@ -117,7 +124,9 @@ public class MarkdownAnsiRenderer {
                         i++;
                         break;
                     }
-                    out.add(styled(body, codeStyle));
+                    out.add(language == null
+                            ? styled(body, codeStyle)
+                            : syntaxHighlighter.highlight(body, language, syntaxState));
                     i++;
                 }
                 continue;

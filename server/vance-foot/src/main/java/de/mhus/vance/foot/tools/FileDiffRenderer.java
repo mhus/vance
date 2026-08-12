@@ -2,12 +2,15 @@ package de.mhus.vance.foot.tools;
 
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.ui.ChatTerminal;
+import de.mhus.vance.foot.ui.SourceLanguage;
+import de.mhus.vance.foot.ui.SourceSyntaxHighlighter;
 import de.mhus.vance.foot.ui.StyleParser;
 import de.mhus.vance.foot.ui.TerminalSanitizer;
 import de.mhus.vance.foot.ui.Verbosity;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
 import org.jspecify.annotations.Nullable;
@@ -41,15 +44,18 @@ public final class FileDiffRenderer {
     private final @Nullable AttributedStyle removeStyle;
     private final @Nullable AttributedStyle contextStyle;
     private final @Nullable AttributedStyle markerStyle;
-    private final int contextLines;
+    private final SourceSyntaxHighlighter syntaxHighlighter;
+    private int contextLines;
     private final int maxLines;
 
-    public FileDiffRenderer(ChatTerminal terminal, FootConfig.ToolOutput cfg) {
+    public FileDiffRenderer(ChatTerminal terminal, FootConfig.ToolOutput cfg,
+            FootConfig.SyntaxHighlight syntaxCfg) {
         this.terminal = terminal;
         this.addStyle = StyleParser.parse(cfg.getDiffAdd());
         this.removeStyle = StyleParser.parse(cfg.getDiffRemove());
         this.contextStyle = StyleParser.parse(cfg.getDiffContext());
         this.markerStyle = StyleParser.parse(cfg.getDiffMarker());
+        this.syntaxHighlighter = new SourceSyntaxHighlighter(syntaxCfg);
         this.contextLines = Math.max(0, cfg.getDiffContextLines());
         this.maxLines = Math.max(1, cfg.getDiffMaxLines());
     }
@@ -60,13 +66,14 @@ public final class FileDiffRenderer {
      * as empty — useful for "new file" or "file deleted"). Emits nothing
      * when the contents are equal.
      */
-    public void render(@Nullable String oldContent, @Nullable String newContent) {
+    public void render(@Nullable String oldContent, @Nullable String newContent,
+            @Nullable SourceLanguage language) {
         List<String> oldLines = splitLines(oldContent == null ? "" : oldContent);
         List<String> newLines = splitLines(newContent == null ? "" : newContent);
         List<DiffOp> ops = computeDiff(oldLines, newLines);
         if (ops.stream().noneMatch(o -> o.type != OpType.CONTEXT)) return;
         List<Hunk> hunks = groupHunks(ops, contextLines);
-        emit(ops, hunks);
+        emit(ops, hunks, language);
     }
 
     // ---------------------------------------------------------------------
@@ -158,8 +165,10 @@ public final class FileDiffRenderer {
         return hunks;
     }
 
-    private void emit(List<DiffOp> ops, List<Hunk> hunks) {
+    private void emit(List<DiffOp> ops, List<Hunk> hunks, @Nullable SourceLanguage language) {
         int emitted = 0;
+        SourceSyntaxHighlighter.State oldState = new SourceSyntaxHighlighter.State();
+        SourceSyntaxHighlighter.State newState = new SourceSyntaxHighlighter.State();
         int[] lineNums = computeLineNumbers(ops);
         for (int h = 0; h < hunks.size(); h++) {
             Hunk hunk = hunks.get(h);
@@ -171,7 +180,7 @@ public final class FileDiffRenderer {
                 if (emitted >= maxLines) { emitTruncationMarker(); return; }
             }
             for (int i = hunk.startOp; i < hunk.endOp; i++) {
-                emitOp(ops.get(i), lineNums[i]);
+                emitOp(ops.get(i), lineNums[i], language, oldState, newState);
                 emitted++;
                 if (emitted >= maxLines && i < hunk.endOp - 1) {
                     emitTruncationMarker();
@@ -206,27 +215,47 @@ public final class FileDiffRenderer {
         return out;
     }
 
-    private void emitOp(DiffOp op, int lineNum) {
+    private void emitOp(DiffOp op, int lineNum, @Nullable SourceLanguage language,
+            SourceSyntaxHighlighter.State oldState, SourceSyntaxHighlighter.State newState) {
         AttributedStringBuilder sb = new AttributedStringBuilder();
         String num = formatLineNum(lineNum);
         // File content is server-/LLM-supplied — strip terminal control
         // chars so a diffed line cannot inject ANSI (code-review F3).
         String content = TerminalSanitizer.sanitizeContent(op.line);
-        switch (op.type) {
-            case ADD -> {
-                if (addStyle != null) sb.style(addStyle);
-                sb.append(num).append(" + ").append(content);
-            }
-            case REMOVE -> {
-                if (removeStyle != null) sb.style(removeStyle);
-                sb.append(num).append(" - ").append(content);
-            }
-            case CONTEXT -> {
-                if (contextStyle != null) sb.style(contextStyle);
-                sb.append(num).append("   ").append(content);
+        AttributedStyle rowStyle = switch (op.type) {
+            case ADD -> addStyle;
+            case REMOVE -> removeStyle;
+            case CONTEXT -> contextStyle;
+        };
+        if (rowStyle != null) sb.style(rowStyle);
+        String prefix = switch (op.type) {
+            case ADD -> " + ";
+            case REMOVE -> " - ";
+            case CONTEXT -> "   ";
+        };
+        sb.append(num).append(prefix);
+        if (language == null) {
+            sb.append(content);
+        } else {
+            SourceSyntaxHighlighter.State state = op.type == OpType.REMOVE ? oldState : newState;
+            AttributedString highlighted = syntaxHighlighter.highlight(content, language, state);
+            for (int i = 0; i < highlighted.length(); i++) {
+                AttributedStyle token = highlighted.styleAt(i);
+                AttributedStyle merged = rowStyle == null
+                        ? token
+                        : mergeForeground(rowStyle, token);
+                sb.style(merged).append(highlighted.charAt(i));
             }
         }
         terminal.printlnStyled(Verbosity.INFO, sb.toAttributedString());
+    }
+
+    static AttributedStyle mergeForeground(AttributedStyle base, AttributedStyle foreground) {
+        long foregroundBits = foreground.getStyle() & 0x7fffff8000L;
+        long foregroundMask = foreground.getMask() & 0x100L;
+        return new AttributedStyle(
+                (base.getStyle() & ~0x7fffff8000L) | foregroundBits,
+                base.getMask() | foregroundMask);
     }
 
     private static String formatLineNum(int n) {

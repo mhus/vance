@@ -30,6 +30,7 @@ export const INSIGHTS_TOP_TABS = [
   'ursahooks',
   'rag',
   'research',
+  'tool-usage',
   'cluster',
   'addons',
   'usage',

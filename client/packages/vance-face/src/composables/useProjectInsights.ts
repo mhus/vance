@@ -4,6 +4,7 @@ import type {
   EffectiveRecipeDto,
   EffectiveToolDto,
   ToolHealthEntryDto,
+  ToolUsageRoleInsightsDto,
   ZarniwoopInsightsDto,
 } from '@vance/generated';
 
@@ -170,6 +171,48 @@ export function useZarniwoopInsights(): UseZarniwoopInsights {
  * expandable cooldown list. {@code clearCooldown} maps to the
  * admin-only clear-cooldown endpoint and triggers a reload.
  */
+/**
+ * Measured tool demand of a project, grouped by role (the recipe a
+ * process ran under). Read-only: the numbers are a consequence of what
+ * the agents did, there is nothing to configure here.
+ */
+export interface UseToolUsageInsights {
+  roles: Ref<ToolUsageRoleInsightsDto[]>;
+  loading: Ref<boolean>;
+  error: Ref<string | null>;
+  load: (projectId: string) => Promise<void>;
+  clear: () => void;
+}
+
+export function useToolUsageInsights(): UseToolUsageInsights {
+  const roles = ref<ToolUsageRoleInsightsDto[]>([]);
+  const loading = ref(false);
+  const error = ref<string | null>(null);
+
+  async function load(projectId: string): Promise<void> {
+    loading.value = true;
+    error.value = null;
+    try {
+      roles.value = await brainFetch<ToolUsageRoleInsightsDto[]>(
+        'GET',
+        `admin/projects/${encodeURIComponent(projectId)}/insights/tool-usage`,
+      );
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to load tool usage.';
+      roles.value = [];
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  function clear(): void {
+    roles.value = [];
+    error.value = null;
+  }
+
+  return { roles, loading, error, load, clear };
+}
+
 export interface UseToolHealth {
   entries: Ref<ToolHealthEntryDto[]>;
   loading: Ref<boolean>;

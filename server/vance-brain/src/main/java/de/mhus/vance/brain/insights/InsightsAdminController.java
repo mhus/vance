@@ -23,6 +23,8 @@ import de.mhus.vance.api.insights.PrakRunInsightsDto;
 import de.mhus.vance.api.insights.SessionClientToolsDto;
 import de.mhus.vance.api.insights.SessionInsightsDto;
 import de.mhus.vance.api.insights.ThinkProcessInsightsDto;
+import de.mhus.vance.api.insights.ToolUsageEntryInsightsDto;
+import de.mhus.vance.api.insights.ToolUsageRoleInsightsDto;
 import de.mhus.vance.api.insights.ZarniwoopInsightsDto;
 import de.mhus.vance.brain.zarniwoop.ZarniwoopGateService;
 import de.mhus.vance.brain.zarniwoop.ZarniwoopInsightsService;
@@ -147,6 +149,7 @@ public class InsightsAdminController {
     private final PrakRunService prakRunService;
     private final AddonInsightsService addonInsightsService;
     private final ToolHealthService toolHealthService;
+    private final de.mhus.vance.shared.toolusage.ToolUsageService toolUsageService;
     private final ZarniwoopInsightsService zarniwoopInsightsService;
     private final ZarniwoopGateService zarniwoopGateService;
     private final SessionExchangeService sessionExchangeService;
@@ -691,6 +694,86 @@ public class InsightsAdminController {
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
         return zarniwoopInsightsService.listInstances(tenant, project);
+    }
+
+    /**
+     * Measured tool demand of a project, grouped by role. The role is the
+     * recipe a process ran under (engine name as fallback), because that
+     * is the key the counters are written under — a coding worker's
+     * {@code file_read} flood says nothing about the chat orchestrator's
+     * needs, and the tool-surface budget reads them per role for exactly
+     * that reason. See {@code specification/public/server-tools.md} §14.4.
+     *
+     * <p>Read-only and nothing to configure here: the numbers are a
+     * consequence of what the agents did. An empty list means no tool has
+     * run in this project yet — or the counters were reset.
+     */
+    @GetMapping("/projects/{project}/insights/tool-usage")
+    public List<ToolUsageRoleInsightsDto> listToolUsage(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("project") String project,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
+        Map<String, List<ToolUsageEntryInsightsDto>> byRole = new LinkedHashMap<>();
+        for (de.mhus.vance.shared.toolusage.ToolUsageDocument doc
+                : toolUsageService.listByProject(tenant, project)) {
+            if (doc.getToolName() == null) continue;
+            String role = doc.getRecipeName() == null || doc.getRecipeName().isBlank()
+                    ? de.mhus.vance.shared.toolusage.ToolUsageService.ROLE_UNKNOWN
+                    : doc.getRecipeName();
+            byRole.computeIfAbsent(role, k -> new ArrayList<>())
+                    .add(ToolUsageEntryInsightsDto.builder()
+                            .toolName(doc.getToolName())
+                            .family(doc.getFamily())
+                            .calls(doc.getCalls())
+                            .discoveryHits(doc.getDiscoveryHits())
+                            .demand(doc.getCalls() + doc.getDiscoveryHits())
+                            .lastCallAt(doc.getLastCallAt())
+                            .lastDiscoveryAt(doc.getLastDiscoveryAt())
+                            .build());
+        }
+        List<ToolUsageRoleInsightsDto> out = new ArrayList<>(byRole.size());
+        for (Map.Entry<String, List<ToolUsageEntryInsightsDto>> e : byRole.entrySet()) {
+            List<ToolUsageEntryInsightsDto> tools = e.getValue();
+            // Most-demanded first, name as the tie-break so the table is
+            // reproducible between reloads.
+            tools.sort(Comparator
+                    .comparingLong(ToolUsageEntryInsightsDto::getDemand).reversed()
+                    .thenComparing(ToolUsageEntryInsightsDto::getToolName));
+            long calls = tools.stream().mapToLong(ToolUsageEntryInsightsDto::getCalls).sum();
+            long hits = tools.stream().mapToLong(ToolUsageEntryInsightsDto::getDiscoveryHits).sum();
+            out.add(ToolUsageRoleInsightsDto.builder()
+                    .role(e.getKey())
+                    .toolCount(tools.size())
+                    .calls(calls)
+                    .discoveryHits(hits)
+                    .demand(calls + hits)
+                    .lastActivityAt(latestActivity(tools))
+                    .tools(tools)
+                    .build());
+        }
+        out.sort(Comparator
+                .comparingLong(ToolUsageRoleInsightsDto::getDemand).reversed()
+                .thenComparing(ToolUsageRoleInsightsDto::getRole));
+        return out;
+    }
+
+    /** Newest call- or discovery-timestamp across a role's tools. */
+    private static java.time.@Nullable Instant latestActivity(
+            List<ToolUsageEntryInsightsDto> tools) {
+        java.time.@Nullable Instant best = null;
+        for (ToolUsageEntryInsightsDto t : tools) {
+            best = later(best, t.getLastCallAt());
+            best = later(best, t.getLastDiscoveryAt());
+        }
+        return best;
+    }
+
+    private static java.time.@Nullable Instant later(
+            java.time.@Nullable Instant a, java.time.@Nullable Instant b) {
+        if (a == null) return b;
+        if (b == null) return a;
+        return a.isAfter(b) ? a : b;
     }
 
     /**

@@ -47,6 +47,7 @@ import WorkflowsTab from './WorkflowsTab.vue';
 import RagTab from './RagTab.vue';
 import UsageCostTab from './UsageCostTab.vue';
 import ZarniwoopTab from './ZarniwoopTab.vue';
+import ToolUsageTab from './ToolUsageTab.vue';
 import {
   ChatRole,
   type MarvinNodeInsightsDto,
@@ -121,6 +122,7 @@ const ALL_TABS: ReadonlyArray<{ key: TopTab; label: string }> = [
   { key: 'ursahooks', label: 'Hooks' },
   { key: 'rag', label: 'RAG' },
   { key: 'research', label: 'Research' },
+  { key: 'tool-usage', label: 'Tool Usage' },
   { key: 'cluster', label: 'Cluster' },
   { key: 'addons', label: 'Addons' },
   { key: 'usage', label: 'Usage & Cost' },
@@ -863,6 +865,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       <UrsahooksTab v-else-if="topTab === 'ursahooks'" :project-id="effectiveProjectId" />
       <RagTab v-else-if="topTab === 'rag'" :project-id="effectiveProjectId" />
       <ZarniwoopTab v-else-if="topTab === 'research'" :project-id="effectiveProjectId" />
+      <ToolUsageTab v-else-if="topTab === 'tool-usage'" :project-id="effectiveProjectId" />
       <ClusterTab v-else-if="topTab === 'cluster'" />
       <AddonsTab v-else-if="topTab === 'addons'" />
       <UsageCostTab v-else-if="topTab === 'usage'" />

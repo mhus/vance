@@ -150,6 +150,25 @@ public class ToolUsageService {
         return demand;
     }
 
+    /**
+     * All counter rows of a project, every role included — the insights
+     * view. Not memoised: an operator looking at the tab wants the current
+     * numbers, and this is not a hot path.
+     */
+    public List<ToolUsageDocument> listByProject(
+            @Nullable String tenantId, @Nullable String projectId) {
+        if (isBlank(tenantId) || isBlank(projectId)) {
+            return List.of();
+        }
+        try {
+            return repository.findByTenantIdAndProjectId(tenantId, projectId);
+        } catch (RuntimeException e) {
+            log.trace("ToolUsageService: listByProject failed for tenant='{}' project='{}': {}",
+                    tenantId, projectId, e.toString());
+            return List.of();
+        }
+    }
+
     /** Drops the memoised read snapshots — tests and admin refresh. */
     public void invalidateCache() {
         readCache.clear();

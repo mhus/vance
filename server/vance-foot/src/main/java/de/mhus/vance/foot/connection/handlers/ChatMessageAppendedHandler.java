@@ -116,19 +116,10 @@ public class ChatMessageAppendedHandler implements MessageHandler {
             if (!thinkingStreamed) {
                 maybeRenderThoughts(data);
             }
-            // Capture the assistant content for follow-up suggestions.
-            // We do NOT gate on isMainProcess() here: when the main
-            // process (chat/Arthur) delegates to a worker (e.g.
-            // coding-xxx), the worker's chat-message-appended events
-            // are what the user sees as the conversation reply. The
-            // main process itself rarely emits chat-message-appended
-            // events for assistant turns — it delegates. Gating on
-            // isMainProcess() would therefore skip every real reply.
-            if (data.getRole() == ChatRole.ASSISTANT) {
-                String content = data.getContent() == null ? "" : data.getContent();
-                log.trace("onAssistantMessage (streamed) — process={}, contentLen={}",
-                        data.getProcessName(), content.length());
-                followUpService.onAssistantMessage(content);
+            // Any committed main-chat turn can change a shared-chat reply
+            // suggestion; roles need not alternate.
+            if (isMainProcess(data.getProcessName())) {
+                followUpService.onConversationChanged();
             }
             maybeUpdatePicker(data);
             return;
@@ -167,18 +158,8 @@ public class ChatMessageAppendedHandler implements MessageHandler {
         } else {
             terminal.worker(header + content);
         }
-        // Capture the assistant content for follow-up suggestions.
-        // We do NOT gate on isMainProcess() here: when the main
-        // process (chat/Arthur) delegates to a worker (e.g.
-        // coding-xxx), the worker's chat-message-appended events
-        // are what the user sees as the conversation reply. The
-        // main process itself rarely emits chat-message-appended
-        // events for assistant turns — it delegates. Gating on
-        // isMainProcess() would therefore skip every real reply.
-        if (data.getRole() == ChatRole.ASSISTANT) {
-            log.trace("onAssistantMessage (non-streamed) — process={}, contentLen={}",
-                    data.getProcessName(), content.length());
-            followUpService.onAssistantMessage(content);
+        if (isMainProcess(data.getProcessName())) {
+            followUpService.onConversationChanged();
         }
         maybeUpdatePicker(data);
     }

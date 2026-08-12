@@ -27,6 +27,7 @@ import MessageBubble from './MessageBubble.vue';
 import FollowUpGhost from './FollowUpGhost.vue';
 import PlanModeIndicator from './PlanModeIndicator.vue';
 import { OPTIMISTIC_PREFIX } from './optimisticEcho';
+import { buildFollowUpContext, type FollowUpContext } from './followUpContext';
 
 type ProcessModeName = 'NORMAL' | 'EXPLORING' | 'PLANNING' | 'EXECUTING';
 
@@ -82,10 +83,9 @@ const emit = defineEmits<{
   /** User clicked the follow-up ghost bubble — parent routes this to
    *  the composer's setText + acceptCurrent. */
   (event: 'accept-follow-up'): void;
-  /** Most-recent assistant message content changed (incl. {@code null}
-   *  when there isn't one yet). Parent uses this to drive the
-   *  follow-up suggestion fetch. */
-  (event: 'last-assistant-changed', content: string | null): void;
+  /** The bounded main-chat transcript and its final message changed.
+   *  Parent uses this to drive the follow-up suggestion fetch. */
+  (event: 'follow-up-context-changed', payload: FollowUpContext | null): void;
   /** A chat-export document was created (success). Cortex listens to
    *  this and opens the document as a new tab; the chat editor itself
    *  shows a transient banner via its internal {@code exportFeedback}
@@ -376,44 +376,26 @@ function onPickAskUserOption(label: string): void {
 }
 
 /**
- * Most-recent ASSISTANT message that the user could plausibly reply
- * to — drives the follow-up ghost bubble. Skips streaming drafts and
- * worker messages; only fully-committed main-chat assistant messages
- * count, and only when the conversation tail isn't already a USER
- * message (i.e. the user hasn't replied yet).
+ * Bounded, speaker-aware transcript of the committed main conversation.
+ * Roles need not alternate and USER turns retain their display names for
+ * shared sessions. Worker side-channel messages are deliberately excluded.
  */
-const lastAssistantContent = computed<string | null>(() => {
-  const msgs = allMessages.value;
-  for (let i = msgs.length - 1; i >= 0; i--) {
-    const m = msgs[i];
-    if (String(m.role) === 'USER') return null;
-    if (String(m.role) !== 'ASSISTANT') continue;
-    if (isWorkerMessage(m)) continue;
-    const content = m.content?.trim();
-    if (!content) return null;
-    return content;
-  }
-  return null;
+const followUpContext = computed<FollowUpContext | null>(() => {
+  return buildFollowUpContext(allMessages.value.filter((message) => !isWorkerMessage(message)));
 });
 
-watch(lastAssistantContent, (next) => {
-  emit('last-assistant-changed', next);
+watch(followUpContext, (next) => {
+  emit('follow-up-context-changed', next);
 }, { immediate: true });
 
-/** Index in {@code allMessages} of the bubble after which the
+/** Index in {@code allMessages} of the exact message after which the
  *  follow-up ghost should be rendered. {@code -1} when there is no
  *  active follow-up. */
 const followUpAnchorIndex = computed<number>(() => {
   if (!props.followUpSuggestion) return -1;
-  const target = lastAssistantContent.value;
-  if (!target) return -1;
-  const msgs = allMessages.value;
-  for (let i = msgs.length - 1; i >= 0; i--) {
-    if (String(msgs[i].role) === 'ASSISTANT' && msgs[i].content?.trim() === target) {
-      return i;
-    }
-  }
-  return -1;
+  const anchorMessageId = followUpContext.value?.anchorMessageId;
+  if (!anchorMessageId) return -1;
+  return allMessages.value.findIndex((message) => message.messageId === anchorMessageId);
 });
 
 function onAcceptFollowUp(): void {

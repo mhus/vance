@@ -11,9 +11,9 @@ description: |
     the two fragments. Suggestions are inserted VERBATIM at the
     cursor — write text the user could plausibly have typed next.
   - Reply mode: `precedingContext` set, `textBefore`/`textAfter`
-    absent. The user is looking at the given text (typically the last
-    assistant message in a chat) and wants suggestions for how to
-    react — a follow-up question, a clarification, an acknowledgement.
+    absent. The user is looking at a recent conversation transcript
+    and wants suggestions for how to react — a follow-up question, a
+    clarification, an acknowledgement, or a natural next message.
 
   `mode` is an optional free-form UI-surface hint passed through
   verbatim, orthogonal to the edit/reply branch.
@@ -31,17 +31,20 @@ promptPrefix: |
   {% endif %}
 
   {% if precedingContext %}
-  ## Preceding text (the user is responding to this)
+  ## Recent conversation transcript
 
   {{ precedingContext }}
 
   ## Task
 
-  Suggest up to {{ count }} short ways the user could **react** to the
-  text above — a follow-up question, a clarification request, an
-  acknowledgement, or a natural next message. Suggestions should be
-  written from the user's perspective (first-person voice if
-  appropriate), NOT echo or rephrase the text above.
+  Speaker and role labels are part of the transcript. Roles may not
+  alternate, and multiple people may participate. Suggest up to
+  {{ count }} short ways the current user could naturally continue the
+  conversation — a follow-up question, a clarification request, an
+  acknowledgement, or another useful next message. Write from the
+  current user's perspective (first-person voice if appropriate), NOT
+  as the assistant or another named participant, and do not echo or
+  rephrase the transcript.
   {% else %}
   ## Text before cursor
 

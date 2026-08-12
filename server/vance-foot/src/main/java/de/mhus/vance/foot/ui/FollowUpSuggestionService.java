@@ -1,5 +1,7 @@
 package de.mhus.vance.foot.ui;
 
+import de.mhus.vance.api.chat.ChatMessageDto;
+import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.followup.FollowUpRequestDto;
 import de.mhus.vance.api.followup.FollowUpResponseDto;
 import de.mhus.vance.api.followup.FollowUpSuggestionDto;
@@ -17,7 +19,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
@@ -62,6 +63,8 @@ public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvi
      * message *content* would hold every reply of the session forever.
      */
     private static final int CACHE_MAX = 200;
+    static final int HISTORY_LIMIT = 12;
+    static final int CONTEXT_CHARACTER_LIMIT = 12_000;
 
     /**
      * Cache keyed on a digest of {@code projectId + assistantContent}
@@ -71,9 +74,6 @@ public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvi
     private final Map<String, @Nullable String> cache = boundedLru(CACHE_MAX);
     /** Keys for which the user already accepted the suggestion. Bounded LRU. */
     private final Map<String, Boolean> accepted = boundedLru(CACHE_MAX);
-
-    /** Last assistant message content — set by ChatMessageAppendedHandler. */
-    private final AtomicReference<@Nullable String> lastAssistantContent = new AtomicReference<>(null);
 
     /** Monotonic sequence to drop stale fetch responses. */
     private final AtomicInteger fetchSeq = new AtomicInteger(0);
@@ -107,18 +107,14 @@ public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvi
     }
 
     /**
-     * Called by {@code ChatMessageAppendedHandler} whenever a new
-     * assistant message is committed. Clears the current suggestion and
-     * bumps {@link #stateGeneration()} so the next idle period fetches
-     * fresh even if the user hasn't touched the keyboard since.
+     * Called whenever a new committed chat turn can change the reply context.
+     * Roles need not alternate in shared sessions, so USER, ASSISTANT and future
+     * persisted roles all re-arm the idle fetch.
      */
-    public void onAssistantMessage(@Nullable String content) {
-        log.trace("onAssistantMessage called — content length={}, blank={}",
-                content == null ? 0 : content.length(),
-                content == null || content.isBlank());
-        lastAssistantContent.set(content);
+    public void onConversationChanged() {
         currentSuggestion = null;
         currentKey = null;
+        fetchSeq.incrementAndGet();
         stateGeneration.incrementAndGet();
     }
 
@@ -178,12 +174,6 @@ public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvi
             log.trace("fetchIfApplicable: feature disabled");
             return;
         }
-        String assistant = lastAssistantContent.get();
-        if (assistant == null || assistant.isBlank()) {
-            log.trace("fetchIfApplicable: no last assistant content — skipping");
-            return;
-        }
-
         SessionService.BoundSession bound = sessions.current();
         if (bound == null) {
             log.trace("fetchIfApplicable: no bound session — skipping");
@@ -195,42 +185,46 @@ public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvi
             return;
         }
 
-        String key = cacheKey(projectId, assistant);
-        if (accepted.containsKey(key)) {
-            log.trace("fetchIfApplicable: suggestion already accepted for this key — skipping");
-            return;
-        }
-
-        // Cache hit?
-        if (cache.containsKey(key)) {
-            String cached = cache.get(key);
-            log.trace("fetchIfApplicable: cache hit — cached={}", cached == null ? "null" : "'" + (cached.length() > 60 ? cached.substring(0, 60) + "…" : cached) + "'");
-            currentSuggestion = cached;
-            currentKey = key;
-            return;
-        }
-
         BrainRestClientService rest = restProvider.getIfAvailable();
         if (rest == null) {
             log.trace("fetchIfApplicable: BrainRestClientService not available — cannot fetch");
             return;
         }
         int seq = fetchSeq.incrementAndGet();
-        log.trace("fetchIfApplicable: firing REST call — project={}, contentLen={}, seq={}",
-                projectId, assistant.length(), seq);
-        // Off the animator thread — see the method Javadoc. The
-        // single-threaded executor also serialises overlapping fetches,
-        // so the seq guard only has to discard stale *results*.
-        fetcher.execute(() -> runFetch(rest, key, projectId, assistant, seq));
+        fetcher.execute(() -> loadContextAndFetch(rest, bound, projectId, seq));
     }
 
-    /** The REST round-trip itself. Runs on {@link #fetcher}, never on the animator. */
+    private void loadContextAndFetch(
+            BrainRestClientService rest,
+            SessionService.BoundSession bound,
+            String projectId,
+            int seq) {
+        try {
+            String context = buildConversationContext(
+                    rest.chatHistory(bound.sessionId(), HISTORY_LIMIT),
+                    sessions.activeProcess());
+            if (context.isBlank() || seq != fetchSeq.get()) return;
+            String key = cacheKey(projectId, context);
+            if (accepted.containsKey(key)) return;
+            if (cache.containsKey(key)) {
+                currentSuggestion = cache.get(key);
+                currentKey = key;
+                return;
+            }
+            runFetch(rest, key, projectId, context, seq);
+        } catch (Exception e) {
+            log.trace("fetchIfApplicable: history load failed — {}: {}",
+                    e.getClass().getSimpleName(), e.getMessage());
+        }
+    }
+
+    /** The follow-up REST round-trip. Runs on {@link #fetcher}. */
     private void runFetch(
             BrainRestClientService rest, String key, String projectId,
-            String assistant, int seq) {
+            String context, int seq) {
         try {
             FollowUpRequestDto body = FollowUpRequestDto.builder()
-                    .text(assistant)
+                    .text(context)
                     .count(1)
                     .mode("chat-reply")
                     .build();
@@ -275,6 +269,32 @@ public class FollowUpSuggestionService implements LiveRegion.IdleSuggestionProvi
                 currentKey = null;
             }
         }
+    }
+
+    static String buildConversationContext(
+            List<ChatMessageDto> messages,
+            @Nullable String mainProcessName) {
+        StringBuilder context = new StringBuilder();
+        for (ChatMessageDto message : messages) {
+            if (mainProcessName != null
+                    && message.getProcessName() != null
+                    && !mainProcessName.equals(message.getProcessName())) {
+                continue;
+            }
+            String content = message.getContent();
+            if (content == null || content.isBlank()) continue;
+            String role = message.getRole() == null ? "UNKNOWN" : message.getRole().name();
+            String speaker = role;
+            if (message.getRole() == ChatRole.USER
+                    && message.getSenderDisplayName() != null
+                    && !message.getSenderDisplayName().isBlank()) {
+                speaker = message.getSenderDisplayName().trim() + " [USER]";
+            }
+            if (!context.isEmpty()) context.append("\n\n");
+            context.append(speaker).append(":\n").append(content.trim());
+        }
+        if (context.length() <= CONTEXT_CHARACTER_LIMIT) return context.toString();
+        return context.substring(context.length() - CONTEXT_CHARACTER_LIMIT);
     }
 
     private static String urlEncode(String s) {

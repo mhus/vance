@@ -39,7 +39,10 @@ import PickerView from './PickerView.vue';
 import ChatView from './ChatView.vue';
 import ChatComposer from './ChatComposer.vue';
 import ChatRightPanel from './ChatRightPanel.vue';
-import { useFollowUpSuggestion } from '@composables/useFollowUpSuggestion';
+import {
+  useFollowUpSuggestion,
+  type FollowUpConversationContext,
+} from '@composables/useFollowUpSuggestion';
 
 const { t } = useI18n();
 
@@ -456,13 +459,13 @@ function onPromptReadyFromRightPanel(prompt: string): void {
 
 // ──────────────── Follow-up ghost bubble ────────────────
 //
-// Reply-mode suggestion ({@code follow-up/{project}}) for the most-
-// recent assistant message. Shown as a ghost bubble in {@link ChatView}
-// whenever the composer is empty; Space/Tab/click in the composer
-// accepts it into the input.
+// Reply-mode suggestion ({@code follow-up/{project}}) for the recent,
+// speaker-aware main-chat transcript. Shown as a ghost bubble in
+// {@link ChatView} whenever the composer is empty; Space/Tab/click in
+// the composer accepts it into the input.
 
-/** Mirrored from {@link ChatView}'s {@code last-assistant-changed} emit. */
-const lastAssistantContent = ref<string | null>(null);
+/** Mirrored from {@link ChatView}'s {@code follow-up-context-changed} emit. */
+const followUpConversationContext = ref<FollowUpConversationContext | null>(null);
 /** Mirrored from {@link ChatComposer}'s {@code text-changed} emit. */
 const composerText = ref<string>('');
 /** Mirrored from {@link ChatComposer}'s {@code focus-changed} emit.
@@ -480,15 +483,17 @@ const {
   activeSuggestion: followUpSuggestion,
   acceptCurrent: acceptFollowUp,
 } = useFollowUpSuggestion({
-  lastAssistantContent,
+  conversationContext: followUpConversationContext,
   composerText,
   projectId: followUpProjectId,
   enabled: followUpEnabled,
   requestActive: composerFocused,
 });
 
-function onLastAssistantChangedFromView(content: string | null): void {
-  lastAssistantContent.value = content;
+function onFollowUpContextChangedFromView(
+  context: FollowUpConversationContext | null,
+): void {
+  followUpConversationContext.value = context;
 }
 function onComposerTextChanged(text: string): void {
   composerText.value = text;
@@ -954,7 +959,7 @@ function openInCortex(): void {
           @ask-user-pick="onAskUserPickFromView"
           @wizard-deep-link="onWizardDeepLinkFromView"
           @project-resolved="onChatViewProjectResolved"
-          @last-assistant-changed="onLastAssistantChangedFromView"
+          @follow-up-context-changed="onFollowUpContextChangedFromView"
           @accept-follow-up="onAcceptFollowUpFromView"
           @conversation-exported="onConversationExportedFromView"
         />

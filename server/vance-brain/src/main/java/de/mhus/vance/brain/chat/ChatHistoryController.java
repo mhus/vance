@@ -5,6 +5,7 @@ import de.mhus.vance.api.chat.SessionCropRequest;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
+import de.mhus.vance.shared.chat.ChatMessageDtoMapper;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
@@ -261,20 +262,7 @@ public class ChatHistoryController {
 
     private static ChatMessageDto toDto(
             ChatMessageDocument doc, @Nullable String processName) {
-        return ChatMessageDto.builder()
-                .messageId(doc.getId())
-                .thinkProcessId(doc.getThinkProcessId())
-                .processName(processName)
-                .role(doc.getRole())
-                .content(doc.getContent())
-                .thinking(doc.getThinking())
-                .createdAt(doc.getCreatedAt())
-                .meta(doc.getMeta() == null || doc.getMeta().isEmpty()
-                        ? null : doc.getMeta())
-                .senderUserId(doc.getSenderUserId())
-                .senderDisplayName(doc.getSenderDisplayName())
-                .addressedToAgent(doc.isAddressedToAgent())
-                .build();
+        return ChatMessageDtoMapper.toDto(doc, processName);
     }
 
     private static String currentUser(HttpServletRequest request) {

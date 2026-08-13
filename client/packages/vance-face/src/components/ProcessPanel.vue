@@ -10,6 +10,7 @@ import type {
   ProcessMessagesResponse,
   ProcessSummary,
 } from '@vance/generated';
+import { getSessionProcessMessages, listSessionProcesses } from '@vance/shared';
 import { VAlert, VButton, VEmptyState, VInput, VModal } from '@vance/components';
 import MarkdownView from './MarkdownView.vue';
 
@@ -18,11 +19,11 @@ import MarkdownView from './MarkdownView.vue';
  * what each one is saying, and the controls to steer them. Opened from the
  * process badge in the topbar.
  *
- * <p>Everything goes over the bound WebSocket — {@code process-list} for the
- * rows and {@code process-messages} for one process's conversation. The
- * latter is session-scoped server-side, which is why the panel cannot show a
- * process outside the session the client is bound to
- * (planning/process-visibility.md §5.1).
+ * <p>In its default (in-session) mode everything goes over the bound
+ * WebSocket — {@code process-list} for the rows and {@code process-messages}
+ * for one process's conversation. Both are session-scoped server-side, which
+ * is why the panel cannot show a process outside the session the client is
+ * bound to (planning/process-visibility.md §5.1).
  *
  * <p>No "activate" affordance here on purpose: unlike foot, the web composer
  * has no active-process pointer — it always addresses the chat process. A
@@ -35,15 +36,30 @@ import MarkdownView from './MarkdownView.vue';
  * Pinia-backed document-ref store, which is why {@code EditorShell} only
  * mounts this panel once counts have arrived — that happens exactly in the
  * session-bearing editors (chat, cortex), and those register Pinia.
+ *
+ * <p><b>Preview mode.</b> With {@code sessionId} set the panel reads an
+ * arbitrary session over REST ({@code sessions/{id}/processes}) instead of the
+ * bound WebSocket session — that is the peek the session picker offers per
+ * row, without binding (and thereby taking over) the session. Steering and
+ * lifecycle act on the lane of the bound session, so they are hidden there;
+ * the way to steer is to open the session.
  */
 interface Props {
   modelValue: boolean;
-  socket: BrainWsApi | null;
+  socket?: BrainWsApi | null;
+  /** Preview a foreign session over REST instead of the bound one. */
+  sessionId?: string | null;
+  /** Human label for the previewed session, shown in the header. */
+  sessionLabel?: string | null;
 }
 const props = defineProps<Props>();
 const emit = defineEmits<{
   (e: 'update:modelValue', open: boolean): void;
+  (e: 'open-session', sessionId: string): void;
 }>();
+
+/** REST-backed read-only view of a session the client is not bound to. */
+const preview = computed(() => Boolean(props.sessionId));
 
 const { t } = useI18n();
 
@@ -62,6 +78,9 @@ const actionNote = ref<string | null>(null);
 
 const hasRows = computed(() => rows.value.length > 0);
 
+// {@code immediate} matters for the preview instance: the picker sets its
+// session and opens the panel in the same tick, so the component mounts with
+// {@code modelValue} already true and a change-only watcher would never load.
 watch(() => props.modelValue, (open) => {
   if (open) {
     selected.value = null;
@@ -69,10 +88,10 @@ watch(() => props.modelValue, (open) => {
     actionNote.value = null;
     void loadList();
   }
-});
+}, { immediate: true });
 
 async function loadList(): Promise<void> {
-  if (!props.socket) {
+  if (!preview.value && !props.socket) {
     error.value = t('processPanel.noConnection');
     rows.value = [];
     return;
@@ -80,11 +99,14 @@ async function loadList(): Promise<void> {
   loading.value = true;
   error.value = null;
   try {
-    const response = await props.socket.send<ProcessListRequest, ProcessListResponse>(
-      'process-list',
-      { includeTerminated: includeTerminated.value },
-    );
+    const response = preview.value
+      ? await listSessionProcesses(props.sessionId as string, includeTerminated.value)
+      : await props.socket!.send<ProcessListRequest, ProcessListResponse>(
+        'process-list',
+        { includeTerminated: includeTerminated.value },
+      );
     rows.value = response?.processes ?? [];
+    autoSelect();
   } catch (e) {
     error.value = e instanceof Error ? e.message : t('processPanel.loadFailed');
     rows.value = [];
@@ -93,19 +115,39 @@ async function loadList(): Promise<void> {
   }
 }
 
+/**
+ * Open the first row when nothing (still) is selected. The session's chat /
+ * orchestrator process is created at bootstrap and therefore leads the list,
+ * so the panel opens on the process the user almost always means — and the
+ * empty "pick a process" pane stops being the default view.
+ *
+ * <p>An existing selection survives a reload; it only gives way when the row
+ * disappeared (e.g. the live filter dropped a closed process).
+ */
+function autoSelect(): void {
+  const current = selected.value;
+  if (current && rows.value.some((r) => r.id === current.id)) return;
+  selected.value = null;
+  detail.value = null;
+  const first = rows.value[0];
+  if (first) void openDetail(first);
+}
+
 async function openDetail(row: ProcessSummary): Promise<void> {
   selected.value = row;
   detail.value = null;
   detailError.value = null;
   actionNote.value = null;
   steerText.value = '';
-  if (!props.socket) return;
+  if (!preview.value && !props.socket) return;
   detailLoading.value = true;
   try {
-    detail.value = await props.socket.send<ProcessMessagesRequest, ProcessMessagesResponse>(
-      'process-messages',
-      { name: row.name, limit: 100 },
-    );
+    detail.value = preview.value
+      ? await getSessionProcessMessages(props.sessionId as string, row.name, 100)
+      : await props.socket!.send<ProcessMessagesRequest, ProcessMessagesResponse>(
+        'process-messages',
+        { name: row.name, limit: 100 },
+      );
   } catch (e) {
     detailError.value = e instanceof Error ? e.message : t('processPanel.loadFailed');
   } finally {
@@ -168,7 +210,9 @@ async function toggleTerminated(): Promise<void> {
 <template>
   <VModal
     :model-value="modelValue"
-    :title="t('processPanel.title')"
+    :title="preview && sessionLabel
+      ? t('processPanel.previewTitle', { session: sessionLabel })
+      : t('processPanel.title')"
     size="xl"
     @update:model-value="(v) => emit('update:modelValue', v)"
   >
@@ -239,7 +283,7 @@ async function toggleTerminated(): Promise<void> {
             </template>
           </div>
 
-          <div class="flex items-center gap-2">
+          <div v-if="!preview" class="flex items-center gap-2">
             <VInput
               v-model="steerText"
               :placeholder="t('processPanel.steerPlaceholder')"
@@ -252,7 +296,19 @@ async function toggleTerminated(): Promise<void> {
             </VButton>
           </div>
 
-          <div class="flex items-center gap-2">
+          <!-- Preview mode: read-only. Steering and lifecycle need the
+               session bound, so the only action offered is opening it. -->
+          <div v-if="preview" class="flex items-center gap-2">
+            <span class="text-xs opacity-60 flex-1">{{ t('processPanel.previewReadOnly') }}</span>
+            <VButton size="xs" @click="emit('open-session', sessionId as string)">
+              {{ t('processPanel.openSession') }}
+            </VButton>
+            <VButton size="xs" variant="ghost" @click="openDetail(selected)">
+              {{ t('processPanel.reload') }}
+            </VButton>
+          </div>
+
+          <div v-else class="flex items-center gap-2">
             <VButton size="xs" variant="ghost" :disabled="busy" @click="lifecycle('process-pause')">
               {{ t('processPanel.pause') }}
             </VButton>

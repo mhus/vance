@@ -114,6 +114,9 @@ export default {
     loadFailed: 'Loading failed.',
     actionFailed: 'Action failed.',
     noConnection: 'No connection — processes are only visible with a bound session.',
+    previewTitle: 'Processes — {session}',
+    previewReadOnly: 'Preview of a session you are not in — read-only.',
+    openSession: 'Open session',
   },
 
   processCounts: {
@@ -374,6 +377,7 @@ export default {
       occupied: 'occupied',
       occupiedTooltip: 'Occupied by another connection',
       sharedTooltip: 'Shared session — you can join',
+      processesTooltip: 'Peek at this session’s processes — without opening it',
       joinLive: 'live · join',
       hijackConfirm:
         'This session is already held by another of your tabs. '

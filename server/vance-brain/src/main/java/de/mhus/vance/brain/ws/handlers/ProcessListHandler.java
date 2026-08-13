@@ -14,6 +14,7 @@ import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessSummaryMapper;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -101,16 +102,6 @@ public class ProcessListHandler implements WsHandler {
     }
 
     static ProcessSummary toSummary(ThinkProcessDocument doc) {
-        return ProcessSummary.builder()
-                .id(doc.getId())
-                .name(doc.getName())
-                .title(doc.getTitle())
-                .thinkEngine(doc.getThinkEngine())
-                .thinkEngineVersion(doc.getThinkEngineVersion())
-                .goal(doc.getGoal())
-                .status(doc.getStatus())
-                .closeReason(doc.getCloseReason())
-                .createdAt(null) // ThinkProcessDocument has no createdAt; populate when added
-                .build();
+        return ThinkProcessSummaryMapper.toSummary(doc);
     }
 }

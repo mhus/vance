@@ -108,6 +108,9 @@ export default {
     loadFailed: 'Laden fehlgeschlagen.',
     actionFailed: 'Aktion fehlgeschlagen.',
     noConnection: 'Keine Verbindung — Prozesse sind nur mit gebundener Session sichtbar.',
+    previewTitle: 'Prozesse — {session}',
+    previewReadOnly: 'Vorschau einer nicht geöffneten Session — nur lesend.',
+    openSession: 'Session öffnen',
   },
 
   processCounts: {
@@ -369,6 +372,7 @@ export default {
       occupied: 'belegt',
       occupiedTooltip: 'Von einer anderen Verbindung belegt',
       sharedTooltip: 'Geteilte Session — du kannst beitreten',
+      processesTooltip: 'Prozesse dieser Session ansehen — ohne sie zu öffnen',
       joinLive: 'live · beitreten',
       hijackConfirm:
         'Diese Session ist bereits von einer deiner anderen Sitzungen belegt. '

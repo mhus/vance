@@ -1,5 +1,7 @@
 import type {
   ChatMessageDto,
+  ProcessListResponse,
+  ProcessMessagesResponse,
   SessionCompactResponse,
   SessionDuplicateResponse,
   SessionMetadataDto,
@@ -200,5 +202,40 @@ export async function cropSession(
     'PATCH',
     `sessions/${encodeURIComponent(sessionId)}/messages/crop`,
     { body: { remove: change.remove ?? [], restore: change.restore ?? [] } },
+  );
+}
+
+/**
+ * GET /brain/{tenant}/sessions/{id}/processes — read-only think-process
+ * list of an arbitrary session. The WebSocket {@code process-list} resolves
+ * against the <em>bound</em> session, so it cannot answer "what runs in that
+ * other session?" — this is the picker's preview path.
+ */
+export async function listSessionProcesses(
+  sessionId: string,
+  includeTerminated = false,
+): Promise<ProcessListResponse> {
+  const qs = includeTerminated ? '?includeTerminated=true' : '';
+  return brainFetch<ProcessListResponse>(
+    'GET',
+    `sessions/${encodeURIComponent(sessionId)}/processes${qs}`,
+  );
+}
+
+/**
+ * GET .../processes/{name}/messages — one process's transcript, addressed by
+ * process name inside the given session. Same reply shape as the WebSocket
+ * {@code process-messages}, so a detail view can consume either source.
+ */
+export async function getSessionProcessMessages(
+  sessionId: string,
+  processName: string,
+  limit?: number,
+): Promise<ProcessMessagesResponse> {
+  const qs = limit && limit > 0 ? `?limit=${limit}` : '';
+  return brainFetch<ProcessMessagesResponse>(
+    'GET',
+    `sessions/${encodeURIComponent(sessionId)}/processes/`
+      + `${encodeURIComponent(processName)}/messages${qs}`,
   );
 }

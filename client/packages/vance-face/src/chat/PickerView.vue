@@ -30,6 +30,7 @@ import {
   VInput,
   VModal,
 } from '@components/index';
+import ProcessPanel from '@components/ProcessPanel.vue';
 import SessionSearchModal from './SessionSearchModal.vue';
 import SessionCropModal from './SessionCropModal.vue';
 
@@ -417,6 +418,27 @@ function pickSession(session: SessionSummaryRichDto): void {
     if (!window.confirm(t('chat.picker.hijackConfirm'))) return;
   }
   emit('session-picked', session.sessionId);
+}
+
+/**
+ * Per-row process preview: the same panel the in-session topbar badge opens,
+ * but pointed at a session the client is not bound to (REST-backed,
+ * read-only). Peeking at "what is that session's worker doing?" must not
+ * require taking the session over.
+ */
+const processPreviewSession = ref<SessionSummaryRichDto | null>(null);
+const processPreviewOpen = ref(false);
+
+function openProcessPreview(session: SessionSummaryRichDto): void {
+  processPreviewSession.value = session;
+  processPreviewOpen.value = true;
+}
+
+/** Panel's "open session" button — same routing as clicking the row. */
+function openPreviewedSession(): void {
+  const session = processPreviewSession.value;
+  processPreviewOpen.value = false;
+  if (session) pickSession(session);
 }
 
 /**
@@ -924,17 +946,27 @@ onBeforeUnmount(stopAutoScroll);
                 >
                   {{ $t('chat.sessionHeader.reactivate') }}
                 </VButton>
-                <SessionActionsMenu
-                  :session="session"
-                  @changed="refreshSessions"
-                  @archived="refreshSessions"
-                  @reactivated="refreshSessions"
-                  @deleted="refreshSessions"
-                  @duplicated="refreshSessions"
-                  @moved="refreshSessions"
-                  @crop="openCrop"
-                  @compacted="showNotice"
-                />
+                <div class="flex items-center gap-0.5">
+                  <VButton
+                    variant="ghost"
+                    size="sm"
+                    :title="$t('chat.picker.processesTooltip')"
+                    @click.stop="openProcessPreview(session)"
+                  >
+                    🧵
+                  </VButton>
+                  <SessionActionsMenu
+                    :session="session"
+                    @changed="refreshSessions"
+                    @archived="refreshSessions"
+                    @reactivated="refreshSessions"
+                    @deleted="refreshSessions"
+                    @duplicated="refreshSessions"
+                    @moved="refreshSessions"
+                    @crop="openCrop"
+                    @compacted="showNotice"
+                  />
+                </div>
               </div>
             </div>
               </li>
@@ -958,6 +990,14 @@ onBeforeUnmount(stopAutoScroll);
     <SessionCropModal
       v-model="cropOpen"
       :session-id="cropSessionId"
+    />
+
+    <ProcessPanel
+      v-if="processPreviewSession"
+      v-model="processPreviewOpen"
+      :session-id="processPreviewSession.sessionId"
+      :session-label="sessionTitle(processPreviewSession)"
+      @open-session="openPreviewedSession"
     />
 
     <VModal

@@ -8,6 +8,7 @@ import com.sun.net.httpserver.HttpServer;
 import de.mhus.vance.toolpack.core.PackHttpClient;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URLDecoder;
@@ -43,7 +44,8 @@ class GenericOAuth2ProviderTest {
         lastRequest = new AtomicReference<>();
         nextResponse = new AtomicReference<>();
         callCount.set(0);
-        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server = HttpServer.create(
+                new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
         port = server.getAddress().getPort();
         server.createContext("/token", this::handleToken);
         server.setExecutor(null);
@@ -160,7 +162,7 @@ class GenericOAuth2ProviderTest {
         GenericOAuth2Provider provider = newProvider();
         OAuthProviderConfig cfg = cfgWithExtra(
                 "http://x/authorize",
-                "http://localhost:" + port + "/token",
+                "http://127.0.0.1:" + port + "/token",
                 List.of("openid"),
                 Map.of("usePkce", true));
         OAuthInitContext ctx = ctxWithPkce("S", "https://v/cb", "verifier-xyz");
@@ -189,8 +191,8 @@ class GenericOAuth2ProviderTest {
                 {"access_token":"AT","refresh_token":"RT","expires_in":3600,"scope":"openid email","token_type":"Bearer"}
                 """));
         GenericOAuth2Provider provider = newProvider();
-        OAuthProviderConfig cfg = cfg("http://localhost:" + port + "/authorize",
-                "http://localhost:" + port + "/token", List.of("openid", "email"));
+        OAuthProviderConfig cfg = cfg("http://127.0.0.1:" + port + "/authorize",
+                "http://127.0.0.1:" + port + "/token", List.of("openid", "email"));
         OAuthInitContext ctx = ctx("STATE", "https://vance/callback");
 
         Instant before = Instant.now();
@@ -222,8 +224,8 @@ class GenericOAuth2ProviderTest {
                 {"access_token":"AT"}
                 """));
         GenericOAuth2Provider provider = newProvider();
-        OAuthProviderConfig cfg = cfg("http://localhost:" + port + "/authorize",
-                "http://localhost:" + port + "/token", List.of());
+        OAuthProviderConfig cfg = cfg("http://127.0.0.1:" + port + "/authorize",
+                "http://127.0.0.1:" + port + "/token", List.of());
 
         OAuthTokenSet tokens = provider.exchangeCode(cfg, "C", ctx("S", "https://v/cb"));
 
@@ -239,7 +241,7 @@ class GenericOAuth2ProviderTest {
                 """));
         GenericOAuth2Provider provider = newProvider();
         OAuthProviderConfig cfg = cfg("http://x/authorize",
-                "http://localhost:" + port + "/token", List.of());
+                "http://127.0.0.1:" + port + "/token", List.of());
 
         assertThatThrownBy(() ->
                 provider.exchangeCode(cfg, "C", ctx("S", "https://v/cb")))
@@ -252,7 +254,7 @@ class GenericOAuth2ProviderTest {
         nextResponse.set(new TokenResponse(400, "{\"error\":\"invalid_grant\"}"));
         GenericOAuth2Provider provider = newProvider();
         OAuthProviderConfig cfg = cfg("http://x/authorize",
-                "http://localhost:" + port + "/token", List.of());
+                "http://127.0.0.1:" + port + "/token", List.of());
 
         assertThatThrownBy(() ->
                 provider.exchangeCode(cfg, "bad", ctx("S", "https://v/cb")))
@@ -270,7 +272,7 @@ class GenericOAuth2ProviderTest {
                 """));
         GenericOAuth2Provider provider = newProvider();
         OAuthProviderConfig cfg = cfg("http://x/authorize",
-                "http://localhost:" + port + "/token", List.of());
+                "http://127.0.0.1:" + port + "/token", List.of());
 
         assertThatThrownBy(() ->
                 provider.exchangeCode(cfg, "c", ctx("S", "https://v/cb")))
@@ -284,7 +286,7 @@ class GenericOAuth2ProviderTest {
         nextResponse.set(TokenResponse.ok("<html>not json</html>"));
         GenericOAuth2Provider provider = newProvider();
         OAuthProviderConfig cfg = cfg("http://x/authorize",
-                "http://localhost:" + port + "/token", List.of());
+                "http://127.0.0.1:" + port + "/token", List.of());
 
         assertThatThrownBy(() ->
                 provider.exchangeCode(cfg, "c", ctx("S", "https://v/cb")))
@@ -301,7 +303,7 @@ class GenericOAuth2ProviderTest {
                 """));
         GenericOAuth2Provider provider = newProvider();
         OAuthProviderConfig cfg = cfg("http://x/authorize",
-                "http://localhost:" + port + "/token", List.of("openid"));
+                "http://127.0.0.1:" + port + "/token", List.of("openid"));
 
         OAuthTokenSet tokens = provider.refresh(cfg, "OLD-RT");
 

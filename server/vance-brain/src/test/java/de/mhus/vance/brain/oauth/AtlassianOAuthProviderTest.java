@@ -7,6 +7,7 @@ import com.sun.net.httpserver.HttpServer;
 import de.mhus.vance.toolpack.core.PackHttpClient;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -53,7 +54,8 @@ class AtlassianOAuthProviderTest {
                   }
                 ]
                 """);
-        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server = HttpServer.create(
+                new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
         port = server.getAddress().getPort();
         server.createContext("/token", this::handleToken);
         server.createContext("/accessible-resources", this::handleResources);
@@ -182,12 +184,12 @@ class AtlassianOAuthProviderTest {
         // For staging environments the tenant can override the default
         // production URL via YAML extra.
         Map<String, Object> extra = new LinkedHashMap<>();
-        extra.put("accessibleResourcesUrl", "http://localhost:" + port + "/accessible-resources");
+        extra.put("accessibleResourcesUrl", "http://127.0.0.1:" + port + "/accessible-resources");
         OAuthProviderConfig cfg = new OAuthProviderConfig(
                 "atlassian", "atlassian",
                 null,
                 "https://auth.atlassian.com/authorize",
-                "http://localhost:" + port + "/token",
+                "http://127.0.0.1:" + port + "/token",
                 "client-id", "shh",
                 new ArrayList<>(),
                 extra);
@@ -203,12 +205,12 @@ class AtlassianOAuthProviderTest {
     private OAuthProviderConfig cfg() {
         Map<String, Object> extra = new LinkedHashMap<>();
         extra.put("accessibleResourcesUrl",
-                "http://localhost:" + port + "/accessible-resources");
+                "http://127.0.0.1:" + port + "/accessible-resources");
         return new OAuthProviderConfig(
                 "atlassian", "atlassian",
                 null,
                 "https://auth.atlassian.com/authorize",
-                "http://localhost:" + port + "/token",
+                "http://127.0.0.1:" + port + "/token",
                 "client-id", "shh",
                 new ArrayList<>(List.of("read:jira-work")),
                 extra);

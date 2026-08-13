@@ -8,6 +8,7 @@ import com.sun.net.httpserver.HttpServer;
 import de.mhus.vance.toolpack.core.PackHttpClient;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -38,7 +39,8 @@ class OidcProviderTest {
         discoveryCalls.set(0);
         tokenCalls.set(0);
         discoveryStatus.set(200);
-        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server = HttpServer.create(
+                new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
         port = server.getAddress().getPort();
         server.createContext("/realms/acme/.well-known/openid-configuration",
                 this::handleDiscovery);
@@ -67,7 +69,7 @@ class OidcProviderTest {
         URI uri = provider.buildAuthorizeUri(cfg(), ctx("S", "https://v/cb"));
 
         assertThat(uri.toString())
-                .startsWith("http://localhost:" + port + "/realms/acme/protocol/openid-connect/auth?")
+                .startsWith("http://127.0.0.1:" + port + "/realms/acme/protocol/openid-connect/auth?")
                 .contains("client_id=vance")
                 .contains("state=S");
         assertThat(discoveryCalls.get()).isEqualTo(1);
@@ -190,7 +192,7 @@ class OidcProviderTest {
     }
 
     private String discoveryUrl() {
-        return "http://localhost:" + port + "/realms/acme/.well-known/openid-configuration";
+        return "http://127.0.0.1:" + port + "/realms/acme/.well-known/openid-configuration";
     }
 
     private OAuthInitContext ctx(String state, String redirectUri) {
@@ -200,9 +202,9 @@ class OidcProviderTest {
     private String defaultDiscoveryBody() {
         return ("""
                 {
-                  "issuer": "http://localhost:%d/realms/acme",
-                  "authorization_endpoint": "http://localhost:%d/realms/acme/protocol/openid-connect/auth",
-                  "token_endpoint": "http://localhost:%d/realms/acme/protocol/openid-connect/token"
+                  "issuer": "http://127.0.0.1:%d/realms/acme",
+                  "authorization_endpoint": "http://127.0.0.1:%d/realms/acme/protocol/openid-connect/auth",
+                  "token_endpoint": "http://127.0.0.1:%d/realms/acme/protocol/openid-connect/token"
                 }
                 """).formatted(port, port, port);
     }

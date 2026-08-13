@@ -11,6 +11,7 @@ import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -36,15 +37,30 @@ import org.junit.jupiter.api.Test;
 class McpHttpTransportTest {
 
     private HttpServer server;
-    private int port;
+    private String endpoint;
     private AtomicReference<String> lastRequestBody;
     private final McpJsonRpc rpc = new McpJsonRpc();
 
+    /**
+     * Binds the stub to the loopback interface and addresses it by that
+     * exact IP, never by the name {@code localhost}.
+     *
+     * <p>{@code localhost} is two addresses — {@code ::1} and
+     * {@code 127.0.0.1} — and the client, not the test, decides which one
+     * a request goes to. A wildcard-bound stub is reachable on both
+     * families only by luck, and the port it holds is one some other
+     * process on this machine may hold on the other family. The failure
+     * that produces is not a connection error but a perfectly well-formed
+     * 404 from a stranger: seen in the reactor build, on a different test
+     * each run, with every test passing when run alone.
+     */
     @BeforeEach
     void start() throws IOException {
         lastRequestBody = new AtomicReference<>();
-        server = HttpServer.create(new InetSocketAddress(0), 0);
-        port = server.getAddress().getPort();
+        server = HttpServer.create(
+                new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        endpoint = "http://" + InetAddress.getLoopbackAddress().getHostAddress()
+                + ":" + server.getAddress().getPort() + "/mcp";
         server.setExecutor(null);
         server.start();
     }
@@ -60,7 +76,7 @@ class McpHttpTransportTest {
 
         McpConfig cfg = McpConfig.fromParameters(Map.of(
                 "transport", "http",
-                "url", "http://localhost:" + port + "/mcp"));
+                "url", endpoint));
         try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.NOOP)) {
             t.open();
             Object result = t.sendRequest("tools/list", Map.of(),
@@ -83,7 +99,7 @@ class McpHttpTransportTest {
         AtomicReference<McpJsonRpc.Frame.Notification> capturedNotification = new AtomicReference<>();
         McpConfig cfg = McpConfig.fromParameters(Map.of(
                 "transport", "http",
-                "url", "http://localhost:" + port + "/mcp"));
+                "url", endpoint));
         try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.NOOP)) {
             t.open();
             t.setNotificationHandler(capturedNotification::set);
@@ -108,7 +124,7 @@ class McpHttpTransportTest {
                 input == null ? null : input.replace("{{secret:tok}}", "supersecret");
         McpConfig cfg = McpConfig.fromParameters(Map.of(
                 "transport", "http",
-                "url", "http://localhost:" + port + "/mcp",
+                "url", endpoint,
                 "auth", Map.of("type", "bearer", "token", "{{secret:tok}}")));
         try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), resolver)) {
             t.open();
@@ -141,7 +157,7 @@ class McpHttpTransportTest {
 
         McpConfig cfg = McpConfig.fromParameters(Map.of(
                 "transport", "http",
-                "url", "http://localhost:" + port + "/mcp"));
+                "url", endpoint));
         try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.NOOP)) {
             t.open();
             t.sendRequest("initialize", Map.of(), Duration.ofSeconds(5), CTX);
@@ -172,7 +188,7 @@ class McpHttpTransportTest {
 
         McpConfig cfg = McpConfig.fromParameters(Map.of(
                 "transport", "http",
-                "url", "http://localhost:" + port + "/mcp"));
+                "url", endpoint));
         try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.NOOP)) {
             t.open();
             t.sendRequest("initialize", Map.of(), Duration.ofSeconds(5), CTX);
@@ -188,7 +204,7 @@ class McpHttpTransportTest {
 
         McpConfig cfg = McpConfig.fromParameters(Map.of(
                 "transport", "http",
-                "url", "http://localhost:" + port + "/mcp"));
+                "url", endpoint));
         try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.NOOP)) {
             t.open();
             try {

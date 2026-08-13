@@ -8,6 +8,7 @@ import com.sun.net.httpserver.HttpServer;
 import de.mhus.vance.toolpack.core.PackHttpClient;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -32,7 +33,8 @@ class SlackOAuthProviderTest {
 
     @BeforeEach
     void startServer() throws IOException {
-        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server = HttpServer.create(
+                new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
         port = server.getAddress().getPort();
         server.createContext("/token", this::handle);
         server.setExecutor(null);
@@ -225,7 +227,7 @@ class SlackOAuthProviderTest {
                 "slack", "slack",
                 /*discoveryUrl*/ null,
                 "https://slack.com/oauth/v2/authorize",
-                "http://localhost:" + port + "/token",
+                "http://127.0.0.1:" + port + "/token",
                 "client-id", "shh",
                 new ArrayList<>(List.of("channels:read")),
                 new LinkedHashMap<>());

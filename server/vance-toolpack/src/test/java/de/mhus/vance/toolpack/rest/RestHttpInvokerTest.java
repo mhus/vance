@@ -9,6 +9,7 @@ import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -17,7 +18,6 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -37,14 +37,31 @@ import org.junit.jupiter.api.Test;
 class RestHttpInvokerTest {
 
     private HttpServer server;
-    private int port;
+    private String baseUrl;
     private AtomicReference<RecordedRequest> lastRequest;
 
+    /**
+     * Binds the stub to the loopback interface and addresses it by that
+     * exact IP.
+     *
+     * <p>Both halves matter. A wildcard bind puts a test server on every
+     * interface of the machine for the length of a test — unnecessary, and
+     * it means the port it holds is one another process on this host may
+     * be using on a different family. And {@code localhost} is not one
+     * address: it resolves to {@code ::1} and {@code 127.0.0.1}, the
+     * client picks, and the pick is not necessarily the interface the
+     * server ended up on. That is how a request meant for this stub comes
+     * back as a well-formed 404 from something else entirely — which is
+     * what the reactor build saw, on a different test each time, while
+     * every test passed when run on its own.
+     */
     @BeforeEach
     void startServer() throws IOException {
         lastRequest = new AtomicReference<>();
-        server = HttpServer.create(new InetSocketAddress(0), 0);
-        port = server.getAddress().getPort();
+        server = HttpServer.create(
+                new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        baseUrl = "http://" + InetAddress.getLoopbackAddress().getHostAddress()
+                + ":" + server.getAddress().getPort();
         server.createContext("/", this::handle);
         server.setExecutor(null);
         server.start();
@@ -55,7 +72,11 @@ class RestHttpInvokerTest {
         if (server != null) server.stop(0);
     }
 
-    @Disabled("Fails when localhost HTTP is intercepted by a sandbox proxy; passes on a direct network")
+    /**
+     * Was disabled for "fails when localhost HTTP is intercepted by a
+     * sandbox proxy". It was: the interception keys on the name, and the
+     * stub is addressed by loopback IP now, so the request reaches it.
+     */
     @Test
     void getRequest_withPathAndQueryParams() {
         OpenApiOperation op = new OpenApiOperation(
@@ -118,7 +139,7 @@ class RestHttpInvokerTest {
         SecretResolver resolver = (input, ctx) ->
                 input == null ? null : input.replace("{{secret:api.token}}", "abc-xyz");
 
-        new RestHttpInvoker(new PackHttpClient(), cfg, "http://localhost:" + port, resolver)
+        new RestHttpInvoker(new PackHttpClient(), cfg, baseUrl, resolver)
                 .execute(op, Map.of(), CTX);
 
         assertThat(headerValue(lastRequest.get().headers, "Authorization"))
@@ -135,7 +156,7 @@ class RestHttpInvokerTest {
                 "specUrl", "http://x/spec.json",
                 "auth", Map.of("type", "basic", "user", "alice", "password", "secret")));
 
-        new RestHttpInvoker(new PackHttpClient(), cfg, "http://localhost:" + port,
+        new RestHttpInvoker(new PackHttpClient(), cfg, baseUrl,
                 SecretResolver.NOOP)
                 .execute(op, Map.of(), CTX);
 
@@ -209,7 +230,7 @@ class RestHttpInvokerTest {
     private RestHttpInvoker newInvoker(RestApiConfig cfg) {
         return new RestHttpInvoker(
                 new PackHttpClient(), cfg,
-                "http://localhost:" + port, SecretResolver.NOOP);
+                baseUrl, SecretResolver.NOOP);
     }
 
     // ─────── Test HTTP server ───────

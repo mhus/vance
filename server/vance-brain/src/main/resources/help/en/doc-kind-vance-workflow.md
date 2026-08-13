@@ -66,13 +66,9 @@ start: work
 states:
   work:
     type: agent_task
-    recipe: jeltz
+    recipe: ford
     params:
       prompt: "What the agent should do."
-      schema:
-        type: object
-        properties:
-          summary: { type: string }
     storeAs: work_result
     on:
       success: done
@@ -92,16 +88,23 @@ states:
 an `on:`, `catch:` or `transitions:` entry must name a declared
 state — the parser rejects the file otherwise.
 
-**`agent_task` drives Jeltz.** Jeltz reads everything from the state's
-`params` and returns a schema-validated JSON object, so the `schema:` is
-not optional — without it the state fails before a model is ever called,
-and the top level must declare `type: object`.
+**Picking the recipe.** `ford` is the generalist: it takes the prompt and
+answers in prose. `jeltz` returns a schema-validated JSON object and then
+*requires* a `schema:` next to the prompt, whose top level must declare
+`type: object` — use it when a later `condition_task` has to branch on a
+specific field rather than on free text.
 
-Reactive engines (`ford`, `vogon`, `marvin`, `arthur`) need an initial
-message rather than parameters, and the task executor does not send one
-yet. Naming one of them here does not fail — it **hangs**: the agent
-spawns, goes idle waiting for input that never arrives, and the run waits
-for it forever.
+`params.prompt` reaches the agent either way: the task delivers it as the
+first message, so conversational engines (`ford`, `vogon`, `marvin`) start
+working on it immediately.
+
+**When is the step done?** When the agent finishes its turn — agents do
+not end themselves, so the task decides. Finishing quietly is `success`;
+finishing with a question back is **`needs_input`**, which you route like
+any other outcome, usually to a `gate_task` so a person can answer. An
+agent inside a step cannot spawn workers of its own: fan-out belongs in
+the workflow, where it shows up in the diagram and counts against
+`bounds`.
 
 ## Task types
 

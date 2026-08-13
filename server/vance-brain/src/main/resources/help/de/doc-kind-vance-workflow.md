@@ -69,13 +69,9 @@ start: work
 states:
   work:
     type: agent_task
-    recipe: jeltz
+    recipe: ford
     params:
       prompt: "Was der Agent tun soll."
-      schema:
-        type: object
-        properties:
-          summary: { type: string }
     storeAs: work_result
     on:
       success: done
@@ -95,16 +91,24 @@ states:
 eines `on:`-, `catch:`- oder `transitions:`-Eintrags muss einen
 deklarierten State benennen — sonst weist der Parser die Datei ab.
 
-**`agent_task` fährt Jeltz.** Jeltz liest alles aus den `params` des
-States und liefert ein schema-validiertes JSON-Objekt — das `schema:` ist
-deshalb keine Kür: ohne es scheitert der State, bevor ein Modell gefragt
-wird, und die oberste Ebene muss `type: object` deklarieren.
+**Die Wahl des Recipes.** `ford` ist der Generalist: nimmt den Prompt und
+antwortet in Prosa. `jeltz` liefert ein schema-validiertes JSON-Objekt und
+**verlangt** dann auch ein `schema:` neben dem Prompt, dessen oberste
+Ebene `type: object` deklarieren muss — sinnvoll, wenn ein späterer
+`condition_task` auf ein bestimmtes Feld verzweigen soll statt auf
+Freitext.
 
-Reaktive Engines (`ford`, `vogon`, `marvin`, `arthur`) brauchen eine
-Anfangsnachricht statt Parameter, und der Task-Executor schickt die noch
-nicht. Eine davon hier einzutragen scheitert nicht — es **hängt**: der
-Agent startet, wartet im Leerlauf auf Eingaben, die nie kommen, und der
-Lauf wartet endlos auf ihn.
+`params.prompt` erreicht den Agenten in beiden Fällen: der Task stellt ihn
+als erste Nachricht zu, damit konversationelle Engines (`ford`, `vogon`,
+`marvin`) sofort loslegen.
+
+**Wann ist der Schritt fertig?** Wenn der Agent seinen Turn beendet —
+Agenten beenden sich nicht selbst, also entscheidet es der Task. Endet er
+still, ist das `success`; endet er mit einer Rückfrage, ist es
+**`needs_input`**, und das routest du wie jeden anderen Outcome,
+üblicherweise auf ein `gate_task`, damit ein Mensch antworten kann. Ein
+Agent im Schritt kann keine eigenen Worker starten: Fan-out gehört in den
+Workflow, wo er im Diagramm auftaucht und gegen `bounds` zählt.
 
 ## Task-Typen
 

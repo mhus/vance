@@ -13,6 +13,7 @@ import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.api.magrathea.MagratheaWorkflowSource;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
+import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.recipe.RecipeSource;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
@@ -22,6 +23,8 @@ import de.mhus.vance.shared.magrathea.MagratheaStateSpec;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import de.mhus.vance.shared.magrathea.ResolvedMagratheaWorkflow;
 import de.mhus.vance.shared.session.SessionDocument;
+import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
+import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.api.thinkprocess.PromptMode;
@@ -40,9 +43,19 @@ class AgentTaskExecutorTest {
     private final MagratheaTaskService taskService = mock(MagratheaTaskService.class);
     private final de.mhus.vance.brain.scheduling.LaneScheduler laneScheduler =
             mock(de.mhus.vance.brain.scheduling.LaneScheduler.class);
+    private final EngineMessageRouter messageRouter = mock(EngineMessageRouter.class);
     private final AgentTaskExecutor executor = new AgentTaskExecutor(
             recipeResolver, thinkProcessService, thinkEngineService,
-            sessionResolver, taskService, laneScheduler);
+            sessionResolver, taskService, laneScheduler,
+            routerProvider(messageRouter));
+
+    @SuppressWarnings("unchecked")
+    private static org.springframework.beans.factory.ObjectProvider<EngineMessageRouter>
+            routerProvider(EngineMessageRouter router) {
+        var provider = mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(router);
+        return provider;
+    }
 
     @org.junit.jupiter.api.BeforeEach
     @SuppressWarnings("unchecked")
@@ -81,6 +94,75 @@ class AgentTaskExecutorTest {
         assertThat(outcome).isEmpty(); // async
         verify(taskService).linkSubProcess("task-1", "proc-1");
         verify(thinkEngineService).start(spawned);
+    }
+
+    @Test
+    void spawn_deliversPromptAsInitialMessage_soAReactiveEngineActuallyRuns() {
+        // The gap this closes: Ford & co. wait for a message. Without one the
+        // worker idles forever and the run waits on it forever — a hang, not
+        // a failure, so nothing ever routes through `catch:`.
+        stubResolver("ford", Map.of("model", "default:fast", "prompt", "do the thing"));
+        stubSpawn("ford");
+
+        executor.execute(ctx(agentState("ford", Map.of("prompt", "do the thing"))));
+
+        var msg = org.mockito.ArgumentCaptor.forClass(PendingMessageDocument.class);
+        verify(messageRouter).dispatch(eq(null), eq("proc-1"), msg.capture());
+        assertThat(msg.getValue().getContent()).isEqualTo("do the thing");
+        assertThat(msg.getValue().getType()).isEqualTo(PendingMessageType.USER_CHAT_INPUT);
+    }
+
+    @Test
+    void spawn_stripsDelegationTools_soTheStepStaysTheWholeStep() {
+        // An agent that spawns its own workers builds a plan beside the
+        // workflow: invisible in the diagram and past bounds.maxTaskSpawns.
+        // It would also make IDLE ambiguous — "done" or "waiting for my
+        // worker" — and the turn-end completion rule depends on it not being.
+        stubResolver("ford", Map.of("model", "default:fast"));
+        ThinkEngine engine = mockEngine("ford", "1");
+        when(engine.allowedTools()).thenReturn(
+                new java.util.LinkedHashSet<>(List.of("process_spawn", "doc_read", "web_search")));
+        when(thinkEngineService.resolve("ford")).thenReturn(Optional.of(engine));
+        SessionDocument session = new SessionDocument();
+        session.setSessionId("sess-1");
+        when(sessionResolver.resolve(any(), any(), any(), any())).thenReturn(session);
+        ThinkProcessDocument spawned = new ThinkProcessDocument();
+        spawned.setId("proc-1");
+        var tools = org.mockito.ArgumentCaptor.forClass(java.util.Set.class);
+        when(thinkProcessService.create(
+                any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any(), any(), tools.capture()))
+                .thenReturn(spawned);
+
+        executor.execute(ctx(agentState("ford", Map.of())));
+
+        assertThat(tools.getValue())
+                .doesNotContain("process_spawn")
+                .contains("doc_read", "web_search");
+    }
+
+    @Test
+    void spawn_withoutAPrompt_sendsNothing() {
+        stubResolver("ford", Map.of("model", "default:fast"));
+        stubSpawn("ford");
+
+        executor.execute(ctx(agentState("ford", Map.of())));
+
+        verify(messageRouter, never()).dispatch(any(), any(), any());
+    }
+
+    @Test
+    void spawn_survivesAnUnavailableRouter() {
+        // Fail-soft: a missing router must not turn into a failed task — the
+        // process is already spawned and linked at that point.
+        var executorWithoutRouter = new AgentTaskExecutor(
+                recipeResolver, thinkProcessService, thinkEngineService,
+                sessionResolver, taskService, laneScheduler, routerProvider(null));
+        stubResolver("ford", Map.of("prompt", "hi"));
+        stubSpawn("ford");
+
+        assertThat(executorWithoutRouter.execute(
+                ctx(agentState("ford", Map.of("prompt", "hi"))))).isEmpty();
     }
 
     @Test
@@ -155,10 +237,29 @@ class AgentTaskExecutorTest {
 
     // ─────── helpers ───────
 
+    /** Engine + session + process-create wiring for a spawn that reaches start(). */
+    private void stubSpawn(String recipeName) {
+        ThinkEngine engine = mockEngine(recipeName, "1");
+        when(thinkEngineService.resolve(recipeName)).thenReturn(Optional.of(engine));
+        SessionDocument session = new SessionDocument();
+        session.setSessionId("sess-1");
+        when(sessionResolver.resolve(any(), any(), any(), any())).thenReturn(session);
+        ThinkProcessDocument spawned = new ThinkProcessDocument();
+        spawned.setId("proc-1");
+        when(thinkProcessService.create(
+                any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any(), any(), any()))
+                .thenReturn(spawned);
+    }
+
     private void stubResolver(String recipeName) {
+        stubResolver(recipeName, Map.of("model", "default:fast"));
+    }
+
+    private void stubResolver(String recipeName, Map<String, Object> params) {
         AppliedRecipe applied = new AppliedRecipe(
                 recipeName, recipeName,
-                Map.of("model", "default:fast"),
+                params,
                 /*promptOverride*/ null,
                 /*promptOverrideAppend*/ null,
                 PromptMode.APPEND,

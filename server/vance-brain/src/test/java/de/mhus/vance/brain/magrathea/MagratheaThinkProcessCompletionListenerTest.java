@@ -47,6 +47,51 @@ class MagratheaThinkProcessCompletionListenerTest {
     }
 
     @Test
+    void turnEnd_toIdle_completesTheTask_withTheReplyAsOutput() {
+        // Ford & co. never close themselves; the finished turn is the
+        // completion signal, or the run waits forever.
+        wireRunningTask("p-turn", "here is the analysis");
+
+        listener.onStatusChanged(turnEnd("p-turn", ThinkProcessStatus.IDLE));
+
+        var ev = org.mockito.ArgumentCaptor.forClass(TaskCompletedEvent.class);
+        verify(eventBus).publish(ev.capture());
+        assertThat(ev.getValue().outcome()).isEqualTo(TaskCompletedEvent.OUTCOME_SUCCESS);
+        assertThat(ev.getValue().output().asString()).isEqualTo("here is the analysis");
+        // Closed by us, and unlinked first so the CLOSED event stays quiet.
+        verify(taskService).unlinkSubProcess("task-p-turn");
+        verify(thinkProcessService).closeProcess("p-turn", CloseReason.DONE);
+    }
+
+    @Test
+    void turnEnd_toBlocked_reportsNeedsInput_soTheWorkflowCanAskAHuman() {
+        wireRunningTask("p-ask", "which environment should I deploy to?");
+
+        listener.onStatusChanged(turnEnd("p-ask", ThinkProcessStatus.BLOCKED));
+
+        var ev = org.mockito.ArgumentCaptor.forClass(TaskCompletedEvent.class);
+        verify(eventBus).publish(ev.capture());
+        assertThat(ev.getValue().outcome())
+                .isEqualTo(MagratheaThinkProcessCompletionListener.OUTCOME_NEEDS_INPUT);
+        assertThat(ev.getValue().output().asString())
+                .isEqualTo("which environment should I deploy to?");
+        verify(thinkProcessService).closeProcess("p-ask", CloseReason.INCOMPLETE);
+    }
+
+    @Test
+    void startupIdle_isNotATurnEnd() {
+        // INIT -> IDLE happens on every spawn. Treating it as completion
+        // would finish every agent_task before the agent did anything.
+        wireRunningTask("p-boot", "unused");
+
+        listener.onStatusChanged(new ThinkProcessStatusChangedEvent(
+                "p-boot", "acme", "sess-1", null,
+                ThinkProcessStatus.INIT, ThinkProcessStatus.IDLE));
+
+        verify(eventBus, never()).publish(any());
+    }
+
+    @Test
     void unlinked_process_close_is_ignored() {
         when(taskService.findBySubProcessId(eq("proc-x"))).thenReturn(Optional.empty());
 
@@ -189,6 +234,34 @@ class MagratheaThinkProcessCompletionListenerTest {
     private static ThinkProcessStatusChangedEvent event(String processId, ThinkProcessStatus status) {
         return new ThinkProcessStatusChangedEvent(
                 processId, "acme", "sess-1", null, null, status);
+    }
+
+    /** Turn-end event: the prior status is what separates "finished a turn"
+     *  from "started up and has not worked yet". */
+    private static ThinkProcessStatusChangedEvent turnEnd(
+            String processId, ThinkProcessStatus status) {
+        return new ThinkProcessStatusChangedEvent(
+                processId, "acme", "sess-1", null, ThinkProcessStatus.RUNNING, status);
+    }
+
+    /** A live (non-closed) agent process with one assistant reply. */
+    private void wireRunningTask(String processId, String reply) {
+        when(taskService.findBySubProcessId(eq(processId)))
+                .thenReturn(Optional.of(task(processId, "ford")));
+        ThinkProcessDocument process = new ThinkProcessDocument();
+        process.setId(processId);
+        process.setTenantId("acme");
+        process.setSessionId("sess-1");
+        process.setThinkEngine("ford");
+        process.setStatus(ThinkProcessStatus.RUNNING);
+        process.setCreatedAt(Instant.parse("2024-01-01T00:00:00Z"));
+        process.setUpdatedAt(Instant.parse("2024-01-01T00:00:04Z"));
+        when(thinkProcessService.findById(eq(processId))).thenReturn(Optional.of(process));
+        ChatMessageDocument msg = new ChatMessageDocument();
+        msg.setRole(ChatRole.ASSISTANT);
+        msg.setContent(reply);
+        when(chatMessageService.history(eq("acme"), eq("sess-1"), eq(processId)))
+                .thenReturn(List.of(msg));
     }
 
     private void wireTask(String processId, String engineName) {

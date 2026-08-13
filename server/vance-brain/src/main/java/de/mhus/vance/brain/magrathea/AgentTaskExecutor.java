@@ -4,17 +4,23 @@ import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
+import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.magrathea.MagratheaStateSpec;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import de.mhus.vance.shared.session.SessionDocument;
+import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
+import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -40,11 +46,13 @@ import org.springframework.stereotype.Component;
  *   catch: { agent_error: debug, timeout: escalate }
  * </pre>
  *
- * <p>Jeltz pulls everything from {@code engineParams}, so the executor
- * does not send an initial steer. For reactive engines (Ford/Vogon/
- * Marvin/Arthur) that need an initial user message, set
- * {@code params.prompt} — the recipe template renders it; or a future
- * etappe adds an {@code initialMessage:} field at the state level.
+ * <p><b>{@code params.prompt} is delivered as an initial message.</b>
+ * After {@code start()} the executor pushes it into the spawned
+ * process's pending queue as {@code USER_CHAT_INPUT} — the same seeding
+ * {@code SpawnActionExecutor} does for {@code initialMessage}. Reactive
+ * engines (Ford/Vogon/Marvin/Arthur) need that: they wait for a message
+ * and would otherwise idle forever, hanging the run with them. Jeltz
+ * takes its prompt from {@code engineParams} and ignores the queue.
  */
 @Component
 @ConditionalOnProperty(
@@ -57,6 +65,13 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
 
     private static final String SPEC_RECIPE = "recipe";
     private static final String SPEC_PARAMS = "params";
+    private static final String SPEC_PROMPT = "prompt";
+
+    /** {@code fromUser} on the seeded initial message — a run, not a person. */
+    private static final String MAGRATHEA_SENDER = "_magrathea";
+
+    /** Removed from the agent's tools — see {@link #withoutDelegation}. */
+    private static final Set<String> DELEGATION_TOOLS = Set.of("process_spawn");
 
     private final RecipeResolver recipeResolver;
     private final ThinkProcessService thinkProcessService;
@@ -64,6 +79,8 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
     private final MagratheaSessionResolver sessionResolver;
     private final MagratheaTaskService taskService;
     private final de.mhus.vance.brain.scheduling.LaneScheduler laneScheduler;
+    /** Lazy like the other consumers — the router pulls in the whole engine stack. */
+    private final ObjectProvider<EngineMessageRouter> messageRouterProvider;
 
     @Override
     public MagratheaTaskType type() {
@@ -127,7 +144,7 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
                     applied.name(),
                     applied.promptOverride(),
                     applied.promptMode(),
-                    applied.effectiveAllowedTools());
+                    withoutDelegation(applied, engine));
         } catch (RuntimeException ex) {
             log.warn("Magrathea agent_task '{}' ThinkProcess create failed: {}",
                     state.name(), ex.getMessage());
@@ -175,11 +192,88 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
                     "Engine start failed: " + startFailure.getMessage()));
         }
 
-        log.info("Magrathea agent_task '{}' spawned recipe='{}' engine='{}' subProcessId='{}'",
-                state.name(), recipeName, applied.engine(), spawned.getId());
+        boolean steered = pushInitialMessage(applied, spawned.getId(), state.name());
+
+        log.info("Magrathea agent_task '{}' spawned recipe='{}' engine='{}' subProcessId='{}' steered={}",
+                state.name(), recipeName, applied.engine(), spawned.getId(), steered);
 
         // Async — listener fires the TaskCompletedEvent when the sub-process closes.
         return Optional.empty();
+    }
+
+    /**
+     * The agent's tool surface minus the delegation tools.
+     *
+     * <p>A workflow state is a step in a plan the author wrote down. An
+     * agent that spawns its own workers inside that step builds a second
+     * plan next to it — invisible in the diagram, invisible in the run
+     * view, and past the guard rail: {@code bounds.maxTaskSpawns} counts
+     * workflow tasks, not processes an agent starts on its own.
+     *
+     * <p>It also keeps completion decidable. An agent that delegated ends
+     * its turn at {@code IDLE} waiting for its worker, which is
+     * indistinguishable from {@code IDLE} meaning done — and the turn-end
+     * rule in {@code MagratheaThinkProcessCompletionListener} would cut
+     * the step short. Without delegation, {@code IDLE} means done, full
+     * stop.
+     *
+     * <p>Fan-out belongs in the workflow: more states, or a
+     * {@code workflow_task} sub-run. Both show up in the plan and count
+     * against its bounds.
+     */
+    private static Set<String> withoutDelegation(AppliedRecipe applied, ThinkEngine engine) {
+        Set<String> effective = applied.effectiveAllowedTools() != null
+                ? applied.effectiveAllowedTools()
+                : engine.allowedTools();
+        if (effective == null) return null;
+        Set<String> reduced = new LinkedHashSet<>(effective);
+        return reduced.removeAll(DELEGATION_TOOLS) ? Set.copyOf(reduced) : effective;
+    }
+
+    /**
+     * Deliver {@code params.prompt} to the spawned process as an initial
+     * {@code USER_CHAT_INPUT}, the same way {@code SpawnActionExecutor}
+     * seeds {@code initialMessage}: push after {@code start()} so the
+     * pending queue plus auto-wakeup drive the first turn.
+     *
+     * <p>Without this a reactive engine never runs. Ford, Vogon, Marvin and
+     * Arthur all wait for a message — Ford's {@code start()} says so
+     * outright ("workers spawned with steerContent immediately drain that
+     * input"). It reaches them nowhere else: this was the only spawn site
+     * in the system that created a process and never spoke to it, so an
+     * {@code agent_task} naming a reactive recipe spawned a worker that sat
+     * idle forever, and the run waited on it forever with it.
+     *
+     * <p>Pushed whenever a prompt is present, without asking which engine
+     * wants one. Jeltz reads its prompt from {@code engineParams} and
+     * closes on its first turn, so the extra pending entry costs nothing
+     * there — and an engine list here would be one more thing to keep
+     * current.
+     */
+    private boolean pushInitialMessage(AppliedRecipe applied, String processId, String stateName) {
+        Object raw = applied.params() == null ? null : applied.params().get(SPEC_PROMPT);
+        if (!(raw instanceof String prompt) || prompt.isBlank()) return false;
+
+        EngineMessageRouter router = messageRouterProvider.getIfAvailable();
+        if (router == null) {
+            log.warn("Magrathea agent_task '{}' — EngineMessageRouter unavailable, "
+                    + "initial prompt not delivered to process '{}'", stateName, processId);
+            return false;
+        }
+        boolean delivered = router.dispatch(
+                /* senderProcessId — a workflow run is not a process */ null,
+                processId,
+                PendingMessageDocument.builder()
+                        .type(PendingMessageType.USER_CHAT_INPUT)
+                        .at(Instant.now())
+                        .fromUser(MAGRATHEA_SENDER)
+                        .content(prompt)
+                        .build());
+        if (!delivered) {
+            log.warn("Magrathea agent_task '{}' — initial prompt dispatch failed for process '{}'",
+                    stateName, processId);
+        }
+        return delivered;
     }
 
     @SuppressWarnings("unchecked")

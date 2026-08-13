@@ -22,22 +22,18 @@ states:
 
   work:
     type: agent_task
-    recipe: {{ recipe | default('jeltz') }}
+    recipe: {{ recipe | default('ford') }}
     params:
       prompt: |
         {{ summary }}
         Subject: ${params.subject}
-      # agent_task drives Jeltz, and Jeltz needs a schema — see the
-      # help page. Widen it to whatever this step should return.
-      schema:
-        type: object
-        properties:
-          summary: { type: string }
-        required: [summary]
     storeAs: work_result
     timeoutSeconds: 900
     on:
       success: review
+      # The agent asked something back instead of finishing — same gate,
+      # a human reads the question and answers it.
+      needs_input: review
     catch:
       agent_error: failed
 

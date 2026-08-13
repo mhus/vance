@@ -21,8 +21,8 @@ fields:
              en: "One sentence — becomes the description and the first step's prompt" }
   - name: recipe
     type: string
-    defaultValue: jeltz
+    defaultValue: ford
     label: { de: "Recipe des ersten Schritts",
              en: "Recipe for the first step" }
-    help:  { de: "jeltz ist der Standard und liefert ein schema-validiertes Objekt. Reaktive Engines (ford, vogon) laufen als agent_task derzeit nicht an.",
-             en: "jeltz is the default and returns a schema-validated object. Reactive engines (ford, vogon) do not currently start as an agent_task." }
+    help:  { de: "ford ist der Generalist und braucht nur den Prompt. jeltz liefert ein schema-validiertes Objekt und verlangt dann auch ein schema.",
+             en: "ford is the generalist and needs only the prompt. jeltz returns a schema-validated object and then also requires a schema." }

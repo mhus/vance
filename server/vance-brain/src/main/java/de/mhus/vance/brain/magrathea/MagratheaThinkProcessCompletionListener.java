@@ -44,6 +44,12 @@ import tools.jackson.databind.ObjectMapper;
  *       {@code USER_DELETE} / {@code ABANDONED} → {@code cancelled}</li>
  *   <li>Missing close-reason on a CLOSED process → {@code technical_error}</li>
  * </ul>
+ *
+ * <h3>Turn-end mapping</h3>
+ * Engines other than Jeltz never close themselves, so the listener also
+ * completes a task when the agent merely finished its turn — see
+ * {@link #completeAfterTurn}. {@code RUNNING → IDLE} is {@code success},
+ * {@code RUNNING → BLOCKED} is {@code needs_input}.
  */
 @Component
 @ConditionalOnProperty(
@@ -56,6 +62,13 @@ public class MagratheaThinkProcessCompletionListener {
 
     private static final String ENGINE_JELTZ = "jeltz";
 
+    /**
+     * Outcome for an agent that ended its turn with a question. Not an
+     * error kind — it routes through {@code on:}, typically to a
+     * {@code gate_task} that puts the question to a human.
+     */
+    public static final String OUTCOME_NEEDS_INPUT = "needs_input";
+
     private final MagratheaTaskService taskService;
     private final MagratheaCompletionEventBus eventBus;
     private final ThinkProcessService thinkProcessService;
@@ -64,7 +77,11 @@ public class MagratheaThinkProcessCompletionListener {
 
     @EventListener
     public void onStatusChanged(ThinkProcessStatusChangedEvent event) {
-        if (event.newStatus() != ThinkProcessStatus.CLOSED) {
+        boolean closed = event.newStatus() == ThinkProcessStatus.CLOSED;
+        boolean turnEnded = event.priorStatus() == ThinkProcessStatus.RUNNING
+                && (event.newStatus() == ThinkProcessStatus.IDLE
+                    || event.newStatus() == ThinkProcessStatus.BLOCKED);
+        if (!closed && !turnEnded) {
             return;
         }
         Optional<MagratheaTaskDocument> taskOpt = taskService.findBySubProcessId(event.processId());
@@ -72,7 +89,70 @@ public class MagratheaThinkProcessCompletionListener {
             // Not a Magrathea-spawned process — stay silent.
             return;
         }
-        reconcile(taskOpt.get(), event.processId());
+        if (closed) {
+            reconcile(taskOpt.get(), event.processId());
+        } else {
+            completeAfterTurn(taskOpt.get(), event.processId(), event.newStatus());
+        }
+    }
+
+    /**
+     * Finish the task when the agent finished its turn — the completion
+     * criterion for every engine that does not end itself.
+     *
+     * <p>Only Jeltz closes on its own; it is single-shot by construction.
+     * Ford, Vogon, Marvin and Arthur end a turn at {@code IDLE} or
+     * {@code BLOCKED} and wait for the next message, which inside a
+     * workflow never comes. Waiting for {@code CLOSED} therefore asks the
+     * agent a question it cannot answer: it does not know the step is
+     * over — the task does.
+     *
+     * <p>The prior status is what makes this decidable. {@code INIT →
+     * IDLE} is an engine that has started and not yet worked;
+     * {@code RUNNING → IDLE} is a finished turn. Without
+     * {@link ThinkProcessStatusChangedEvent#priorStatus} the two would be
+     * indistinguishable and every spawn would complete instantly.
+     *
+     * <p>The end status carries how it went, so it maps straight onto an
+     * outcome the workflow can route: {@code IDLE} = done,
+     * {@code BLOCKED} = the agent asked something back and the run should
+     * take that to a human ({@code needs_input} → a {@code gate_task}).
+     *
+     * <p>The link is dropped before closing so the resulting
+     * {@code CLOSED} event finds no task and stays quiet — otherwise it
+     * would publish a second completion behind this one.
+     */
+    private void completeAfterTurn(
+            MagratheaTaskDocument task, String processId, ThinkProcessStatus endStatus) {
+        Optional<ThinkProcessDocument> processOpt = thinkProcessService.findById(processId);
+        if (processOpt.isEmpty()) {
+            log.warn("Magrathea listener: ThinkProcess {} ended a turn but document is gone "
+                    + "— failing task {}", processId, task.getId());
+            publish(task, "technical_error", null, "ThinkProcess document not found", 0L, null);
+            return;
+        }
+        ThinkProcessDocument process = processOpt.get();
+        long durationMs = computeDurationMs(process);
+        JsonNode output = lastAssistant(chatMessageService.history(
+                        process.getTenantId(), process.getSessionId(), process.getId()))
+                .map(ChatMessageDocument::getContent)
+                .<JsonNode>map(objectMapper::valueToTree)
+                .orElse(null);
+
+        boolean asked = endStatus == ThinkProcessStatus.BLOCKED;
+        taskService.unlinkSubProcess(task.getId());
+        try {
+            thinkProcessService.closeProcess(
+                    processId, asked ? CloseReason.INCOMPLETE : CloseReason.DONE);
+        } catch (RuntimeException ex) {
+            log.warn("Magrathea listener: could not close finished agent process '{}': {}",
+                    processId, ex.toString());
+        }
+        publish(task,
+                asked ? OUTCOME_NEEDS_INPUT : TaskCompletedEvent.OUTCOME_SUCCESS,
+                output,
+                asked ? "agent ended its turn awaiting input" : null,
+                durationMs, null);
     }
 
     /**

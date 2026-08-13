@@ -46,6 +46,7 @@ import { isBinaryMime } from './stores/cortexStore';
 import { useCortexStore } from './stores/cortexStore';
 import { cortexHref, readCortexView, writeCortexView, type CortexView } from './cortexUrl';
 import { useViewEditMode } from './useViewEditMode';
+import { resolveHelpPath } from './help';
 import { CortexClientToolService } from './clientToolService';
 import { useDocumentInvalidate } from './composables/useDocumentInvalidate';
 import FileTreeSidebar from './components/FileTreeSidebar.vue';
@@ -536,6 +537,17 @@ function onPopState(): void {
 }
 
 const activeTab = computed(() => store.activeTab);
+
+/**
+ * Help for the active document's kind, but only when there is no chat
+ * session. With a session the same content lives in the right panel's
+ * *Help* sub-tab; without one that panel is the session picker, so the
+ * document help would be unreachable. Feeding EditorShell a path makes
+ * it render the topbar "?" instead — one help surface at a time, never
+ * two.
+ */
+const shellHelpPath = computed<string | undefined>(() =>
+  hasSession.value ? undefined : resolveHelpPath(activeTab.value));
 
 const viewEditMode = useViewEditMode();
 
@@ -1109,6 +1121,17 @@ function toggleRightPanel(): void {
     window.location.href = cortexHref({ project: projectId.value }, currentView());
     return;
   }
+  // Help overlays the same column rather than replacing the panel, so
+  // this button always means "show me the sessions" — except when they
+  // are already visible with nothing on top, where it means "hide
+  // them". Closing help therefore reveals the picker instead of
+  // leaving an empty column, which is what makes the overlay
+  // escapable in one click.
+  if (helpOpen.value) {
+    helpOpen.value = false;
+    rightPanelOpen.value = true;
+    return;
+  }
   rightPanelOpen.value = !rightPanelOpen.value;
 }
 
@@ -1116,6 +1139,23 @@ const toggleTooltip = computed<string>(() => {
   if (hasSession.value) return 'Leave chat';
   return rightPanelOpen.value ? 'Hide sessions' : 'Show sessions';
 });
+
+/**
+ * Help-drawer state, owned here rather than inside EditorShell so the
+ * session toggle can reason about it. Opening help does *not* touch the
+ * session panel: help lays itself over the same column and the session
+ * stays on underneath, so closing help puts the user back where they
+ * were rather than into an empty column.
+ */
+const helpOpen = ref(false);
+
+/** Left segment of the topbar's right-panel switcher; the help "?" is
+ *  the right one and appears only when {@link shellHelpPath} is set. */
+const panelToggle = computed(() => ({
+  icon: '💬',
+  title: toggleTooltip.value,
+  active: rightPanelOpen.value,
+}));
 
 /**
  * Enter a chat from the (chatless-mode) session picker. Carry the current
@@ -1174,6 +1214,10 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
     focus-model="auto"
     :show-sidebar="!isAppTab"
     :show-right-panel="rightPanelOpen"
+    :help-path="shellHelpPath"
+    v-model:help-open="helpOpen"
+    :panel-toggle="panelToggle"
+    @toggle-panel="toggleRightPanel"
     title-clickable
     @title-click="focusZone = 'sidebar'"
   >
@@ -1238,17 +1282,6 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
         class="mr-2"
       />
       <VButton size="sm" variant="ghost" @click="backHome">{{ backLabel }}</VButton>
-      <VButton
-        size="sm"
-        variant="ghost"
-        :class="hasSession
-          ? 'bg-primary/15 text-primary hover:bg-primary/25'
-          : 'opacity-60 hover:opacity-100'"
-        :title="toggleTooltip"
-        @click="toggleRightPanel"
-      >
-        <span aria-hidden="true">💬</span>
-      </VButton>
     </template>
 
     <template #sidebar>

@@ -84,12 +84,13 @@ interface Props {
    */
   helpPath?: string;
   /**
-   * Initial open-state for the help drawer when {@link helpPath} is
-   * set. Default {@code false} — user opts in via the topbar toggle.
-   * Editors that want the drawer pre-opened (e.g. the first time the
-   * user visits) can flip this and persist the preference themselves.
+   * The editor's own right-panel toggle, rendered as one segmented
+   * control together with the help "?" — see
+   * {@link EditorTopbar}. Making the two mutually exclusive is the
+   * editor's job: it owns its panel state and can watch
+   * {@code v-model:help-open}.
    */
-  helpOpen?: boolean;
+  panelToggle?: { icon: string; title: string; active: boolean };
   /**
    * Renders the page title as a clickable element that emits the
    * {@code title-click} event. Editors with a sidebar typically wire
@@ -141,6 +142,10 @@ const emit = defineEmits<{
    *  {@link Props.titleClickable} is true. EditorShell does not act
    *  on this itself — the host editor decides what title-click means. */
   'title-click': [];
+  /** Forwarded from the topbar's {@link Props.panelToggle} segment.
+   *  EditorShell does not own the editor's panel state — it only
+   *  places the button next to the help toggle. */
+  'toggle-panel': [];
 }>();
 
 /**
@@ -151,26 +156,51 @@ const emit = defineEmits<{
  */
 const focusZone = defineModel<FocusZone>('focusZone', { default: 'main' });
 
-const showHelp = ref<boolean>(false);
+/**
+ * Open-state of the help drawer, two-way. Editors that pair the drawer
+ * with their own right-panel toggle bind it (`v-model:help-open`) to
+ * keep the two mutually exclusive; everyone else can ignore it and the
+ * topbar "?" drives it alone. Defaults closed — the drawer reclaims the
+ * right-panel column, so opening it is always the user's move.
+ */
+const showHelp = defineModel<boolean>('helpOpen', { default: false });
 const help = useHelp();
+
+/** Which path {@link help} currently holds — the load is keyed on this
+ *  rather than on "content is still null", so a shell whose helpPath
+ *  changes (Cortex: one path per document kind) swaps the text instead
+ *  of keeping whatever it fetched first. */
+const loadedHelpPath = ref<string | null>(null);
+
+function loadHelp(path: string): void {
+  if (help.loading.value || loadedHelpPath.value === path) return;
+  loadedHelpPath.value = path;
+  void help.load(path);
+}
 
 watch(
   () => props.helpPath,
   (path) => {
-    showHelp.value = props.helpOpen && !!path;
-    if (path && showHelp.value && help.content.value == null) {
-      void help.load(path);
-    }
+    // A path change leaves the drawer as the user set it and swaps the
+    // page under it — switching document while help is open should not
+    // close it. Losing the path entirely does close it: there is
+    // nothing left to show.
+    if (!path) showHelp.value = false;
+    else if (showHelp.value) loadHelp(path);
   },
   { immediate: true },
 );
 
+// The drawer can also be opened from outside (v-model:help-open) —
+// fetch on that path too, not just on the topbar click.
+watch(showHelp, (open) => {
+  if (open && props.helpPath) loadHelp(props.helpPath);
+});
+
 function toggleHelp(): void {
   if (!props.helpPath) return;
   showHelp.value = !showHelp.value;
-  if (showHelp.value && help.content.value == null && !help.loading.value) {
-    void help.load(props.helpPath);
-  }
+  if (showHelp.value) loadHelp(props.helpPath);
 }
 
 /**
@@ -363,8 +393,10 @@ onBeforeUnmount(() => {
       :connection-tooltip="connectionTooltip"
       :help-path="helpPath"
       :help-open="showHelp"
+      :panel-toggle="panelToggle"
       :title-clickable="titleClickable"
       @toggle-help="toggleHelp"
+      @toggle-panel="emit('toggle-panel')"
       @title-click="emit('title-click')"
     >
       <!-- Only forward when the parent of EditorShell actually filled

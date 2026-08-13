@@ -51,6 +51,15 @@ interface Props {
   /** Reflects whether the help drawer is currently open. */
   helpOpen?: boolean;
   /**
+   * The editor's own right-panel toggle, rendered as the segment left
+   * of the "?" so the two form one control. Both switch what the right
+   * panel shows, so they belong together rather than sitting at
+   * opposite ends of the topbar; the editor keeps ownership of what its
+   * segment means (a session picker, an outline, …) and of making the
+   * two mutually exclusive. Omit it and the "?" stands alone.
+   */
+  panelToggle?: { icon: string; title: string; active: boolean };
+  /**
    * When true, the page title renders as a clickable element that
    * emits {@code title-click} on activation. Used by editors with a
    * sidebar zone to let users jump back to the navigation. Visually
@@ -67,6 +76,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   (e: 'toggle-help'): void;
+  (e: 'toggle-panel'): void;
   (e: 'title-click'): void;
 }>();
 
@@ -256,17 +266,36 @@ function openFook(): void {
         :title="connectionTooltip ?? defaultConnectionTooltip"
       />
 
-      <!-- Help-drawer toggle. Only rendered when the editor supplied
-           a helpPath; the drawer itself is rendered by EditorShell. -->
-      <button
-        v-if="helpPath"
-        type="button"
-        class="btn btn-ghost btn-sm btn-circle"
-        :class="helpOpen ? 'btn-active' : ''"
-        :title="$t('header.help.toggle')"
-        :aria-pressed="helpOpen"
-        @click="onToggleHelp"
-      >?</button>
+      <!-- Right-panel switcher: the editor's own toggle and the help
+           toggle as one segmented control, because both decide what the
+           right panel shows. Either segment may be absent — with only
+           one, the group reads as a single button. The drawer itself is
+           rendered by EditorShell. -->
+      <div
+        v-if="panelToggle || helpPath"
+        class="join border border-base-content/15 rounded-md overflow-hidden"
+      >
+        <button
+          v-if="panelToggle"
+          type="button"
+          class="btn btn-ghost btn-sm join-item rounded-none"
+          :class="panelToggle.active ? 'btn-active' : ''"
+          :title="panelToggle.title"
+          :aria-pressed="panelToggle.active"
+          @click="emit('toggle-panel')"
+        >
+          <span aria-hidden="true">{{ panelToggle.icon }}</span>
+        </button>
+        <button
+          v-if="helpPath"
+          type="button"
+          class="btn btn-ghost btn-sm join-item rounded-none"
+          :class="helpOpen ? 'btn-active' : ''"
+          :title="$t('header.help.toggle')"
+          :aria-pressed="helpOpen"
+          @click="onToggleHelp"
+        >?</button>
+      </div>
 
       <div class="dropdown dropdown-end">
         <div tabindex="0" role="button" class="btn btn-ghost btn-sm">

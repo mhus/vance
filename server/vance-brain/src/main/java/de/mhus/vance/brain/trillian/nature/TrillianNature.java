@@ -169,7 +169,12 @@ public interface TrillianNature {
      * something durable here. Both outcomes are delivered on purpose —
      * a Trillian that only reviews its successes learns nothing.
      *
-     * <p>Runs inside the reporting tool call and must not throw.
+     * <p>Called from inside the worker's reporting tool call, which holds
+     * that process's lane. Must not throw, and must not do slow work on
+     * the calling thread — an implementation that wants a model call or
+     * document I/O detaches (see {@code TrillianNatureAdam}, which marks
+     * its implementation {@code @Async}). Nothing downstream waits for
+     * the answer: the outcome has already reached Control.
      */
     default void taskConcluded(
             ThinkProcessDocument worker, String taskId,

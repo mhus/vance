@@ -7,6 +7,7 @@ import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.TriggerContext;
 import de.mhus.vance.brain.action.TriggerKind;
 import de.mhus.vance.brain.eddie.EddieEngine;
+import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.brain.tools.worktarget.BaseEngineTools;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -60,15 +61,19 @@ public class DamogranProcessResolver {
     private final ThinkProcessService thinkProcessService;
     private final ChatMessageService chatMessageService;
     private final ObjectProvider<ActionExecutorRegistry> actionRegistryProvider;
+    /** Lazy: the lifecycle service pulls in the engine stack this resolver sits under. */
+    private final ObjectProvider<SessionLifecycleService> lifecycleProvider;
 
     public DamogranProcessResolver(SessionService sessionService,
                                    ThinkProcessService thinkProcessService,
                                    ChatMessageService chatMessageService,
-                                   ObjectProvider<ActionExecutorRegistry> actionRegistryProvider) {
+                                   ObjectProvider<ActionExecutorRegistry> actionRegistryProvider,
+                                   ObjectProvider<SessionLifecycleService> lifecycleProvider) {
         this.sessionService = sessionService;
         this.thinkProcessService = thinkProcessService;
         this.chatMessageService = chatMessageService;
         this.actionRegistryProvider = actionRegistryProvider;
+        this.lifecycleProvider = lifecycleProvider;
     }
 
     /**
@@ -143,6 +148,14 @@ public class DamogranProcessResolver {
      * running one to the next caller would silently lend them the previous
      * owner's grants. Continuity is per (key, owner) — that is the price of
      * not confusing the two authorities.
+     *
+     * <p>Closed through {@link SessionLifecycleService#closeWithCascade},
+     * not through {@code SessionService.close}: the session row is the
+     * smallest part of what has to end. Its think-processes — the carrier,
+     * or a whole conversational agent — would otherwise stay non-terminal
+     * under an owner who no longer has the session, keep their pending
+     * engine messages, and never fire the lifecycle hooks that clean up
+     * what hangs off them.
      */
     private String resolveSessionId(
             String tenantId, String projectId, String name, String runAs) {
@@ -155,7 +168,15 @@ public class DamogranProcessResolver {
             log.info("Damogran: compose session '{}' owner changed in {}/{} "
                             + "oldUser='{}' newUser='{}' — closing old session '{}' and creating fresh",
                     name, tenantId, projectId, existing.getUserId(), runAs, existing.getSessionId());
-            sessionService.close(existing.getSessionId());
+            try {
+                lifecycleProvider.getObject().closeWithCascade(existing.getSessionId());
+            } catch (RuntimeException e) {
+                // The old session is being abandoned either way; a failed
+                // cascade must not stop the caller from getting a session
+                // under their own identity, which is the point of the swap.
+                log.warn("Damogran: cascade-close of compose session '{}' failed: {}",
+                        existing.getSessionId(), e.toString());
+            }
         }
         SessionDocument created = sessionService.create(
                 tenantId, runAs, projectId, name,

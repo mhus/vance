@@ -47,7 +47,8 @@ import org.springframework.stereotype.Component;
  * </pre>
  *
  * <p><b>{@code params.prompt} is delivered as an initial message.</b>
- * After {@code start()} the executor pushes it into the spawned
+ * Directly after {@code start()}, on the same lane task so no turn can
+ * slip in between, the executor pushes it into the spawned
  * process's pending queue as {@code USER_CHAT_INPUT} — the same seeding
  * {@code SpawnActionExecutor} does for {@code initialMessage}. Reactive
  * engines (Ford/Vogon/Marvin/Arthur) need that: they wait for a message
@@ -161,10 +162,21 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
         // is serialized against any concurrent runTurn/steer for this process
         // — the Lane-Serialisierung invariant (CLAUDE.md). An off-lane start
         // right after linkSubProcess would race the completion listener path.
+        //
+        // The initial message goes into the SAME lane task, right behind
+        // start(). Vogon and Marvin schedule their first turn from start()
+        // itself, and that turn only runs once this task releases the lane —
+        // so seeding here is what guarantees the prompt is in the pending
+        // queue before the first turn reads it. Pushed from outside the lane
+        // it raced that turn, and a turn that ends IDLE completes the task
+        // (MagratheaThinkProcessCompletionListener#completeAfterTurn): the
+        // step reported success and the prompt landed in a closed process.
+        boolean[] steeredHolder = new boolean[1];
         Throwable startFailure = null;
         try {
             laneScheduler.submit(spawned.getId(), () -> {
                 thinkEngineService.start(spawned);
+                steeredHolder[0] = pushInitialMessage(applied, spawned.getId(), state.name());
                 return null;
             }).get();
         } catch (InterruptedException ie) {
@@ -197,10 +209,8 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
         // only the timer can end it if the agent never comes back.
         timeoutScheduler.arm(context, state);
 
-        boolean steered = pushInitialMessage(applied, spawned.getId(), state.name());
-
         log.info("Magrathea agent_task '{}' spawned recipe='{}' engine='{}' subProcessId='{}' steered={}",
-                state.name(), recipeName, applied.engine(), spawned.getId(), steered);
+                state.name(), recipeName, applied.engine(), spawned.getId(), steeredHolder[0]);
 
         // Async — listener fires the TaskCompletedEvent when the sub-process closes.
         return Optional.empty();
@@ -240,6 +250,13 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
      * {@code USER_CHAT_INPUT}, the same way {@code SpawnActionExecutor}
      * seeds {@code initialMessage}: push after {@code start()} so the
      * pending queue plus auto-wakeup drive the first turn.
+     *
+     * <p><b>Called on the process lane, inside the same task as
+     * {@code start()}.</b> Vogon and Marvin schedule their first turn from
+     * {@code start()}, and that turn is a lane task queued behind this one —
+     * seeding from outside the lane raced it, and since a turn that ends
+     * {@code IDLE} completes the workflow task, the step could report
+     * success before the prompt had been delivered at all.
      *
      * <p>Without this a reactive engine never runs. Ford, Vogon, Marvin and
      * Arthur all wait for a message — Ford's {@code start()} says so

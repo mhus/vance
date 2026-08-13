@@ -114,6 +114,41 @@ class AgentTaskExecutorTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void spawn_seedsThePromptOnTheLane_soTheFirstTurnCannotOvertakeIt() {
+        // Vogon and Marvin schedule their first turn from start(). That turn
+        // is a lane task queued behind this one, so the seed has to happen
+        // before this lane task releases — off-lane it raced the turn, and a
+        // turn that ends IDLE completes the workflow task: the step reported
+        // success while the prompt went to an already-closed process.
+        java.util.concurrent.atomic.AtomicBoolean onLane =
+                new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicBoolean seededOnLane =
+                new java.util.concurrent.atomic.AtomicBoolean();
+        when(laneScheduler.submit(any(String.class), any(java.util.concurrent.Callable.class)))
+                .thenAnswer(inv -> {
+                    java.util.concurrent.Callable<?> c = inv.getArgument(1);
+                    onLane.set(true);
+                    try {
+                        return java.util.concurrent.CompletableFuture.completedFuture(c.call());
+                    } catch (Exception e) {
+                        return java.util.concurrent.CompletableFuture.failedFuture(e);
+                    } finally {
+                        onLane.set(false);
+                    }
+                });
+        when(messageRouter.dispatch(any(), any(), any()))
+                .thenAnswer(inv -> seededOnLane.compareAndSet(false, onLane.get()));
+
+        stubResolver("vogon", Map.of("model", "default:fast", "prompt", "do the thing"));
+        stubSpawn("vogon");
+
+        executor.execute(ctx(agentState("vogon", Map.of("prompt", "do the thing"))));
+
+        assertThat(seededOnLane).isTrue();
+    }
+
+    @Test
     void spawn_stripsDelegationTools_soTheStepStaysTheWholeStep() {
         // An agent that spawns its own workers builds a plan beside the
         // workflow: invisible in the diagram and past bounds.maxTaskSpawns.

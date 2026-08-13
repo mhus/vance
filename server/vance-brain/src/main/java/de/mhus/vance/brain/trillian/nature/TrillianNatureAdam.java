@@ -10,6 +10,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 /**
@@ -114,11 +115,19 @@ public class TrillianNatureAdam extends TrillianNatureBase {
      * Reflects on a concluded task and, when there is something worth
      * keeping, adds one line to the journal.
      *
-     * <p>Runs inside the reporting tool call, after Control already has
-     * the outcome. Fail-open throughout: a reflexion that errors, times
-     * out or produces nothing leaves a Trillian that simply did not learn
+     * <p><b>Off the calling thread.</b> The hook fires from inside the
+     * worker's reporting tool call, which holds that process's lane; a
+     * full model round-trip plus two document accesses there would stall
+     * the worker's next turn behind a reflexion nobody is waiting for.
+     * The task result reached Control before this was called, so nothing
+     * downstream depends on the answer — which is exactly what makes it
+     * safe to detach.
+     *
+     * <p>Fail-open throughout: a reflexion that errors, times out or
+     * produces nothing leaves a Trillian that simply did not learn
      * anything from this task — never one whose result went missing.
      */
+    @Async
     @Override
     public void taskConcluded(
             ThinkProcessDocument worker, String taskId,

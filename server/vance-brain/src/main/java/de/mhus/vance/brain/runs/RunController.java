@@ -24,9 +24,10 @@ import org.springframework.web.server.ResponseStatusException;
  *
  * <p>Project-scoped, because that is the axis both sources share — a
  * Magrathea run belongs to a project outright, a ThinkProcess through its
- * session. Authorisation is checked here at project level and again
- * inside each source for its own resource; the facade deliberately does
- * not merge the two checks.
+ * session. <b>This is the only authorisation in the path</b>: the project
+ * check happens here, the sources confine themselves to the scope they are
+ * handed and check nothing further. A source whose runs live behind a
+ * narrower resource has to enforce that itself — see {@link RunSource}.
  */
 @RestController
 @RequestMapping("/brain/{tenant}/runs")

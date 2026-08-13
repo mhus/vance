@@ -21,10 +21,20 @@ import java.util.Set;
  * <p>Pure interface, no Spring: an addon that brings its own runs can
  * implement it. Beans are collected by {@link RunSourceRegistry}.
  *
- * <p><b>Each implementation enforces its own authorisation.</b> The
- * facade must not pull that together — Magrathea checks the project,
- * process insights check the process, and flattening the two would move a
- * permission boundary without anyone noticing.
+ * <p><b>Authorisation: the caller has already been checked against the
+ * project, and that is all that has been checked.</b> {@code RunController}
+ * enforces {@code Resource.Project READ} before a read and
+ * {@code Resource.Project WRITE} before an action, for every source alike;
+ * the three built-in implementations add nothing beyond confining their
+ * lookup to the {@code (tenantId, projectId)} they are handed, and a run
+ * outside that scope is reported as absent rather than as forbidden.
+ *
+ * <p>An implementation whose runs sit behind a <em>narrower</em> resource
+ * than the project — a session, a document, another project's data — must
+ * enforce that itself, because nothing above it will. This is not a
+ * hypothetical for addons only: the moment a source starts surfacing runs
+ * the project grant does not cover, the project check stops being
+ * sufficient and the gap is invisible from here.
  */
 public interface RunSource {
 

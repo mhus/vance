@@ -181,6 +181,13 @@ public class TrillianInternalApi {
      * whatever a Nature does with it. Only {@code task_done} and
      * {@code task_failed} count as conclusions; a request or a question
      * has nothing to conclude about yet.
+     *
+     * <p>The call itself is a plain method call on this thread, which
+     * still holds the reporting process's lane — ordering after the
+     * dispatch is not the same as getting off the thread. A Nature whose
+     * reaction is expensive detaches on its own side
+     * ({@code TrillianNatureAdam#taskConcluded} is {@code @Async}); this
+     * funnel only guarantees that a failure here cannot undo the report.
      */
     private void notifyNatureOfConclusion(
             String senderProcessId, String taskEvent, String taskId, String summary) {

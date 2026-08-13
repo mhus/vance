@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.TriggerKind;
+import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
@@ -31,6 +32,7 @@ class DamogranProcessResolverTest {
     private ThinkProcessService thinkProcessService;
     private ChatMessageService chatMessageService;
     private ActionExecutorRegistry actionRegistry;
+    private SessionLifecycleService lifecycleService;
     private DamogranProcessResolver resolver;
 
     @BeforeEach
@@ -42,8 +44,12 @@ class DamogranProcessResolverTest {
         actionRegistry = mock(ActionExecutorRegistry.class);
         ObjectProvider<ActionExecutorRegistry> provider = mock(ObjectProvider.class);
         when(provider.getObject()).thenReturn(actionRegistry);
+        lifecycleService = mock(SessionLifecycleService.class);
+        ObjectProvider<SessionLifecycleService> lifecycleProvider = mock(ObjectProvider.class);
+        when(lifecycleProvider.getObject()).thenReturn(lifecycleService);
         resolver = new DamogranProcessResolver(
-                sessionService, thinkProcessService, chatMessageService, provider);
+                sessionService, thinkProcessService, chatMessageService, provider,
+                lifecycleProvider);
     }
 
     private static SessionDocument session(String sessionId, String owner) {
@@ -164,7 +170,11 @@ class DamogranProcessResolverTest {
         assertThat(resolver.resolveComposeSession(
                 "t", "p", "bob", "name:build", "arthur", false)).isEqualTo("agent-bob");
 
-        verify(sessionService).close("sys-alice");
+        // Cascade, not a bare session close: the old owner's think-processes
+        // have to go terminal too, otherwise they keep running under a
+        // session nobody holds any more.
+        verify(lifecycleService).closeWithCascade("sys-alice");
+        verify(sessionService, never()).close("sys-alice");
     }
 
     @Test

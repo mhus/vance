@@ -179,17 +179,33 @@ public class TrillianSessionBootstrapper {
     private void doBootstrap(
             SessionDocument controlSession,
             ThinkProcessDocument controlProcess) {
-        // 1. Mint the service account.
-        String trillianName = pickUniqueTrillianName(controlSession.getTenantId());
+        // 1. Reuse the account of a previous incarnation, or mint one.
+        //    After a reactivate the old chat-process is still around,
+        //    renamed and closed, and it remembers which account this
+        //    session's Trillian was. Reusing it is what makes archiving
+        //    reversible: same identity, same attributes, same grants —
+        //    a Trillian that came back rather than a stranger wearing
+        //    its session.
+        String trillianName = previousAccountOf(controlSession).orElse(null);
+        boolean adopted = trillianName != null;
+        if (!adopted) {
+            trillianName = pickUniqueTrillianName(controlSession.getTenantId());
+        }
         String suffix = trillianName.substring("_trillian-".length());
-        UserDocument trillian = userService.createServiceAccount(
-                controlSession.getTenantId(),
-                trillianName,
-                /*passwordHash*/ null,
-                /*title*/ "Trillian " + suffix,
-                /*email*/ null);
-        log.info("Minted Trillian service-account '{}' id='{}' for control session '{}'",
-                trillian.getName(), trillian.getId(), controlSession.getSessionId());
+        if (adopted) {
+            log.info("Adopted Trillian service-account '{}' for reactivated control session '{}'",
+                    trillianName, controlSession.getSessionId());
+        } else {
+            UserDocument trillian = userService.createServiceAccount(
+                    controlSession.getTenantId(),
+                    trillianName,
+                    /*passwordHash*/ null,
+                    /*title*/ "Trillian " + suffix,
+                    /*email*/ null);
+            log.info("Minted Trillian service-account '{}' id='{}' for control session '{}'",
+                    trillian.getName(), trillian.getId(), controlSession.getSessionId());
+        }
+        final String trillianNameFinal = trillianName;
 
         // 1b. Seed the account's authority. Without a grant the account
         //     exists but may do nothing: every tool call goes through
@@ -199,8 +215,11 @@ public class TrillianSessionBootstrapper {
         //     in the project they started it in, and nowhere else. Spawning
         //     into other projects (cross_process_create) therefore stays
         //     denied until someone grants that explicitly.
-        permissionBootstrapProvider.ifAvailable(pb -> pb.grantProjectAdmin(
-                controlSession.getTenantId(), controlSession.getProjectId(), trillianName));
+        if (!adopted) {
+            permissionBootstrapProvider.ifAvailable(pb -> pb.grantProjectAdmin(
+                    controlSession.getTenantId(), controlSession.getProjectId(),
+                    trillianNameFinal));
+        }
 
         // 2. Resolve the user recipe — pick the Nature variant that
         //    matches what the control process was spawned with. The
@@ -375,6 +394,33 @@ public class TrillianSessionBootstrapper {
             log.warn("Trillian bootstrap: could not announce identity '{}' in session '{}': {}",
                     trillianName, controlSession.getSessionId(), e.toString());
         }
+    }
+
+
+    /**
+     * The service account a previous incarnation of this control session
+     * used, if any. Read from the closed, renamed chat-process that
+     * {@code reactivateFromArchive} leaves behind — it still carries the
+     * {@code trillianUserName} in its {@code engineParams}.
+     *
+     * <p>Only accounts that still exist count: if cleanup already
+     * removed it, this is a fresh start and minting is right.
+     */
+    private java.util.Optional<String> previousAccountOf(SessionDocument controlSession) {
+        for (ThinkProcessDocument p : thinkProcessService.findBySession(
+                controlSession.getTenantId(), controlSession.getSessionId())) {
+            Object name = p.getEngineParams() == null
+                    ? null : p.getEngineParams().get(PARAM_TRILLIAN_USER_NAME);
+            if (name == null || name.toString().isBlank()) {
+                continue;
+            }
+            String candidate = name.toString();
+            if (userService.existsByTenantAndName(controlSession.getTenantId(), candidate)) {
+                return java.util.Optional.of(candidate);
+            }
+            log.debug("Previous Trillian account '{}' is gone — minting a fresh one", candidate);
+        }
+        return java.util.Optional.empty();
     }
 
     private String pickUniqueTrillianName(String tenantId) {

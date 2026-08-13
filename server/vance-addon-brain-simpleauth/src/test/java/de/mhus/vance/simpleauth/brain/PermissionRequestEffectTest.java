@@ -3,6 +3,7 @@ package de.mhus.vance.simpleauth.brain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -13,7 +14,9 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.brain.permission.SecurityContextFactory;
+import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionService;
@@ -33,6 +36,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -60,6 +64,8 @@ class PermissionRequestEffectTest {
     PermissionService permissionService;
     @Mock
     SecurityContextFactory contextFactory;
+    @Mock
+    ProcessEventEmitter eventEmitter;
 
     @InjectMocks
     PermissionRequestEffect effect;
@@ -254,6 +260,55 @@ class PermissionRequestEffectTest {
         assertThat(effect.describe(item("req-1"))).isEmpty();
     }
 
+    @Test
+    void approval_tellsTheRequestingProcessItMayProceed() {
+        when(requests.findById("req-1")).thenReturn(Optional.of(pending()));
+
+        effect.onApproved(item("req-1"), answer());
+
+        // The moment of the decision is known exactly here, so the waiting
+        // agent is pushed to rather than left to poll — every poll would
+        // cost an LLM turn to discover "not yet".
+        ArgumentCaptor<String> summary = ArgumentCaptor.forClass(String.class);
+        verify(eventEmitter).notifyParent(eq("proc-1"), eq("proc-1"),
+                eq(ProcessEventType.SUMMARY), summary.capture(), any(), isNull());
+        assertThat(summary.getValue()).contains("approved").contains("test1");
+    }
+
+    @Test
+    void rejection_tellsTheRequesterNotToRetry() {
+        when(requests.findById("req-1")).thenReturn(Optional.of(pending()));
+
+        effect.onRejected(item("req-1"), answer());
+
+        ArgumentCaptor<String> summary = ArgumentCaptor.forClass(String.class);
+        verify(eventEmitter).notifyParent(any(), any(), any(), summary.capture(), any(), any());
+        assertThat(summary.getValue()).contains("declined").contains("Do not retry");
+    }
+
+    @Test
+    void requestWithoutAnOriginProcess_notifiesNobody() {
+        PermissionRequestDocument orphan = pending();
+        orphan.setRequestedByProcessId(null);
+        when(requests.findById("req-1")).thenReturn(Optional.of(orphan));
+
+        effect.onApproved(item("req-1"), answer());
+
+        verify(eventEmitter, never()).notifyParent(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void failingNotification_doesNotUndoTheGrant() {
+        when(requests.findById("req-1")).thenReturn(Optional.of(pending()));
+        when(eventEmitter.notifyParent(any(), any(), any(), any(), any(), any()))
+                .thenThrow(new IllegalStateException("peer pod unreachable"));
+
+        // A lost notification costs a wait, not the grant.
+        assertThatCode(() -> effect.onApproved(item("req-1"), answer()))
+                .doesNotThrowAnyException();
+        verify(grants).set(any(), any(), any(), any(), any(), any(), any());
+    }
+
     // ──── helpers ───────────────────────────────────────────────────────
 
     private static InboxItemDocument item(String requestId) {
@@ -287,6 +342,7 @@ class PermissionRequestEffectTest {
                 .role(GrantRole.WRITER)
                 .reason("worker needs access")
                 .requestedBy("road.runner")
+                .requestedByProcessId("proc-1")
                 .status(PermissionRequestStatus.PENDING)
                 .build();
     }

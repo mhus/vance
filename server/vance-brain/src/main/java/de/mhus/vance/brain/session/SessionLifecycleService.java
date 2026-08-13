@@ -64,6 +64,13 @@ public class SessionLifecycleService {
     private final LaneScheduler laneScheduler;
 
     /**
+     * Subsystems that follow a session's lifetime. Empty by default —
+     * nothing in the core needs one; Trillian is the first because its
+     * worker lives in a second session.
+     */
+    private final java.util.List<SessionLifecycleHook> lifecycleHooks;
+
+    /**
      * System-wide minimum keep-duration after a {@link SuspendCause#FORCED}
      * suspend. Recipe-author cannot lower this — it's a safety floor that
      * gives an operator a chance to intervene after pod-shutdown / lease-loss
@@ -244,6 +251,7 @@ public class SessionLifecycleService {
         }
         engineMessageService.purgeForProcesses(closedProcessIds);
         sessionService.archive(sessionId);
+        fireHooks("archived", session, SessionLifecycleHook::onSessionArchived);
     }
 
     /**
@@ -287,6 +295,10 @@ public class SessionLifecycleService {
         // Status: ARCHIVED → IDLE.
         sessionService.reactivate(sessionId);
 
+        // Before the spawn: the fresh chat-process bootstrap may want to
+        // pick up whatever a hook prepares here.
+        fireHooks("unarchived", session, SessionLifecycleHook::onSessionUnarchived);
+
         // Spawn the new chat-process.
         SessionDocument refreshed = sessionService.findBySessionId(sessionId)
                 .orElseThrow(() -> new IllegalStateException(
@@ -320,6 +332,10 @@ public class SessionLifecycleService {
                 thinkProcessService.overrideCloseReason(p.getId(), CloseReason.USER_DELETE);
             }
         }
+        // Hooks first: whatever hangs off this session is usually linked
+        // through a process's engineParams, and those rows are about to
+        // go away.
+        fireHooks("deleted", session, SessionLifecycleHook::onSessionDeleted);
         // Hard-delete the dependent collections, then the session row.
         // Memory + group cleanup share the semantics of the session-move
         // path (see planning/session-move.md §8) — both had been leaking
@@ -330,6 +346,28 @@ public class SessionLifecycleService {
         sessionGroupService.removeSessionFromProject(
                 session.getTenantId(), session.getProjectId(), sessionId);
         sessionService.delete(sessionId);
+    }
+
+
+    /**
+     * Runs every {@link SessionLifecycleHook} for one transition.
+     *
+     * <p>A throwing hook is logged and skipped: the transition the user
+     * asked for has to happen regardless of whether some subsystem
+     * managed to follow it. A hook that fails leaves its own mess, not a
+     * half-archived session.
+     */
+    private void fireHooks(String transition, SessionDocument session,
+            java.util.function.BiConsumer<SessionLifecycleHook, SessionDocument> call) {
+        for (SessionLifecycleHook hook : lifecycleHooks) {
+            try {
+                call.accept(hook, session);
+            } catch (RuntimeException e) {
+                log.warn("Session-lifecycle hook {} failed on {} for session '{}': {}",
+                        hook.getClass().getSimpleName(), transition,
+                        session.getSessionId(), e.toString(), e);
+            }
+        }
     }
 
     /**

@@ -130,6 +130,12 @@ public class TrillianUserEngine implements ThinkEngine {
         base.add("process_spawn");          // same-project (caller's home)
         base.add("cross_process_create");    // cross-project (NEW, role-gated)
         base.add("process_status");
+        // Self-wakeup: the loop can ask to be woken later instead of
+        // ending a turn with nothing to do. Note the registry is
+        // in-memory — a brain restart discards pending wakeups, so this
+        // is for minutes-to-hours polling, not for standing agendas.
+        base.add("wakeup_in");
+        base.add("wakeup_cancel");
         base.add("process_steer");
         base.add("process_history_text");
         base.add("process_list");

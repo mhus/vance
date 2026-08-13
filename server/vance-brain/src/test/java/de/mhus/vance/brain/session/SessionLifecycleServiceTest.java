@@ -74,7 +74,8 @@ class SessionLifecycleServiceTest {
                 sessionService, thinkProcessService,
                 chatMessageService, engineMessageService,
                 memoryService, sessionGroupService,
-                engineProvider, bootstrapperProvider, laneScheduler);
+                engineProvider, bootstrapperProvider, laneScheduler,
+                java.util.List.of());
         // Default forced-suspend floor — value doesn't matter for these tests.
         ReflectionTestUtils.setField(lifecycle, "forcedFloorMs", 1000L);
     }

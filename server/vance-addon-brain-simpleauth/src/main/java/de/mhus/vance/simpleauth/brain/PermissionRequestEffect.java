@@ -1,6 +1,8 @@
 package de.mhus.vance.simpleauth.brain;
 
 import de.mhus.vance.api.inbox.AnswerPayload;
+import de.mhus.vance.api.thinkprocess.ProcessEventType;
+import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.api.inbox.EffectDescription;
 import de.mhus.vance.api.inbox.EffectFact;
 import de.mhus.vance.brain.permission.SecurityContextFactory;
@@ -16,7 +18,9 @@ import de.mhus.vance.simpleauth.PermissionRequestOperation;
 import de.mhus.vance.simpleauth.PermissionRequestService;
 import de.mhus.vance.simpleauth.PermissionRequestStatus;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -47,6 +51,7 @@ public class PermissionRequestEffect implements InboxEffect {
     private final PermissionGrantService grants;
     private final PermissionService permissionService;
     private final SecurityContextFactory contextFactory;
+    private final ProcessEventEmitter eventEmitter;
 
     @Override
     public String effectType() {
@@ -85,6 +90,7 @@ public class PermissionRequestEffect implements InboxEffect {
                 request.getId(), request.getOperation(), request.getScopeType(),
                 request.getScopeId(), request.getSubjectType(), request.getSubjectId(),
                 request.getRole(), decidedBy);
+        notifyRequester(request, true, decidedBy);
     }
 
     @Override
@@ -97,6 +103,56 @@ public class PermissionRequestEffect implements InboxEffect {
         // whoever was routed the item — including a delegate — may decline
         // it. Only saying yes needs the authority.
         requests.markRejected(request.getId(), answer.getAnsweredBy());
+        notifyRequester(request, false, answer.getAnsweredBy());
+    }
+
+    /**
+     * Tells the process that raised the request how it was decided.
+     *
+     * <p>Without this an agent waiting on access has no way to learn it
+     * arrived except by asking again — which means polling, which means
+     * an LLM turn per attempt to discover "not yet". The moment of the
+     * decision is known here exactly, so pushing beats any interval
+     * someone would otherwise have to guess.
+     *
+     * <p>Best-effort: the requester may be gone, or on another pod that
+     * cannot be reached. A lost notification costs a wait, not the
+     * grant — which has already been written either way.
+     */
+    private void notifyRequester(
+            PermissionRequestDocument request, boolean approved, String decidedBy) {
+        String requester = request.getRequestedByProcessId();
+        if (StringUtils.isBlank(requester)) {
+            return;
+        }
+        String what = describeRequest(request);
+        String summary = approved
+                ? "Access request approved by " + decidedBy + ": " + what
+                        + ". You can proceed."
+                : "Access request declined by " + decidedBy + ": " + what
+                        + ". Do not retry without new information.";
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("permissionRequestId", request.getId());
+        payload.put("approved", approved);
+        payload.put("scopeType", request.getScopeType().name());
+        payload.put("scopeId", request.getScopeId());
+        payload.put("subjectId", request.getSubjectId());
+        try {
+            eventEmitter.notifyParent(requester, requester, ProcessEventType.SUMMARY,
+                    summary, payload, null);
+        } catch (RuntimeException e) {
+            log.warn("Could not notify requester '{}' about permission-request '{}': {}",
+                    requester, request.getId(), e.toString());
+        }
+    }
+
+    private static String describeRequest(PermissionRequestDocument request) {
+        String verb = request.getOperation() == PermissionRequestOperation.REVOKE
+                ? "remove access of" : "grant "
+                        + (request.getRole() == null ? "access" : request.getRole().name())
+                        + " to";
+        return verb + " '" + request.getSubjectId() + "' on "
+                + request.getScopeType() + " '" + request.getScopeId() + "'";
     }
 
     /**

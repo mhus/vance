@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.trillian;
 
+import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.shared.permission.PermissionBootstrap;
@@ -58,6 +59,17 @@ public class TrillianCleanupListener {
         // default-alias and any future Nature recipes all trigger
         // cleanup.
         if (!TrillianSessionBootstrapper.CONTROL_ENGINE_NAME.equals(process.getThinkEngine())) {
+            return;
+        }
+        // Archiving closes every process in the session, which used to
+        // land here and destroy the account — so "archive" silently
+        // meant "throw away", and reactivating minted a stranger.
+        // Archived sessions are handled by TrillianSessionLifecycleHook,
+        // which archives the worker session and leaves identity, grants
+        // and attributes intact.
+        if (process.getCloseReason() == CloseReason.ARCHIVED) {
+            log.debug("Trillian control-process id='{}' closed as ARCHIVED — "
+                    + "worker kept, lifecycle hook takes over", event.processId());
             return;
         }
         Object userNameRaw = process.getEngineParams() == null

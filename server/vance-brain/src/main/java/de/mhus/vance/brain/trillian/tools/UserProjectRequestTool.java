@@ -22,7 +22,7 @@ import org.springframework.stereotype.Component;
  * Asks for the paired Trillian worker to be allowed into another project.
  *
  * <p>Exists because the worker's account name is generated per session
- * (`_trillian-0XXXX`) and means nothing to the human: expecting them to
+ * (`_trillian-<nature>-<instance>`) and means nothing to the human: expecting them to
  * copy it into an admin form is a bad answer to a real need. The tool
  * fills subject and role in itself, so the chat can carry the whole
  * exchange — "let it work in test1 too" — while the throwaway name stays
@@ -125,7 +125,7 @@ public class UserProjectRequestTool implements Tool {
         return out;
     }
 
-    /** The `_trillian-0XXXX` account of the paired worker loop. */
+    /** The `_trillian-<nature>-<instance>` account of the paired worker loop. */
     private String boundWorkerName(ToolInvocationContext ctx) {
         Optional<ThinkProcessDocument> peer = api.findPeer(ctx.processId());
         if (peer.isEmpty()) {

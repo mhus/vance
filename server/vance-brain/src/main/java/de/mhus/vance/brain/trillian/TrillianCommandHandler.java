@@ -45,6 +45,7 @@ public class TrillianCommandHandler implements EngineCommandHandler {
 
     private final TrillianInternalApi api;
     private final ThinkProcessService thinkProcessService;
+    private final de.mhus.vance.shared.user.UserService userService;
 
     @Override
     public String verb() {
@@ -103,7 +104,13 @@ public class TrillianCommandHandler implements EngineCommandHandler {
         out.put("control", controlInfo);
 
         Map<String, Object> workerInfo = new LinkedHashMap<>();
-        workerInfo.put("account", param(peer, TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME));
+        String account = java.util.Objects.toString(
+                param(peer, TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME), null);
+        workerInfo.put("account", account);
+        // The name a human gave this worker. It lives on the account
+        // title, so renaming it in the user editor is all it takes — the
+        // account name itself never moves.
+        workerInfo.put("displayName", displayNameOf(control.getTenantId(), account));
         workerInfo.put("processId", snap.processId());
         workerInfo.put("processName", snap.name());
         workerInfo.put("sessionId", peer.getSessionId());
@@ -114,6 +121,26 @@ public class TrillianCommandHandler implements EngineCommandHandler {
 
         out.put("workers", spawnedWorkers(peer));
         return EngineCommandResult.ok(renderSummary(workerInfo, out), out);
+    }
+
+    /**
+     * The worker's display name, or {@code null} when the account is
+     * gone. Cosmetic: {@code //trillian info} is a debugging aid and must
+     * still answer when the account lookup fails.
+     */
+    private @org.jspecify.annotations.Nullable String displayNameOf(
+            String tenantId, @org.jspecify.annotations.Nullable String account) {
+        if (account == null) {
+            return null;
+        }
+        try {
+            return userService.findByTenantAndName(tenantId, account)
+                    .map(de.mhus.vance.shared.user.UserDocument::getTitle)
+                    .orElse(null);
+        } catch (RuntimeException e) {
+            log.debug("Trillian: could not read title of '{}': {}", account, e.toString());
+            return null;
+        }
     }
 
     /**

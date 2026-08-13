@@ -41,7 +41,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>On a Trillian-Control session this:
  * <ol>
- *   <li>Mints a fresh {@code _trillian-0XXXX} service account.</li>
+ *   <li>Mints a fresh {@code _trillian-<nature>-<instance>} service account.</li>
  *   <li>Resolves the {@value #USER_RECIPE_NAME} recipe to get the
  *       configured user-engine + params.</li>
  *   <li>Creates a <b>separate session</b> owned by the new service-
@@ -75,7 +75,7 @@ public class TrillianSessionBootstrapper {
      * Engine name carried by all Trillian-Control processes regardless
      * of Nature. Detect on this rather than recipe name so the
      * {@code trillian} default-alias recipe + future Nature recipes
-     * ({@code trillian-a} etc.) all trigger the same bootstrap.
+     * ({@code trillian-alpha} etc.) all trigger the same bootstrap.
      */
     public static final String CONTROL_ENGINE_NAME = "trillian-control";
 
@@ -138,10 +138,23 @@ public class TrillianSessionBootstrapper {
     /** Profile slot used for the headless Trillian-User session. */
     public static final String HEADLESS_PROFILE = "headless";
 
-    /** Nature-0 prefix: {@code _trillian-0} + 4 random digits. */
-    private static final String NATURE_0_PREFIX = "_trillian-0";
+    /**
+     * Account naming: {@code _trillian-<nature>-<instance>}, e.g.
+     * {@code _trillian-0-1535} or {@code _trillian-alpha-4711}.
+     *
+     * <p>Three parts, so a Nature id is not limited to one character and
+     * can say what it is ({@code fast}, {@code alpha}) instead of needing
+     * a legend. The separator also makes the name decomposable — with
+     * {@code _trillian-a1535} one had to know that the first character is
+     * the Nature and the rest the instance, a rule that lived only in a
+     * comment.
+     *
+     * <p>The instance part is random rather than sequential: a counter
+     * would need coordination across pods for a value nobody reads.
+     */
+    private static final String ACCOUNT_PREFIX = "_trillian-";
     private static final int MAX_NAMING_ATTEMPTS = 16;
-    private static final int NATURE_0_SUFFIX_BOUND = 10_000;
+    private static final int INSTANCE_BOUND = 10_000;
 
     private static final String CLIENT_NAME = "trillian-bootstrap";
     private static final String CLIENT_VERSION = "0.1.0";
@@ -179,7 +192,7 @@ public class TrillianSessionBootstrapper {
         }
         // Detect by engine, not recipe name — that way the trillian
         // default-alias recipe and any future Nature recipes
-        // (trillian-a etc.) all funnel through this bootstrap.
+        // (trillian-alpha etc.) all funnel through this bootstrap.
         if (!CONTROL_ENGINE_NAME.equals(controlProcess.getThinkEngine())) {
             return;
         }
@@ -205,7 +218,13 @@ public class TrillianSessionBootstrapper {
     private void doBootstrap(
             SessionDocument controlSession,
             ThinkProcessDocument controlProcess) {
-        // 1. Reuse the account of a previous incarnation, or mint one.
+        // 1. Which Nature this pair runs. It lives in
+        //    controlProcess.engineParams.nature; DEFAULT_NATURE covers a
+        //    recipe that didn't pin one. Read first, because both the
+        //    account name and the two follow-up recipes derive from it.
+        String nature = readNature(controlProcess);
+
+        // 2. Reuse the account of a previous incarnation, or mint one.
         //    After a reactivate the old chat-process is still around,
         //    renamed and closed, and it remembers which account this
         //    session's Trillian was. Reusing it is what makes archiving
@@ -215,25 +234,29 @@ public class TrillianSessionBootstrapper {
         String trillianName = previousAccountOf(controlSession).orElse(null);
         boolean adopted = trillianName != null;
         if (!adopted) {
-            trillianName = pickUniqueTrillianName(controlSession.getTenantId());
+            trillianName = pickUniqueTrillianName(controlSession.getTenantId(), nature);
         }
-        String suffix = trillianName.substring("_trillian-".length());
         if (adopted) {
             log.info("Adopted Trillian service-account '{}' for reactivated control session '{}'",
                     trillianName, controlSession.getSessionId());
         } else {
+            // The title is a starting point, not an identity: it is what
+            // the UI shows, and a human may rename it (//trillian name).
+            // The account name never changes, so the two are independent
+            // — which is the point of not deriving the display name from
+            // the account on the fly.
             UserDocument trillian = userService.createServiceAccount(
                     controlSession.getTenantId(),
                     trillianName,
                     /*passwordHash*/ null,
-                    /*title*/ "Trillian " + suffix,
+                    /*title*/ "Trillian " + accountSuffix(trillianName),
                     /*email*/ null);
             log.info("Minted Trillian service-account '{}' id='{}' for control session '{}'",
                     trillian.getName(), trillian.getId(), controlSession.getSessionId());
         }
         final String trillianNameFinal = trillianName;
 
-        // 1b. Seed the account's authority. Without a grant the account
+        // 2b. Seed the account's authority. Without a grant the account
         //     exists but may do nothing: every tool call goes through
         //     ToolDispatcher -> PermissionService.enforce(EXECUTE), which
         //     resolves to WRITER-on-project. Scope is deliberately the
@@ -247,12 +270,7 @@ public class TrillianSessionBootstrapper {
                     trillianNameFinal));
         }
 
-        // 2. Resolve the user recipe — pick the Nature variant that
-        //    matches what the control process was spawned with. The
-        //    Nature lives in controlProcess.engineParams.nature; we
-        //    fall back to DEFAULT_NATURE when the recipe didn't pin
-        //    one (legacy / unannotated recipes).
-        String nature = readNature(controlProcess);
+        // 3. Resolve the user recipe — the Nature variant of the loop.
         String userRecipeName = USER_RECIPE_PREFIX + nature;
         AppliedRecipe applied = recipeResolver.applyDefaulting(
                 controlSession.getTenantId(),
@@ -267,7 +285,7 @@ public class TrillianSessionBootstrapper {
                                 + "' references unknown engine '" + applied.engine()
                                 + "' — known: " + thinkEngineService.listEngines()));
 
-        // 3. Create the headless user-session owned by the service-
+        // 4. Create the headless user-session owned by the service-
         //    account. system=true marks it as auto-managed (UI may
         //    filter system sessions in the user's session list).
         // SessionDocument.userId is the UserDocument *name*, not the Mongo id
@@ -277,7 +295,7 @@ public class TrillianSessionBootstrapper {
                 controlSession.getTenantId(),
                 trillianName,
                 controlSession.getProjectId(),
-                /*displayName*/ "Trillian-User " + suffix,
+                /*displayName*/ "Trillian-User " + accountSuffix(trillianName),
                 /*profile*/ HEADLESS_PROFILE,
                 CLIENT_VERSION,
                 CLIENT_NAME,
@@ -285,7 +303,7 @@ public class TrillianSessionBootstrapper {
         log.info("Trillian user-session created id='{}' owner='{}' project='{}'",
                 userSession.getSessionId(), trillianName, controlSession.getProjectId());
 
-        // 4. Spawn the primary user-process in the user-session.
+        // 5. Spawn the primary user-process in the user-session.
         //    parentProcessId = controlProcess.id makes terminal events
         //    flow back through the standard
         //    ParentNotificationListener path even across the session
@@ -317,7 +335,7 @@ public class TrillianSessionBootstrapper {
                     USER_PROCESS_NAME,
                     engine.name(),
                     engine.version(),
-                    /*title*/ "Trillian User Loop " + suffix,
+                    /*title*/ "Trillian User Loop " + accountSuffix(trillianName),
                     /*goal*/ null,
                     /*parentProcessId*/ controlProcess.getId(),
                     userParams,
@@ -356,7 +374,7 @@ public class TrillianSessionBootstrapper {
                         .build());
         sessionService.markBootstrapped(userSession.getSessionId());
 
-        // 5. Record cross-references on the control-process too.
+        // 6. Record cross-references on the control-process too.
         ThinkProcessDocument refreshedControl = thinkProcessService.findById(controlProcess.getId())
                 .orElse(controlProcess);
         Map<String, Object> controlParams = new LinkedHashMap<>();
@@ -368,7 +386,7 @@ public class TrillianSessionBootstrapper {
         controlParams.put(PARAM_TRILLIAN_USER_NAME, trillianName);
         thinkProcessService.replaceEngineParams(controlProcess.getId(), controlParams);
 
-        // 5b. Announce the minted identity in the control chat.
+        // 6b. Announce the minted identity in the control chat.
         //     The name is generated per session and only ever appeared in
         //     the brain log — but it is what an operator has to name when
         //     granting the worker access to a further project, and with
@@ -378,7 +396,7 @@ public class TrillianSessionBootstrapper {
         //     would be gone by the time it is needed.
         announceIdentity(controlSession, controlProcess, trillianName);
 
-        // 6. Start the user-process on its own lane.
+        // 7. Start the user-process on its own lane.
         try {
             laneScheduler.submit(userProc.getId(), () -> {
                 thinkEngineService.start(userProc);
@@ -401,10 +419,6 @@ public class TrillianSessionBootstrapper {
                 userProc.getId(), userSession.getSessionId(), trillianName);
     }
 
-    /**
-     * Picks a fresh {@code _trillian-0XXXX} name that doesn't collide
-     * in the tenant. Up to {@value #MAX_NAMING_ATTEMPTS} retries.
-     */
     /**
      * Write the minted worker identity into the control chat as a persistent
      * assistant message. Best-effort — a failure here must not abort a
@@ -493,17 +507,38 @@ public class TrillianSessionBootstrapper {
         return processes;
     }
 
-    private String pickUniqueTrillianName(String tenantId) {
+    /**
+     * The {@code <nature>-<instance>} tail of an account name, used to
+     * label the session and seed the account title.
+     *
+     * <p>Tolerates a name that predates the prefix: labels are cosmetic
+     * and must not be the thing that breaks an adoption.
+     */
+    private static String accountSuffix(String trillianName) {
+        return trillianName.startsWith(ACCOUNT_PREFIX)
+                ? trillianName.substring(ACCOUNT_PREFIX.length())
+                : trillianName;
+    }
+
+    /**
+     * Picks a fresh {@code _trillian-<nature>-<instance>} name that does
+     * not collide in the tenant. Up to {@value #MAX_NAMING_ATTEMPTS}
+     * retries — with 10.000 instances per Nature a collision is already
+     * unlikely, and running out is a signal, not something to work
+     * around silently.
+     */
+    private String pickUniqueTrillianName(String tenantId, String nature) {
         for (int i = 0; i < MAX_NAMING_ATTEMPTS; i++) {
-            String name = NATURE_0_PREFIX
-                    + String.format("%04d", random.nextInt(NATURE_0_SUFFIX_BOUND));
+            String name = ACCOUNT_PREFIX + nature + "-"
+                    + String.format("%04d", random.nextInt(INSTANCE_BOUND));
             if (!userService.existsByTenantAndName(tenantId, name)) {
                 return name;
             }
         }
         throw new IllegalStateException(
-                "Could not find unique Trillian-Nature-0 name in tenant '"
-                        + tenantId + "' after " + MAX_NAMING_ATTEMPTS + " attempts");
+                "Could not find a unique Trillian name for nature '" + nature
+                        + "' in tenant '" + tenantId + "' after "
+                        + MAX_NAMING_ATTEMPTS + " attempts");
     }
 
     /**

@@ -227,6 +227,51 @@ class TrillianSessionBootstrapperTest {
                         "trillian-worker-0");
     }
 
+    @Test
+    void theAccountName_carriesTheNatureAsItsOwnPart() {
+        bootstrapper.maybeBootstrap(controlSession(), controlProcess("alpha"));
+
+        ArgumentCaptor<String> name = ArgumentCaptor.forClass(String.class);
+        verify(userService).createServiceAccount(
+                anyString(), name.capture(), any(), any(), any());
+
+        // Three parts, so a Nature id may be a word rather than a letter,
+        // and so the id can be read back out of the name at all — with
+        // _trillian-a1535 that required knowing where the id ends.
+        org.assertj.core.api.Assertions.assertThat(name.getValue())
+                .matches("_trillian-alpha-\\d{4}");
+    }
+
+    @Test
+    void theAccountName_staysAServiceAccount() {
+        bootstrapper.maybeBootstrap(controlSession(), controlProcess("alpha"));
+
+        ArgumentCaptor<String> name = ArgumentCaptor.forClass(String.class);
+        verify(userService).createServiceAccount(
+                anyString(), name.capture(), any(), any(), any());
+
+        // The leading underscore is the tenant-wide marker for accounts
+        // nobody logs into; losing it would make the worker look like a
+        // person in every user list.
+        org.assertj.core.api.Assertions.assertThat(name.getValue()).startsWith("_");
+    }
+
+    @Test
+    void theTitle_isSeededButNotTheIdentity() {
+        bootstrapper.maybeBootstrap(controlSession(), controlProcess("alpha"));
+
+        ArgumentCaptor<String> name = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> title = ArgumentCaptor.forClass(String.class);
+        verify(userService).createServiceAccount(
+                anyString(), name.capture(), any(), title.capture(), any());
+
+        // The title is what a human reads and may rename; the account
+        // name never changes. Seeding one from the other is a starting
+        // value, not a derivation to be recomputed later.
+        org.assertj.core.api.Assertions.assertThat(title.getValue())
+                .isEqualTo("Trillian " + name.getValue().substring("_trillian-".length()));
+    }
+
     @SuppressWarnings("unchecked")
     private static ArgumentCaptor<Map<String, Object>> paramsCaptor() {
         return ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);

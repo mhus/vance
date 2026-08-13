@@ -3,7 +3,10 @@ package de.mhus.vance.brain.trillian.nature;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -16,10 +19,31 @@ import org.springframework.stereotype.Component;
  * <p>Falls back to {@link TrillianNature0} when the requested id is
  * unknown — keeps a misconfigured recipe from killing the engine,
  * with a WARN in the log.
+ *
+ * <p>An <em>ill-formed</em> id is a different matter and fails the boot.
+ * The id is not just a lookup key: it is spliced into the service-account
+ * name ({@code _trillian-<nature>-<instance>}) and into three recipe names
+ * ({@code trillian-<nature>}, {@code trillian-user-<nature>},
+ * {@code trillian-worker-<nature>}). A dash inside it would make the
+ * account name ambiguous to read back, and the ids {@code user} and
+ * {@code worker} would produce a control recipe that collides with the
+ * other two families. Such a Nature would resolve recipes pointing at
+ * something else — worth refusing to start over.
  */
 @Component
 @Slf4j
 public class TrillianNatureRegistry {
+
+    /**
+     * Lower-case alphanumerics only. No dash, because the account name
+     * {@code _trillian-<nature>-<instance>} is split on it; no upper case
+     * or punctuation, because the id also has to survive as part of a
+     * user name and three document paths.
+     */
+    private static final Pattern VALID_ID = Pattern.compile("[a-z0-9]+");
+
+    /** Would collide with the user-loop and worker recipe families. */
+    private static final Set<String> RESERVED_IDS = Set.of("user", "worker");
 
     private final Map<String, TrillianNature> byId;
     private final TrillianNature fallback;
@@ -28,11 +52,7 @@ public class TrillianNatureRegistry {
         this.byId = new HashMap<>();
         for (TrillianNature n : natures) {
             String id = n.id();
-            if (id == null || id.isBlank()) {
-                log.warn("TrillianNature '{}' has empty id — ignored",
-                        n.getClass().getSimpleName());
-                continue;
-            }
+            requireUsableId(id, n);
             TrillianNature prev = byId.put(id, n);
             if (prev != null) {
                 log.warn("TrillianNature id='{}' provided by multiple beans: '{}' and '{}'. "
@@ -45,6 +65,34 @@ public class TrillianNatureRegistry {
         this.fallback = zero != null ? zero : natures.stream().findFirst().orElse(null);
         log.info("TrillianNatureRegistry initialised with {} nature(s): {}",
                 byId.size(), byId.keySet());
+    }
+
+    /**
+     * Rejects an id that cannot safely be spliced into account and recipe
+     * names. Throws rather than skipping: a skipped Nature silently
+     * degrades to Nature-0 at runtime, which looks like the Nature simply
+     * not working.
+     */
+    private static void requireUsableId(@Nullable String id, TrillianNature nature) {
+        String bean = nature.getClass().getSimpleName();
+        if (id == null || id.isBlank()) {
+            throw new IllegalStateException(
+                    "TrillianNature '" + bean + "' has an empty id");
+        }
+        if (!VALID_ID.matcher(id).matches()) {
+            throw new IllegalStateException(
+                    "TrillianNature '" + bean + "' has id '" + id
+                            + "' — only lower-case letters and digits are allowed, "
+                            + "because the id becomes part of the service-account name "
+                            + "_trillian-<nature>-<instance> and of the recipe names");
+        }
+        if (RESERVED_IDS.contains(id)) {
+            throw new IllegalStateException(
+                    "TrillianNature '" + bean + "' uses the reserved id '" + id
+                            + "' — its control recipe 'trillian-" + id
+                            + "' would collide with the trillian-user-* / "
+                            + "trillian-worker-* recipe families");
+        }
     }
 
     /**

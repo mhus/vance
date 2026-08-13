@@ -61,7 +61,7 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Trillian-User — the agentic user-loop in Nature-0.
  *
- * <p>Lives in its own session owned by a {@code _trillian-0XXXX}
+ * <p>Lives in its own session owned by a {@code _trillian-<nature>-<instance>}
  * service-account. Wakes on {@code task_request} ProcessEvents
  * dispatched from a paired Trillian-Control. Drains the inbox,
  * decides what to do, spawns worker processes via
@@ -192,7 +192,7 @@ public class TrillianUserEngine implements ThinkEngine {
         return "Agentic user-loop. Receives task_request events, "
                 + "spawns workers, observes, validates, reports back "
                 + "via task_complete events. Owns its session as the "
-                + "_trillian-0XXXX service-account.";
+                + "_trillian-<nature>-<instance> service-account.";
     }
 
     @Override
@@ -315,7 +315,7 @@ public class TrillianUserEngine implements ThinkEngine {
             // Turn-start compaction: identical hook to Arthur/Eddie/Ford/Frankie.
             // Without this the Nature-0 user-loop accumulates chat
             // history unboundedly — the Trillian-User runs autonomously
-            // for many turns under its `_trillian-0XXXX` service-account
+            // for many turns under its `_trillian-<nature>-<instance>` service-account
             // and would otherwise hit the context-window limit or
             // bill-shock the operator. See planning/memory-compaction.md §7.
             CompactionResult cr = memoryCompactionService.compactIfNeeded(

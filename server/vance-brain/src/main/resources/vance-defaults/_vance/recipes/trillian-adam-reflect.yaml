@@ -10,6 +10,12 @@
 # NOT spawnable — `internal: true` keeps it out of the standard recipe
 # selector. Pebble variables: taskId, outcome, summary, journal.
 #
+# Pebble trims the newline that directly follows a tag, so a `{{ var }}`
+# at end-of-line silently glues the next line onto it — three bullets
+# became one line in the first live run. Short values are wrapped in
+# backticks (the newline no longer follows the tag), and block values get
+# an extra blank line so one survives the trim.
+#
 # See specification/public/trillian-engine.md §10c.
 
 description: |
@@ -32,13 +38,18 @@ promptPrefix: |
 
   ## What concluded
 
-  - Task id: {{ taskId }}
-  - Outcome: {{ outcome }}
-  - Reported result: {{ summary }}
+  - Task id: `{{ taskId }}`
+  - Outcome: `{{ outcome }}`
+
+  Reported result:
+
+  {{ summary }}
+
 
   ## What the agent already noted before
 
   {% if journal %}{{ journal }}{% else %}(nothing yet){% endif %}
+
 
   ## What counts as worth keeping
 

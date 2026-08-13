@@ -87,6 +87,23 @@ public class TrillianSessionBootstrapper {
      */
     public static final String USER_RECIPE_PREFIX = "trillian-user-";
 
+    /**
+     * Recipe-name prefix for the per-task worker family. Derived from the
+     * Nature exactly like the user-loop recipe, so a new Nature brings its
+     * own worker without anyone editing a prompt.
+     */
+    public static final String WORKER_RECIPE_PREFIX = "trillian-worker-";
+
+    /**
+     * engineParams key on the user-loop carrying the resolved worker
+     * recipe name. The loop's prompt reads it as
+     * {@code {{ params.workerRecipe }}} instead of naming a recipe in
+     * prose — a literal in the prompt meant every Nature had to fork the
+     * prompt just to change one word, and a model that mistyped it
+     * spawned nothing.
+     */
+    public static final String PARAM_WORKER_RECIPE = "workerRecipe";
+
     /** Default Nature when a control process doesn't pin one in engineParams. */
     public static final String DEFAULT_NATURE = "0";
 
@@ -286,6 +303,7 @@ public class TrillianSessionBootstrapper {
             log.info("Restored {} Trillian attribute(s) for control session '{}'",
                     carried.size(), controlSession.getSessionId());
         }
+        userParams.put(PARAM_WORKER_RECIPE, WORKER_RECIPE_PREFIX + nature);
         userParams.put(PARAM_PEER_PROCESS_ID, controlProcess.getId());
         userParams.put(PARAM_PEER_SESSION_ID, controlSession.getSessionId());
         userParams.put(PARAM_TRILLIAN_USER_NAME, trillianName);

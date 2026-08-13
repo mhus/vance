@@ -199,6 +199,40 @@ class TrillianSessionBootstrapperTest {
     }
 
     @Test
+    void workerRecipe_isDerivedFromTheNature() {
+        bootstrapper.maybeBootstrap(controlSession(), controlProcess("a"));
+
+        // The loop's prompt reads this instead of naming a recipe in
+        // prose, so a new Nature brings its own worker without forking
+        // the prompt.
+        ArgumentCaptor<Map<String, Object>> params = paramsCaptor();
+        verify(thinkProcessService).create(anyString(), any(), anyString(), anyString(),
+                anyString(), anyString(), any(), any(), any(), params.capture(), any(), any(),
+                any(), any(), any(), any(), any(), any(), any());
+        org.assertj.core.api.Assertions.assertThat(params.getValue())
+                .containsEntry(TrillianSessionBootstrapper.PARAM_WORKER_RECIPE,
+                        "trillian-worker-a");
+    }
+
+    @Test
+    void workerRecipe_defaultsToNatureZero() {
+        bootstrapper.maybeBootstrap(controlSession(), controlProcess());
+
+        ArgumentCaptor<Map<String, Object>> params = paramsCaptor();
+        verify(thinkProcessService).create(anyString(), any(), anyString(), anyString(),
+                anyString(), anyString(), any(), any(), any(), params.capture(), any(), any(),
+                any(), any(), any(), any(), any(), any(), any());
+        org.assertj.core.api.Assertions.assertThat(params.getValue())
+                .containsEntry(TrillianSessionBootstrapper.PARAM_WORKER_RECIPE,
+                        "trillian-worker-0");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static ArgumentCaptor<Map<String, Object>> paramsCaptor() {
+        return ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
+    }
+
+    @Test
     void nonControlProcess_isNotBootstrapped() {
         ThinkProcessDocument arthur = new ThinkProcessDocument();
         arthur.setId("chat");
@@ -223,6 +257,15 @@ class TrillianSessionBootstrapperTest {
         ThinkProcessDocument process = new ThinkProcessDocument();
         process.setId("control-process-id");
         process.setThinkEngine(TrillianSessionBootstrapper.CONTROL_ENGINE_NAME);
+        return process;
+    }
+
+    /** Control process pinning a specific Nature. */
+    private static ThinkProcessDocument controlProcess(String nature) {
+        ThinkProcessDocument process = controlProcess();
+        Map<String, Object> params = new java.util.LinkedHashMap<>();
+        params.put(TrillianSessionBootstrapper.PARAM_NATURE, nature);
+        process.setEngineParams(params);
         return process;
     }
 

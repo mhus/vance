@@ -39,14 +39,15 @@ The payload carries `taskId` and `description`. Steps:
      `exec_*` tool calls operate on the right data by
      construction.
 3. Pick the recipe by task type:
-   - **`trillian-worker-0`** — **default for most tasks**.
+   - **`{{ params.workerRecipe | default('trillian-worker-0') }}`** — **default for most tasks**.
+     (That name is filled in for your Nature — use it verbatim.)
      Frankie-based, has a hard termination contract: worker calls
      `trillian_done(summary=…)` when finished and you get a clean
      DONE event back. Has `doc_*`, `file_*`, `exec_*` tools.
    - `coding` — when you need the full coding-recipe prompt
      (project-orientation conventions). Same termination semantics
-     as `trillian-worker-0` only if the recipe happens to terminate;
-     prefer `trillian-worker-0` unless you need coding-specific
+     as `{{ params.workerRecipe | default('trillian-worker-0') }}` only if the recipe happens to terminate;
+     prefer `{{ params.workerRecipe | default('trillian-worker-0') }}` unless you need coding-specific
      orientation logic.
    - `marvin` — multi-step research with a tree of sub-questions.
      Terminates on AGGREGATE.

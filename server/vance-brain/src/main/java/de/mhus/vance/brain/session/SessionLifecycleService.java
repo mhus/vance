@@ -544,6 +544,39 @@ public class SessionLifecycleService {
     }
 
     /**
+     * Pause a running process: status → PAUSED on its lane, so the change
+     * cannot land in the middle of a turn.
+     *
+     * <p>Nothing in flight is aborted — a pause means "start nothing
+     * new". Whatever the engine is doing right now finishes and the
+     * process settles into PAUSED afterwards.
+     *
+     * <p>Idempotent: already paused or already closed is a no-op rather
+     * than an error, which is what lets a caller press the button twice.
+     *
+     * @return {@code true} when this call did the pausing
+     */
+    public boolean pauseProcess(ThinkProcessDocument process) {
+        ThinkProcessStatus status = process.getStatus();
+        if (status == ThinkProcessStatus.CLOSED || status == ThinkProcessStatus.PAUSED) {
+            return false;
+        }
+        try {
+            laneScheduler.submit(process.getId(), () -> {
+                thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.PAUSED);
+                return null;
+            }).get();
+            return true;
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while pausing " + process.getId(), ie);
+        } catch (java.util.concurrent.ExecutionException ee) {
+            Throwable cause = ee.getCause() == null ? ee : ee.getCause();
+            throw new IllegalStateException("Pause failed: " + cause.getMessage(), cause);
+        }
+    }
+
+    /**
      * Resume a previously paused process: status PAUSED → IDLE on the
      * lane, then a {@code runTurn} is scheduled so any pending
      * messages that piled up while paused get drained.

@@ -13,8 +13,11 @@ import type { RunDetailDto } from '@vance/generated';
 import RunStatusBadge from './RunStatusBadge.vue';
 import RunExtraBlock from './RunExtraBlock.vue';
 
-const props = defineProps<{ detail: RunDetailDto; projectId: string }>();
-const emit = defineEmits<{ (e: 'open-run', runId: string): void }>();
+const props = defineProps<{ detail: RunDetailDto; projectId: string; acting?: boolean }>();
+const emit = defineEmits<{
+  (e: 'open-run', runId: string): void;
+  (e: 'action', action: string): void;
+}>();
 const { t } = useI18n();
 
 const variables = computed(() => Object.entries(props.detail.variables ?? {}));
@@ -49,6 +52,21 @@ function render(value: unknown): string {
         <span v-if="detail.summary.startedBy"> · {{ detail.summary.startedBy }}</span>
         <span v-if="detail.summary.startedAt"> · {{ detail.summary.startedAt }}</span>
       </p>
+      <!-- Buttons come from allowedActions, so the page has one case
+           rather than one per source: a run that cannot be stopped simply
+           contributes no button, and a source that grows the ability
+           needs no change here. -->
+      <p v-if="detail.allowedActions?.length" class="actions">
+        <VButton
+          v-for="action in detail.allowedActions"
+          :key="action"
+          size="sm"
+          :variant="action === 'STOP' ? 'danger' : 'ghost'"
+          :disabled="acting"
+          @click="emit('action', action)"
+        >{{ t(`runs.action.${action}`) }}</VButton>
+      </p>
+
       <p v-if="detail.links?.length" class="links">
         <a v-for="link in detail.links" :key="link.rel + link.target"
            :href="href(link.rel, link.target)" class="link">
@@ -116,6 +134,7 @@ function render(value: unknown): string {
 h2 { margin: 0; font-size: 1.05rem; }
 .meta { margin: 0.15rem 0 0; font-size: 0.75rem; opacity: 0.65; }
 .mono { font-family: ui-monospace, monospace; }
+.actions { margin: 0.4rem 0 0; display: flex; gap: 0.4rem; }
 .links { margin: 0.35rem 0 0; display: flex; gap: 0.75rem; }
 .link { font-size: 0.8rem; text-decoration: underline; }
 .waiting { font-size: 0.85rem; }

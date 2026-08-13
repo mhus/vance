@@ -18,6 +18,8 @@ export function useRuns(): {
   error: Ref<string | null>;
   loadRuns: (projectId: string) => Promise<void>;
   loadDetail: (projectId: string, runId: string) => Promise<void>;
+  perform: (projectId: string, runId: string, action: string) => Promise<void>;
+  acting: Ref<boolean>;
   clearDetail: () => void;
 } {
   const runs = ref<RunSummaryDto[]>([]);
@@ -25,6 +27,7 @@ export function useRuns(): {
   const loading = ref(false);
   const detailLoading = ref(false);
   const error = ref<string | null>(null);
+  const acting = ref(false);
 
   async function loadRuns(projectId: string): Promise<void> {
     loading.value = true;
@@ -55,9 +58,30 @@ export function useRuns(): {
     }
   }
 
+  /**
+   * Run an action and take the server's fresh detail as the new truth —
+   * the response carries the state after the action, so the view never
+   * has to guess what the action did.
+   */
+  async function perform(projectId: string, runId: string, action: string): Promise<void> {
+    acting.value = true;
+    error.value = null;
+    try {
+      detail.value = await brainFetch<RunDetailDto>(
+        'POST',
+        `runs/${encodeURIComponent(runId)}/actions/${encodeURIComponent(action)}`
+          + `?projectId=${encodeURIComponent(projectId)}`);
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Action failed.';
+    } finally {
+      acting.value = false;
+    }
+  }
+
   function clearDetail(): void {
     detail.value = null;
   }
 
-  return { runs, detail, loading, detailLoading, error, loadRuns, loadDetail, clearDetail };
+  return { runs, detail, loading, detailLoading, error, acting,
+    loadRuns, loadDetail, perform, clearDetail };
 }

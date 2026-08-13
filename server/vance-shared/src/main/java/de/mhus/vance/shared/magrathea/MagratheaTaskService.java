@@ -232,6 +232,36 @@ public class MagratheaTaskService {
         return repository.findById(taskId);
     }
 
+    /**
+     * Hold every queued task of a run: {@code PENDING → HELD}.
+     *
+     * <p>This is what a paused run <em>is</em>. The claimer scans for
+     * {@code PENDING} and knows nothing about runs, so moving the rows out
+     * of that status is both the cheapest and the most local way to stop
+     * new work — no second status source for the scanner to consult.
+     *
+     * <p>Only queued rows move. A {@code CLAIMED} task is already running
+     * and finishes; pausing means "start nothing new".
+     *
+     * @return how many tasks were held
+     */
+    public long holdRun(String workflowRunId) {
+        return switchRunStatus(workflowRunId, MagratheaTaskStatus.PENDING, MagratheaTaskStatus.HELD);
+    }
+
+    /** Inverse of {@link #holdRun}: {@code HELD → PENDING}. */
+    public long releaseRun(String workflowRunId) {
+        return switchRunStatus(workflowRunId, MagratheaTaskStatus.HELD, MagratheaTaskStatus.PENDING);
+    }
+
+    private long switchRunStatus(
+            String workflowRunId, MagratheaTaskStatus from, MagratheaTaskStatus to) {
+        Query q = new Query(Criteria.where("workflowRunId").is(workflowRunId)
+                .and("status").is(from));
+        return mongoTemplate.updateMulti(q, new Update().set("status", to),
+                MagratheaTaskDocument.class).getModifiedCount();
+    }
+
     public void markDone(String taskId) {
         markTerminal(taskId, MagratheaTaskStatus.DONE);
     }

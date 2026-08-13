@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.runs;
 
+import de.mhus.vance.api.runs.RunAction;
 import de.mhus.vance.api.runs.RunChildDto;
 import de.mhus.vance.api.runs.RunDetailDto;
 import de.mhus.vance.api.runs.RunLinkDto;
@@ -18,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -52,6 +54,9 @@ public class ThinkProcessRunSource implements RunSource {
     private final ThinkProcessService thinkProcessService;
     private final ThinkEngineService thinkEngineService;
     private final ObjectMapper objectMapper;
+    /** Owns pause/resume/stop for processes; the WS handlers use the same. */
+    private final de.mhus.vance.brain.session.SessionLifecycleService sessionLifecycle;
+    private final de.mhus.vance.brain.thinkengine.ProcessEventEmitter processEventEmitter;
 
     @Override
     public String sourceId() {
@@ -74,13 +79,9 @@ public class ThinkProcessRunSource implements RunSource {
 
     @Override
     public Optional<RunDetailDto> get(String tenantId, String projectId, String nativeId) {
-        Optional<ThinkProcessDocument> found = thinkProcessService.findById(nativeId);
+        Optional<ThinkProcessDocument> found = load(tenantId, projectId, nativeId);
         if (found.isEmpty()) return Optional.empty();
         ThinkProcessDocument process = found.get();
-        if (!tenantId.equals(process.getTenantId())
-                || !projectId.equals(process.getProjectId())) {
-            return Optional.empty();
-        }
 
         StrategyState state = readStrategyState(process);
         return Optional.of(RunDetailDto.builder()
@@ -93,11 +94,64 @@ public class ThinkProcessRunSource implements RunSource {
                         .target(process.getSessionId()).build()))
                 .waitingOnInboxItemId(state == null || state.getPendingCheckpoint() == null
                         ? null : state.getPendingCheckpoint().getInboxItemId())
+                .allowedActions(actionsFor(process))
                 .extra(Map.of(
                         "engine", process.getThinkEngine(),
                         "recipe", process.getRecipeName() == null ? "" : process.getRecipeName(),
                         "goal", process.getGoal() == null ? "" : process.getGoal()))
                 .build());
+    }
+
+    @Override
+    public Set<RunAction> allowedActions(String tenantId, String projectId, String nativeId) {
+        return load(tenantId, projectId, nativeId)
+                .map(ThinkProcessRunSource::actionsFor)
+                .orElseGet(Set::of);
+    }
+
+    /**
+     * What a process in this state can be asked to do. Derived from the
+     * status rather than declared per source, so a finished run offers
+     * nothing and the UI needs no rule of its own.
+     *
+     * <p>{@code SUSPENDED} is deliberately not resumable here: that hold
+     * belongs to the session, and offering a second owner for the same
+     * state is how a state ends up flapping.
+     */
+    private static Set<RunAction> actionsFor(ThinkProcessDocument process) {
+        return switch (process.getStatus()) {
+            case INIT, RUNNING, IDLE, BLOCKED -> Set.of(RunAction.PAUSE, RunAction.STOP);
+            case PAUSED -> Set.of(RunAction.RESUME, RunAction.STOP);
+            case SUSPENDED -> Set.of(RunAction.STOP);
+            case CLOSED -> Set.of();
+        };
+    }
+
+    @Override
+    public void perform(String tenantId, String projectId, String nativeId,
+                        RunAction action, String reason) {
+        ThinkProcessDocument process = load(tenantId, projectId, nativeId)
+                .orElseThrow(() -> new IllegalArgumentException("No such run: " + nativeId));
+        // Idempotent by construction: an action the current state does not
+        // offer is a no-op, not an error — the button may have been
+        // rendered from a snapshot that has since moved on.
+        if (!actionsFor(process).contains(action)) {
+            log.debug("Run action {} not applicable to process '{}' in state {}",
+                    action, nativeId, process.getStatus());
+            return;
+        }
+        switch (action) {
+            case PAUSE -> sessionLifecycle.pauseProcess(process);
+            case RESUME -> sessionLifecycle.resumeProcess(process, processEventEmitter);
+            case STOP -> sessionLifecycle.stopProcess(process);
+        }
+        log.info("Run action {} performed on process '{}' (reason: {})", action, nativeId, reason);
+    }
+
+    /** The process, but only if it belongs to the caller's scope. */
+    private Optional<ThinkProcessDocument> load(String tenantId, String projectId, String nativeId) {
+        return thinkProcessService.findById(nativeId)
+                .filter(p -> tenantId.equals(p.getTenantId()) && projectId.equals(p.getProjectId()));
     }
 
     private boolean isPlanShaped(ThinkProcessDocument process) {

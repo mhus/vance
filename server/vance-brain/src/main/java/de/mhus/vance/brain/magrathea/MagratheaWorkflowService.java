@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -83,6 +84,9 @@ public class MagratheaWorkflowService {
     private final MetricService metricService;
     /** Only to stop an agent whose task ended on its deadline. */
     private final ThinkProcessService thinkProcessService;
+    /** Unwinding a stopped run: withdraw its gate item, drop its timers. */
+    private final de.mhus.vance.shared.inbox.InboxItemService inboxItemService;
+    private final de.mhus.vance.shared.magrathea.MagratheaTimerService timerService;
 
     public MagratheaWorkflowService(
             MagratheaWorkflowLoader workflowLoader,
@@ -93,7 +97,9 @@ public class MagratheaWorkflowService {
             @Lazy @Autowired MagratheaTaskExecutor taskExecutor,
             org.springframework.context.ApplicationEventPublisher eventPublisher,
             MetricService metricService,
-            ThinkProcessService thinkProcessService) {
+            ThinkProcessService thinkProcessService,
+            de.mhus.vance.shared.inbox.InboxItemService inboxItemService,
+            de.mhus.vance.shared.magrathea.MagratheaTimerService timerService) {
         this.workflowLoader = workflowLoader;
         this.documentService = documentService;
         this.journalService = journalService;
@@ -103,6 +109,8 @@ public class MagratheaWorkflowService {
         this.eventPublisher = eventPublisher;
         this.metricService = metricService;
         this.thinkProcessService = thinkProcessService;
+        this.inboxItemService = inboxItemService;
+        this.timerService = timerService;
     }
 
     // ──────────── start ────────────
@@ -265,6 +273,155 @@ public class MagratheaWorkflowService {
         } catch (RuntimeException ex) {
             log.warn("Magrathea task {} timed out but agent process {} could not be closed: {}",
                     task.getId(), subProcessId, ex.toString());
+        }
+    }
+
+    // ──────────── control ────────────
+
+    /**
+     * Hold a run: nothing new starts, whatever is in flight finishes.
+     *
+     * <p>Two parts, and the order is deliberate. The status record goes in
+     * first, so a crash between the two leaves a run that says PAUSED with
+     * tasks still queued — they run, and the follow-up enqueue then sees
+     * the status and holds. The other order would leave a run that says
+     * RUNNING with every task held and nobody left to release them.
+     *
+     * @return {@code true} if this call did the pausing
+     */
+    public boolean pauseRun(String tenantId, String projectId, String workflowRunId) {
+        MagratheaRunStatus status = currentStatus(tenantId, projectId, workflowRunId);
+        if (status != MagratheaRunStatus.RUNNING) return false;
+        onLane(projectId, () -> {
+            journalService.append(tenantId, projectId, workflowRunId,
+                    StatusRecord.builder().status(MagratheaRunStatus.PAUSED)
+                            .reason("paused from the run view").build());
+            long held = taskService.holdRun(workflowRunId);
+            log.info("Magrathea run {} paused — {} task(s) held", workflowRunId, held);
+        });
+        return true;
+    }
+
+    /**
+     * Release a held run. Tasks go back to the queue first: a crash after
+     * that leaves a run that still says PAUSED but makes progress, which
+     * heals on the next resume — the reverse would stall it for good.
+     */
+    public boolean resumeRun(String tenantId, String projectId, String workflowRunId) {
+        MagratheaRunStatus status = currentStatus(tenantId, projectId, workflowRunId);
+        if (status != MagratheaRunStatus.PAUSED) return false;
+        onLane(projectId, () -> {
+            long released = taskService.releaseRun(workflowRunId);
+            journalService.append(tenantId, projectId, workflowRunId,
+                    StatusRecord.builder().status(MagratheaRunStatus.RUNNING)
+                            .reason("resumed from the run view").build());
+            log.info("Magrathea run {} resumed — {} task(s) released", workflowRunId, released);
+        });
+        return true;
+    }
+
+    /**
+     * Stop a run: nothing new starts, everything endable is ended, and the
+     * run is marked terminal once nothing is in flight.
+     *
+     * <p>The classification that matters is not "waiting vs. computing" but
+     * <b>deterministically endable vs. opaque</b>. A gate, a timer, a
+     * spawned agent and a sub-run can all be ended with one call each —
+     * the handles sit right on the task row. Only genuinely executing work
+     * (a shell command, a script) has to run out, and while it does the
+     * run stands at {@code STOPPING}.
+     *
+     * <p>A sub-run is stopped recursively; a shell task is left alone.
+     *
+     * @return {@code true} if this call did the stopping
+     */
+    public boolean stopRun(String tenantId, String projectId, String workflowRunId, String reason) {
+        MagratheaRunStatus status = currentStatus(tenantId, projectId, workflowRunId);
+        if (status == MagratheaRunStatus.DONE
+                || status == MagratheaRunStatus.FAILED
+                || status == MagratheaRunStatus.TERMINATED) {
+            return false;
+        }
+        onLane(projectId, () -> {
+            long held = taskService.holdRun(workflowRunId);
+            boolean stillWorking = false;
+            for (MagratheaTaskDocument task : taskService.findByRun(workflowRunId)) {
+                if (task.getStatus() != MagratheaTaskStatus.CLAIMED) continue;
+                stillWorking |= !unwind(tenantId, task, reason);
+            }
+            timerService.deleteRun(workflowRunId);
+            if (!stillWorking) {
+                journalService.append(tenantId, projectId, workflowRunId,
+                        StatusRecord.builder().status(MagratheaRunStatus.TERMINATED)
+                                .reason(reason).build());
+                recordTerminalMetrics(workflowNameOf(tenantId, projectId, workflowRunId),
+                        MagratheaRunStatus.TERMINATED, tenantId, projectId, workflowRunId);
+            }
+            log.info("Magrathea run {} stopped — {} held, in-flight work remaining: {}",
+                    workflowRunId, held, stillWorking);
+        });
+        return true;
+    }
+
+    /**
+     * End what this task is waiting on.
+     *
+     * @return {@code true} when the task is finished with, {@code false}
+     *         when something opaque is still running and the run has to
+     *         wait for it
+     */
+    private boolean unwind(String tenantId, MagratheaTaskDocument task, String reason) {
+        boolean ended = false;
+        if (task.getInboxItemId() != null) {
+            inboxItemService.dismiss(tenantId, task.getInboxItemId(), "_magrathea");
+            ended = true;
+        }
+        if (task.getSubProcessId() != null) {
+            taskService.unlinkSubProcess(task.getId());
+            try {
+                thinkProcessService.closeProcess(task.getSubProcessId(), CloseReason.STOPPED);
+            } catch (RuntimeException ex) {
+                log.warn("Magrathea stop: could not close agent process '{}': {}",
+                        task.getSubProcessId(), ex.toString());
+            }
+            ended = true;
+        }
+        if (task.getSubWorkflowRunId() != null) {
+            stopRun(tenantId, task.getProjectId(), task.getSubWorkflowRunId(), reason);
+            ended = true;
+        }
+        if (ended) {
+            taskService.markFailed(task.getId());
+            return true;
+        }
+        // Nothing to pull the plug on — a shell or script task mid-flight.
+        return false;
+    }
+
+    private String workflowNameOf(String tenantId, String projectId, String workflowRunId) {
+        return journalService.readLast(tenantId, projectId, workflowRunId, StartRecord.class)
+                .map(StartRecord::getWorkflowName).orElse("unknown");
+    }
+
+    /** Projected run status; {@code RUNNING} until a status record says otherwise. */
+    public MagratheaRunStatus currentStatus(String tenantId, String projectId, String workflowRunId) {
+        return journalService.readLast(tenantId, projectId, workflowRunId, StatusRecord.class)
+                .map(StatusRecord::getStatus)
+                .orElse(MagratheaRunStatus.RUNNING);
+    }
+
+    /** Run on the project lane and wait — same serialisation as every other mutation. */
+    private void onLane(String projectId, Runnable work) {
+        try {
+            laneManager.submitTracked(projectId, work).get(START_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (java.util.concurrent.ExecutionException e) {
+            Throwable cause = e.getCause() == null ? e : e.getCause();
+            throw new MagratheaWorkflowException("Run control failed: " + cause.getMessage(), cause);
+        } catch (java.util.concurrent.TimeoutException e) {
+            throw new MagratheaWorkflowException("Run control timed out", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new MagratheaWorkflowException("Interrupted during run control", e);
         }
     }
 
@@ -583,6 +740,10 @@ public class MagratheaWorkflowService {
         }
         journalService.append(prev.tenantId(), prev.projectId(), prev.workflowRunId(),
                 StateEnteredRecord.builder().state(nextStateName).build());
+        // A task created while the run is paused must not slip past the
+        // hold: pausing moved the queue to HELD, but this row is new.
+        boolean paused = currentStatus(prev.tenantId(), prev.projectId(), prev.workflowRunId())
+                == MagratheaRunStatus.PAUSED;
         MagratheaTaskDocument task = MagratheaTaskDocument.builder()
                 .tenantId(prev.tenantId())
                 .projectId(prev.projectId())
@@ -590,7 +751,7 @@ public class MagratheaWorkflowService {
                 .workflowName(workflow.name())
                 .stateName(nextStateName)
                 .taskType(next.type())
-                .status(MagratheaTaskStatus.PENDING)
+                .status(paused ? MagratheaTaskStatus.HELD : MagratheaTaskStatus.PENDING)
                 .createdAt(Instant.now())
                 .nextAttemptAt(Instant.now())
                 .attemptCount(0)

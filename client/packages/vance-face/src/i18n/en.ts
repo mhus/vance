@@ -483,6 +483,7 @@ export default {
       STOPPING: 'stopping', DONE: 'done', FAILED: 'failed',
       STOPPED: 'stopped',
     },
+    action: { PAUSE: 'Pause', RESUME: 'Resume', STOP: 'Stop' },
     link: { definition: 'Open definition', session: 'Open session', document: 'Open document' },
     empty: {
       headline: 'No runs',

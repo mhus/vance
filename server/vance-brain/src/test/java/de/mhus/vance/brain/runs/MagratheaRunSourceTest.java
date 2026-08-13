@@ -5,10 +5,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.magrathea.MagratheaProcessDto;
 import de.mhus.vance.api.magrathea.MagratheaRunStatus;
+import de.mhus.vance.api.runs.RunAction;
 import de.mhus.vance.api.runs.RunStatus;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
 import de.mhus.vance.shared.magrathea.MagratheaStateProjector;
@@ -24,7 +27,9 @@ class MagratheaRunSourceTest {
 
     private final MagratheaJournalService journal = mock(MagratheaJournalService.class);
     private final MagratheaStateProjector projector = mock(MagratheaStateProjector.class);
-    private final MagratheaRunSource source = new MagratheaRunSource(journal, projector);
+    private final de.mhus.vance.brain.magrathea.MagratheaWorkflowService workflows =
+            mock(de.mhus.vance.brain.magrathea.MagratheaWorkflowService.class);
+    private final MagratheaRunSource source = new MagratheaRunSource(journal, projector, workflows);
 
     @Test
     void listsProjectedRunsWithACompositeId() {
@@ -103,6 +108,41 @@ class MagratheaRunSourceTest {
         when(projector.project(any(), any(), eq("r1"))).thenReturn(Optional.of(foreign));
 
         assertThat(source.get("acme", "proj", "r1")).isEmpty();
+    }
+
+    @Test
+    void offersVerbsThatFitTheRunStatus() {
+        assertThat(actionsOf(MagratheaRunStatus.RUNNING))
+                .containsExactlyInAnyOrder(RunAction.PAUSE, RunAction.STOP);
+        assertThat(actionsOf(MagratheaRunStatus.PAUSED))
+                .containsExactlyInAnyOrder(RunAction.RESUME, RunAction.STOP);
+        assertThat(actionsOf(MagratheaRunStatus.DONE)).isEmpty();
+        assertThat(actionsOf(MagratheaRunStatus.TERMINATED)).isEmpty();
+    }
+
+    @Test
+    void performDelegatesToTheWorkflowService() {
+        when(projector.project("acme", "proj", "r1"))
+                .thenReturn(Optional.of(run("r1", MagratheaRunStatus.RUNNING)));
+
+        source.perform("acme", "proj", "r1", RunAction.STOP, "because");
+
+        verify(workflows).stopRun("acme", "proj", "r1", "because");
+    }
+
+    @Test
+    void aVerbTheStatusDoesNotOfferIsANoOp() {
+        when(projector.project("acme", "proj", "r1"))
+                .thenReturn(Optional.of(run("r1", MagratheaRunStatus.DONE)));
+
+        source.perform("acme", "proj", "r1", RunAction.PAUSE, "because");
+
+        verify(workflows, never()).pauseRun(any(), any(), any());
+    }
+
+    private java.util.Set<RunAction> actionsOf(MagratheaRunStatus status) {
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(run("r1", status)));
+        return source.allowedActions("acme", "proj", "r1");
     }
 
     private RunStatus statusOf(MagratheaRunStatus status) {

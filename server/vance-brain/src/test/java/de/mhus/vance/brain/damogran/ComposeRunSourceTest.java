@@ -79,6 +79,31 @@ class ComposeRunSourceTest {
         return source.get("acme", "proj", runId).orElseThrow().getSummary().getStatus();
     }
 
+    @Test
+    void stopIsTheOnlyActionAndOnlyWhileItRuns() {
+        ComposeRun run = run("r1", "proj");
+        registry.register(run);
+        // No pause: the runner walks a fixed task list with no safe point
+        // to hold at, so a pause button would quietly do nothing.
+        assertThat(source.allowedActions("acme", "proj", "r1"))
+                .containsExactly(de.mhus.vance.api.runs.RunAction.STOP);
+
+        source.perform("acme", "proj", "r1", de.mhus.vance.api.runs.RunAction.STOP, "why");
+
+        assertThat(run.isCancelRequested()).isTrue();
+        // Asking twice offers nothing more — cancellation is already under way.
+        assertThat(source.allowedActions("acme", "proj", "r1")).isEmpty();
+    }
+
+    @Test
+    void aFinishedRunOffersNothing() {
+        ComposeRun run = run("r1", "proj");
+        registry.register(run);
+        run.complete(new DamogranComposeResult(DamogranStatus.SUCCESS, "ws", List.of(), null));
+
+        assertThat(source.allowedActions("acme", "proj", "r1")).isEmpty();
+    }
+
     private static ComposeRun run(String runId, String projectId) {
         return new ComposeRun(runId, "acme", projectId, "ws-" + runId, Instant.now());
     }

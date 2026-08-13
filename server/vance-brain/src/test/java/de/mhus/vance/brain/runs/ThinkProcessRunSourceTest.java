@@ -1,11 +1,15 @@
 package de.mhus.vance.brain.runs;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.api.runs.RunAction;
 import de.mhus.vance.api.runs.RunStatus;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
@@ -24,8 +28,12 @@ class ThinkProcessRunSourceTest {
 
     private final ThinkProcessService processes = mock(ThinkProcessService.class);
     private final ThinkEngineService engines = mock(ThinkEngineService.class);
-    private final ThinkProcessRunSource source =
-            new ThinkProcessRunSource(processes, engines, JsonMapper.builder().build());
+    private final de.mhus.vance.brain.session.SessionLifecycleService lifecycle =
+            mock(de.mhus.vance.brain.session.SessionLifecycleService.class);
+    private final de.mhus.vance.brain.thinkengine.ProcessEventEmitter emitter =
+            mock(de.mhus.vance.brain.thinkengine.ProcessEventEmitter.class);
+    private final ThinkProcessRunSource source = new ThinkProcessRunSource(
+            processes, engines, JsonMapper.builder().build(), lifecycle, emitter);
 
     // Built outside any when(...) — stubbing a mock while another stubbing
     // is open is what Mockito calls UnfinishedStubbing.
@@ -112,6 +120,60 @@ class ThinkProcessRunSourceTest {
         when(processes.findById("p1")).thenReturn(Optional.of(p));
         when(engines.resolve("vogon")).thenReturn(Optional.of(planned));
         return source.get("acme", "proj", "p1").orElseThrow().getSummary().getStatus();
+    }
+
+    @Test
+    void offersActionsThatFitTheState() {
+        assertThat(actionsOf(ThinkProcessStatus.RUNNING))
+                .containsExactlyInAnyOrder(RunAction.PAUSE, RunAction.STOP);
+        assertThat(actionsOf(ThinkProcessStatus.PAUSED))
+                .containsExactlyInAnyOrder(RunAction.RESUME, RunAction.STOP);
+        // A session-owned hold is not the user's to lift here; offering
+        // RESUME would give the same state two owners.
+        assertThat(actionsOf(ThinkProcessStatus.SUSPENDED)).containsExactly(RunAction.STOP);
+        assertThat(actionsOf(ThinkProcessStatus.CLOSED)).isEmpty();
+    }
+
+    @Test
+    void performRoutesToTheServiceThatTheWsHandlersAlsoUse() {
+        ThinkProcessDocument p = process("p1", "vogon");
+        when(processes.findById("p1")).thenReturn(Optional.of(p));
+
+        source.perform("acme", "proj", "p1", RunAction.PAUSE, "why");
+
+        verify(lifecycle).pauseProcess(p);
+    }
+
+    @Test
+    void anActionTheStateDoesNotOfferIsANoOp() {
+        // The button was rendered from a snapshot; by the time the click
+        // lands the run may legitimately have finished. Erroring would
+        // punish the user for a race they cannot see.
+        ThinkProcessDocument p = process("p1", "vogon");
+        p.setStatus(ThinkProcessStatus.CLOSED);
+        when(processes.findById("p1")).thenReturn(Optional.of(p));
+
+        source.perform("acme", "proj", "p1", RunAction.STOP, "why");
+
+        verify(lifecycle, never()).stopProcess(any());
+    }
+
+    @Test
+    void performOnAForeignProjectIsRefused() {
+        ThinkProcessDocument p = process("p1", "vogon");
+        p.setProjectId("other");
+        when(processes.findById("p1")).thenReturn(Optional.of(p));
+
+        assertThatThrownBy(() -> source.perform("acme", "proj", "p1", RunAction.STOP, "why"))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(lifecycle, never()).stopProcess(any());
+    }
+
+    private java.util.Set<RunAction> actionsOf(ThinkProcessStatus status) {
+        ThinkProcessDocument p = process("p1", "vogon");
+        p.setStatus(status);
+        when(processes.findById("p1")).thenReturn(Optional.of(p));
+        return source.allowedActions("acme", "proj", "p1");
     }
 
     private static ThinkProcessDocument process(String id, String engine) {

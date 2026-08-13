@@ -478,6 +478,7 @@ export default {
       STOPPING: 'stoppt', DONE: 'fertig', FAILED: 'fehlgeschlagen',
       STOPPED: 'gestoppt',
     },
+    action: { PAUSE: 'Pausieren', RESUME: 'Fortsetzen', STOP: 'Stoppen' },
     link: { definition: 'Definition öffnen', session: 'Session öffnen', document: 'Dokument öffnen' },
     empty: {
       headline: 'Keine Läufe',

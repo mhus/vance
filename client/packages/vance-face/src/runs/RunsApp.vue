@@ -25,7 +25,8 @@ import RunDetailPanel from './RunDetailPanel.vue';
 
 const { t } = useI18n();
 const { projects, reload: reloadProjects } = useTenantProjects();
-const { runs, detail, loading, detailLoading, error, loadRuns, loadDetail, clearDetail } = useRuns();
+const { runs, detail, loading, detailLoading, error, acting,
+  loadRuns, loadDetail, perform, clearDetail } = useRuns();
 
 const params = new URLSearchParams(window.location.search);
 const projectId = ref<string>(params.get('project') ?? '');
@@ -60,6 +61,13 @@ async function selectRun(runId: string): Promise<void> {
   selectedRunId.value = runId;
   syncUrl();
   if (projectId.value) await loadDetail(projectId.value, runId);
+}
+
+/** Act, then reload the list: a stopped run changes its row too. */
+async function runAction(action: string): Promise<void> {
+  if (!projectId.value || !selectedRunId.value) return;
+  await perform(projectId.value, selectedRunId.value, action);
+  await loadRuns(projectId.value);
 }
 
 async function refresh(): Promise<void> {
@@ -147,7 +155,9 @@ onMounted(async () => {
         v-else-if="detail"
         :detail="detail"
         :project-id="projectId"
+        :acting="acting"
         @open-run="selectRun"
+        @action="runAction"
       />
       <VEmptyState
         v-else

@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.runs;
 
+import de.mhus.vance.api.runs.RunAction;
 import de.mhus.vance.api.runs.RunDetailDto;
 import de.mhus.vance.api.runs.RunSummaryDto;
 import jakarta.annotation.PostConstruct;
@@ -9,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -81,6 +83,33 @@ public class RunSourceRegistry {
         RunSource source = byId.get(id.source());
         if (source == null) return Optional.empty();
         return source.get(tenantId, projectId, id.nativeId());
+    }
+
+    /**
+     * What may be done to this run right now — routed to its source, and
+     * empty for anything unknown so a caller cannot learn what exists.
+     */
+    public Set<RunAction> allowedActions(String tenantId, String projectId, @Nullable String composite) {
+        RunId id = RunId.parse(composite);
+        if (id == null) return Set.of();
+        RunSource source = byId.get(id.source());
+        if (source == null) return Set.of();
+        return source.allowedActions(tenantId, projectId, id.nativeId());
+    }
+
+    /**
+     * Perform an action on a run.
+     *
+     * @throws IllegalArgumentException when the id names no known source
+     *         or the source does not know the run
+     */
+    public void perform(String tenantId, String projectId, @Nullable String composite,
+                        RunAction action, String reason) {
+        RunId id = RunId.parse(composite);
+        if (id == null) throw new IllegalArgumentException("Malformed run id: " + composite);
+        RunSource source = byId.get(id.source());
+        if (source == null) throw new IllegalArgumentException("Unknown run source in: " + composite);
+        source.perform(tenantId, projectId, id.nativeId(), action, reason);
     }
 
     /** Registered source ids, in registration order. */

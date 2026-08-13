@@ -111,20 +111,11 @@ public class ProcessPauseHandler implements WsHandler {
                 progressEmitter.emitStatus(target, StatusTag.ENGINE_HALT_REQUESTED,
                         target.getName() + " pause requested");
                 try {
-                    laneScheduler.submit(target.getId(), () -> {
-                        thinkProcessService.updateStatus(target.getId(), ThinkProcessStatus.PAUSED);
-                        return null;
-                    }).get();
+                    sessionLifecycle.pauseProcess(target);
                     paused = List.of(target.getName());
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
+                } catch (RuntimeException ex) {
                     sender.sendError(wsSession, envelope, 500,
-                            "Interrupted while pausing");
-                    return;
-                } catch (ExecutionException ee) {
-                    Throwable cause = ee.getCause() == null ? ee : ee.getCause();
-                    sender.sendError(wsSession, envelope, 500,
-                            "Pause failed: " + cause.getMessage());
+                            "Pause failed: " + ex.getMessage());
                     return;
                 }
             }

@@ -2,12 +2,14 @@ package de.mhus.vance.brain.runs;
 
 import de.mhus.vance.api.magrathea.MagratheaProcessDto;
 import de.mhus.vance.api.magrathea.MagratheaRunStatus;
+import de.mhus.vance.api.runs.RunAction;
 import de.mhus.vance.api.runs.RunChildDto;
 import de.mhus.vance.api.runs.RunDetailDto;
 import de.mhus.vance.api.runs.RunLinkDto;
 import de.mhus.vance.api.runs.RunStatus;
 import de.mhus.vance.api.runs.RunStepDto;
 import de.mhus.vance.api.runs.RunSummaryDto;
+import de.mhus.vance.brain.magrathea.MagratheaWorkflowService;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
 import de.mhus.vance.shared.magrathea.MagratheaStateProjector;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
@@ -19,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -50,6 +53,8 @@ public class MagratheaRunSource implements RunSource {
 
     private final MagratheaJournalService journalService;
     private final MagratheaStateProjector projector;
+    /** Owns pause/resume/stop; the source only maps state to verbs. */
+    private final MagratheaWorkflowService workflowService;
 
     @Override
     public String sourceId() {
@@ -85,9 +90,43 @@ public class MagratheaRunSource implements RunSource {
                 .variables(run.getVars() == null ? new LinkedHashMap<>() : run.getVars())
                 .children(readChildren(tenantId, projectId, nativeId))
                 .links(readLinks(tenantId, projectId, nativeId, run))
+                .allowedActions(actionsFor(run.getStatus()))
                 .result(run.getResult())
                 .extra(Map.of("params", run.getParams() == null ? Map.of() : run.getParams()))
                 .build());
+    }
+
+    @Override
+    public Set<RunAction> allowedActions(String tenantId, String projectId, String nativeId) {
+        return projector.project(tenantId, projectId, nativeId)
+                .filter(r -> tenantId.equals(r.getTenantId()) && projectId.equals(r.getProjectId()))
+                .map(r -> actionsFor(r.getStatus()))
+                .orElseGet(Set::of);
+    }
+
+    private static Set<RunAction> actionsFor(@Nullable MagratheaRunStatus status) {
+        if (status == null) return Set.of(RunAction.PAUSE, RunAction.STOP);
+        return switch (status) {
+            case RUNNING -> Set.of(RunAction.PAUSE, RunAction.STOP);
+            case PAUSED -> Set.of(RunAction.RESUME, RunAction.STOP);
+            case DONE, FAILED, TERMINATED -> Set.of();
+        };
+    }
+
+    @Override
+    public void perform(String tenantId, String projectId, String nativeId,
+                        RunAction action, String reason) {
+        MagratheaProcessDto run = projector.project(tenantId, projectId, nativeId)
+                .filter(r -> tenantId.equals(r.getTenantId()) && projectId.equals(r.getProjectId()))
+                .orElseThrow(() -> new IllegalArgumentException("No such run: " + nativeId));
+        // Not-applicable is a no-op: the button came from a snapshot and
+        // the run may have moved on in the meantime.
+        if (!actionsFor(run.getStatus()).contains(action)) return;
+        switch (action) {
+            case PAUSE -> workflowService.pauseRun(tenantId, projectId, nativeId);
+            case RESUME -> workflowService.resumeRun(tenantId, projectId, nativeId);
+            case STOP -> workflowService.stopRun(tenantId, projectId, nativeId, reason);
+        }
     }
 
     private RunSummaryDto toSummary(MagratheaProcessDto run) {

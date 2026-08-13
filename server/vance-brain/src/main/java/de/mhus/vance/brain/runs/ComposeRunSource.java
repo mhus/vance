@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.runs;
 
+import de.mhus.vance.api.runs.RunAction;
 import de.mhus.vance.api.runs.RunDetailDto;
 import de.mhus.vance.api.runs.RunStatus;
 import de.mhus.vance.api.runs.RunStepDto;
@@ -11,7 +12,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
@@ -30,6 +33,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class ComposeRunSource implements RunSource {
 
     public static final String SOURCE_ID = "compose";
@@ -54,10 +58,41 @@ public class ComposeRunSource implements RunSource {
                 .summary(toSummary(run))
                 .steps(readSteps(run))
                 .errorMessage(run.error())
+                .allowedActions(actionsFor(run))
                 .extra(Map.of(
                         "workspace", run.workspaceName(),
                         "transient", true))
                 .build());
+    }
+
+    @Override
+    public Set<RunAction> allowedActions(String tenantId, String projectId, String nativeId) {
+        return registry.find(tenantId, projectId, nativeId)
+                .map(ComposeRunSource::actionsFor)
+                .orElseGet(Set::of);
+    }
+
+    /**
+     * A compose run can only be stopped, and only while it runs. There is
+     * no pause: the runner walks a fixed task list with no safe point to
+     * hold at, and pretending otherwise would mean a button that quietly
+     * does nothing.
+     */
+    private static Set<RunAction> actionsFor(ComposeRun run) {
+        return run.isTerminal() || run.isCancelRequested() ? Set.of() : Set.of(RunAction.STOP);
+    }
+
+    @Override
+    public void perform(String tenantId, String projectId, String nativeId,
+                        RunAction action, String reason) {
+        ComposeRun run = registry.find(tenantId, projectId, nativeId)
+                .orElseThrow(() -> new IllegalArgumentException("No such run: " + nativeId));
+        if (!actionsFor(run).contains(action)) return;
+        // Cancellation is cooperative: the runner notices between tasks,
+        // so the run stays STOPPING until the current one finishes.
+        run.requestCancel();
+        log.info("Run action {} performed on compose run '{}' (reason: {})",
+                action, nativeId, reason);
     }
 
     private RunSummaryDto toSummary(ComposeRun run) {

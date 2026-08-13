@@ -65,14 +65,29 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
     /** Absent unless a grant-storing permission provider is loaded. */
     private final ObjectProvider<PermissionBootstrap> permissionBootstrapProvider;
 
+    private final de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry natureRegistry;
+
     @Override
     public void onSessionClosed(SessionDocument session) {
         if (!isControlSession(session)) {
             return;
         }
         accountOf(session).ifPresent(account -> {
-            // Grants first: they key on the user *name*, and one must not
-            // outlive its subject. UserService.delete does not cascade
+            // Everything keyed by the account name goes before the name
+            // does. A Nature that stored attributes under it releases
+            // them here — the file is named after an account that is
+            // about to stop existing, and the next Trillian gets a new
+            // name, so it would be unreadable and unreachable at once.
+            try {
+                natureRegistry.resolve(natureOf(session))
+                        .attributesDiscarded(
+                                session.getTenantId(), session.getProjectId(), account);
+            } catch (RuntimeException e) {
+                log.warn("Trillian: discarding stored attributes of '{}' failed: {}",
+                        account, e.toString());
+            }
+            // Grants next: they key on the user *name* too, and one must
+            // not outlive its subject. UserService.delete does not cascade
             // into grant storage.
             try {
                 permissionBootstrapProvider.ifAvailable(
@@ -193,7 +208,13 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
                         .equals(p.getThinkEngine()));
     }
 
-    /** The service account this control session runs its worker as. */
+    /** The Nature this pair runs, or {@code null} to let the registry default. */
+    private @Nullable String natureOf(SessionDocument session) {
+        return paramOfAnyProcess(session, TrillianSessionBootstrapper.PARAM_NATURE)
+                .orElse(null);
+    }
+
+    /** The service account this control session runs its worker as. */    /** The service account this control session runs its worker as. */
     private Optional<String> accountOf(SessionDocument session) {
         return paramOfAnyProcess(session, TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME);
     }

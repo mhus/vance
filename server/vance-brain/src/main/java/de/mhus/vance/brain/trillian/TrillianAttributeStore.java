@@ -126,6 +126,26 @@ public class TrillianAttributeStore {
         }
     }
 
+    /**
+     * Removes the account's attribute document.
+     *
+     * <p>Called when the Trillian itself is gone. The file is named after
+     * an account that no longer exists, so keeping it leaves a growing
+     * pile of documents nobody can trace back to anything — and the next
+     * account gets a fresh name, so it would never be read again either.
+     */
+    public void discard(String tenantId, String projectId, String account) {
+        try {
+            documentService.findByPath(tenantId, projectId, pathFor(account))
+                    .ifPresent(doc -> {
+                        documentService.delete(doc.getId(), WriteActor.SYSTEM);
+                        log.info("Trillian: removed attribute document {}", pathFor(account));
+                    });
+        } catch (RuntimeException e) {
+            log.warn("Trillian: could not remove attributes of '{}': {}", account, e.toString());
+        }
+    }
+
     private static String dump(Map<String, Object> attributes) {
         if (attributes.isEmpty()) {
             // An empty map dumps as "{}", which reads like a placeholder

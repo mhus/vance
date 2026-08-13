@@ -4,11 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.permission.WriteActor;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -110,6 +112,30 @@ class TrillianAttributeStoreTest {
 
         new TrillianAttributeStore(documentService)
                 .save(TENANT, PROJECT, ACCOUNT, Map.of("a", "b"));
+    }
+
+    @Test
+    void discardingRemovesTheFile() {
+        DocumentDocument doc = new DocumentDocument();
+        doc.setId("doc-1");
+        when(documentService.findByPath(TENANT, PROJECT,
+                TrillianAttributeStore.pathFor(ACCOUNT))).thenReturn(Optional.of(doc));
+
+        new TrillianAttributeStore(documentService).discard(TENANT, PROJECT, ACCOUNT);
+
+        verify(documentService).delete(eq("doc-1"), any(WriteActor.class));
+    }
+
+    @Test
+    void discardingSomethingAbsent_isQuiet() {
+        // Nature-0 sessions never wrote a file, and a human may have
+        // deleted it. Neither is an error at teardown time.
+        when(documentService.findByPath(anyString(), anyString(), anyString()))
+                .thenReturn(Optional.empty());
+
+        new TrillianAttributeStore(documentService).discard(TENANT, PROJECT, ACCOUNT);
+
+        verify(documentService, never()).delete(anyString(), any(WriteActor.class));
     }
 
     @Test

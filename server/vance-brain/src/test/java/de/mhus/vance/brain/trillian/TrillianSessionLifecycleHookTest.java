@@ -36,7 +36,8 @@ class TrillianSessionLifecycleHookTest {
     private static final String TENANT = "acme";
     private static final String CONTROL = "sess-control";
     private static final String PEER = "sess-worker";
-    private static final String ACCOUNT = "_trillian-04801";
+    private static final String PROJECT = "test1";
+    private static final String ACCOUNT = "_trillian-adam-4801";
 
     @Mock
     ThinkProcessService thinkProcessService;
@@ -52,6 +53,8 @@ class TrillianSessionLifecycleHookTest {
     PermissionBootstrap permissionBootstrap;
     @Mock
     ObjectProvider<PermissionBootstrap> permissionProvider;
+    @Mock
+    de.mhus.vance.brain.trillian.nature.TrillianNature nature;
 
     TrillianSessionLifecycleHook hook;
 
@@ -66,9 +69,12 @@ class TrillianSessionLifecycleHookTest {
         }).when(permissionProvider).ifAvailable(any());
         when(sessionService.findBySessionId(any()))
                 .thenAnswer(inv -> java.util.Optional.of(session(inv.getArgument(0))));
+        when(nature.id()).thenReturn("adam");
         hook = new TrillianSessionLifecycleHook(
                 thinkProcessService, sessionService, userService,
-                lifecycleProvider, permissionProvider);
+                lifecycleProvider, permissionProvider,
+                new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(
+                        List.of(nature)));
         givenControlProcessLinkingTo(PEER);
     }
 
@@ -80,6 +86,40 @@ class TrillianSessionLifecycleHookTest {
         order.verify(permissionBootstrap).revokeAll(TENANT, ACCOUNT);
         order.verify(userService).delete(TENANT, ACCOUNT);
         verify(lifecycleService).closeWithCascade(PEER);
+    }
+
+    @Test
+    void closingControl_letsTheNatureDropWhatItStored() {
+        // A persistent Nature files its attributes under the account
+        // name. Deleting the account without telling it leaves a document
+        // named after something that no longer exists — unreadable and,
+        // since the next Trillian gets a new name, never read again.
+        hook.onSessionClosed(session(CONTROL));
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(nature, userService);
+        order.verify(nature).attributesDiscarded(TENANT, PROJECT, ACCOUNT);
+        order.verify(userService).delete(TENANT, ACCOUNT);
+    }
+
+    @Test
+    void archivingControl_keepsWhatTheNatureStored() {
+        // Archived means put away. A Trillian that comes back to an empty
+        // attribute file has not come back.
+        hook.onSessionArchived(session(CONTROL));
+
+        verify(nature, never()).attributesDiscarded(any(), any(), any());
+    }
+
+    @Test
+    void aFailingNature_stillLosesTheAccount() {
+        org.mockito.Mockito.doThrow(new IllegalStateException("mongo down"))
+                .when(nature).attributesDiscarded(any(), any(), any());
+
+        hook.onSessionClosed(session(CONTROL));
+
+        // The account is the security-relevant part; a stuck document
+        // must not keep it alive.
+        verify(userService).delete(TENANT, ACCOUNT);
     }
 
     @Test
@@ -233,6 +273,7 @@ class TrillianSessionLifecycleHookTest {
         SessionDocument s = new SessionDocument();
         s.setSessionId(sessionId);
         s.setTenantId(TENANT);
+        s.setProjectId(PROJECT);
         return s;
     }
 
@@ -244,7 +285,8 @@ class TrillianSessionLifecycleHookTest {
         p.setThinkEngine(TrillianSessionBootstrapper.CONTROL_ENGINE_NAME);
         Map<String, Object> params = new LinkedHashMap<>();
         params.put(TrillianSessionBootstrapper.PARAM_PEER_SESSION_ID, peerSessionId);
-        params.put(TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME, "_trillian-04801");
+        params.put(TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME, ACCOUNT);
+        params.put(TrillianSessionBootstrapper.PARAM_NATURE, "adam");
         p.setEngineParams(params);
         return p;
     }

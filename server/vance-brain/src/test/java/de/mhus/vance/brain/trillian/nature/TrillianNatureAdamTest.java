@@ -77,10 +77,17 @@ class TrillianNatureAdamTest {
     }
 
     @Test
+    void aDiscardedAccount_takesItsDocumentWithIt() {
+        adam().attributesDiscarded(TENANT, PROJECT, ACCOUNT);
+
+        verify(attributeStore).discard(TENANT, PROJECT, ACCOUNT);
+    }
+
+    @Test
     void adamInheritsTheAttributeRendering() {
-        // The prompt side is not what a generation changes — inheriting
-        // it is the point, and a silent regression here would make adam
-        // look like it lost its attributes.
+        // Rendering comes from TrillianNatureBase, not from Nature-0: it
+        // is shared mechanics, and adam must not pick up whatever
+        // generation zero does with it later.
         ThinkProcessDocument worker = worker(ACCOUNT);
         worker.getEngineParams().put("attributes", Map.of("tone", "sachlich"));
 

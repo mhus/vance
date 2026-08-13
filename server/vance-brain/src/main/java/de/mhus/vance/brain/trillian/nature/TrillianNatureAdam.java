@@ -12,9 +12,9 @@ import org.springframework.stereotype.Component;
 /**
  * Trillian Nature-A, {@code adam} — the first persistent Trillian.
  *
- * <p>Inherits Nature-0's mechanics deliberately: the two-session
- * architecture, the attribute map and how it renders into both prompts
- * are not what distinguishes a generation. What distinguishes adam is
+ * <p>Adds to {@link TrillianNatureBase}, not to Nature-0: the attribute
+ * map and how it renders into both prompts are shared mechanics, not
+ * generation-zero behaviour to inherit. What distinguishes adam is
  * that its attributes <b>outlive the process rows</b>.
  *
  * <p>Under Nature-0 an attribute lives in {@code engineParams} and dies
@@ -35,7 +35,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @Slf4j
-public class TrillianNatureAdam extends TrillianNature0 {
+public class TrillianNatureAdam extends TrillianNatureBase {
 
     public static final String ID = "adam";
 
@@ -83,6 +83,11 @@ public class TrillianNatureAdam extends TrillianNature0 {
         }
         attributeStore.save(
                 worker.getTenantId(), worker.getProjectId(), account, attributes);
+    }
+
+    @Override
+    public void attributesDiscarded(String tenantId, String projectId, String account) {
+        attributeStore.discard(tenantId, projectId, account);
     }
 
     /** The service account off the worker's own wiring. */

@@ -148,4 +148,22 @@ public interface TrillianNature {
             ThinkProcessDocument worker, Map<String, Object> attributes) {
         // no-op for Nature-0
     }
+
+    /**
+     * The service account is being deleted — whatever this Nature stored
+     * under it should go with it.
+     *
+     * <p>Counterpart to {@link #initialAttributes}: what a Nature keyed by
+     * the account name has to release when that name stops existing.
+     * Accounts are never renamed and a new Trillian gets a new name, so
+     * anything left behind would be unreadable and unreachable at once.
+     *
+     * <p>Nature-0 no-op — it stored nothing outside {@code engineParams},
+     * which die with the process rows anyway. Must not throw: the account
+     * deletion proceeds either way.
+     */
+    default void attributesDiscarded(
+            String tenantId, String projectId, String account) {
+        // no-op for Nature-0
+    }
 }

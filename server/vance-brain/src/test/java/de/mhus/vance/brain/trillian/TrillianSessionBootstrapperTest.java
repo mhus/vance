@@ -77,12 +77,20 @@ class TrillianSessionBootstrapperTest {
 
     TrillianSessionBootstrapper bootstrapper;
 
+    /** Real registry with the baseline Nature — the seeding path is real logic. */
+    private de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry natureRegistry() {
+        return new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(
+                java.util.List.of(
+                        new de.mhus.vance.brain.trillian.nature.TrillianNature0(
+                                thinkProcessService)));
+    }
+
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
         bootstrapper = new TrillianSessionBootstrapper(userService, sessionService,
                 thinkProcessService, thinkEngineService, recipeResolver, laneScheduler,
-                chatMessageService, permissionBootstrapProvider);
+                chatMessageService, natureRegistry(), permissionBootstrapProvider);
 
         when(userService.existsByTenantAndName(anyString(), anyString())).thenReturn(false);
         when(userService.createServiceAccount(anyString(), anyString(), any(), any(), any()))
@@ -270,6 +278,48 @@ class TrillianSessionBootstrapperTest {
         // value, not a derivation to be recomputed later.
         org.assertj.core.api.Assertions.assertThat(title.getValue())
                 .isEqualTo("Trillian " + name.getValue().substring("_trillian-".length()));
+    }
+
+    @Test
+    void aPersistentNature_seedsTheWorkerFromItsOwnStore() {
+        // The carrying dance across an archive only covers a reactivate.
+        // A Nature that keeps its attributes somewhere durable has to be
+        // asked when there is nothing to carry — otherwise "persistent"
+        // means "persistent until the next restart".
+        de.mhus.vance.brain.trillian.nature.TrillianNature persistent =
+                new de.mhus.vance.brain.trillian.nature.TrillianNature() {
+                    @Override
+                    public String id() {
+                        return "adam";
+                    }
+
+                    @Override
+                    public String title() {
+                        return "test";
+                    }
+
+                    @Override
+                    public Map<String, Object> initialAttributes(
+                            String tenantId, String projectId, String account) {
+                        return Map.of("persona", "restored from disk");
+                    }
+                };
+        bootstrapper = new TrillianSessionBootstrapper(userService, sessionService,
+                thinkProcessService, thinkEngineService, recipeResolver, laneScheduler,
+                chatMessageService,
+                new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(
+                        java.util.List.of(persistent)),
+                permissionBootstrapProvider);
+
+        bootstrapper.maybeBootstrap(controlSession(), controlProcess("adam"));
+
+        ArgumentCaptor<Map<String, Object>> params = paramsCaptor();
+        verify(thinkProcessService).create(anyString(), any(), anyString(), anyString(),
+                anyString(), anyString(), any(), any(), any(), params.capture(), any(), any(),
+                any(), any(), any(), any(), any(), any(), any());
+        org.assertj.core.api.Assertions.assertThat(params.getValue())
+                .containsEntry(TrillianInternalApi.PARAM_ATTRIBUTES,
+                        Map.of("persona", "restored from disk"));
     }
 
     @SuppressWarnings("unchecked")

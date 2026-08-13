@@ -86,6 +86,7 @@ public class TrillianInternalApi {
     private final ProcessEventEmitter eventEmitter;
     private final ChatMessageService chatMessageService;
     private final de.mhus.vance.brain.scheduling.LaneScheduler laneScheduler;
+    private final de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry natureRegistry;
 
     /**
      * Resolves the peer-process for {@code callingProcessId} via its
@@ -482,7 +483,11 @@ public class TrillianInternalApi {
         // gotcha), so escape it to '_'.
         attributes.put(MongoKeys.sanitizeKey(name), value);
         params.put(PARAM_ATTRIBUTES, attributes);
-        return thinkProcessService.replaceEngineParams(peer.getId(), params);
+        boolean written = thinkProcessService.replaceEngineParams(peer.getId(), params);
+        if (written) {
+            notifyNature(peer, attributes);
+        }
+        return written;
     }
 
     /**
@@ -512,7 +517,11 @@ public class TrillianInternalApi {
             params.putAll(peer.getEngineParams());
         }
         params.put(PARAM_ATTRIBUTES, attributes);
-        return thinkProcessService.replaceEngineParams(peer.getId(), params);
+        boolean written = thinkProcessService.replaceEngineParams(peer.getId(), params);
+        if (written) {
+            notifyNature(peer, attributes);
+        }
+        return written;
     }
 
     public int clearPeerAttributes(String callerProcessId) {
@@ -531,6 +540,30 @@ public class TrillianInternalApi {
         }
         params.put(PARAM_ATTRIBUTES, new LinkedHashMap<>());
         thinkProcessService.replaceEngineParams(peer.getId(), params);
+        notifyNature(peer, Map.of());
         return existing.size();
+    }
+
+    /**
+     * Tells the active Nature that the map changed, so a persistent one
+     * can mirror it. The single place all three mutations pass through —
+     * {@code user_attr_*} and {@code //trillian attr} share this API, and
+     * a Nature that only heard about one of them would be worse than one
+     * that hears about neither.
+     *
+     * <p>Swallows: durability is not worth failing the write that already
+     * succeeded.
+     */
+    private void notifyNature(ThinkProcessDocument worker, Map<String, Object> attributes) {
+        try {
+            String nature = worker.getEngineParams() == null ? null
+                    : java.util.Objects.toString(
+                            worker.getEngineParams()
+                                    .get(TrillianSessionBootstrapper.PARAM_NATURE), null);
+            natureRegistry.resolve(nature).attributesChanged(worker, attributes);
+        } catch (RuntimeException e) {
+            log.warn("Trillian: nature hook for attribute change on '{}' failed: {}",
+                    worker.getId(), e.toString());
+        }
     }
 }

@@ -61,7 +61,11 @@ class TrillianPeerLifecycleTest {
                 mock(EngineMessageService.class),
                 eventEmitter,
                 mock(ChatMessageService.class),
-                laneScheduler);
+                laneScheduler,
+                new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(
+                        java.util.List.of(
+                                new de.mhus.vance.brain.trillian.nature.TrillianNature0(
+                                        thinkProcessService))));
     }
 
     private static ThinkProcessDocument peer(ThinkProcessStatus status) {

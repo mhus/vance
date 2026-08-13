@@ -2,6 +2,7 @@ package de.mhus.vance.brain.trillian.nature;
 
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import java.util.Map;
 
 /**
  * Behaviour layer for a single Trillian generation ("Nature"). The
@@ -23,9 +24,11 @@ public interface TrillianNature {
 
     /**
      * Stable identifier — must match the value pinned in
-     * {@code recipe.params.nature}. Test natures use digit ids
-     * ({@code "0"}-{@code "9"}); production natures use letter ids
-     * ({@code "A"}-{@code "Z"}).
+     * {@code recipe.params.nature}, and it is spliced into the service
+     * account name {@code _trillian-<id>-<instance>} and into the three
+     * recipe names. {@code TrillianNatureRegistry} therefore validates
+     * it at boot: lower-case alphanumerics, no dash, and not
+     * {@code user}/{@code worker}.
      */
     String id();
 
@@ -100,6 +103,49 @@ public interface TrillianNature {
      */
     default void afterUserTurn(
             ThinkProcessDocument process, ThinkEngineContext ctx) {
+        // no-op for Nature-0
+    }
+
+    // ─── Attribute durability ─────────────────────────────────────
+
+    /**
+     * Attributes a freshly bootstrapped worker loop should start with,
+     * asked once by {@code TrillianSessionBootstrapper} when nothing was
+     * carried over from a previous incarnation.
+     *
+     * <p>This is where a Nature decides whether its Trillian is
+     * <em>ephemeral</em> or <em>persistent</em>. Nature-0 returns nothing:
+     * its attributes live in {@code engineParams} and die with the
+     * process rows. A persistent Nature loads them from wherever it put
+     * them.
+     *
+     * <p>Runtime storage stays {@code engineParams} either way — this is
+     * a seed, not a second source of truth to read from every turn.
+     *
+     * @param account the {@code _trillian-<nature>-<instance>} service
+     *                account the pair runs as, stable across archive and
+     *                reactivate
+     */
+    default Map<String, Object> initialAttributes(
+            String tenantId, String projectId, String account) {
+        return Map.of();
+    }
+
+    /**
+     * The worker's attribute map changed. Called after every mutation
+     * through {@code TrillianInternalApi} — one funnel, so both
+     * {@code user_attr_set} and {@code //trillian attr} arrive here.
+     *
+     * <p>Nature-0 no-op. A persistent Nature mirrors the map to durable
+     * storage here. Must not throw: losing durability is worth a
+     * warning, not a failed attribute write.
+     *
+     * @param worker     the Trillian-User-Loop process that owns the map
+     * @param attributes the map as it now stands, already written to
+     *                   {@code engineParams}
+     */
+    default void attributesChanged(
+            ThinkProcessDocument worker, Map<String, Object> attributes) {
         // no-op for Nature-0
     }
 }

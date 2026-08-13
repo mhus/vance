@@ -166,6 +166,7 @@ public class TrillianSessionBootstrapper {
     private final RecipeResolver recipeResolver;
     private final LaneScheduler laneScheduler;
     private final ChatMessageService chatMessageService;
+    private final de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry natureRegistry;
 
     /**
      * Present only when a grant-storing permission provider is loaded
@@ -316,6 +317,14 @@ public class TrillianSessionBootstrapper {
         // whatever the human set. Adopting the account without them would
         // return the same name wearing nobody.
         Map<String, Object> carried = carriedAttributesOf(controlSession);
+        if (carried.isEmpty()) {
+            // Nothing parked by a reactivate. A persistent Nature keeps
+            // its own copy that outlives the process rows entirely; an
+            // ephemeral one returns nothing and the worker starts blank.
+            carried = natureRegistry.resolve(nature).initialAttributes(
+                    controlSession.getTenantId(), controlSession.getProjectId(),
+                    trillianName);
+        }
         if (!carried.isEmpty()) {
             userParams.put(TrillianInternalApi.PARAM_ATTRIBUTES, carried);
             log.info("Restored {} Trillian attribute(s) for control session '{}'",
@@ -509,15 +518,12 @@ public class TrillianSessionBootstrapper {
 
     /**
      * The {@code <nature>-<instance>} tail of an account name, used to
-     * label the session and seed the account title.
-     *
-     * <p>Tolerates a name that predates the prefix: labels are cosmetic
-     * and must not be the thing that breaks an adoption.
+     * label the session and seed the account title. Every account this
+     * class ever hands out is minted by {@link #pickUniqueTrillianName},
+     * so the prefix is always there.
      */
     private static String accountSuffix(String trillianName) {
-        return trillianName.startsWith(ACCOUNT_PREFIX)
-                ? trillianName.substring(ACCOUNT_PREFIX.length())
-                : trillianName;
+        return trillianName.substring(ACCOUNT_PREFIX.length());
     }
 
     /**

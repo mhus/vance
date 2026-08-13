@@ -97,11 +97,13 @@ public class TrillianNatureRegistry {
 
     /**
      * Looks up the Nature by id. Returns the registered Nature or —
-     * when {@code id} is unknown — the fallback (Nature-0). Never
+     * when {@code id} is unknown, null or blank — the fallback
+     * (Nature-0). Callers read the id out of {@code engineParams}, where
+     * it may legitimately be absent. Never
      * returns {@code null} as long as at least one Nature bean
      * exists (which {@link TrillianNature0} guarantees).
      */
-    public TrillianNature resolve(String id) {
+    public TrillianNature resolve(@Nullable String id) {
         if (id == null || id.isBlank()) {
             return fallback;
         }

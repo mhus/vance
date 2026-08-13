@@ -91,6 +91,7 @@ public class MagratheaRunSource implements RunSource {
                 .children(readChildren(tenantId, projectId, nativeId))
                 .links(readLinks(tenantId, projectId, nativeId, run))
                 .allowedActions(actionsFor(run.getStatus()))
+                .errorMessage(terminalReason(tenantId, projectId, nativeId, run.getStatus()))
                 .result(run.getResult())
                 .extra(Map.of("params", run.getParams() == null ? Map.of() : run.getParams()))
                 .build());
@@ -160,6 +161,27 @@ public class MagratheaRunSource implements RunSource {
             case FAILED -> RunStatus.FAILED;
             case TERMINATED -> RunStatus.STOPPED;
         };
+    }
+
+    /**
+     * Why the run ended, from the terminal {@code StatusRecord}.
+     *
+     * <p>Without this a stopped or failed run is simply over, with no
+     * trace of what did it — and the three ways a run can end without
+     * finishing (somebody pressed stop, a deadline fired, the watchdog
+     * found it motionless) are exactly the ones a reader needs told
+     * apart. Only terminal runs carry it; a paused run's reason is
+     * visible in its status already.
+     */
+    private @Nullable String terminalReason(
+            String tenantId, String projectId, String runId, @Nullable MagratheaRunStatus status) {
+        if (status != MagratheaRunStatus.FAILED && status != MagratheaRunStatus.TERMINATED) {
+            return null;
+        }
+        return journalService.readLast(tenantId, projectId, runId,
+                        de.mhus.vance.shared.magrathea.journal.StatusRecord.class)
+                .map(de.mhus.vance.shared.magrathea.journal.StatusRecord::getReason)
+                .orElse(null);
     }
 
     /**

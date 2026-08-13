@@ -21,7 +21,9 @@ import org.junit.jupiter.api.Test;
 class MagratheaTimeoutSchedulerTest {
 
     private final MagratheaTimerService timerService = mock(MagratheaTimerService.class);
-    private final MagratheaTimeoutScheduler scheduler = new MagratheaTimeoutScheduler(timerService);
+    private final MagratheaProperties properties = new MagratheaProperties();
+    private final MagratheaTimeoutScheduler scheduler =
+            new MagratheaTimeoutScheduler(timerService, properties);
 
     @Test
     void armsATimerCarryingTheTimeoutOutcome() {
@@ -37,17 +39,38 @@ class MagratheaTimeoutSchedulerTest {
     }
 
     @Test
-    void withoutATimeout_armsNothing() {
+    void withoutADeclaredTimeout_armsTheTypeDefault() {
+        // The point of the whole net: an author who did not anticipate the
+        // defect also did not write a deadline for it.
         scheduler.arm(ctx(), state(null));
+
+        var captor = org.mockito.ArgumentCaptor.forClass(MagratheaTimerDocument.class);
+        verify(timerService).insert(captor.capture());
+        assertThat(captor.getValue().getFireAt())
+                .isAfter(Instant.now().plus(properties.getDefaultAgentTimeout().minusMinutes(1)));
+    }
+
+    @Test
+    void aDeclaredZero_armsNothing() {
+        // Explicit opt-out: "this one really may wait forever".
+        scheduler.arm(ctx(), state(0));
 
         verify(timerService, never()).insert(any());
     }
 
     @Test
-    void nonPositiveTimeout_armsNothing() {
-        scheduler.arm(ctx(), state(0));
+    void perTypeDefaults_differ() {
+        assertThat(scheduler.effectiveTimeout(state(null, MagratheaTaskType.GATE_TASK)))
+                .isEqualTo(properties.getDefaultGateTimeout());
+        assertThat(scheduler.effectiveTimeout(state(null, MagratheaTaskType.WORKFLOW_TASK)))
+                .isEqualTo(properties.getDefaultSubWorkflowTimeout());
+    }
 
-        verify(timerService, never()).insert(any());
+    @Test
+    void aTypeWithoutADefault_getsNoDeadline() {
+        // Only the three async types are armed at all; a synchronous type
+        // blocks its executor and is bounded there.
+        assertThat(scheduler.effectiveTimeout(state(null, MagratheaTaskType.SHELL_TASK))).isNull();
     }
 
     @Test
@@ -60,8 +83,12 @@ class MagratheaTimeoutSchedulerTest {
     }
 
     private static MagratheaStateSpec state(Integer timeoutSeconds) {
+        return state(timeoutSeconds, MagratheaTaskType.AGENT_TASK);
+    }
+
+    private static MagratheaStateSpec state(Integer timeoutSeconds, MagratheaTaskType type) {
         return new MagratheaStateSpec(
-                "work", MagratheaTaskType.AGENT_TASK, null, timeoutSeconds, null,
+                "work", type, null, timeoutSeconds, null,
                 Map.of(), Map.of(), List.of(), MagratheaRetrySpec.none(), Map.of());
     }
 

@@ -190,6 +190,26 @@ public class MagratheaTaskService {
     }
 
     /**
+     * Watchdog helper: tasks that have sat in a non-terminal state since
+     * before {@code threshold} — the "this run is not moving" set,
+     * whatever the reason.
+     *
+     * <p>Deliberately blind to <em>why</em>: PENDING means nobody claimed
+     * it, CLAIMED means whoever did never came back, and the cause behind
+     * either is unbounded. {@link MagratheaTaskStatus#HELD} is excluded
+     * because a held task is stopped on purpose — its run is paused.
+     */
+    public List<MagratheaTaskDocument> findStalledBefore(Instant threshold, int limit) {
+        Query q = new Query(
+                Criteria.where("status")
+                        .in(MagratheaTaskStatus.PENDING, MagratheaTaskStatus.CLAIMED)
+                        .and("createdAt").lt(threshold))
+                .with(org.springframework.data.domain.Sort.by("createdAt").ascending())
+                .limit(limit);
+        return mongoTemplate.find(q, MagratheaTaskDocument.class);
+    }
+
+    /**
      * Crash-recovery helper: CLAIMED tasks still parked in
      * {@code WAITING_SUBPROCESS} whose claim is older than the grace.
      * A task waiting this long after its subprocess closed lost its

@@ -336,6 +336,26 @@ public class MagratheaWorkflowService {
      * @return {@code true} if this call did the stopping
      */
     public boolean stopRun(String tenantId, String projectId, String workflowRunId, String reason) {
+        return endRun(tenantId, projectId, workflowRunId, MagratheaRunStatus.TERMINATED, reason);
+    }
+
+    /**
+     * The watchdog's terminal path: same unwind as a stop, but the run
+     * ends {@code FAILED}. The difference is not cosmetic — a stop is a
+     * decision somebody made, a stall is a defect, and a run list that
+     * shows the two alike hides the thing worth looking at.
+     */
+    public boolean failStalledRun(
+            String tenantId, String projectId, String workflowRunId, String reason) {
+        return endRun(tenantId, projectId, workflowRunId, MagratheaRunStatus.FAILED, reason);
+    }
+
+    private boolean endRun(
+            String tenantId,
+            String projectId,
+            String workflowRunId,
+            MagratheaRunStatus terminalStatus,
+            String reason) {
         MagratheaRunStatus status = currentStatus(tenantId, projectId, workflowRunId);
         if (status == MagratheaRunStatus.DONE
                 || status == MagratheaRunStatus.FAILED
@@ -345,20 +365,26 @@ public class MagratheaWorkflowService {
         onLane(projectId, () -> {
             long held = taskService.holdRun(workflowRunId);
             boolean stillWorking = false;
+            int unwound = 0;
             for (MagratheaTaskDocument task : taskService.findByRun(workflowRunId)) {
                 if (task.getStatus() != MagratheaTaskStatus.CLAIMED) continue;
-                stillWorking |= !unwind(tenantId, task, reason);
+                boolean ended = unwind(tenantId, task, reason);
+                stillWorking |= !ended;
+                if (ended) unwound++;
             }
             timerService.deleteRun(workflowRunId);
             if (!stillWorking) {
                 journalService.append(tenantId, projectId, workflowRunId,
-                        StatusRecord.builder().status(MagratheaRunStatus.TERMINATED)
-                                .reason(reason).build());
+                        StatusRecord.builder().status(terminalStatus).reason(reason).build());
                 recordTerminalMetrics(workflowNameOf(tenantId, projectId, workflowRunId),
-                        MagratheaRunStatus.TERMINATED, tenantId, projectId, workflowRunId);
+                        terminalStatus, tenantId, projectId, workflowRunId);
             }
-            log.info("Magrathea run {} stopped — {} held, in-flight work remaining: {}",
-                    workflowRunId, held, stillWorking);
+            // Says what was ended, not just what was blocked: "0 held" on a
+            // run whose only task was already claimed reads like nothing
+            // happened, when in fact an agent was just closed.
+            log.info("Magrathea run {} → {} ({}) — {} queued task(s) held,"
+                            + " {} in-flight task(s) unwound, opaque work remaining: {}",
+                    workflowRunId, terminalStatus, reason, held, unwound, stillWorking);
         });
         return true;
     }

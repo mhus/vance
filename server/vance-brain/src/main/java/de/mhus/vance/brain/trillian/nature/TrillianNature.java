@@ -149,6 +149,34 @@ public interface TrillianNature {
         // no-op for Nature-0
     }
 
+    /** How a task ended. Only conclusions reach the Nature. */
+    enum TaskOutcome {
+        DONE,
+        FAILED
+    }
+
+    /**
+     * A task the worker loop was running has concluded.
+     *
+     * <p>Fired from the single dispatch funnel for {@code task_done} and
+     * {@code task_failed}, after the event reached Control — the human
+     * hearing the result must never depend on what a Nature does with it.
+     * {@code task_request} and {@code task_needs_input} do not arrive
+     * here: they are not conclusions, and reflecting on a question would
+     * teach the Trillian nothing except that it asked one.
+     *
+     * <p>Nature-0 no-op. A reflecting Nature turns the outcome into
+     * something durable here. Both outcomes are delivered on purpose —
+     * a Trillian that only reviews its successes learns nothing.
+     *
+     * <p>Runs inside the reporting tool call and must not throw.
+     */
+    default void taskConcluded(
+            ThinkProcessDocument worker, String taskId,
+            TaskOutcome outcome, String summary) {
+        // no-op for Nature-0
+    }
+
     /**
      * The service account is being deleted — whatever this Nature stored
      * under it should go with it.
@@ -158,11 +186,16 @@ public interface TrillianNature {
      * Accounts are never renamed and a new Trillian gets a new name, so
      * anything left behind would be unreadable and unreachable at once.
      *
+     * <p>Named for the account rather than for attributes: a Nature may
+     * file several things under that name — adam keeps a reflexion
+     * journal beside its attributes — and they all end at the same
+     * moment, for the same reason.
+     *
      * <p>Nature-0 no-op — it stored nothing outside {@code engineParams},
      * which die with the process rows anyway. Must not throw: the account
      * deletion proceeds either way.
      */
-    default void attributesDiscarded(
+    default void accountDiscarded(
             String tenantId, String projectId, String account) {
         // no-op for Nature-0
     }

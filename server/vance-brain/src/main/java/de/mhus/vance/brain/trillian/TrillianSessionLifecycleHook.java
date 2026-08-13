@@ -105,7 +105,7 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
             // name, so it would be unreadable and unreachable at once.
             try {
                 natureRegistry.resolve(natureOf(session))
-                        .attributesDiscarded(
+                        .accountDiscarded(
                                 session.getTenantId(), session.getProjectId(), account);
             } catch (RuntimeException e) {
                 log.warn("Trillian: discarding stored attributes of '{}' failed: {}",

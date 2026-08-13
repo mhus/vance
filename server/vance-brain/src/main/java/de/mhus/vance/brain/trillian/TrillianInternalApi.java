@@ -11,6 +11,7 @@ import de.mhus.vance.shared.enginemessage.EngineMessageDocument;
 import de.mhus.vance.shared.enginemessage.EngineMessageService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
+import de.mhus.vance.brain.trillian.nature.TrillianNature;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;
@@ -168,7 +169,44 @@ public class TrillianInternalApi {
         }
         log.info("Trillian dispatched event='{}' taskId='{}' sender='{}' target='{}' eventId='{}'",
                 taskEvent, taskId, senderProcessId, targetProcessId, eventId);
+        notifyNatureOfConclusion(senderProcessId, taskEvent, taskId, humanSummary);
         return Optional.of(eventId);
+    }
+
+    /**
+     * Lets the active Nature react to a concluded task.
+     *
+     * <p>Deliberately after the dispatch: Control hearing the outcome is
+     * the point of the call, and must not wait on — or be lost to —
+     * whatever a Nature does with it. Only {@code task_done} and
+     * {@code task_failed} count as conclusions; a request or a question
+     * has nothing to conclude about yet.
+     */
+    private void notifyNatureOfConclusion(
+            String senderProcessId, String taskEvent, String taskId, String summary) {
+        TrillianNature.TaskOutcome outcome = switch (taskEvent) {
+            case TASK_EVENT_DONE -> TrillianNature.TaskOutcome.DONE;
+            case TASK_EVENT_FAILED -> TrillianNature.TaskOutcome.FAILED;
+            default -> null;
+        };
+        if (outcome == null) {
+            return;
+        }
+        try {
+            ThinkProcessDocument worker = thinkProcessService.findById(senderProcessId)
+                    .orElse(null);
+            if (worker == null) {
+                return;
+            }
+            String nature = worker.getEngineParams() == null ? null
+                    : java.util.Objects.toString(
+                            worker.getEngineParams()
+                                    .get(TrillianSessionBootstrapper.PARAM_NATURE), null);
+            natureRegistry.resolve(nature).taskConcluded(worker, taskId, outcome, summary);
+        } catch (RuntimeException e) {
+            log.warn("Trillian: nature hook for concluded task '{}' failed: {}",
+                    taskId, e.toString());
+        }
     }
 
     /**

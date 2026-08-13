@@ -35,6 +35,10 @@ class TrillianNatureAdamTest {
     ThinkProcessService thinkProcessService;
     @Mock
     TrillianAttributeStore attributeStore;
+    @Mock
+    de.mhus.vance.brain.trillian.TrillianJournalStore journalStore;
+    @Mock
+    de.mhus.vance.brain.ai.light.LightLlmService lightLlm;
 
     @Test
     void aChangedMap_isMirroredToTheStore() {
@@ -77,10 +81,89 @@ class TrillianNatureAdamTest {
     }
 
     @Test
-    void aDiscardedAccount_takesItsDocumentWithIt() {
-        adam().attributesDiscarded(TENANT, PROJECT, ACCOUNT);
+    void aDiscardedAccount_takesItsDocumentsWithIt() {
+        adam().accountDiscarded(TENANT, PROJECT, ACCOUNT);
 
         verify(attributeStore).discard(TENANT, PROJECT, ACCOUNT);
+        verify(journalStore).discard(TENANT, PROJECT, ACCOUNT);
+    }
+
+    @Test
+    void aLessonWorthKeeping_reachesTheJournal() {
+        givenReflexion(true, "- reports/ rejects writes from this account");
+
+        adam().taskConcluded(worker(ACCOUNT), "task-1",
+                TrillianNature.TaskOutcome.DONE, "listed 17 documents");
+
+        verify(journalStore).append(TENANT, PROJECT, ACCOUNT,
+                "- reports/ rejects writes from this account");
+    }
+
+    @Test
+    void nothingWorthKeeping_writesNothing() {
+        // Silence is the normal outcome. A journal of "task done" lines
+        // costs context on every later turn and teaches nothing.
+        givenReflexion(false, "");
+
+        adam().taskConcluded(worker(ACCOUNT), "task-1",
+                TrillianNature.TaskOutcome.DONE, "listed 17 documents");
+
+        verify(journalStore, never()).append(any(), any(), any(), any());
+    }
+
+    @Test
+    void aFailedTask_isReflectedOnToo() {
+        // This is where reflexion earns its keep — a Trillian that only
+        // reviews its successes learns nothing.
+        givenReflexion(true, "- the export needs WRITER on the target project");
+
+        adam().taskConcluded(worker(ACCOUNT), "task-2",
+                TrillianNature.TaskOutcome.FAILED, "could not write the report");
+
+        verify(journalStore).append(TENANT, PROJECT, ACCOUNT,
+                "- the export needs WRITER on the target project");
+    }
+
+    @Test
+    void aFailingReflexion_isSwallowed() {
+        // It runs inside the tool call that reports the result. Losing a
+        // lesson is acceptable; losing the task outcome is not.
+        when(lightLlm.callForJson(any())).thenThrow(new IllegalStateException("model down"));
+
+        adam().taskConcluded(worker(ACCOUNT), "task-3",
+                TrillianNature.TaskOutcome.DONE, "done");
+
+        verify(journalStore, never()).append(any(), any(), any(), any());
+    }
+
+    @Test
+    void theJournalIsReadBackIntoThePrompt() {
+        // Reflexion that never reaches a prompt is writing without a
+        // reader.
+        when(journalStore.tail(TENANT, PROJECT, ACCOUNT))
+                .thenReturn("- reports/ is read-only for me");
+
+        assertThat(adam().userPromptAddendum(worker(ACCOUNT)))
+                .contains("reports/ is read-only for me");
+    }
+
+    @Test
+    void anEmptyJournal_addsNoSection() {
+        when(journalStore.tail(TENANT, PROJECT, ACCOUNT)).thenReturn(null);
+
+        assertThat(adam().userPromptAddendum(worker(ACCOUNT)))
+                .doesNotContain("What you learned earlier");
+    }
+
+    @Test
+    void natureZero_doesNotReflect() {
+        TrillianNature0 zero = new TrillianNature0(thinkProcessService);
+
+        zero.taskConcluded(worker(ACCOUNT), "task-1",
+                TrillianNature.TaskOutcome.DONE, "done");
+
+        verify(lightLlm, never()).callForJson(any());
+        verify(journalStore, never()).append(any(), any(), any(), any());
     }
 
     @Test
@@ -106,7 +189,12 @@ class TrillianNatureAdamTest {
     }
 
     private TrillianNatureAdam adam() {
-        return new TrillianNatureAdam(thinkProcessService, attributeStore);
+        return new TrillianNatureAdam(
+                thinkProcessService, attributeStore, journalStore, lightLlm);
+    }
+
+    private void givenReflexion(boolean keep, String entry) {
+        when(lightLlm.callForJson(any())).thenReturn(Map.of("keep", keep, "entry", entry));
     }
 
     private static ThinkProcessDocument worker(String account) {

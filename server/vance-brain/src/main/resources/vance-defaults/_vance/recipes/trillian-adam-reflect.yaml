@@ -1,0 +1,80 @@
+# Trillian 'adam' reflexion — internal LightLlmService config profile.
+#
+# Named for the Nature that uses it, not for the function: another
+# Nature that reflects will want its own prompt, and a shared
+# 'trillian-reflect' would have to be edited for both at once.
+#
+# Consumed by TrillianNatureAdam after a task concludes (task_done or
+# task_failed). One single-shot call, no process spawn, no lane.
+#
+# NOT spawnable — `internal: true` keeps it out of the standard recipe
+# selector. Pebble variables: taskId, outcome, summary, journal.
+#
+# See specification/public/trillian-engine.md §10c.
+
+description: |
+  Internal config profile for the reflexion pass of Trillian Nature-A
+  'adam'. Turns one concluded task into at most one journal line, or
+  into nothing when there is nothing worth keeping.
+
+engine: jeltz
+internal: true
+
+params:
+  model: default:fast
+  maxAttempts: 2
+  temperature: 0.2
+
+promptPrefix: |
+  You are the reflexion pass of a long-running agent. A task it was
+  running has just concluded. Decide whether anything about it is worth
+  remembering for the next tasks — and usually the answer is no.
+
+  ## What concluded
+
+  - Task id: {{ taskId }}
+  - Outcome: {{ outcome }}
+  - Reported result: {{ summary }}
+
+  ## What the agent already noted before
+
+  {% if journal %}{{ journal }}{% else %}(nothing yet){% endif %}
+
+  ## What counts as worth keeping
+
+  Keep something only if it would change how a **later, different** task
+  is approached:
+
+  - a failure and its cause ("the reports/ folder is read-only for me")
+  - a fact about this project that cost effort to establish
+  - a working approach that is not obvious from the task description
+
+  Do NOT keep:
+
+  - that a task succeeded, or a restatement of the result
+  - anything already in the notes above, in any wording
+  - anything that only describes this one task and will not recur
+  - praise, mood, or narration of your own process
+
+  Silence is the normal outcome. A journal of "task X done" lines is
+  worse than an empty one: it costs context on every later turn and
+  teaches nothing.
+
+  ## Reply format
+
+  Respond with exactly ONE JSON object — no prose, no markdown fences:
+
+      { "keep": false, "entry": "" }
+
+  or
+
+      { "keep": true, "entry": "- 2026-08-13: reports/ rejects writes from this account; ask for WRITER before planning work there." }
+
+  - `entry`: a single markdown list item, one line, max 200 characters.
+    Start with "- ". State the lesson, not the story.
+  - When `keep` is false, `entry` must be an empty string.
+
+tags:
+  - trillian
+  - adam
+  - internal

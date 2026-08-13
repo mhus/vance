@@ -99,7 +99,7 @@ class TrillianSessionLifecycleHookTest {
         hook.onSessionClosed(session(CONTROL));
 
         org.mockito.InOrder order = org.mockito.Mockito.inOrder(nature, userService);
-        order.verify(nature).attributesDiscarded(TENANT, PROJECT, ACCOUNT);
+        order.verify(nature).accountDiscarded(TENANT, PROJECT, ACCOUNT);
         order.verify(userService).delete(TENANT, ACCOUNT);
     }
 
@@ -109,13 +109,13 @@ class TrillianSessionLifecycleHookTest {
         // attribute file has not come back.
         hook.onSessionArchived(session(CONTROL));
 
-        verify(nature, never()).attributesDiscarded(any(), any(), any());
+        verify(nature, never()).accountDiscarded(any(), any(), any());
     }
 
     @Test
     void aFailingNature_stillLosesTheAccount() {
         org.mockito.Mockito.doThrow(new IllegalStateException("mongo down"))
-                .when(nature).attributesDiscarded(any(), any(), any());
+                .when(nature).accountDiscarded(any(), any(), any());
 
         hook.onSessionClosed(session(CONTROL));
 
@@ -161,7 +161,7 @@ class TrillianSessionLifecycleHookTest {
         // clear orphaned accounts out of Mongo by hand.
         hook.onSessionDeleted(session(CONTROL));
 
-        verify(nature).attributesDiscarded(TENANT, PROJECT, ACCOUNT);
+        verify(nature).accountDiscarded(TENANT, PROJECT, ACCOUNT);
         verify(permissionBootstrap).revokeAll(TENANT, ACCOUNT);
         verify(userService).delete(TENANT, ACCOUNT);
     }

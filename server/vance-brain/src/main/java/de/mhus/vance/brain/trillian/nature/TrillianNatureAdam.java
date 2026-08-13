@@ -1,6 +1,9 @@
 package de.mhus.vance.brain.trillian.nature;
 
+import de.mhus.vance.brain.ai.light.LightLlmRequest;
+import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.brain.trillian.TrillianAttributeStore;
+import de.mhus.vance.brain.trillian.TrillianJournalStore;
 import de.mhus.vance.brain.trillian.TrillianSessionBootstrapper;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -39,13 +42,29 @@ public class TrillianNatureAdam extends TrillianNatureBase {
 
     public static final String ID = "adam";
 
+    /** LightLlm config profile for the reflexion pass. */
+    static final String REFLECT_RECIPE = "trillian-adam-reflect";
+
+    private static final Map<String, Object> REFLECT_SCHEMA = Map.of(
+            "type", "object",
+            "properties", Map.of(
+                    "keep", Map.of("type", "boolean"),
+                    "entry", Map.of("type", "string")),
+            "required", java.util.List.of("keep", "entry"));
+
     private final TrillianAttributeStore attributeStore;
+    private final TrillianJournalStore journalStore;
+    private final LightLlmService lightLlm;
 
     public TrillianNatureAdam(
             ThinkProcessService thinkProcessService,
-            TrillianAttributeStore attributeStore) {
+            TrillianAttributeStore attributeStore,
+            TrillianJournalStore journalStore,
+            LightLlmService lightLlm) {
         super(thinkProcessService);
         this.attributeStore = attributeStore;
+        this.journalStore = journalStore;
+        this.lightLlm = lightLlm;
     }
 
     @Override
@@ -86,8 +105,87 @@ public class TrillianNatureAdam extends TrillianNatureBase {
     }
 
     @Override
-    public void attributesDiscarded(String tenantId, String projectId, String account) {
+    public void accountDiscarded(String tenantId, String projectId, String account) {
         attributeStore.discard(tenantId, projectId, account);
+        journalStore.discard(tenantId, projectId, account);
+    }
+
+    /**
+     * Reflects on a concluded task and, when there is something worth
+     * keeping, adds one line to the journal.
+     *
+     * <p>Runs inside the reporting tool call, after Control already has
+     * the outcome. Fail-open throughout: a reflexion that errors, times
+     * out or produces nothing leaves a Trillian that simply did not learn
+     * anything from this task — never one whose result went missing.
+     */
+    @Override
+    public void taskConcluded(
+            ThinkProcessDocument worker, String taskId,
+            TaskOutcome outcome, String summary) {
+        String account = accountOf(worker);
+        if (account == null) {
+            return;
+        }
+        String tenantId = worker.getTenantId();
+        String projectId = worker.getProjectId();
+        try {
+            Map<String, Object> reply = lightLlm.callForJson(LightLlmRequest.builder()
+                    .recipeName(REFLECT_RECIPE)
+                    .userPrompt(summary)
+                    .pebbleVars(Map.of(
+                            "taskId", taskId,
+                            "outcome", outcome.name(),
+                            "summary", summary,
+                            // The existing notes are what makes "already
+                            // known" answerable — without them the pass
+                            // rewrites the same lesson every time.
+                            "journal", nullToEmpty(
+                                    journalStore.tail(tenantId, projectId, account))))
+                    .schema(REFLECT_SCHEMA)
+                    .tenantId(tenantId)
+                    .projectId(projectId)
+                    .build());
+            if (!Boolean.TRUE.equals(reply.get("keep"))) {
+                return;
+            }
+            String entry = String.valueOf(reply.getOrDefault("entry", "")).strip();
+            if (entry.isEmpty()) {
+                return;
+            }
+            journalStore.append(tenantId, projectId, account, entry);
+            log.info("Trillian adam: journalled a lesson from task '{}' ({})", taskId, outcome);
+        } catch (RuntimeException e) {
+            log.warn("Trillian adam: reflexion on task '{}' failed: {}", taskId, e.toString());
+        }
+    }
+
+    /**
+     * Attributes (from the shared base) plus what this Trillian has
+     * learned. Reflexion that never reaches a prompt is writing without a
+     * reader.
+     */
+    @Override
+    public String userPromptAddendum(ThinkProcessDocument process) {
+        String base = super.userPromptAddendum(process);
+        String account = accountOf(process);
+        if (account == null) {
+            return base;
+        }
+        String journal = journalStore.tail(
+                process.getTenantId(), process.getProjectId(), account);
+        if (journal == null) {
+            return base;
+        }
+        return base + "\n## What you learned earlier\n\n"
+                + "Notes you wrote after finishing earlier tasks. They are "
+                + "yours and they are about this project — use them before "
+                + "rediscovering the same thing.\n\n"
+                + journal + "\n";
+    }
+
+    private static String nullToEmpty(@Nullable String value) {
+        return value == null ? "" : value;
     }
 
     /** The service account off the worker's own wiring. */

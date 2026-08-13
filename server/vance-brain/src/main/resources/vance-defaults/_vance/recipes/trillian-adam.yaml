@@ -23,6 +23,12 @@ description: |
 
 engine: trillian-control
 
+# Unlike trillian-0, which is reachable through the `trillian` alias,
+# adam is a distinct choice a human makes deliberately — so it appears
+# in the recipe picker itself.
+listed: true
+title: Trillian adam (persistent)
+
 params:
   # Trillian-Nature this recipe pins. TrillianNatureAdam reads it to
   # decide that this pair's attributes are durable.

@@ -15,12 +15,16 @@ separate Definition woanders.
 - `kind: vance-workflow` im `$meta`-Header sagt, **was dieses Dokument
   ist**. Das gilt überall im Projekt — als Entwurf, als Kopie, als
   Variante zum Ausprobieren. Alle werden gleich validiert.
-- **Startbar** ist nur ein Dokument unter
-  `_vance/workflows/<name>.yaml`. Dort sucht der Loader Workflows per
-  Name; der Dateiname ohne `.yaml` ist der Name des Workflows.
+- **Per Namen auffindbar** ist nur ein Dokument unter
+  `_vance/workflows/<name>.yaml`. Dort sucht der Loader; der Dateiname
+  ohne `.yaml` ist der Name des Workflows. Alles, was einen Workflow
+  über seinen Namen startet — Scheduler, Hooks, Agenten,
+  Sub-Workflows — findet ihn nur dort.
 
-Also: schreib ihn wo du willst, und schieb ihn nach
-`_vance/workflows/`, wenn er scharf werden soll.
+Von Hand starten kannst du ihn trotzdem überall: der **Start**-Knopf in
+dieser Ansicht führt das offene Dokument aus, ohne den Umweg über den
+Namen. Nach `_vance/workflows/` schiebst du ihn, wenn ihn etwas
+*anderes* als du selbst starten können soll.
 
 ## Die zwei Reiter
 
@@ -68,6 +72,10 @@ states:
     recipe: jeltz
     params:
       prompt: "Was der Agent tun soll."
+      schema:
+        type: object
+        properties:
+          summary: { type: string }
     storeAs: work_result
     on:
       success: done
@@ -86,6 +94,17 @@ states:
 `start:` und `states:` sind die einzigen Pflichtfelder. Jedes Ziel
 eines `on:`-, `catch:`- oder `transitions:`-Eintrags muss einen
 deklarierten State benennen — sonst weist der Parser die Datei ab.
+
+**`agent_task` fährt Jeltz.** Jeltz liest alles aus den `params` des
+States und liefert ein schema-validiertes JSON-Objekt — das `schema:` ist
+deshalb keine Kür: ohne es scheitert der State, bevor ein Modell gefragt
+wird, und die oberste Ebene muss `type: object` deklarieren.
+
+Reaktive Engines (`ford`, `vogon`, `marvin`, `arthur`) brauchen eine
+Anfangsnachricht statt Parameter, und der Task-Executor schickt die noch
+nicht. Eine davon hier einzutragen scheitert nicht — es **hängt**: der
+Agent startet, wartet im Leerlauf auf Eingaben, die nie kommen, und der
+Lauf wartet endlos auf ihn.
 
 ## Task-Typen
 
@@ -111,9 +130,11 @@ Ein fehlender Key wird zum leeren String, nicht zum Fehler.
 
 ## Starten
 
-Über den Reiter *Workflows* unter Insights (Workflow wählen,
-Parameter ausfüllen, starten), über einen Scheduler-Eintrag, über den
-REST-Endpunkt, oder durch einen Agenten mit dem `workflow_start`-Tool.
+**Starten** in dieser Ansicht führt das offene Dokument aus, egal wo
+es liegt. Die anderen Wege gehen über den Namen und sehen deshalb nur
+Dokumente unter `_vance/workflows/`: der Reiter *Workflows* unter
+Insights, ein Scheduler-Eintrag, der REST-Endpunkt, oder ein Agent mit
+dem `workflow_start`-Tool.
 
 Jeder Start friert das komplette YAML in den Lauf ein. Änderungen an
 diesem Dokument berühren einen laufenden Lauf **nie** — du fixt einen

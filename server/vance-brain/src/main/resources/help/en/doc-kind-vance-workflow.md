@@ -15,11 +15,15 @@ definition somewhere else.
   document is**. It holds anywhere in the project — a draft, a copy,
   a variant you are trying out. All of them validate the same way.
 - Only a document under `_vance/workflows/<name>.yaml` is
-  **startable**. That path is where the loader looks up a workflow by
-  name; the file name without `.yaml` is the workflow's name.
+  **findable by name**. That path is where the loader looks; the file
+  name without `.yaml` is the workflow's name. Everything that starts a
+  workflow by name — schedulers, hooks, agents, sub-workflows — finds it
+  only there.
 
-So: write it wherever you like, move it under `_vance/workflows/`
-when it should go live.
+You can still run it by hand anywhere: the **Start** button in this view
+executes the open document directly, without going through the name.
+Move it under `_vance/workflows/` when something *other than you* should
+be able to start it.
 
 ## The two tabs
 
@@ -65,6 +69,10 @@ states:
     recipe: jeltz
     params:
       prompt: "What the agent should do."
+      schema:
+        type: object
+        properties:
+          summary: { type: string }
     storeAs: work_result
     on:
       success: done
@@ -83,6 +91,17 @@ states:
 `start:` and `states:` are the only required fields. Every target of
 an `on:`, `catch:` or `transitions:` entry must name a declared
 state — the parser rejects the file otherwise.
+
+**`agent_task` drives Jeltz.** Jeltz reads everything from the state's
+`params` and returns a schema-validated JSON object, so the `schema:` is
+not optional — without it the state fails before a model is ever called,
+and the top level must declare `type: object`.
+
+Reactive engines (`ford`, `vogon`, `marvin`, `arthur`) need an initial
+message rather than parameters, and the task executor does not send one
+yet. Naming one of them here does not fail — it **hangs**: the agent
+spawns, goes idle waiting for input that never arrives, and the run waits
+for it forever.
 
 ## Task types
 
@@ -108,9 +127,11 @@ becomes an empty string rather than an error.
 
 ## Starting one
 
-From the *Workflows* tab under Insights (pick the workflow, fill in
-its parameters, hit start), from a scheduler entry, from the REST
-endpoint, or by an agent that has the `workflow_start` tool.
+**Start** in this view runs the document you have open, wherever it
+lives. The other routes go by name and therefore only see documents
+under `_vance/workflows/`: the *Workflows* tab under Insights, a
+scheduler entry, the REST endpoint, or an agent with the
+`workflow_start` tool.
 
 Each start freezes the whole YAML into the run. Editing this document
 never affects a run already in flight — fix a bug, and the next start

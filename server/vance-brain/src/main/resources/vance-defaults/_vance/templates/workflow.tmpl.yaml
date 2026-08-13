@@ -27,6 +27,13 @@ states:
       prompt: |
         {{ summary }}
         Subject: ${params.subject}
+      # agent_task drives Jeltz, and Jeltz needs a schema — see the
+      # help page. Widen it to whatever this step should return.
+      schema:
+        type: object
+        properties:
+          summary: { type: string }
+        required: [summary]
     storeAs: work_result
     timeoutSeconds: 900
     on:

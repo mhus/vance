@@ -588,13 +588,41 @@ public class TrillianControlEngine implements ThinkEngine {
         };
     }
 
-    private @Nullable String renderForLlm(SteerMessage m) {
+
+    /**
+     * A string value out of a process-event payload, or {@code null} when
+     * absent. Payload keys are set by Trillian's own dispatch, so the
+     * types are known; anything unexpected is treated as missing rather
+     * than rendered as a Java toString.
+     */
+    private static @Nullable String payloadString(SteerMessage.ProcessEvent pe, String key) {
+        Map<String, Object> payload = pe.payload();
+        if (payload == null) {
+            return null;
+        }
+        Object v = payload.get(key);
+        return v instanceof String s && !s.isBlank() ? s : null;
+    }
+
+    // Package-private and static: stateless string building, and the
+    // taskId attribute is worth pinning in a test — a missing one is
+    // invisible until an agent reports a correlation id it invented.
+    static @Nullable String renderForLlm(SteerMessage m) {
         if (m instanceof SteerMessage.UserChatInput) return null;
         if (m instanceof SteerMessage.ProcessEvent pe) {
             StringBuilder sb = new StringBuilder();
             sb.append("<process-event sourceProcessId=\"")
                     .append(escapeAttr(pe.sourceProcessId()))
-                    .append("\" type=\"")
+                    .append("\"");
+            // The task id lives in the payload, and the prompt tells the
+            // model to correlate on it. Without surfacing it here the
+            // only identifier in view is sourceProcessId — which is what
+            // the model then reports back, silently breaking correlation.
+            String taskId = payloadString(pe, TrillianInternalApi.PAYLOAD_KEY_TASK_ID);
+            if (taskId != null) {
+                sb.append(" taskId=\"").append(escapeAttr(taskId)).append("\"");
+            }
+            sb.append(" type=\"")
                     .append(pe.type().name().toLowerCase(Locale.ROOT))
                     .append("\">");
             if (pe.humanSummary() != null) {

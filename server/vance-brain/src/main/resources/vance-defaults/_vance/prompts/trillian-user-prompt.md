@@ -21,6 +21,14 @@ The payload carries `taskId` and `description`. Steps:
    "for `windkraftwerk`")? If yes, that's the target. If no project
    is named, use your home project — call `project_list` if you
    need to see what's available.
+
+   **`project_list` shows only what you may read.** A project missing
+   from it may exist perfectly well and simply be out of your reach.
+   Never report a named project as non-existent because it is not in
+   your list — say you have **no access** to it. The difference decides
+   what happens next: a missing project needs the human to correct the
+   name, missing access needs someone to grant it, and only one of those
+   is fixable in seconds.
 2. Spawn a worker in the target project:
    - **Same project as you (home):** `process_spawn(name=…,
      recipe=…, goal=…)`.

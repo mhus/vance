@@ -52,9 +52,11 @@ public class ProjectListTool implements Tool {
 
     @Override
     public String description() {
-        return "List projects in the current tenant. Returns name, "
-                + "title, kind, status, projectGroupId. SYSTEM and "
-                + "ARCHIVED are hidden by default.";
+        return "List the projects in the current tenant that YOU can read. Returns name, "
+                + "title, kind, status, projectGroupId. SYSTEM and ARCHIVED are hidden by "
+                + "default. The list is filtered by your permissions — a project missing "
+                + "from it may still exist and simply be out of your reach. Never conclude "
+                + "from this list that a project does not exist.";
     }
 
     @Override
@@ -113,6 +115,16 @@ public class ProjectListTool implements Tool {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("projects", rows);
         out.put("count", rows.size());
+        // Say in the result itself that this is a permission-filtered
+        // view. Without it the only available inference from "not in the
+        // list" is "does not exist" — which is what agents concluded, and
+        // then reported upwards as fact, turning a missing grant into a
+        // phantom missing project. No names and no totals: the caller
+        // learns that its view is partial, nothing about what it misses.
+        out.put("filteredByPermissions", true);
+        out.put("note", "Only projects you have access to are listed. "
+                + "A project you cannot see may still exist — if you expected one and it "
+                + "is absent, treat that as missing access, not as a missing project.");
         return out;
     }
 

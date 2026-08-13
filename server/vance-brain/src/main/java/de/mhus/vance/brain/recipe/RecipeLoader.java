@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -186,6 +187,7 @@ public class RecipeLoader {
             for (Map.Entry<?, ?> p : pm.entrySet()) {
                 params.put(String.valueOf(p.getKey()), p.getValue());
             }
+            warnOnMisplacedTopLevelKeys(name, params.keySet());
         }
 
         String promptPrefix = stringOrNull(spec.get("promptPrefix"));
@@ -573,6 +575,46 @@ public class RecipeLoader {
 
     private static String stringOrNull(Object raw) {
         return raw instanceof String s && !s.isBlank() ? s : null;
+    }
+
+
+    /**
+     * Recipe fields that belong at the top level. {@code params} is a free
+     * map — the engine puts whatever it finds there into
+     * {@code engineParams} — so a field indented one level too far is
+     * accepted in silence and simply never takes effect.
+     *
+     * <p>That is not hypothetical: {@code coding.yaml} and
+     * {@code trillian-worker-0.yaml} both carried their entire
+     * {@code promptPrefix} under {@code params} and ran without any of
+     * it. The worker never learned its termination contract, and the
+     * symptom looked like a model ignoring instructions rather than
+     * instructions that were never sent.
+     */
+    private static final Set<String> TOP_LEVEL_FIELDS = Set.of(
+            "engine", "description", "title", "promptPrefix", "promptMode",
+            "dataRelayCorrection", "allowedToolsAdd", "allowedToolsRemove",
+            "allowedToolsKeep", "allowedToolsDefer", "allowedToolsDropFirst",
+            "defaultActiveSkills", "allowedSkills", "triggers", "tags",
+            "modes", "profiles", "guard", "internal", "listed", "locked");
+
+    /**
+     * Warns when {@code params} carries a key that is a known top-level
+     * field. Deliberately a warning and not a failure: {@code params} is
+     * open by design, and an engine is free to read a parameter that
+     * happens to share a name. But the overlap is almost always a
+     * misplaced block, and the cost of not noticing is a silently
+     * inactive prompt.
+     */
+    private static void warnOnMisplacedTopLevelKeys(String recipeName, Set<String> paramKeys) {
+        for (String key : paramKeys) {
+            if (TOP_LEVEL_FIELDS.contains(key)) {
+                log.warn("Recipe '{}': 'params.{}' shadows the top-level recipe field '{}' — "
+                                + "it is stored as an engine parameter and has NO effect as a "
+                                + "recipe field. Move it out of 'params' if that was the intent.",
+                        recipeName, key, key);
+            }
+        }
     }
 
     private static PromptMode parsePromptMode(Object raw) {

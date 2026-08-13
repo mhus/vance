@@ -61,6 +61,41 @@ class RecipeLoaderTest {
     }
 
     @Test
+    void load_promptPrefixUnderParams_isNotAPrompt() {
+        // The shape that cost coding.yaml and trillian-worker-0.yaml their
+        // entire prompt: indented one level too far, accepted in silence.
+        stubRecipe("""
+                description: Worker
+                engine: frankie
+                params:
+                  promptPrefix: |
+                    You must call trillian_done when finished.
+                """);
+
+        ResolvedRecipe recipe = loader.load("acme", "p-1", "worker").orElseThrow();
+
+        assertThat(recipe.promptPrefix()).isNull();
+        assertThat(recipe.params()).containsKey("promptPrefix");
+    }
+
+    @Test
+    void load_promptPrefixAtTopLevel_isThePrompt() {
+        stubRecipe("""
+                description: Worker
+                engine: frankie
+                promptPrefix: |
+                  You must call trillian_done when finished.
+                params:
+                  model: default:fast
+                """);
+
+        ResolvedRecipe recipe = loader.load("acme", "p-1", "worker").orElseThrow();
+
+        assertThat(recipe.promptPrefix()).contains("trillian_done");
+        assertThat(recipe.params()).doesNotContainKey("promptPrefix");
+    }
+
+    @Test
     void load_nonMapYaml_failsFast() {
         stubRecipe("just a scalar");
         assertThatThrownBy(() -> loader.load("acme", "p-1", "analyze"))

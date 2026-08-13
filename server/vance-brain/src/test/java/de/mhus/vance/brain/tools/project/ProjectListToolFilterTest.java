@@ -41,6 +41,40 @@ class ProjectListToolFilterTest {
         assertThat(rows).extracting(r -> r.get("name")).containsExactly("mine");
     }
 
+    @Test
+    void result_saysItIsPermissionFiltered() {
+        SecurityContext subject = SecurityContext.user("alice", "acme", List.of());
+        when(contextFactory.forToolSubject("acme", "alice")).thenReturn(subject);
+        when(projectService.listReadableBy(eq("acme"), eq(subject)))
+                .thenReturn(List.of(project("mine")));
+
+        Map<String, Object> out = tool.invoke(Map.of(),
+                new ToolInvocationContext("acme", "mine", "sess", "proc", "alice"));
+
+        // Without this, "not in the list" reads as "does not exist" — which
+        // is what agents concluded and then reported upwards as fact,
+        // turning a missing grant into a phantom missing project.
+        assertThat(out).containsEntry("filteredByPermissions", true);
+        assertThat((String) out.get("note"))
+                .contains("Only projects you have access to")
+                .contains("missing access");
+    }
+
+    @Test
+    void note_isPresentEvenWhenNothingIsVisible() {
+        SecurityContext subject = SecurityContext.user("alice", "acme", List.of());
+        when(contextFactory.forToolSubject("acme", "alice")).thenReturn(subject);
+        when(projectService.listReadableBy(eq("acme"), eq(subject))).thenReturn(List.of());
+
+        Map<String, Object> out = tool.invoke(Map.of(),
+                new ToolInvocationContext("acme", "mine", "sess", "proc", "alice"));
+
+        // The empty result is exactly when the wrong inference is most
+        // tempting.
+        assertThat(out).containsEntry("count", 0).containsEntry("filteredByPermissions", true);
+        assertThat(out.get("note")).isNotNull();
+    }
+
     private static ProjectDocument project(String name) {
         ProjectDocument p = new ProjectDocument();
         p.setName(name);

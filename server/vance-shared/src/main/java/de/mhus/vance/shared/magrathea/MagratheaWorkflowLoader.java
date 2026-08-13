@@ -122,6 +122,20 @@ public class MagratheaWorkflowLoader {
      * @throws MagratheaWorkflowParseException with a field-level error message
      */
     public ResolvedMagratheaWorkflow validateYaml(String name, String yaml) {
+        return parseYaml(name, yaml);
+    }
+
+    /**
+     * Static counterpart of {@link #validateYaml}. Parsing never touches the
+     * document layer, so callers that must work regardless of
+     * {@code vance.services.magrathea} — the {@code vance-workflow}
+     * {@link de.mhus.vance.shared.document.kind.KindHandler}, which keeps the
+     * kind known even on a pod that runs no workflows — validate content
+     * without holding a loader bean.
+     *
+     * @throws MagratheaWorkflowParseException with a field-level error message
+     */
+    public static ResolvedMagratheaWorkflow parseYaml(String name, String yaml) {
         String norm = normalizedName(name);
         try {
             return parse(norm, syntheticHit(norm, yaml));

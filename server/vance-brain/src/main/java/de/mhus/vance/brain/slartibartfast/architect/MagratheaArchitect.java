@@ -99,6 +99,9 @@ public class MagratheaArchitect implements SchemaArchitect {
                 }
 
             YAML structure (mandatory parts marked):
+                $meta:                             # MANDATORY — document header
+                  kind: vance-workflow             # types the document; the
+                                                   # workflow parser ignores $meta
                 description: |
                   <1-2 sentences>
                 version: "1"                       # optional

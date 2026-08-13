@@ -22,8 +22,29 @@ Use a workflow (not a Vogon strategy) when the process has
 **branching, gates, timers, retries, error-handling, or
 sub-workflows** — anything a straight linear pipeline can't express.
 
+## Document header
+
+Every workflow opens with the reserved `$meta` block that types the
+document:
+
+```yaml
+$meta:
+  kind: vance-workflow
+
+start: …
+```
+
+The kind is what makes the document a workflow to the rest of Vance —
+validation, editors, listings. It is independent of the path: the
+header says *what the document is*, `_vance/workflows/<name>.yaml`
+says *that it is startable*. A draft or an archived copy elsewhere in
+the project carries the same kind. The workflow parser ignores `$meta`
+and reads only the fields below, so a document without the header is
+still valid — just untyped.
+
 ## Mandatory fields
 
+- `$meta.kind`: `vance-workflow` (see above).
 - `start`: name of the entry state — MUST exist in `states:`.
 - `states`: a map of `<state-name> → state-def`, at least one entry.
 

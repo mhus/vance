@@ -62,6 +62,21 @@ public class InboxEffectRegistry {
      *         the caller turns this into a visible failure marker rather
      *         than letting it escape to the answering client
      */
+    /**
+     * Whether the item's effect delivers the decision to the originating
+     * process on its own. Unknown or absent effect types answer
+     * {@code false}, which keeps the generic route as the default and an
+     * unrecognised item audible rather than silent.
+     */
+    public boolean notifiesOrigin(InboxItemDocument item) {
+        String type = item.getEffectType();
+        if (StringUtils.isBlank(type)) {
+            return false;
+        }
+        InboxEffect effect = byType.get(type);
+        return effect != null && effect.notifiesOrigin();
+    }
+
     public boolean dispatch(InboxItemDocument item, AnswerPayload answer) {
         String type = item.getEffectType();
         if (StringUtils.isBlank(type)) {

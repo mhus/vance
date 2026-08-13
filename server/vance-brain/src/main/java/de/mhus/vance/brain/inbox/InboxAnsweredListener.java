@@ -34,6 +34,10 @@ import org.springframework.stereotype.Component;
  * <p>Items without an {@code originProcessId} (pure tool-driven
  * outputs, or items where the originating process has gone away)
  * skip the routing — the answer stays on the item alone for audit.
+ *
+ * <p>So do items whose {@link de.mhus.vance.shared.inbox.InboxEffect}
+ * reports {@code notifiesOrigin()} — it has already delivered a message
+ * of its own, and a second generic one is the same decision twice.
  */
 @Component
 @RequiredArgsConstructor
@@ -42,6 +46,7 @@ public class InboxAnsweredListener {
 
     private final ThinkProcessService thinkProcessService;
     private final ProcessEventEmitter eventEmitter;
+    private final de.mhus.vance.shared.inbox.InboxEffectRegistry effectRegistry;
 
     @EventListener
     public void onAnswered(InboxItemAnsweredEvent event) {
@@ -53,6 +58,15 @@ public class InboxAnsweredListener {
         // no semantics for.
         if (item.getTags() != null
                 && item.getTags().contains(RecompactionTags.TAG_INBOX_OFFER)) {
+            return;
+        }
+        // An effect that already told the origin process what was decided
+        // does it better than this can: it names the mutation it just
+        // performed, where the generic steer carries item id, type and
+        // payload. Sending both delivered the same decision twice —
+        // observed live on a permission request, drained as one turn with
+        // two messages.
+        if (effectRegistry.notifiesOrigin(item)) {
             return;
         }
         String processId = item.getOriginProcessId();

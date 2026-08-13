@@ -54,6 +54,22 @@ public interface InboxEffect {
     String effectType();
 
     /**
+     * Whether this effect tells the originating process about the
+     * decision itself, so the generic answer route must stay quiet.
+     *
+     * <p>Default {@code false}: most effects only mutate server state and
+     * rely on {@code InboxAnsweredListener} to deliver the answer. An
+     * effect that pushes its own message must say so, or the process
+     * receives the same decision twice — once phrased for the domain
+     * ("access granted, you can proceed") and once as a generic
+     * {@code InboxAnswer} steer carrying item id, type and payload. Two
+     * arrivals for one decision are tokens spent to confuse the model.
+     */
+    default boolean notifiesOrigin() {
+        return false;
+    }
+
+    /**
      * The responder said yes. Perform the held mutation.
      *
      * @param item   the item as persisted after the transition; carries

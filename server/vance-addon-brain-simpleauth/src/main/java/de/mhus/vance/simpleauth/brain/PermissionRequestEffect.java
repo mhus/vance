@@ -58,6 +58,17 @@ public class PermissionRequestEffect implements InboxEffect {
         return EFFECT_TYPE;
     }
 
+    /**
+     * This effect pushes its own message to the requester (see
+     * {@link #notifyRequester}), which names the grant and says the work
+     * can continue. The generic answer route would add a second arrival
+     * saying the same thing less usefully.
+     */
+    @Override
+    public boolean notifiesOrigin() {
+        return true;
+    }
+
     @Override
     public void onApproved(InboxItemDocument item, AnswerPayload answer) {
         PermissionRequestDocument request = load(item);

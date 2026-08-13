@@ -26,11 +26,14 @@ import org.springframework.stereotype.Service;
  * spawns a {@link AgrajagEngine}-driven think-process on it for each
  * UNCLEAR triage decision coming out of {@code AgrajagChecker}.
  *
- * <p>The system session is owned by the {@code _system} pseudo user
- * (created on demand), flagged {@code system=true}, and never shows up
- * in user-facing listings. Diagnostic processes run as direct children
- * of the session — they live, do their work in a single turn, and
- * close with {@code DONE}.
+ * <p>The system session is owned by {@link SessionService#SYSTEM_OWNER} —
+ * the placeholder for "no human owner", not a principal — flagged
+ * {@code system=true}, and never shows up in user-facing listings. The
+ * think-engine path resolves that owner back to no user, so diagnostics
+ * run on {@code SecurityContext.SYSTEM} rather than on a user subject
+ * that holds no grants (which denied every probe). Diagnostic processes
+ * run as direct children of the session — they live, do their work in a
+ * single turn, and close with {@code DONE}.
  *
  * <p>Failure to spawn is logged and swallowed; the original tool error
  * always reaches the LLM regardless of whether Agrajag could be launched.
@@ -50,7 +53,6 @@ import org.springframework.stereotype.Service;
 public class AgrajagSpawnerService {
 
     public static final String AGRAJAG_SESSION_NAME = "_agrajag";
-    public static final String AGRAJAG_SYSTEM_USER = "_system";
 
     private final SessionService sessionService;
     private final ThinkProcessService thinkProcessService;
@@ -183,7 +185,7 @@ public class AgrajagSpawnerService {
         return sessionService.findSystemSession(tenantId, projectId, AGRAJAG_SESSION_NAME)
                 .orElseGet(() -> {
                     SessionDocument fresh = sessionService.create(
-                            tenantId, AGRAJAG_SYSTEM_USER, projectId,
+                            tenantId, SessionService.SYSTEM_OWNER, projectId,
                             AGRAJAG_SESSION_NAME,
                             Profiles.WEB,            // profile is informational here
                             /*clientVersion*/ "agrajag/" + AgrajagEngine.VERSION,

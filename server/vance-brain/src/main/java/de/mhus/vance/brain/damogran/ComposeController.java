@@ -286,13 +286,18 @@ public class ComposeController {
         if (!session.enabled()) {
             return null;
         }
+        String user = currentUser(httpRequest);
         String sessionKey = session.name() != null && !session.name().isBlank()
                 ? "name:" + session.name().trim()
                 : body.appKey() != null && !body.appKey().isBlank()
                         ? "app:" + body.appKey().trim()
-                        : "user:" + currentUser(httpRequest);
+                        : "user:" + user;
+        // The run — and any agent turn inside it — acts under the caller, not
+        // under system authority. A shared key (name:/app:) whose session
+        // belongs to someone else is re-created for this user rather than
+        // reused, so nobody inherits the previous owner's grants.
         return processResolver.resolveComposeSession(
-                tenant, projectId, sessionKey, session.recipe(), session.clean());
+                tenant, projectId, user, sessionKey, session.recipe(), session.clean());
     }
 
     private static String currentUser(HttpServletRequest req) {

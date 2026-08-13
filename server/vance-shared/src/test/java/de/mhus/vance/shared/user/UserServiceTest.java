@@ -267,6 +267,19 @@ class UserServiceTest {
     }
 
     @Test
+    void createServiceAccount_systemOwnerName_isRejected() {
+        // The placeholder owner of server-owned system sessions resolves to
+        // "no user" and thereby to SecurityContext.SYSTEM — a real account
+        // with that name would inherit the system trust boundary.
+        assertThatThrownBy(() -> service.createServiceAccount(
+                TENANT, de.mhus.vance.shared.session.SessionService.SYSTEM_OWNER,
+                null, null, null))
+                .isInstanceOf(UserService.ReservedNameException.class)
+                .hasMessageContaining("reserved");
+        verify(repo, never()).save(any());
+    }
+
+    @Test
     void setPasswordHash_stampsChangedAt_andClearsLockout() {
         UserDocument locked = UserDocument.builder()
                 .tenantId(TENANT).name("alice")

@@ -33,11 +33,21 @@ import org.springframework.stereotype.Service;
  * {@code allowedToolsOverride} — so it does not depend on the (formal) engine
  * and a chatless compose script gets the same file tools a coding chat grants.
  *
- * <p>Project-scoped, system-owned ({@code _damogran}) — mirrors the compose
+ * <p>Project-scoped and named {@code _damogran[_<key>]} — mirrors the compose
  * workspace, which is itself project-scoped. Concurrent chatless runs on one
  * project share it (the last run's WorkTarget wins — a narrow race, acceptable
  * since the workspace is already project-shared). When a chat session is
  * present the run binds to <em>its</em> process instead (see ComposeController).
+ *
+ * <p><b>Identity.</b> The session is system-flagged but never owner-less by
+ * accident: {@code runAs} is a mandatory argument, so every call states whose
+ * authority the run carries. A conversational agent ({@code session.recipe})
+ * must name a real user — it is free-prompted and therefore may not hold the
+ * system trust boundary. The inert carrier may name
+ * {@link SessionService#SYSTEM_OWNER}, which resolves to no user and thus to
+ * {@code SecurityContext.SYSTEM} — the same authority the compose runners
+ * already use for their own tool contexts, and harmless here because the
+ * carrier is never enqueued on a lane and runs no turn.
  */
 @Slf4j
 @Service
@@ -74,21 +84,38 @@ public class DamogranProcessResolver {
      * otherwise it is a plain {@link BaseEngineTools#WORK_TARGET} holder (eddie,
      * inert). {@code clean} drops an existing process (and its conversation)
      * first, so the run starts fresh on the same stable name.
+     *
+     * <p>{@code runAs} is the identity the session — and therefore every think-turn
+     * running in it — acts under. It is mandatory and has no default: callers
+     * either name the user whose authority the run carries, or explicitly name
+     * {@link SessionService#SYSTEM_OWNER} for server-owned work with no user.
+     * A conversational agent may never take the latter route: a free-prompted
+     * process must not hold the system trust boundary, so a {@code recipe} plus
+     * {@code SYSTEM_OWNER} is rejected. An existing session with a different
+     * owner is closed and re-created rather than reused — reuse would let the
+     * new caller act with the previous owner's grants (same rule as
+     * {@code SystemSessionResolver} applies to scheduler {@code runAs} edits).
+     *
+     * @throws DamogranException if {@code runAs} is blank, or names the system
+     *                           owner while {@code recipe} asks for an agent
      */
     public String resolveComposeSession(
-            String tenantId, String projectId, @Nullable String key,
+            String tenantId, String projectId, String runAs, @Nullable String key,
             @Nullable String recipe, boolean clean) {
+        if (runAs == null || runAs.isBlank()) {
+            throw new DamogranException(
+                    "compose session requires a runAs identity — pass the triggering user, "
+                            + "or SessionService.SYSTEM_OWNER for server-owned work");
+        }
+        boolean agent = recipe != null && !recipe.isBlank();
+        if (agent && SessionService.SYSTEM_OWNER.equals(runAs)) {
+            throw new DamogranException(
+                    "compose agent (session.recipe='" + recipe + "') cannot run without a user — "
+                            + "a free-prompted process must act under a real principal, "
+                            + "not with system authority");
+        }
         String name = sessionName(key);
-        String sessionId = sessionService.findSystemSession(tenantId, projectId, name)
-                .map(SessionDocument::getSessionId)
-                .orElseGet(() -> {
-                    SessionDocument created = sessionService.create(
-                            tenantId, SYSTEM_NAME, projectId, name,
-                            Profiles.DAEMON, "damogran", null, /*system*/ true);
-                    sessionService.markBootstrapped(created.getSessionId());
-                    log.debug("Damogran: created session process '{}' for {}/{}", name, tenantId, projectId);
-                    return created.getSessionId();
-                });
+        String sessionId = resolveSessionId(tenantId, projectId, name, runAs);
 
         if (clean) {
             resetExisting(tenantId, sessionId, name);
@@ -98,8 +125,8 @@ public class DamogranProcessResolver {
         if (existing != null) {
             return existing.getId();
         }
-        if (recipe != null && !recipe.isBlank()) {
-            return createAgent(tenantId, projectId, sessionId, name, recipe);
+        if (agent) {
+            return createAgent(tenantId, projectId, sessionId, name, recipe, runAs);
         }
         return thinkProcessService.create(
                 tenantId, projectId, sessionId, name, EddieEngine.NAME,
@@ -110,19 +137,53 @@ public class DamogranProcessResolver {
     }
 
     /**
+     * Reuse the session for {@code name} when it is owned by {@code runAs},
+     * otherwise create a fresh one. An owner change closes the old session:
+     * a compose session carries the authority of its owner, so handing a
+     * running one to the next caller would silently lend them the previous
+     * owner's grants. Continuity is per (key, owner) — that is the price of
+     * not confusing the two authorities.
+     */
+    private String resolveSessionId(
+            String tenantId, String projectId, String name, String runAs) {
+        SessionDocument existing =
+                sessionService.findSystemSession(tenantId, projectId, name).orElse(null);
+        if (existing != null) {
+            if (runAs.equals(existing.getUserId())) {
+                return existing.getSessionId();
+            }
+            log.info("Damogran: compose session '{}' owner changed in {}/{} "
+                            + "oldUser='{}' newUser='{}' — closing old session '{}' and creating fresh",
+                    name, tenantId, projectId, existing.getUserId(), runAs, existing.getSessionId());
+            sessionService.close(existing.getSessionId());
+        }
+        SessionDocument created = sessionService.create(
+                tenantId, runAs, projectId, name,
+                Profiles.DAEMON, "damogran", null, /*system*/ true);
+        sessionService.markBootstrapped(created.getSessionId());
+        log.debug("Damogran: created session process '{}' for {}/{} runAs='{}'",
+                name, tenantId, projectId, runAs);
+        return created.getSessionId();
+    }
+
+    /**
      * Create the session process as a conversational agent from {@code recipe}
      * via the shared spawn surface — a <b>primary</b> process (no parent) in the
      * system session, created + engine-started. Reuses {@code SpawnActionExecutor}
      * so recipe resolution, tool-set and lifecycle match every other spawn path.
      */
     private String createAgent(
-            String tenantId, String projectId, String sessionId, String name, String recipe) {
+            String tenantId, String projectId, String sessionId, String name,
+            String recipe, String runAs) {
         TriggerAction.Recipe action = new TriggerAction.Recipe(
                 recipe, /*processName*/ name, /*title*/ "Damogran agent", /*goal*/ null,
                 /*inheritContextLevel*/ null, /*connectionProfile*/ null,
                 /*initialMessage*/ null, /*params*/ Map.of(), /*runAs*/ null);
+        // The turn identity comes from the session owner (resolveSessionId
+        // guarantees it is runAs); resolvedRunAs carries the same user into
+        // the event-log so the spawn is attributable to whoever triggered it.
         TriggerContext ctx = TriggerContext.sessioned(
-                tenantId, projectId, /*resolvedRunAs*/ null, /*correlationId*/ null,
+                tenantId, projectId, /*resolvedRunAs*/ runAs, /*correlationId*/ null,
                 "damogran:session", sessionId, /*parentProcessId*/ null);
         ActionResult result = actionRegistryProvider.getObject().execute(action, ctx, TriggerKind.TOOL);
         if (result.outcome().isFailure() || result.spawnedId() == null) {

@@ -112,4 +112,39 @@ class SessionServiceTest {
 
         assertThat(service.setProjectId("ghost", "projB")).isFalse();
     }
+
+    @Test
+    void actingUserId_serverOwnedSystemSession_hasNoUser() {
+        SessionDocument s = SessionDocument.builder()
+                .sessionId("s-agrajag")
+                .userId(SessionService.SYSTEM_OWNER)
+                .system(true)
+                .build();
+
+        // null is the framework's "no user" value — the tool path turns it
+        // into SecurityContext.SYSTEM instead of an unknown user subject.
+        assertThat(SessionService.actingUserId(s)).isNull();
+    }
+
+    @Test
+    void actingUserId_systemSessionWithRealOwner_keepsUser() {
+        SessionDocument s = SessionDocument.builder()
+                .sessionId("s-scheduler")
+                .userId("alice")
+                .system(true)
+                .build();
+
+        assertThat(SessionService.actingUserId(s)).isEqualTo("alice");
+    }
+
+    @Test
+    void actingUserId_nonSystemSession_neverElevatesOnOwnerNameAlone() {
+        SessionDocument s = SessionDocument.builder()
+                .sessionId("s-user")
+                .userId(SessionService.SYSTEM_OWNER)
+                .system(false)
+                .build();
+
+        assertThat(SessionService.actingUserId(s)).isEqualTo(SessionService.SYSTEM_OWNER);
+    }
 }

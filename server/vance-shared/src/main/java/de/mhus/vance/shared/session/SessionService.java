@@ -53,6 +53,25 @@ public class SessionService {
 
     private static final String SESSION_ID_PREFIX = "sess_";
 
+    /**
+     * Placeholder owner for server-owned system sessions that belong to no
+     * human at all (e.g. the {@code _agrajag} diagnostic session).
+     * {@link SessionDocument#getUserId()} is non-null by contract, so the
+     * "nobody owns this" case needs a name — this is it.
+     *
+     * <p>The name is <b>not</b> a principal: {@code UserService} refuses to
+     * mint a user with it, and {@link #actingUserId} maps it back to
+     * {@code null} ("no user") for every caller that derives an identity from
+     * a session. Server-owned work therefore ends up on
+     * {@code SecurityContext.SYSTEM} instead of on a user subject that owns
+     * nothing and is denied everywhere.
+     *
+     * <p>System sessions that run <em>on behalf of</em> someone (scheduler
+     * {@code runAs}, hook owners) keep that user's name and stay user
+     * subjects — they are not affected.
+     */
+    public static final String SYSTEM_OWNER = "_system";
+
     /** Field names — kept in one place so the conditional queries don't drift. */
     private static final String F_SESSION_ID = "sessionId";
     private static final String F_PROJECT_ID = "projectId";
@@ -126,6 +145,24 @@ public class SessionService {
         return repository.findFirstByTenantIdAndProjectIdAndDisplayNameAndSystemAndStatusNotIn(
                 tenantId, projectId, displayName, true,
                 java.util.List.of(SessionStatus.CLOSED, SessionStatus.ARCHIVED));
+    }
+
+    /**
+     * The user a session acts as, or {@code null} when the session is owned
+     * by the server itself (system-flagged and owned by {@link #SYSTEM_OWNER}).
+     *
+     * <p>{@code null} is the framework's "no user" value: permission-aware
+     * call sites turn it into {@code SecurityContext.SYSTEM}, tool-health
+     * lookups skip the USER scope, and per-user caches stay untouched.
+     * Both conditions must hold — the system flag is set by server code only,
+     * so a stray document cannot elevate itself through the owner name alone.
+     */
+    public static @Nullable String actingUserId(SessionDocument session) {
+        String owner = session.getUserId();
+        if (session.isSystem() && SYSTEM_OWNER.equals(owner)) {
+            return null;
+        }
+        return owner;
     }
 
     public List<SessionDocument> listForUser(String tenantId, String userId) {

@@ -174,7 +174,12 @@ public class ThinkEngineService {
         String projectId = processProjectId != null && !processProjectId.isBlank()
                 ? processProjectId
                 : session.getProjectId();
-        String userId = session.getUserId();
+        // Server-owned system sessions (SessionService.SYSTEM_OWNER, e.g. the
+        // _agrajag diagnostic session) carry a placeholder owner, not a
+        // principal — actingUserId maps those to null, which the tool path
+        // reads as "no user" and turns into SecurityContext.SYSTEM. A system
+        // session with a real runAs owner (scheduler, hooks) keeps its user.
+        String userId = SessionService.actingUserId(session);
         ThinkEngine engine = resolveForProcess(process);
         // Recipe-applied override beats engine default. Empty allow-set
         // is intentionally restrictive ("this process may invoke no

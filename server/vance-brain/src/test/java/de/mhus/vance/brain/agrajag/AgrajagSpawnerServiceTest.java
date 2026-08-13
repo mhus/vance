@@ -113,7 +113,7 @@ class AgrajagSpawnerServiceTest {
 
         verify(sessionService).create(
                 eq("acme"),
-                eq(AgrajagSpawnerService.AGRAJAG_SYSTEM_USER),
+                eq(SessionService.SYSTEM_OWNER),
                 eq("proj-1"),
                 eq(AgrajagSpawnerService.AGRAJAG_SESSION_NAME),
                 anyString(), anyString(), any(), eq(true));

@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.damogran;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
@@ -45,16 +46,24 @@ class DamogranProcessResolverTest {
                 sessionService, thinkProcessService, chatMessageService, provider);
     }
 
+    private static SessionDocument session(String sessionId, String owner) {
+        SessionDocument s = new SessionDocument();
+        s.setSessionId(sessionId);
+        s.setUserId(owner);
+        s.setSystem(true);
+        return s;
+    }
+
     @Test
     void reuses_existing_process_without_creating() {
-        SessionDocument session = new SessionDocument();
-        session.setSessionId("sys-1");
+        SessionDocument session = session("sys-1", "alice");
         ThinkProcessDocument process = mock(ThinkProcessDocument.class);
         when(process.getId()).thenReturn("proc-1");
         when(sessionService.findSystemSession("t", "p", "_damogran")).thenReturn(Optional.of(session));
         when(thinkProcessService.findByName("t", "sys-1", "_damogran")).thenReturn(Optional.of(process));
 
-        assertThat(resolver.resolveComposeSession("t", "p", null, null, false)).isEqualTo("proc-1");
+        assertThat(resolver.resolveComposeSession("t", "p", "alice", null, null, false))
+                .isEqualTo("proc-1");
 
         verify(sessionService, never())
                 .create(any(), any(), any(), any(), any(), any(), any(), anyBoolean());
@@ -68,7 +77,7 @@ class DamogranProcessResolverTest {
         when(sessionService.findSystemSession("t", "p", "_damogran")).thenReturn(Optional.empty());
         SessionDocument created = new SessionDocument();
         created.setSessionId("sys-9");
-        when(sessionService.create(eq("t"), eq("_damogran"), eq("p"), eq("_damogran"),
+        when(sessionService.create(eq("t"), eq("alice"), eq("p"), eq("_damogran"),
                 any(), any(), any(), eq(true))).thenReturn(created);
         when(thinkProcessService.findByName("t", "sys-9", "_damogran")).thenReturn(Optional.empty());
         ThinkProcessDocument process = mock(ThinkProcessDocument.class);
@@ -77,7 +86,8 @@ class DamogranProcessResolverTest {
                 any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(process);
 
-        assertThat(resolver.resolveComposeSession("t", "p", null, null, false)).isEqualTo("proc-9");
+        assertThat(resolver.resolveComposeSession("t", "p", "alice", null, null, false))
+                .isEqualTo("proc-9");
 
         verify(sessionService).markBootstrapped("sys-9");
         ArgumentCaptor<Set<String>> override = ArgumentCaptor.forClass(Set.class);
@@ -89,8 +99,7 @@ class DamogranProcessResolverTest {
 
     @Test
     void name_scopesProcess_sanitizedName() {
-        SessionDocument session = new SessionDocument();
-        session.setSessionId("sys-app");
+        SessionDocument session = session("sys-app", "alice");
         ThinkProcessDocument process = mock(ThinkProcessDocument.class);
         when(process.getId()).thenReturn("proc-app");
         // "app:notes/build" → sanitized "_damogran_app_notes_build"
@@ -99,13 +108,13 @@ class DamogranProcessResolverTest {
         when(thinkProcessService.findByName("t", "sys-app", "_damogran_app_notes_build"))
                 .thenReturn(Optional.of(process));
 
-        assertThat(resolver.resolveComposeSession("t", "p", "app:notes/build", null, false)).isEqualTo("proc-app");
+        assertThat(resolver.resolveComposeSession("t", "p", "alice", "app:notes/build", null, false))
+                .isEqualTo("proc-app");
     }
 
     @Test
     void clean_dropsExistingProcessAndMessagesBeforeReuse() {
-        SessionDocument session = new SessionDocument();
-        session.setSessionId("sys-1");
+        SessionDocument session = session("sys-1", "alice");
         ThinkProcessDocument stale = mock(ThinkProcessDocument.class);
         when(stale.getId()).thenReturn("old-proc");
         ThinkProcessDocument fresh = mock(ThinkProcessDocument.class);
@@ -116,7 +125,8 @@ class DamogranProcessResolverTest {
                 .thenReturn(Optional.of(stale))
                 .thenReturn(Optional.of(fresh));
 
-        assertThat(resolver.resolveComposeSession("t", "p", null, null, true)).isEqualTo("new-proc");
+        assertThat(resolver.resolveComposeSession("t", "p", "alice", null, null, true))
+                .isEqualTo("new-proc");
 
         verify(chatMessageService).deleteByProcess("t", "sys-1", "old-proc");
         verify(thinkProcessService).delete("old-proc");
@@ -124,17 +134,72 @@ class DamogranProcessResolverTest {
 
     @Test
     void recipe_createsAgentViaActionRegistry_returningSpawnedId() {
-        SessionDocument session = new SessionDocument();
-        session.setSessionId("sys-1");
+        SessionDocument session = session("sys-1", "alice");
         when(sessionService.findSystemSession("t", "p", "_damogran")).thenReturn(Optional.of(session));
         when(thinkProcessService.findByName("t", "sys-1", "_damogran")).thenReturn(Optional.empty());
         when(actionRegistry.execute(any(), any(), eq(TriggerKind.TOOL)))
                 .thenReturn(ActionResult.scheduled("agent-42"));
 
-        assertThat(resolver.resolveComposeSession("t", "p", null, "arthur", false)).isEqualTo("agent-42");
+        assertThat(resolver.resolveComposeSession("t", "p", "alice", null, "arthur", false))
+                .isEqualTo("agent-42");
 
         // Recipe path spawns via the registry — no plain eddie holder created.
         verify(thinkProcessService, never()).create(
                 any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void otherOwner_closesSessionInsteadOfLendingItsGrants() {
+        SessionDocument alices = session("sys-alice", "alice");
+        when(sessionService.findSystemSession("t", "p", "_damogran_name_build"))
+                .thenReturn(Optional.of(alices));
+        SessionDocument bobs = session("sys-bob", "bob");
+        when(sessionService.create(eq("t"), eq("bob"), eq("p"), eq("_damogran_name_build"),
+                any(), any(), any(), eq(true))).thenReturn(bobs);
+        when(thinkProcessService.findByName("t", "sys-bob", "_damogran_name_build"))
+                .thenReturn(Optional.empty());
+        when(actionRegistry.execute(any(), any(), eq(TriggerKind.TOOL)))
+                .thenReturn(ActionResult.scheduled("agent-bob"));
+
+        assertThat(resolver.resolveComposeSession(
+                "t", "p", "bob", "name:build", "arthur", false)).isEqualTo("agent-bob");
+
+        verify(sessionService).close("sys-alice");
+    }
+
+    @Test
+    void agentWithoutUser_isRejected() {
+        // A free-prompted process must not hold the system trust boundary.
+        assertThatThrownBy(() -> resolver.resolveComposeSession(
+                "t", "p", SessionService.SYSTEM_OWNER, null, "arthur", false))
+                .isInstanceOf(DamogranException.class)
+                .hasMessageContaining("cannot run without a user");
+        verify(sessionService, never())
+                .create(any(), any(), any(), any(), any(), any(), any(), anyBoolean());
+    }
+
+    @Test
+    void carrierMayRunAsSystemOwner() {
+        // The inert WorkTarget holder never runs a turn — no user is honest here.
+        when(sessionService.findSystemSession("t", "p", "_damogran")).thenReturn(Optional.empty());
+        SessionDocument created = session("sys-sys", SessionService.SYSTEM_OWNER);
+        when(sessionService.create(eq("t"), eq(SessionService.SYSTEM_OWNER), eq("p"), eq("_damogran"),
+                any(), any(), any(), eq(true))).thenReturn(created);
+        when(thinkProcessService.findByName("t", "sys-sys", "_damogran")).thenReturn(Optional.empty());
+        ThinkProcessDocument process = mock(ThinkProcessDocument.class);
+        when(process.getId()).thenReturn("carrier-1");
+        when(thinkProcessService.create(
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(process);
+
+        assertThat(resolver.resolveComposeSession(
+                "t", "p", SessionService.SYSTEM_OWNER, null, null, false)).isEqualTo("carrier-1");
+    }
+
+    @Test
+    void blankRunAs_isRejected() {
+        assertThatThrownBy(() -> resolver.resolveComposeSession("t", "p", "", null, null, false))
+                .isInstanceOf(DamogranException.class)
+                .hasMessageContaining("runAs");
     }
 }

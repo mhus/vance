@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.user;
 
+import de.mhus.vance.shared.session.SessionService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -42,6 +43,16 @@ public class UserService {
      * them. Keeps the namespace authoritative for first-party use.
      */
     public static final String RESERVED_VANCE_PREFIX = "_vance-";
+
+    /**
+     * Names that can never belong to a principal. {@link SessionService#SYSTEM_OWNER}
+     * is the placeholder owner of server-owned system sessions, and the
+     * think-engine path reads it as "no user" — which becomes
+     * {@code SecurityContext.SYSTEM}. A real account carrying that name would
+     * therefore inherit the system trust boundary, so no creation path may
+     * mint it.
+     */
+    private static final List<String> RESERVED_NAMES = List.of(SessionService.SYSTEM_OWNER);
 
     /**
      * Consecutive failed password logins that trigger a temporary lockout.
@@ -173,6 +184,11 @@ public class UserService {
             @Nullable String email,
             boolean loginEnabled,
             boolean serviceAccount) {
+        if (RESERVED_NAMES.contains(name)) {
+            throw new ReservedNameException(
+                    "User name '" + name + "' is reserved for internal, "
+                            + "non-principal use and cannot be created");
+        }
         if (repository.existsByTenantIdAndName(tenantId, name)) {
             throw new UserAlreadyExistsException(
                     "User '" + name + "' already exists in tenant '" + tenantId + "'");

@@ -69,6 +69,8 @@ class TrillianSessionLifecycleHookTest {
         }).when(permissionProvider).ifAvailable(any());
         when(sessionService.findBySessionId(any()))
                 .thenAnswer(inv -> java.util.Optional.of(session(inv.getArgument(0))));
+        when(userService.findByTenantAndName(TENANT, ACCOUNT)).thenAnswer(
+                inv -> java.util.Optional.of(new de.mhus.vance.shared.user.UserDocument()));
         when(nature.id()).thenReturn("adam");
         hook = new TrillianSessionLifecycleHook(
                 thinkProcessService, sessionService, userService,
@@ -148,6 +150,32 @@ class TrillianSessionLifecycleHookTest {
         hook.onSessionDeleted(session(CONTROL));
 
         verify(lifecycleService).deleteSession(PEER);
+    }
+
+    @Test
+    void deletingAnArchivedControl_stillReleasesTheAccount() {
+        // deleteSession drives the close cascade only for sessions that
+        // are neither CLOSED nor ARCHIVED, so an archived Trillian is
+        // deleted without onSessionClosed ever firing. Account, grants
+        // and attribute document used to stay behind — found by having to
+        // clear orphaned accounts out of Mongo by hand.
+        hook.onSessionDeleted(session(CONTROL));
+
+        verify(nature).attributesDiscarded(TENANT, PROJECT, ACCOUNT);
+        verify(permissionBootstrap).revokeAll(TENANT, ACCOUNT);
+        verify(userService).delete(TENANT, ACCOUNT);
+    }
+
+    @Test
+    void anAccountAlreadyGone_isNotDeletedTwice() {
+        // The ordinary path runs both hooks. Without the presence check
+        // the second pass logs a failure for what the first one did.
+        when(userService.findByTenantAndName(TENANT, ACCOUNT))
+                .thenReturn(java.util.Optional.empty());
+
+        hook.onSessionDeleted(session(CONTROL));
+
+        verify(userService, never()).delete(any(), any());
     }
 
     @Test

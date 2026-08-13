@@ -72,6 +72,31 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
         if (!isControlSession(session)) {
             return;
         }
+        releaseAccount(session);
+        peerSessionOf(session).ifPresent(peer -> {
+            lifecycleProvider.getObject().closeWithCascade(peer);
+            log.info("Trillian: closed worker session '{}' alongside control '{}'",
+                    peer, session.getSessionId());
+        });
+    }
+
+    /**
+     * Releases everything that hangs off the service account, then the
+     * account itself.
+     *
+     * <p>Called from both {@link #onSessionClosed} and
+     * {@link #onSessionDeleted}, because neither alone covers every way a
+     * Trillian ends. {@code SessionLifecycleService.deleteSession} drives
+     * the close cascade only for sessions that are neither {@code CLOSED}
+     * nor {@code ARCHIVED} — so deleting an <em>archived</em> Trillian
+     * never fired the close hook, and its account, grants and attribute
+     * document stayed behind. That leak was found by having to clear
+     * orphaned accounts out of Mongo by hand.
+     *
+     * <p>Idempotent by construction: on the ordinary path both hooks run
+     * and the second finds nothing left to do.
+     */
+    private void releaseAccount(SessionDocument session) {
         accountOf(session).ifPresent(account -> {
             // Everything keyed by the account name goes before the name
             // does. A Nature that stored attributes under it releases
@@ -95,6 +120,12 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
             } catch (RuntimeException e) {
                 log.warn("Trillian: revoking grants of '{}' failed: {}", account, e.toString());
             }
+            // Presence check rather than catching UserNotFoundException:
+            // on the ordinary path this runs twice, and the second pass
+            // would otherwise log a failure for the success of the first.
+            if (userService.findByTenantAndName(session.getTenantId(), account).isEmpty()) {
+                return;
+            }
             try {
                 userService.delete(session.getTenantId(), account);
                 log.info("Trillian: deleted service-account '{}' with control session '{}'",
@@ -102,11 +133,6 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
             } catch (RuntimeException e) {
                 log.warn("Trillian: deleting account '{}' failed: {}", account, e.toString());
             }
-        });
-        peerSessionOf(session).ifPresent(peer -> {
-            lifecycleProvider.getObject().closeWithCascade(peer);
-            log.info("Trillian: closed worker session '{}' alongside control '{}'",
-                    peer, session.getSessionId());
         });
     }
 
@@ -150,6 +176,9 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
         if (!isControlSession(session)) {
             return;
         }
+        // Also here, not only in onSessionClosed: an archived session is
+        // deleted without ever passing through the close cascade.
+        releaseAccount(session);
         peerSessionOf(session).ifPresent(peer -> {
             lifecycleProvider.getObject().deleteSession(peer);
             log.info("Trillian: deleted worker session '{}' alongside control '{}'",

@@ -185,6 +185,12 @@ const canStart = computed(() =>
 const blockedReason = computed<string | null>(() =>
   graph.value.problems.length > 0 ? graph.value.problems[0] : null);
 
+/** Deep link into the run view; composite id, prefixed by its source. */
+function runHref(runId: string): string {
+  return `/runs.html?project=${encodeURIComponent(props.projectId ?? '')}`
+    + `&run=${encodeURIComponent('workflow:' + runId)}`;
+}
+
 function paramPlaceholder(defaultValue: unknown): string {
   if (defaultValue === undefined || defaultValue === null) return '';
   return String(defaultValue);
@@ -290,10 +296,16 @@ async function start(): Promise<void> {
         <span v-if="blockedReason" class="start-note">
           {{ t('documents.workflowView.startBlocked') }}
         </span>
-        <span v-else-if="lastRunId" class="start-note start-note--ok">
+        <!-- The run id is only useful if it leads somewhere; the run view
+             is where the started run can actually be watched. -->
+        <a
+          v-else-if="lastRunId"
+          class="start-note start-note--ok start-link"
+          :href="runHref(lastRunId)"
+        >
           {{ t('documents.workflowView.started') }}
-          <code>{{ lastRunId }}</code>
-        </span>
+          <code>{{ lastRunId }}</code> ↗
+        </a>
       </div>
       <VAlert v-if="startError" variant="error" class="start-error">
         {{ startError }}
@@ -433,6 +445,10 @@ async function start(): Promise<void> {
 .start-note--ok code {
   font-size: 0.72rem;
   opacity: 0.85;
+}
+.start-link {
+  text-decoration: underline;
+  cursor: pointer;
 }
 .start-error {
   font-size: 0.8rem;

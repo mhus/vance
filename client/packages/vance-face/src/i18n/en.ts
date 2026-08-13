@@ -471,6 +471,39 @@ export default {
     },
   },
 
+  runs: {
+    pageTitle: 'Runs',
+    refresh: 'Refresh',
+    loading: 'Loading runs…',
+    loadingDetail: 'Loading run…',
+    count: '{n} runs',
+    filter: { project: 'Project', allSources: 'All sources' },
+    status: {
+      RUNNING: 'running', WAITING: 'waiting', PAUSED: 'paused',
+      STOPPING: 'stopping', DONE: 'done', FAILED: 'failed',
+      STOPPED: 'stopped',
+    },
+    link: { definition: 'Open definition', session: 'Open session', document: 'Open document' },
+    empty: {
+      headline: 'No runs',
+      body: 'Nothing is running in this project, and nothing that ran is still being kept.',
+    },
+    select: {
+      headline: 'Pick a run',
+      body: 'Choose one on the left to see its steps, variables and result.',
+    },
+    detail: {
+      steps: 'Steps',
+      variables: 'Variables',
+      children: 'Runs it started',
+      result: 'Result',
+      source: 'Details ({source})',
+      waitingOnInbox: 'This run is waiting for an answer.',
+      openInbox: 'Go to inbox',
+      composeTransient:
+        'Compose runs are kept in memory only — gone ten minutes after they finish, and invisible to another pod.',
+    },
+  },
   documents: {
     externallyChanged: {
       upserted: 'Changed externally',
@@ -982,6 +1015,7 @@ export default {
         runIdLabel: 'workflowRunId:',
       },
       runs: {
+        openInRunView: 'Open in run view',
         title: 'Runs',
         subtitle: '{total} most recent runs (newest first, max 100)',
         refresh: 'Refresh',

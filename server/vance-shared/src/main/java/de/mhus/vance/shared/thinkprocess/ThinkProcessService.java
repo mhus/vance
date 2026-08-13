@@ -333,6 +333,17 @@ public class ThinkProcessService {
         return repository.findByTenantIdAndSessionIdAndName(tenantId, sessionId, name);
     }
 
+    /**
+     * Processes of a whole project, newest first — the axis the run view
+     * needs. Every other lookup here is session-scoped, which is right for
+     * a chat but wrong for a list of "what is running in this project".
+     */
+    public List<ThinkProcessDocument> findByProject(String tenantId, String projectId, int limit) {
+        return repository.findByTenantIdAndProjectIdOrderByCreatedAtDesc(
+                tenantId, projectId,
+                org.springframework.data.domain.PageRequest.of(0, Math.max(1, limit)));
+    }
+
     public List<ThinkProcessDocument> findBySession(String tenantId, String sessionId) {
         return repository.findByTenantIdAndSessionId(tenantId, sessionId);
     }

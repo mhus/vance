@@ -193,6 +193,12 @@ public class VogonEngine implements ThinkEngine {
 
     // ──────────────────── Lifecycle ────────────────────
 
+    /** Vogon progresses through a plan the run view can show. */
+    @Override
+    public boolean planShaped() {
+        return true;
+    }
+
     @Override
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
         StrategySpec strategy = resolveAndFreezePlan(process);

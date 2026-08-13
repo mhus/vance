@@ -19,6 +19,7 @@ const editorEntries = {
   scopes: resolve(pkgDir, 'scopes.html'),
   tools: resolve(pkgDir, 'tools.html'),
   insights: resolve(pkgDir, 'insights.html'),
+  runs: resolve(pkgDir, 'runs.html'),
   users: resolve(pkgDir, 'users.html'),
   profile: resolve(pkgDir, 'profile.html'),
   cortex: resolve(pkgDir, 'cortex.html'),

@@ -466,6 +466,39 @@ export default {
     },
   },
 
+  runs: {
+    pageTitle: 'Läufe',
+    refresh: 'Aktualisieren',
+    loading: 'Lade Läufe…',
+    loadingDetail: 'Lade Lauf…',
+    count: '{n} Läufe',
+    filter: { project: 'Projekt', allSources: 'Alle Quellen' },
+    status: {
+      RUNNING: 'läuft', WAITING: 'wartet', PAUSED: 'pausiert',
+      STOPPING: 'stoppt', DONE: 'fertig', FAILED: 'fehlgeschlagen',
+      STOPPED: 'gestoppt',
+    },
+    link: { definition: 'Definition öffnen', session: 'Session öffnen', document: 'Dokument öffnen' },
+    empty: {
+      headline: 'Keine Läufe',
+      body: 'In diesem Projekt läuft gerade nichts, und es ist auch nichts gelaufen, was noch vorgehalten wird.',
+    },
+    select: {
+      headline: 'Lauf auswählen',
+      body: 'Links einen Lauf anklicken, um Schritte, Variablen und Ergebnis zu sehen.',
+    },
+    detail: {
+      steps: 'Schritte',
+      variables: 'Variablen',
+      children: 'Gestartete Läufe',
+      result: 'Ergebnis',
+      source: 'Details ({source})',
+      waitingOnInbox: 'Dieser Lauf wartet auf eine Antwort.',
+      openInbox: 'Zur Inbox',
+      composeTransient:
+        'Compose-Läufe werden nur im Speicher gehalten — zehn Minuten nach dem Ende sind sie weg, und ein anderer Pod sieht sie gar nicht.',
+    },
+  },
   documents: {
     externallyChanged: {
       upserted: 'Extern geändert',
@@ -979,6 +1012,7 @@ export default {
         runIdLabel: 'workflowRunId:',
       },
       runs: {
+        openInRunView: 'In Lauf-Sicht öffnen',
         title: 'Runs',
         subtitle: 'Die {total} jüngsten Runs (neueste zuerst, max 100)',
         refresh: 'Neu laden',

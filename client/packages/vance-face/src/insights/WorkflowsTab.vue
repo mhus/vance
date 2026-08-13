@@ -95,6 +95,13 @@ function sourceClass(source: MagratheaWorkflowSource | string): string {
     : 'badge-source badge-source--vance';
 }
 
+/** Deep link into the run view for one Magrathea run. */
+function runsHref(run: { workflowRunId: string; projectId?: string | null }): string {
+  const project = run.projectId ?? props.projectId ?? '';
+  return `/runs.html?project=${encodeURIComponent(project)}`
+    + `&run=${encodeURIComponent('workflow:' + run.workflowRunId)}`;
+}
+
 function runStatusClass(status: unknown): string {
   switch (String(status)) {
     case 'DONE': return 'badge-run badge-run--done';
@@ -476,9 +483,19 @@ function processSelectHandler(run: MagratheaProcessDto): void {
                   >
                     <div class="flex items-center justify-between gap-2">
                       <span class="font-mono text-sm">{{ run.workflowRunId }}</span>
-                      <span :class="runStatusClass(run.status)" class="text-xs">
-                        {{ run.status }}
-                      </span>
+                      <div class="flex items-center gap-2">
+                        <!-- This tab lists definitions and their runs; the
+                             run view is where a single run can be followed
+                             across every source. -->
+                        <a
+                          :href="runsHref(run)"
+                          class="text-xs underline opacity-70 hover:opacity-100"
+                          @click.stop
+                        >{{ $t('insights.workflows.runs.openInRunView') }} ↗</a>
+                        <span :class="runStatusClass(run.status)" class="text-xs">
+                          {{ run.status }}
+                        </span>
+                      </div>
                     </div>
                     <div class="text-xs opacity-60 mt-0.5 flex flex-wrap gap-x-3">
                       <span v-if="run.currentState">

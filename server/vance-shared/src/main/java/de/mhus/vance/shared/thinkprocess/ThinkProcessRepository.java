@@ -27,6 +27,10 @@ interface ThinkProcessRepository extends MongoRepository<ThinkProcessDocument, S
     List<ThinkProcessDocument> findByTenantIdAndParentProcessId(
             String tenantId, String parentProcessId);
 
+    /** Newest-first processes of a project, across its sessions — the run view. */
+    List<ThinkProcessDocument> findByTenantIdAndProjectIdOrderByCreatedAtDesc(
+            String tenantId, String projectId, org.springframework.data.domain.Pageable pageable);
+
     boolean existsByTenantIdAndSessionIdAndName(
             String tenantId, String sessionId, String name);
 

@@ -146,6 +146,24 @@ public interface ThinkEngine {
     }
 
     /**
+     * Whether a process of this engine is a <em>run</em> worth watching in
+     * the run view — one with a plan a reader can follow.
+     *
+     * <p>Vogon has phases, Marvin has a task tree; both progress through
+     * something inspectable. Ford is an endless worker with nothing to
+     * show a progress bar for, Arthur and Eddie are conversations. The
+     * distinction is not "worker vs. chat" and not the engine name — it is
+     * whether there is a plan — so the engine declares it rather than the
+     * view keeping a list that goes stale.
+     *
+     * <p>Default {@code false}: an engine appears in the run view only by
+     * saying so.
+     */
+    default boolean planShaped() {
+        return false;
+    }
+
+    /**
      * Whether this engine's terminal events (DONE / FAILED) carry a
      * text that a parent orchestrator can RELAY verbatim to the user.
      *

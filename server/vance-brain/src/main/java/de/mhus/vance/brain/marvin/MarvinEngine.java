@@ -279,6 +279,12 @@ public class MarvinEngine implements ThinkEngine {
 
     // ──────────────────── Lifecycle ────────────────────
 
+    /** Marvin progresses through a plan the run view can show. */
+    @Override
+    public boolean planShaped() {
+        return true;
+    }
+
     @Override
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.info("Marvin.start tenant='{}' session='{}' id='{}' goal='{}'",

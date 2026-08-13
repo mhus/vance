@@ -247,6 +247,13 @@ export * from './events/EventSource';
 export * from './events/EventSummary';
 export * from './events/EventTriggerResponse';
 
+export * from './runs/RunAction';
+export * from './runs/RunChildDto';
+export * from './runs/RunDetailDto';
+export * from './runs/RunLinkDto';
+export * from './runs/RunStatus';
+export * from './runs/RunStepDto';
+export * from './runs/RunSummaryDto';
 export * from './magrathea/MagratheaParameterDto';
 export * from './magrathea/MagratheaProcessDto';
 export * from './magrathea/MagratheaRunStatus';

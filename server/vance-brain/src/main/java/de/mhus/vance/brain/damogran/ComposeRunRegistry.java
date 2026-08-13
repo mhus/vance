@@ -3,6 +3,7 @@ package de.mhus.vance.brain.damogran;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -44,6 +45,21 @@ public class ComposeRunRegistry {
             return Optional.empty();
         }
         return Optional.of(run);
+    }
+
+    /**
+     * Runs of one project, newest first — the run view's listing.
+     *
+     * <p>What this can show is bounded by what the registry is: an
+     * in-memory map, pod-local, terminal entries swept after the TTL.
+     * There is no history to list beyond that window.
+     */
+    public List<ComposeRun> list(String tenantId, String projectId, int limit) {
+        return runs.values().stream()
+                .filter(r -> r.tenantId().equals(tenantId) && r.projectId().equals(projectId))
+                .sorted(Comparator.comparing(ComposeRun::startedAt).reversed())
+                .limit(Math.max(1, limit))
+                .toList();
     }
 
     /** Drop terminal runs whose {@code finishedAt} is older than the TTL. */

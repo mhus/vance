@@ -72,6 +72,7 @@ public class TrillianCommandHandler implements EngineCommandHandler {
         String rest = head[1];
         return switch (sub) {
             case "info" -> info(process, peer);
+            case "attr" -> attr(process, peer, rest);
             case "queue" -> queue(peer);
             case "task" -> task(process, peer, rest);
             case "stop" -> stop(peer);
@@ -79,8 +80,8 @@ public class TrillianCommandHandler implements EngineCommandHandler {
             case "clear" -> clear(peer, rest);
             default -> EngineCommandResult.error(
                     "unknown subcommand '" + sub
-                            + "' (info | queue | task <description> | stop | continue "
-                            + "| clear [all])");
+                            + "' (info | queue | task <description> | attr [set|del|clear] "
+                            + "| stop | continue | clear [all])");
         };
     }
 
@@ -186,6 +187,73 @@ public class TrillianCommandHandler implements EngineCommandHandler {
         return EngineCommandResult.ok(
                 "Queued (taskId=" + taskId.get() + ").",
                 Map.of("taskId", taskId.get()));
+    }
+
+    /**
+     * Reads and edits the worker's attributes — the same map the
+     * {@code user_attr_*} tools write, through the same API, so a value
+     * set by hand is indistinguishable from one Control set.
+     *
+     * <p>{@code set} takes the rest of the line as the value, so spaces
+     * need no quoting: {@code //trillian attr set persona a dry Swabian}.
+     */
+    private EngineCommandResult attr(
+            ThinkProcessDocument control, ThinkProcessDocument peer, String rest) {
+        String[] head = splitFirstToken(rest);
+        String sub = head[0].isEmpty() ? "list" : head[0].toLowerCase(Locale.ROOT);
+        String args = head[1];
+        return switch (sub) {
+            case "list" -> listAttributes(peer);
+            case "set" -> setAttribute(control, peer, args);
+            case "del", "delete", "remove" -> deleteAttribute(control, args);
+            case "clear" -> clearAttributes(control);
+            default -> EngineCommandResult.error(
+                    "unknown attr subcommand '" + sub
+                            + "' (list | set <name> <value> | del <name> | clear)");
+        };
+    }
+
+    private EngineCommandResult listAttributes(ThinkProcessDocument peer) {
+        Map<String, Object> attributes = TrillianInternalApi.readAttributes(peer);
+        String message = attributes.isEmpty()
+                ? "No attributes set."
+                : attributes.size() + " attribute(s): " + String.join(", ", attributes.keySet());
+        return EngineCommandResult.ok(message, Map.of("attributes", attributes));
+    }
+
+    private EngineCommandResult setAttribute(
+            ThinkProcessDocument control, ThinkProcessDocument peer, String args) {
+        String[] parts = splitFirstToken(args);
+        String name = parts[0];
+        String value = parts[1].trim();
+        if (name.isEmpty() || value.isEmpty()) {
+            return EngineCommandResult.error("usage: //trillian attr set <name> <value>");
+        }
+        if (!api.setPeerAttribute(control.getId(), name, value)) {
+            return EngineCommandResult.error("Could not set '" + name + "' on the worker");
+        }
+        return EngineCommandResult.ok("Set " + name + " = " + abbreviate(value),
+                Map.of("name", name, "value", value));
+    }
+
+    private EngineCommandResult deleteAttribute(ThinkProcessDocument control, String args) {
+        String name = splitFirstToken(args)[0];
+        if (name.isEmpty()) {
+            return EngineCommandResult.error("usage: //trillian attr del <name>");
+        }
+        boolean removed = api.removePeerAttribute(control.getId(), name);
+        return EngineCommandResult.ok(
+                removed ? "Removed " + name + "." : "'" + name + "' was not set.",
+                Map.of("removed", removed));
+    }
+
+    private EngineCommandResult clearAttributes(ThinkProcessDocument control) {
+        int cleared = api.clearPeerAttributes(control.getId());
+        if (cleared < 0) {
+            return EngineCommandResult.error("No worker to clear attributes on");
+        }
+        return EngineCommandResult.ok("Cleared " + cleared + " attribute(s).",
+                Map.of("cleared", cleared));
     }
 
     private EngineCommandResult stop(ThinkProcessDocument peer) {

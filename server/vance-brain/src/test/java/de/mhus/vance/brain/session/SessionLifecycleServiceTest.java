@@ -459,6 +459,44 @@ class SessionLifecycleServiceTest {
         verify(thinkProcessService, never()).requestHalt("p-closed");
     }
 
+    // ─── reactivate ─────────────────────────────────────────────────────
+
+    @Test
+    void reactivate_keepsTheRecipeOfTheArchivedChatProcess() {
+        SessionDocument archived = new SessionDocument();
+        archived.setSessionId("s-1");
+        archived.setTenantId("acme");
+        archived.setStatus(SessionStatus.ARCHIVED);
+        archived.setChatProcessId("old-chat");
+        when(sessionService.findBySessionId("s-1")).thenReturn(Optional.of(archived));
+        when(thinkProcessService.findById("old-chat")).thenReturn(Optional.of(
+                ThinkProcessDocument.builder()
+                        .id("old-chat").tenantId("acme").sessionId("s-1")
+                        .recipeName("trillian")
+                        .status(ThinkProcessStatus.CLOSED)
+                        .build()));
+
+        lifecycle.reactivateFromArchive("s-1");
+
+        // Without carrying it over the spawn falls back to the tenant
+        // default, and a Trillian session comes back as an Arthur one —
+        // silently, because nothing about that looks like an error.
+        verify(chatBootstrapper).ensureChatProcess(any(), eq(null), eq("trillian"));
+    }
+
+    @Test
+    void reactivate_withoutAPreviousRecipe_passesNone() {
+        SessionDocument archived = new SessionDocument();
+        archived.setSessionId("s-1");
+        archived.setTenantId("acme");
+        archived.setStatus(SessionStatus.ARCHIVED);
+        when(sessionService.findBySessionId("s-1")).thenReturn(Optional.of(archived));
+
+        lifecycle.reactivateFromArchive("s-1");
+
+        verify(chatBootstrapper).ensureChatProcess(any(), eq(null), eq(null));
+    }
+
     private void stubSession(String sessionId, SessionStatus status,
                              DisconnectPolicy policy) {
         SessionDocument doc = new SessionDocument();

@@ -30,6 +30,19 @@ import de.mhus.vance.shared.session.SessionDocument;
 public interface SessionLifecycleHook {
 
     /**
+     * The session was closed — its engines are terminal and it is not
+     * coming back on its own. Anything held only for the lifetime of
+     * this session should be released here.
+     *
+     * <p>Distinct from {@link #onSessionArchived}: archiving also closes
+     * every process, so a subsystem watching process status alone cannot
+     * tell the two apart — and the close reason that would distinguish
+     * them is written after the fact.
+     */
+    default void onSessionClosed(SessionDocument session) {
+    }
+
+    /**
      * The session was archived — put away, not thrown away. Anything
      * that follows it should be archived too, and anything that would
      * make a later reactivation impossible must be preserved.

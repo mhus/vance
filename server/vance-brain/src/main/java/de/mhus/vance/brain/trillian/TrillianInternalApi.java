@@ -492,6 +492,29 @@ public class TrillianInternalApi {
      *
      * @return number of attributes cleared, or -1 when peer is missing
      */
+    /**
+     * Removes one attribute from the peer. Returns {@code false} when
+     * there is no peer or the key was not set — a delete of something
+     * absent is worth saying, not worth failing.
+     */
+    public boolean removePeerAttribute(String callerProcessId, String name) {
+        Optional<ThinkProcessDocument> peerOpt = findPeer(callerProcessId);
+        if (peerOpt.isEmpty()) {
+            return false;
+        }
+        ThinkProcessDocument peer = peerOpt.get();
+        Map<String, Object> attributes = readAttributes(peer);
+        if (attributes.remove(MongoKeys.sanitizeKey(name)) == null) {
+            return false;
+        }
+        Map<String, Object> params = new LinkedHashMap<>();
+        if (peer.getEngineParams() != null) {
+            params.putAll(peer.getEngineParams());
+        }
+        params.put(PARAM_ATTRIBUTES, attributes);
+        return thinkProcessService.replaceEngineParams(peer.getId(), params);
+    }
+
     public int clearPeerAttributes(String callerProcessId) {
         Optional<ThinkProcessDocument> peerOpt = findPeer(callerProcessId);
         if (peerOpt.isEmpty()) {

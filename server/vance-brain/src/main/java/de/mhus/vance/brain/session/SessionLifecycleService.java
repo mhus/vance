@@ -211,6 +211,7 @@ public class SessionLifecycleService {
         // Drop pending engine messages — the session is going terminal.
         engineMessageService.purgeForProcesses(closedProcessIds);
         sessionService.close(sessionId);
+        fireHooks("closed", session, SessionLifecycleHook::onSessionClosed);
     }
 
     /**
@@ -282,6 +283,16 @@ public class SessionLifecycleService {
         // remains queryable by sessionId; the renamed process keeps its
         // CLOSED status with closeReason=ARCHIVED.
         String oldChatProcessId = session.getChatProcessId();
+        // Carry the recipe over. Without it the fresh spawn falls back to
+        // the tenant default, so reactivating silently turned a session
+        // into an Arthur one — observed on a Trillian session, where the
+        // pairing then never happened because the bootstrap keys on the
+        // control engine. Every non-default recipe was affected; only
+        // Arthur sessions could not tell.
+        String previousRecipe = oldChatProcessId == null ? null
+                : thinkProcessService.findById(oldChatProcessId)
+                        .map(ThinkProcessDocument::getRecipeName)
+                        .orElse(null);
         if (oldChatProcessId != null) {
             String archivedName = SessionChatBootstrapper.CHAT_PROCESS_NAME
                     + "_archived_"
@@ -303,7 +314,8 @@ public class SessionLifecycleService {
         SessionDocument refreshed = sessionService.findBySessionId(sessionId)
                 .orElseThrow(() -> new IllegalStateException(
                         "Session disappeared mid-reactivate: " + sessionId));
-        chatBootstrapperProvider.getObject().ensureChatProcess(refreshed);
+        chatBootstrapperProvider.getObject()
+                .ensureChatProcess(refreshed, /*parentProcessId*/ null, previousRecipe);
     }
 
     /**

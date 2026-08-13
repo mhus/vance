@@ -163,6 +163,74 @@ class TrillianCommandHandlerTest {
         verify(api).resumePeer(any());
     }
 
+    // ──── attr ──────────────────────────────────────────────────────────
+
+    @Test
+    void attr_listsWhatTheWorkerCarries() {
+        EngineCommandResult result = handler.handle(control(), command("attr"));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> attrs = (Map<String, Object>) value(result).get("attributes");
+        assertThat(attrs).containsEntry("persona", "dry Swabian");
+        assertThat(result.message()).contains("persona");
+    }
+
+    @Test
+    void attr_setTakesTheRestOfTheLineAsValue() {
+        when(api.setPeerAttribute(any(), any(), any())).thenReturn(true);
+
+        handler.handle(control(), command("attr set persona a dry Swabian who mumbles"));
+
+        // No quoting for a value that is a sentence — the common case.
+        verify(api).setPeerAttribute("control-proc", "persona", "a dry Swabian who mumbles");
+    }
+
+    @Test
+    void attr_setGoesThroughTheSameApiAsTheTool() {
+        when(api.setPeerAttribute(any(), any(), any())).thenReturn(true);
+
+        assertThat(handler.handle(control(), command("attr set lang de")).outcome())
+                .isEqualTo(EngineCommandOutcome.OK);
+        // user_attr_set writes the same map through the same call, so a
+        // value set by hand is indistinguishable from one Control set.
+        verify(api).setPeerAttribute("control-proc", "lang", "de");
+    }
+
+    @Test
+    void attr_setWithoutValue_explainsUsage() {
+        EngineCommandResult result = handler.handle(control(), command("attr set persona"));
+
+        assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.ERROR);
+        assertThat(result.message()).contains("attr set <name> <value>");
+        verify(api, never()).setPeerAttribute(any(), any(), any());
+    }
+
+    @Test
+    void attr_deleteReportsWhetherAnythingWasThere() {
+        when(api.removePeerAttribute("control-proc", "gone")).thenReturn(false);
+        when(api.removePeerAttribute("control-proc", "persona")).thenReturn(true);
+
+        assertThat(handler.handle(control(), command("attr del gone")).message())
+                .contains("was not set");
+        assertThat(handler.handle(control(), command("attr del persona")).message())
+                .contains("Removed");
+    }
+
+    @Test
+    void attr_clearReportsTheCount() {
+        when(api.clearPeerAttributes("control-proc")).thenReturn(3);
+
+        assertThat(handler.handle(control(), command("attr clear")).message()).contains("3");
+    }
+
+    @Test
+    void attr_unknownSubcommand_listsWhatExists() {
+        EngineCommandResult result = handler.handle(control(), command("attr frobnicate"));
+
+        assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.ERROR);
+        assertThat(result.message()).contains("set").contains("del").contains("clear");
+    }
+
     // ──── queue ─────────────────────────────────────────────────────────
 
     @Test
@@ -352,6 +420,8 @@ class TrillianCommandHandlerTest {
         doc.setStatus(status);
         Map<String, Object> params = new LinkedHashMap<>();
         params.put(TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME, ACCOUNT);
+        params.put(TrillianInternalApi.PARAM_ATTRIBUTES,
+                new LinkedHashMap<>(Map.of("persona", "dry Swabian")));
         doc.setEngineParams(params);
         return doc;
     }

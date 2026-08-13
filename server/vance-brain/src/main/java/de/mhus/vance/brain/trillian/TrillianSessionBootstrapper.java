@@ -106,6 +106,15 @@ public class TrillianSessionBootstrapper {
     public static final String PARAM_PEER_SESSION_ID = "peerSessionId";
     public static final String PARAM_TRILLIAN_USER_NAME = "trillianUserName";
 
+    /**
+     * engineParams key on a control process that parks the outgoing
+     * worker's attributes across a reactivate. The attributes themselves
+     * live on the worker process and would die with it; this is where
+     * {@code TrillianSessionLifecycleHook} leaves them for the next
+     * bootstrap to pick up.
+     */
+    public static final String PARAM_CARRIED_ATTRIBUTES = "carriedWorkerAttributes";
+
     /** engineParams key for the Trillian Nature pinned by the recipe. */
     public static final String PARAM_NATURE = "nature";
 
@@ -268,6 +277,15 @@ public class TrillianSessionBootstrapper {
         if (applied.params() != null) {
             userParams.putAll(applied.params());
         }
+        // Attributes an earlier incarnation carried — persona, language,
+        // whatever the human set. Adopting the account without them would
+        // return the same name wearing nobody.
+        Map<String, Object> carried = carriedAttributesOf(controlSession);
+        if (!carried.isEmpty()) {
+            userParams.put(TrillianInternalApi.PARAM_ATTRIBUTES, carried);
+            log.info("Restored {} Trillian attribute(s) for control session '{}'",
+                    carried.size(), controlSession.getSessionId());
+        }
         userParams.put(PARAM_PEER_PROCESS_ID, controlProcess.getId());
         userParams.put(PARAM_PEER_SESSION_ID, controlSession.getSessionId());
         userParams.put(PARAM_TRILLIAN_USER_NAME, trillianName);
@@ -407,8 +425,10 @@ public class TrillianSessionBootstrapper {
      * removed it, this is a fresh start and minting is right.
      */
     private java.util.Optional<String> previousAccountOf(SessionDocument controlSession) {
-        for (ThinkProcessDocument p : thinkProcessService.findBySession(
-                controlSession.getTenantId(), controlSession.getSessionId())) {
+        // Newest first: every cycle leaves another closed chat-process
+        // behind, and an older one may name an account that has since
+        // been deleted.
+        for (ThinkProcessDocument p : newestFirst(controlSession)) {
             Object name = p.getEngineParams() == null
                     ? null : p.getEngineParams().get(PARAM_TRILLIAN_USER_NAME);
             if (name == null || name.toString().isBlank()) {
@@ -421,6 +441,38 @@ public class TrillianSessionBootstrapper {
             log.debug("Previous Trillian account '{}' is gone — minting a fresh one", candidate);
         }
         return java.util.Optional.empty();
+    }
+
+    /**
+     * Attributes parked by the lifecycle hook on a closed process of this
+     * session, and cleared once read so a later bootstrap does not
+     * resurrect a stale persona.
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> carriedAttributesOf(SessionDocument controlSession) {
+        for (ThinkProcessDocument p : newestFirst(controlSession)) {
+            Object raw = p.getEngineParams() == null
+                    ? null : p.getEngineParams().get(PARAM_CARRIED_ATTRIBUTES);
+            if (!(raw instanceof Map<?, ?> m) || m.isEmpty()) {
+                continue;
+            }
+            Map<String, Object> params = new LinkedHashMap<>(p.getEngineParams());
+            params.remove(PARAM_CARRIED_ATTRIBUTES);
+            thinkProcessService.replaceEngineParams(p.getId(), params);
+            return new LinkedHashMap<>((Map<String, Object>) m);
+        }
+        return Map.of();
+    }
+
+    /** Processes of the session, most recently created first. */
+    private java.util.List<ThinkProcessDocument> newestFirst(SessionDocument session) {
+        java.util.List<ThinkProcessDocument> processes = new java.util.ArrayList<>(
+                thinkProcessService.findBySession(
+                        session.getTenantId(), session.getSessionId()));
+        processes.sort(java.util.Comparator.comparing(
+                ThinkProcessDocument::getCreatedAt,
+                java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())).reversed());
+        return processes;
     }
 
     private String pickUniqueTrillianName(String tenantId) {

@@ -24,6 +24,7 @@ const BINDING_HELP: Record<string, string> = {
   chart: 'doc-kind-chart.md',
   sheet: 'doc-kind-sheet.md',
   graph: 'doc-kind-graph.md',
+  map: 'doc-kind-map.md',
   mindmap: 'doc-kind-mindmap.md',
   slides: 'doc-kind-slides.md',
   diagram: 'doc-kind-diagram.md',

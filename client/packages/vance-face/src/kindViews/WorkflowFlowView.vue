@@ -23,7 +23,8 @@ import type { Edge, Node } from '@vue-flow/core';
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 import { Graph as DagreGraph, layout as dagreLayout } from '@dagrejs/dagre';
-import { VAlert, VButton } from '@/components';
+import { brainFetch } from '@vance/shared';
+import { VAlert, VButton, VInput } from '@/components';
 import {
   parseWorkflowGraph,
   type WorkflowEdgeKind,
@@ -35,6 +36,9 @@ defineOptions({ name: 'WorkflowFlowView' });
 interface Props {
   /** The workflow YAML (kind-registry parsed model = identity(text)). */
   doc: string;
+  /** Supplied by the shell for identity-aware views — needed to start a run. */
+  projectId?: string;
+  docPath?: string;
 }
 const props = defineProps<Props>();
 
@@ -156,6 +160,72 @@ const stateCount = computed(() => graph.value.states.filter((s) => !s.missing).l
 function toggleDirection(): void {
   direction.value = direction.value === 'TB' ? 'LR' : 'TB';
 }
+
+// ── Start ──────────────────────────────────────────────────────────
+//
+// Runs *this document*, wherever it lives — the server resolves it by
+// path, not through the `_vance/workflows/` name cascade. That cascade
+// stays the route for schedulers and hooks, which know a name and no
+// location. Here the user is looking at the definition, so the
+// definition is what starts.
+
+const paramValues = ref<Record<string, string>>({});
+const starting = ref(false);
+const startError = ref<string | null>(null);
+const lastRunId = ref<string | null>(null);
+
+/** Startable at all: a diagram with no states is nothing to run. */
+const canStart = computed(() =>
+  hasStates.value && !!props.projectId && !!props.docPath && !starting.value);
+
+/**
+ * Problems block the button. The server would reject the same document
+ * a moment later; refusing here costs nothing and says why.
+ */
+const blockedReason = computed<string | null>(() =>
+  graph.value.problems.length > 0 ? graph.value.problems[0] : null);
+
+function paramPlaceholder(defaultValue: unknown): string {
+  if (defaultValue === undefined || defaultValue === null) return '';
+  return String(defaultValue);
+}
+
+async function start(): Promise<void> {
+  if (!canStart.value || blockedReason.value) return;
+  startError.value = null;
+  lastRunId.value = null;
+
+  // Only send what the user actually typed. An empty field means "use
+  // the declared default", which the server applies — sending "" would
+  // override the default with an empty string instead.
+  const params: Record<string, unknown> = {};
+  for (const p of graph.value.parameters) {
+    const raw = (paramValues.value[p.name] ?? '').trim();
+    if (raw) params[p.name] = raw;
+  }
+
+  const missing = graph.value.parameters
+    .filter((p) => p.required && p.defaultValue === undefined && !params[p.name])
+    .map((p) => p.name);
+  if (missing.length > 0) {
+    startError.value = t('documents.workflowView.paramRequired', { keys: missing.join(', ') });
+    return;
+  }
+
+  starting.value = true;
+  try {
+    const res = await brainFetch<{ workflowRunId: string }>(
+      'POST',
+      `project/${encodeURIComponent(props.projectId!)}/workflows/start-document`,
+      { body: { path: props.docPath, params: Object.keys(params).length > 0 ? params : null } },
+    );
+    lastRunId.value = res.workflowRunId;
+  } catch (e) {
+    startError.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    starting.value = false;
+  }
+}
 </script>
 
 <template>
@@ -188,6 +258,47 @@ function toggleDirection(): void {
         <li v-for="problem in graph.problems" :key="problem">{{ problem }}</li>
       </ul>
     </VAlert>
+
+    <!-- Start panel. Present whenever the document could run; the
+         parameter row only when the workflow declares any. -->
+    <div v-if="hasStates" class="start-panel">
+      <div v-if="graph.parameters.length > 0" class="params">
+        <label v-for="p in graph.parameters" :key="p.name" class="param">
+          <span class="param-name">
+            {{ p.name }}<span v-if="p.required" class="param-required">*</span>
+            <span class="param-type">{{ p.type }}</span>
+          </span>
+          <VInput
+            v-model="paramValues[p.name]"
+            size="sm"
+            :placeholder="paramPlaceholder(p.defaultValue)"
+          />
+        </label>
+      </div>
+      <div class="start-row">
+        <VButton
+          size="sm"
+          variant="primary"
+          :disabled="!canStart || !!blockedReason"
+          :title="blockedReason ?? t('documents.workflowView.startHint')"
+          @click="start"
+        >
+          {{ starting
+            ? t('documents.workflowView.starting')
+            : t('documents.workflowView.start') }}
+        </VButton>
+        <span v-if="blockedReason" class="start-note">
+          {{ t('documents.workflowView.startBlocked') }}
+        </span>
+        <span v-else-if="lastRunId" class="start-note start-note--ok">
+          {{ t('documents.workflowView.started') }}
+          <code>{{ lastRunId }}</code>
+        </span>
+      </div>
+      <VAlert v-if="startError" variant="error" class="start-error">
+        {{ startError }}
+      </VAlert>
+    </div>
 
     <div v-if="hasStates" class="canvas">
       <VueFlow
@@ -274,6 +385,57 @@ function toggleDirection(): void {
 .problems ul {
   margin: 0;
   padding-left: 1.1rem;
+}
+.start-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  background: color-mix(in oklab, var(--color-base-content) 4%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 12%, transparent);
+  border-radius: 0.5rem;
+}
+.params {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.param {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 12rem;
+}
+.param-name {
+  font-size: 0.72rem;
+  font-family: ui-monospace, monospace;
+  opacity: 0.8;
+}
+.param-required {
+  color: var(--color-error);
+  margin-left: 0.1rem;
+}
+.param-type {
+  margin-left: 0.35rem;
+  opacity: 0.5;
+  font-style: italic;
+}
+.start-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.start-note {
+  font-size: 0.78rem;
+  opacity: 0.7;
+}
+.start-note--ok code {
+  font-size: 0.72rem;
+  opacity: 0.85;
+}
+.start-error {
+  font-size: 0.8rem;
 }
 .canvas {
   height: 65vh;

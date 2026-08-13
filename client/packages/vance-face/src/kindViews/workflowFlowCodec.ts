@@ -72,11 +72,22 @@ export interface WorkflowEdge {
   dangling: boolean;
 }
 
+/** One entry of the workflow's `parameters:` block. */
+export interface WorkflowParameter {
+  name: string;
+  /** Declared type. Documentation only — v1 validates nothing but presence. */
+  type: string;
+  required: boolean;
+  defaultValue?: unknown;
+}
+
 export interface WorkflowGraph {
   /** `start:` as written, or null when absent / not a string. */
   start: string | null;
   description?: string;
   version?: string;
+  /** Declared caller parameters, in document order. */
+  parameters: WorkflowParameter[];
   states: WorkflowStateNode[];
   edges: WorkflowEdge[];
   /** Reader-visible structural problems, in document order. */
@@ -98,7 +109,7 @@ export function parseWorkflowGraph(body: string): WorkflowGraph {
   const problems: string[] = [];
 
   if (!body.trim()) {
-    return { start: null, states: [], edges: [], problems: ['empty document'] };
+    return { start: null, parameters: [], states: [], edges: [], problems: ['empty document'] };
   }
 
   let root: Record<string, unknown>;
@@ -110,6 +121,7 @@ export function parseWorkflowGraph(body: string): WorkflowGraph {
   } catch (e) {
     return {
       start: null,
+      parameters: [],
       states: [],
       edges: [],
       problems: [e instanceof Error ? e.message : String(e)],
@@ -126,6 +138,7 @@ export function parseWorkflowGraph(body: string): WorkflowGraph {
       start,
       description: optionalString(root.description),
       version: optionalString(root.version),
+      parameters: parseParameters(root.parameters),
       states: [],
       edges: [],
       problems,
@@ -200,10 +213,32 @@ export function parseWorkflowGraph(body: string): WorkflowGraph {
     start,
     description: optionalString(root.description),
     version: optionalString(root.version),
+    parameters: parseParameters(root.parameters),
     states: [...states, ...missing.values()],
     edges,
     problems,
   };
+}
+
+/**
+ * The `parameters:` block, in document order — what the Start form has
+ * to ask for. Entries that are not mappings are skipped rather than
+ * reported: an unusable parameter declaration is a problem for the
+ * server-side parser, not something the drawing can show.
+ */
+function parseParameters(raw: unknown): WorkflowParameter[] {
+  if (!isRecord(raw)) return [];
+  const out: WorkflowParameter[] = [];
+  for (const [name, spec] of Object.entries(raw)) {
+    if (!isRecord(spec)) continue;
+    out.push({
+      name,
+      type: optionalString(spec.type) ?? 'string',
+      required: spec.required === true,
+      defaultValue: spec.default,
+    });
+  }
+  return out;
 }
 
 /** Read the `on:` / `catch:` / `transitions:` blocks of one state. */

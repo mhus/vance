@@ -106,6 +106,27 @@ describe('parseWorkflowGraph', () => {
     expect(g.problems).toContain("missing required field 'states'");
   });
 
+  it('surfaces declared parameters in document order', () => {
+    const g = parseWorkflowGraph(`
+start: a
+parameters:
+  pr_url: { type: string, required: true }
+  reviewer: { type: string, required: false, default: "@maintainers" }
+states:
+  a:
+    type: terminal
+`);
+    expect(g.parameters).toEqual([
+      { name: 'pr_url', type: 'string', required: true, defaultValue: undefined },
+      { name: 'reviewer', type: 'string', required: false, defaultValue: '@maintainers' },
+    ]);
+  });
+
+  it('has no parameters when the block is absent', () => {
+    expect(parseWorkflowGraph('start: a\nstates:\n  a:\n    type: terminal\n').parameters)
+      .toEqual([]);
+  });
+
   it('reports an empty document', () => {
     expect(parseWorkflowGraph('   ').problems).toEqual(['empty document']);
   });

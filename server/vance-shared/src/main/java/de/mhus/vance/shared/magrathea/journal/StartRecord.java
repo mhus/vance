@@ -33,6 +33,18 @@ public class StartRecord implements JournalRecord {
     /** Audit hint — user id, scheduler key, hook origin. */
     private @Nullable String startedBy;
 
+    /**
+     * Document path the definition came from, when the run was started
+     * from a document rather than by name. Null for name-resolved starts,
+     * where the path is implied by the cascade.
+     *
+     * <p>{@link #workflowName} alone stops identifying the source once a
+     * run can begin anywhere: two {@code helloworld.yaml} in different
+     * folders share a name. The path is what makes the audit trail answer
+     * "which file was this".
+     */
+    private @Nullable String sourcePath;
+
     /** Parent workflow run id when this run was spawned via {@code workflow_task} (plan §4.7). */
     private @Nullable String parentMagratheaProcessId;
 

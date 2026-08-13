@@ -13,6 +13,8 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.magrathea.MagratheaTaskStatus;
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
+import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.magrathea.MagratheaWorkflowParseException;
 import de.mhus.vance.shared.magrathea.MagratheaJournalEntry;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
 import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
@@ -64,6 +66,8 @@ class MagratheaWorkflowServiceTest {
     private final ObjectMapper objectMapper = JsonMapper.builder().build();
     private final MagratheaJournalService journalService = mock(MagratheaJournalService.class);
     private final MagratheaWorkflowLoader workflowLoader = mock(MagratheaWorkflowLoader.class);
+    private final de.mhus.vance.shared.document.DocumentService documentService =
+            mock(de.mhus.vance.shared.document.DocumentService.class);
     private final MagratheaTaskService taskService = mock(MagratheaTaskService.class);
     private final MagratheaProjectLaneManager laneManager = mock(MagratheaProjectLaneManager.class);
     private final MagratheaTaskExecutor taskExecutor = mock(MagratheaTaskExecutor.class);
@@ -73,7 +77,7 @@ class MagratheaWorkflowServiceTest {
             new de.mhus.vance.shared.metric.MetricService(
                     new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
     private final MagratheaWorkflowService workflowService = new MagratheaWorkflowService(
-            workflowLoader, journalService, taskService, laneManager, taskExecutor,
+            workflowLoader, documentService, journalService, taskService, laneManager, taskExecutor,
             eventPublisher, metricService);
 
     private final List<JournalRecord> appendedRecords = new ArrayList<>();
@@ -154,6 +158,59 @@ class MagratheaWorkflowServiceTest {
         assertThat(insertedTasks.get(0).getStateName()).isEqualTo("route");
         assertThat(insertedTasks.get(0).getTaskType()).isEqualTo(MagratheaTaskType.CONDITION_TASK);
         assertThat(insertedTasks.get(0).getStatus()).isEqualTo(MagratheaTaskStatus.PENDING);
+    }
+
+    @Test
+    void startFromDocument_startsTheDocumentAtThePath_andRecordsWhereItCameFrom() {
+        // The Cortex "Start" button: a workflow document anywhere in the
+        // project, not a name resolved through _vance/workflows/.
+        DocumentDocument doc = new DocumentDocument();
+        when(documentService.findByPath("acme", "proj", "drafts/my-flow.yaml"))
+                .thenReturn(Optional.of(doc));
+        when(documentService.readContent(doc)).thenReturn(YAML);
+
+        String runId = workflowService.startFromDocument(
+                "acme", "proj", "drafts/my-flow.yaml", Map.of("explicit", "v"), "alice");
+
+        assertThat(runId).hasSize(32);
+        StartRecord start = (StartRecord) appendedRecords.get(0);
+        // Name is the file stem — that is what groups runs in listings …
+        assertThat(start.getWorkflowName()).isEqualTo("my-flow");
+        // … and the path is what disambiguates two files of the same name.
+        assertThat(start.getSourcePath()).isEqualTo("drafts/my-flow.yaml");
+        assertThat(start.getDefinitionYaml()).isEqualTo(YAML);
+        assertThat(insertedTasks).hasSize(1);
+        // The loader is never consulted: the document IS the definition.
+        verify(workflowLoader, never()).load(any(), any(), eq("my-flow"));
+    }
+
+    @Test
+    void startFromDocument_throws_whenNoDocumentAtThePath() {
+        when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> workflowService.startFromDocument(
+                "acme", "proj", "nope.yaml", null, null))
+                .isInstanceOf(MagratheaWorkflowService.MagratheaWorkflowException.class)
+                .hasMessageContaining("nope.yaml");
+    }
+
+    @Test
+    void startFromDocument_rejectsABodyThatIsNotAWorkflow() {
+        DocumentDocument doc = new DocumentDocument();
+        when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.of(doc));
+        when(documentService.readContent(doc)).thenReturn("just: some yaml\n");
+
+        assertThatThrownBy(() -> workflowService.startFromDocument(
+                "acme", "proj", "notes.yaml", null, null))
+                .isInstanceOf(MagratheaWorkflowParseException.class);
+        assertThat(appendedRecords).isEmpty();
+    }
+
+    @Test
+    void nameBasedStart_leavesSourcePathUnset() {
+        workflowService.start("acme", "proj", "demo", Map.of(), "alice");
+
+        assertThat(((StartRecord) appendedRecords.get(0)).getSourcePath()).isNull();
     }
 
     @Test

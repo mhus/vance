@@ -4,6 +4,8 @@ import de.mhus.vance.api.magrathea.MagratheaErrorKind;
 import de.mhus.vance.api.magrathea.MagratheaRunStatus;
 import de.mhus.vance.api.magrathea.MagratheaTaskStatus;
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
+import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.magrathea.MagratheaBoundsSpec;
 import de.mhus.vance.shared.magrathea.MagratheaJournalEntry;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
@@ -68,6 +70,8 @@ public class MagratheaWorkflowService {
     private static final String METRIC_DURATION = "vance.magrathea.workflow.duration";
 
     private final MagratheaWorkflowLoader workflowLoader;
+    /** Datenhoheit: document bodies are read through the owning service, never from Mongo directly. */
+    private final DocumentService documentService;
     private final MagratheaJournalService journalService;
     private final MagratheaTaskService taskService;
     private final MagratheaProjectLaneManager laneManager;
@@ -78,6 +82,7 @@ public class MagratheaWorkflowService {
 
     public MagratheaWorkflowService(
             MagratheaWorkflowLoader workflowLoader,
+            DocumentService documentService,
             MagratheaJournalService journalService,
             MagratheaTaskService taskService,
             MagratheaProjectLaneManager laneManager,
@@ -85,6 +90,7 @@ public class MagratheaWorkflowService {
             org.springframework.context.ApplicationEventPublisher eventPublisher,
             MetricService metricService) {
         this.workflowLoader = workflowLoader;
+        this.documentService = documentService;
         this.journalService = journalService;
         this.taskService = taskService;
         this.laneManager = laneManager;
@@ -134,6 +140,71 @@ public class MagratheaWorkflowService {
                 .orElseThrow(() -> new MagratheaWorkflowException(
                         "Workflow '" + workflowName + "' not found in cascade for tenant="
                                 + tenantId + " project=" + projectId));
+        return startResolved(tenantId, projectId, workflow, /* sourcePath */ null,
+                callerParams, startedBy, parentMagratheaProcessId, parentState);
+    }
+
+    /**
+     * Start a run from the document at {@code path} inside
+     * {@code projectId}, rather than by resolving a name through the
+     * {@code _vance/workflows/} cascade.
+     *
+     * <p>The location was never an execution requirement: every task
+     * re-parses the frozen YAML from the {@code StartRecord}, and the
+     * cascade prefix appears nowhere outside the loader. What was missing
+     * was a way to say "run *this* document" — which is what a user
+     * looking at an open workflow means, and what a scheduler or hook
+     * never means. Those keep the name-based route, where the cascade's
+     * tenant-override is the point.
+     *
+     * <p>Same-project only, structurally: the path is resolved inside the
+     * caller's project, so no reference can reach another one.
+     *
+     * @throws MagratheaWorkflowException if no document lives at the path
+     * @throws MagratheaWorkflowParseException if its body is not a valid workflow
+     */
+    public String startFromDocument(
+            String tenantId,
+            String projectId,
+            String path,
+            @Nullable Map<String, Object> callerParams,
+            @Nullable String startedBy) {
+        String norm = path == null ? "" : path.trim();
+        if (norm.isEmpty()) {
+            throw new MagratheaWorkflowException("Document path is required");
+        }
+        DocumentDocument doc = documentService.findByPath(tenantId, projectId, norm)
+                .orElseThrow(() -> new MagratheaWorkflowException(
+                        "No document at '" + norm + "' in project '" + projectId + "'"));
+
+        // Deliberately no `kind: vance-workflow` check: the parser is the
+        // real gate, and requiring the header would refuse the legacy
+        // definitions under _vance/workflows/ that the name-based route
+        // starts happily. The kind drives which documents *offer* the
+        // button, not which ones may run.
+        ResolvedMagratheaWorkflow workflow = MagratheaWorkflowLoader.parseYaml(
+                workflowNameFromPath(norm), documentService.readContent(doc));
+
+        return startResolved(tenantId, projectId, workflow, norm,
+                callerParams, startedBy, /* parent */ null, /* parentState */ null);
+    }
+
+    /** File stem of {@code path} — what the run is called in listings and metrics. */
+    private static String workflowNameFromPath(String path) {
+        String stem = path.substring(path.lastIndexOf('/') + 1);
+        int dot = stem.lastIndexOf('.');
+        return dot > 0 ? stem.substring(0, dot) : stem;
+    }
+
+    private String startResolved(
+            String tenantId,
+            String projectId,
+            ResolvedMagratheaWorkflow workflow,
+            @Nullable String sourcePath,
+            @Nullable Map<String, Object> callerParams,
+            @Nullable String startedBy,
+            @Nullable String parentMagratheaProcessId,
+            @Nullable String parentState) {
         Map<String, Object> resolvedParams = applyDefaultsAndValidate(workflow, callerParams);
         String runId = MagratheaRunIdGenerator.fresh();
 
@@ -144,7 +215,7 @@ public class MagratheaWorkflowService {
         try {
             laneManager.submitTracked(projectId, () -> writeStartRecords(
                     tenantId, projectId, runId, workflow, resolvedParams, startedBy,
-                    parentMagratheaProcessId, parentState))
+                    sourcePath, parentMagratheaProcessId, parentState))
                     .get(START_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
         } catch (java.util.concurrent.ExecutionException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
@@ -171,6 +242,7 @@ public class MagratheaWorkflowService {
             ResolvedMagratheaWorkflow workflow,
             Map<String, Object> params,
             @Nullable String startedBy,
+            @Nullable String sourcePath,
             @Nullable String parentMagratheaProcessId,
             @Nullable String parentState) {
 
@@ -180,6 +252,7 @@ public class MagratheaWorkflowService {
                 .definitionYaml(workflow.yaml())
                 .params(params)
                 .startedBy(startedBy)
+                .sourcePath(sourcePath)
                 .parentMagratheaProcessId(parentMagratheaProcessId)
                 .parentState(parentState)
                 .build());

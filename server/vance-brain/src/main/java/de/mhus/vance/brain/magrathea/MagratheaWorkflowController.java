@@ -2,6 +2,7 @@ package de.mhus.vance.brain.magrathea;
 
 import de.mhus.vance.api.magrathea.MagratheaParameterDto;
 import de.mhus.vance.api.magrathea.MagratheaProcessDto;
+import de.mhus.vance.api.magrathea.MagratheaStartDocumentRequest;
 import de.mhus.vance.api.magrathea.MagratheaStartRequest;
 import de.mhus.vance.api.magrathea.MagratheaWorkflowDto;
 import de.mhus.vance.api.magrathea.MagratheaWorkflowSummary;
@@ -141,6 +142,47 @@ public class MagratheaWorkflowController {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("workflowRunId", runId);
         result.put("workflowName", name);
+        return result;
+    }
+
+    /**
+     * Start a run from an open document instead of by name — the Cortex
+     * "Start" button on a {@code kind: vance-workflow} document.
+     *
+     * <p>Same authorisation as the name-based start ({@code Project
+     * WRITE}); the path is resolved inside {@code project}, so this route
+     * cannot address another one.
+     */
+    @PostMapping("/workflows/start-document")
+    public Map<String, Object> startWorkflowDocument(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("project") String project,
+            @Valid @RequestBody MagratheaStartDocumentRequest body,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, project), Action.WRITE);
+
+        String startedBy = body.getStartedBy();
+        if (startedBy == null || startedBy.isBlank()) {
+            Object u = request.getAttribute(AccessFilterBase.ATTR_USERNAME);
+            if (u instanceof String s && !s.isBlank()) {
+                startedBy = s;
+            }
+        }
+
+        String runId;
+        try {
+            runId = workflowService.startFromDocument(
+                    tenant, project, body.getPath(), body.getParams(), startedBy);
+        } catch (MagratheaWorkflowService.MagratheaWorkflowException ex) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage(), ex);
+        } catch (MagratheaWorkflowParseException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Workflow YAML invalid: " + ex.getMessage(), ex);
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("workflowRunId", runId);
+        result.put("workflowName", body.getPath());
         return result;
     }
 

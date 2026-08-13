@@ -70,6 +70,8 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
 
     private final MagratheaJournalService journalService = mock(MagratheaJournalService.class);
     private final MagratheaWorkflowLoader workflowLoader = mock(MagratheaWorkflowLoader.class);
+    private final de.mhus.vance.shared.document.DocumentService documentService =
+            mock(de.mhus.vance.shared.document.DocumentService.class);
     private final MagratheaTaskService taskService = mock(MagratheaTaskService.class);
     private final MagratheaProjectLaneManager laneManager = mock(MagratheaProjectLaneManager.class);
     private final MagratheaTaskExecutor taskExecutor = mock(MagratheaTaskExecutor.class);
@@ -78,7 +80,7 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
             new de.mhus.vance.shared.metric.MetricService(
                     new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
     private final MagratheaWorkflowService workflowService = new MagratheaWorkflowService(
-            workflowLoader, journalService, taskService, laneManager, taskExecutor,
+            workflowLoader, documentService, journalService, taskService, laneManager, taskExecutor,
             eventPublisher, metricService);
 
     private final List<MagratheaTaskDocument> insertedTasks = new ArrayList<>();

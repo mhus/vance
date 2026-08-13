@@ -75,6 +75,22 @@ class WorkflowKindHandlerTest {
     }
 
     @Test
+    void keyWrittenWithoutAValue_isNotAParseError() {
+        // Half-finished edit: `recipe:` with nothing behind it. YAML reads that
+        // as null, and a null in the type-specific spec map used to blow up
+        // Map.copyOf — the reader saw "workflow YAML invalid: null" instead of
+        // their unfinished line.
+        String yaml = """
+                start: work
+                states:
+                  work:
+                    type: agent_task
+                    recipe:
+                """;
+        assertThat(handler.validate(yaml, ctx("_vance/workflows/x.yaml"))).isEmpty();
+    }
+
+    @Test
     void emptyBody_isAnError() {
         assertThat(handler.validate("", ctx("_vance/workflows/x.yaml")))
                 .singleElement()

@@ -43,12 +43,25 @@ import org.springframework.stereotype.Service;
 public class PromptTemplateRenderer {
 
     private final PebbleEngine engine;
+    private final PebbleEngine structuredEngine;
 
     public PromptTemplateRenderer() {
-        this.engine = new PebbleEngine.Builder()
+        this.engine = buildEngine(/*trimNewlineAfterTag*/ true);
+        this.structuredEngine = buildEngine(/*trimNewlineAfterTag*/ false);
+    }
+
+    private static PebbleEngine buildEngine(boolean trimNewlineAfterTag) {
+        return new PebbleEngine.Builder()
                 .loader(new StringLoader())
                 .strictVariables(false)
                 .autoEscaping(false)
+                // Pebble's default: the newline directly after a tag is
+                // swallowed. Right for prose — `{% if %}` blocks would
+                // otherwise leave a blank line in every prompt. Fatal for
+                // structured output, where `title: {{ topic }}` on its own
+                // line silently glues the next line onto the value. See
+                // #renderStructured.
+                .newLineTrimming(trimNewlineAfterTag)
                 // Template bodies are effectively untrusted (any DB document
                 // author can supply them). Deny ALL method access so a
                 // {{ x.getClass()… }} reflection escape or any getter/method
@@ -72,10 +85,34 @@ public class PromptTemplateRenderer {
      *         The message preserves Pebble's line-number diagnostic.
      */
     public @Nullable String render(@Nullable String template, Map<String, Object> context) {
+        return render(template, context, engine);
+    }
+
+    /**
+     * Like {@link #render} but keeps the newline that follows a tag.
+     *
+     * <p>For output whose <em>line structure carries meaning</em> — a YAML
+     * document, markdown front-matter — the prose default is destructive:
+     * {@code title: {{ topic }}} on its own line renders as
+     * {@code title: Sprint Review---}, because the newline after the tag is
+     * gone and the next line runs on. The result is not ugly, it is invalid.
+     *
+     * <p>Keeping the newline costs a blank line where a block tag sat alone
+     * on a line, which YAML and markdown both ignore. Trading a cosmetic
+     * blank line for a syntax error is the right way round; prompts keep the
+     * trimming default because there the trade goes the other way.
+     */
+    public @Nullable String renderStructured(
+            @Nullable String template, Map<String, Object> context) {
+        return render(template, context, structuredEngine);
+    }
+
+    private @Nullable String render(
+            @Nullable String template, Map<String, Object> context, PebbleEngine pebble) {
         if (template == null) return null;
         if (template.isEmpty()) return template;
         try {
-            PebbleTemplate compiled = engine.getTemplate(template);
+            PebbleTemplate compiled = pebble.getTemplate(template);
             // Bounded output: template bodies are untrusted (any DB document
             // author supplies them), so a runaway construct like
             // {% for i in range(0, 10^9) %}x{% endfor %} must not buffer the

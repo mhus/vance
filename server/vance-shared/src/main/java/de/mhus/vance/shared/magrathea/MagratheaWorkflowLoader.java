@@ -344,10 +344,20 @@ public class MagratheaWorkflowLoader {
         MagratheaRetrySpec retry = parseRetry(raw.get("retry"), name);
 
         // Everything left over is type-specific — copy verbatim for the type-executor.
-        Map<String, Object> spec = new LinkedHashMap<>(raw);
-        spec.keySet().removeAll(Set.of(
+        // A key written without a value (`recipe:` on its own line, which any
+        // half-finished edit produces) parses to null. Drop those: the map is
+        // read with get(), where absent and present-but-null are the same
+        // answer — but Map.copyOf below rejects a null value with a raw NPE,
+        // which would surface as the useless message "workflow YAML invalid: null".
+        Map<String, Object> spec = new LinkedHashMap<>();
+        Set<String> lifecycleKeys = Set.of(
                 "type", "description", "timeoutSeconds", "storeAs",
-                "on", "catch", "transitions", "retry"));
+                "on", "catch", "transitions", "retry");
+        for (Map.Entry<String, Object> e : raw.entrySet()) {
+            if (lifecycleKeys.contains(e.getKey())) continue;
+            if (e.getValue() == null) continue;
+            spec.put(e.getKey(), e.getValue());
+        }
 
         return new MagratheaStateSpec(
                 name, type, description, timeoutSeconds, storeAs,

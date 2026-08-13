@@ -139,7 +139,10 @@ public class TemplateService {
         ctx.putIfAbsent("project", projectId == null ? "" : projectId);
         ctx.putIfAbsent("lang", lang == null ? "" : lang);
         try {
-            String rendered = templateRenderer.render(template.bodyContent(), ctx);
+            // Structured render: a template body is a document (YAML, markdown
+            // with front-matter), so a swallowed newline after `{{ … }}` is a
+            // syntax error rather than a whitespace quirk.
+            String rendered = templateRenderer.renderStructured(template.bodyContent(), ctx);
             return rendered == null ? "" : rendered;
         } catch (PromptTemplateException e) {
             throw new IllegalStateException(

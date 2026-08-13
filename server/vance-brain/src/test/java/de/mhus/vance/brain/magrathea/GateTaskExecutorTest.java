@@ -29,10 +29,9 @@ class GateTaskExecutorTest {
 
     private final InboxItemService inboxService = mock(InboxItemService.class);
     private final MagratheaTaskService taskService = mock(MagratheaTaskService.class);
-    private final de.mhus.vance.shared.magrathea.MagratheaTimerService timerService =
-            mock(de.mhus.vance.shared.magrathea.MagratheaTimerService.class);
+    private final MagratheaTimeoutScheduler timeoutScheduler = mock(MagratheaTimeoutScheduler.class);
     private final GateTaskExecutor executor = new GateTaskExecutor(
-            inboxService, taskService, timerService);
+            inboxService, taskService, timeoutScheduler);
 
     @Test
     void approval_gate_creates_item_links_task_and_returns_async() {
@@ -172,15 +171,13 @@ class GateTaskExecutorTest {
                         Map.of("inbox", Map.of("kind", "APPROVAL", "title", "x"))),
                 Map.of(), Map.of()));
 
-        org.mockito.ArgumentCaptor<de.mhus.vance.shared.magrathea.MagratheaTimerDocument> captor =
-                org.mockito.ArgumentCaptor.captor();
-        verify(timerService).insert(captor.capture());
-        assertThat(captor.getValue().getLinkedTaskId()).isEqualTo("task-1");
-        assertThat(captor.getValue().getFiredOutcome()).isEqualTo(GateTaskExecutor.OUTCOME_TIMEOUT);
+        // The deadline itself is the scheduler's job (and its test) — here
+        // it only matters that the gate hands it over.
+        verify(timeoutScheduler).arm(any(), any());
     }
 
     @Test
-    void no_timeoutSeconds_does_not_schedule_a_timer() {
+    void gate_alwaysHandsTheStateToTheScheduler_whichDecidesOnTheDeadline() {
         when(inboxService.create(any())).thenAnswer(inv -> {
             InboxItemDocument doc = inv.getArgument(0);
             doc.setId("inbox-x");
@@ -189,7 +186,9 @@ class GateTaskExecutorTest {
 
         executor.execute(ctx(gateState(Map.of("kind", "APPROVAL", "title", "x"))));
 
-        verify(timerService, never()).insert(any());
+        // No timeoutSeconds on this state — the scheduler no-ops, but the
+        // executor does not second-guess it.
+        verify(timeoutScheduler).arm(any(), any());
     }
 
     @Test

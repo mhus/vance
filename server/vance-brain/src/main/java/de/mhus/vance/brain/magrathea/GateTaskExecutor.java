@@ -60,14 +60,15 @@ public class GateTaskExecutor implements MagratheaTypeExecutor {
     public static final String PAYLOAD_KIND = "workflow.gate";
 
     /** Outcome the timeout-timer publishes when the user doesn't answer in time. */
-    public static final String OUTCOME_TIMEOUT = "timeout";
+    /** @deprecated moved to {@link MagratheaTimeoutScheduler#OUTCOME_TIMEOUT}. */
+    public static final String OUTCOME_TIMEOUT = MagratheaTimeoutScheduler.OUTCOME_TIMEOUT;
 
     private static final String SPEC_INBOX = "inbox";
     private static final String SYSTEM_USER = "@system";
 
     private final InboxItemService inboxItemService;
     private final MagratheaTaskService taskService;
-    private final MagratheaTimerService timerService;
+    private final MagratheaTimeoutScheduler timeoutScheduler;
 
     @Override
     public MagratheaTaskType type() {
@@ -137,33 +138,9 @@ public class GateTaskExecutor implements MagratheaTypeExecutor {
         log.info("Magrathea gate_task '{}' inbox item created id='{}' assignedTo='{}'",
                 state.name(), created.getId(), assignedTo);
 
-        scheduleTimeoutTimer(context, state);
+        timeoutScheduler.arm(context, state);
 
         return Optional.empty();
-    }
-
-    private void scheduleTimeoutTimer(MagratheaTaskContext context, MagratheaStateSpec state) {
-        Integer timeoutSeconds = state.timeoutSeconds();
-        if (timeoutSeconds == null || timeoutSeconds <= 0) return;
-
-        MagratheaTimerDocument timer = MagratheaTimerDocument.builder()
-                .tenantId(context.tenantId())
-                .projectId(context.projectId())
-                .workflowRunId(context.workflowRunId())
-                .linkedTaskId(context.taskId())
-                .firedOutcome(OUTCOME_TIMEOUT)
-                .fireAt(Instant.now().plusSeconds(timeoutSeconds))
-                .build();
-        try {
-            timerService.insert(timer);
-            log.debug("Magrathea gate_task '{}' timeout timer scheduled fireAt={}",
-                    state.name(), timer.getFireAt());
-        } catch (RuntimeException ex) {
-            // A timeout timer is best-effort. The gate still functions
-            // without it — the user can answer in their own time.
-            log.warn("Magrathea gate_task '{}' timeout timer insert failed: {} — gate continues without timeout",
-                    state.name(), ex.getMessage());
-        }
     }
 
     @SuppressWarnings("unchecked")

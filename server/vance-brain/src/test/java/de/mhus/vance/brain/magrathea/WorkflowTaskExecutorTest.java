@@ -25,8 +25,9 @@ class WorkflowTaskExecutorTest {
 
     private final MagratheaWorkflowService workflowService = mock(MagratheaWorkflowService.class);
     private final MagratheaTaskService taskService = mock(MagratheaTaskService.class);
+    private final MagratheaTimeoutScheduler timeoutScheduler = mock(MagratheaTimeoutScheduler.class);
     private final WorkflowTaskExecutor executor =
-            new WorkflowTaskExecutor(workflowService, taskService);
+            new WorkflowTaskExecutor(workflowService, taskService, timeoutScheduler);
 
     @Test
     void happy_path_spawns_sub_workflow_and_returns_async() {

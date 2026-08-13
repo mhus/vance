@@ -68,6 +68,8 @@ class MagratheaWorkflowServiceTest {
     private final MagratheaWorkflowLoader workflowLoader = mock(MagratheaWorkflowLoader.class);
     private final de.mhus.vance.shared.document.DocumentService documentService =
             mock(de.mhus.vance.shared.document.DocumentService.class);
+    private final de.mhus.vance.shared.thinkprocess.ThinkProcessService thinkProcessService =
+            mock(de.mhus.vance.shared.thinkprocess.ThinkProcessService.class);
     private final MagratheaTaskService taskService = mock(MagratheaTaskService.class);
     private final MagratheaProjectLaneManager laneManager = mock(MagratheaProjectLaneManager.class);
     private final MagratheaTaskExecutor taskExecutor = mock(MagratheaTaskExecutor.class);
@@ -78,7 +80,7 @@ class MagratheaWorkflowServiceTest {
                     new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
     private final MagratheaWorkflowService workflowService = new MagratheaWorkflowService(
             workflowLoader, documentService, journalService, taskService, laneManager, taskExecutor,
-            eventPublisher, metricService);
+            eventPublisher, metricService, thinkProcessService);
 
     private final List<JournalRecord> appendedRecords = new ArrayList<>();
     private final List<MagratheaTaskDocument> insertedTasks = new ArrayList<>();

@@ -49,12 +49,15 @@ public class WorkflowTaskExecutor implements MagratheaTypeExecutor {
 
     private final MagratheaWorkflowService workflowService;
     private final MagratheaTaskService taskService;
+    private final MagratheaTimeoutScheduler timeoutScheduler;
 
     public WorkflowTaskExecutor(
             @Lazy MagratheaWorkflowService workflowService,
-            MagratheaTaskService taskService) {
+            MagratheaTaskService taskService,
+            MagratheaTimeoutScheduler timeoutScheduler) {
         this.workflowService = workflowService;
         this.taskService = taskService;
+        this.timeoutScheduler = timeoutScheduler;
     }
 
     @Override
@@ -95,6 +98,7 @@ public class WorkflowTaskExecutor implements MagratheaTypeExecutor {
         }
 
         taskService.linkSubWorkflow(context.taskId(), subRunId);
+        timeoutScheduler.arm(context, state);
         log.info("Magrathea workflow_task '{}' spawned sub-workflow '{}' runId={}",
                 state.name(), subWorkflowName, subRunId);
 

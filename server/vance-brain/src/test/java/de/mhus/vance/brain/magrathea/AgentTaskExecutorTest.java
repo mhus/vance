@@ -44,10 +44,11 @@ class AgentTaskExecutorTest {
     private final de.mhus.vance.brain.scheduling.LaneScheduler laneScheduler =
             mock(de.mhus.vance.brain.scheduling.LaneScheduler.class);
     private final EngineMessageRouter messageRouter = mock(EngineMessageRouter.class);
+    private final MagratheaTimeoutScheduler timeoutScheduler = mock(MagratheaTimeoutScheduler.class);
     private final AgentTaskExecutor executor = new AgentTaskExecutor(
             recipeResolver, thinkProcessService, thinkEngineService,
             sessionResolver, taskService, laneScheduler,
-            routerProvider(messageRouter));
+            routerProvider(messageRouter), timeoutScheduler);
 
     @SuppressWarnings("unchecked")
     private static org.springframework.beans.factory.ObjectProvider<EngineMessageRouter>
@@ -157,7 +158,7 @@ class AgentTaskExecutorTest {
         // process is already spawned and linked at that point.
         var executorWithoutRouter = new AgentTaskExecutor(
                 recipeResolver, thinkProcessService, thinkEngineService,
-                sessionResolver, taskService, laneScheduler, routerProvider(null));
+                sessionResolver, taskService, laneScheduler, routerProvider(null), timeoutScheduler);
         stubResolver("ford", Map.of("prompt", "hi"));
         stubSpawn("ford");
 

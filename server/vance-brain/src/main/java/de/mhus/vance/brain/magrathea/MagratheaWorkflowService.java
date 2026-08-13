@@ -4,6 +4,7 @@ import de.mhus.vance.api.magrathea.MagratheaErrorKind;
 import de.mhus.vance.api.magrathea.MagratheaRunStatus;
 import de.mhus.vance.api.magrathea.MagratheaTaskStatus;
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
+import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.magrathea.MagratheaBoundsSpec;
@@ -16,6 +17,7 @@ import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
 import de.mhus.vance.shared.magrathea.ResolvedMagratheaWorkflow;
 import de.mhus.vance.shared.metric.MetricService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.magrathea.journal.ResultRecord;
 import de.mhus.vance.shared.magrathea.journal.StartRecord;
 import de.mhus.vance.shared.magrathea.journal.StateEnteredRecord;
@@ -79,6 +81,8 @@ public class MagratheaWorkflowService {
     private final MagratheaTaskExecutor taskExecutor;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
     private final MetricService metricService;
+    /** Only to stop an agent whose task ended on its deadline. */
+    private final ThinkProcessService thinkProcessService;
 
     public MagratheaWorkflowService(
             MagratheaWorkflowLoader workflowLoader,
@@ -88,7 +92,8 @@ public class MagratheaWorkflowService {
             MagratheaProjectLaneManager laneManager,
             @Lazy @Autowired MagratheaTaskExecutor taskExecutor,
             org.springframework.context.ApplicationEventPublisher eventPublisher,
-            MetricService metricService) {
+            MetricService metricService,
+            ThinkProcessService thinkProcessService) {
         this.workflowLoader = workflowLoader;
         this.documentService = documentService;
         this.journalService = journalService;
@@ -97,6 +102,7 @@ public class MagratheaWorkflowService {
         this.taskExecutor = taskExecutor;
         this.eventPublisher = eventPublisher;
         this.metricService = metricService;
+        this.thinkProcessService = thinkProcessService;
     }
 
     // ──────────── start ────────────
@@ -235,6 +241,33 @@ public class MagratheaWorkflowService {
         return runId;
     }
 
+    /**
+     * Close the ThinkProcess an {@code agent_task} was waiting on when the
+     * task ended on its timeout instead.
+     *
+     * <p>Unlinked first so the resulting {@code CLOSED} event finds no task
+     * and stays silent — the outcome is already decided, and a second
+     * completion would only be dropped as a duplicate anyway.
+     *
+     * <p>A timed-out {@code workflow_task} leaves its sub-run going: ending
+     * a run from outside needs the stop path that does not exist yet
+     * ({@code planning/runs-view.md} §5.4). The parent stops waiting either
+     * way; the child finishes into a journal nobody reads.
+     */
+    private void abandonTimedOutSubProcess(MagratheaTaskDocument task) {
+        String subProcessId = task.getSubProcessId();
+        if (subProcessId == null || subProcessId.isBlank()) return;
+        try {
+            taskService.unlinkSubProcess(task.getId());
+            thinkProcessService.closeProcess(subProcessId, CloseReason.STOPPED);
+            log.info("Magrathea task {} timed out — closed agent process {}",
+                    task.getId(), subProcessId);
+        } catch (RuntimeException ex) {
+            log.warn("Magrathea task {} timed out but agent process {} could not be closed: {}",
+                    task.getId(), subProcessId, ex.toString());
+        }
+    }
+
     private void writeStartRecords(
             String tenantId,
             String projectId,
@@ -345,6 +378,13 @@ public class MagratheaWorkflowService {
         if (appended.isEmpty()) {
             log.debug("Magrathea duplicate TaskCompletedEvent for taskId={} dropped", event.taskId());
             return;
+        }
+
+        // The task is decided now. If it was decided by its deadline rather
+        // than by what it waited on, that thing is still running — an agent
+        // burning tokens on an answer nobody will read. Stop it.
+        if (MagratheaTimeoutScheduler.OUTCOME_TIMEOUT.equals(event.outcome())) {
+            abandonTimedOutSubProcess(task);
         }
 
         // Re-load fresh definition + state spec for transition resolution.

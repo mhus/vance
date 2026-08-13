@@ -81,6 +81,7 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
     private final de.mhus.vance.brain.scheduling.LaneScheduler laneScheduler;
     /** Lazy like the other consumers — the router pulls in the whole engine stack. */
     private final ObjectProvider<EngineMessageRouter> messageRouterProvider;
+    private final MagratheaTimeoutScheduler timeoutScheduler;
 
     @Override
     public MagratheaTaskType type() {
@@ -191,6 +192,10 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
             return Optional.of(TaskOutcome.failure(
                     "Engine start failed: " + startFailure.getMessage()));
         }
+
+        // Deadline before the wait: from here the task is asynchronous and
+        // only the timer can end it if the agent never comes back.
+        timeoutScheduler.arm(context, state);
 
         boolean steered = pushInitialMessage(applied, spawned.getId(), state.name());
 

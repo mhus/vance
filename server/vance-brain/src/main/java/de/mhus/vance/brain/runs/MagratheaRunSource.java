@@ -51,6 +51,9 @@ public class MagratheaRunSource implements RunSource {
 
     public static final String SOURCE_ID = "workflow";
 
+    /** How far back {@link #readChildren} looks for sub-runs of one run. */
+    private static final int CHILD_SCAN_LIMIT = 200;
+
     private final MagratheaJournalService journalService;
     private final MagratheaStateProjector projector;
     /** Owns pause/resume/stop; the source only maps state to verbs. */
@@ -135,7 +138,7 @@ public class MagratheaRunSource implements RunSource {
                 .runId(RunId.of(SOURCE_ID, run.getWorkflowRunId()).composite())
                 .source(SOURCE_ID)
                 .name(run.getWorkflowName())
-                .status(mapStatus(run.getStatus(), run.getCurrentState()))
+                .status(mapStatus(run.getStatus()))
                 .step(run.getCurrentState())
                 .projectId(run.getProjectId())
                 .startedBy(run.getStartedBy())
@@ -145,14 +148,17 @@ public class MagratheaRunSource implements RunSource {
     }
 
     /**
-     * Magrathea has no {@code WAITING} of its own — a run sitting on a
-     * gate or a timer is {@code RUNNING} with a task that waits. The
-     * distinction matters to a reader, so it is reconstructed from the
-     * current state's name being present while nothing advances; anything
-     * finer would need the task row, which the projection deliberately
-     * does not carry.
+     * Magrathea's five statuses onto the shared vocabulary, one for one.
+     *
+     * <p><b>{@code WAITING} is never produced here</b>, and that is a
+     * known gap rather than an oversight: a run sitting on a gate or a
+     * timer is {@code RUNNING} with a task that waits, and which of the
+     * two it is only shows on the task row — which the journal projection
+     * deliberately does not carry. Reconstructing it from the current
+     * state's name would be a guess, and a wrong "waiting" reads worse
+     * than an honest "running".
      */
-    private static RunStatus mapStatus(@Nullable MagratheaRunStatus status, @Nullable String state) {
+    private static RunStatus mapStatus(@Nullable MagratheaRunStatus status) {
         if (status == null) return RunStatus.RUNNING;
         return switch (status) {
             case RUNNING -> RunStatus.RUNNING;
@@ -211,19 +217,29 @@ public class MagratheaRunSource implements RunSource {
         return steps;
     }
 
-    /** Sub-runs, found through the parent pointer the start record carries. */
+    /**
+     * Sub-runs, found through the parent pointer the start record carries.
+     *
+     * <p>One query: {@code listRunStarts} hands back the records it has
+     * already loaded. Asking for ids and then reading each run's start
+     * record back was {@code 1 + n} round-trips on every single detail
+     * view, for a relation that is one field on a record already in hand.
+     *
+     * <p>The {@code CHILD_SCAN_LIMIT} window is the honest part: there is
+     * no index on the parent pointer, so this finds children among the
+     * project's most recent runs and nothing older.
+     */
     private List<RunChildDto> readChildren(String tenantId, String projectId, String runId) {
         List<RunChildDto> children = new ArrayList<>();
-        for (String candidate : journalService.listRunIds(tenantId, projectId, 200)) {
-            if (candidate.equals(runId)) continue;
-            Optional<StartRecord> start = journalService.readLast(
-                    tenantId, projectId, candidate, StartRecord.class);
-            if (start.isEmpty()) continue;
-            if (!runId.equals(start.get().getParentMagratheaProcessId())) continue;
+        for (MagratheaJournalService.RunStart candidate
+                : journalService.listRunStarts(tenantId, projectId, CHILD_SCAN_LIMIT)) {
+            if (candidate.workflowRunId().equals(runId)) continue;
+            StartRecord start = candidate.start();
+            if (!runId.equals(start.getParentMagratheaProcessId())) continue;
             children.add(RunChildDto.builder()
-                    .runId(RunId.of(SOURCE_ID, candidate).composite())
-                    .name(start.get().getWorkflowName())
-                    .fromStep(start.get().getParentState())
+                    .runId(RunId.of(SOURCE_ID, candidate.workflowRunId()).composite())
+                    .name(start.getWorkflowName())
+                    .fromStep(start.getParentState())
                     .build());
         }
         return children;

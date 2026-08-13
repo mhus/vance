@@ -56,15 +56,22 @@ public class RunSourceRegistry {
     }
 
     /**
-     * Every source's runs for one project, merged and sorted newest
-     * first. A source that throws is logged and skipped — one broken
-     * runtime must not blank the whole list.
+     * The newest {@code limit} runs of one project across every source.
+     *
+     * <p>Each source is asked for up to {@code limit} of its own, the
+     * results are merged newest-first and the tail is cut. The cut is the
+     * point: without it {@code limit} meant "per source", so the caller
+     * that asked for 50 got 50 times however many runtimes happen to be
+     * registered — a number it cannot know and did not ask for.
+     *
+     * <p>A source that throws is logged and skipped — one broken runtime
+     * must not blank the whole list.
      */
-    public List<RunSummaryDto> list(String tenantId, String projectId, int limitPerSource) {
+    public List<RunSummaryDto> list(String tenantId, String projectId, int limit) {
         List<RunSummaryDto> all = new ArrayList<>();
         for (RunSource source : byId.values()) {
             try {
-                all.addAll(source.list(tenantId, projectId, limitPerSource));
+                all.addAll(source.list(tenantId, projectId, limit));
             } catch (RuntimeException ex) {
                 log.warn("RunSource '{}' failed to list runs for project '{}': {}",
                         source.sourceId(), projectId, ex.toString());
@@ -73,7 +80,7 @@ public class RunSourceRegistry {
         all.sort(Comparator.comparing(
                 RunSummaryDto::getStartedAt,
                 Comparator.nullsLast(Comparator.reverseOrder())));
-        return all;
+        return all.size() <= limit ? all : List.copyOf(all.subList(0, limit));
     }
 
     /** One run by composite id; empty when the source or the run is unknown. */

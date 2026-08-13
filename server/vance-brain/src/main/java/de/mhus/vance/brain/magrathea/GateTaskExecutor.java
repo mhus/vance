@@ -59,9 +59,10 @@ public class GateTaskExecutor implements MagratheaTypeExecutor {
     /** Payload kind that {@link MagratheaInboxCompletionListener} keys on. */
     public static final String PAYLOAD_KIND = "workflow.gate";
 
-    /** Outcome the timeout-timer publishes when the user doesn't answer in time. */
-    /** @deprecated moved to {@link MagratheaTimeoutScheduler#OUTCOME_TIMEOUT}. */
-    public static final String OUTCOME_TIMEOUT = MagratheaTimeoutScheduler.OUTCOME_TIMEOUT;
+    // The timeout outcome moved to MagratheaTimeoutScheduler#OUTCOME_TIMEOUT
+    // when arming became shared with agent_task and workflow_task. The
+    // forwarding constant that stood here had no callers left — one name for
+    // one thing beats a second one that only says where the first went.
 
     private static final String SPEC_INBOX = "inbox";
     private static final String SYSTEM_USER = "@system";

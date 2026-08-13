@@ -72,12 +72,17 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
         if (!isControlSession(session)) {
             return;
         }
-        releaseAccount(session);
+        // Worker first, account second. The processes in that session run
+        // *as* this account; deleting it while they are still going leaves
+        // a live agent whose every tool call resolves to a subject that no
+        // longer exists — denied, and denied in a way that reads like a
+        // permission bug rather than a shutdown.
         peerSessionOf(session).ifPresent(peer -> {
             lifecycleProvider.getObject().closeWithCascade(peer);
             log.info("Trillian: closed worker session '{}' alongside control '{}'",
                     peer, session.getSessionId());
         });
+        releaseAccount(session);
     }
 
     /**
@@ -176,14 +181,16 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
         if (!isControlSession(session)) {
             return;
         }
-        // Also here, not only in onSessionClosed: an archived session is
-        // deleted without ever passing through the close cascade.
-        releaseAccount(session);
+        // Worker first here too — same reason as in onSessionClosed, and
+        // the delete cascade reads the account off those very processes.
         peerSessionOf(session).ifPresent(peer -> {
             lifecycleProvider.getObject().deleteSession(peer);
             log.info("Trillian: deleted worker session '{}' alongside control '{}'",
                     peer, session.getSessionId());
         });
+        // Also here, not only in onSessionClosed: an archived session is
+        // deleted without ever passing through the close cascade.
+        releaseAccount(session);
     }
 
     /**
@@ -243,7 +250,7 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
                 .orElse(null);
     }
 
-    /** The service account this control session runs its worker as. */    /** The service account this control session runs its worker as. */
+    /** The service account this control session runs its worker as. */
     private Optional<String> accountOf(SessionDocument session) {
         return paramOfAnyProcess(session, TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME);
     }

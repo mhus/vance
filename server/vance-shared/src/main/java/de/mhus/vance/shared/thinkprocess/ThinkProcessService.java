@@ -14,6 +14,7 @@ import de.mhus.vance.shared.enginemessage.EngineMessageService;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -341,6 +342,25 @@ public class ThinkProcessService {
     public List<ThinkProcessDocument> findByProject(String tenantId, String projectId, int limit) {
         return repository.findByTenantIdAndProjectIdOrderByCreatedAtDesc(
                 tenantId, projectId,
+                org.springframework.data.domain.PageRequest.of(0, Math.max(1, limit)));
+    }
+
+    /**
+     * Same, but only processes running one of {@code thinkEngines}.
+     *
+     * <p>For callers that want a small subset of a busy project — the run
+     * view wants plan-shaped engines, and every chat turn is a process, so
+     * filtering in Java means over-fetching by whatever factor happens to
+     * be enough today. An empty engine set returns nothing rather than
+     * everything: "no engine qualifies" is not "no filter".
+     */
+    public List<ThinkProcessDocument> findByProjectAndEngines(
+            String tenantId, String projectId, Collection<String> thinkEngines, int limit) {
+        if (thinkEngines.isEmpty()) {
+            return List.of();
+        }
+        return repository.findByTenantIdAndProjectIdAndThinkEngineInOrderByCreatedAtDesc(
+                tenantId, projectId, thinkEngines,
                 org.springframework.data.domain.PageRequest.of(0, Math.max(1, limit)));
     }
 

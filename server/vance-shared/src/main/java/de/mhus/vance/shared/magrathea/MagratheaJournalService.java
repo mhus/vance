@@ -237,6 +237,46 @@ public class MagratheaJournalService {
                 .toList();
     }
 
+    /**
+     * The same listing as {@link #listRunIds}, but with each run's
+     * {@code StartRecord} already deserialised.
+     *
+     * <p>Exists because every caller that wants more than the bare id —
+     * "which of these runs has this parent", "what was this run called" —
+     * otherwise re-reads the very entries this query already loaded, once
+     * per run. The record is in hand here; handing back only the id turns
+     * one query into {@code 1 + n}.
+     *
+     * <p>An entry whose body no longer deserialises is skipped: a single
+     * unreadable start record must not blank the whole listing.
+     */
+    public List<RunStart> listRunStarts(String tenantId, String projectId, int limit) {
+        List<RunStart> out = new java.util.ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (MagratheaJournalEntry entry : repository
+                .findByTenantIdAndProjectIdAndTypeOrderByCreatedAtDesc(
+                        tenantId, projectId,
+                        de.mhus.vance.shared.magrathea.journal.StartRecord.class.getName(),
+                        org.springframework.data.domain.PageRequest.of(0, limit))) {
+            if (!seen.add(entry.getWorkflowRunId())) {
+                continue;
+            }
+            try {
+                out.add(new RunStart(entry.getWorkflowRunId(), toRecord(entry,
+                        de.mhus.vance.shared.magrathea.journal.StartRecord.class)));
+            } catch (RuntimeException ex) {
+                log.warn("Magrathea journal: unreadable StartRecord for run '{}': {}",
+                        entry.getWorkflowRunId(), ex.toString());
+            }
+        }
+        return out;
+    }
+
+    /** One run and how it began — see {@link #listRunStarts}. */
+    public record RunStart(
+            String workflowRunId,
+            de.mhus.vance.shared.magrathea.journal.StartRecord start) {}
+
     // ──────────── admin ────────────
 
     /** Drop the whole journal of a run — admin / test fixture. */

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -43,24 +44,35 @@ class ThinkProcessRunSourceTest {
     @Test
     void listsOnlyEnginesThatDeclareThemselvesPlanShaped() {
         // The filter is the engine's own answer, not a name list here —
-        // otherwise every new engine needs an edit in the run view.
-        when(processes.findByProject(any(), any(), anyInt()))
-                .thenReturn(List.of(process("p1", "vogon"), process("p2", "ford")));
+        // otherwise every new engine needs an edit in the run view. And it
+        // goes into the query: on a busy project nearly every process is a
+        // chat turn, so filtering afterwards means over-fetching.
+        when(engines.listEngines()).thenReturn(List.of("vogon", "ford"));
         when(engines.resolve("vogon")).thenReturn(Optional.of(planned));
         when(engines.resolve("ford")).thenReturn(Optional.of(flat));
+        when(processes.findByProjectAndEngines(any(), any(), any(), anyInt()))
+                .thenReturn(List.of(process("p1", "vogon")));
 
         assertThat(source.list("acme", "proj", 10))
                 .singleElement()
                 .satisfies(r -> assertThat(r.getRunId()).isEqualTo("process:p1"));
+
+        var asked = org.mockito.ArgumentCaptor.forClass(java.util.Collection.class);
+        verify(processes).findByProjectAndEngines(
+                eq("acme"), eq("proj"), asked.capture(), eq(10));
+        assertThat(asked.getValue()).containsExactly("vogon");
     }
 
     @Test
-    void anUnknownEngineIsNotShown() {
-        when(processes.findByProject(any(), any(), anyInt()))
-                .thenReturn(List.of(process("p1", "ghost")));
+    void anUnregisteredEngineNeverEntersTheFilter() {
+        when(engines.listEngines()).thenReturn(List.of("ghost"));
         when(engines.resolve("ghost")).thenReturn(Optional.empty());
 
         assertThat(source.list("acme", "proj", 10)).isEmpty();
+
+        var asked = org.mockito.ArgumentCaptor.forClass(java.util.Collection.class);
+        verify(processes).findByProjectAndEngines(any(), any(), asked.capture(), anyInt());
+        assertThat(asked.getValue()).isEmpty();
     }
 
     @Test

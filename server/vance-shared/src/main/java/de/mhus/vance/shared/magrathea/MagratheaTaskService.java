@@ -198,15 +198,33 @@ public class MagratheaTaskService {
      * it, CLAIMED means whoever did never came back, and the cause behind
      * either is unbounded. {@link MagratheaTaskStatus#HELD} is excluded
      * because a held task is stopped on purpose — its run is paused.
+     *
+     * <p><b>Not simply "old".</b> Every timestamp the row carries has to
+     * be older than the threshold: creation, the claim, and the last
+     * heartbeat. Age alone would condemn a task that is working and
+     * saying so — a long-running agent step still beating at day fifteen
+     * is the opposite of stalled, and killing it would be the watchdog
+     * causing the failure it exists to catch. A missing timestamp does
+     * not save a row: absent means it never happened.
      */
     public List<MagratheaTaskDocument> findStalledBefore(Instant threshold, int limit) {
         Query q = new Query(
                 Criteria.where("status")
                         .in(MagratheaTaskStatus.PENDING, MagratheaTaskStatus.CLAIMED)
-                        .and("createdAt").lt(threshold))
+                        .and("createdAt").lt(threshold)
+                        .andOperator(
+                                olderThanOrAbsent("claimedAt", threshold),
+                                olderThanOrAbsent("heartbeatAt", threshold)))
                 .with(org.springframework.data.domain.Sort.by("createdAt").ascending())
                 .limit(limit);
         return mongoTemplate.find(q, MagratheaTaskDocument.class);
+    }
+
+    /** {@code field} is either unset or older than {@code threshold}. */
+    private static Criteria olderThanOrAbsent(String field, Instant threshold) {
+        return new Criteria().orOperator(
+                Criteria.where(field).is(null),
+                Criteria.where(field).lt(threshold));
     }
 
     /**

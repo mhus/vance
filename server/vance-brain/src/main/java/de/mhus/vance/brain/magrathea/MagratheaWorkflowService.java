@@ -392,6 +392,15 @@ public class MagratheaWorkflowService {
     /**
      * End what this task is waiting on.
      *
+     * <p>Every branch is individually guarded, and a failure counts the
+     * handle as dealt with rather than aborting. This runs inside the
+     * stop's lane task, over every claimed task of the run: one throw
+     * propagating out — a gate item somebody already answered, a sub-run
+     * on an unreachable pod — would leave the run half unwound and
+     * <em>not</em> terminal, which is the one outcome a stop must never
+     * produce. A handle nobody could release is worth a warning; it is
+     * not worth keeping the run alive over.
+     *
      * @return {@code true} when the task is finished with, {@code false}
      *         when something opaque is still running and the run has to
      *         wait for it
@@ -399,7 +408,12 @@ public class MagratheaWorkflowService {
     private boolean unwind(String tenantId, MagratheaTaskDocument task, String reason) {
         boolean ended = false;
         if (task.getInboxItemId() != null) {
-            inboxItemService.dismiss(tenantId, task.getInboxItemId(), "_magrathea");
+            try {
+                inboxItemService.dismiss(tenantId, task.getInboxItemId(), "_magrathea");
+            } catch (RuntimeException ex) {
+                log.warn("Magrathea stop: could not dismiss gate item '{}': {}",
+                        task.getInboxItemId(), ex.toString());
+            }
             ended = true;
         }
         if (task.getSubProcessId() != null) {
@@ -413,7 +427,12 @@ public class MagratheaWorkflowService {
             ended = true;
         }
         if (task.getSubWorkflowRunId() != null) {
-            stopRun(tenantId, task.getProjectId(), task.getSubWorkflowRunId(), reason);
+            try {
+                stopRun(tenantId, task.getProjectId(), task.getSubWorkflowRunId(), reason);
+            } catch (RuntimeException ex) {
+                log.warn("Magrathea stop: could not stop sub-run '{}': {}",
+                        task.getSubWorkflowRunId(), ex.toString());
+            }
             ended = true;
         }
         if (ended) {

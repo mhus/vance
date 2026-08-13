@@ -31,6 +31,11 @@ interface ThinkProcessRepository extends MongoRepository<ThinkProcessDocument, S
     List<ThinkProcessDocument> findByTenantIdAndProjectIdOrderByCreatedAtDesc(
             String tenantId, String projectId, org.springframework.data.domain.Pageable pageable);
 
+    /** Same, restricted to a set of engines — the run view's plan-shaped ones. */
+    List<ThinkProcessDocument> findByTenantIdAndProjectIdAndThinkEngineInOrderByCreatedAtDesc(
+            String tenantId, String projectId, java.util.Collection<String> thinkEngines,
+            org.springframework.data.domain.Pageable pageable);
+
     boolean existsByTenantIdAndSessionIdAndName(
             String tenantId, String sessionId, String name);
 

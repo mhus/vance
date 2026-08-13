@@ -42,6 +42,21 @@ class RunSourceRegistryTest {
     }
 
     @Test
+    void theLimitIsTheWholeListNotPerSource() {
+        // Asked for two, three sources each offering one: the caller must
+        // get two, not "two times however many runtimes are registered" —
+        // a number it has no way of knowing.
+        RunSourceRegistry registry = registryOf(
+                source("workflow", summary("workflow:a", Instant.parse("2024-01-01T10:00:00Z"))),
+                source("process", summary("process:b", Instant.parse("2024-01-01T12:00:00Z"))),
+                source("compose", summary("compose:c", Instant.parse("2024-01-01T11:00:00Z"))));
+
+        assertThat(registry.list("acme", "proj", 2))
+                .extracting(RunSummaryDto::getRunId)
+                .containsExactly("process:b", "compose:c");
+    }
+
+    @Test
     void routesDetailToTheSourceNamedInTheId() {
         RunSourceRegistry registry = registryOf(
                 source("workflow", summary("workflow:a", Instant.now())),

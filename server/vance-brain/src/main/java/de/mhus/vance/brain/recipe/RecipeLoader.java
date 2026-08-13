@@ -167,7 +167,11 @@ public class RecipeLoader {
         if (!(parsed instanceof Map<?, ?> rawMap)) {
             throw new IllegalStateException("recipe YAML must have a top-level map");
         }
-        Map<String, Object> spec = (Map<String, Object>) rawMap;
+        // Wrapped so the loader records which top-level keys it actually
+        // reads — that recording is what the params-shadowing warning below
+        // is checked against, instead of a second list of field names that
+        // would have to be remembered on every new field.
+        Spec spec = new Spec((Map<String, Object>) rawMap);
 
         String description = stringOrNull(spec.get("description"));
         if (description == null) {
@@ -187,7 +191,6 @@ public class RecipeLoader {
             for (Map.Entry<?, ?> p : pm.entrySet()) {
                 params.put(String.valueOf(p.getKey()), p.getValue());
             }
-            warnOnMisplacedTopLevelKeys(name, params.keySet());
         }
 
         String promptPrefix = stringOrNull(spec.get("promptPrefix"));
@@ -215,6 +218,11 @@ public class RecipeLoader {
         String title = stringOrNull(spec.get("title"));
         List<String> tags = stringList(spec.get("tags"), "tags");
         List<GuardConfig> guards = parseGuards(spec.get("guard"));
+
+        // Every field has been read by now, so the recorded key set is
+        // complete — this is the point where "is that params entry really a
+        // misplaced recipe field?" can be answered without guessing.
+        warnOnMisplacedTopLevelKeys(name, params.keySet(), spec.readKeys());
 
         return new ResolvedRecipe(
                 name, description, engine, params,
@@ -579,10 +587,41 @@ public class RecipeLoader {
 
 
     /**
-     * Recipe fields that belong at the top level. {@code params} is a free
-     * map — the engine puts whatever it finds there into
-     * {@code engineParams} — so a field indented one level too far is
-     * accepted in silence and simply never takes effect.
+     * The recipe map, plus a record of which top-level keys the loader
+     * asked for.
+     *
+     * <p>The set of recipe fields exists twice otherwise: once as the
+     * {@code spec.get("…")} calls that read them, and once as a list to
+     * check {@code params} against. The second copy is the one that gets
+     * forgotten — and it gets forgotten precisely for a newly added field,
+     * which is when the warning would have been worth having. Recording
+     * the reads makes the check derive from the parser instead.
+     */
+    private static final class Spec {
+
+        private final Map<String, Object> raw;
+        private final Set<String> read = new java.util.LinkedHashSet<>();
+
+        Spec(Map<String, Object> raw) {
+            this.raw = raw;
+        }
+
+        Object get(String key) {
+            read.add(key);
+            return raw.get(key);
+        }
+
+        Set<String> readKeys() {
+            return read;
+        }
+    }
+
+    /**
+     * Warns when {@code params} carries a key the loader also reads as a
+     * top-level field. {@code params} is a free map — the engine puts
+     * whatever it finds there into {@code engineParams} — so a field
+     * indented one level too far is accepted in silence and simply never
+     * takes effect.
      *
      * <p>That is not hypothetical: {@code coding.yaml} and
      * {@code trillian-worker-0.yaml} both carried their entire
@@ -590,25 +629,16 @@ public class RecipeLoader {
      * it. The worker never learned its termination contract, and the
      * symptom looked like a model ignoring instructions rather than
      * instructions that were never sent.
+     *
+     * <p>Deliberately a warning and not a failure: {@code params} is open
+     * by design, and an engine is free to read a parameter that happens to
+     * share a name. But the overlap is almost always a misplaced block,
+     * and the cost of not noticing is a silently inactive prompt.
      */
-    private static final Set<String> TOP_LEVEL_FIELDS = Set.of(
-            "engine", "description", "title", "promptPrefix", "promptMode",
-            "dataRelayCorrection", "allowedToolsAdd", "allowedToolsRemove",
-            "allowedToolsKeep", "allowedToolsDefer", "allowedToolsDropFirst",
-            "defaultActiveSkills", "allowedSkills", "triggers", "tags",
-            "modes", "profiles", "guard", "internal", "listed", "locked");
-
-    /**
-     * Warns when {@code params} carries a key that is a known top-level
-     * field. Deliberately a warning and not a failure: {@code params} is
-     * open by design, and an engine is free to read a parameter that
-     * happens to share a name. But the overlap is almost always a
-     * misplaced block, and the cost of not noticing is a silently
-     * inactive prompt.
-     */
-    private static void warnOnMisplacedTopLevelKeys(String recipeName, Set<String> paramKeys) {
+    private static void warnOnMisplacedTopLevelKeys(
+            String recipeName, Set<String> paramKeys, Set<String> topLevelFields) {
         for (String key : paramKeys) {
-            if (TOP_LEVEL_FIELDS.contains(key)) {
+            if (topLevelFields.contains(key)) {
                 log.warn("Recipe '{}': 'params.{}' shadows the top-level recipe field '{}' — "
                                 + "it is stored as an engine parameter and has NO effect as a "
                                 + "recipe field. Move it out of 'params' if that was the intent.",

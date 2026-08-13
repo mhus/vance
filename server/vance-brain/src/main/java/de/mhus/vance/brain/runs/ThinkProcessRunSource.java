@@ -16,6 +16,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -65,16 +66,33 @@ public class ThinkProcessRunSource implements RunSource {
 
     @Override
     public List<RunSummaryDto> list(String tenantId, String projectId, int limit) {
+        // Filtered in the query, not afterwards. Most of a busy project's
+        // processes are chat turns, so filtering in Java forced an
+        // over-fetch factor picked by guesswork — too small and the list
+        // came back short, too large and one page view loaded thousands of
+        // documents. The engine set is known here, so Mongo can do it.
         List<RunSummaryDto> out = new ArrayList<>();
-        // Over-fetch: the engine filter throws most of a project's
-        // processes away (every chat turn is one), so a plain limit would
-        // return a near-empty list on a busy project.
-        for (ThinkProcessDocument p : thinkProcessService.findByProject(tenantId, projectId, limit * 10)) {
-            if (!isPlanShaped(p)) continue;
+        for (ThinkProcessDocument p : thinkProcessService.findByProjectAndEngines(
+                tenantId, projectId, planShapedEngines(), limit)) {
             out.add(toSummary(p));
-            if (out.size() >= limit) break;
         }
         return out;
+    }
+
+    /**
+     * Names of the registered engines that declare {@link
+     * ThinkEngine#planShaped()}. Recomputed per call — the registry is a
+     * small in-memory map, and caching it would mean a stale answer on the
+     * one occasion it changes.
+     */
+    private Set<String> planShapedEngines() {
+        Set<String> names = new LinkedHashSet<>();
+        for (String name : thinkEngineService.listEngines()) {
+            if (thinkEngineService.resolve(name).map(ThinkEngine::planShaped).orElse(false)) {
+                names.add(name);
+            }
+        }
+        return names;
     }
 
     @Override
@@ -152,12 +170,6 @@ public class ThinkProcessRunSource implements RunSource {
     private Optional<ThinkProcessDocument> load(String tenantId, String projectId, String nativeId) {
         return thinkProcessService.findById(nativeId)
                 .filter(p -> tenantId.equals(p.getTenantId()) && projectId.equals(p.getProjectId()));
-    }
-
-    private boolean isPlanShaped(ThinkProcessDocument process) {
-        return thinkEngineService.resolve(process.getThinkEngine())
-                .map(ThinkEngine::planShaped)
-                .orElse(false);
     }
 
     private RunSummaryDto toSummary(ThinkProcessDocument process) {

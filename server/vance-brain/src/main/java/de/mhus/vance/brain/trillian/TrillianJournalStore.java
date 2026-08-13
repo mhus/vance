@@ -53,6 +53,10 @@ public class TrillianJournalStore {
 
     private final DocumentService documentService;
 
+    /** Per-journal monitors — see {@link #append}. */
+    private final java.util.concurrent.ConcurrentMap<String, Object> locks =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     /** Document path for an account, exposed for tests and log lines. */
     public static String pathFor(String account) {
         return FOLDER + account + ".journal.md";
@@ -61,24 +65,48 @@ public class TrillianJournalStore {
     /**
      * Appends one entry. Best-effort — a lost reflexion costs a lesson,
      * and it must not cost the task result that triggered it.
+     *
+     * <p><b>Serialised per journal.</b> The append is a read-modify-write
+     * over the whole document, and the reflexion that produces an entry
+     * runs off the reporting thread — two tasks concluding at once would
+     * otherwise both read the old body and the second write would drop
+     * the first lesson. Silently: an append-only record that loses
+     * entries is worse than one that never existed, because it is still
+     * believed. The lock is pod-local, which covers the real case (a
+     * Trillian's worker session lives on one pod); a genuinely
+     * cross-pod race would still need document-level compare-and-set.
      */
     public void append(String tenantId, String projectId, String account, String entry) {
         if (entry.isBlank()) {
             return;
         }
-        try {
-            String existing = readText(tenantId, projectId, account);
-            String body = existing == null || existing.isBlank()
-                    ? HEADER + "\n" + entry.strip() + "\n"
-                    : existing.stripTrailing() + "\n" + entry.strip() + "\n";
-            documentService.upsertText(
-                    tenantId, projectId, pathFor(account),
-                    DOC_TITLE_PREFIX + account, TAGS, body,
-                    /*createdBy*/ account,
-                    WriteActor.SYSTEM);
-        } catch (RuntimeException e) {
-            log.warn("Trillian: could not append to journal of '{}': {}", account, e.toString());
+        synchronized (lockFor(tenantId, projectId, account)) {
+            try {
+                String existing = readText(tenantId, projectId, account);
+                String body = existing == null || existing.isBlank()
+                        ? HEADER + "\n" + entry.strip() + "\n"
+                        : existing.stripTrailing() + "\n" + entry.strip() + "\n";
+                documentService.upsertText(
+                        tenantId, projectId, pathFor(account),
+                        DOC_TITLE_PREFIX + account, TAGS, body,
+                        /*createdBy*/ account,
+                        WriteActor.SYSTEM);
+            } catch (RuntimeException e) {
+                log.warn("Trillian: could not append to journal of '{}': {}",
+                        account, e.toString());
+            }
         }
+    }
+
+    /**
+     * One monitor per journal. Keyed by the full path, so two accounts —
+     * or the same name in two projects — never wait on each other. The map
+     * grows with the number of Trillians that ever reflected on this pod,
+     * which is the same order as the number of accounts.
+     */
+    private Object lockFor(String tenantId, String projectId, String account) {
+        return locks.computeIfAbsent(
+                tenantId + "/" + projectId + "/" + account, k -> new Object());
     }
 
     /**

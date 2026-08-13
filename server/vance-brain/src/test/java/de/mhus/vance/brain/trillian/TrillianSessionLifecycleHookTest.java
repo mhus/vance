@@ -91,6 +91,19 @@ class TrillianSessionLifecycleHookTest {
     }
 
     @Test
+    void closingControl_endsTheWorkerBeforeTakingItsIdentityAway() {
+        // The worker's processes run as this account. Deleting it first
+        // leaves a live agent whose every tool call resolves to a subject
+        // that no longer exists — denied, and denied in a way that reads
+        // like a permission bug rather than a shutdown.
+        hook.onSessionClosed(session(CONTROL));
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(lifecycleService, userService);
+        order.verify(lifecycleService).closeWithCascade(PEER);
+        order.verify(userService).delete(TENANT, ACCOUNT);
+    }
+
+    @Test
     void closingControl_letsTheNatureDropWhatItStored() {
         // A persistent Nature files its attributes under the account
         // name. Deleting the account without telling it leaves a document

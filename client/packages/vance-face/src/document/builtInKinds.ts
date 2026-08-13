@@ -90,4 +90,21 @@ export function registerBuiltInKinds(): void {
       () => import('@/cortex/components/ComposeView.vue'),
     ),
   });
+
+  // ── Magrathea workflow: state machine drawn as a flow ──────────
+  // Same identity-codec shape as compose — the Edit tab stays a raw
+  // YAML CodeEditor (the definition is the artefact, and it is what
+  // the server parses), the View tab renders the state graph.
+  // Matched by kind alone: a workflow document is one wherever it
+  // lives, not only under `_vance/workflows/` (spec §2.5).
+  registerKind<string>({
+    id: 'vance-workflow',
+    matches: (kind) => (kind ?? '').toLowerCase() === 'vance-workflow',
+    parse: (body) => body,
+    serialize: (doc) => doc,
+    tabLabelKey: 'documents.workflowView.tabLabel',
+    view: defineAsyncComponent(
+      () => import('@/kindViews/WorkflowFlowView.vue'),
+    ),
+  });
 }

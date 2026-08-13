@@ -1,0 +1,28 @@
+title:       { de: "Workflow",  en: "Workflow" }
+description: { de: "Magrathea-Workflow: Agent-Schritt, Freigabe-Gate und Terminal-States",
+               en: "Magrathea workflow: agent step, approval gate and terminal states" }
+icon: arrow-path-rounded-square
+tags: [workflow, automation]
+
+name:
+  mode: free
+  default: "my-workflow"
+
+fields:
+  - name: summary
+    # Single-line on purpose: the value lands inside a YAML block scalar,
+    # where a pasted newline would break the indentation of the document
+    # the template writes.
+    type: string
+    required: true
+    label: { de: "Was der Workflow tut",
+             en: "What the workflow does" }
+    help:  { de: "Ein Satz — wird Beschreibung und Prompt des ersten Schritts",
+             en: "One sentence — becomes the description and the first step's prompt" }
+  - name: recipe
+    type: string
+    defaultValue: jeltz
+    label: { de: "Recipe des ersten Schritts",
+             en: "Recipe for the first step" }
+    help:  { de: "Muss ein bekanntes Recipe sein, z.B. jeltz, ford, analyze",
+             en: "Must be a known recipe, e.g. jeltz, ford, analyze" }

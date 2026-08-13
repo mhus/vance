@@ -119,6 +119,12 @@ export default {
     openSession: 'Open session',
   },
 
+  inboxBadge: {
+    tooltip: '{n} pending inbox item(s) — open the inbox',
+    actionableTooltip: '{n} pending inbox item(s), {a} waiting for your answer '
+      + '— open the inbox',
+  },
+
   processCounts: {
     emptyTooltip: 'No other processes — open the list',
     label: '{n} process(es)',
@@ -718,6 +724,20 @@ export default {
       idEmpty: 'Node id cannot be empty.',
       idDuplicate: 'Another node already has the id "{id}".',
       emptySelectionHint: 'Click a node or edge to edit its properties.',
+    },
+    workflowView: {
+      tabLabel: 'Flow',
+      summary: '{states} states · {edges} transitions',
+      startsAt: 'Start: {state}',
+      startBadge: 'start',
+      retryHint: 'This state has a retry block',
+      directionVertical: '⇅ Vertical',
+      directionHorizontal: '⇄ Horizontal',
+      directionHint: 'Switch layout direction',
+      undeclared: 'undeclared',
+      noType: 'no type',
+      problemsTitle: 'This workflow would not start:',
+      empty: 'No states — a workflow needs at least one entry under `states:`.',
     },
     recordsEditor: {
       addRow: 'Add row',

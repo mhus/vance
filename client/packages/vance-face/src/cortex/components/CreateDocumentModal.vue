@@ -238,14 +238,27 @@ const kindAllowed = computed(() => KIND_ALLOWED_MIMES.has(createMime.value));
 const KIND_CREATE_OPTIONS = [
   'list', 'checklist', 'tree', 'text', 'mindmap', 'graph', 'chart', 'sheet',
   'slides', 'diagram', 'calendar', 'application', 'data', 'records', 'schema',
-  'compose',
+  'compose', 'vance-workflow',
 ] as const;
 
 // Human-facing labels where the raw kind id would be unclear. The id stays
 // technical (e.g. `compose`); only the picker label is friendlier.
 const KIND_LABELS: Record<string, string> = {
   compose: 'Workspace Compose',
+  'vance-workflow': 'Workflow (Magrathea)',
 };
+
+// Kinds whose body only exists as YAML — their stub generator has no
+// markdown / JSON branch, and the server-side parser reads YAML. Picking
+// one switches the mime instead of producing a document that is the
+// right kind in the wrong format.
+const YAML_ONLY_KINDS = new Set<string>(['compose', 'vance-workflow']);
+
+function isYamlMime(mime: string): boolean {
+  return mime === 'application/yaml'
+    || mime === 'application/x-yaml'
+    || mime === 'text/yaml';
+}
 
 const kindCreateOptions = computed(() => [
   { value: '', label: t('documents.create.kindNone') },
@@ -260,9 +273,7 @@ function buildKindStub(kind: string, mime: string): string {
   if (!kind) return '';
   const isMd = mime === 'text/markdown' || mime === 'text/x-markdown';
   const isJson = mime === 'application/json';
-  const isYaml = mime === 'application/yaml'
-    || mime === 'application/x-yaml'
-    || mime === 'text/yaml';
+  const isYaml = isYamlMime(mime);
 
   if (kind === 'list') {
     if (isMd) return '---\nkind: list\n---\n- item 1\n- item 2\n';
@@ -331,11 +342,49 @@ function buildKindStub(kind: string, mime: string): string {
         + '    outputs:\n      - out.txt\n';
     }
   }
+  if (kind === 'vance-workflow') {
+    // Magrathea workflow (YAML). Smallest skeleton that passes the
+    // server-side parser: a `start:` naming a declared state, one worker
+    // step, and both terminal outcomes wired up.
+    if (isYaml) {
+      return '$meta:\n  kind: vance-workflow\n'
+        + 'description: What this workflow does.\n'
+        + 'version: "1"\n\n'
+        + 'start: work\n\n'
+        + 'states:\n'
+        + '  work:\n'
+        + '    type: agent_task\n'
+        + '    recipe: jeltz\n'
+        + '    params:\n'
+        + '      prompt: "Describe the task for the agent."\n'
+        + '    storeAs: work_result\n'
+        + '    on:\n'
+        + '      success: done\n'
+        + '    catch:\n'
+        + '      agent_error: failed\n\n'
+        + '  done:\n'
+        + '    type: terminal\n'
+        + '    outcome: success\n\n'
+        + '  failed:\n'
+        + '    type: terminal\n'
+        + '    outcome: failure\n';
+    }
+  }
   if (isMd) return `---\nkind: ${kind}\n---\n`;
   if (isJson) return `{\n  "$meta": { "kind": "${kind}" }\n}\n`;
   if (isYaml) return `$meta:\n  kind: ${kind}\n`;
   return '';
 }
+
+// A YAML-only kind pulls the mime along. Without this the picker would
+// happily produce `kind: vance-workflow` inside a markdown file — the
+// right kind in a format neither the parser nor the view can read.
+watch(createKind, (kind) => {
+  if (!props.open) return;
+  if (YAML_ONLY_KINDS.has(kind) && !isYamlMime(createMime.value)) {
+    createMime.value = 'application/yaml';
+  }
+});
 
 // Auto-fill body when kind / mime changes — only when the editor still
 // holds the last auto-generated stub or is empty.

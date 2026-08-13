@@ -8,6 +8,7 @@ import {
   type InboxTagsResponse,
 } from '@vance/generated';
 import { brainFetch } from '@vance/shared';
+import { refreshInboxCount } from '@/inbox/inboxCountStore';
 
 export type AssignedToFilter =
   | { kind: 'self' }
@@ -167,6 +168,10 @@ export function useInbox(): {
       // the user keeps context, and the next loadList reconciles.
       items.value[idx] = updated;
     }
+    // Every mutation here can move an item in or out of PENDING, so the
+    // topbar badge is stale the moment we return. Fire-and-forget: the
+    // badge must never gate an inbox action.
+    void refreshInboxCount();
     return true;
   }
 

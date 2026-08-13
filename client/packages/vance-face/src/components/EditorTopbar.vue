@@ -13,6 +13,7 @@ import {
   logout as serverLogout,
 } from '@/platform';
 import { setUiLocale } from '@/i18n';
+import InboxBadge from './InboxBadge.vue';
 import ProcessCountsBadge from './ProcessCountsBadge.vue';
 import FookSupportModal from './FookSupportModal.vue';
 import VanceLogo from './VanceLogo.vue';
@@ -226,6 +227,11 @@ function openFook(): void {
     </div>
 
     <div class="flex-none flex items-center gap-3">
+      <!-- Pending-inbox badge — self-hiding at zero, present on every
+           editor page so a waiting question is visible without opening
+           the inbox. REST-pulled on mount + tab-refocus. -->
+      <InboxBadge />
+
       <!-- Session process badge — self-hiding when nothing runs, so it
            costs no space in the common case. Fed by the process-counts
            push (see planning/process-visibility.md §4.A). -->

@@ -54,6 +54,7 @@ public class InboxItemService {
     private static final String F_TENANT = "tenantId";
     private static final String F_STATUS = "status";
     private static final String F_ASSIGNED = "assignedToUserId";
+    private static final String F_REQUIRES_ACTION = "requiresAction";
 
     /** Conventional payload key for the LOW-auto-default value. */
     public static final String PAYLOAD_DEFAULT_KEY = "default";
@@ -186,6 +187,46 @@ public class InboxItemService {
             List<String> userIds,
             @Nullable InboxItemStatus status,
             @Nullable String tag) {
+        Query query = Query.query(filterCriteria(tenantId, userIds, status, tag))
+                .with(Sort.by(Sort.Direction.DESC, "createdAt"));
+        return mongoTemplate.find(query, InboxItemDocument.class);
+    }
+
+    /**
+     * Counts the pending items of {@code userIds}, split by whether they
+     * demand an answer. Drives the topbar inbox badge, which needs the two
+     * numbers and never a body — so this counts in Mongo instead of
+     * transferring every pending document just to read {@code .length}.
+     *
+     * <p>Both numbers are on {@code PENDING} only: an answered or archived
+     * item is nothing the user has to look at. {@code requiresAction} is the
+     * subset the originating process actually waits on; the rest are pure
+     * outputs (shares, notes) that are worth showing but not worth colouring.
+     *
+     * @param userIds assignees to count over — empty means the whole tenant
+     *                (not exposed in v1).
+     */
+    public PendingCounts countPending(String tenantId, List<String> userIds) {
+        long total = mongoTemplate.count(
+                Query.query(filterCriteria(tenantId, userIds, InboxItemStatus.PENDING, null)),
+                InboxItemDocument.class);
+        long requiresAction = mongoTemplate.count(
+                Query.query(filterCriteria(tenantId, userIds, InboxItemStatus.PENDING, null)
+                        .and(F_REQUIRES_ACTION).is(true)),
+                InboxItemDocument.class);
+        return new PendingCounts(total, requiresAction);
+    }
+
+    /**
+     * Shared criteria for the filtered read paths. Returns a fresh instance
+     * per call — {@code Criteria.and(…)} mutates the receiver, so a shared
+     * one would leak the caller's extra clauses into the next query.
+     */
+    private static Criteria filterCriteria(
+            String tenantId,
+            @Nullable List<String> userIds,
+            @Nullable InboxItemStatus status,
+            @Nullable String tag) {
         Criteria criteria = Criteria.where(F_TENANT).is(tenantId);
         if (userIds != null && !userIds.isEmpty()) {
             criteria = criteria.and(F_ASSIGNED).in(userIds);
@@ -196,9 +237,7 @@ public class InboxItemService {
         if (tag != null && !tag.isBlank()) {
             criteria = criteria.and("tags").is(tag);
         }
-        Query query = Query.query(criteria)
-                .with(Sort.by(Sort.Direction.DESC, "createdAt"));
-        return mongoTemplate.find(query, InboxItemDocument.class);
+        return criteria;
     }
 
     /**
@@ -482,6 +521,12 @@ public class InboxItemService {
                 update, InboxItemDocument.class);
         return findById(tenantId, itemId);
     }
+
+    /**
+     * Pending-item counts for the topbar badge — {@code total} is everything
+     * still pending, {@code requiresAction} the subset that waits on an answer.
+     */
+    public record PendingCounts(long total, long requiresAction) {}
 
     /** Lightweight summary used by {@code inbox-pending-summary} on session resume. */
     public record PendingSummary(

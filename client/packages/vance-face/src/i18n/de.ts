@@ -113,6 +113,12 @@ export default {
     openSession: 'Session öffnen',
   },
 
+  inboxBadge: {
+    tooltip: '{n} offene(r) Inbox-Eintrag/Einträge — Inbox öffnen',
+    actionableTooltip: '{n} offene(r) Inbox-Eintrag/Einträge, {a} warten auf deine '
+      + 'Antwort — Inbox öffnen',
+  },
+
   processCounts: {
     emptyTooltip: 'Keine weiteren Prozesse — Liste öffnen',
     label: '{n} Prozess(e)',
@@ -713,6 +719,20 @@ export default {
       idEmpty: 'Knoten-ID darf nicht leer sein.',
       idDuplicate: 'Ein anderer Knoten hat bereits die ID „{id}".',
       emptySelectionHint: 'Knoten oder Kante anklicken, um Eigenschaften zu bearbeiten.',
+    },
+    workflowView: {
+      tabLabel: 'Ablauf',
+      summary: '{states} States · {edges} Übergänge',
+      startsAt: 'Start: {state}',
+      startBadge: 'Start',
+      retryHint: 'Dieser State hat einen retry-Block',
+      directionVertical: '⇅ Vertikal',
+      directionHorizontal: '⇄ Horizontal',
+      directionHint: 'Layout-Richtung umschalten',
+      undeclared: 'nicht deklariert',
+      noType: 'ohne type',
+      problemsTitle: 'Der Workflow würde so nicht starten:',
+      empty: 'Keine States — der Workflow braucht mindestens einen Eintrag unter `states:`.',
     },
     recordsEditor: {
       addRow: 'Zeile hinzufügen',

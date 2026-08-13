@@ -1,0 +1,62 @@
+$meta:
+  kind: vance-workflow
+
+description: |
+  {{ summary }}
+version: "1"
+
+# Caller parameters, validated at start(). Read anywhere below as
+# ${params.<key>}.
+parameters:
+  subject: { type: string, required: false }
+
+# Hard stop for the whole run — not routed through catch:.
+bounds:
+  maxTotalCostUsd: 5.0
+  maxWallclockSeconds: 86400
+  maxTaskSpawns: 50
+
+start: work
+
+states:
+
+  work:
+    type: agent_task
+    recipe: {{ recipe | default('jeltz') }}
+    params:
+      prompt: |
+        {{ summary }}
+        Subject: ${params.subject}
+    storeAs: work_result
+    timeoutSeconds: 900
+    on:
+      success: review
+    catch:
+      agent_error: failed
+
+  # Human checkpoint. Drop this state and wire work.on.success straight
+  # to done for a fully unattended run.
+  review:
+    type: gate_task
+    inbox:
+      kind: APPROVAL
+      title: "{{ name }}: approve the result?"
+      body: "${state.work_result}"
+      criticality: NORMAL
+    timeoutSeconds: 604800
+    storeAs: review_decision
+    on:
+      approved: done
+      rejected: work
+    catch:
+      timeout: failed
+
+  done:
+    type: terminal
+    outcome: success
+    result:
+      summary: "${state.work_result}"
+
+  failed:
+    type: terminal
+    outcome: failure

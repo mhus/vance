@@ -254,6 +254,32 @@ class InboxItemServiceTest {
         verify(eventPublisher).publishEvent(any(InboxItemDelegatedEvent.class));
     }
 
+    // ──── countPending() ────────────────────────────────────────────────
+
+    @Test
+    void countPending_countsPendingAndActionSubset_withoutLoadingDocuments() {
+        when(mongoTemplate.count(any(Query.class), eq(InboxItemDocument.class)))
+                .thenReturn(7L, 3L);
+
+        InboxItemService.PendingCounts counts =
+                service.countPending("acme", List.of("alice"));
+
+        assertThat(counts.total()).isEqualTo(7L);
+        assertThat(counts.requiresAction()).isEqualTo(3L);
+        // Counting only — the badge never needs a body.
+        verify(mongoTemplate, never()).find(any(Query.class), eq(InboxItemDocument.class));
+
+        ArgumentCaptor<Query> queries = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate, times(2)).count(queries.capture(), eq(InboxItemDocument.class));
+        String all = queries.getAllValues().get(0).toString();
+        String actionable = queries.getAllValues().get(1).toString();
+        assertThat(all).contains("acme").contains("alice").contains("PENDING");
+        assertThat(all).doesNotContain("requiresAction");
+        // Second query is the same filter plus the requiresAction clause —
+        // proves the shared criteria builder isn't leaking state.
+        assertThat(actionable).contains("PENDING").contains("requiresAction");
+    }
+
     // ──── helpers ───────────────────────────────────────────────────────
 
     private static InboxItemDocument.InboxItemDocumentBuilder item(String tenant, String assignee) {

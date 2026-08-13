@@ -4,6 +4,7 @@ import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.EffectDescription;
 import de.mhus.vance.api.inbox.Criticality;
 import de.mhus.vance.api.inbox.InboxAnswerRequest;
+import de.mhus.vance.api.inbox.InboxCountResponse;
 import de.mhus.vance.api.inbox.InboxDelegateRequest;
 import de.mhus.vance.api.inbox.InboxItemDto;
 import de.mhus.vance.api.inbox.InboxItemStatus;
@@ -106,6 +107,31 @@ public class InboxController {
                 tenant, targetUsers, status, tag);
         List<InboxItemDto> dtos = InboxMapper.toDtos(docs);
         return InboxListResponse.builder().items(dtos).count(dtos.size()).build();
+    }
+
+    /**
+     * Pending-item counts for the topbar badge. Same {@code assignedTo}
+     * grammar (and therefore the same authorisation) as {@link #list} —
+     * missing means the personal inbox.
+     *
+     * <p>Separate from {@link #list} on purpose: the badge renders on every
+     * editor page and only needs two numbers, while the list transfers every
+     * pending body and payload.
+     */
+    @GetMapping("/brain/{tenant}/inbox/count")
+    public InboxCountResponse count(
+            @PathVariable("tenant") String tenant,
+            @RequestParam(value = "assignedTo", required = false) @Nullable String assignedTo,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
+        String currentUser = currentUser(httpRequest);
+        List<String> targetUsers = resolveTargetUsers(tenant, currentUser, assignedTo);
+        InboxItemService.PendingCounts counts =
+                inboxItemService.countPending(tenant, targetUsers);
+        return InboxCountResponse.builder()
+                .pending(counts.total())
+                .requiresAction(counts.requiresAction())
+                .build();
     }
 
     /** Single item — same authorisation as list. */

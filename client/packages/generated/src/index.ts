@@ -92,6 +92,7 @@ export * from './inbox/EffectFact';
 export * from './inbox/AnswerPayload';
 export * from './inbox/Criticality';
 export * from './inbox/InboxAnswerRequest';
+export * from './inbox/InboxCountResponse';
 export * from './inbox/InboxDelegateRequest';
 export * from './inbox/InboxItemDto';
 export * from './inbox/InboxItemStatus';

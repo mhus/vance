@@ -1,9 +1,12 @@
 package de.mhus.vance.brain.wakeup;
 
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.util.MongoKeys;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
@@ -62,11 +65,30 @@ public class WakeupRegistry {
      */
     private final Map<String, Map<String, Entry>> entries = new ConcurrentHashMap<>();
 
+    /**
+     * Statuses that swallow a wakeup instead of receiving it. A paused
+     * process is deliberately not running turns
+     * ({@code ProcessEventEmitter.runTurnNow} gates on the same set), so
+     * delivering anyway would only pile events into an inbox nobody
+     * drains — an hourly wakeup paused for three days hands the engine
+     * 72 stale "time to look" events at once when it resumes.
+     *
+     * <p>Dropping is right rather than deferring: a wakeup is a poll
+     * tick, and a missed tick has no value once its moment has passed.
+     * The caller can schedule a new one after resuming.
+     */
+    private static final java.util.Set<ThinkProcessStatus> SWALLOWS_WAKEUP =
+            java.util.Set.of(ThinkProcessStatus.PAUSED, ThinkProcessStatus.SUSPENDED,
+                    ThinkProcessStatus.CLOSED);
+
     private final ScheduledExecutorService scheduler;
     private final ObjectProvider<EngineMessageRouter> routerProvider;
+    private final ObjectProvider<ThinkProcessService> thinkProcessServiceProvider;
 
-    public WakeupRegistry(ObjectProvider<EngineMessageRouter> routerProvider) {
+    public WakeupRegistry(ObjectProvider<EngineMessageRouter> routerProvider,
+            ObjectProvider<ThinkProcessService> thinkProcessServiceProvider) {
         this.routerProvider = routerProvider;
+        this.thinkProcessServiceProvider = thinkProcessServiceProvider;
         this.scheduler = Executors.newScheduledThreadPool(4, namedDaemonThreadFactory());
     }
 
@@ -211,6 +233,12 @@ public class WakeupRegistry {
         if (processEntries.isEmpty()) {
             entries.remove(processId, processEntries);
         }
+        ThinkProcessStatus status = statusOf(processId);
+        if (status != null && SWALLOWS_WAKEUP.contains(status)) {
+            log.debug("wakeup dropped — process={} is {} correlationId={} label='{}'",
+                    processId, status, correlationId, entry.label);
+            return;
+        }
         try {
             PendingMessageDocument doc = PendingMessageDocument.builder()
                     .type(PendingMessageType.PROCESS_EVENT)
@@ -232,6 +260,22 @@ public class WakeupRegistry {
         } catch (RuntimeException e) {
             log.warn("wakeup dispatch failed process={} correlationId={}: {}",
                     processId, correlationId, e.toString(), e);
+        }
+    }
+
+    /**
+     * Current status, or {@code null} when it cannot be determined —
+     * an unreadable status must not silently swallow the wakeup, so
+     * the caller treats it as deliverable.
+     */
+    private @org.jspecify.annotations.Nullable ThinkProcessStatus statusOf(String processId) {
+        try {
+            return thinkProcessServiceProvider.getObject().findById(processId)
+                    .map(ThinkProcessDocument::getStatus)
+                    .orElse(null);
+        } catch (RuntimeException e) {
+            log.debug("wakeup status lookup failed process={}: {}", processId, e.toString());
+            return null;
         }
     }
 

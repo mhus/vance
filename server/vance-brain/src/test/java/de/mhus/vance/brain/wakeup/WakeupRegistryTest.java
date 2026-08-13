@@ -11,12 +11,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
@@ -31,16 +35,29 @@ class WakeupRegistryTest {
     private static final String OTHER_PROCESS = "p-2";
 
     private EngineMessageRouter router;
+    private ThinkProcessService thinkProcessService;
     private WakeupRegistry registry;
 
     @BeforeEach
     void setUp() {
         router = mock(EngineMessageRouter.class);
+        thinkProcessService = mock(ThinkProcessService.class);
         @SuppressWarnings("unchecked")
         ObjectProvider<EngineMessageRouter> provider = mock(ObjectProvider.class);
         when(provider.getObject()).thenReturn(router);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ThinkProcessService> processProvider = mock(ObjectProvider.class);
+        when(processProvider.getObject()).thenReturn(thinkProcessService);
         when(router.dispatch(any(), any(), any())).thenReturn(true);
-        registry = new WakeupRegistry(provider);
+        givenStatus(ThinkProcessStatus.IDLE);
+        registry = new WakeupRegistry(provider, processProvider);
+    }
+
+    private void givenStatus(ThinkProcessStatus status) {
+        ThinkProcessDocument doc = new ThinkProcessDocument();
+        doc.setId(PROCESS);
+        doc.setStatus(status);
+        when(thinkProcessService.findById(any())).thenReturn(Optional.of(doc));
     }
 
     @AfterEach
@@ -74,6 +91,49 @@ class WakeupRegistryTest {
 
         // Once fired, the entry must be gone — list returns empty.
         assertThat(registry.list(PROCESS)).isEmpty();
+    }
+
+    @Test
+    void pausedProcess_swallowsTheWakeup() throws Exception {
+        givenStatus(ThinkProcessStatus.PAUSED);
+
+        registry.schedule(PROCESS, Duration.ofMillis(30), "tick", null);
+        Thread.sleep(200);
+
+        // A paused process runs no turns, so delivering would only stack
+        // stale ticks in an inbox nobody drains — three days of hourly
+        // polling would greet the resume with 72 of them.
+        verify(router, never()).dispatch(any(), any(), any());
+        assertThat(registry.list(PROCESS)).isEmpty();
+    }
+
+    @Test
+    void suspendedAndClosed_swallowTheWakeupToo() throws Exception {
+        for (ThinkProcessStatus status : java.util.List.of(
+                ThinkProcessStatus.SUSPENDED, ThinkProcessStatus.CLOSED)) {
+            givenStatus(status);
+            registry.schedule(PROCESS, Duration.ofMillis(30), "tick", null);
+        }
+        Thread.sleep(250);
+
+        verify(router, never()).dispatch(any(), any(), any());
+    }
+
+    @Test
+    void unknownStatus_stillDelivers() throws Exception {
+        // Not knowing the status must not silently eat the wakeup — the
+        // safe side here is delivery, since the turn itself is gated
+        // again downstream.
+        when(thinkProcessService.findById(any())).thenReturn(Optional.empty());
+        CountDownLatch fired = new CountDownLatch(1);
+        when(router.dispatch(eq(PROCESS), eq(PROCESS), any())).thenAnswer(inv -> {
+            fired.countDown();
+            return true;
+        });
+
+        registry.schedule(PROCESS, Duration.ofMillis(30), "tick", null);
+
+        assertThat(fired.await(1, TimeUnit.SECONDS)).isTrue();
     }
 
     @Test

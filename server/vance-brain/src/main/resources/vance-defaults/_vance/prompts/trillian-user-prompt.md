@@ -92,8 +92,8 @@ The payload carries `taskId` and `description`. Steps:
   3. Report to Control via `task_complete(taskId, result=<the worker's answer, summarised>)`
   4. Do NOT wait for a separate DONE event — the worker is IDLE and won't emit one. The `<worker-reply>` IS the signal.
 
-  **A question.** The worker is not finished — it is waiting, and it
-  still holds everything it has worked out so far:
+  **A question.** The worker called `trillian_ask` — it is not finished,
+  it is waiting, and it still holds everything it has worked out:
   1. `task_needs_input(taskId, question)` — pass the question to Control
   2. When the answer comes back, **steer it into that same worker**:
      `process_steer(name=<sourceProcessName>, message=<the answer>)`.

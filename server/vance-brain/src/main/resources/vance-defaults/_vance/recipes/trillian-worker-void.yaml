@@ -19,14 +19,17 @@ description: |
   parent gets a clean DONE event. Otherwise behaves like a coding-
   style worker (file_*/exec_*/doc_* via Frankie defaults).
 
-engine: frankie
+engine: trillian-worker
 
 # trillian_done is the termination handshake. Plus a full document
 # tool surface (read + write) because Frankie's baseline does NOT
 # include doc_* — the worker needs both to enumerate the project
 # and to mutate it.
 allowedToolsAdd:
+  # Two named exits, so the model never has to express one of them by
+  # calling nothing — which is what made it end itself while asking.
   - trillian_done
+  - trillian_ask
   # Read-only doc tools
   - doc_list
   - doc_read

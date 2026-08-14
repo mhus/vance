@@ -1,21 +1,16 @@
 description: |
-  Vogon-driven sequential plan: planning → implementation → review.
-  User approval gates between phases. Use this when a request
-  genuinely needs phased execution with checkpoints, not when a
-  single Marvin/Ford worker would suffice.
+  Vogon-driven sequential plan: planning → implementation → review,
+  with the person asked to approve in between and a scored review that
+  can send the work back. Use this when a request genuinely needs
+  phased execution with checkpoints, not when a single Marvin/Ford
+  worker would suffice.
 engine: vogon
 params:
-  manualPaths:
-    - _vance/manuals/
-  strategy: waterfall
-  workerRecipes:
-    planning: analyze
-    implementation: marvin-worker
-    review: code-read
-promptPrefix: |
-  You are Vogon executing the waterfall strategy. Phases run in
-  strict order; checkpoints route through the user's inbox.
+  workflow: waterfall
+  planningRecipe: analyze
+  implementationRecipe: marvin-worker
+  reviewRecipe: code-read
 tags:
-  - strategy
+  - plan
   - waterfall
   - feature

@@ -67,20 +67,29 @@ public class TrillianHeartbeatTick {
         }
         Instant now = Instant.now();
         ZoneId zone = ZoneId.systemDefault();
+        int loops = 0;
+        int due = 0;
+        int quiet = 0;
         int woken = 0;
-        for (ProjectDocument project : projectService.findRunningByHomeNode(node)) {
+        List<ProjectDocument> projects = projectService.findRunningByHomeNode(node);
+        for (ProjectDocument project : projects) {
             for (ThinkProcessDocument loop : wakeupService.loopsOf(
                     project.getTenantId(), project.getName(), MAX_LOOPS_PER_PROJECT)) {
+                loops++;
                 if (loop.getStatus() != ThinkProcessStatus.IDLE
                         || !wakeupService.isDue(loop, now)) {
                     continue;
                 }
+                due++;
                 // Ask the Nature what it sees *before* spending a turn.
                 // Nothing to look at means the wakeup costs one query and
                 // no tokens — which is what makes an hourly rhythm
                 // affordable at all.
                 List<SelfCheckFinding> findings = findingsOf(loop);
                 if (findings.isEmpty()) {
+                    quiet++;
+                    log.trace("Trillian heartbeat: loop id='{}' due but nothing to look at "
+                            + "— re-arming without a turn", loop.getId());
                     wakeupService.arm(loop, zone);
                     continue;
                 }
@@ -89,9 +98,11 @@ public class TrillianHeartbeatTick {
                 }
             }
         }
-        if (woken > 0) {
-            log.debug("Trillian heartbeat woke {} loop(s) on node '{}'", woken, node);
-        }
+        // Traced every round, including the empty one: the silent path is
+        // the normal one, and without a line for it there is no way to
+        // tell a working heartbeat from a dead one.
+        log.trace("Trillian heartbeat node='{}' projects={} loops={} due={} quiet={} woken={}",
+                node, projects.size(), loops, due, quiet, woken);
     }
 
     /**

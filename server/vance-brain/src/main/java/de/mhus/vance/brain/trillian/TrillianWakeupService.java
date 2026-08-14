@@ -85,6 +85,8 @@ public class TrillianWakeupService {
      */
     public void arm(ThinkProcessDocument loop, ZoneId zone) {
         if (!shouldArm(loop)) {
+            log.trace("Trillian wakeup not armed id='{}' — status {} or a worker is running",
+                    loop.getId(), loop.getStatus());
             disarm(loop);
             return;
         }
@@ -94,12 +96,13 @@ public class TrillianWakeupService {
                 loop.getId(), PARAM_NEXT_WAKEUP_AT, next.toEpochMilli());
         thinkProcessService.setEngineParamOverride(
                 loop.getId(), PARAM_WAKEUP_STEP, Math.min(step + 1, LADDER.length - 1));
-        log.debug("Trillian wakeup armed id='{}' in {} min (step {})",
+        log.trace("Trillian wakeup armed id='{}' in {} min (step {})",
                 loop.getId(), minutesFor(step, zone), step);
     }
 
     /** Clears a pending self-check — something is in flight after all. */
     public void disarm(ThinkProcessDocument loop) {
+        log.trace("Trillian wakeup disarmed id='{}'", loop.getId());
         thinkProcessService.setEngineParamOverride(loop.getId(), PARAM_NEXT_WAKEUP_AT, null);
     }
 

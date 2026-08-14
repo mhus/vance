@@ -671,18 +671,7 @@ public class FrankieEngine implements ThinkEngine {
                         return;
                     }
                     if (isWorker) {
-                        // Worker: explicit "done forever" — close so
-                        // the parent's delegation pointer releases.
-                        // No additional assistant text — the task-
-                        // complete tool's summary is the canonical
-                        // outcome and lives in tool-result history;
-                        // ParentNotificationListener.enrichWithLastReply
-                        // attaches the last assistant message to the
-                        // DONE event for the parent.
-                        log.info("Frankie id='{}' worker tool-terminate — CLOSED (DONE)",
-                                process.getId());
-                        thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
-                        exitStatus = null;
+                        exitStatus = onWorkerTerminate(process);
                     } else {
                         // Session-primary: the recipe's task-complete
                         // tool signals "this task is finished" but the
@@ -793,6 +782,33 @@ public class FrankieEngine implements ThinkEngine {
      *
      * <p>Blank text is silently skipped (no narration → no point).
      */
+    /**
+     * What a terminating tool call means for a <em>worker</em> process.
+     *
+     * <p>Frankie closes it: an explicit "done forever" has to release the
+     * parent's delegation pointer. No additional assistant text — the
+     * terminating tool's summary is the canonical outcome and lives in
+     * tool-result history, and {@code
+     * ParentNotificationListener.enrichWithLastReply} attaches the last
+     * assistant message to the DONE event for the parent.
+     *
+     * <p>The seam exists because "leave the loop" and "end the process"
+     * are two different statements that the {@code _terminate} protocol
+     * says with one word. A subclass whose workers can also pause — to
+     * ask something and wait for an answer — overrides this to keep the
+     * process alive. Frankie itself does not have that case and behaves
+     * exactly as before.
+     *
+     * @return the status to write on exit, or {@code null} to leave it
+     *         alone (which is what closing does — the close already
+     *         wrote CLOSED)
+     */
+    protected @Nullable ThinkProcessStatus onWorkerTerminate(ThinkProcessDocument process) {
+        log.info("Frankie id='{}' worker tool-terminate — CLOSED (DONE)", process.getId());
+        thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
+        return null;
+    }
+
     private void persistInterimAssistantReply(
             ThinkProcessDocument process,
             ChatMessageService chatLog,

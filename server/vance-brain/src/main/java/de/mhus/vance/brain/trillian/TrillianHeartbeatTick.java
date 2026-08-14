@@ -113,6 +113,10 @@ public class TrillianHeartbeatTick {
                 }
                 if (wake(loop, findings)) {
                     woken++;
+                    // Only now: the Nature's bookkeeping is about findings
+                    // that were reported, and a wakeup that did not happen
+                    // must not spend a budget or end an episode.
+                    delivered(loop, findings);
                 }
             }
         }
@@ -133,10 +137,7 @@ public class TrillianHeartbeatTick {
      */
     private List<SelfCheckFinding> findingsOf(ThinkProcessDocument loop) {
         try {
-            Object nature = loop.getEngineParams() == null ? null
-                    : loop.getEngineParams().get(TrillianSessionBootstrapper.PARAM_NATURE);
-            return natureRegistry.resolve(nature == null ? null : nature.toString())
-                    .selfCheckFindings(loop);
+            return natureOf(loop).selfCheckFindings(loop);
         } catch (RuntimeException e) {
             // A Nature that throws must not stop the heartbeat for every
             // other Trillian on this pod.
@@ -144,6 +145,30 @@ public class TrillianHeartbeatTick {
                     loop.getId(), e.toString());
             return List.of();
         }
+    }
+
+    /**
+     * Tells the Nature its findings were delivered, so it can write down
+     * whatever reporting them costs.
+     *
+     * <p>After the wakeup, and never instead of it: the loop already has
+     * the self-check in its inbox, so a Nature that fails here leaves a
+     * budget unspent, which is the harmless direction.
+     */
+    private void delivered(ThinkProcessDocument loop, List<SelfCheckFinding> findings) {
+        try {
+            natureOf(loop).selfCheckDelivered(loop, findings);
+        } catch (RuntimeException e) {
+            log.warn("Trillian heartbeat: recording the self-check of loop '{}' failed: {}",
+                    loop.getId(), e.toString());
+        }
+    }
+
+    private de.mhus.vance.brain.trillian.nature.TrillianNature natureOf(
+            ThinkProcessDocument loop) {
+        Object nature = loop.getEngineParams() == null ? null
+                : loop.getEngineParams().get(TrillianSessionBootstrapper.PARAM_NATURE);
+        return natureRegistry.resolve(nature == null ? null : nature.toString());
     }
 
     private boolean wake(ThinkProcessDocument loop, List<SelfCheckFinding> findings) {

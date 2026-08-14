@@ -136,12 +136,36 @@ public interface TrillianNature {
      * making progress is the model's job on the turn that follows; deciding
      * that a blocked worker exists is not.
      *
+     * <p><b>And gather without side effects.</b> This runs on every due
+     * tick, including the ones that end in no wakeup at all, and a Nature
+     * that spends a budget or closes something here spends it whether or
+     * not the loop ever hears about it. What has to be written down when a
+     * finding is actually delivered belongs in
+     * {@link #selfCheckDelivered}.
+     *
      * <p>Default empty — a Nature that does not say what it watches for
      * never wakes up, which is the right behaviour for a baseline that is
      * meant to be purely reactive.
      */
     default List<SelfCheckFinding> selfCheckFindings(ThinkProcessDocument loop) {
         return List.of();
+    }
+
+    /**
+     * The findings reached the loop: it has been handed a self-check turn
+     * and will act on them.
+     *
+     * <p>The counterpart to {@link #selfCheckFindings} being free of side
+     * effects. Whatever a Nature has to remember about having reported
+     * something — a probe budget spent, a round counted, an episode ended
+     * — is written here, once the report has actually been delivered.
+     *
+     * <p>Never called for a wakeup that was dropped or failed to schedule.
+     * Best-effort by construction: a Nature that throws here must not undo
+     * the wakeup that already happened.
+     */
+    default void selfCheckDelivered(
+            ThinkProcessDocument loop, List<SelfCheckFinding> findings) {
     }
 
     // ─── Attribute durability ─────────────────────────────────────

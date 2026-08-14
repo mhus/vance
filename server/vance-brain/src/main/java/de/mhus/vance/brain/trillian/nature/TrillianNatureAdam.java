@@ -277,7 +277,14 @@ public class TrillianNatureAdam extends TrillianNatureBase {
                 + "check.\n";
     }
 
-    /** The journal as a numbered list, or empty when there is none. */
+    /**
+     * The journal as a numbered list, or empty when there is none.
+     *
+     * <p>An entry may run over several lines. Continuations are indented
+     * so the numbering stays readable as numbering — the model answers
+     * with indices into this list, and a second line starting at column
+     * zero looks like the next item.
+     */
     private static String numbered(List<String> entries) {
         if (entries.isEmpty()) {
             return "";
@@ -285,8 +292,9 @@ public class TrillianNatureAdam extends TrillianNatureBase {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < entries.size(); i++) {
             String text = entries.get(i);
+            String body = text.startsWith("- ") ? text.substring(2) : text;
             sb.append(i + 1).append(". ")
-                    .append(text.startsWith("- ") ? text.substring(2) : text)
+                    .append(body.replace("\n", "\n   "))
                     .append('\n');
         }
         return sb.toString();
@@ -349,6 +357,54 @@ public class TrillianNatureAdam extends TrillianNatureBase {
     }
 
     /**
+     * The loop has been handed these findings — now write down what
+     * reporting them costs.
+     *
+     * <p>Every effect that used to sit inside the gathering lives here:
+     * the probe budget, the blocked round, the close of a worker that has
+     * been going in circles. The decisions are re-derived rather than
+     * carried over, which works because each is a function of persisted
+     * state that nothing else touches between the two calls — and it
+     * keeps the gathering something that can be run twice without
+     * consequence.
+     *
+     * <p>Per finding, and each guarded: a worker that has since gone away,
+     * or a write that fails, must not cost the loop the rest of its
+     * self-check.
+     */
+    @Override
+    public void selfCheckDelivered(ThinkProcessDocument loop, List<SelfCheckFinding> findings) {
+        Instant now = Instant.now();
+        for (SelfCheckFinding finding : findings) {
+            ThinkProcessDocument worker =
+                    thinkProcessService.findById(finding.processId()).orElse(null);
+            if (worker == null) continue;
+            try {
+                switch (finding.kind()) {
+                    case WORKER_WAITING -> {
+                        if (isStateBlocker(worker)) {
+                            applyProbeDecision(worker, probeDecision(worker, now));
+                        }
+                    }
+                    case WORKER_BLOCKED -> {
+                        int seen = blockedSeenAfterThisRound(worker);
+                        setOverride(worker, PARAM_BLOCKED_SEEN, seen);
+                        if (seen >= MAX_BLOCKED_RESUMES) {
+                            closeLoopingWorker(worker);
+                        }
+                    }
+                    case WORKER_SILENT -> {
+                        // Nothing is spent on saying "this is quiet".
+                    }
+                }
+            } catch (RuntimeException e) {
+                log.warn("Trillian adam: could not record self-check on '{}': {}",
+                        finding.processId(), e.toString());
+            }
+        }
+    }
+
+    /**
      * A parked worker, and whether looking again could mean anything.
      *
      * <p>The worker said at asking time what stood in its way. A
@@ -365,7 +421,7 @@ public class TrillianNatureAdam extends TrillianNatureBase {
      */
     private SelfCheckFinding waitingFinding(ThinkProcessDocument worker, Instant now) {
         String waited = since(worker.getUpdatedAt(), now);
-        String detail = isStateBlocker(worker) && mayProbeAgain(worker, now)
+        String detail = isStateBlocker(worker) && probeDecision(worker, now).granted()
                 ? "parked since " + waited + ", blocked by a state that may have "
                         + "changed since. Before asking the human again, process_steer it "
                         + "once with a short nudge to re-check its obstacle and carry on if "
@@ -397,29 +453,51 @@ public class TrillianNatureAdam extends TrillianNatureBase {
      * "give up" mean "give up permanently" — for the price of one worker
      * turn every two hours.
      */
-    private boolean mayProbeAgain(ThinkProcessDocument worker, Instant now) {
+    private ProbeDecision probeDecision(ThinkProcessDocument worker, Instant now) {
         Map<String, Object> overrides = worker.getEngineParamOverrides();
         int probes = intOverride(overrides, PARAM_ASK_PROBES);
         if (probes < MAX_ASK_PROBES) {
-            setOverride(worker, PARAM_ASK_PROBES, probes + 1);
-            return true;
+            return new ProbeDecision(true, probes + 1, null);
         }
         long openedAt = intOverrideLong(overrides, PARAM_ASK_OPENED_AT);
         if (openedAt == 0L) {
             // The circuit opens now; the cool-down starts running.
-            setOverride(worker, PARAM_ASK_OPENED_AT, now.toEpochMilli());
-            return false;
+            return new ProbeDecision(false, null, now.toEpochMilli());
         }
         if (now.toEpochMilli() - openedAt < ASK_PROBE_COOLDOWN.toMillis()) {
-            return false;
+            return new ProbeDecision(false, null, null);
         }
         // Half-open: one trial, and the cool-down restarts whatever it
         // finds. Success ends the episode anyway — the worker finishes
         // and closes — so there is nothing to reset on the way out.
-        setOverride(worker, PARAM_ASK_OPENED_AT, now.toEpochMilli());
-        log.info("Trillian adam: worker '{}' gets a half-open re-check after {}",
-                worker.getId(), ASK_PROBE_COOLDOWN);
-        return true;
+        return new ProbeDecision(true, null, now.toEpochMilli());
+    }
+
+    /**
+     * What the breaker says, and what has to be written down if the
+     * finding built from it is actually delivered.
+     *
+     * <p>Split from the writing so
+     * {@link #selfCheckFindings(ThinkProcessDocument)} stays free of side
+     * effects: a due tick that ends in no wakeup must not have spent a
+     * probe. The decision is derived from persisted state alone, so
+     * re-deriving it at delivery time takes the same branch.
+     */
+    private record ProbeDecision(
+            boolean granted, @Nullable Integer nextProbes, @Nullable Long nextOpenedAt) {
+    }
+
+    private void applyProbeDecision(ThinkProcessDocument worker, ProbeDecision decision) {
+        if (decision.nextProbes() != null) {
+            setOverride(worker, PARAM_ASK_PROBES, decision.nextProbes());
+        }
+        if (decision.nextOpenedAt() != null) {
+            setOverride(worker, PARAM_ASK_OPENED_AT, decision.nextOpenedAt());
+            if (decision.granted()) {
+                log.info("Trillian adam: worker '{}' got a half-open re-check after {}",
+                        worker.getId(), ASK_PROBE_COOLDOWN);
+            }
+        }
     }
 
     /**
@@ -475,7 +553,7 @@ public class TrillianNatureAdam extends TrillianNatureBase {
      * "one more try" four times.
      */
     private SelfCheckFinding blockedFinding(ThinkProcessDocument worker, Instant now) {
-        int seen = incrementBlockedSeen(worker);
+        int seen = blockedSeenAfterThisRound(worker);
         String detail;
         if (seen >= MAX_BLOCKED_RESUMES) {
             // No half-open state here, deliberately. Frankie's two safety
@@ -485,7 +563,10 @@ public class TrillianNatureAdam extends TrillianNatureBase {
             // for the same reason. What was missing is the opposite: the
             // episode never ended. The finding said "do not resume" and
             // nobody closed it, so it was reported again on every round.
-            closeLoopingWorker(worker);
+            //
+            // The close itself happens at delivery — see
+            // selfCheckDelivered. Written in the past tense here because
+            // by the time the loop reads this line, it has.
             detail = "was stopped after " + seen + " rounds in a safety net — it was "
                     + "looping, not working, and waiting would not have changed that. "
                     + "Read its transcript for whatever it did manage and report that "
@@ -501,21 +582,18 @@ public class TrillianNatureAdam extends TrillianNatureBase {
     }
 
     /**
-     * Counts how often this worker has been surfaced as blocked. Written
-     * here rather than at the resume, because a resume is a model
-     * decision and this must not depend on the model reporting it.
+     * How often this worker will have been surfaced as blocked once this
+     * round is reported — the count the finding speaks about.
+     *
+     * <p>Counted here rather than at the resume, because a resume is a
+     * model decision and this must not depend on the model reporting it.
+     * Persisted at delivery, so a round nobody was told about does not
+     * consume one.
      */
-    private int incrementBlockedSeen(ThinkProcessDocument worker) {
+    private static int blockedSeenAfterThisRound(ThinkProcessDocument worker) {
         Map<String, Object> overrides = worker.getEngineParamOverrides();
         Object raw = overrides == null ? null : overrides.get(PARAM_BLOCKED_SEEN);
-        int next = (raw instanceof Number n ? n.intValue() : 0) + 1;
-        try {
-            thinkProcessService.setEngineParamOverride(worker.getId(), PARAM_BLOCKED_SEEN, next);
-        } catch (RuntimeException e) {
-            log.warn("Trillian adam: could not count blocked worker '{}': {}",
-                    worker.getId(), e.toString());
-        }
-        return next;
+        return (raw instanceof Number n ? n.intValue() : 0) + 1;
     }
 
     private static String nameOf(ThinkProcessDocument worker) {

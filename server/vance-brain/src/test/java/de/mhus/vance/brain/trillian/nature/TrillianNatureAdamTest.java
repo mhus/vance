@@ -343,16 +343,42 @@ class TrillianNatureAdamTest {
                         .minusSeconds(60).toEpochMilli())));
         when(thinkProcessService.findByParentProcessId("loop-1"))
                 .thenReturn(java.util.List.of(parked));
+        when(thinkProcessService.findById("child-ask-worker"))
+                .thenReturn(java.util.Optional.of(parked));
 
-        SelfCheckFinding finding = adam().selfCheckFindings(loopProcess()).get(0);
+        TrillianNatureAdam adam = adam();
+        java.util.List<SelfCheckFinding> findings = adam.selfCheckFindings(loopProcess());
+        adam.selfCheckDelivered(loopProcess(), findings);
 
-        assertThat(finding.detail()).contains("re-check");
+        assertThat(findings.get(0).detail()).contains("re-check");
         // And the cool-down restarts, so it is one trial and not a new
         // round of three.
         verify(thinkProcessService).setEngineParamOverride(
                 org.mockito.ArgumentMatchers.eq("child-ask-worker"),
                 org.mockito.ArgumentMatchers.eq(TrillianNatureAdam.PARAM_ASK_OPENED_AT),
                 any());
+    }
+
+    @Test
+    void gathering_spendsNothingUntilTheFindingIsDelivered() {
+        // The heartbeat asks on every due tick, including the ones that
+        // end in no wakeup at all. A probe spent on a report nobody got
+        // is a probe gone.
+        ThinkProcessDocument parked = childProcess("ask-worker", ThinkProcessStatus.IDLE);
+        parked.setEngineParamOverrides(new LinkedHashMap<>(Map.of(
+                de.mhus.vance.brain.trillian.tools.TrillianAskTool.PARAM_ASK_BLOCKER, "state")));
+        ThinkProcessDocument stuck = childProcess("looper", ThinkProcessStatus.BLOCKED);
+        stuck.setEngineParamOverrides(new LinkedHashMap<>(Map.of(
+                TrillianNatureAdam.PARAM_BLOCKED_SEEN,
+                TrillianNatureAdam.MAX_BLOCKED_RESUMES - 1)));
+        when(thinkProcessService.findByParentProcessId("loop-1"))
+                .thenReturn(java.util.List.of(parked, stuck));
+
+        assertThat(adam().selfCheckFindings(loopProcess())).hasSize(2);
+
+        verify(thinkProcessService, never())
+                .setEngineParamOverride(any(), any(), any());
+        verify(thinkProcessService, never()).closeProcess(any(), any());
     }
 
     @Test
@@ -380,12 +406,16 @@ class TrillianNatureAdamTest {
                 TrillianNatureAdam.MAX_BLOCKED_RESUMES - 1)));
         when(thinkProcessService.findByParentProcessId("loop-1"))
                 .thenReturn(java.util.List.of(stuck));
+        when(thinkProcessService.findById("child-looper"))
+                .thenReturn(java.util.Optional.of(stuck));
 
-        SelfCheckFinding finding = adam().selfCheckFindings(loopProcess()).get(0);
+        TrillianNatureAdam adam = adam();
+        java.util.List<SelfCheckFinding> findings = adam.selfCheckFindings(loopProcess());
+        adam.selfCheckDelivered(loopProcess(), findings);
 
         verify(thinkProcessService).closeProcess(
                 "child-looper", de.mhus.vance.api.thinkprocess.CloseReason.STOPPED);
-        assertThat(finding.detail()).contains("was stopped");
+        assertThat(findings.get(0).detail()).contains("was stopped");
     }
 
     @Test

@@ -19,7 +19,7 @@ import org.yaml.snakeyaml.Yaml;
  * Structural sweep over every bundled recipe.
  *
  * <p>Exists because of a failure that produced no error anywhere:
- * {@code coding.yaml} and {@code trillian-worker-0.yaml} both carried
+ * {@code coding.yaml} and {@code trillian-worker-void.yaml} both carried
  * their whole {@code promptPrefix} indented under {@code params}. That
  * map is open by design — the loader stores unknown keys as engine
  * parameters — so YAML parsed, the recipe loaded, and the prompt simply

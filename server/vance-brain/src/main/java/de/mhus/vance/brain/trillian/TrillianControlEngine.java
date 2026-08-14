@@ -59,7 +59,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Trillian Control — reactive chat host for Nature-0 sessions.
+ * Trillian Control — reactive chat host for Nature void sessions.
  *
  * <p>Reply-style turn semantics: each user input triggers one
  * tool-call/text loop until the LLM produces a natural-stop reply
@@ -194,12 +194,12 @@ public class TrillianControlEngine implements ThinkEngine {
 
     @Override
     public String title() {
-        return "Trillian Control (Nature-0)";
+        return "Trillian Control (Nature void)";
     }
 
     @Override
     public String description() {
-        return "Reactive chat host for Trillian Nature-0. Talks to the "
+        return "Reactive chat host for Trillian Nature void. Talks to the "
                 + "human, delegates tasks to a paired Trillian-User "
                 + "worker via task_enqueue. No structured-action schema.";
     }
@@ -550,7 +550,7 @@ public class TrillianControlEngine implements ThinkEngine {
         String engineDefault = enginePromptResolver.resolve(
                 process, basePath, ENGINE_FALLBACK_PROMPT);
         // Nature overlay — appended at the end of the engine-default
-        // prompt. Empty for Nature-0; personality / reflexion priming
+        // prompt. Empty for Nature void; personality / reflexion priming
         // for Nature-A+.
         String addendum = nature.controlPromptAddendum(process);
         if (addendum != null && !addendum.isBlank()) {

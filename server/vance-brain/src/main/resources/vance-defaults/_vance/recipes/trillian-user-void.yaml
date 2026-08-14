@@ -1,7 +1,7 @@
-# Trillian User — Nature-0 (v2)
+# Trillian User — Nature void (v2)
 #
 # The worker loop process in the Trillian-User-Session (separate
-# session owned by the _trillian-0XXXX service-account, headless).
+# session owned by the _trillian-void-XXXX service-account, headless).
 # Spawned alongside trillian-control by TrillianSessionBootstrapper.
 #
 # Uses the dedicated TrillianUserEngine — endless-but-sleepy loop,
@@ -12,16 +12,16 @@
 # See planning/trillian-engine.md §2 + §6 + §9.
 
 description: |
-  Trillian User worker-loop — Nature-0 v2. Picks task_request events,
+  Trillian User worker-loop — Nature void v2. Picks task_request events,
   spawns workers via process_spawn, observes, validates, reports
   back to Control via task_complete / task_failed / task_needs_input.
-  Runs as _trillian-0XXXX in its own headless session.
+  Runs as _trillian-void-XXXX in its own headless session.
 
 engine: trillian-user
 
 params:
-  # Pinned Nature (see trillian-0.yaml for the architectural note).
-  nature: '0'
+  # Pinned Nature (see trillian-void.yaml for the architectural note).
+  nature: 'void'
   # default:analyze tends to be more reliable for the orchestrator
   # role (handles structured tool decisions better than the typical
   # default:fast). Fallback to fast if analyze is exhausted/slow.

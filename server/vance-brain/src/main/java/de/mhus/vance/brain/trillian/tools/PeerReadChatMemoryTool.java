@@ -26,7 +26,7 @@ import org.springframework.stereotype.Component;
  * Trillian User reads the raw transcript including tool-call patterns
  * etc., which is what lets it observe sub-workers semi-live.
  *
- * <p>Same-session only — Nature-0 doesn't permit cross-session reads.
+ * <p>Same-session only — Nature void doesn't permit cross-session reads.
  */
 @Component
 @RequiredArgsConstructor

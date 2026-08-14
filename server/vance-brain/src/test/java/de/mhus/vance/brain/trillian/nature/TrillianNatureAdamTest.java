@@ -21,8 +21,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * What separates adam from Nature-0 is durability, so that is what these
- * check: the map goes to the store, comes back from it, and Nature-0
+ * What separates adam from Nature void is durability, so that is what these
+ * check: the map goes to the store, comes back from it, and Nature void
  * still does neither.
  */
 @ExtendWith(MockitoExtension.class)
@@ -60,11 +60,11 @@ class TrillianNatureAdamTest {
 
     @Test
     void withoutAName_theEngineNameStands() {
-        // Nature-0 has no names at all, and an adam whose name the human
+        // Nature void has no names at all, and an adam whose name the human
         // cleared should not announce itself as an empty string.
         assertThat(adam().callName(Map.of())).isEqualTo("Trillian");
         assertThat(adam().callName(Map.of("name", "  "))).isEqualTo("Trillian");
-        assertThat(new TrillianNature0(thinkProcessService).callName(Map.of("name", "Ada")))
+        assertThat(new TrillianNatureVoid(thinkProcessService).callName(Map.of("name", "Ada")))
                 .isEqualTo("Trillian");
     }
 
@@ -125,14 +125,14 @@ class TrillianNatureAdamTest {
     }
 
     @Test
-    void natureZero_persistsNothing() {
-        TrillianNature0 zero = new TrillianNature0(thinkProcessService);
+    void natureVoid_persistsNothing() {
+        TrillianNatureVoid voidNature = new TrillianNatureVoid(thinkProcessService);
 
-        zero.attributesChanged(worker(ACCOUNT), Map.of("a", "b"));
+        voidNature.attributesChanged(worker(ACCOUNT), Map.of("a", "b"));
 
-        // Nature-0 is ephemeral by definition; if this ever started
+        // Nature void is ephemeral by definition; if this ever started
         // writing, the two generations would stop differing.
-        assertThat(zero.initialAttributes(TENANT, PROJECT, ACCOUNT)).isEmpty();
+        assertThat(voidNature.initialAttributes(TENANT, PROJECT, ACCOUNT)).isEmpty();
         verify(attributeStore, never()).save(anyString(), anyString(), anyString(), any());
     }
 
@@ -212,10 +212,10 @@ class TrillianNatureAdamTest {
     }
 
     @Test
-    void natureZero_doesNotReflect() {
-        TrillianNature0 zero = new TrillianNature0(thinkProcessService);
+    void natureVoid_doesNotReflect() {
+        TrillianNatureVoid voidNature = new TrillianNatureVoid(thinkProcessService);
 
-        zero.taskConcluded(worker(ACCOUNT), "task-1",
+        voidNature.taskConcluded(worker(ACCOUNT), "task-1",
                 TrillianNature.TaskOutcome.DONE, "done");
 
         verify(lightLlm, never()).callForJson(any());
@@ -339,16 +339,16 @@ class TrillianNatureAdamTest {
     }
 
     @Test
-    void natureZero_neverWakesItself() {
+    void natureVoid_neverWakesItself() {
         // The baseline is reactive by definition — no findings, so the
         // heartbeat drops the wakeup without spending a turn.
-        assertThat(new TrillianNature0(thinkProcessService).selfCheckFindings(loopProcess()))
+        assertThat(new TrillianNatureVoid(thinkProcessService).selfCheckFindings(loopProcess()))
                 .isEmpty();
     }
 
     @Test
     void adamInheritsTheAttributeRendering() {
-        // Rendering comes from TrillianNatureBase, not from Nature-0: it
+        // Rendering comes from TrillianNatureBase, not from Nature void: it
         // is shared mechanics, and adam must not pick up whatever
         // generation zero does with it later.
         ThinkProcessDocument worker = worker(ACCOUNT);
@@ -362,10 +362,10 @@ class TrillianNatureAdamTest {
         // The id travels into _trillian-adam-XXXX and three recipe names,
         // so it has to survive the boot-time validation.
         TrillianNatureRegistry registry = new TrillianNatureRegistry(
-                java.util.List.of(new TrillianNature0(thinkProcessService), adam()));
+                java.util.List.of(new TrillianNatureVoid(thinkProcessService), adam()));
 
         assertThat(registry.resolve(TrillianNatureAdam.ID).id()).isEqualTo("adam");
-        assertThat(registry.getDefault().id()).isEqualTo(TrillianNature0.ID);
+        assertThat(registry.getDefault().id()).isEqualTo(TrillianNatureVoid.ID);
     }
 
     private TrillianNatureAdam adam() {

@@ -624,7 +624,7 @@ public class RecipeLoader {
      * takes effect.
      *
      * <p>That is not hypothetical: {@code coding.yaml} and
-     * {@code trillian-worker-0.yaml} both carried their entire
+     * {@code trillian-worker-void.yaml} both carried their entire
      * {@code promptPrefix} under {@code params} and ran without any of
      * it. The worker never learned its termination contract, and the
      * symptom looked like a model ignoring instructions rather than

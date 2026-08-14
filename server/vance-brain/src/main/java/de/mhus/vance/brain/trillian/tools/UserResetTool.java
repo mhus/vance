@@ -20,10 +20,10 @@ import org.springframework.stereotype.Component;
 /**
  * Soft-reset of the Trillian User worker: clear pending tasks and
  * return the engine to IDLE. The worker process stays the same
- * Mongo document — Nature-0 doesn't tear it down and respawn.
+ * Mongo document — Nature void doesn't tear it down and respawn.
  *
  * <p>Hard reset (close + recreate) is a future Nature-A+ feature;
- * for Nature-0 a clear+IDLE is the practical "start fresh".
+ * for Nature void a clear+IDLE is the practical "start fresh".
  */
 @Component
 @RequiredArgsConstructor

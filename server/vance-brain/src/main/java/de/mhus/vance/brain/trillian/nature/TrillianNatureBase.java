@@ -16,13 +16,13 @@ import lombok.RequiredArgsConstructor;
  * configured at all. A Nature that had to reimplement them would be
  * reimplementing the engine, not overlaying behaviour on it.
  *
- * <p><b>Why this is not {@link TrillianNature0}.</b> Nature-0 happens to
+ * <p><b>Why this is not {@link TrillianNatureVoid}.</b> Nature void happens to
  * be exactly this baseline and nothing more, which makes it tempting to
  * derive later Natures from it directly. That conflates two different
  * things: "what every Trillian does" and "what generation zero does".
- * The moment Nature-0 gains something of its own — or loses something as
+ * The moment Nature void gains something of its own — or loses something as
  * an experiment — every descendant would inherit it silently. Natures
- * extend this class; Nature-0 is one of them.
+ * extend this class; Nature void is one of them.
  *
  * <p>Subclasses supply {@link #id()} and {@link #title()} and override
  * whichever hooks their generation actually changes.

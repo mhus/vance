@@ -13,7 +13,7 @@ when:
    as the answer to the parent / user, and the process closes as DONE.
 2. **A tool returns `_terminate: true`.** Some recipes ship a
    terminate tool for a structured outcome — for example
-   `trillian_done(summary=...)` under `trillian-worker-0`. The engine
+   `trillian_done(summary=...)` under `trillian-worker-void`. The engine
    closes after the current batch.
    Check your tool list rather than guessing a name; most recipes
    (including `coding`) have none and end via path 1.

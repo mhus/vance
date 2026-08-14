@@ -1,4 +1,4 @@
-# Trillian Control — Nature-0
+# Trillian Control — Nature void
 #
 # The session's primary chat process when foot connects with
 # --recipe trillian-control. Pairs with a Trillian-User worker that
@@ -12,7 +12,7 @@
 # See planning/trillian-engine.md §2 + §4 + §11.
 
 description: |
-  Trillian Control — Nature-0. Reactive chat host that discusses tasks
+  Trillian Control — Nature void. Reactive chat host that discusses tasks
   with the human and enqueues them into a paired Trillian UserProcess.
 
 engine: trillian-control
@@ -20,8 +20,8 @@ engine: trillian-control
 params:
   # Trillian-Nature this recipe pins. Engines may branch internal
   # behaviour on this value when later natures (A, B, …) ship; for
-  # Nature-0 it's metadata only.
-  nature: '0'
+  # Nature void it's metadata only.
+  nature: 'void'
   # default:analyze first — gemini-2.5-flash (the typical default:fast)
   # exhibits a quirk where it sometimes finishes with finish=STOP and
   # zero output tokens when given multiple function-call options. The

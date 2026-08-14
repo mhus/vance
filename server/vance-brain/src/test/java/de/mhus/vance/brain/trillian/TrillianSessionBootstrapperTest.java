@@ -81,7 +81,7 @@ class TrillianSessionBootstrapperTest {
     private de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry natureRegistry() {
         return new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(
                 java.util.List.of(
-                        new de.mhus.vance.brain.trillian.nature.TrillianNature0(
+                        new de.mhus.vance.brain.trillian.nature.TrillianNatureVoid(
                                 thinkProcessService)));
     }
 
@@ -135,7 +135,7 @@ class TrillianSessionBootstrapperTest {
         ArgumentCaptor<String> username = ArgumentCaptor.forClass(String.class);
         verify(permissionBootstrap).grantProjectAdmin(eq(TENANT), eq(PROJECT), username.capture());
         org.assertj.core.api.Assertions.assertThat(username.getValue())
-                .startsWith("_trillian-0");
+                .startsWith("_trillian-void-");
     }
 
     @Test
@@ -156,7 +156,7 @@ class TrillianSessionBootstrapperTest {
         verify(sessionService).create(eq(TENANT), owner.capture(), eq(PROJECT), any(),
                 anyString(), anyString(), any(), eq(true));
         org.assertj.core.api.Assertions.assertThat(owner.getValue())
-                .startsWith("_trillian-0")
+                .startsWith("_trillian-void-")
                 .isNotEqualTo("mongo-object-id");
     }
 
@@ -283,7 +283,7 @@ class TrillianSessionBootstrapperTest {
     }
 
     @Test
-    void workerRecipe_defaultsToNatureZero() {
+    void workerRecipe_defaultsToTheVoidNature() {
         bootstrapper.maybeBootstrap(controlSession(), controlProcess());
 
         ArgumentCaptor<Map<String, Object>> params = paramsCaptor();
@@ -292,7 +292,7 @@ class TrillianSessionBootstrapperTest {
                 any(), any(), any(), any(), any(), any(), any());
         org.assertj.core.api.Assertions.assertThat(params.getValue())
                 .containsEntry(TrillianSessionBootstrapper.PARAM_WORKER_RECIPE,
-                        "trillian-worker-0");
+                        "trillian-worker-void");
     }
 
     @Test
@@ -426,7 +426,7 @@ class TrillianSessionBootstrapperTest {
 
     private static AppliedRecipe appliedRecipe() {
         return new AppliedRecipe(
-                "trillian-user-0", "trillian-user", Map.of(), null, null,
+                "trillian-user-void", "trillian-user", Map.of(), null, null,
                 PromptMode.APPEND, null, null, null, List.of(), null,
                 RecipeSource.RESOURCE, List.of(), null);
     }

@@ -2,26 +2,26 @@
 #
 # Mirrors the current-default Nature recipe so users can start the
 # stable Trillian variant via `--recipe trillian` without having to
-# track which Nature letter is current. Today: Nature-0; when
+# track which Nature id is current. Today: Nature void; when
 # Nature-A becomes the new default, this file gets updated to mirror
 # trillian-a.yaml (and so on).
 #
 # For pinned-Nature usage (e.g. test scenarios that should NOT
 # auto-upgrade when a new default ships), use the explicit Nature
-# recipe instead: `--recipe trillian-0`.
+# recipe instead: `--recipe trillian-void`.
 #
 # See specification/trillian-engine.md §2 (Nature versioning).
 
 description: |
   Trillian (current-default Nature). Reactive chat host that
   discusses tasks with the human and enqueues them into a paired
-  Trillian-User worker. Aliases to trillian-0 today.
+  Trillian-User worker. Aliases to trillian-void today.
 
 engine: trillian-control
 listed: true
 
 params:
-  nature: '0'
+  nature: 'void'
   model: default:analyze,default:fast
   fallbackModels:
     - default:fast

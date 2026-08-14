@@ -128,7 +128,7 @@ class TrillianAttributeStoreTest {
 
     @Test
     void discardingSomethingAbsent_isQuiet() {
-        // Nature-0 sessions never wrote a file, and a human may have
+        // Nature void sessions never wrote a file, and a human may have
         // deleted it. Neither is an error at teardown time.
         when(documentService.findByPath(anyString(), anyString(), anyString()))
                 .thenReturn(Optional.empty());

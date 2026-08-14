@@ -59,7 +59,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Trillian-User — the agentic user-loop in Nature-0.
+ * Trillian-User — the agentic user-loop in Nature void.
  *
  * <p>Lives in its own session owned by a {@code _trillian-<nature>-<instance>}
  * service-account. Wakes on {@code task_request} ProcessEvents
@@ -86,7 +86,7 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p><b>Cross-project capability</b>: declares
  * {@link #allowsCrossProjectSpawn()} {@code = true} so Vance routes
- * worker spawns / ProcessEvents across project boundaries. Nature-0
+ * worker spawns / ProcessEvents across project boundaries. Nature void
  * doesn't expose a {@code cross_process_create} tool yet — the
  * default {@code process_create} spawns workers in Trillian-User's
  * own project. True cross-project is a Nature-A+ extension.
@@ -185,7 +185,7 @@ public class TrillianUserEngine implements ThinkEngine {
 
     @Override
     public String title() {
-        return "Trillian User (Nature-0)";
+        return "Trillian User (Nature void)";
     }
 
     @Override
@@ -215,7 +215,7 @@ public class TrillianUserEngine implements ThinkEngine {
     public boolean allowsCrossProjectSpawn() {
         // Architecturally prepared: workers in foreign projects can
         // be spawned (when a cross_process_create-style tool ships
-        // in Nature-A+). For Nature-0 we don't expose such a tool yet,
+        // in Nature-A+). For Nature void we don't expose such a tool yet,
         // but the flag lets routed events flow correctly when we do.
         return true;
     }
@@ -322,7 +322,7 @@ public class TrillianUserEngine implements ThinkEngine {
                     process, chatLog, extras, nature, modelInfo);
 
             // Turn-start compaction: identical hook to Arthur/Eddie/Ford/Frankie.
-            // Without this the Nature-0 user-loop accumulates chat
+            // Without this the Nature void user-loop accumulates chat
             // history unboundedly — the Trillian-User runs autonomously
             // for many turns under its `_trillian-<nature>-<instance>` service-account
             // and would otherwise hit the context-window limit or

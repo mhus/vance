@@ -64,7 +64,7 @@ class TrillianPeerLifecycleTest {
                 laneScheduler,
                 new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(
                         java.util.List.of(
-                                new de.mhus.vance.brain.trillian.nature.TrillianNature0(
+                                new de.mhus.vance.brain.trillian.nature.TrillianNatureVoid(
                                         thinkProcessService))));
     }
 

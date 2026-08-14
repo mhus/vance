@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 /**
  * Sets one attribute on the paired Trillian-User worker. Attributes
  * are a free-form {@code Map<String, Object>} that the active
- * Trillian Nature consumes — Nature-0 renders them as a key/value
+ * Trillian Nature consumes — Nature void renders them as a key/value
  * block in the user-loop's system prompt; later Natures may use
  * them for behavioural switches (mode hints, token budget,
  * persona traits, …).
@@ -54,7 +54,7 @@ public class UserAttrSetTool implements Tool {
         return "Set a free-form attribute on the paired Trillian-User "
                 + "worker. Attributes shape how the worker behaves "
                 + "(persona, mode hints, preferences). The current "
-                + "Nature consumes them — Nature-0 simply surfaces them "
+                + "Nature consumes them — Nature void simply surfaces them "
                 + "in the worker's prompt.";
     }
 

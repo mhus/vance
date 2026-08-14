@@ -62,7 +62,7 @@ class RecipeLoaderTest {
 
     @Test
     void load_promptPrefixUnderParams_isNotAPrompt() {
-        // The shape that cost coding.yaml and trillian-worker-0.yaml their
+        // The shape that cost coding.yaml and trillian-worker-void.yaml their
         // entire prompt: indented one level too far, accepted in silence.
         stubRecipe("""
                 description: Worker

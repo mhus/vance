@@ -82,8 +82,8 @@ public class TrillianSessionBootstrapper {
     /**
      * Recipe-name prefix for the User-Loop recipe family. The
      * bootstrap resolves {@code USER_RECIPE_PREFIX + nature} as the
-     * concrete recipe to spawn (e.g. {@code trillian-user-0} for
-     * Nature-0).
+     * concrete recipe to spawn (e.g. {@code trillian-user-void} for
+     * Nature void).
      */
     public static final String USER_RECIPE_PREFIX = "trillian-user-";
 
@@ -105,7 +105,7 @@ public class TrillianSessionBootstrapper {
     public static final String PARAM_WORKER_RECIPE = "workerRecipe";
 
     /** Default Nature when a control process doesn't pin one in engineParams. */
-    public static final String DEFAULT_NATURE = "0";
+    public static final String DEFAULT_NATURE = "void";
 
     public static final String USER_PROCESS_NAME = "trillian-user-loop";
 
@@ -140,7 +140,7 @@ public class TrillianSessionBootstrapper {
 
     /**
      * Account naming: {@code _trillian-<nature>-<instance>}, e.g.
-     * {@code _trillian-0-1535} or {@code _trillian-alpha-4711}.
+     * {@code _trillian-void-1535} or {@code _trillian-alpha-4711}.
      *
      * <p>Three parts, so a Nature id is not limited to one character and
      * can say what it is ({@code fast}, {@code alpha}) instead of needing

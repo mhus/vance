@@ -11,7 +11,7 @@ import java.util.Map;
  * {@code TrillianUserEngine}) carries the mechanics; the Nature
  * carries the per-generation policy decisions.
  *
- * <p>Nature-0 is the baseline — empty / default hooks. Future
+ * <p>Nature void is the baseline — empty / default hooks. Future
  * Natures (A, B, …) overlay personality traits, reflexion phases,
  * mode-switching, token budgets, and so on by overriding the
  * appropriate hook.
@@ -40,7 +40,7 @@ public interface TrillianNature {
 
     /**
      * Nature-specific addendum appended to the Trillian-Control
-     * system prompt. Returns empty for Nature-0 (no overlay).
+     * system prompt. Returns empty for Nature void (no overlay).
      * Future Natures inject personality / reflexion priming here.
      *
      * @param process the calling Control process (engineParams may
@@ -54,7 +54,7 @@ public interface TrillianNature {
      * Nature-specific addendum appended to the Trillian-User
      * (orchestrator-loop) system prompt.
      *
-     * <p>Nature-0 reads the free-form {@code attributes} map off
+     * <p>Nature void reads the free-form {@code attributes} map off
      * {@code process.engineParams} and renders it as a key/value
      * block — that's how the Control LLM's
      * {@code user_attr_set(name, value)} surfaces in the worker
@@ -72,39 +72,39 @@ public interface TrillianNature {
     /**
      * Called by the engine framework at the start of every Trillian-
      * Control turn (after {@code drainPending}, before the LLM call).
-     * Nature-0 no-op. Use this in future Natures to trigger
+     * Nature void no-op. Use this in future Natures to trigger
      * reflexion checks, mode transitions, budget enforcement.
      */
     default void beforeControlTurn(
             ThinkProcessDocument process, ThinkEngineContext ctx) {
-        // no-op for Nature-0
+        // no-op for Nature void
     }
 
     /**
      * Called after each Trillian-Control turn (after natural-stop or
-     * tool-loop exhaustion). Nature-0 no-op.
+     * tool-loop exhaustion). Nature void no-op.
      */
     default void afterControlTurn(
             ThinkProcessDocument process, ThinkEngineContext ctx) {
-        // no-op for Nature-0
+        // no-op for Nature void
     }
 
     /**
-     * Called at the start of every Trillian-User-loop turn. Nature-0
+     * Called at the start of every Trillian-User-loop turn. Nature void
      * no-op. Future Natures may persist reflexion state, refresh a
      * trait snapshot, or rebalance budget here.
      */
     default void beforeUserTurn(
             ThinkProcessDocument process, ThinkEngineContext ctx) {
-        // no-op for Nature-0
+        // no-op for Nature void
     }
 
     /**
-     * Called after each Trillian-User-loop turn. Nature-0 no-op.
+     * Called after each Trillian-User-loop turn. Nature void no-op.
      */
     default void afterUserTurn(
             ThinkProcessDocument process, ThinkEngineContext ctx) {
-        // no-op for Nature-0
+        // no-op for Nature void
     }
 
     /**
@@ -152,7 +152,7 @@ public interface TrillianNature {
      * carried over from a previous incarnation.
      *
      * <p>This is where a Nature decides whether its Trillian is
-     * <em>ephemeral</em> or <em>persistent</em>. Nature-0 returns nothing:
+     * <em>ephemeral</em> or <em>persistent</em>. Nature void returns nothing:
      * its attributes live in {@code engineParams} and die with the
      * process rows. A persistent Nature loads them from wherever it put
      * them.
@@ -174,7 +174,7 @@ public interface TrillianNature {
      * through {@code TrillianInternalApi} — one funnel, so both
      * {@code user_attr_set} and {@code //trillian attr} arrive here.
      *
-     * <p>Nature-0 no-op. A persistent Nature mirrors the map to durable
+     * <p>Nature void no-op. A persistent Nature mirrors the map to durable
      * storage here. Must not throw: losing durability is worth a
      * warning, not a failed attribute write.
      *
@@ -184,7 +184,7 @@ public interface TrillianNature {
      */
     default void attributesChanged(
             ThinkProcessDocument worker, Map<String, Object> attributes) {
-        // no-op for Nature-0
+        // no-op for Nature void
     }
 
     /** How a task ended. Only conclusions reach the Nature. */
@@ -203,7 +203,7 @@ public interface TrillianNature {
      * here: they are not conclusions, and reflecting on a question would
      * teach the Trillian nothing except that it asked one.
      *
-     * <p>Nature-0 no-op. A reflecting Nature turns the outcome into
+     * <p>Nature void no-op. A reflecting Nature turns the outcome into
      * something durable here. Both outcomes are delivered on purpose —
      * a Trillian that only reviews its successes learns nothing.
      *
@@ -217,7 +217,7 @@ public interface TrillianNature {
     default void taskConcluded(
             ThinkProcessDocument worker, String taskId,
             TaskOutcome outcome, String summary) {
-        // no-op for Nature-0
+        // no-op for Nature void
     }
 
     /**
@@ -234,12 +234,12 @@ public interface TrillianNature {
      * journal beside its attributes — and they all end at the same
      * moment, for the same reason.
      *
-     * <p>Nature-0 no-op — it stored nothing outside {@code engineParams},
+     * <p>Nature void no-op — it stored nothing outside {@code engineParams},
      * which die with the process rows anyway. Must not throw: the account
      * deletion proceeds either way.
      */
     default void accountDiscarded(
             String tenantId, String projectId, String account) {
-        // no-op for Nature-0
+        // no-op for Nature void
     }
 }

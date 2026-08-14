@@ -18,12 +18,12 @@ import org.springframework.stereotype.Component;
 /**
  * Trillian Nature-A, {@code adam} — the first persistent Trillian.
  *
- * <p>Adds to {@link TrillianNatureBase}, not to Nature-0: the attribute
+ * <p>Adds to {@link TrillianNatureBase}, not to Nature void: the attribute
  * map and how it renders into both prompts are shared mechanics, not
  * generation-zero behaviour to inherit. What distinguishes adam is
  * that its attributes <b>outlive the process rows</b>.
  *
- * <p>Under Nature-0 an attribute lives in {@code engineParams} and dies
+ * <p>Under Nature void an attribute lives in {@code engineParams} and dies
  * with the worker process. Everything that keeps it alive across an
  * archive is carrying code written for that one transition, and the
  * human cannot see the value at all except by asking the agent. adam

@@ -4,7 +4,7 @@
 # --recipe trillian-adam. Pairs with a Trillian-User worker that
 # TrillianSessionBootstrapper spawns alongside.
 #
-# adam is Nature-0 plus persistent attributes: what the human sets via
+# adam is Nature void plus persistent attributes: what the human sets via
 # user_attr_set is mirrored into _vance/trillian/<account>.yaml and read
 # back when the worker loop starts, so it survives archive, reactivate
 # and restart — and can be edited by hand in Cortex.
@@ -23,7 +23,7 @@ description: |
 
 engine: trillian-control
 
-# Unlike trillian-0, which is reachable through the `trillian` alias,
+# Unlike trillian-void, which is reachable through the `trillian` alias,
 # adam is a distinct choice a human makes deliberately — so it appears
 # in the recipe picker itself.
 listed: true

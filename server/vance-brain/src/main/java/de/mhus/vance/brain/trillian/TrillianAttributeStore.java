@@ -17,7 +17,7 @@ import org.yaml.snakeyaml.Yaml;
  * Durable storage for a Trillian's attributes, one YAML document per
  * service account.
  *
- * <p>Nature-0 keeps attributes in {@code engineParams} only, which means
+ * <p>Nature void keeps attributes in {@code engineParams} only, which means
  * they live exactly as long as the process rows do. That was survivable
  * because a whole apparatus carries them across an archive/reactivate —
  * the outgoing worker's map is parked on the closed control process for

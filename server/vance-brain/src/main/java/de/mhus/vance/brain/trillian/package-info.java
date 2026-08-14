@@ -4,7 +4,7 @@
  * behalf of a human steering them. See
  * {@code planning/trillian-engine.md}.
  *
- * <p>Nature-0 is the architecture proof: every Trillian-Control
+ * <p>Nature void is the architecture proof: every Trillian-Control
  * session pairs a chat-host process (Arthur-based, talks to the
  * human) with a Trillian-User process (Frankie-based, owned by a
  * fresh {@code _trillian-<nature>-<instance>} service account, runs the

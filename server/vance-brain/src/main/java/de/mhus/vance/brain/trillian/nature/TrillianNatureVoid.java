@@ -4,7 +4,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import org.springframework.stereotype.Component;
 
 /**
- * Trillian Nature-0 — the architecture-proof baseline.
+ * Trillian Nature {@code void} — the architecture-proof baseline.
  *
  * <p>Deliberately empty beyond its identity: everything it does lives in
  * {@link TrillianNatureBase}, and everything it does not do is what makes
@@ -16,17 +16,17 @@ import org.springframework.stereotype.Component;
  * their own, and it gives every later Nature a statement of what it is
  * adding to.
  *
- * <p>Recipes pin Nature-0 via {@code params.nature: '0'} in the bundled
- * {@code trillian-0.yaml}, {@code trillian-user-0.yaml} and
- * {@code trillian-worker-0.yaml}. The {@code trillian.yaml} default-alias
- * also pins Nature-0 today.
+ * <p>Recipes pin this Nature via {@code params.nature: 'void'} in the
+ * bundled {@code trillian-void.yaml}, {@code trillian-user-void.yaml} and
+ * {@code trillian-worker-void.yaml}. The {@code trillian.yaml}
+ * default-alias also pins {@code void} today.
  */
 @Component
-public class TrillianNature0 extends TrillianNatureBase {
+public class TrillianNatureVoid extends TrillianNatureBase {
 
-    public static final String ID = "0";
+    public static final String ID = "void";
 
-    public TrillianNature0(ThinkProcessService thinkProcessService) {
+    public TrillianNatureVoid(ThinkProcessService thinkProcessService) {
         super(thinkProcessService);
     }
 
@@ -37,6 +37,6 @@ public class TrillianNature0 extends TrillianNatureBase {
 
     @Override
     public String title() {
-        return "Trillian Nature-0 (architecture proof)";
+        return "Trillian Nature void (architecture proof)";
     }
 }

@@ -90,8 +90,8 @@ promptPrefix: |
     values beat vague "I did the thing".
 
 params:
-  # Pinned Nature (see trillian-0.yaml for the architectural note).
-  nature: '0'
+  # Pinned Nature (see trillian-void.yaml for the architectural note).
+  nature: 'void'
   model: default:fast,default:analyze
   manualPaths:
     - _vance/frankie/manuals/

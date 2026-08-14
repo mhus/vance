@@ -36,7 +36,7 @@ import org.springframework.stereotype.Component;
  * (the Trillian tools). Authorization is per-call: the caller process
  * must (a) carry a {@link TrillianSessionBootstrapper#PARAM_PEER_PROCESS_ID}
  * in its {@code engineParams} and (b) the resolved peer must live in
- * the same session. That's enough for Nature-0; cross-session /
+ * the same session. That's enough for Nature void; cross-session /
  * cross-tenant reach is not supported.
  *
  * <p>See {@code planning/trillian-engine.md} §5.
@@ -70,13 +70,13 @@ public class TrillianInternalApi {
      * {@code TrillianNature} when composing the system prompt or
      * making behavioural decisions.
      *
-     * <p>Generic by design — Nature-0 might render attributes as a
+     * <p>Generic by design — Nature void might render attributes as a
      * persona block, Nature-A might use one attribute as a
      * token-budget hint, Nature-B as a mode pre-selection. The
      * naming convention is the caller's (Control LLM) responsibility;
      * recipes can document expected keys per Nature.
      *
-     * <p>Nature-0: ephemeral — gone on session-close. Persistent
+     * <p>Nature void: ephemeral — gone on session-close. Persistent
      * storage (home-project document) comes with Nature-A+.
      */
     public static final String PARAM_ATTRIBUTES = "attributes";
@@ -94,7 +94,7 @@ public class TrillianInternalApi {
      * stored {@link TrillianSessionBootstrapper#PARAM_PEER_PROCESS_ID}.
      * The peer lives in a <b>different session</b> in v2 — same
      * tenant is the only constraint (Cross-Tenant explicitly out of
-     * Nature-0).
+     * Nature void).
      *
      * <p>Returns empty when the caller has no peer recorded, the
      * peer-id points at a missing document, or the tenants don't
@@ -443,7 +443,7 @@ public class TrillianInternalApi {
     /**
      * Reads the (active, non-archived) chat history of a process the
      * caller can observe. Cross-session reads are permitted as long
-     * as caller and observed live in the same tenant — Nature-0 stays
+     * as caller and observed live in the same tenant — Nature void stays
      * within one tenant, Cross-Tenant is out of scope.
      *
      * <p>The returned list is the chronological transcript — newest

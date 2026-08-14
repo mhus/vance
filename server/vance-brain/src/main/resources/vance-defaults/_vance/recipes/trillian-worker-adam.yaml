@@ -1,11 +1,11 @@
 # Trillian-Worker — task-bounded Frankie worker for Trillian-User,
 # Nature-A 'adam'.
 #
-# Identical in contract to the Nature-0 worker: a per-task worker is
+# Identical in contract to the Nature void worker: a per-task worker is
 # bounded and terminates, so it has nothing to persist. It exists as its
 # own file because the bootstrap derives the worker recipe name from the
 # Nature — trillian-worker-<nature> — and because a later adam revision
-# will want to change it without touching Nature-0.
+# will want to change it without touching Nature void.
 #
 # Spawned by Trillian-User via cross_process_create when a task needs
 # doing in another project. Frankie-based (Pi-style loop, file_*/

@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
  * {@link #resolve(String)} using the value of
  * {@code engineParams.nature} on the calling process.
  *
- * <p>Falls back to {@link TrillianNature0} when the requested id is
+ * <p>Falls back to {@link TrillianNatureVoid} when the requested id is
  * unknown — keeps a misconfigured recipe from killing the engine,
  * with a WARN in the log.
  *
@@ -61,7 +61,7 @@ public class TrillianNatureRegistry {
                         n.getClass().getSimpleName());
             }
         }
-        TrillianNature zero = byId.get(TrillianNature0.ID);
+        TrillianNature zero = byId.get(TrillianNatureVoid.ID);
         this.fallback = zero != null ? zero : natures.stream().findFirst().orElse(null);
         log.info("TrillianNatureRegistry initialised with {} nature(s): {}",
                 byId.size(), byId.keySet());
@@ -70,7 +70,7 @@ public class TrillianNatureRegistry {
     /**
      * Rejects an id that cannot safely be spliced into account and recipe
      * names. Throws rather than skipping: a skipped Nature silently
-     * degrades to Nature-0 at runtime, which looks like the Nature simply
+     * degrades to Nature void at runtime, which looks like the Nature simply
      * not working.
      */
     private static void requireUsableId(@Nullable String id, TrillianNature nature) {
@@ -98,10 +98,10 @@ public class TrillianNatureRegistry {
     /**
      * Looks up the Nature by id. Returns the registered Nature or —
      * when {@code id} is unknown, null or blank — the fallback
-     * (Nature-0). Callers read the id out of {@code engineParams}, where
+     * (Nature void). Callers read the id out of {@code engineParams}, where
      * it may legitimately be absent. Never
      * returns {@code null} as long as at least one Nature bean
-     * exists (which {@link TrillianNature0} guarantees).
+     * exists (which {@link TrillianNatureVoid} guarantees).
      */
     public TrillianNature resolve(@Nullable String id) {
         if (id == null || id.isBlank()) {

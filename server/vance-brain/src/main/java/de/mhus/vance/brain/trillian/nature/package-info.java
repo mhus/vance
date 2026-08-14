@@ -17,7 +17,7 @@
  * automatically. Recipes pin the Nature via
  * {@code params.nature: '<id>'}.
  *
- * <p>Nature-0 ({@link TrillianNature0}) is the baseline architecture
+ * <p>Nature void ({@link TrillianNatureVoid}) is the baseline architecture
  * proof: every hook returns the default. Future natures (A, B, …)
  * overlay personality, reflexion phases, mode-switching, token
  * budgets — strictly through the {@link TrillianNature} interface.

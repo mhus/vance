@@ -19,7 +19,7 @@ is the tool that opts in, not the engine.
 name. The recipes that ship with one:
 
   Must be called exactly once; natural-stop is not accepted there.
-- **trillian-worker-0** — `trillian_done(summary="…")`, optionally with
+- **trillian-worker-void** — `trillian_done(summary="…")`, optionally with
   `data` for a structured payload.
 
 **coding** has none: finish with a plain text reply listing what

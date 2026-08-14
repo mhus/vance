@@ -39,6 +39,8 @@ class TrillianNatureAdamTest {
     de.mhus.vance.brain.trillian.TrillianJournalStore journalStore;
     @Mock
     de.mhus.vance.brain.ai.light.LightLlmService lightLlm;
+    @Mock
+    TrillianCharacterCatalog characterCatalog;
 
     @Test
     void aChangedMap_isMirroredToTheStore() {
@@ -68,13 +70,14 @@ class TrillianNatureAdamTest {
     @Test
     void aBrandNewAccount_getsACharacter() {
         when(attributeStore.load(TENANT, PROJECT, ACCOUNT)).thenReturn(Map.of());
+        when(characterCatalog.generate(eq(TENANT), eq(PROJECT), any()))
+                .thenReturn(Map.of("name", "Ada", "gender", "female", "character", "Terse."));
 
         Map<String, Object> attrs = adam().initialAttributes(TENANT, PROJECT, ACCOUNT);
 
         // A worker called _trillian-adam-4711 is a process; one called
         // Ada is someone a human can talk about.
         assertThat(attrs).containsKeys("name", "gender", "character");
-        assertThat((String) attrs.get("name")).startsWith("A");
     }
 
     @Test
@@ -82,6 +85,8 @@ class TrillianNatureAdamTest {
         // Otherwise the next boot generates a different name, and an
         // identity regenerated on restart is not an identity.
         when(attributeStore.load(TENANT, PROJECT, ACCOUNT)).thenReturn(Map.of());
+        when(characterCatalog.generate(eq(TENANT), eq(PROJECT), any()))
+                .thenReturn(Map.of("name", "Ada"));
 
         Map<String, Object> attrs = adam().initialAttributes(TENANT, PROJECT, ACCOUNT);
 
@@ -287,7 +292,7 @@ class TrillianNatureAdamTest {
 
     private TrillianNatureAdam adam() {
         return new TrillianNatureAdam(
-                thinkProcessService, attributeStore, journalStore, lightLlm);
+                thinkProcessService, attributeStore, journalStore, lightLlm, characterCatalog);
     }
 
     private void givenReflexion(boolean keep, String entry) {

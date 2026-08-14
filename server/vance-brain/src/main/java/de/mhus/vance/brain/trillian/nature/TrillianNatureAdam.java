@@ -65,16 +65,19 @@ public class TrillianNatureAdam extends TrillianNatureBase {
     private final TrillianAttributeStore attributeStore;
     private final TrillianJournalStore journalStore;
     private final LightLlmService lightLlm;
+    private final TrillianCharacterCatalog characterCatalog;
 
     public TrillianNatureAdam(
             ThinkProcessService thinkProcessService,
             TrillianAttributeStore attributeStore,
             TrillianJournalStore journalStore,
-            LightLlmService lightLlm) {
+            LightLlmService lightLlm,
+            TrillianCharacterCatalog characterCatalog) {
         super(thinkProcessService);
         this.attributeStore = attributeStore;
         this.journalStore = journalStore;
         this.lightLlm = lightLlm;
+        this.characterCatalog = characterCatalog;
     }
 
     @Override
@@ -89,7 +92,7 @@ public class TrillianNatureAdam extends TrillianNatureBase {
 
     @Override
     public String callName(Map<String, Object> attributes) {
-        Object given = attributes.get(TrillianCharacter.ATTR_NAME);
+        Object given = attributes.get(TrillianCharacterCatalog.ATTR_NAME);
         return given instanceof String name && !name.isBlank()
                 ? name.strip()
                 : super.callName(attributes);
@@ -107,11 +110,11 @@ public class TrillianNatureAdam extends TrillianNatureBase {
         // Nothing stored: this account has never run. Give it a
         // character — and write it down immediately, because an identity
         // regenerated on the next boot is not an identity.
-        Map<String, Object> character = TrillianCharacter.generate(random);
+        Map<String, Object> character = characterCatalog.generate(tenantId, projectId, random);
         attributeStore.save(tenantId, projectId, account, character);
         log.info("Trillian adam: '{}' starts as '{}' ({})", account,
-                character.get(TrillianCharacter.ATTR_NAME),
-                character.get(TrillianCharacter.ATTR_GENDER));
+                character.get(TrillianCharacterCatalog.ATTR_NAME),
+                character.get(TrillianCharacterCatalog.ATTR_GENDER));
         return character;
     }
 

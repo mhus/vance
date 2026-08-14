@@ -5,6 +5,7 @@ import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.brain.trillian.TrillianAttributeStore;
 import de.mhus.vance.brain.trillian.TrillianJournalStore;
 import de.mhus.vance.brain.trillian.TrillianSessionBootstrapper;
+import de.mhus.vance.brain.trillian.tools.TrillianAskTool;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.List;
@@ -54,6 +55,17 @@ public class TrillianNatureAdam extends TrillianNatureBase {
 
     /** engineParamOverrides key on the *worker*: blocked-surfacing count. */
     static final String PARAM_BLOCKED_SEEN = "trillianBlockedSeen";
+
+    /**
+     * How often a state-blocked worker is offered a re-check before the
+     * obstacle is treated as a decision. Three rounds on a decelerating
+     * cadence is over an hour of the state not changing — long enough to
+     * stop asking the world and start asking the human.
+     */
+    static final int MAX_ASK_PROBES = 3;
+
+    /** engineParamOverrides key on the *worker*: re-checks offered. */
+    static final String PARAM_ASK_PROBES = "trillianAskProbes";
 
     /** A RUNNING worker quieter than this is worth a look. */
     private static final java.time.Duration SILENT_AFTER = java.time.Duration.ofMinutes(45);
@@ -307,12 +319,7 @@ public class TrillianNatureAdam extends TrillianNatureBase {
         Instant now = Instant.now();
         for (ThinkProcessDocument worker : thinkProcessService.findByParentProcessId(loop.getId())) {
             switch (worker.getStatus()) {
-                case IDLE -> findings.add(new SelfCheckFinding(
-                        SelfCheckFinding.Kind.WORKER_WAITING,
-                        nameOf(worker), worker.getId(),
-                        "parked since " + since(worker.getUpdatedAt(), now)
-                                + " — it asked something and nothing will reach it "
-                                + "until someone answers"));
+                case IDLE -> findings.add(waitingFinding(worker, now));
                 case BLOCKED -> findings.add(blockedFinding(worker, now));
                 case RUNNING -> {
                     if (silentFor(worker, now).compareTo(SILENT_AFTER) > 0) {
@@ -329,6 +336,58 @@ public class TrillianNatureAdam extends TrillianNatureBase {
             }
         }
         return findings;
+    }
+
+    /**
+     * A parked worker, and whether looking again could mean anything.
+     *
+     * <p>The worker said at asking time what stood in its way. A
+     * <em>state</em> — a locked file, a missing document — can clear
+     * without anyone answering, so one cheap re-check beats disturbing a
+     * human who may already have fixed it. A <em>decision</em> stays open
+     * however long anyone waits; re-checking it only confirms what is
+     * already known.
+     *
+     * <p>Re-checking is not free forever. After
+     * {@value #MAX_ASK_PROBES} rounds that changed nothing, the state has
+     * behaved like a decision for long enough to be treated as one — the
+     * circuit opens, and the human is asked instead of the world.
+     */
+    private SelfCheckFinding waitingFinding(ThinkProcessDocument worker, Instant now) {
+        String waited = since(worker.getUpdatedAt(), now);
+        String detail;
+        if (isStateBlocker(worker) && incrementAskProbes(worker) <= MAX_ASK_PROBES) {
+            detail = "parked since " + waited + ", blocked by a state that may have "
+                    + "changed since. Before asking the human again, process_steer it "
+                    + "once with a short nudge to re-check its obstacle and carry on if "
+                    + "it cleared. If it comes back with the same question, then ask.";
+        } else {
+            detail = "parked since " + waited + " — it is waiting on a decision only a "
+                    + "human can make, and nothing will reach it until someone answers. "
+                    + "Ask Control again, briefly, saying how long it has waited.";
+        }
+        return new SelfCheckFinding(
+                SelfCheckFinding.Kind.WORKER_WAITING, nameOf(worker), worker.getId(), detail);
+    }
+
+    private boolean isStateBlocker(ThinkProcessDocument worker) {
+        Map<String, Object> overrides = worker.getEngineParamOverrides();
+        Object raw = overrides == null ? null : overrides.get(TrillianAskTool.PARAM_ASK_BLOCKER);
+        return TrillianAskTool.BLOCKER_STATE.equals(raw);
+    }
+
+    /** Counts the re-checks offered for this parked worker. */
+    private int incrementAskProbes(ThinkProcessDocument worker) {
+        Map<String, Object> overrides = worker.getEngineParamOverrides();
+        Object raw = overrides == null ? null : overrides.get(PARAM_ASK_PROBES);
+        int next = (raw instanceof Number n ? n.intValue() : 0) + 1;
+        try {
+            thinkProcessService.setEngineParamOverride(worker.getId(), PARAM_ASK_PROBES, next);
+        } catch (RuntimeException e) {
+            log.warn("Trillian adam: could not count re-checks of '{}': {}",
+                    worker.getId(), e.toString());
+        }
+        return next;
     }
 
     /**

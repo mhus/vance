@@ -283,6 +283,49 @@ class TrillianNatureAdamTest {
     }
 
     @Test
+    void aStateBlocker_getsAReCheckBeforeTheHumanIsDisturbed() {
+        // A lock can be gone by now, and looking costs one worker turn
+        // against a human's attention.
+        ThinkProcessDocument parked = childProcess("ask-worker", ThinkProcessStatus.IDLE);
+        parked.setEngineParamOverrides(new LinkedHashMap<>(Map.of(
+                de.mhus.vance.brain.trillian.tools.TrillianAskTool.PARAM_ASK_BLOCKER, "state")));
+        when(thinkProcessService.findByParentProcessId("loop-1"))
+                .thenReturn(java.util.List.of(parked));
+
+        SelfCheckFinding finding = adam().selfCheckFindings(loopProcess()).get(0);
+
+        assertThat(finding.detail()).contains("process_steer").contains("re-check");
+    }
+
+    @Test
+    void aDecisionBlocker_goesStraightToTheHuman() {
+        // Nothing about a pending choice changes by looking at it again.
+        when(thinkProcessService.findByParentProcessId("loop-1"))
+                .thenReturn(java.util.List.of(
+                        childProcess("ask-worker", ThinkProcessStatus.IDLE)));
+
+        SelfCheckFinding finding = adam().selfCheckFindings(loopProcess()).get(0);
+
+        assertThat(finding.detail()).contains("decision").doesNotContain("re-check");
+    }
+
+    @Test
+    void aStateThatNeverChanges_becomesADecision() {
+        // The circuit opens: after three rounds it has behaved like a
+        // decision long enough to be treated as one.
+        ThinkProcessDocument parked = childProcess("ask-worker", ThinkProcessStatus.IDLE);
+        parked.setEngineParamOverrides(new LinkedHashMap<>(Map.of(
+                de.mhus.vance.brain.trillian.tools.TrillianAskTool.PARAM_ASK_BLOCKER, "state",
+                TrillianNatureAdam.PARAM_ASK_PROBES, TrillianNatureAdam.MAX_ASK_PROBES)));
+        when(thinkProcessService.findByParentProcessId("loop-1"))
+                .thenReturn(java.util.List.of(parked));
+
+        SelfCheckFinding finding = adam().selfCheckFindings(loopProcess()).get(0);
+
+        assertThat(finding.detail()).doesNotContain("re-check").contains("Ask Control");
+    }
+
+    @Test
     void aRunningWorker_isNotWorthWakingFor() {
         // It will report by itself; waking to look at it is noise.
         when(thinkProcessService.findByParentProcessId("loop-1"))

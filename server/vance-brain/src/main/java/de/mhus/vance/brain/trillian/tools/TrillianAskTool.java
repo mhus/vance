@@ -42,6 +42,14 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class TrillianAskTool implements Tool {
 
+    /** The obstacle could clear on its own — worth looking again. */
+    public static final String BLOCKER_STATE = "state";
+    /** Only a human closes this one; looking again learns nothing. */
+    public static final String BLOCKER_DECISION = "decision";
+
+    /** engineParamOverrides key on the worker: which kind of obstacle. */
+    public static final String PARAM_ASK_BLOCKER = "trillianAskBlocker";
+
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
             "properties", Map.of(
@@ -50,8 +58,20 @@ public class TrillianAskTool implements Tool {
                             "description", "What you need to know, in one or two "
                                     + "sentences. Say what you already established and "
                                     + "what you would do with each possible answer — "
-                                    + "whoever reads it cannot see your work.")),
-            "required", List.of("question"));
+                                    + "whoever reads it cannot see your work."),
+                    "blocker", Map.of(
+                            "type", "string",
+                            "enum", List.of(BLOCKER_STATE, BLOCKER_DECISION),
+                            "description", "What is in your way. 'state' — something "
+                                    + "about the world that could change on its own or "
+                                    + "by someone else's hand: a locked file, a missing "
+                                    + "document, a service that was down. 'decision' — a "
+                                    + "choice only a human can make, which stays open "
+                                    + "however long you wait. Answer honestly: a 'state' "
+                                    + "gets re-checked for you before anyone is "
+                                    + "disturbed, and claiming it for a decision only "
+                                    + "wastes a turn confirming what you already know.")),
+            "required", List.of("question", "blocker"));
 
     /**
      * Written into the worker's history right after the question, as the
@@ -113,6 +133,13 @@ public class TrillianAskTool implements Tool {
         // finished one.
         thinkProcessService.setEngineParamOverride(
                 ctx.processId(), TrillianWorkerEngine.PARAM_ASK_PENDING, true);
+        // Whether a second attempt could mean anything is knowable now and
+        // not later: the worker just met the obstacle. Reconstructing it
+        // from the question text afterwards would be guesswork, and the
+        // default falls to 'decision' because a pointless retry costs more
+        // than a skipped one.
+        thinkProcessService.setEngineParamOverride(
+                ctx.processId(), PARAM_ASK_BLOCKER, blocker(params));
 
         // Persist and then hand the question to the parent.
         //
@@ -171,5 +198,13 @@ public class TrillianAskTool implements Tool {
         out.put("note", "You are now waiting. The answer will arrive as a new "
                 + "message and you continue from here — do not repeat the work.");
         return out;
+    }
+
+    /** {@code state} only when it says so; everything else is a decision. */
+    private static String blocker(@Nullable Map<String, Object> params) {
+        Object raw = params == null ? null : params.get("blocker");
+        return raw instanceof String b && BLOCKER_STATE.equalsIgnoreCase(b.strip())
+                ? BLOCKER_STATE
+                : BLOCKER_DECISION;
     }
 }

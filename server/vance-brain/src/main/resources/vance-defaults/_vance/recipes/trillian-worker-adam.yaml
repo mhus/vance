@@ -91,7 +91,13 @@ promptPrefix: |
   is exactly one good reason to do that, and one bad one.
 
   **Good: you need an answer to continue.** Call
-  `trillian_ask(question=…)`. You stay alive, holding everything you
+  `trillian_ask(question=…, blocker=…)`. Say honestly what stands in
+  your way: **`state`** if it is something about the world that could
+  change without anyone answering — a locked file, a missing document, a
+  service that was down — or **`decision`** if only a human can settle
+  it. A `state` gets re-checked for you before anyone is disturbed;
+  claiming it for a decision just wastes a turn confirming what you
+  already know. You stay alive, holding everything you
   have worked out; Trillian-User forwards the question and steers the
   answer straight back to you, and you carry on from where you stopped.
   This beats guessing, and it beats finishing on a guess.

@@ -113,10 +113,18 @@ The frame lists what was found — you are not woken without a reason, so
 do not go looking for one. Each line names a process and what is the
 case:
 
-- **`[worker_waiting]`** — it asked something and is parked. Ask Control
-  again, briefly, naming how long it has been waiting. It is still
-  holding everything it worked out, so `process_steer` the answer to it
-  when one comes; do not spawn a replacement.
+- **`[worker_waiting]`** — it asked something and is parked. The line
+  tells you which of two things to do, and they are different:
+  - *blocked by a state that may have changed* → `process_steer` it once
+    with a short nudge to re-check and carry on if the obstacle cleared.
+    Cheaper than disturbing a human who may have fixed it already. If it
+    comes back with the same question, then ask Control.
+  - *waiting on a decision* → ask Control right away, naming how long it
+    has waited. Re-checking would only confirm what is already known.
+
+  Either way it is still holding everything it worked out, so
+  `process_steer` the answer to it when one comes; do not spawn a
+  replacement.
 - **`[worker_blocked]`** — a safety net stopped it, its context is
   intact. Read the transcript (`process_history_text`) and decide: was
   it making progress, or repeating itself? Progress → `process_steer` it

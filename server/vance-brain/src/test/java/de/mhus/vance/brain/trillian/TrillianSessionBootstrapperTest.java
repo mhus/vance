@@ -207,6 +207,50 @@ class TrillianSessionBootstrapperTest {
     }
 
     @Test
+    void theAnnouncement_usesTheNaturesCallName() {
+        de.mhus.vance.brain.trillian.nature.TrillianNature named =
+                new de.mhus.vance.brain.trillian.nature.TrillianNature() {
+                    @Override
+                    public String id() {
+                        return "adam";
+                    }
+
+                    @Override
+                    public String title() {
+                        return "test";
+                    }
+
+                    @Override
+                    public Map<String, Object> initialAttributes(
+                            String tenantId, String projectId, String account) {
+                        return Map.of("name", "Ada");
+                    }
+
+                    @Override
+                    public String callName(Map<String, Object> attributes) {
+                        return "Ada";
+                    }
+                };
+        bootstrapper = new TrillianSessionBootstrapper(userService, sessionService,
+                thinkProcessService, thinkEngineService, recipeResolver, laneScheduler,
+                chatMessageService,
+                new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(
+                        java.util.List.of(named)),
+                permissionBootstrapProvider);
+
+        bootstrapper.maybeBootstrap(controlSession(), controlProcess("adam"));
+
+        ArgumentCaptor<de.mhus.vance.shared.chat.ChatMessageDocument> message =
+                ArgumentCaptor.forClass(de.mhus.vance.shared.chat.ChatMessageDocument.class);
+        verify(chatMessageService).append(message.capture());
+        // The human meets a name, not a class — and the account is still
+        // there, because that is what they need in order to grant access.
+        org.assertj.core.api.Assertions.assertThat(message.getValue().getContent())
+                .startsWith("Ada is ready")
+                .contains("_trillian-adam-");
+    }
+
+    @Test
     void workerRecipe_isDerivedFromTheNature() {
         bootstrapper.maybeBootstrap(controlSession(), controlProcess("a"));
 

@@ -106,6 +106,23 @@ public interface TrillianNature {
         // no-op for Nature-0
     }
 
+    /**
+     * What this Trillian is called in conversation.
+     *
+     * <p>Defaults to {@code "Trillian"} — the engine's own name, correct
+     * for any Nature that does not name its instances. A Nature that
+     * gives each Trillian a given name returns it here, so the human
+     * meets "Ada is ready" rather than a class name.
+     *
+     * <p>Takes the attribute map because that is where a name lives if it
+     * lives anywhere: the human can change it with
+     * {@code //trillian attr set name}, and the call name has to follow
+     * without anything else being told.
+     */
+    default String callName(Map<String, Object> attributes) {
+        return "Trillian";
+    }
+
     // ─── Attribute durability ─────────────────────────────────────
 
     /**

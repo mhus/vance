@@ -88,6 +88,14 @@ public class TrillianNatureAdam extends TrillianNatureBase {
     }
 
     @Override
+    public String callName(Map<String, Object> attributes) {
+        Object given = attributes.get(TrillianCharacter.ATTR_NAME);
+        return given instanceof String name && !name.isBlank()
+                ? name.strip()
+                : super.callName(attributes);
+    }
+
+    @Override
     public Map<String, Object> initialAttributes(
             String tenantId, String projectId, String account) {
         Map<String, Object> stored = attributeStore.load(tenantId, projectId, account);

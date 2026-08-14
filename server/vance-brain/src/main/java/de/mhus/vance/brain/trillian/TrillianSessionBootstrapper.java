@@ -410,7 +410,8 @@ public class TrillianSessionBootstrapper {
         //     which '_trillian-*' belongs to which session. Persisted as a
         //     regular chat message on purpose: a transient notification
         //     would be gone by the time it is needed.
-        announceIdentity(controlSession, controlProcess, trillianName);
+        announceIdentity(controlSession, controlProcess, trillianName,
+                natureRegistry.resolve(nature).callName(carried));
 
         // 7. Start the user-process on its own lane.
         try {
@@ -443,14 +444,15 @@ public class TrillianSessionBootstrapper {
     private void announceIdentity(
             SessionDocument controlSession,
             ThinkProcessDocument controlProcess,
-            String trillianName) {
+            String trillianName,
+            String callName) {
         try {
             chatMessageService.append(ChatMessageDocument.builder()
                     .tenantId(controlSession.getTenantId())
                     .sessionId(controlSession.getSessionId())
                     .thinkProcessId(controlProcess.getId())
                     .role(ChatRole.ASSISTANT)
-                    .content("Trillian is ready. My background worker runs as the service"
+                    .content(callName + " is ready. My background worker runs as the service"
                             + " account `" + trillianName + "` in project `"
                             + controlSession.getProjectId() + "`, and is removed when this"
                             + " session closes. To let it work in another project, that"

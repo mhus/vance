@@ -51,6 +51,21 @@ class TrillianNatureAdamTest {
     }
 
     @Test
+    void theCallName_isTheGivenName() {
+        assertThat(adam().callName(Map.of("name", "Ada"))).isEqualTo("Ada");
+    }
+
+    @Test
+    void withoutAName_theEngineNameStands() {
+        // Nature-0 has no names at all, and an adam whose name the human
+        // cleared should not announce itself as an empty string.
+        assertThat(adam().callName(Map.of())).isEqualTo("Trillian");
+        assertThat(adam().callName(Map.of("name", "  "))).isEqualTo("Trillian");
+        assertThat(new TrillianNature0(thinkProcessService).callName(Map.of("name", "Ada")))
+                .isEqualTo("Trillian");
+    }
+
+    @Test
     void aBrandNewAccount_getsACharacter() {
         when(attributeStore.load(TENANT, PROJECT, ACCOUNT)).thenReturn(Map.of());
 

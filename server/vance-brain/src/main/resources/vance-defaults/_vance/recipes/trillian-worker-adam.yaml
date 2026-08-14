@@ -149,6 +149,13 @@ params:
   # Pinned Nature (see trillian-adam.yaml for the architectural note).
   nature: 'adam'
   model: default:fast,default:analyze
+  # Per-turn wallclock budget, narrower than Frankie's global 60. A
+  # Trillian task is a bounded errand — list, read, write, report. Twenty
+  # minutes of one uninterrupted turn means it is looping, not working,
+  # and BLOCKED reaches the loop as a terminal event it can report on.
+  # Waiting for an answer does not count against it: the budget is per
+  # turn, so a worker parked on a question resumes with a fresh one.
+  maxWallclockMinutes: 20
   manualPaths:
     - _vance/frankie/manuals/
     - _vance/manuals/

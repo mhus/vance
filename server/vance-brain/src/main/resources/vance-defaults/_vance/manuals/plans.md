@@ -1,6 +1,6 @@
 ---
-triggers: workflow starten, start workflow, plan ausführen, run a plan, run the workflow, workflow_start, vogon, workflowPath, führe den workflow aus, execute workflow, plan laufen lassen, workflow von pfad, run plan from path, existierenden workflow starten, gate approval workflow
-summary: How to run a plan that already exists — vogon (someone is waiting, any path) versus workflow_start (unattended, by name). Includes the two ways a plan is addressed and why copying files into _vance/workflows/ is never the answer.
+triggers: workflow starten, start workflow, plan ausführen, run a plan, run the workflow, workflow_start, vogon, workflowPath, führe den workflow aus, execute workflow, plan laufen lassen, workflow von pfad, run plan from path, existierenden workflow starten, gate approval workflow, workflow aus script starten, start workflow from javascript, vance.workflow
+summary: How to run a plan that already exists — vogon (someone is waiting, any path) versus workflow_start (unattended, by name or path, also from JavaScript). Includes the two ways a plan is addressed and why copying files into _vance/workflows/ is never the answer.
 ---
 # Running a plan that already exists
 
@@ -46,6 +46,47 @@ of them the caller did not pass is read out of that text. "release version
 workflow_start(name = "release")                       # through the cascade
 workflow_start(path = "workflows/helloworld.yaml")     # exactly this document
 ```
+
+## From JavaScript — `vance.workflow`
+
+```js
+const run = vance.workflow.start({
+  path: "workflows/helloworld.yaml",   // or: name: "release"
+  params: { ticket: "T-42" }
+});
+
+const s = vance.workflow.status(run.workflowRunId);  // null if unknown
+s.status;        // "RUNNING" | "WAITING" | "DONE" | ...
+s.currentState;
+s.vars.version;
+```
+
+`start` is the `workflow_start` tool underneath, so it works exactly where
+that tool does: a Cortex/Hactar run, a `script_task` inside a plan, a
+Damogran `js` task, a skill script, `execute_javascript`. It is refused in
+a scheduler-, hook- or event-triggered script — those run trigger-scoped,
+where every spawning tool is denied. Wrap the work in a plan and let the
+scheduler start *that*. `status` is not affected by that rule; it starts
+nothing.
+
+`status` is a snapshot, not a wait — a script runs straight through and
+exits. Do not loop on it. When one step must wait for another plan, that
+is a `workflow_task` inside a plan.
+
+### Inside a `script_task` — `vance.workflow.current`
+
+A task script can read the run it belongs to instead of relying on
+whatever the plan author substituted into its `params:`:
+
+```js
+const run = vance.workflow.current;   // null outside a plan
+run.runId; run.workflowName; run.state; run.taskId; run.startedBy;
+run.params.version;   // the run's caller params
+run.vars.sha;         // variables written by earlier states
+```
+
+Read-only. To write back, return a value from the script and pick it up
+with `storeAs:` — that is the only write path a task has, by design.
 
 ## The two ways to address a plan
 

@@ -6,6 +6,7 @@ import de.mhus.vance.brain.script.ScriptExecutionException;
 import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.script.ScriptRequest;
 import de.mhus.vance.brain.script.ScriptResult;
+import de.mhus.vance.brain.script.ScriptWorkflowRun;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
@@ -105,6 +106,23 @@ public final class ScriptActionExecutor implements ActionExecutor<TriggerAction.
 
     @Override
     public ActionResult execute(ActionInvocation<TriggerAction.Script> invocation) {
+        return execute(invocation, /*workflowRun*/ null);
+    }
+
+    /**
+     * Run a script that is a step of a Magrathea run. {@code workflowRun}
+     * becomes {@code vance.workflow.current}, so the script can read the
+     * run it belongs to — its id, state, params and variables — instead of
+     * only what the plan author remembered to substitute into
+     * {@code params:}.
+     *
+     * <p>Deliberately an overload here rather than a field on
+     * {@link ActionInvocation}: that record is the generic bundle every
+     * action executor receives, and only this one seam — the direct call
+     * from {@code ScriptTaskExecutor} — has a run to hand over.
+     */
+    public ActionResult execute(ActionInvocation<TriggerAction.Script> invocation,
+                                @Nullable ScriptWorkflowRun workflowRun) {
         TriggerAction.Script action = invocation.action();
         TriggerContext ctx = invocation.context();
 
@@ -139,7 +157,8 @@ public final class ScriptActionExecutor implements ActionExecutor<TriggerAction.
                     /*recipeName*/ null,
                     invocation.triggerKind().isProcessScoped()
                             ? ScopeLevel.PROCESS_SCOPED
-                            : ScopeLevel.TRIGGER_SCOPED));
+                            : ScopeLevel.TRIGGER_SCOPED)
+                    .withWorkflowRun(workflowRun));
         } catch (ScriptExecutionException e) {
             log.debug("ScriptActionExecutor: script '{}' failed: errorClass={} message={}",
                     sourceName, e.errorClass(), e.getMessage());

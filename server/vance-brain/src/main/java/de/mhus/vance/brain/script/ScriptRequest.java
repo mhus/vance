@@ -37,7 +37,8 @@ public record ScriptRequest(
         @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
         @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
         @Nullable String documentBasePath,
-        VanceScriptApi.@Nullable ScriptGuardApi guardApi) {
+        VanceScriptApi.@Nullable ScriptGuardApi guardApi,
+        @Nullable ScriptWorkflowRun workflowRun) {
 
     public ScriptRequest {
         if (!"js".equals(language)) {
@@ -193,7 +194,32 @@ public record ScriptRequest(
             @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
             @Nullable String documentBasePath) {
         this(language, code, sourceName, tools, timeout, bindings, recipeName,
-                scopeLevel, progressEmitter, notificationEmitter, documentBasePath, null);
+                scopeLevel, progressEmitter, notificationEmitter, documentBasePath, null, null);
+    }
+
+    /**
+     * 12-argument convenience — the canonical shape before
+     * {@code workflowRun} was added. Defaults it to {@code null}: the
+     * script is not a Magrathea task, so {@code vance.workflow.current}
+     * stays unset. Only {@code ScriptTaskExecutor} passes one, via
+     * {@link #withWorkflowRun}.
+     */
+    public ScriptRequest(
+            String language,
+            String code,
+            @Nullable String sourceName,
+            ContextToolsApi tools,
+            Duration timeout,
+            Map<String, @Nullable Object> bindings,
+            @Nullable String recipeName,
+            ScopeLevel scopeLevel,
+            @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
+            @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
+            @Nullable String documentBasePath,
+            VanceScriptApi.@Nullable ScriptGuardApi guardApi) {
+        this(language, code, sourceName, tools, timeout, bindings, recipeName,
+                scopeLevel, progressEmitter, notificationEmitter, documentBasePath,
+                guardApi, null);
     }
 
     /**
@@ -205,7 +231,20 @@ public record ScriptRequest(
      */
     public ScriptRequest withDocumentBasePath(@Nullable String dir) {
         return new ScriptRequest(language, code, sourceName, tools, timeout, bindings,
-                recipeName, scopeLevel, progressEmitter, notificationEmitter, dir, guardApi);
+                recipeName, scopeLevel, progressEmitter, notificationEmitter, dir, guardApi,
+                workflowRun);
+    }
+
+    /**
+     * Copy with the enclosing Magrathea run attached — what a
+     * {@code script_task} executes inside, surfaced as
+     * {@code vance.workflow.current}. Set by {@code ScriptTaskExecutor};
+     * every other script run leaves it null.
+     */
+    public ScriptRequest withWorkflowRun(@Nullable ScriptWorkflowRun run) {
+        return new ScriptRequest(language, code, sourceName, tools, timeout, bindings,
+                recipeName, scopeLevel, progressEmitter, notificationEmitter,
+                documentBasePath, guardApi, run);
     }
 
     /**
@@ -216,6 +255,7 @@ public record ScriptRequest(
      */
     public ScriptRequest withGuardApi(VanceScriptApi.@Nullable ScriptGuardApi api) {
         return new ScriptRequest(language, code, sourceName, tools, timeout, bindings,
-                recipeName, scopeLevel, progressEmitter, notificationEmitter, documentBasePath, api);
+                recipeName, scopeLevel, progressEmitter, notificationEmitter, documentBasePath,
+                api, workflowRun);
     }
 }

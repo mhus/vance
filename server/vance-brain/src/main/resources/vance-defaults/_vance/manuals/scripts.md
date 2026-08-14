@@ -1,5 +1,5 @@
 ---
-triggers: execute_javascript, JavaScript, JS script, vance.tools.call, GraalJS, scratch javascript, client_javascript, host bindings, vance.*, client.*, multi-tool plumbing
+triggers: execute_javascript, JavaScript, JS script, vance.tools.call, GraalJS, scratch javascript, client_javascript, host bindings, vance.*, client.*, multi-tool plumbing, vance.workflow
 summary: How to call tools from JavaScript on brain (vance.*) or foot (client.*) — execute_javascript, execute_work_javascript, client_javascript.
 ---
 # Scripts that call tools
@@ -107,6 +107,16 @@ schema-validated extraction. No process spawn, no lane lock. The
 recipe must be marked `internal: true`. Load
 `manual_read('vance-script-llm')` for signatures, recipe shape,
 schema-loop semantics, and the when-NOT-to-use list.
+
+### Plans (Magrathea workflows)
+
+`vance.workflow.start({ path })` or `({ name })` starts a run,
+`vance.workflow.status(runId)` reads its projected snapshot (null if
+unknown), and `vance.workflow.current` is the run a `script_task` is
+executing inside (null everywhere else, read-only). `start` is refused in
+scheduler/hook/event scripts — trigger-scoped, no spawning tools. Load
+`manual_read('plans')` for the vogon-versus-workflow_start decision and
+the `current` fields.
 
 ### Dropping items into a user's inbox
 

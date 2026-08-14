@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.script;
 
+import de.mhus.vance.api.magrathea.MagratheaProcessDto;
 import de.mhus.vance.api.notification.NotificationSeverity;
 import de.mhus.vance.brain.ai.light.LightLlmException;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
@@ -8,6 +9,7 @@ import de.mhus.vance.brain.ai.light.SchemaValidationException;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.magrathea.MagratheaStateProjector;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -107,6 +109,18 @@ public final class VanceScriptApi {
 
     @HostAccess.Export
     public final ScriptProcessApi process;
+
+    /**
+     * Magrathea surface exposed as {@code vance.workflow} — always
+     * present, because starting a run is a plain tool call and needs no
+     * wiring. {@link ScriptWorkflowApi#status} requires the journal
+     * projector and refuses without it;
+     * {@link ScriptWorkflowApi#current} is non-null only inside a
+     * {@code script_task}. See {@code specification/public/workflows.md}
+     * §8.8.
+     */
+    @HostAccess.Export
+    public final ScriptWorkflowApi workflow;
 
     /**
      * Caller-supplied parameters exposed as {@code vance.params.<key>}.
@@ -249,6 +263,7 @@ public final class VanceScriptApi {
         this.context = new ScriptContextView(toolsApi.scope(), recipeName);
         this.log = new ScriptLog(toolsApi.scope());
         this.process = new ScriptProcessApi(this, progressEmitter, notificationEmitter);
+        this.workflow = new ScriptWorkflowApi(this, toolsApi.scope(), null);
         // params start empty — call sites that wire script-level params
         // (Hactar's ExecutingPhase, ScriptCortexExecutionService) replace
         // this with the actual map via the params-aware constructor below.
@@ -366,12 +381,14 @@ public final class VanceScriptApi {
     }
 
     /**
-     * 13-arg canonical constructor — adds {@code guardApi}, the
-     * {@code vance.guard} surface for a completion-guard run. Every other
-     * constructor delegates here with a {@code null} guard. The
+     * 13-arg constructor — adds {@code guardApi}, the {@code vance.guard}
+     * surface for a completion-guard run. The
      * {@code CompletionGuardService} is the only caller that passes a
      * non-null value (via {@code ScriptRequest}); all other script runs
-     * leave {@code vance.guard} unset.
+     * leave {@code vance.guard} unset. Delegates with a {@code null}
+     * workflow host — {@code vance.workflow.status} then refuses and
+     * {@code vance.workflow.current} is null, while
+     * {@code vance.workflow.start} keeps working (it is a tool call).
      */
     public VanceScriptApi(ContextToolsApi toolsApi,
                           @Nullable String recipeName,
@@ -388,6 +405,36 @@ public final class VanceScriptApi {
                           de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory,
                           @Nullable SecretResolver secretResolver,
                           @Nullable ScriptGuardApi guardApi) {
+        this(toolsApi, recipeName, deniedToolNames, documentService, progressEmitter,
+                notificationEmitter, paramsMap, lightLlmService, settingService,
+                documentBasePath, contextFactory, secretResolver, guardApi,
+                /*workflowHost*/ null);
+    }
+
+    /**
+     * 14-arg canonical constructor — adds {@code workflowHost}, the
+     * backing for {@code vance.workflow}: the journal projector (for
+     * {@code status}) and the enclosing run (for {@code current}). Every
+     * other constructor delegates here. {@code GraaljsScriptExecutor}
+     * builds it from its projector bean plus
+     * {@code ScriptRequest#workflowRun}.
+     */
+    public VanceScriptApi(ContextToolsApi toolsApi,
+                          @Nullable String recipeName,
+                          Set<String> deniedToolNames,
+                          @Nullable DocumentService documentService,
+                          @Nullable BiConsumer<String,
+                                  @Nullable Map<String, Object>> progressEmitter,
+                          @Nullable BiConsumer<String,
+                                  @Nullable NotificationSeverity> notificationEmitter,
+                          @Nullable Map<String, Object> paramsMap,
+                          @Nullable LightLlmService lightLlmService,
+                          @Nullable SettingService settingService,
+                          @Nullable String documentBasePath,
+                          de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory,
+                          @Nullable SecretResolver secretResolver,
+                          @Nullable ScriptGuardApi guardApi,
+                          @Nullable ScriptWorkflowHost workflowHost) {
         this.tools = new ScriptToolsApi(toolsApi, deniedToolNames);
         this.files = new ScriptFilesApi(this.tools);
         this.context = new ScriptContextView(toolsApi.scope(), recipeName);
@@ -409,6 +456,7 @@ public final class VanceScriptApi {
                 ? null
                 : new ScriptSecretApi(secretResolver, toolsApi.scope());
         this.guard = guardApi;
+        this.workflow = new ScriptWorkflowApi(this, toolsApi.scope(), workflowHost);
     }
 
     /** Tool-dispatch surface exposed as {@code vance.tools}. */
@@ -758,6 +806,143 @@ public final class VanceScriptApi {
                 LOG.debug("vance.process.notify: unknown severity '{}', defaulting to INFO", raw);
                 return NotificationSeverity.INFO;
             }
+        }
+    }
+
+    /**
+     * Magrathea surface exposed as {@code vance.workflow} — starting a
+     * run, reading a run's projected status, and (inside a
+     * {@code script_task}) the run the script is part of.
+     *
+     * <p>The three members have deliberately different backings:
+     *
+     * <ul>
+     *   <li>{@link #start} is a thin wrapper over
+     *       {@code tools.call("workflow_start", …)}, exactly as
+     *       {@code vance.process.spawn} wraps {@code process_spawn}. It
+     *       therefore keeps the whole tool path — allow-set, server-tool
+     *       cascade, quotas, and the trigger-scoped refusal of spawning
+     *       tools. Bypassing the dispatcher here would hand a scheduler
+     *       script the one capability that surface is meant to withhold.</li>
+     *   <li>{@link #status} reads the journal projection directly. There
+     *       is no {@code workflow_status} tool and this is not the place
+     *       to invent one: the plans manual tells agents in as many words
+     *       not to poll a run, and a tool is exactly an invitation to
+     *       poll. A script that started a run and needs its verdict is a
+     *       different case from a model deciding to look.</li>
+     *   <li>{@link #current} is per-run context handed in by the caller,
+     *       null everywhere but a {@code script_task}.</li>
+     * </ul>
+     *
+     * <p>Both {@code status} and {@code current} are scope-locked to the
+     * script's own tenant and project — a run id from elsewhere reads as
+     * absent, the same shape the REST route uses so run existence is not
+     * leaked across a scope boundary.
+     */
+    public static final class ScriptWorkflowApi {
+
+        private final VanceScriptApi parent;
+        private final ToolInvocationContext scope;
+        private final @Nullable MagratheaStateProjector projector;
+
+        /**
+         * The run this script executes inside, or {@code null} when it is
+         * not a workflow task. A plain object:
+         * {@code { runId, workflowName, state, taskId, startedBy, params, vars }}.
+         * See {@link ScriptWorkflowRun} for why there is no way to write
+         * back through it.
+         */
+        @HostAccess.Export
+        public final @Nullable Map<String, Object> current;
+
+        ScriptWorkflowApi(VanceScriptApi parent, ToolInvocationContext scope,
+                          @Nullable ScriptWorkflowHost host) {
+            this.parent = parent;
+            this.scope = scope;
+            this.projector = host == null ? null : host.projector();
+            ScriptWorkflowRun run = host == null ? null : host.run();
+            this.current = run == null ? null : run.asMap();
+        }
+
+        /**
+         * Start a run. {@code params} takes the {@code workflow_start}
+         * shape — {@code name} (cascade) or {@code path} (one document in
+         * this project), plus an optional {@code params} object for the
+         * plan's own parameters.
+         *
+         * <p>Returns {@code { workflowRunId, workflowName, workflowPath? }}.
+         * The run is headless: nothing waits for it, and questions it
+         * raises go to the inbox. Refused in trigger-scoped scripts
+         * (scheduler, hook, event) like every other spawning tool.
+         */
+        @HostAccess.Export
+        public Map<String, Object> start(@Nullable Map<String, Object> params) {
+            return parent.tools.call("workflow_start", params == null ? Map.of() : params);
+        }
+
+        /**
+         * Projected snapshot of {@code runId}, or {@code null} when this
+         * tenant/project has no such run.
+         *
+         * <p>Shape: {@code { workflowRunId, workflowName, workflowVersion,
+         * status, currentState, params, vars, result, startedBy, tags,
+         * createdAt, updatedAt, terminatedAt }} — timestamps as ISO-8601
+         * strings, {@code status} as the enum name
+         * ({@code RUNNING} / {@code WAITING} / {@code DONE} / …).
+         *
+         * <p>This is a snapshot, not a wait. A script runs straight
+         * through and exits; it cannot block until a run finishes. When
+         * one step must wait for another plan, that is a
+         * {@code workflow_task} inside a plan.
+         */
+        @HostAccess.Export
+        public @Nullable Map<String, Object> status(String runId) {
+            if (runId == null || runId.isBlank()) {
+                throw new ScriptHostException(
+                        "vance.workflow.status: runId must not be empty", null);
+            }
+            if (projector == null) {
+                throw new ScriptHostException(
+                        "vance.workflow.status: Magrathea is not enabled on this brain "
+                                + "(vance.services.magrathea)", null);
+            }
+            String projectId = scope.projectId();
+            if (projectId == null || projectId.isBlank()) {
+                throw new ScriptHostException(
+                        "vance.workflow.status: no project context", null);
+            }
+            return projector.project(scope.tenantId(), projectId, runId.trim())
+                    // The projector is asked for this scope, but a run id is
+                    // global — re-check rather than trust the lookup, same as
+                    // the REST route does before answering.
+                    .filter(dto -> scope.tenantId().equals(dto.getTenantId())
+                            && projectId.equals(dto.getProjectId()))
+                    .map(ScriptWorkflowApi::toMap)
+                    .orElse(null);
+        }
+
+        /**
+         * DTO → JS object. Mapped by hand rather than through Jackson so
+         * the script-facing shape is a decision here and does not drift
+         * with serialisation settings elsewhere.
+         */
+        private static Map<String, Object> toMap(MagratheaProcessDto dto) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("workflowRunId", dto.getWorkflowRunId());
+            out.put("workflowName", dto.getWorkflowName());
+            out.put("workflowVersion", dto.getWorkflowVersion());
+            out.put("status", dto.getStatus() == null ? null : dto.getStatus().name());
+            out.put("currentState", dto.getCurrentState());
+            out.put("params", dto.getParams() == null ? Map.of() : dto.getParams());
+            out.put("vars", dto.getVars() == null ? Map.of() : dto.getVars());
+            out.put("result", dto.getResult());
+            out.put("startedBy", dto.getStartedBy());
+            out.put("tags", dto.getTags() == null ? List.of() : dto.getTags());
+            out.put("createdAt", dto.getCreatedAt() == null ? null : dto.getCreatedAt().toString());
+            out.put("updatedAt", dto.getUpdatedAt() == null ? null : dto.getUpdatedAt().toString());
+            out.put("terminatedAt",
+                    dto.getTerminatedAt() == null ? null : dto.getTerminatedAt().toString());
+            return out;
         }
     }
 

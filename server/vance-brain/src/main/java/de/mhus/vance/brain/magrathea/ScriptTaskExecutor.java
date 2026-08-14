@@ -10,6 +10,7 @@ import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.ScriptActionExecutor;
 import de.mhus.vance.brain.action.TriggerContext;
 import de.mhus.vance.brain.action.TriggerKind;
+import de.mhus.vance.brain.script.ScriptWorkflowRun;
 import de.mhus.vance.shared.magrathea.MagratheaStateSpec;
 import java.util.Locale;
 import java.util.Map;
@@ -88,9 +89,27 @@ public class ScriptTaskExecutor implements MagratheaTypeExecutor {
                 context.workflowRunId(),
                 "workflow:" + context.workflowRunId() + ":" + state.name(),
                 /*parentProcessId*/ null);
-        ActionResult result = scriptActionExecutor.execute(new ActionInvocation<>(
-                action, triggerContext, TriggerKind.WORKFLOW));
+        ActionResult result = scriptActionExecutor.execute(
+                new ActionInvocation<>(action, triggerContext, TriggerKind.WORKFLOW),
+                runView(context));
         return Optional.of(mapOutcome(state, result));
+    }
+
+    /**
+     * The read-only view of this run the script sees as
+     * {@code vance.workflow.current}. Everything in it is already on the
+     * task context; before it was dropped on the floor, so a script could
+     * not tell it was part of a plan, let alone which one.
+     */
+    private static ScriptWorkflowRun runView(MagratheaTaskContext context) {
+        return new ScriptWorkflowRun(
+                context.workflowRunId(),
+                context.workflow().name(),
+                context.state().name(),
+                context.taskId(),
+                context.startedBy(),
+                context.params(),
+                context.vars());
     }
 
     private TriggerAction.Script buildAction(MagratheaStateSpec state) {

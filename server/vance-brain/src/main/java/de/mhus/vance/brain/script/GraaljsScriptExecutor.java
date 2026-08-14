@@ -81,6 +81,16 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
     @Autowired(required = false)
     private @Nullable SecretResolver secretResolver;
 
+    /**
+     * Optional — backs {@code vance.workflow.status(...)}. Absent when
+     * Magrathea is disabled ({@code vance.services.magrathea}), in which
+     * case the surface refuses with a named error rather than silently
+     * answering null. Field-injected for the same reason as
+     * {@link #secretResolver}: the constructor telescoping stays as it is.
+     */
+    @Autowired(required = false)
+    private de.mhus.vance.shared.magrathea.@Nullable MagratheaStateProjector workflowProjector;
+
     @Autowired
     public GraaljsScriptExecutor(
             Engine engine,
@@ -275,7 +285,8 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                 documentService, request.progressEmitter(),
                 request.notificationEmitter(), paramsForApi,
                 lightLlmService, settingService, request.documentBasePath(),
-                securityContextFactory, secretResolver, request.guardApi());
+                securityContextFactory, secretResolver, request.guardApi(),
+                new ScriptWorkflowHost(workflowProjector, request.workflowRun()));
         // Resource bounds enforceable on GraalVM CE / HotSpot:
         //   - statementLimit bounds the *number* of statements executed, and
         //   - the wall-clock watchdog below (ctx.close(true) on timeout) bounds

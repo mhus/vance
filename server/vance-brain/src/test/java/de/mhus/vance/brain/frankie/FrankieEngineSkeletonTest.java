@@ -646,6 +646,33 @@ class FrankieEngineSkeletonTest {
         verify(thinkProcessService, never()).closeProcess(eq(PROC_ID), any());
     }
 
+    @Test
+    void aRecipeMayNarrowTheWallclockBudget() {
+        // One number cannot fit a coding worker chewing through a
+        // refactor and a worker asked to list documents.
+        properties.setMaxWallclockMinutes(60);
+        process.setEngineParams(new java.util.LinkedHashMap<>(java.util.Map.of(
+                FrankieEngine.PARAM_MAX_WALLCLOCK_MINUTES, 0)));
+
+        engine.runTurn(process, ctx);
+
+        verify(thinkProcessService).updateStatus(PROC_ID, ThinkProcessStatus.BLOCKED);
+        assertThat(chatModel.callCount()).isEqualTo(0);
+    }
+
+    @Test
+    void aNonsenseBudget_fallsBackToTheProperty() {
+        // A typo must not silently disable the safety net — the recipe
+        // author meant to bound the worker, not to unbound it.
+        properties.setMaxWallclockMinutes(0);
+        process.setEngineParams(new java.util.LinkedHashMap<>(java.util.Map.of(
+                FrankieEngine.PARAM_MAX_WALLCLOCK_MINUTES, "soon")));
+
+        engine.runTurn(process, ctx);
+
+        verify(thinkProcessService).updateStatus(PROC_ID, ThinkProcessStatus.BLOCKED);
+    }
+
     // ─── Stop path 4b: idle-stuck safety net ────────────────────────────
 
     @Test

@@ -340,6 +340,9 @@ public class FrankieEngine implements ThinkEngine {
      * primary processes stay alive because the user is still talking
      * to them.
      */
+    /** Recipe param narrowing the per-turn wallclock budget. */
+    public static final String PARAM_MAX_WALLCLOCK_MINUTES = "maxWallclockMinutes";
+
     @Override
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
         // Wallclock budget is per-turn, not per-process-lifetime. Resuming
@@ -348,7 +351,7 @@ public class FrankieEngine implements ThinkEngine {
         // long ago — the FrankieEngine.runTurn invocation is the unit we
         // want to bound.
         long startMs = System.currentTimeMillis();
-        long deadlineMs = startMs + (long) properties.getMaxWallclockMinutes() * 60_000L;
+        long deadlineMs = startMs + (long) wallclockMinutes(process) * 60_000L;
         boolean isWorker = process.getParentProcessId() != null
                 && !process.getParentProcessId().isBlank();
 
@@ -1086,6 +1089,44 @@ public class FrankieEngine implements ThinkEngine {
         }
         process.setActiveSkills(kept);
         thinkProcessService.replaceActiveSkills(process.getId(), kept);
+    }
+
+    /**
+     * Per-turn wallclock budget, in minutes.
+     *
+     * <p>Defaults to {@code vance.frankie.maxWallclockMinutes} and can be
+     * narrowed (or widened) per recipe via {@code params.maxWallclockMinutes}.
+     * One number cannot fit both a coding worker chewing through a
+     * refactor and a worker asked to list documents: the first needs an
+     * hour, the second is stuck if it takes ten minutes.
+     *
+     * <p>{@code 0} is a legitimate value and means "already exceeded" —
+     * used by tests to trip the net deterministically. A negative or
+     * non-numeric value is a typo, not an intention, so it falls back to
+     * the property with a warning rather than disabling the safety net.
+     */
+    private int wallclockMinutes(ThinkProcessDocument process) {
+        Map<String, Object> params = process.getEngineParams();
+        Object raw = params == null ? null : params.get(PARAM_MAX_WALLCLOCK_MINUTES);
+        if (raw == null) {
+            return properties.getMaxWallclockMinutes();
+        }
+        Integer parsed = null;
+        if (raw instanceof Number n) {
+            parsed = n.intValue();
+        } else if (raw instanceof String str) {
+            try {
+                parsed = Integer.valueOf(str.strip());
+            } catch (NumberFormatException ignored) {
+                // handled below
+            }
+        }
+        if (parsed == null || parsed < 0) {
+            log.warn("Frankie id='{}' ignoring {}='{}' — not a non-negative number",
+                    process.getId(), PARAM_MAX_WALLCLOCK_MINUTES, raw);
+            return properties.getMaxWallclockMinutes();
+        }
+        return parsed;
     }
 
     private static @Nullable String paramString(

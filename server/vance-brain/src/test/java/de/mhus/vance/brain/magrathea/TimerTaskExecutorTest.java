@@ -86,7 +86,7 @@ class TimerTaskExecutorTest {
         return new MagratheaStateSpec(
                 "wait",
                 MagratheaTaskType.TIMER_TASK,
-                null, null, null,
+                null, null, null, null, java.util.List.of(),
                 Map.of(),
                 Map.of(),
                 List.of(),
@@ -100,6 +100,7 @@ class TimerTaskExecutorTest {
                 new ResolvedMagratheaWorkflow("noop", "", MagratheaWorkflowSource.PROJECT,
                         null, null, null, null, "start",
                         Map.of(), Map.of(), MagratheaBoundsSpec.empty(), List.of(), List.of()),
-                state, Map.of(), Map.of());
+                state, Map.of(), Map.of(),
+                null, null);
     }
 }

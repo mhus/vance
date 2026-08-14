@@ -55,7 +55,7 @@ class ArchitectStateSerdeTest {
 
         assertThat(back).isEqualTo(empty);
         assertThat(back.getStatus()).isEqualTo(ArchitectStatus.READY);
-        assertThat(back.getOutputSchemaType()).isEqualTo(OutputSchemaType.VOGON_STRATEGY);
+        assertThat(back.getOutputSchemaType()).isEqualTo(OutputSchemaType.VOGON_PLAN);
         assertThat(back.getMaxSpeculativeRatio()).isEqualTo(0.30);
         assertThat(back.getConfirmationThreshold()).isEqualTo(0.85);
         assertThat(back.getMaxRecoveries()).isEqualTo(10);

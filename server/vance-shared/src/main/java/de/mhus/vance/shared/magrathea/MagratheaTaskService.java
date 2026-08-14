@@ -154,6 +154,24 @@ public class MagratheaTaskService {
         mongoTemplate.updateFirst(q, u, MagratheaTaskDocument.class);
     }
 
+    /**
+     * Count one more re-ask of a mis-shaped agent answer and return the new
+     * total.
+     *
+     * <p>Incremented in Mongo rather than in memory so the budget survives
+     * the pod: a correction loop that reset on failover would let a model
+     * that cannot produce the requested shape be asked forever.
+     */
+    public int incrementCorrectionCount(String taskId) {
+        Query q = new Query(Criteria.where("_id").is(taskId));
+        Update u = new Update().inc("correctionCount", 1);
+        MagratheaTaskDocument updated = mongoTemplate.findAndModify(
+                q, u,
+                org.springframework.data.mongodb.core.FindAndModifyOptions.options().returnNew(true),
+                MagratheaTaskDocument.class);
+        return updated == null ? Integer.MAX_VALUE : updated.getCorrectionCount();
+    }
+
     public List<MagratheaTaskDocument> findByRun(String workflowRunId) {
         return repository.findByWorkflowRunId(workflowRunId);
     }

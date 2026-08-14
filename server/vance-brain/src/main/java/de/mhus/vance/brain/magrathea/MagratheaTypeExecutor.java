@@ -1,7 +1,9 @@
 package de.mhus.vance.brain.magrathea;
 
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
+import de.mhus.vance.api.magrathea.RunCapability;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Per-{@link MagratheaTaskType} executor. One Spring bean per task type;
@@ -22,6 +24,30 @@ public interface MagratheaTypeExecutor {
 
     /** Which {@code type:} value in the YAML this executor handles. */
     MagratheaTaskType type();
+
+    /**
+     * What the run must be bound to for this executor to be able to work at
+     * all — checked once when the run starts, against the binding it was
+     * started with.
+     *
+     * <p>Empty for almost every type, and that is the point: this is not a
+     * place to express which tasks <em>suit</em> which kind of plan. It
+     * answers only "would this state be impossible here", so that a plan
+     * that cannot finish is refused while someone is still watching, rather
+     * than failing days later on a branch nobody predicted.
+     *
+     * <p>A state can waive the check by declaring
+     * {@code catch: { capability_missing: … }} — then the impossibility is
+     * an outcome the author has planned for.
+     *
+     * <p>The requirement may depend on the state's own spec, so the spec is
+     * passed in: a gate that raises a question in a conversation needs an
+     * owner process, the same gate left to the inbox needs nothing.
+     */
+    default Set<RunCapability> requires(
+            de.mhus.vance.shared.magrathea.MagratheaStateSpec state) {
+        return Set.of();
+    }
 
     /**
      * Run the type-specific work for the given task. Implementations

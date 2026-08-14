@@ -29,7 +29,7 @@ class MagratheaRunSourceTest {
     private final MagratheaStateProjector projector = mock(MagratheaStateProjector.class);
     private final de.mhus.vance.brain.magrathea.MagratheaWorkflowService workflows =
             mock(de.mhus.vance.brain.magrathea.MagratheaWorkflowService.class);
-    private final MagratheaRunSource source = new MagratheaRunSource(journal, projector, workflows);
+    private final MagratheaRunSource source = new MagratheaRunSource(journal, projector, workflows, mock(de.mhus.vance.shared.session.SessionService.class), mock(de.mhus.vance.shared.permission.PermissionService.class));
 
     @Test
     void listsProjectedRunsWithACompositeId() {

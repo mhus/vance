@@ -31,7 +31,7 @@ class RunControllerTest {
 
     @Test
     void listChecksProjectReadBeforeAnsweringAnything() {
-        when(registry.list(any(), any(), anyInt())).thenReturn(List.of());
+        when(registry.list(any(), any(), any(), anyInt())).thenReturn(List.of());
 
         controller.list("acme", "proj", null, request);
 
@@ -40,7 +40,7 @@ class RunControllerTest {
 
     @Test
     void anUnknownRunIs404NotAnEmptyBody() {
-        when(registry.get(any(), any(), any())).thenReturn(Optional.empty());
+        when(registry.get(any(), any(), any(), any())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> controller.get("acme", "workflow:ghost", "proj", request))
                 .isInstanceOf(ResponseStatusException.class)
@@ -53,7 +53,7 @@ class RunControllerTest {
         // The sources report a foreign run as absent, so the controller
         // cannot distinguish it from a nonexistent one — which is the
         // point: a 403 here would confirm that the run exists.
-        when(registry.get(eq("acme"), eq("proj"), eq("workflow:elsewhere"))).thenReturn(Optional.empty());
+        when(registry.get(any(), eq("acme"), eq("proj"), eq("workflow:elsewhere"))).thenReturn(Optional.empty());
 
         assertThatThrownBy(() ->
                 controller.get("acme", "workflow:elsewhere", "proj", request))
@@ -64,13 +64,13 @@ class RunControllerTest {
 
     @Test
     void limitIsClampedRatherThanTrusted() {
-        when(registry.list(any(), any(), anyInt())).thenReturn(List.of());
+        when(registry.list(any(), any(), any(), anyInt())).thenReturn(List.of());
 
         controller.list("acme", "proj", 100000, request);
-        verify(registry).list("acme", "proj", 200);
+        verify(registry).list(any(), eq("acme"), eq("proj"), eq(200));
 
         controller.list("acme", "proj", -5, request);
-        verify(registry).list("acme", "proj", 1);
+        verify(registry).list(any(), eq("acme"), eq("proj"), eq(1));
     }
 
     @Test
@@ -80,7 +80,7 @@ class RunControllerTest {
                         .runId("workflow:r1").source("workflow").name("demo")
                         .status(RunStatus.DONE).projectId("proj").build())
                 .build();
-        when(registry.get("acme", "proj", "workflow:r1")).thenReturn(Optional.of(detail));
+        when(registry.get(any(), eq("acme"), eq("proj"), eq("workflow:r1"))).thenReturn(Optional.of(detail));
 
         assertThat(controller.get("acme", "workflow:r1", "proj", request))
                 .isSameAs(detail);

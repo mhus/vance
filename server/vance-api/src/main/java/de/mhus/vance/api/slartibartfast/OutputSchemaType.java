@@ -8,9 +8,14 @@ package de.mhus.vance.api.slartibartfast;
  * <p>See {@code specification/slartibartfast-engine.md} §4.
  */
 public enum OutputSchemaType {
-    /** Vogon strategy YAML (phases, gates, scorers, postActions).
-     *  Validated by {@code StrategyResolver.parseStrategy}. */
-    VOGON_STRATEGY,
+    /**
+     * A plan meant to be run on behalf of a person — same grammar as
+     * {@link #MAGRATHEA_WORKFLOW}, written with different advice
+     * ({@code VogonArchitect}) because the job is different: judgements
+     * and iteration rather than commands and retries. Validated by the
+     * one plan parser, {@code MagratheaWorkflowLoader}.
+     */
+    VOGON_PLAN,
 
     /** Marvin recipe YAML — engineParams (allowedSubTaskRecipes
      *  etc.) plus promptPrefix. Statically validated for param

@@ -199,7 +199,7 @@ public class LoadingExistingPhase {
 
         OutputSchemaType detected;
         switch (engineName.trim().toLowerCase()) {
-            case "vogon"  -> detected = OutputSchemaType.VOGON_STRATEGY;
+            case "vogon"  -> detected = OutputSchemaType.VOGON_PLAN;
             case "marvin" -> detected = OutputSchemaType.MARVIN_RECIPE;
             case "zaphod" -> detected = OutputSchemaType.ZAPHOD_RECIPE;
             default -> {

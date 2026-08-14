@@ -117,7 +117,7 @@ class SlartibartfastEngineSummarizeForParentTest {
                 .contains("ran it to completion");
         assertThat(report.payload())
                 .containsEntry("eventType", "DONE")
-                .containsEntry("schemaType", "VOGON_STRATEGY")
+                .containsEntry("schemaType", "VOGON_PLAN")
                 .containsEntry("recipePath",
                         "_vance/recipes/_slart/4f31b631/school-essay-ki-pro-contra.yaml")
                 .containsEntry("childOutcome", "DONE");
@@ -302,7 +302,7 @@ class SlartibartfastEngineSummarizeForParentTest {
     private static ArchitectState state(java.util.function.Consumer<ArchitectState> mutate) {
         ArchitectState s = ArchitectState.builder().build();
         s.setRunId("4f31b631");
-        s.setOutputSchemaType(OutputSchemaType.VOGON_STRATEGY);
+        s.setOutputSchemaType(OutputSchemaType.VOGON_PLAN);
         s.setAcceptanceCriteria(new ArrayList<>());
         mutate.accept(s);
         return s;

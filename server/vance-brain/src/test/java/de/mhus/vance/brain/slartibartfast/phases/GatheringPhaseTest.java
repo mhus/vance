@@ -71,7 +71,7 @@ class GatheringPhaseTest {
 
         // Alphabetical by path → STRUCTURE.md (S-T) before STYLE.md (S-T-Y).
         // Project manuals first, then bundled engine self-knowledge for
-        // the active schema (default VOGON_STRATEGY → vogon-architect/).
+        // the active schema (default VOGON_PLAN → vogon-architect/).
         assertThat(state.getEvidenceSources())
                 .extracting(EvidenceSource::getPath)
                 .containsSequence("_vance/manuals/essay/STRUCTURE.md",

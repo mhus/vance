@@ -337,6 +337,8 @@ public class MagratheaWorkflowLoader {
         Integer timeoutSeconds = numberAsIntOrNull(
                 raw.get("timeoutSeconds"), "states." + name + ".timeoutSeconds");
         String storeAs = stringOrNull(raw.get("storeAs"));
+        String enterCounter = stringOrNull(raw.get("enterCounter"));
+        List<String> resetCounters = parseNameList(raw.get("resetCounters"), name);
 
         Map<String, String> onOutcomes = parseOnBlock(raw.get("on"), name);
         Map<MagratheaErrorKind, String> catchKinds = parseCatchBlock(raw.get("catch"), name);
@@ -352,6 +354,7 @@ public class MagratheaWorkflowLoader {
         Map<String, Object> spec = new LinkedHashMap<>();
         Set<String> lifecycleKeys = Set.of(
                 "type", "description", "timeoutSeconds", "storeAs",
+                "enterCounter", "resetCounters",
                 "on", "catch", "transitions", "retry");
         for (Map.Entry<String, Object> e : raw.entrySet()) {
             if (lifecycleKeys.contains(e.getKey())) continue;
@@ -361,11 +364,34 @@ public class MagratheaWorkflowLoader {
 
         return new MagratheaStateSpec(
                 name, type, description, timeoutSeconds, storeAs,
+                enterCounter, resetCounters,
                 Map.copyOf(onOutcomes),
                 Map.copyOf(catchKinds),
                 List.copyOf(transitions),
                 retry,
                 Map.copyOf(spec));
+    }
+
+    /** A list of variable names, as {@code resetCounters:} takes. */
+    private static List<String> parseNameList(@Nullable Object raw, String stateName) {
+        if (raw == null) return List.of();
+        if (raw instanceof String s) {
+            return s.isBlank() ? List.of() : List.of(s.trim());
+        }
+        if (!(raw instanceof List<?> list)) {
+            throw new IllegalStateException(
+                    "state '" + stateName + "' resetCounters must be a list of names");
+        }
+        List<String> out = new java.util.ArrayList<>(list.size());
+        for (Object item : list) {
+            if (item instanceof String s && !s.isBlank()) {
+                out.add(s.trim());
+            } else {
+                throw new IllegalStateException(
+                        "state '" + stateName + "' resetCounters entries must be names");
+            }
+        }
+        return List.copyOf(out);
     }
 
     private static MagratheaTaskType parseTaskType(@Nullable Object raw, String stateName) {

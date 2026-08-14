@@ -68,6 +68,15 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
     private static final String SPEC_PARAMS = "params";
     private static final String SPEC_PROMPT = "prompt";
 
+    /**
+     * How much of the owning process's history to put in front of the
+     * worker's prompt — {@code none} / {@code summary} / {@code all} /
+     * {@code strength:<min>} / {@code last:<n>}, as {@code InheritLevel}
+     * parses them.
+     */
+    private static final String SPEC_INHERIT_CONTEXT = "inheritContext";
+    private static final String INHERIT_NONE = "none";
+
     /** {@code fromUser} on the seeded initial message — a run, not a person. */
     private static final String MAGRATHEA_SENDER = "_magrathea";
 
@@ -83,10 +92,32 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
     /** Lazy like the other consumers — the router pulls in the whole engine stack. */
     private final ObjectProvider<EngineMessageRouter> messageRouterProvider;
     private final MagratheaTimeoutScheduler timeoutScheduler;
+    /** Wraps a worker prompt with the owning process's context — see inheritContext. */
+    private final de.mhus.vance.brain.inherit.ParentContextSpawnHelper parentContextSpawnHelper;
 
     @Override
     public MagratheaTaskType type() {
         return MagratheaTaskType.AGENT_TASK;
+    }
+
+    /**
+     * {@code inheritContext:} needs an owning process, because inheriting
+     * context means inheriting <em>somebody's</em>.
+     *
+     * <p>This is the one place a capability is genuinely a "cannot": a
+     * headless run has no conversation behind it, so the instruction has
+     * nothing to refer to. Silently ignoring it would be worse than
+     * refusing — the plan would run, the worker would go in blind, and the
+     * only symptom would be answers that keep missing context nobody can
+     * see was dropped.
+     */
+    @Override
+    public Set<de.mhus.vance.api.magrathea.RunCapability> requires(MagratheaStateSpec state) {
+        String inherit = state.specString(SPEC_INHERIT_CONTEXT);
+        if (inherit == null || inherit.isBlank() || INHERIT_NONE.equalsIgnoreCase(inherit.trim())) {
+            return Set.of();
+        }
+        return Set.of(de.mhus.vance.api.magrathea.RunCapability.OWNER_PROCESS);
     }
 
     @Override
@@ -122,9 +153,18 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
                             + applied.engine() + "'"));
         }
 
-        SessionDocument session = sessionResolver.resolve(
-                context.tenantId(), context.projectId(),
-                context.workflowRunId(), context.startedBy());
+        // A bound run works inside the session it belongs to; only a run
+        // that belongs to nobody gets the synthetic one. Same reason Marvin
+        // spawns its workers into its own session: the step's history
+        // belongs with the conversation that asked for it, and the context
+        // helper resolves the parent against that session.
+        String sessionId = context.sessionId();
+        if (sessionId == null || sessionId.isBlank()) {
+            SessionDocument session = sessionResolver.resolve(
+                    context.tenantId(), context.projectId(),
+                    context.workflowRunId(), context.startedBy());
+            sessionId = session.getSessionId();
+        }
 
         // Process name per task — keeps history scopable and lets a re-claim
         // see a stale process row even if the previous attempt vanished.
@@ -135,7 +175,7 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
             spawned = thinkProcessService.create(
                     context.tenantId(),
                     context.projectId(),
-                    session.getSessionId(),
+                    sessionId,
                     processName,
                     engine.name(),
                     engine.version(),
@@ -176,7 +216,9 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
         try {
             laneScheduler.submit(spawned.getId(), () -> {
                 thinkEngineService.start(spawned);
-                steeredHolder[0] = pushInitialMessage(applied, spawned.getId(), state.name());
+                steeredHolder[0] = pushInitialMessage(
+                        applied, spawned.getId(), state.name(),
+                        state.specString(SPEC_INHERIT_CONTEXT), context.ownerProcessId());
                 return null;
             }).get();
         } catch (InterruptedException ie) {
@@ -272,9 +314,24 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
      * there — and an engine list here would be one more thing to keep
      * current.
      */
-    private boolean pushInitialMessage(AppliedRecipe applied, String processId, String stateName) {
+    private boolean pushInitialMessage(
+            AppliedRecipe applied,
+            String processId,
+            String stateName,
+            @org.jspecify.annotations.Nullable String inheritContext,
+            @org.jspecify.annotations.Nullable String ownerProcessId) {
         Object raw = applied.params() == null ? null : applied.params().get(SPEC_PROMPT);
         if (!(raw instanceof String prompt) || prompt.isBlank()) return false;
+
+        // Give the worker the owning conversation to stand in, when the
+        // state asked for it. Same helper every other spawn path uses, so
+        // the block reads identically wherever a worker comes from — and
+        // when there is nothing to inherit it appends the pointer to
+        // process_history_text instead, leaving the worker a way back.
+        String wrapped = parentContextSpawnHelper.wrap(inheritContext, ownerProcessId, prompt);
+        if (wrapped != null && !wrapped.isBlank()) {
+            prompt = wrapped;
+        }
 
         EngineMessageRouter router = messageRouterProvider.getIfAvailable();
         if (router == null) {

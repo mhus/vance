@@ -11,7 +11,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
 /**
  * Pod-local scheduled scanner. Every {@value #SCAN_INTERVAL_MS}ms it
@@ -25,6 +24,14 @@ import org.springframework.util.StringUtils;
  * {@link MagratheaTaskDocument}: the CAS update predicates on the current
  * version, so two pods racing on the same row produce exactly one
  * winner.
+ *
+ * <p><b>This is the recovery path, not the drive train.</b> In the ordinary
+ * case a task is claimed the moment it is written, by
+ * {@link MagratheaLocalDispatch} on the pod that wrote it. What reaches this
+ * scanner is what that missed: rows from a pod that died, runs that were
+ * released from a hold, retries whose back-off has now elapsed, and anything
+ * the fast path declined to take. Every one of those is a case where nobody
+ * else is coming.
  */
 @Component
 @ConditionalOnProperty(
@@ -41,13 +48,14 @@ public class MagratheaTaskClaimer {
     private final MagratheaTaskService taskService;
     private final MagratheaProjectLaneManager laneManager;
     private final MagratheaTaskExecutor taskExecutor;
+    private final MagratheaPodIdentity podIdentity;
 
     @Scheduled(fixedDelay = SCAN_INTERVAL_MS, initialDelay = SCAN_INTERVAL_MS)
     public void scan() {
         List<MagratheaTaskDocument> tasks = taskService.findClaimable(Instant.now(), CLAIM_BATCH);
         if (tasks.isEmpty()) return;
 
-        String podId = podId();
+        String podId = podIdentity.podId();
         Instant claimedAt = Instant.now();
         for (MagratheaTaskDocument task : tasks) {
             Optional<MagratheaTaskDocument> claimed = taskService.claim(task.getId(), podId, claimedAt);
@@ -58,16 +66,6 @@ public class MagratheaTaskClaimer {
             MagratheaTaskDocument claimedTask = claimed.get();
             laneManager.submit(claimedTask.getProjectId(),
                     () -> taskExecutor.execute(claimedTask));
-        }
-    }
-
-    private static String podId() {
-        String envPod = System.getenv("POD_NAME");
-        if (StringUtils.hasText(envPod)) return envPod;
-        try {
-            return java.net.InetAddress.getLocalHost().getHostName();
-        } catch (java.net.UnknownHostException ex) {
-            return "unknown-pod";
         }
     }
 }

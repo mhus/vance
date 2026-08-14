@@ -52,8 +52,8 @@ class PersistingPhaseTest {
         documentService = mock(DocumentService.class);
         // Recipe-output stub architect — the tests exercise the
         // legacy _vance/recipes/{_slart,_user}/... write paths and
-        // VOGON_STRATEGY is the schema-type they pin on the state.
-        SchemaArchitect vogonStub = stubRecipeArchitect(OutputSchemaType.VOGON_STRATEGY);
+        // VOGON_PLAN is the schema-type they pin on the state.
+        SchemaArchitect vogonStub = stubRecipeArchitect(OutputSchemaType.VOGON_PLAN);
         phase = new PersistingPhase(
                 documentService,
                 JsonMapper.builder().build(),
@@ -239,13 +239,13 @@ class PersistingPhaseTest {
     private static ArchitectState stateWithMinimalRecipe(String runId, String name) {
         return ArchitectState.builder()
                 .runId(runId)
-                .outputSchemaType(OutputSchemaType.VOGON_STRATEGY)
+                .outputSchemaType(OutputSchemaType.VOGON_PLAN)
                 .acceptanceCriteria(new java.util.ArrayList<>(List.of(stated("cr1"))))
                 .subgoals(new java.util.ArrayList<>(List.of(
                         evidenced("sg1", List.of("cr1")))))
                 .proposedRecipe(RecipeDraft.builder()
                         .name(name)
-                        .outputSchemaType(OutputSchemaType.VOGON_STRATEGY)
+                        .outputSchemaType(OutputSchemaType.VOGON_PLAN)
                         .yaml("name: " + name + "\nengine: vogon\nparams:\n  strategyPlanYaml: |\n    name: x\n")
                         .justifications(Map.of("name", "sg1"))
                         .confidence(0.85)

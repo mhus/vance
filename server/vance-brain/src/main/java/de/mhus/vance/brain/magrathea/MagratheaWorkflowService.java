@@ -4,6 +4,7 @@ import de.mhus.vance.api.magrathea.MagratheaErrorKind;
 import de.mhus.vance.api.magrathea.MagratheaRunStatus;
 import de.mhus.vance.api.magrathea.MagratheaTaskStatus;
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
+import de.mhus.vance.api.magrathea.RunCapability;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -11,6 +12,7 @@ import de.mhus.vance.shared.magrathea.MagratheaBoundsSpec;
 import de.mhus.vance.shared.magrathea.MagratheaJournalEntry;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
 import de.mhus.vance.shared.magrathea.MagratheaParameterSpec;
+import de.mhus.vance.shared.magrathea.MagratheaRunBinding;
 import de.mhus.vance.shared.magrathea.MagratheaStateSpec;
 import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
@@ -26,6 +28,7 @@ import de.mhus.vance.shared.magrathea.journal.TaskResultRecord;
 import de.mhus.vance.shared.magrathea.journal.VarRecord;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -80,6 +83,12 @@ public class MagratheaWorkflowService {
     private final MagratheaProjectLaneManager laneManager;
     /** Lazy to break the cycle: TaskExecutor → … → WorkflowService → TaskExecutor (on retry paths). */
     private final MagratheaTaskExecutor taskExecutor;
+    /** Hands each freshly inserted task to this pod's lane instead of waiting for the claimer. */
+    private final MagratheaLocalDispatch localDispatch;
+    /** Reads the current variables when a counter has to be advanced. */
+    private final de.mhus.vance.shared.magrathea.MagratheaStateProjector stateProjector;
+    /** Tells an owning process that its run is waiting, or done. */
+    private final MagratheaOwnerNotifier ownerNotifier;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
     private final MetricService metricService;
     /** Only to stop an agent whose task ended on its deadline. */
@@ -95,6 +104,9 @@ public class MagratheaWorkflowService {
             MagratheaTaskService taskService,
             MagratheaProjectLaneManager laneManager,
             @Lazy @Autowired MagratheaTaskExecutor taskExecutor,
+            MagratheaLocalDispatch localDispatch,
+            de.mhus.vance.shared.magrathea.MagratheaStateProjector stateProjector,
+            MagratheaOwnerNotifier ownerNotifier,
             org.springframework.context.ApplicationEventPublisher eventPublisher,
             MetricService metricService,
             ThinkProcessService thinkProcessService,
@@ -106,6 +118,9 @@ public class MagratheaWorkflowService {
         this.taskService = taskService;
         this.laneManager = laneManager;
         this.taskExecutor = taskExecutor;
+        this.localDispatch = localDispatch;
+        this.stateProjector = stateProjector;
+        this.ownerNotifier = ownerNotifier;
         this.eventPublisher = eventPublisher;
         this.metricService = metricService;
         this.thinkProcessService = thinkProcessService;
@@ -150,12 +165,31 @@ public class MagratheaWorkflowService {
             @Nullable String startedBy,
             @Nullable String parentMagratheaProcessId,
             @Nullable String parentState) {
+        return start(tenantId, projectId, workflowName, callerParams, startedBy,
+                parentMagratheaProcessId, parentState, MagratheaRunBinding.headless());
+    }
+
+    /**
+     * Bound start — the run belongs to a session and/or to a ThinkProcess
+     * that waits for its result. This is the Vogon path; every other
+     * trigger (scheduler, event, hook, tool, REST) starts headless, and
+     * says so by not calling this overload.
+     */
+    public String start(
+            String tenantId,
+            String projectId,
+            String workflowName,
+            @Nullable Map<String, Object> callerParams,
+            @Nullable String startedBy,
+            @Nullable String parentMagratheaProcessId,
+            @Nullable String parentState,
+            MagratheaRunBinding binding) {
         ResolvedMagratheaWorkflow workflow = workflowLoader.load(tenantId, projectId, workflowName)
                 .orElseThrow(() -> new MagratheaWorkflowException(
                         "Workflow '" + workflowName + "' not found in cascade for tenant="
                                 + tenantId + " project=" + projectId));
         return startResolved(tenantId, projectId, workflow, /* sourcePath */ null,
-                callerParams, startedBy, parentMagratheaProcessId, parentState);
+                callerParams, startedBy, parentMagratheaProcessId, parentState, binding);
     }
 
     /**
@@ -183,6 +217,26 @@ public class MagratheaWorkflowService {
             String path,
             @Nullable Map<String, Object> callerParams,
             @Nullable String startedBy) {
+        return startFromDocument(tenantId, projectId, path, callerParams, startedBy,
+                MagratheaRunBinding.headless());
+    }
+
+    /**
+     * Bound variant of {@link #startFromDocument} — the run belongs to the
+     * session and process in {@code binding}.
+     *
+     * <p>Exists because addressing a plan by path and running it for
+     * somebody are independent choices: Vogon does both, and without this
+     * overload a path-addressed plan would silently lose its owner and end
+     * up unable to report back.
+     */
+    public String startFromDocument(
+            String tenantId,
+            String projectId,
+            String path,
+            @Nullable Map<String, Object> callerParams,
+            @Nullable String startedBy,
+            MagratheaRunBinding binding) {
         String norm = path == null ? "" : path.trim();
         if (norm.isEmpty()) {
             throw new MagratheaWorkflowException("Document path is required");
@@ -200,7 +254,8 @@ public class MagratheaWorkflowService {
                 workflowNameFromPath(norm), documentService.readContent(doc));
 
         return startResolved(tenantId, projectId, workflow, norm,
-                callerParams, startedBy, /* parent */ null, /* parentState */ null);
+                callerParams, startedBy, /* parent */ null, /* parentState */ null,
+                binding);
     }
 
     /** File stem of {@code path} — what the run is called in listings and metrics. */
@@ -218,8 +273,10 @@ public class MagratheaWorkflowService {
             @Nullable Map<String, Object> callerParams,
             @Nullable String startedBy,
             @Nullable String parentMagratheaProcessId,
-            @Nullable String parentState) {
+            @Nullable String parentState,
+            MagratheaRunBinding binding) {
         Map<String, Object> resolvedParams = applyDefaultsAndValidate(workflow, callerParams);
+        requireCapabilities(workflow, binding);
         String runId = MagratheaRunIdGenerator.fresh();
 
         // Enqueue start on the lane and ACTUALLY await it, so the caller
@@ -229,7 +286,7 @@ public class MagratheaWorkflowService {
         try {
             laneManager.submitTracked(projectId, () -> writeStartRecords(
                     tenantId, projectId, runId, workflow, resolvedParams, startedBy,
-                    sourcePath, parentMagratheaProcessId, parentState))
+                    sourcePath, parentMagratheaProcessId, parentState, binding))
                     .get(START_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
         } catch (java.util.concurrent.ExecutionException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
@@ -247,6 +304,45 @@ public class MagratheaWorkflowService {
 
         metricService.counter(METRIC_STARTS, "workflow", workflow.name()).increment();
         return runId;
+    }
+
+    /**
+     * Refuse a plan that contains a state this run could never execute.
+     *
+     * <p>Checked over <em>all</em> states, not the reachable ones: which
+     * branch a run takes is not knowable at start, and a plan that works or
+     * dies depending on the path is worse than one that is refused outright.
+     * The cost of being conservative is a plan that has to declare its
+     * intent; the cost of being permissive is a failure days later, on a
+     * branch nobody was watching.
+     *
+     * <p>A state that catches {@code capability_missing} is exempt: it has
+     * said what to do when the thing is impossible, so it is allowed to run
+     * and find out.
+     */
+    private void requireCapabilities(
+            ResolvedMagratheaWorkflow workflow, MagratheaRunBinding binding) {
+        List<String> problems = new ArrayList<>();
+        for (Map.Entry<String, MagratheaStateSpec> entry : workflow.states().entrySet()) {
+            MagratheaStateSpec state = entry.getValue();
+            if (state.catchKinds().containsKey(MagratheaErrorKind.CAPABILITY_MISSING)) {
+                continue;
+            }
+            MagratheaTypeExecutor executor = taskExecutor.executorFor(state.type());
+            if (executor == null) continue; // unknown type — the loader already rejects it
+            for (RunCapability needed : executor.requires(state)) {
+                if (!binding.has(needed)) {
+                    problems.add("state '" + entry.getKey() + "' needs " + needed);
+                }
+            }
+        }
+        if (!problems.isEmpty()) {
+            throw new MagratheaWorkflowException(
+                    "Workflow '" + workflow.name() + "' cannot run with this binding: "
+                            + String.join("; ", problems)
+                            + ". Start it bound to a session/process, or declare "
+                            + "catch: { capability_missing: <state> } on the state.");
+        }
     }
 
     /**
@@ -479,7 +575,8 @@ public class MagratheaWorkflowService {
             @Nullable String startedBy,
             @Nullable String sourcePath,
             @Nullable String parentMagratheaProcessId,
-            @Nullable String parentState) {
+            @Nullable String parentState,
+            MagratheaRunBinding binding) {
 
         journalService.append(tenantId, projectId, runId, StartRecord.builder()
                 .workflowName(workflow.name())
@@ -490,12 +587,18 @@ public class MagratheaWorkflowService {
                 .sourcePath(sourcePath)
                 .parentMagratheaProcessId(parentMagratheaProcessId)
                 .parentState(parentState)
+                .sessionId(binding.sessionId())
+                .ownerProcessId(binding.ownerProcessId())
+                .capabilities(binding.capabilities().stream()
+                        .map(Enum::name)
+                        .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new)))
                 .build());
 
         journalService.append(tenantId, projectId, runId,
                 StateEnteredRecord.builder().state(workflow.startState()).build());
 
         MagratheaStateSpec startState = workflow.states().get(workflow.startState());
+        applyCounters(tenantId, projectId, runId, startState);
         MagratheaTaskDocument task = MagratheaTaskDocument.builder()
                 .tenantId(tenantId)
                 .projectId(projectId)
@@ -508,7 +611,7 @@ public class MagratheaWorkflowService {
                 .nextAttemptAt(Instant.now())
                 .attemptCount(0)
                 .build();
-        taskService.insert(task);
+        localDispatch.dispatch(taskService.insert(task));
         log.info("Magrathea run {} started workflow='{}' tenant={} project={} startState={}",
                 runId, workflow.name(), tenantId, projectId, workflow.startState());
     }
@@ -645,6 +748,16 @@ public class MagratheaWorkflowService {
 
             // Surface to any parent that's waiting on this run as a sub-workflow.
             publishWorkflowCompleted(event, start.get(), runStatus);
+
+            // And to the process that owns it, if any. It reads the result
+            // from the journal itself — this only tells it there is one.
+            ownerNotifier.runTerminated(
+                    start.get().getOwnerProcessId(),
+                    event.workflowRunId(),
+                    runStatus == MagratheaRunStatus.DONE
+                            ? de.mhus.vance.api.thinkprocess.ProcessEventType.DONE
+                            : de.mhus.vance.api.thinkprocess.ProcessEventType.FAILED,
+                    terminalSummary(event, runStatus));
             log.info("Magrathea run {} reached terminal '{}' → {}",
                     event.workflowRunId(), event.stateName(), runStatus);
             return;
@@ -713,7 +826,9 @@ public class MagratheaWorkflowService {
                 .attemptCount(0)
                 .retryCount(retryCount)
                 .build();
-        taskService.insert(retry);
+        // Dispatched locally only when the back-off has already elapsed
+        // (backoff == 0); otherwise the claimer picks it up when it is due.
+        localDispatch.dispatch(taskService.insert(retry));
         log.info("Magrathea run {} state '{}' retry {} scheduled (backoff={}s)",
                 prev.workflowRunId(), prev.stateName(), retryCount, backoff);
     }
@@ -785,6 +900,7 @@ public class MagratheaWorkflowService {
         }
         journalService.append(prev.tenantId(), prev.projectId(), prev.workflowRunId(),
                 StateEnteredRecord.builder().state(nextStateName).build());
+        applyCounters(prev.tenantId(), prev.projectId(), prev.workflowRunId(), next);
         // A task created while the run is paused must not slip past the
         // hold: pausing moved the queue to HELD, but this row is new.
         boolean paused = currentStatus(prev.tenantId(), prev.projectId(), prev.workflowRunId())
@@ -801,7 +917,83 @@ public class MagratheaWorkflowService {
                 .nextAttemptAt(Instant.now())
                 .attemptCount(0)
                 .build();
-        taskService.insert(task);
+        localDispatch.dispatch(taskService.insert(task));
+    }
+
+    /**
+     * Apply a state's {@code resetCounters:} and {@code enterCounter:} as
+     * ordinary variable writes, at the moment the state is entered.
+     *
+     * <p>Written as {@code VarRecord}s rather than kept somewhere of their
+     * own, so a counter is readable exactly like every other variable —
+     * {@code #state['rounds']} in a condition, {@code ${state.rounds}} in a
+     * prompt — and shows up in the run's variables without a second
+     * projection knowing about it.
+     *
+     * <p>Order matters: resets first. A state that both begins a section and
+     * is its first step can therefore say {@code resetCounters: [rounds]}
+     * plus {@code enterCounter: rounds} and land on 1, not 0.
+     */
+    private void applyCounters(
+            String tenantId, String projectId, String workflowRunId,
+            @Nullable MagratheaStateSpec state) {
+        if (state == null) return;
+
+        for (String name : state.resetCounters()) {
+            journalService.append(tenantId, projectId, workflowRunId,
+                    VarRecord.builder().key(name)
+                            .value(tools.jackson.databind.node.LongNode.valueOf(0L)).build());
+        }
+        String counter = state.enterCounter();
+        if (counter == null || counter.isBlank()) return;
+
+        Map<String, Object> vars = projectorVars(tenantId, projectId, workflowRunId);
+        long next = asLong(vars.get(counter)) + 1;
+        journalService.append(tenantId, projectId, workflowRunId,
+                VarRecord.builder().key(counter)
+                        .value(tools.jackson.databind.node.LongNode.valueOf(next)).build());
+        log.debug("Magrathea run {} state '{}' counter '{}' = {}",
+                workflowRunId, state.name(), counter, next);
+    }
+
+    /**
+     * Current value of a counter variable. Anything that is not a number —
+     * a variable the plan also uses for something else — restarts the count
+     * rather than failing the run: a broken count is a plan bug to see in
+     * the journal, not a reason to kill a run mid-flight.
+     */
+    private static long asLong(@Nullable Object raw) {
+        if (raw instanceof Number n) return n.longValue();
+        if (raw instanceof CharSequence cs) {
+            try {
+                return Long.parseLong(cs.toString().trim());
+            } catch (NumberFormatException ignored) {
+                return 0L;
+            }
+        }
+        return 0L;
+    }
+
+    private Map<String, Object> projectorVars(
+            String tenantId, String projectId, String workflowRunId) {
+        return stateProjector.projectVars(tenantId, projectId, workflowRunId);
+    }
+
+    /**
+     * One line about how the run ended, for the owner to show.
+     *
+     * <p>Not the result itself: the {@code ResultRecord} is in the journal
+     * and the owner reads it there, typed. What travels here is only enough
+     * for a human to know what happened without opening anything.
+     */
+    private static @Nullable String terminalSummary(
+            TaskCompletedEvent event, MagratheaRunStatus status) {
+        if (status != MagratheaRunStatus.DONE) {
+            return event.errorMessage() != null && !event.errorMessage().isBlank()
+                    ? "Workflow run failed: " + event.errorMessage()
+                    : "Workflow run failed at '" + event.stateName() + "'";
+        }
+        return "Workflow run finished at '" + event.stateName() + "'";
     }
 
     private void markTaskTerminal(MagratheaTaskDocument task, String outcome) {

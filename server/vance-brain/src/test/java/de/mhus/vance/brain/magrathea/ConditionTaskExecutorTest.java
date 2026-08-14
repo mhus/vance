@@ -71,7 +71,8 @@ class ConditionTaskExecutorTest {
                 "acme", "proj", "r1", "task-1", "alice",
                 emptyWorkflow(), state,
                 Map.of("tier", "pro"),
-                Map.of()));
+                Map.of(),
+                null, null));
 
         assertThat(outcome.get().nextStateOverride()).isEqualTo("pro_path");
     }
@@ -80,7 +81,7 @@ class ConditionTaskExecutorTest {
         return new MagratheaStateSpec(
                 name,
                 MagratheaTaskType.CONDITION_TASK,
-                null, null, null,
+                null, null, null, null, java.util.List.of(),
                 Map.of(), Map.of(),
                 transitions,
                 MagratheaRetrySpec.none(),
@@ -92,7 +93,8 @@ class ConditionTaskExecutorTest {
                 "acme", "proj", "r1", "task-1", "alice",
                 emptyWorkflow(), state,
                 Map.of(),
-                vars);
+                vars,
+                null, null);
     }
 
     private static ResolvedMagratheaWorkflow emptyWorkflow() {

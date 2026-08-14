@@ -192,7 +192,7 @@ public class GatheringPhase {
      */
     private static String bundledSchemaDir(OutputSchemaType type) {
         return switch (type) {
-            case VOGON_STRATEGY -> "vogon-architect";
+            case VOGON_PLAN -> "vogon-architect";
             case MARVIN_RECIPE -> "marvin-architect";
             case ZAPHOD_RECIPE -> "zaphod-architect";
             case SCRIPT_JS -> "js-script-architect";

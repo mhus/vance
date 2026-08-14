@@ -31,7 +31,7 @@ public class RecipeDraft {
     private String name = "";
 
     @Builder.Default
-    private OutputSchemaType outputSchemaType = OutputSchemaType.VOGON_STRATEGY;
+    private OutputSchemaType outputSchemaType = OutputSchemaType.VOGON_PLAN;
 
     /** Verbatim YAML content. Parser-validated in VALIDATING. */
     private String yaml = "";

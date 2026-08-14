@@ -14,7 +14,6 @@ import de.mhus.vance.api.runs.RunAction;
 import de.mhus.vance.api.runs.RunStatus;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
-import de.mhus.vance.api.vogon.StrategyState;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -89,31 +88,21 @@ class ThinkProcessRunSourceTest {
     }
 
     @Test
-    void readsPhasesAndWorkersOutOfTheStrategyState() {
-        // Built as a real StrategyState and converted the way Vogon
-        // persists it — a hand-written map omits the primitive fields and
-        // would not deserialise, which is a property of the test data
-        // rather than of the code under test.
-        StrategyState state = StrategyState.builder()
-                .currentPhasePath(new java.util.ArrayList<>(List.of("review")))
-                .phaseHistory(new java.util.ArrayList<>(List.of("plan", "build")))
-                .workerProcessIds(new java.util.LinkedHashMap<>(Map.of("build", "w-1")))
-                .pendingCheckpoint(StrategyState.PendingCheckpoint.builder()
-                        .phaseName("review").inboxItemId("inbox-9").build())
-                .build();
-        ThinkProcessDocument p = process("p1", "vogon");
-        p.setEngineParams(Map.of("strategyState",
-                JsonMapper.builder().build().convertValue(state, Map.class)));
+    void detailCarriesNoStepsUntilMarvinsTreeIsRead() {
+        // Vogon's phases moved to the journal with its plan; Marvin's task
+        // tree is not read here yet. An empty step list is the honest
+        // answer — the status and the session link are still right.
+        ThinkProcessDocument p = process("p1", "marvin");
         when(processes.findById("p1")).thenReturn(Optional.of(p));
-        when(engines.resolve("vogon")).thenReturn(Optional.of(planned));
+        when(engines.resolve("marvin")).thenReturn(Optional.of(planned));
 
         var detail = source.get("acme", "proj", "p1").orElseThrow();
 
-        assertThat(detail.getSteps()).extracting("name").containsExactly("plan", "build", "review");
-        assertThat(detail.getSummary().getStep()).isEqualTo("review");
-        assertThat(detail.getChildren()).singleElement()
-                .satisfies(c -> assertThat(c.getRunId()).isEqualTo("process:w-1"));
-        assertThat(detail.getWaitingOnInboxItemId()).isEqualTo("inbox-9");
+        assertThat(detail.getSteps()).isEmpty();
+        assertThat(detail.getChildren()).isEmpty();
+        assertThat(detail.getWaitingOnInboxItemId()).isNull();
+        assertThat(detail.getLinks()).singleElement()
+                .satisfies(l -> assertThat(l.getRel()).isEqualTo("session"));
     }
 
     @Test

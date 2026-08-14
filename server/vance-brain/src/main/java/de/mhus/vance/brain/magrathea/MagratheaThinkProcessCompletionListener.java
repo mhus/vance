@@ -6,7 +6,12 @@ import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
+import de.mhus.vance.shared.magrathea.MagratheaJournalService;
+import de.mhus.vance.shared.magrathea.MagratheaStateSpec;
 import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
+import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
+import de.mhus.vance.shared.magrathea.journal.StartRecord;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -74,6 +79,9 @@ public class MagratheaThinkProcessCompletionListener {
     private final ThinkProcessService thinkProcessService;
     private final ChatMessageService chatMessageService;
     private final ObjectMapper objectMapper;
+    private final MagratheaJournalService journalService;
+    private final org.springframework.beans.factory.ObjectProvider<EngineMessageRouter>
+            messageRouterProvider;
 
     @EventListener
     public void onStatusChanged(ThinkProcessStatusChangedEvent event) {
@@ -138,8 +146,38 @@ public class MagratheaThinkProcessCompletionListener {
                 .map(ChatMessageDocument::getContent)
                 .<JsonNode>map(objectMapper::valueToTree)
                 .orElse(null);
+        String answerText = output != null && output.isString() ? output.asString() : null;
 
         boolean asked = endStatus == ThinkProcessStatus.BLOCKED;
+
+        // Before ending the step: if it asked for a judgement, read the
+        // answer as one. A mis-shaped answer sends the question back
+        // instead of ending anything — see askAgain.
+        if (!asked) {
+            Optional<AgentOutcomeRefiner.Result> refined = refineJudgement(task, process);
+            if (refined.isPresent()) {
+                switch (refined.get()) {
+                    case AgentOutcomeRefiner.Decided d -> {
+                        taskService.unlinkSubProcess(task.getId());
+                        closeQuietly(processId, CloseReason.DONE);
+                        publish(task, d.outcome(), d.output(), null, durationMs, null);
+                        return;
+                    }
+                    case AgentOutcomeRefiner.NeedsCorrection c -> {
+                        if (askAgain(task, process, c.hint())) return;
+                        // Budget spent — the model could not produce the
+                        // shape, which the plan can route on.
+                        taskService.unlinkSubProcess(task.getId());
+                        closeQuietly(processId, CloseReason.DONE);
+                        publish(task, "agent_error", output,
+                                "agent did not answer in the requested shape: " + c.hint(),
+                                durationMs, null);
+                        return;
+                    }
+                }
+            }
+        }
+
         taskService.unlinkSubProcess(task.getId());
         try {
             thinkProcessService.closeProcess(
@@ -153,6 +191,118 @@ public class MagratheaThinkProcessCompletionListener {
                 output,
                 asked ? "agent ended its turn awaiting input" : null,
                 durationMs, null);
+    }
+
+    /**
+     * Read the finished agent's answer as the judgement its state asked
+     * for, or empty when the state asked for none.
+     *
+     * <p>The state spec comes from the run's frozen definition, not from
+     * anything the agent knows — the plan decides what shape it wanted, and
+     * it decided that before the run began.
+     */
+    private Optional<AgentOutcomeRefiner.Result> refineJudgement(
+            MagratheaTaskDocument task, ThinkProcessDocument process) {
+        Optional<MagratheaStateSpec> stateOpt = frozenState(task);
+        if (stateOpt.isEmpty()) return Optional.empty();
+
+        Optional<AgentOutcomeRefiner.Judgement> judgement;
+        try {
+            judgement = AgentOutcomeRefiner.judgementOf(stateOpt.get());
+        } catch (RuntimeException ex) {
+            // A malformed decide:/score: block is an authoring error. Say so
+            // once, and let the step end normally rather than wedging the run.
+            log.warn("Magrathea agent_task '{}' has an invalid judgement block: {}",
+                    task.getStateName(), ex.getMessage());
+            return Optional.empty();
+        }
+        if (judgement.isEmpty()) return Optional.empty();
+
+        String answer = lastAssistant(chatMessageService.history(
+                        process.getTenantId(), process.getSessionId(), process.getId()))
+                .map(ChatMessageDocument::getContent)
+                .orElse(null);
+        return Optional.of(
+                AgentOutcomeRefiner.refine(judgement.get(), answer, objectMapper));
+    }
+
+    /** The state spec as frozen into this run's definition. */
+    private Optional<MagratheaStateSpec> frozenState(MagratheaTaskDocument task) {
+        try {
+            return journalService.readLast(task.getTenantId(), task.getProjectId(),
+                            task.getWorkflowRunId(), StartRecord.class)
+                    .map(start -> MagratheaWorkflowLoader.parseYaml(
+                            start.getWorkflowName(), start.getDefinitionYaml()))
+                    .map(wf -> wf.states().get(task.getStateName()));
+        } catch (RuntimeException ex) {
+            log.warn("Magrathea agent_task '{}' — could not re-read the frozen state: {}",
+                    task.getStateName(), ex.toString());
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Put the question back to the still-running agent.
+     *
+     * <p>The process is deliberately neither unlinked nor closed: it is not
+     * finished, it misunderstood. Re-asking keeps the same process, so the
+     * model sees its own previous attempt and what was wrong with it —
+     * which is the whole reason this is a correction and not a retry.
+     *
+     * @return true when a re-ask was dispatched and this step is still
+     *         running; false when the budget is spent
+     */
+    private boolean askAgain(
+            MagratheaTaskDocument task, ThinkProcessDocument process, String hint) {
+        Optional<AgentOutcomeRefiner.Judgement> judgement = frozenState(task)
+                .flatMap(s -> {
+                    try {
+                        return AgentOutcomeRefiner.judgementOf(s);
+                    } catch (RuntimeException ex) {
+                        return Optional.empty();
+                    }
+                });
+        if (judgement.isEmpty()) return false;
+
+        int used = taskService.incrementCorrectionCount(task.getId());
+        if (used > judgement.get().maxCorrections()) {
+            log.info("Magrathea agent_task '{}' exhausted its {} correction(s)",
+                    task.getStateName(), judgement.get().maxCorrections());
+            return false;
+        }
+
+        EngineMessageRouter router = messageRouterProvider.getIfAvailable();
+        if (router == null) {
+            log.warn("Magrathea agent_task '{}' cannot re-ask — no message router",
+                    task.getStateName());
+            return false;
+        }
+        boolean delivered = router.dispatch(
+                /* senderProcessId — a run is not a process */ null,
+                process.getId(),
+                de.mhus.vance.shared.thinkprocess.PendingMessageDocument.builder()
+                        .type(de.mhus.vance.shared.thinkprocess.PendingMessageType.USER_CHAT_INPUT)
+                        .at(java.time.Instant.now())
+                        .fromUser(MagratheaOwnerNotifier.SENDER)
+                        .content(hint)
+                        .build());
+        if (!delivered) {
+            log.warn("Magrathea agent_task '{}' re-ask was not delivered to process {}",
+                    task.getStateName(), process.getId());
+            return false;
+        }
+        log.info("Magrathea agent_task '{}' re-asked the agent (correction {}/{})",
+                task.getStateName(), used, judgement.get().maxCorrections());
+        return true;
+    }
+
+    private void closeQuietly(String processId, CloseReason reason) {
+        try {
+            thinkProcessService.closeProcess(processId, reason);
+        } catch (RuntimeException ex) {
+            log.warn("Magrathea listener: could not close agent process '{}': {}",
+                    processId, ex.toString());
+        }
     }
 
     /**

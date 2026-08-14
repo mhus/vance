@@ -25,5 +25,15 @@ public record MagratheaTaskContext(
         ResolvedMagratheaWorkflow workflow,
         MagratheaStateSpec state,
         Map<String, Object> params,
-        Map<String, Object> vars) {
+        Map<String, Object> vars,
+        /**
+         * Session the run is bound to, or null for a headless run — which
+         * gets its system session lazily, per agent-task.
+         */
+        @org.jspecify.annotations.Nullable String sessionId,
+        /**
+         * ThinkProcess that owns the run and waits for its result, or null.
+         * Presence of this is what lets a task reach a conversation.
+         */
+        @org.jspecify.annotations.Nullable String ownerProcessId) {
 }

@@ -55,7 +55,8 @@ class ValidatingPhaseTest {
         de.mhus.vance.brain.thinkengine.SystemPromptComposer composer =
                 new de.mhus.vance.brain.thinkengine.SystemPromptComposer(promptRenderer, addonRegistry);
         phase = new ValidatingPhase(java.util.List.of(
-                new de.mhus.vance.brain.slartibartfast.architect.VogonArchitect(recipeLoader),
+                new de.mhus.vance.brain.slartibartfast.architect.VogonArchitect(
+                        new de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader(null), recipeLoader),
                 new de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect(recipeLoader, composer),
                 new de.mhus.vance.brain.slartibartfast.architect.ZaphodArchitect()));
         process = new ThinkProcessDocument();
@@ -275,48 +276,44 @@ class ValidatingPhaseTest {
     }
 
     @Test
-    void missingStrategyPlanYaml_triggersRecovery() {
+    void planWithoutStates_triggersRecovery() {
+        // A Vogon plan is a plan document now: what makes it invalid is
+        // the plan grammar, not a missing recipe field.
         String yaml = """
-                name: x
-                description: x
-                engine: vogon
-                params:
-                  someOther: thing
+                start: nowhere
                 """;
-        ArchitectState state = stateWith(
-                draft(yaml, Map.of("name", "sg1")),
+        ArchitectState state = planStateWith(
+                planDraft(yaml, Map.of("name", "sg1")),
                 List.of(subgoal("sg1")));
 
         phase.execute(state, process, ctx);
 
         assertThat(state.getPendingRecovery()).isNotNull();
         assertThat(state.getPendingRecovery().getReason())
-                .isEqualTo(de.mhus.vance.brain.slartibartfast.architect.VogonArchitect.RULE_VOGON_STRATEGY_PARSES);
+                .isEqualTo(de.mhus.vance.brain.slartibartfast.architect
+                        .MagratheaArchitect.RULE_WORKFLOW_PARSES);
     }
 
     @Test
-    void invalidEmbeddedStrategyYaml_triggersRecovery() {
-        // Strategy yaml exists but is malformed for the resolver
-        // (no phases array).
+    void planWithATransitionToNowhere_triggersRecovery() {
         String yaml = """
-                name: x
-                description: x
-                engine: vogon
-                params:
-                  strategyPlanYaml: |
-                    name: malformed
-                    version: "1"
-                    not_phases: nope
+                start: work
+                states:
+                  work:
+                    type: condition_task
+                    transitions:
+                      - else: ghost
                 """;
-        ArchitectState state = stateWith(
-                draft(yaml, Map.of("name", "sg1")),
+        ArchitectState state = planStateWith(
+                planDraft(yaml, Map.of("name", "sg1")),
                 List.of(subgoal("sg1")));
 
         phase.execute(state, process, ctx);
 
         assertThat(state.getPendingRecovery()).isNotNull();
         assertThat(state.getPendingRecovery().getReason())
-                .isEqualTo(de.mhus.vance.brain.slartibartfast.architect.VogonArchitect.RULE_VOGON_STRATEGY_PARSES);
+                .isEqualTo(de.mhus.vance.brain.slartibartfast.architect
+                        .MagratheaArchitect.RULE_WORKFLOW_PARSES);
     }
 
     @Test
@@ -506,15 +503,12 @@ class ValidatingPhaseTest {
     private static final String VALID_RECIPE_YAML = """
             name: x
             description: x
-            engine: vogon
+            engine: marvin
             params:
-              strategyPlanYaml: |
-                name: x-strategy
-                version: "1"
-                phases:
-                  - name: only
-                    worker: ford
-                    gate: { requires: [only_completed] }
+              allowedSubTaskRecipes:
+                - ford
+            promptPrefix: |
+              Break the goal into a task tree and work it.
             """;
 
     /**
@@ -564,18 +558,41 @@ class ValidatingPhaseTest {
 
     private static ArchitectState stateWith(
             RecipeDraft draft, List<Subgoal> subgoals) {
+        // MARVIN_RECIPE, not VOGON_PLAN: these exercise recipe-shape
+        // validation (engine field, mapping, justification refs), and a
+        // Vogon plan is a plan document — it has no engine field to check.
         return ArchitectState.builder()
                 .runId("run1")
-                .outputSchemaType(OutputSchemaType.VOGON_STRATEGY)
+                .outputSchemaType(OutputSchemaType.MARVIN_RECIPE)
                 .proposedRecipe(draft)
                 .subgoals(new java.util.ArrayList<>(subgoals))
+                .build();
+    }
+
+    private static ArchitectState planStateWith(
+            RecipeDraft draft, List<Subgoal> subgoals) {
+        return ArchitectState.builder()
+                .runId("run1")
+                .outputSchemaType(OutputSchemaType.VOGON_PLAN)
+                .proposedRecipe(draft)
+                .subgoals(new java.util.ArrayList<>(subgoals))
+                .build();
+    }
+
+    private static RecipeDraft planDraft(String yaml, Map<String, String> just) {
+        return RecipeDraft.builder()
+                .name("test-plan")
+                .outputSchemaType(OutputSchemaType.VOGON_PLAN)
+                .yaml(yaml)
+                .justifications(new LinkedHashMap<>(just))
+                .confidence(0.8)
                 .build();
     }
 
     private static RecipeDraft draft(String yaml, Map<String, String> just) {
         return RecipeDraft.builder()
                 .name("test-draft")
-                .outputSchemaType(OutputSchemaType.VOGON_STRATEGY)
+                .outputSchemaType(OutputSchemaType.MARVIN_RECIPE)
                 .yaml(yaml)
                 .justifications(new LinkedHashMap<>(just))
                 .confidence(0.8)

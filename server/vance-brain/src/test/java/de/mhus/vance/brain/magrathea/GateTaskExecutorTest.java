@@ -30,8 +30,9 @@ class GateTaskExecutorTest {
     private final InboxItemService inboxService = mock(InboxItemService.class);
     private final MagratheaTaskService taskService = mock(MagratheaTaskService.class);
     private final MagratheaTimeoutScheduler timeoutScheduler = mock(MagratheaTimeoutScheduler.class);
+    private final MagratheaOwnerNotifier ownerNotifier = mock(MagratheaOwnerNotifier.class);
     private final GateTaskExecutor executor = new GateTaskExecutor(
-            inboxService, taskService, timeoutScheduler);
+            inboxService, taskService, timeoutScheduler, ownerNotifier);
 
     @Test
     void approval_gate_creates_item_links_task_and_returns_async() {
@@ -164,12 +165,13 @@ class GateTaskExecutorTest {
                 new MagratheaStateSpec(
                         "review", MagratheaTaskType.GATE_TASK,
                         null, /* timeoutSeconds */ 60,
-                        null,
+                        null, null, java.util.List.of(),
                         Map.of(), Map.of(),
                         List.of(),
                         MagratheaRetrySpec.none(),
                         Map.of("inbox", Map.of("kind", "APPROVAL", "title", "x"))),
-                Map.of(), Map.of()));
+                Map.of(), Map.of(),
+                null, null));
 
         // The deadline itself is the scheduler's job (and its test) — here
         // it only matters that the gate hands it over.
@@ -211,7 +213,7 @@ class GateTaskExecutorTest {
         return new MagratheaStateSpec(
                 "review",
                 MagratheaTaskType.GATE_TASK,
-                null, null, null,
+                null, null, null, null, java.util.List.of(),
                 Map.of(), Map.of(),
                 List.of(),
                 MagratheaRetrySpec.none(),
@@ -224,6 +226,7 @@ class GateTaskExecutorTest {
                 new ResolvedMagratheaWorkflow("noop", "", MagratheaWorkflowSource.PROJECT,
                         null, null, null, null, "start",
                         Map.of(), Map.of(), MagratheaBoundsSpec.empty(), List.of(), List.of()),
-                state, Map.of(), Map.of());
+                state, Map.of(), Map.of(),
+                null, null);
     }
 }

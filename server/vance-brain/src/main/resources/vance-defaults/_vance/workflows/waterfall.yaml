@@ -1,0 +1,141 @@
+$meta:
+  kind: vance-workflow
+
+description: |
+  Sequential plan: planning → implementation → review, with the person
+  asked to approve between the phases. Written to be run by Vogon, so
+  the questions reach the conversation it was started from — but there
+  is nothing here a headless run could not do, minus being asked.
+
+version: "2"
+
+parameters:
+  goal:
+    type: string
+    required: true
+  planningRecipe:
+    type: string
+    required: false
+    default: analyze
+  implementationRecipe:
+    type: string
+    required: false
+    default: marvin-worker
+  reviewRecipe:
+    type: string
+    required: false
+    default: code-read
+
+bounds:
+  maxWallclockSeconds: 86400
+  maxTaskSpawns: 40
+
+tags: [plan, waterfall, feature]
+
+states:
+
+  planning:
+    type: agent_task
+    recipe: ${params.planningRecipe}
+    params:
+      prompt: |
+        Create a plan for: ${params.goal}
+
+        Where relevant, break it down into steps and dependencies.
+    storeAs: plan
+    on:
+      success: approve_plan
+      needs_input: approve_plan
+    catch:
+      agent_error: failed
+      technical_error: failed
+
+  approve_plan:
+    type: gate_task
+    inbox:
+      kind: APPROVAL
+      title: "Plan ready for: ${params.goal}"
+      body: "${state.plan}"
+      criticality: NORMAL
+    on:
+      approved: implementation
+      rejected: planning
+    catch:
+      timeout: failed
+      undecidable: failed
+
+  implementation:
+    type: agent_task
+    recipe: ${params.implementationRecipe}
+    params:
+      prompt: |
+        Implement this plan.
+
+        Plan:
+        ${state.plan}
+    storeAs: implementation
+    on:
+      success: review
+      needs_input: approve_plan
+    catch:
+      agent_error: failed
+      technical_error: failed
+
+  # The review does not just report — it judges, and the plan branches on
+  # the judgement. That is the difference between a plan for thinking work
+  # and a script that runs three things in order.
+  review:
+    type: agent_task
+    recipe: ${params.reviewRecipe}
+    params:
+      prompt: |
+        Review this implementation against the plan it came from.
+
+        Plan:
+        ${state.plan}
+
+        Implementation:
+        ${state.implementation}
+
+        Answer with a JSON object: a "score" from 0.0 (unusable) to 1.0
+        (complete and correct), a "summary", and an "issues" list.
+    score:
+      bands:
+        - { atLeast: 0.7, outcome: good }
+        - { default: true, outcome: weak }
+      maxCorrections: 2
+    storeAs: review
+    on:
+      good: accept
+      weak: decide_rework
+    catch:
+      agent_error: accept
+      technical_error: accept
+
+  decide_rework:
+    type: gate_task
+    inbox:
+      kind: DECISION
+      title: "Review found problems — what now?"
+      body: "${state.review}"
+      options: [rework, accept]
+      criticality: NORMAL
+    on:
+      rework: implementation
+      accept: accept
+    catch:
+      timeout: failed
+      undecidable: failed
+
+  accept:
+    type: terminal
+    outcome: success
+    result:
+      goal: "${params.goal}"
+      plan: "${state.plan}"
+      implementation: "${state.implementation}"
+      review: "${state.review}"
+
+  failed:
+    type: terminal
+    outcome: failure

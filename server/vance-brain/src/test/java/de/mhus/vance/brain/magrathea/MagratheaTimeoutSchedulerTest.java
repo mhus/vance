@@ -88,7 +88,7 @@ class MagratheaTimeoutSchedulerTest {
 
     private static MagratheaStateSpec state(Integer timeoutSeconds, MagratheaTaskType type) {
         return new MagratheaStateSpec(
-                "work", type, null, timeoutSeconds, null,
+                "work", type, null, timeoutSeconds, null, null, java.util.List.of(),
                 Map.of(), Map.of(), List.of(), MagratheaRetrySpec.none(), Map.of());
     }
 
@@ -101,6 +101,7 @@ class MagratheaTimeoutSchedulerTest {
                         Map.of(), Map.of(),
                         de.mhus.vance.shared.magrathea.MagratheaBoundsSpec.empty(),
                         List.of(), List.of()),
-                state(600), Map.of(), Map.of());
+                state(600), Map.of(), Map.of(),
+                null, null);
     }
 }

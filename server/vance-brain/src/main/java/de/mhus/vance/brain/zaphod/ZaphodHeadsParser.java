@@ -39,7 +39,7 @@ import org.yaml.snakeyaml.Yaml;
  * <p>Used by Slartibartfast's {@code ValidatingPhase} to reject
  * malformed Zaphod recipes before they reach EXECUTING — same role
  * Vogon's {@code StrategyResolver.parseStrategy} plays for
- * {@code VOGON_STRATEGY} drafts. The validation rules are kept in
+ * {@code VOGON_PLAN} drafts. The validation rules are kept in
  * sync with {@link ZaphodEngine#buildInitialState} so a recipe
  * that passes this parser will also pass the engine's own start-up
  * checks.

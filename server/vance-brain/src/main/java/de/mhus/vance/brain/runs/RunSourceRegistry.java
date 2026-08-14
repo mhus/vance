@@ -67,11 +67,20 @@ public class RunSourceRegistry {
      * <p>A source that throws is logged and skipped — one broken runtime
      * must not blank the whole list.
      */
-    public List<RunSummaryDto> list(String tenantId, String projectId, int limit) {
+    public List<RunSummaryDto> list(
+            de.mhus.vance.shared.permission.SecurityContext subject,
+            String tenantId, String projectId, int limit) {
         List<RunSummaryDto> all = new ArrayList<>();
         for (RunSource source : byId.values()) {
             try {
-                all.addAll(source.list(tenantId, projectId, limit));
+                for (RunSummaryDto run : source.list(tenantId, projectId, limit)) {
+                    RunId runId = RunId.parse(run.getRunId());
+                    if (runId != null && !source.visibleTo(
+                            subject, tenantId, projectId, runId.nativeId())) {
+                        continue;
+                    }
+                    all.add(run);
+                }
             } catch (RuntimeException ex) {
                 log.warn("RunSource '{}' failed to list runs for project '{}': {}",
                         source.sourceId(), projectId, ex.toString());
@@ -84,11 +93,18 @@ public class RunSourceRegistry {
     }
 
     /** One run by composite id; empty when the source or the run is unknown. */
-    public Optional<RunDetailDto> get(String tenantId, String projectId, @Nullable String composite) {
+    public Optional<RunDetailDto> get(
+            de.mhus.vance.shared.permission.SecurityContext subject,
+            String tenantId, String projectId, @Nullable String composite) {
         RunId id = RunId.parse(composite);
         if (id == null) return Optional.empty();
         RunSource source = byId.get(id.source());
         if (source == null) return Optional.empty();
+        // Reported as absent rather than forbidden, like every other
+        // out-of-scope lookup here: existence is not leaked either way.
+        if (!source.visibleTo(subject, tenantId, projectId, id.nativeId())) {
+            return Optional.empty();
+        }
         return source.get(tenantId, projectId, id.nativeId());
     }
 

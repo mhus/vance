@@ -288,7 +288,7 @@ class FramingPhaseTest {
         return ArchitectState.builder()
                 .runId("test-run")
                 .userDescription(userDescription)
-                .outputSchemaType(OutputSchemaType.VOGON_STRATEGY)
+                .outputSchemaType(OutputSchemaType.VOGON_PLAN)
                 .build();
     }
 

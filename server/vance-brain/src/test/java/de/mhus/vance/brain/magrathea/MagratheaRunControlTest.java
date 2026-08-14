@@ -48,6 +48,9 @@ class MagratheaRunControlTest {
             mock(MagratheaWorkflowLoader.class),
             mock(de.mhus.vance.shared.document.DocumentService.class),
             journal, tasks, lanes, mock(MagratheaTaskExecutor.class),
+            mock(MagratheaLocalDispatch.class),
+            mock(de.mhus.vance.shared.magrathea.MagratheaStateProjector.class),
+            mock(MagratheaOwnerNotifier.class),
             mock(org.springframework.context.ApplicationEventPublisher.class),
             new de.mhus.vance.shared.metric.MetricService(
                     new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),

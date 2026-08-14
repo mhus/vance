@@ -58,6 +58,9 @@ public class MagratheaRunSource implements RunSource {
     private final MagratheaStateProjector projector;
     /** Owns pause/resume/stop; the source only maps state to verbs. */
     private final MagratheaWorkflowService workflowService;
+    /** Whose session a bound run belongs to — see visibleTo. */
+    private final de.mhus.vance.shared.session.SessionService sessionService;
+    private final de.mhus.vance.shared.permission.PermissionService permissionService;
 
     @Override
     public String sourceId() {
@@ -245,18 +248,69 @@ public class MagratheaRunSource implements RunSource {
         return children;
     }
 
-    /** Link back to the definition — the frozen snapshot's source, when it had one. */
+    /**
+     * Where to go from here: the definition this run froze, and — when the
+     * run belongs to somebody — the session it belongs to.
+     *
+     * <p>The session link is what keeps a Vogon run findable now that it no
+     * longer appears as a process of its own. Without it a plan someone
+     * started in a conversation would sit in the list with no way back to
+     * the conversation that asked for it.
+     */
     private List<RunLinkDto> readLinks(
             String tenantId, String projectId, String runId, MagratheaProcessDto run) {
         Optional<StartRecord> start = journalService.readLast(
                 tenantId, projectId, runId, StartRecord.class);
+
+        List<RunLinkDto> links = new ArrayList<>(2);
         String path = start.map(StartRecord::getSourcePath).orElse(null);
         if (path == null && run.getWorkflowName() != null) {
             path = MagratheaWorkflowLoader.WORKFLOW_PATH_PREFIX
                     + run.getWorkflowName() + MagratheaWorkflowLoader.WORKFLOW_PATH_SUFFIX;
         }
-        if (path == null) return List.of();
-        return List.of(RunLinkDto.builder()
-                .rel("definition").label(path).target(path).build());
+        if (path != null) {
+            links.add(RunLinkDto.builder()
+                    .rel("definition").label(path).target(path).build());
+        }
+        String sessionId = start.map(StartRecord::getSessionId).orElse(null);
+        if (sessionId != null && !sessionId.isBlank()) {
+            links.add(RunLinkDto.builder()
+                    .rel("session").label(sessionId).target(sessionId).build());
+        }
+        return List.copyOf(links);
+    }
+
+    /**
+     * A run bound to a session sits behind something narrower than the
+     * project, and the project check the caller already passed does not
+     * cover it: a plan someone is running inside their own conversation is
+     * not everyone's to read just because they share the project.
+     *
+     * <p>Three ways in, in the order they are cheap: the run belongs to
+     * nobody (project-scoped, as every scheduler and event run is), the
+     * caller owns the session, or the caller administers the project.
+     * A session that has since been deleted falls back to visible — the
+     * run's own project scoping still held, and hiding history because a
+     * session record was cleaned up would be a surprise, not a safeguard.
+     */
+    @Override
+    public boolean visibleTo(
+            de.mhus.vance.shared.permission.SecurityContext subject,
+            String tenantId, String projectId, String nativeId) {
+        String sessionId = journalService
+                .readLast(tenantId, projectId, nativeId, StartRecord.class)
+                .map(StartRecord::getSessionId)
+                .orElse(null);
+        if (sessionId == null || sessionId.isBlank()) return true;
+
+        return sessionService.findBySessionId(sessionId)
+                .map(session -> session.isSystem()
+                        || (subject != null
+                            && subject.subjectId().equals(session.getUserId()))
+                        || permissionService.check(subject,
+                                new de.mhus.vance.shared.permission.Resource.Project(
+                                        tenantId, projectId),
+                                de.mhus.vance.shared.permission.Action.ADMIN))
+                .orElse(true);
     }
 }

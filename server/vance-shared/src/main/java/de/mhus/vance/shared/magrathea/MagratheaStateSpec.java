@@ -25,6 +25,11 @@ import org.jspecify.annotations.Nullable;
  * @param timeoutSeconds Task-level timeout. Null for {@code TIMER_TASK},
  *                       {@code CONDITION_TASK}, {@code TERMINAL}.
  * @param storeAs Optional variable key to write the task output into.
+ * @param enterCounter Optional variable name incremented every time this
+ *                     state is entered — how a plan counts its own rounds.
+ *                     See {@link #enterCounter()}.
+ * @param resetCounters Variable names set back to zero on entering this
+ *                      state, applied before {@code enterCounter}.
  * @param onOutcomes Outcome-to-state mapping for the {@code on:} block.
  * @param catchKinds Error-kind-to-state mapping for the {@code catch:}
  *                   block.
@@ -42,11 +47,35 @@ public record MagratheaStateSpec(
         @Nullable String description,
         @Nullable Integer timeoutSeconds,
         @Nullable String storeAs,
+        /**
+         * Variable incremented on every entry into this state — a plan
+         * counting its own rounds, which is what turns a back-edge into a
+         * bounded loop. Read like any other variable
+         * ({@code #state['name']} in a condition), because it <em>is</em>
+         * one: no second kind of state, no second place to look.
+         */
+        @Nullable String enterCounter,
+        /**
+         * Counters zeroed on entering this state, before {@link #enterCounter}
+         * is applied.
+         *
+         * <p>Needed because a counter that only ever grows is wrong the
+         * second time a loop is entered — and that happens as soon as a
+         * {@code catch:} routes back into a section. The failure is silent:
+         * the plan gives up after one round instead of five, and nothing
+         * says so. Declaring the reset at the state that <em>begins</em> a
+         * section is what makes the count mean "rounds in this pass".
+         */
+        List<String> resetCounters,
         Map<String, String> onOutcomes,
         Map<MagratheaErrorKind, String> catchKinds,
         List<MagratheaTransition> transitions,
         MagratheaRetrySpec retry,
         Map<String, Object> spec) {
+
+    public MagratheaStateSpec {
+        resetCounters = resetCounters == null ? List.of() : List.copyOf(resetCounters);
+    }
 
     /**
      * Returns a copy with the {@code spec} map replaced — used to hand
@@ -55,7 +84,8 @@ public record MagratheaStateSpec(
      */
     public MagratheaStateSpec withSpec(Map<String, Object> newSpec) {
         return new MagratheaStateSpec(name, type, description, timeoutSeconds,
-                storeAs, onOutcomes, catchKinds, transitions, retry, newSpec);
+                storeAs, enterCounter, resetCounters, onOutcomes, catchKinds,
+                transitions, retry, newSpec);
     }
 
     /** Convenience for type-executors: read a typed spec field. */

@@ -49,7 +49,7 @@ public class RunController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         int effective = limit == null ? DEFAULT_LIMIT : Math.min(Math.max(1, limit), MAX_LIMIT);
-        return registry.list(tenant, projectId, effective);
+        return registry.list(authority.contextOf(request), tenant, projectId, effective);
     }
 
     /**
@@ -65,7 +65,7 @@ public class RunController {
             @RequestParam("projectId") String projectId,
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
-        return registry.get(tenant, projectId, runId)
+        return registry.get(authority.contextOf(request), tenant, projectId, runId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Run not found: " + runId));
     }
@@ -104,7 +104,7 @@ public class RunController {
         }
         // Hand back the fresh state so the caller renders from truth
         // rather than from what it assumed the action would do.
-        return registry.get(tenant, projectId, runId)
+        return registry.get(authority.contextOf(request), tenant, projectId, runId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Run not found: " + runId));
     }

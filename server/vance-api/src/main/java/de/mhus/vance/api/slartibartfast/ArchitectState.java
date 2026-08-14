@@ -80,7 +80,7 @@ public class ArchitectState {
     private @Nullable String proposingHints;
 
     @Builder.Default
-    private OutputSchemaType outputSchemaType = OutputSchemaType.VOGON_STRATEGY;
+    private OutputSchemaType outputSchemaType = OutputSchemaType.VOGON_PLAN;
 
     /** CREATE or EDIT — emitted by FRAMING, drives the
      *  LOADING_EXISTING phase, the PROPOSING "invent vs. patch"

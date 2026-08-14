@@ -107,7 +107,7 @@ public class ExecutionPlanningPhase {
                → decision = "USE_USER_PROMPT", prompt = X.
 
             3. User description IS a concrete mission AND schema
-               is pipeline (VOGON_STRATEGY / MARVIN_RECIPE).
+               is pipeline (VOGON_PLAN / MARVIN_RECIPE).
                Pipeline recipes are one-shot — the recipe IS the
                mission. → decision = "USE_USER_PROMPT", prompt =
                the original user description (verbatim).

@@ -108,7 +108,7 @@ class WorkflowTaskExecutorTest {
         return new MagratheaStateSpec(
                 "build_subprojects",
                 MagratheaTaskType.WORKFLOW_TASK,
-                null, null, null,
+                null, null, null, null, java.util.List.of(),
                 Map.of(), Map.of(),
                 List.of(),
                 MagratheaRetrySpec.none(),
@@ -121,6 +121,7 @@ class WorkflowTaskExecutorTest {
                 new ResolvedMagratheaWorkflow("parent", "", MagratheaWorkflowSource.PROJECT,
                         null, null, null, null, "start",
                         Map.of(), Map.of(), MagratheaBoundsSpec.empty(), List.of(), List.of()),
-                state, Map.of(), Map.of());
+                state, Map.of(), Map.of(),
+                null, null);
     }
 }

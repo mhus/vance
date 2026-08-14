@@ -18,5 +18,16 @@ public enum MagratheaErrorKind {
     /** Gate explicitly rejected by user (alternative routing: {@code on: rejected}). */
     HUMAN_REJECTED,
     /** Workflow stopped via {@code MagratheaWorkflowService.cancel} or bounds-exhaustion. */
-    CANCELLED
+    CANCELLED,
+    /**
+     * A state needs a {@link RunCapability} this run was not started with —
+     * typically a question for a person in a run that belongs to nobody.
+     *
+     * <p>Unlike the other kinds this one is normally raised <em>before</em>
+     * the run begins: the start refuses a plan whose states cannot all be
+     * reached. Declaring {@code catch: { capability_missing: … }} on such a
+     * state opts out of that refusal and turns it into an ordinary outcome —
+     * whoever handles the failure is allowed to have it.
+     */
+    CAPABILITY_MISSING
 }

@@ -175,7 +175,7 @@ class SlartibartfastEngineLifecycleTest {
         ArchitectState state = readState(process);
         assertThat(state.getRunId()).hasSize(8);
         assertThat(state.getStatus()).isEqualTo(ArchitectStatus.READY);
-        assertThat(state.getOutputSchemaType()).isEqualTo(OutputSchemaType.VOGON_STRATEGY);
+        assertThat(state.getOutputSchemaType()).isEqualTo(OutputSchemaType.VOGON_PLAN);
         assertThat(state.getUserDescription()).isEqualTo("write me an essay");
 
         verify(eventEmitter).scheduleTurn(eq(process.getId()));

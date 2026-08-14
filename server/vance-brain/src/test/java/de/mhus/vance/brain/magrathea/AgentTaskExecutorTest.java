@@ -48,7 +48,7 @@ class AgentTaskExecutorTest {
     private final AgentTaskExecutor executor = new AgentTaskExecutor(
             recipeResolver, thinkProcessService, thinkEngineService,
             sessionResolver, taskService, laneScheduler,
-            routerProvider(messageRouter), timeoutScheduler);
+            routerProvider(messageRouter), timeoutScheduler, mock(de.mhus.vance.brain.inherit.ParentContextSpawnHelper.class));
 
     @SuppressWarnings("unchecked")
     private static org.springframework.beans.factory.ObjectProvider<EngineMessageRouter>
@@ -193,7 +193,7 @@ class AgentTaskExecutorTest {
         // process is already spawned and linked at that point.
         var executorWithoutRouter = new AgentTaskExecutor(
                 recipeResolver, thinkProcessService, thinkEngineService,
-                sessionResolver, taskService, laneScheduler, routerProvider(null), timeoutScheduler);
+                sessionResolver, taskService, laneScheduler, routerProvider(null), timeoutScheduler, mock(de.mhus.vance.brain.inherit.ParentContextSpawnHelper.class));
         stubResolver("ford", Map.of("prompt", "hi"));
         stubSpawn("ford");
 
@@ -325,7 +325,7 @@ class AgentTaskExecutorTest {
         return new MagratheaStateSpec(
                 "plan",
                 MagratheaTaskType.AGENT_TASK,
-                null, null, null,
+                null, null, null, null, java.util.List.of(),
                 Map.of(), Map.of(),
                 List.of(),
                 MagratheaRetrySpec.none(),
@@ -338,6 +338,7 @@ class AgentTaskExecutorTest {
                 new ResolvedMagratheaWorkflow("noop", "", MagratheaWorkflowSource.PROJECT,
                         null, null, null, null, "start",
                         Map.of(), Map.of(), MagratheaBoundsSpec.empty(), List.of(), List.of()),
-                state, Map.of(), Map.of());
+                state, Map.of(), Map.of(),
+                null, null);
     }
 }

@@ -9,7 +9,6 @@ import de.mhus.vance.api.runs.RunStepDto;
 import de.mhus.vance.api.runs.RunSummaryDto;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
-import de.mhus.vance.api.vogon.StrategyState;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -36,11 +35,17 @@ import tools.jackson.databind.ObjectMapper;
  * put the question in the wrong place — whether there is a plan to show
  * is a property of the engine, not of the view.
  *
- * <p>Progress comes from {@link StrategyState} in the process's engine
- * params, which is where Vogon keeps it. Reading it here rather than
- * teaching the insights DTO about it keeps the coupling one-way: the run
- * view knows about strategies, the strategy engine knows nothing about
- * the run view.
+ * <p>What is left here is Marvin. Vogon used to be read from a
+ * {@code strategyState} on the process; it now runs its plan as a
+ * workflow, so its steps live in the journal and {@code MagratheaRunSource}
+ * shows them — this source would otherwise list the same run twice, once
+ * as phases and once as states.
+ *
+ * <p>Marvin's task tree is not read yet: the summary and status are
+ * accurate, the step list is empty. That gap predates the move and is
+ * tracked as its own piece of work — reading a tree is not reading a
+ * flat phase list, and pretending otherwise here would be worse than an
+ * honest blank.
  */
 @Component
 @RequiredArgsConstructor
@@ -48,9 +53,6 @@ import tools.jackson.databind.ObjectMapper;
 public class ThinkProcessRunSource implements RunSource {
 
     public static final String SOURCE_ID = "process";
-
-    /** Where Vogon parks its {@link StrategyState} inside engine params. */
-    private static final String STRATEGY_STATE_KEY = "strategyState";
 
     private final ThinkProcessService thinkProcessService;
     private final ThinkEngineService thinkEngineService;
@@ -101,17 +103,15 @@ public class ThinkProcessRunSource implements RunSource {
         if (found.isEmpty()) return Optional.empty();
         ThinkProcessDocument process = found.get();
 
-        StrategyState state = readStrategyState(process);
         return Optional.of(RunDetailDto.builder()
                 .summary(toSummary(process))
-                .steps(readSteps(state))
-                .variables(state == null ? new LinkedHashMap<>() : new LinkedHashMap<>(state.getFlags()))
-                .children(readChildren(state))
+                .steps(List.of())
+                .variables(new LinkedHashMap<>())
+                .children(List.of())
                 .links(List.of(RunLinkDto.builder()
                         .rel("session").label(process.getSessionId())
                         .target(process.getSessionId()).build()))
-                .waitingOnInboxItemId(state == null || state.getPendingCheckpoint() == null
-                        ? null : state.getPendingCheckpoint().getInboxItemId())
+                .waitingOnInboxItemId(null)
                 .allowedActions(actionsFor(process))
                 .extra(Map.of(
                         "engine", process.getThinkEngine(),
@@ -173,14 +173,13 @@ public class ThinkProcessRunSource implements RunSource {
     }
 
     private RunSummaryDto toSummary(ThinkProcessDocument process) {
-        StrategyState state = readStrategyState(process);
         return RunSummaryDto.builder()
                 .runId(RunId.of(SOURCE_ID, process.getId()).composite())
                 .source(SOURCE_ID)
                 .name(process.getTitle() != null && !process.getTitle().isBlank()
                         ? process.getTitle() : process.getName())
                 .status(mapStatus(process.getStatus(), process.getCloseReason()))
-                .step(currentPhase(state))
+                .step(null)
                 .projectId(process.getProjectId())
                 .startedBy(process.getRecipeName())
                 .startedAt(process.getCreatedAt())
@@ -216,50 +215,4 @@ public class ThinkProcessRunSource implements RunSource {
         };
     }
 
-    private static @Nullable String currentPhase(@Nullable StrategyState state) {
-        if (state == null) return null;
-        List<String> path = state.getCurrentPhasePath();
-        return path == null || path.isEmpty() ? null : path.get(path.size() - 1);
-    }
-
-    /** Finished phases from the history, then the one currently open. */
-    private static List<RunStepDto> readSteps(@Nullable StrategyState state) {
-        if (state == null) return List.of();
-        List<RunStepDto> steps = new ArrayList<>();
-        for (String phase : state.getPhaseHistory()) {
-            steps.add(RunStepDto.builder().name(phase).kind("phase").outcome("done").build());
-        }
-        String current = currentPhase(state);
-        if (current != null && !state.getPhaseHistory().contains(current)) {
-            steps.add(RunStepDto.builder().name(current).kind("phase").build());
-        }
-        return steps;
-    }
-
-    private static List<RunChildDto> readChildren(@Nullable StrategyState state) {
-        if (state == null) return List.of();
-        List<RunChildDto> children = new ArrayList<>();
-        for (Map.Entry<String, String> e : state.getWorkerProcessIds().entrySet()) {
-            children.add(RunChildDto.builder()
-                    .runId(RunId.of(SOURCE_ID, e.getValue()).composite())
-                    .name(e.getValue())
-                    .fromStep(e.getKey())
-                    .build());
-        }
-        return children;
-    }
-
-    private @Nullable StrategyState readStrategyState(ThinkProcessDocument process) {
-        Map<String, Object> params = process.getEngineParams();
-        if (params == null) return null;
-        Object raw = params.get(STRATEGY_STATE_KEY);
-        if (raw == null) return null;
-        try {
-            return objectMapper.convertValue(raw, StrategyState.class);
-        } catch (RuntimeException ex) {
-            log.debug("Run view: process '{}' has an unreadable strategyState: {}",
-                    process.getId(), ex.toString());
-            return null;
-        }
-    }
 }

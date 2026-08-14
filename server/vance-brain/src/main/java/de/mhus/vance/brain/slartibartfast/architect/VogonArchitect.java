@@ -1,369 +1,156 @@
 package de.mhus.vance.brain.slartibartfast.architect;
 
-import de.mhus.vance.api.slartibartfast.ArchitectState;
 import de.mhus.vance.api.slartibartfast.OutputSchemaType;
-import de.mhus.vance.api.slartibartfast.RecipeDraft;
-import de.mhus.vance.api.slartibartfast.ValidationCheck;
-import de.mhus.vance.api.vogon.LoopSpec;
-import de.mhus.vance.api.vogon.PhaseSpec;
-import de.mhus.vance.api.vogon.StrategySpec;
 import de.mhus.vance.brain.recipe.RecipeLoader;
-import de.mhus.vance.brain.recipe.ResolvedRecipe;
-import de.mhus.vance.brain.vogon.StrategyResolver;
+import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.jspecify.annotations.Nullable;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
- * Vogon-strategy architect. Produces recipes with
- * {@code engine: vogon} and an inline {@code params.strategyPlanYaml}
- * describing the phases. The detailed Vogon-strategy schema
- * (phases, gates, scorers, postActions, …) is defined in
- * {@code specification/vogon-engine.md}.
+ * Writes a plan for <em>thinking work</em> — the kind a person starts in a
+ * conversation and waits on.
  *
- * <p>Validation gates: (a) {@code params.strategyPlanYaml} parses
- * via {@link StrategyResolver#parseStrategy}; (b) every
- * {@code worker:} reference inside the strategy resolves to a
- * known project recipe (catches the common mistake where the LLM
- * uses a tool name like {@code doc_edit} where a recipe is
- * required).
+ * <p>Structurally identical to what {@link MagratheaArchitect} produces,
+ * and validated by exactly the same parser: since the merge there is one
+ * plan grammar, and a second one would only be a second thing to keep
+ * correct. What differs is the advice. An automation is written around
+ * <em>things that must happen</em> — commands, tools, retries, timers. A
+ * Vogon plan is written around <em>judgements</em>: a worker produces
+ * something, another reads it, the plan branches on how good it was and
+ * goes round again if it has to.
+ *
+ * <p>That is why both presets survive the merge. They answer different
+ * questions for the author, and folding them together would mean giving
+ * the same advice to both — either shell-flavoured advice to someone
+ * structuring an argument, or judgement-flavoured advice to someone
+ * wiring up a nightly job.
+ *
+ * <p>The plan itself does not care: a Vogon plan may run a script, a
+ * workflow may score an answer. Nothing here forbids either — this is
+ * guidance, not validation.
  */
 @Component
-@RequiredArgsConstructor
+@ConditionalOnProperty(
+        value = "vance.services.magrathea",
+        havingValue = "true",
+        matchIfMissing = false)
 @Slf4j
-public class VogonArchitect implements SchemaArchitect {
+public class VogonArchitect extends MagratheaArchitect {
 
-    public static final String RULE_VOGON_STRATEGY_PARSES =
-            "embedded-strategy-yaml-parses";
-    public static final String RULE_VOGON_WORKER_RECIPES_EXIST =
-            "vogon-strategy-worker-recipes-exist";
-
-    private static final String SYSTEM_PROMPT = """
-            You are the PROPOSING node of the Slartibartfast engine.
-            From the framed goal and the subgoals you produce an
-            executable recipe for the Vogon engine. The recipe
-            wraps an inline strategyPlanYaml (Vogon strategy).
-
-            HARD OUTPUT CONTRACT:
-            - End your reply with EXACTLY one JSON object.
-            - NO markdown code fence (no ```json … ```).
-            - NO prose before or after the JSON.
-
-            Schema:
-                {
-                  "name":           "<recipe-name, kebab-case>",
-                  "yaml":           "<full recipe YAML, see structure below>",
-                  "justifications": {
-                    "<constraint-key>": "<sg-id>",
-                    "phases.0.worker": "<sg-id>",
-                    ...
-                  },
-                  "confidence":     <0.0..1.0>,
-                  "shapeRationale": "<why this shape — 1-2 sentences>"
-                }
-
-            YAML structure (mandatory parts marked, result: optional):
-                name: <name, same as above>
-                description: |
-                  <1-2 sentences>
-                engine: vogon
-                params:
-                  strategyPlanYaml: |
-                    name: <strategy-name>
-                    version: "1"
-                    phases:                              # mandatory
-                      - name: <phase-name>
-                        worker: <recipe-name or ford>
-                        workerInput: |
-                          <prompt for the worker>
-                        gate: { requires: [<phase-name>_completed] }
-                    # OPTIONAL: result-block. Strongly recommended when the
-                    # deliverable is a known artefact (document path,
-                    # decision, count) — replaces Vogon's default Markdown-
-                    # concatenation of every phase output as the REPLY the
-                    # parent (Arthur) hands the user. Without result: the
-                    # parent gets every phase reply verbatim, which is
-                    # token-expensive and rarely what the user asked for.
-                    result:
-                      fields:
-                        # ${flags.X}, ${phases.X.artifacts.<key>},
-                        # ${params.X} are valid. A field whose value is
-                        # EXACTLY one ${...} preserves the source type
-                        # (Integer, Boolean, List, …); interpolated
-                        # templates string-coerce.
-                        <field-key>: "${flags.<flag>}"
-                        <field-key>: "${phases.<phase>.artifacts.<key>}"
-                      text: |
-                        # User-facing summary. ${result.X} references the
-                        # sibling field. ${params.X} / ${phases.X.artifacts.X}
-                        # / ${flags.X} also valid here. ${result.X} is
-                        # NOT allowed in fields (cyclic) — strategy-load
-                        # rejects that.
-                        <one or two sentences for the user>
-                      # OPTIONAL: separate block for the FAILED-strategy
-                      # path. Same shape; no nested onFailure.
-                      onFailure:
-                        fields:
-                          reason: "${flags.failureReason}"
-                        text: "Strategy abgebrochen — ${result.reason}"
-
-            When to emit result: every strategy where the deliverable
-            is a concrete artefact + a short user-readable summary
-            (essay pipelines, research-report flows, decision flows).
-            Skip result: only for exploratory strategies whose value
-            IS the trail of phase outputs.
-
-            PHASE CHAINING — automatic in Vogon:
-
-            Before each phase's worker runs, Vogon prepends a
-            discovery block to the workerInput listing every
-            completed predecessor phase with its draft-path
-            (always under `_vogon-drafts/<process>/<phase>.md`).
-            The worker accesses those via `doc_read` (full
-            content) or `doc_summary` (1-3-sentence recap).
-
-            Consequence for the workerInput strings you emit:
-
-            - DO write each workerInput as a focused
-              "what THIS phase produces" instruction.
-            - DO reference predecessors by phase name so the
-              worker can match them in the discovery block:
-              "Use doc_summary on `create-outline` and doc_read
-              on `research-sources` to ground the draft."
-            - DO NOT use `${phases.X.result}` /
-              `${phases.X.draftPath}` substitutions. They still
-              work mechanically but inline the predecessor's
-              full reply into every prompt — bloated and
-              bypasses the doc_summary shortcut. The injected
-              block + doc tools cover the use case better.
-            - DO NOT write vague prose like "use the previous
-              phase's output" without naming the phase. The
-              worker can't infer which entry you meant.
-
-            First-phase exception: the discovery block is
-            omitted when there are no predecessors. The
-            workerInput is sent verbatim.
-
-            justifications map (mandatory):
-            - EVERY constraint-key you set in the YAML MUST point
-              here to an sg-id that exists in subgoals.
-            - Convention for constraint-keys:
-              - "name" for the recipe name
-              - "phases.<idx>.worker" for each phase
-              - "engine" if you pick anything other than "vogon"
-                (should never happen here — output schema type is
-                VOGON_STRATEGY)
-
-            confidence:
-            - 1.0 minus the speculative share = a coarse heuristic
-            - VALIDATING will check this.
-
-            shapeRationale: WHY this exact number of phases in
-            this order. Refers to the overall plan shape, not
-            individual phases.
-
-            Language: workerInput and prose-style fields are read
-            by downstream LLMs as orchestration code — write them
-            in English. The user-facing content language is
-            carried separately by the goal text.
-
-            If you violate this contract the validator rejects
-            your output and asks you to correct it.
-            """;
-
-    private final RecipeLoader recipeLoader;
+    public VogonArchitect(MagratheaWorkflowLoader workflowLoader, RecipeLoader recipeLoader) {
+        super(workflowLoader, recipeLoader);
+    }
 
     @Override
     public OutputSchemaType type() {
-        return OutputSchemaType.VOGON_STRATEGY;
+        return OutputSchemaType.VOGON_PLAN;
+    }
+
+    @Override
+    public String artefactNoun() {
+        return "plan";
     }
 
     @Override
     public String proposingSystemPrompt() {
-        return SYSTEM_PROMPT;
-    }
+        return """
+                You are the PROPOSING node of the Slartibartfast engine.
+                From the framed goal and the subgoals you produce a PLAN
+                that will be run on behalf of a person, inside their
+                session: they can be asked questions while it runs, and
+                they get the result back in the conversation.
 
-    @Override
-    public boolean wantsSubRecipeListing() {
-        return false;
-    }
+                Emit a JSON object:
+                  { "name": "<kebab-case>", "yaml": "<plan yaml>",
+                    "justifications": [...], "shapeRationale": "..." }
 
-    @Override
-    public void appendProposingContext(
-            StringBuilder sb, ArchitectState state,
-            List<ResolvedRecipe> availableRecipes) {
-        // Vogon-strategy phases reference workers directly in the
-        // strategyPlanYaml; there's no allowedSubTaskRecipes-style
-        // list at the recipe level. The available-recipes block
-        // would just bloat the prompt. No-op.
-    }
+                The YAML is a state machine:
+                  start: <state name>
+                  states:
+                    <name>:
+                      type: agent_task | gate_task | condition_task |
+                            tool_task | shell_task | script_task |
+                            timer_task | workflow_task | terminal
+                      on:    { <outcome>: <state> }
+                      catch: { <error kind>: <state> }
 
-    @Override
-    public String expectedEngineName() {
-        return "vogon";
-    }
+                WRITING A PLAN FOR THINKING WORK
 
-    @Override
-    public @Nullable ValidationCheck validateDraftShape(
-            RecipeDraft draft, Map<String, Object> recipeMap,
-            ThinkProcessDocument process, List<ValidationCheck> report) {
-        Object params = recipeMap.get("params");
-        if (!(params instanceof Map<?, ?> pm)) {
-            ValidationCheck v = ValidationCheck.builder()
-                    .rule(RULE_VOGON_STRATEGY_PARSES).passed(false)
-                    .message("recipe yaml missing 'params' map")
-                    .build();
-            report.add(v);
-            return v;
-        }
-        @SuppressWarnings("unchecked")
-        Object spy = ((Map<String, Object>) pm).get("strategyPlanYaml");
-        if (!(spy instanceof String spyStr) || spyStr.isBlank()) {
-            ValidationCheck v = ValidationCheck.builder()
-                    .rule(RULE_VOGON_STRATEGY_PARSES).passed(false)
-                    .message("recipe yaml missing "
-                            + "'params.strategyPlanYaml' string")
-                    .build();
-            report.add(v);
-            return v;
-        }
-        StrategySpec parsedStrategy;
-        try {
-            parsedStrategy = StrategyResolver.parseStrategy(spyStr,
-                    "slartibartfast/" + draft.getName());
-            report.add(ValidationCheck.builder()
-                    .rule(RULE_VOGON_STRATEGY_PARSES).passed(true)
-                    .message("strategyPlanYaml parses cleanly")
-                    .build());
-        } catch (RuntimeException e) {
-            ValidationCheck v = ValidationCheck.builder()
-                    .rule(RULE_VOGON_STRATEGY_PARSES).passed(false)
-                    .message("StrategyResolver rejected "
-                            + "strategyPlanYaml: " + e.getMessage())
-                    .build();
-            report.add(v);
-            return v;
-        }
+                Most states are agent_task: a worker recipe does a piece
+                of the work and its answer is the material for the next
+                step. Chain them by writing each one's output with
+                `storeAs:` and reading it in the next one's prompt with
+                ${state.<key>}.
 
-        ValidationCheck workerCheck =
-                validateWorkerRecipes(parsedStrategy, process);
-        report.add(workerCheck);
-        return workerCheck.isPassed() ? null : workerCheck;
+                Judge the work rather than assuming it. An agent_task can
+                declare how its answer should be read:
+
+                  decide:                       # a classification
+                    options: [ok, needs_work, unusable]
+                  # the chosen word becomes the outcome, so route it in on:
+
+                  score:                        # a graded judgement
+                    bands:
+                      - { atLeast: 0.7, outcome: approved }
+                      - { atLeast: 0.2, outcome: revise }
+                      - { default: true, outcome: rejected }
+                  # the model answers with JSON containing score: 0.0–1.0
+
+                Iterate deliberately. A revise-branch that routes back to
+                the writing state is a loop, and a loop needs a bound:
+
+                  writer:
+                    type: agent_task
+                    enterCounter: rounds        # counts entries
+                    ...
+                  review:
+                    type: agent_task
+                    score: { bands: [...] }
+                    on: { approved: publish, revise: check_rounds }
+                  check_rounds:
+                    type: condition_task
+                    transitions:
+                      - if: "#state['rounds'] >= 4"
+                        to: ask_human
+                      - else: writer
+
+                Put the counter's reset on the state that BEGINS the
+                section (`resetCounters: [rounds]`), or a second pass
+                through it inherits the first pass's count and gives up
+                early.
+
+                Ask the person when a judgement is genuinely theirs — a
+                direction to take, an approval before something
+                irreversible. Use gate_task; the question reaches them in
+                the conversation and also waits in their inbox.
+
+                A worker may be given the conversation it is working
+                inside, with `inheritContext: summary` (or `all`,
+                `last:<n>`). Use it where the step would otherwise be
+                blind to what was already discussed.
+
+                RULES
+                - `start:` must name a declared state.
+                - Every on/catch/transition target must be a declared state.
+                - Every agent_task.recipe must be a recipe from the list
+                  below; default to 'ford' when unsure.
+                - Reach a terminal on every path — `type: terminal` with
+                  `outcome: success|failure` and an optional `result:`,
+                  which is what the person gets back.
+                - Do not put a whole task into one giant prompt. If it has
+                  stages, it has states.
+                """;
     }
 
     @Override
     public String recoveryHintTail(ThinkProcessDocument process) {
-        return "\nEmit a corrected recipe YAML as a JSON object "
-                + "with a valid name, engine: vogon, "
-                + "params.strategyPlanYaml (parseable by Vogon), "
-                + "and justifications all pointing to existing "
-                + "sg-ids from the list above.";
-    }
-
-    // ──────────────────── Helpers ────────────────────
-
-    /**
-     * Validates every {@code worker:} reference in the generated
-     * Vogon strategy. Each must resolve to a known recipe — the
-     * common failure we want to catch is the LLM emitting a
-     * tool name (e.g. {@code doc_edit}, {@code web_search}) as
-     * worker, which would parse cleanly but fail at run-time
-     * when Vogon tries to spawn the child. Walks top-level phases
-     * AND nested loop sub-phases. Static {@code ${...}}
-     * substitutions are ignored — those are resolved at runtime
-     * via params.
-     */
-    private ValidationCheck validateWorkerRecipes(
-            StrategySpec strategy, ThinkProcessDocument process) {
-        Set<String> workersUsed = new LinkedHashSet<>();
-        collectWorkerNames(strategy.getPhases(), workersUsed);
-
-        if (workersUsed.isEmpty()) {
-            return ValidationCheck.builder()
-                    .rule(RULE_VOGON_WORKER_RECIPES_EXIST).passed(true)
-                    .message("no worker references to validate")
-                    .build();
-        }
-
-        Set<String> available = new LinkedHashSet<>();
-        try {
-            for (ResolvedRecipe r : recipeLoader.listAll(
-                    process.getTenantId(), process.getProjectId())) {
-                if (!r.name().startsWith("_slart/")) {
-                    available.add(r.name());
-                }
-            }
-        } catch (RuntimeException e) {
-            log.warn("Slartibartfast id='{}' VALIDATING failed listing "
-                            + "recipes for worker-check: {}",
-                    process.getId(), e.toString());
-        }
-
-        List<String> unknown = new ArrayList<>();
-        for (String w : workersUsed) {
-            if (!available.contains(w)) unknown.add(w);
-        }
-        if (unknown.isEmpty()) {
-            return ValidationCheck.builder()
-                    .rule(RULE_VOGON_WORKER_RECIPES_EXIST).passed(true)
-                    .message(workersUsed.size() + " worker reference(s) "
-                            + "resolve to known recipes")
-                    .build();
-        }
-        StringBuilder msg = new StringBuilder();
-        msg.append("Vogon strategy references unknown recipe(s) as "
-                + "worker: ").append(unknown).append(".\n\n");
-        msg.append("Common mistake: using a TOOL name (e.g. doc_edit, "
-                + "doc_write, web_search, work_file_write) where a "
-                + "RECIPE name is required. Tools are called inside a "
-                + "worker's turn; the worker itself must be a recipe "
-                + "with an engine bound to it.\n\n");
-        msg.append("POSSIBLE OPTIONS ARE (pick exactly one of these "
-                + "verbatim for each phase's worker: field):\n");
-        List<String> ordered = new ArrayList<>();
-        for (String standard : List.of(
-                "ford", "marvin-worker", "analyze", "code-read")) {
-            if (available.contains(standard)) ordered.add(standard);
-        }
-        for (String name : available) {
-            if (!ordered.contains(name)) ordered.add(name);
-        }
-        for (String name : ordered) {
-            msg.append("- '").append(name).append("'\n");
-        }
-        if (ordered.isEmpty()) {
-            msg.append("- 'ford'\n");
-            msg.append("- 'marvin-worker'\n");
-        }
-        msg.append("\nDefault when in doubt: 'ford' (generalist "
-                + "single-task worker). Use 'marvin-worker' only for "
-                + "long-form outputs (multi-chapter drafts) where one "
-                + "Ford turn would be too much.");
-        return ValidationCheck.builder()
-                .rule(RULE_VOGON_WORKER_RECIPES_EXIST).passed(false)
-                .message(msg.toString())
-                .build();
-    }
-
-    private static void collectWorkerNames(
-            List<PhaseSpec> phases, Set<String> out) {
-        if (phases == null) return;
-        for (PhaseSpec p : phases) {
-            String w = p.getWorker();
-            if (w != null && !w.isBlank() && !w.contains("${")) {
-                out.add(w.trim());
-            }
-            LoopSpec loop = p.getLoop();
-            if (loop != null) {
-                collectWorkerNames(loop.getSubPhases(), out);
-            }
-        }
+        return "\nEmit a corrected plan YAML as a JSON object with a valid "
+                + "name, a `start:` naming a declared state, a non-empty "
+                + "`states:` map, every on/catch/transition target pointing "
+                + "at a declared state, every agent_task.recipe referencing "
+                + "a known recipe from the list above, and a terminal state "
+                + "reachable on every path.";
     }
 }

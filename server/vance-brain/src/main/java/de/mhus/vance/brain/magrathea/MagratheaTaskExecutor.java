@@ -51,6 +51,11 @@ public class MagratheaTaskExecutor {
     private final MagratheaCompletionEventBus eventBus;
     private final de.mhus.vance.shared.magrathea.MagratheaTaskService taskService;
     private final Map<MagratheaTaskType, MagratheaTypeExecutor> byType;
+    /** Optional: only a run owned by a process has anyone to report progress to. */
+    private final org.springframework.beans.factory.ObjectProvider<
+            de.mhus.vance.brain.progress.ProgressEmitter> progressEmitterProvider;
+    private final org.springframework.beans.factory.ObjectProvider<
+            de.mhus.vance.shared.thinkprocess.ThinkProcessService> thinkProcessServiceProvider;
 
     private final java.util.concurrent.ScheduledExecutorService heartbeatScheduler =
             java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
@@ -65,12 +70,18 @@ public class MagratheaTaskExecutor {
             MagratheaWorkflowLoader workflowLoader,
             MagratheaCompletionEventBus eventBus,
             de.mhus.vance.shared.magrathea.MagratheaTaskService taskService,
-            List<MagratheaTypeExecutor> executors) {
+            List<MagratheaTypeExecutor> executors,
+            org.springframework.beans.factory.ObjectProvider<
+                    de.mhus.vance.brain.progress.ProgressEmitter> progressEmitterProvider,
+            org.springframework.beans.factory.ObjectProvider<
+                    de.mhus.vance.shared.thinkprocess.ThinkProcessService> thinkProcessServiceProvider) {
         this.journalService = journalService;
         this.projector = projector;
         this.workflowLoader = workflowLoader;
         this.eventBus = eventBus;
         this.taskService = taskService;
+        this.progressEmitterProvider = progressEmitterProvider;
+        this.thinkProcessServiceProvider = thinkProcessServiceProvider;
         this.byType = new EnumMap<>(MagratheaTaskType.class);
         for (MagratheaTypeExecutor executor : executors) {
             MagratheaTypeExecutor previous = byType.put(executor.type(), executor);
@@ -81,6 +92,19 @@ public class MagratheaTaskExecutor {
                                 + executor.getClass().getName());
             }
         }
+    }
+
+    /**
+     * The executor registered for {@code type}, or null if none is — which
+     * the workflow loader already rejects, so callers may treat null as
+     * "nothing to say about this type".
+     *
+     * <p>Exposed so the start path can ask each state's executor what the
+     * run must be bound to, without duplicating the type→bean index.
+     */
+    public @org.jspecify.annotations.Nullable MagratheaTypeExecutor executorFor(
+            MagratheaTaskType type) {
+        return byType.get(type);
     }
 
     /**
@@ -144,6 +168,8 @@ public class MagratheaTaskExecutor {
                         .subWorkflowRunId(task.getSubWorkflowRunId())
                         .build());
 
+        emitProgress(start.getOwnerProcessId(), state);
+
         // Resolve ${params.X}/${state.X} in the spec once, so every
         // type-executor sees concrete values instead of raw placeholders —
         // this is the task-to-task dataflow that was documented but never
@@ -161,7 +187,9 @@ public class MagratheaTaskExecutor {
                 workflow,
                 resolvedState,
                 params,
-                vars);
+                vars,
+                start.getSessionId(),
+                start.getOwnerProcessId());
 
         long started = System.currentTimeMillis();
         Optional<TaskOutcome> outcome;
@@ -200,6 +228,40 @@ public class MagratheaTaskExecutor {
             return;
         }
         publishOutcome(task, state.type(), outcome.get(), System.currentTimeMillis() - started);
+    }
+
+    /**
+     * Show the owning process what its run is doing now, so a person
+     * watching a conversation sees a plan move instead of a silent wait.
+     *
+     * <p>Only for steps that can take time. {@code condition_task} and
+     * {@code terminal} are control flow — one is over in microseconds, the
+     * other is the end, which the owner learns from
+     * {@link MagratheaOwnerNotifier} anyway. Announcing them would turn a
+     * twenty-state plan into twenty lines of noise, and the rule "does this
+     * step do work" is one that does not drift as types are added.
+     *
+     * <p>Headless runs emit nothing: there is nobody to tell.
+     */
+    private void emitProgress(
+            @org.jspecify.annotations.Nullable String ownerProcessId, MagratheaStateSpec state) {
+        if (ownerProcessId == null || ownerProcessId.isBlank()) return;
+        if (state.type() == MagratheaTaskType.CONDITION_TASK
+                || state.type() == MagratheaTaskType.TERMINAL) {
+            return;
+        }
+        de.mhus.vance.brain.progress.ProgressEmitter emitter = progressEmitterProvider.getIfAvailable();
+        var processService = thinkProcessServiceProvider.getIfAvailable();
+        if (emitter == null || processService == null) return;
+        try {
+            processService.findById(ownerProcessId).ifPresent(owner ->
+                    emitter.emitStatus(owner,
+                            de.mhus.vance.api.progress.StatusTag.DELEGATING,
+                            state.name()));
+        } catch (RuntimeException ex) {
+            log.trace("Magrathea progress emit failed for owner {}: {}",
+                    ownerProcessId, ex.toString());
+        }
     }
 
     private void publishFailure(MagratheaTaskDocument task, String message) {

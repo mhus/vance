@@ -70,6 +70,7 @@ public class GateTaskExecutor implements MagratheaTypeExecutor {
     private final InboxItemService inboxItemService;
     private final MagratheaTaskService taskService;
     private final MagratheaTimeoutScheduler timeoutScheduler;
+    private final MagratheaOwnerNotifier ownerNotifier;
 
     @Override
     public MagratheaTaskType type() {
@@ -140,6 +141,13 @@ public class GateTaskExecutor implements MagratheaTypeExecutor {
                 state.name(), created.getId(), assignedTo);
 
         timeoutScheduler.arm(context, state);
+
+        // If this run belongs to a process, tell it that it is now waiting.
+        // The inbox item above is the wait itself and works without anyone;
+        // this only lets an owner raise the question where the conversation
+        // is, instead of the person having to go looking for it.
+        ownerNotifier.runBlocked(
+                context.ownerProcessId(), context.workflowRunId(), state.name(), title);
 
         return Optional.empty();
     }

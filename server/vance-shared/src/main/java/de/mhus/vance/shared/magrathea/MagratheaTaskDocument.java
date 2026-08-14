@@ -94,6 +94,19 @@ public class MagratheaTaskDocument {
      */
     private int retryCount;
 
+    /**
+     * How often the agent has been asked to answer again because its
+     * answer did not have the shape the state asked for
+     * ({@code decide:} / {@code score:}).
+     *
+     * <p>Its own counter, because it counts something else: a retry says
+     * the step failed and is being repeated, a correction says the step is
+     * still running and the model was asked to rephrase. Folding them
+     * together would let a re-ask eat a retry, or an infrastructure retry
+     * silently spend the model's chances to answer properly.
+     */
+    private int correctionCount;
+
     /** Pod that holds the current claim. */
     private @Nullable String claimedBy;
 

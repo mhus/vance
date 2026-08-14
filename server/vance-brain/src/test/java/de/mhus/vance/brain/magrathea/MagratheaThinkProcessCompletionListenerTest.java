@@ -34,10 +34,18 @@ class MagratheaThinkProcessCompletionListenerTest {
     private final ThinkProcessService thinkProcessService = mock(ThinkProcessService.class);
     private final ChatMessageService chatMessageService = mock(ChatMessageService.class);
 
+    private final de.mhus.vance.shared.magrathea.MagratheaJournalService journalService =
+            mock(de.mhus.vance.shared.magrathea.MagratheaJournalService.class);
+    @SuppressWarnings("unchecked")
+    private final org.springframework.beans.factory.ObjectProvider<
+            de.mhus.vance.brain.enginemessage.EngineMessageRouter> messageRouterProvider =
+            mock(org.springframework.beans.factory.ObjectProvider.class);
+
     private final MagratheaThinkProcessCompletionListener listener =
             new MagratheaThinkProcessCompletionListener(
                     taskService, eventBus, thinkProcessService,
-                    chatMessageService, objectMapper);
+                    chatMessageService, objectMapper,
+                    journalService, messageRouterProvider);
 
     @Test
     void non_terminal_status_change_is_ignored() {

@@ -19,7 +19,7 @@ class RunSourceRegistryTest {
                 source("workflow", summary("workflow:a", Instant.parse("2024-01-01T10:00:00Z"))),
                 source("process", summary("process:b", Instant.parse("2024-01-01T12:00:00Z"))));
 
-        assertThat(registry.list("acme", "proj", 10))
+        assertThat(registry.list(de.mhus.vance.shared.permission.SecurityContext.SYSTEM, "acme", "proj", 10))
                 .extracting(RunSummaryDto::getRunId)
                 .containsExactly("process:b", "workflow:a");
     }
@@ -38,7 +38,7 @@ class RunSourceRegistryTest {
                 },
                 source("workflow", summary("workflow:a", Instant.parse("2024-01-01T10:00:00Z"))));
 
-        assertThat(registry.list("acme", "proj", 10)).hasSize(1);
+        assertThat(registry.list(de.mhus.vance.shared.permission.SecurityContext.SYSTEM, "acme", "proj", 10)).hasSize(1);
     }
 
     @Test
@@ -51,7 +51,7 @@ class RunSourceRegistryTest {
                 source("process", summary("process:b", Instant.parse("2024-01-01T12:00:00Z"))),
                 source("compose", summary("compose:c", Instant.parse("2024-01-01T11:00:00Z"))));
 
-        assertThat(registry.list("acme", "proj", 2))
+        assertThat(registry.list(de.mhus.vance.shared.permission.SecurityContext.SYSTEM, "acme", "proj", 2))
                 .extracting(RunSummaryDto::getRunId)
                 .containsExactly("process:b", "compose:c");
     }
@@ -62,11 +62,11 @@ class RunSourceRegistryTest {
                 source("workflow", summary("workflow:a", Instant.now())),
                 source("process", summary("process:b", Instant.now())));
 
-        assertThat(registry.get("acme", "proj", "process:b")).isPresent();
+        assertThat(registry.get(de.mhus.vance.shared.permission.SecurityContext.SYSTEM, "acme", "proj", "process:b")).isPresent();
         // Unknown source and malformed id are both "no such run" — the
         // caller learns nothing about which sources exist.
-        assertThat(registry.get("acme", "proj", "ghost:b")).isEmpty();
-        assertThat(registry.get("acme", "proj", "nocolon")).isEmpty();
+        assertThat(registry.get(de.mhus.vance.shared.permission.SecurityContext.SYSTEM, "acme", "proj", "ghost:b")).isEmpty();
+        assertThat(registry.get(de.mhus.vance.shared.permission.SecurityContext.SYSTEM, "acme", "proj", "nocolon")).isEmpty();
     }
 
     @Test

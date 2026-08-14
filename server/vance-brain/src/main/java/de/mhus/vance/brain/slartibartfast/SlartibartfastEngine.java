@@ -1800,13 +1800,13 @@ public class SlartibartfastEngine implements ThinkEngine {
     }
 
     private static OutputSchemaType parseSchemaType(String raw) {
-        if (raw.isBlank()) return OutputSchemaType.VOGON_STRATEGY;
+        if (raw.isBlank()) return OutputSchemaType.VOGON_PLAN;
         String norm = raw.trim().toUpperCase().replace('-', '_');
         try {
             return OutputSchemaType.valueOf(norm);
         } catch (IllegalArgumentException e) {
-            log.warn("Slartibartfast unknown outputSchemaType '{}', defaulting to VOGON_STRATEGY", raw);
-            return OutputSchemaType.VOGON_STRATEGY;
+            log.warn("Slartibartfast unknown outputSchemaType '{}', defaulting to VOGON_PLAN", raw);
+            return OutputSchemaType.VOGON_PLAN;
         }
     }
 

@@ -13,19 +13,30 @@ the output.
 
 | Preset | Output shape | Runs on |
 |---|---|---|
-| `slartibartfast` | Vogon strategy (phased plan-and-execute recipe) | Vogon |
+| `slartibartfast` | Vogon plan (state machine run for a person) | Vogon |
 | `marvin-architect` | Marvin recipe (dynamic task-tree) | Marvin |
 | `zaphod-architect` | Zaphod council (multi-persona panel) | Zaphod |
 | `slart-script-author` | JS orchestration script | Hactar |
-| `magrathea-architect` | Magrathea workflow (branching state machine) | — (author-only; run via `workflow_start`) |
+| `magrathea-architect` | Magrathea workflow (same grammar, headless) | — (author-only; run via `workflow_start`) |
 
-The `magrathea-architect` preset is the odd one out: a Magrathea
-workflow is a reusable named document, not an engine Slart can run.
-So this preset is **author-only** — it validates and persists the
-workflow to `_vance/workflows/<name>.yaml` and stops; you start it
-afterwards with the `workflow_start` tool (or the scheduler). Use it
-when the process needs gates, timers, retries, error-handling, or
-sub-workflows that a linear Vogon strategy can't express.
+**`slartibartfast` and `magrathea-architect` write the same grammar.**
+Since the merge there is one plan format; the two presets differ in the
+advice they give, because the jobs differ. Choose by *who the plan runs
+for*:
+
+- **`slartibartfast` (Vogon plan)** — the person starts it and waits on
+  it. It can ask them questions while it runs and gives the result back
+  in the conversation. Built around judgements: a worker produces, another
+  scores, the plan loops until it is good enough. Slart can run it.
+- **`magrathea-architect` (workflow)** — nobody is waiting. It is started
+  by a scheduler, an event, a hook or a tool, and anything it needs from a
+  person goes to the inbox. Built around things that must happen:
+  commands, tools, retries, timers. **Author-only** — it validates and
+  persists to `_vance/workflows/<name>.yaml`, and you start it afterwards
+  with `workflow_start`.
+
+Both may use every task type. The split is guidance for the author, not a
+restriction on the plan.
 
 Because Slart reads installed kits/manuals as evidence, the plan it
 generates is automatically kit-aware.
@@ -57,8 +68,9 @@ Reach for Slart when a task is substantial enough to deserve its
 - Research deliverables that need a repeatable, phased pipeline.
 - A council of personas you want to consult repeatedly (Zaphod).
 - A one-off orchestration script over tools/APIs (script-author).
-- A reusable, branching **process** with approval gates, timers,
-  retries or sub-workflows (`magrathea-architect`).
+- A reusable **process nobody waits on** — scheduled, event- or
+  hook-triggered, with retries, timers or sub-workflows
+  (`magrathea-architect`).
 
 An active SKILL that names a `preset` wins — follow it verbatim;
 the skill author knows the task shape better than generic routing.

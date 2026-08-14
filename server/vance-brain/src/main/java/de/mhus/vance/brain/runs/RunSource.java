@@ -73,4 +73,23 @@ public interface RunSource {
         throw new UnsupportedOperationException(
                 sourceId() + " runs cannot be controlled yet: " + action);
     }
+
+    /**
+     * May {@code subject} see this run at all?
+     *
+     * <p>Default true, which is the honest answer for a source whose runs
+     * are project-scoped: the project check the caller already passed is
+     * exactly the right check, and repeating it here would say nothing.
+     *
+     * <p>Override when some of your runs sit behind something narrower — a
+     * session, a document, one person's conversation. The paragraph on
+     * authorisation above says that is the source's job; this is where the
+     * job gets done, and the registry applies it to both listing and
+     * lookup so a source cannot secure one and forget the other.
+     */
+    default boolean visibleTo(
+            de.mhus.vance.shared.permission.SecurityContext subject,
+            String tenantId, String projectId, String nativeId) {
+        return true;
+    }
 }

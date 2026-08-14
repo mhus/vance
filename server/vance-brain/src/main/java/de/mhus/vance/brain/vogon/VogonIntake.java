@@ -31,6 +31,12 @@ import org.springframework.stereotype.Component;
  * afterwards and there is a text to read them out of. A precise caller pays
  * nothing, only a conversational one does.
  *
+ * <p><b>Choosing the plan and filling it in are two stages.</b> When the plan
+ * itself has to come out of the text, the parameters that matter are not known
+ * until it is chosen — so a second call reads them, against the schema of the
+ * plan that was picked. One call cannot do both: it would have to ask about
+ * fields whose names depend on its own answer.
+ *
  * <p><b>Nothing is guessed about which plan to run.</b> When the plan itself has
  * to come out of the text, the choice is an enum over the plans that actually
  * resolve — a hallucinated name that happens to exist would start the wrong
@@ -106,6 +112,30 @@ public class VogonIntake {
             @Nullable String taskText,
             @Nullable String intakeMode) {
 
+        Outcome chosen = choosePlan(
+                tenantId, projectId, plan, planName, callerParams, taskText, intakeMode);
+        if (plan != null || chosen.hasNoPlan()) {
+            // Either the plan was known all along — then its parameters were
+            // already part of the one call — or it still is not known, and
+            // there is nothing to ask parameters of.
+            return chosen;
+        }
+        return withPlanParameters(tenantId, projectId, chosen, taskText);
+    }
+
+    /**
+     * The first pass: which plan, and — when it was already known — its
+     * missing parameters in the same call.
+     */
+    private Outcome choosePlan(
+            String tenantId,
+            String projectId,
+            @Nullable ResolvedMagratheaWorkflow plan,
+            @Nullable String planName,
+            Map<String, Object> callerParams,
+            @Nullable String taskText,
+            @Nullable String intakeMode) {
+
         boolean needsPlan = plan == null;
         List<String> missing = needsPlan ? List.of() : missingRequired(plan, callerParams);
 
@@ -149,25 +179,11 @@ public class VogonIntake {
             return Outcome.of(null, callerParams);
         }
 
-        Map<String, Object> schema = buildSchema(plan, missing, needsPlanName, candidates);
-        Map<String, Object> extracted;
-        try {
-            extracted = lightLlm.callForJson(LightLlmRequest.builder()
-                    .recipeName(INTAKE_RECIPE)
-                    .userPrompt(taskText)
-                    .schema(schema)
-                    .pebbleVars(Map.of(
-                            "plans", candidates,
-                            "planName", planName == null ? "" : planName,
-                            "needsPlan", needsPlanName,
-                            "missing", missing))
-                    .tenantId(tenantId)
-                    .projectId(projectId)
-                    .build());
-        } catch (RuntimeException ex) {
-            // A failed reading is not a failed run: the start path still
-            // reports the missing fields by name, which is the better error.
-            log.warn("Vogon intake could not read the task text: {}", ex.toString());
+        Map<String, Object> extracted = callExtractor(
+                tenantId, projectId, lightLlm, taskText,
+                buildSchema(plan, missing, needsPlanName, candidates),
+                candidates, planName, needsPlanName, missing);
+        if (extracted == null) {
             return Outcome.of(planName, callerParams);
         }
 
@@ -201,6 +217,100 @@ public class VogonIntake {
         log.info("Vogon intake read {} from the task text (plan='{}', path='{}')",
                 derived, resolvedPlan, resolvedPath);
         return new Outcome(resolvedPlan, resolvedPath, merged, derived);
+    }
+
+    /**
+     * The second pass: now that the plan is known, read what <em>it</em>
+     * declares out of the same request.
+     *
+     * <p>Two calls rather than one, because the question in the second
+     * depends on the answer to the first: which parameters exist is a
+     * property of the chosen plan, and a schema cannot ask about fields it
+     * does not yet know the names of. Skipped entirely when the plan wants
+     * nothing the caller did not already supply — which is the common case
+     * for plans written to be started from a conversation, so the second
+     * call is the exception, not the rule.
+     *
+     * <p>Without this, naming the plan in prose — the thing the bare
+     * {@code vogon} recipe tells people to do — resolves the plan and then
+     * fails the start on its first required parameter.
+     */
+    private Outcome withPlanParameters(
+            String tenantId, String projectId, Outcome chosen, @Nullable String taskText) {
+
+        String path = chosen.planPath();
+        String name = chosen.planName();
+        ResolvedMagratheaWorkflow plan = (path != null
+                ? loadPlanFromPath(tenantId, projectId, path)
+                : name == null
+                        ? Optional.<ResolvedMagratheaWorkflow>empty()
+                        : loadPlan(tenantId, projectId, name)).orElse(null);
+        if (plan == null) {
+            // Unreadable here means unstartable in a moment; the start path
+            // produces the better error for it.
+            return chosen;
+        }
+        List<String> missing = missingRequired(plan, chosen.params());
+        if (missing.isEmpty()) {
+            return chosen;
+        }
+        LightLlmService lightLlm = lightLlmProvider.getIfAvailable();
+        if (lightLlm == null || taskText == null || taskText.isBlank()) {
+            return chosen;
+        }
+
+        Map<String, Object> extracted = callExtractor(
+                tenantId, projectId, lightLlm, taskText,
+                buildSchema(plan, missing, /*needsPlan*/ false, List.of()),
+                /*candidates*/ List.of(), plan.name(), /*needsPlanName*/ false, missing);
+        if (extracted == null) {
+            return chosen;
+        }
+
+        Map<String, Object> merged = new LinkedHashMap<>(chosen.params());
+        Set<String> derived = new LinkedHashSet<>(chosen.derivedKeys());
+        for (Map.Entry<String, Object> e : extracted.entrySet()) {
+            if (FIELD_PLAN.equals(e.getKey()) || e.getValue() == null) continue;
+            if (merged.containsKey(e.getKey())) continue;
+            merged.put(e.getKey(), e.getValue());
+            derived.add(e.getKey());
+        }
+        log.info("Vogon intake read {} for plan '{}' in a second pass", derived, plan.name());
+        return new Outcome(chosen.planName(), chosen.planPath(), merged, derived);
+    }
+
+    /**
+     * One extraction call. {@code null} when it could not be made — a
+     * failed reading is not a failed run, and the start path reports the
+     * fields that are still missing by name, which is the better error.
+     */
+    private @Nullable Map<String, Object> callExtractor(
+            String tenantId,
+            String projectId,
+            LightLlmService lightLlm,
+            String taskText,
+            Map<String, Object> schema,
+            List<String> candidates,
+            @Nullable String planName,
+            boolean needsPlanName,
+            List<String> missing) {
+        try {
+            return lightLlm.callForJson(LightLlmRequest.builder()
+                    .recipeName(INTAKE_RECIPE)
+                    .userPrompt(taskText)
+                    .schema(schema)
+                    .pebbleVars(Map.of(
+                            "plans", candidates,
+                            "planName", planName == null ? "" : planName,
+                            "needsPlan", needsPlanName,
+                            "missing", missing))
+                    .tenantId(tenantId)
+                    .projectId(projectId)
+                    .build());
+        } catch (RuntimeException ex) {
+            log.warn("Vogon intake could not read the task text: {}", ex.toString());
+            return null;
+        }
     }
 
     /**

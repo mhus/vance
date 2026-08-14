@@ -126,6 +126,46 @@ class VogonIntakeTest {
         assertThat(out.planName()).isEqualTo("release");
     }
 
+    // ──────────── picking the plan, then filling it in ────────────
+
+    @Test
+    void aPlanReadOutOfTheText_hasItsOwnParametersReadToo() {
+        // One call cannot do both: which parameters exist is a property of
+        // the plan the first call picks. Without the second, naming the
+        // plan in prose — what the bare vogon recipe asks people to do —
+        // resolves the plan and then fails the start on 'version'.
+        when(workflowLoader.listAll(any(), any())).thenReturn(List.of(
+                MagratheaWorkflowLoader.parseYaml("release", PLAN_YAML)));
+        when(workflowLoader.load("t", "p", "release"))
+                .thenReturn(java.util.Optional.of(plan()));
+        when(lightLlmProvider.getIfAvailable()).thenReturn(lightLlm);
+        when(lightLlm.callForJson(any()))
+                .thenReturn(Map.of("plan", "release"))
+                .thenReturn(Map.of("version", "1.0.0"));
+
+        VogonIntake.Outcome out = intake.resolve("t", "p", null, null,
+                Map.of(), "please release 1.0.0", null);
+
+        assertThat(out.planName()).isEqualTo("release");
+        assertThat(out.params()).containsEntry("version", "1.0.0");
+        assertThat(out.derivedKeys()).contains("plan", "version");
+    }
+
+    @Test
+    void aPlanThatNeedsNothing_costsNoSecondCall() {
+        when(workflowLoader.listAll(any(), any())).thenReturn(List.of(
+                MagratheaWorkflowLoader.parseYaml("release", PLAN_YAML)));
+        when(workflowLoader.load("t", "p", "release"))
+                .thenReturn(java.util.Optional.of(plan()));
+        llmAvailable(Map.of("plan", "release"));
+
+        VogonIntake.Outcome out = intake.resolve("t", "p", null, null,
+                Map.of("version", "1.0.0"), "please do a release", null);
+
+        assertThat(out.planName()).isEqualTo("release");
+        verify(lightLlm, org.mockito.Mockito.times(1)).callForJson(any());
+    }
+
     // ──────────── picking the plan ────────────
 
     @Test

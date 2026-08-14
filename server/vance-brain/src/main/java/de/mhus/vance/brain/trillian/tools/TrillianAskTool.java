@@ -53,6 +53,19 @@ public class TrillianAskTool implements Tool {
                                     + "whoever reads it cannot see your work.")),
             "required", List.of("question"));
 
+    /**
+     * Written into the worker's history right after the question, as the
+     * turn's last word. USER role because that is the side the answer
+     * will come from — the model has to read it as "the world replied",
+     * not as another thought of its own.
+     */
+    static final String WAITING_RECEIPT =
+            "Your question was delivered to the orchestrator and you are now waiting "
+                    + "for an answer. Do not ask it again and do not restate the problem — "
+                    + "if this is still the last thing in your history, the answer has "
+                    + "simply not arrived yet. When it does, it appears as a new message "
+                    + "and you continue from where you stopped.";
+
     private final ThinkProcessService thinkProcessService;
     private final ChatMessageService chatMessageService;
     private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
@@ -123,6 +136,25 @@ public class TrillianAskTool implements Tool {
                 // Same channel a natural stop would use, so the loop sees
                 // the <worker-reply> shape it already knows.
                 progressEmitter.emitReply(process, text, /*inResponseToAt*/ null, null);
+
+                // And a receipt, in the worker's own history.
+                //
+                // Without it the next turn reads: my last message states a
+                // problem, and nothing follows. No confirmation, no answer.
+                // The obvious inference is that the attempt did not land,
+                // so the model states the problem again — observed live,
+                // three identical questions in twelve seconds. The tool
+                // result cannot carry this: results live in the turn's
+                // in-memory message list, and that turn ends here; the
+                // next prompt is rebuilt from chat history, where they
+                // leave no trace.
+                chatMessageService.append(ChatMessageDocument.builder()
+                        .tenantId(process.getTenantId())
+                        .sessionId(process.getSessionId())
+                        .thinkProcessId(process.getId())
+                        .role(ChatRole.USER)
+                        .content(WAITING_RECEIPT)
+                        .build());
             }
         } catch (RuntimeException e) {
             log.warn("trillian_ask: could not deliver the question of process='{}': {}",

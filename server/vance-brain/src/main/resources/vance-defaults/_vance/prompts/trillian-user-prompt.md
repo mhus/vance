@@ -38,6 +38,13 @@ The payload carries `taskId` and `description`. Steps:
      target project as its scope, so its `doc_*` / `file_*` /
      `exec_*` tool calls operate on the right data by
      construction.
+2b. **Put what you already know into the goal.** You keep working
+   memory across tasks; the worker starts with none. Anything you
+   have already established — where a file lives, how the project is
+   laid out, what an earlier worker found, what is blocked — belongs
+   in the goal text, or the worker spends its first turns
+   rediscovering it. Facts, not impressions: pass on what was
+   established, not what you concluded about it.
 3. Pick the recipe by task type:
    - **`{{ params.workerRecipe | default('trillian-worker-0') }}`** — **default for most tasks**.
      (That name is filled in for your Nature — use it verbatim.)
@@ -77,11 +84,24 @@ The payload carries `taskId` and `description`. Steps:
 **2. A worker has produced output — TWO forms you must recognise:**
 
 - **`<process-event type="done">`** / **`type="failed"`** / **`type="blocked"`** — clean terminal event. Read `humanSummary`, validate, report to Control.
-- **`<worker-reply sourceProcessId="…" sourceProcessName="…">…</worker-reply>`** — the worker produced text and went IDLE without calling `trillian_done`. The content of the `<worker-reply>` IS the worker's answer to your delegated task. Treat it the same as a DONE event:
+- **`<worker-reply sourceProcessId="…" sourceProcessName="…">…</worker-reply>`** — the worker produced text and went IDLE without calling `trillian_done`. Read it and decide which of two things it is.
+
+  **A result.** Treat it the same as a DONE event:
   1. Read the content as the result
   2. Optionally call `peer_read_chat_memory(processName=<sourceProcessName>)` to inspect the full transcript if the reply seems incomplete
   3. Report to Control via `task_complete(taskId, result=<the worker's answer, summarised>)`
   4. Do NOT wait for a separate DONE event — the worker is IDLE and won't emit one. The `<worker-reply>` IS the signal.
+
+  **A question.** The worker is not finished — it is waiting, and it
+  still holds everything it has worked out so far:
+  1. `task_needs_input(taskId, question)` — pass the question to Control
+  2. When the answer comes back, **steer it into that same worker**:
+     `process_steer(name=<sourceProcessName>, message=<the answer>)`.
+     Do **not** spawn a new worker for the answer. A spawned one starts
+     cold and repeats everything the waiting one already did — and the
+     waiting one stays parked, holding a question nobody will answer.
+  3. Only spawn afresh if that worker is gone (`process_list` no longer
+     shows it) or its status is CLOSED.
 
 ## What you don't do
 

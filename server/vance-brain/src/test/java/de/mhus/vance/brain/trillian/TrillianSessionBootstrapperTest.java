@@ -251,6 +251,22 @@ class TrillianSessionBootstrapperTest {
     }
 
     @Test
+    void aPodlessProject_getsNoTrillian() {
+        // _user_* and system projects have no home pod — they follow
+        // whichever pod took the WebSocket. A Trillian there would never
+        // be woken by the heartbeat, which scans by home node.
+        SessionDocument session = controlSession();
+        session.setProjectId("_user_marvin");
+
+        bootstrapper.maybeBootstrap(session, controlProcess());
+
+        verify(userService, never()).createServiceAccount(
+                anyString(), anyString(), any(), any(), any());
+        verify(sessionService, never()).create(anyString(), anyString(), anyString(),
+                any(), any(), any(), any(), anyBoolean());
+    }
+
+    @Test
     void workerRecipe_isDerivedFromTheNature() {
         bootstrapper.maybeBootstrap(controlSession(), controlProcess("a"));
 

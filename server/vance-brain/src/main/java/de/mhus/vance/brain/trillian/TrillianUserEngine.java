@@ -171,6 +171,7 @@ public class TrillianUserEngine implements ThinkEngine {
     private final EnginePromptResolver enginePromptResolver;
     private final SystemPromptComposer systemPromptComposer;
     private final TrillianNatureRegistry natureRegistry;
+    private final TrillianWakeupService wakeupService;
     private final ModelCatalog modelCatalog;
     private final MemoryContextLoader memoryContextLoader;
     private final MemoryCompactionService memoryCompactionService;
@@ -296,6 +297,14 @@ public class TrillianUserEngine implements ThinkEngine {
                     process.getId(), drained.size(),
                     drained.size() - extras.size(), extras.size());
 
+            // Anything that is not a self-check means the world moved:
+            // back to the shortest cadence. Without this a Trillian that
+            // drifted to the two-hour step during a quiet night would
+            // stay there through the next busy afternoon.
+            if (drained.stream().anyMatch(m -> !isSelfCheck(m))) {
+                wakeupService.resetCadence(process.getId());
+            }
+
             EngineChatFactory.EngineChatBundle bundle =
                     engineChatFactory.forProcess(process, ctx, NAME);
             AiChat aiChat = bundle.chat();
@@ -409,7 +418,24 @@ public class TrillianUserEngine implements ThinkEngine {
             if (exitStatus != null) {
                 thinkProcessService.updateStatus(process.getId(), exitStatus);
             }
+            // Arm the next self-check from the freshest state: the status
+            // was just written, and children may have terminated during
+            // the turn. A stale copy would arm on what was true a minute
+            // ago.
+            try {
+                thinkProcessService.findById(process.getId())
+                        .ifPresent(fresh -> wakeupService.arm(fresh, java.time.ZoneId.systemDefault()));
+            } catch (RuntimeException wakeupEx) {
+                log.warn("TrillianUser id='{}' could not arm self-check: {}",
+                        process.getId(), wakeupEx.toString());
+            }
         }
+    }
+
+    /** Whether this message is the heartbeat's self-check, not real input. */
+    private static boolean isSelfCheck(SteerMessage m) {
+        return m instanceof SteerMessage.ExternalCommand ec
+                && TrillianWakeupService.COMMAND_SELF_CHECK.equals(ec.command());
     }
 
     /**
@@ -653,6 +679,13 @@ public class TrillianUserEngine implements ThinkEngine {
             return sb.toString();
         }
         if (m instanceof SteerMessage.ExternalCommand ec) {
+            if (TrillianWakeupService.COMMAND_SELF_CHECK.equals(ec.command())) {
+                // Named plainly, because the turn it should produce is
+                // unlike any other: nobody asked anything, and "nothing
+                // to do" is the good outcome.
+                return "<self-check>Nobody asked you anything — this is your own"
+                        + " periodic look around.</self-check>";
+            }
             return "<external-command command=\""
                     + escapeAttr(ec.command()) + "\">"
                     + escapeText(ec.params() == null ? "" : ec.params().toString())

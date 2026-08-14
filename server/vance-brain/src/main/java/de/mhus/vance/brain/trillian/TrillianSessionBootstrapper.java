@@ -219,6 +219,20 @@ public class TrillianSessionBootstrapper {
     private void doBootstrap(
             SessionDocument controlSession,
             ThinkProcessDocument controlProcess) {
+        // 0. Podless projects (_user_*, _tenant, system) never get a home
+        //    pod: they attach to whichever pod received the WebSocket and
+        //    can move on reconnect. A Trillian is supposed to sit still
+        //    and keep watch — its worker session, its lanes and its
+        //    periodic self-check all assume one owner. Refusing here beats
+        //    minting one that silently never wakes up.
+        if (de.mhus.vance.shared.project.ProjectService.isPodless(
+                controlSession.getProjectId())) {
+            log.warn("Trillian bootstrap refused in podless project '{}' (session '{}') — "
+                            + "a Trillian needs a project with a home pod",
+                    controlSession.getProjectId(), controlSession.getSessionId());
+            return;
+        }
+
         // 1. Which Nature this pair runs. It lives in
         //    controlProcess.engineParams.nature; DEFAULT_NATURE covers a
         //    recipe that didn't pin one. Read first, because both the

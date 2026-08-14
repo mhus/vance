@@ -69,6 +69,7 @@ public class TrillianHeartbeatTick {
         ZoneId zone = ZoneId.systemDefault();
         int loops = 0;
         int due = 0;
+        int adopted = 0;
         int quiet = 0;
         int woken = 0;
         List<ProjectDocument> projects = projectService.findRunningByHomeNode(node);
@@ -76,8 +77,25 @@ public class TrillianHeartbeatTick {
             for (ThinkProcessDocument loop : wakeupService.loopsOf(
                     project.getTenantId(), project.getName(), MAX_LOOPS_PER_PROJECT)) {
                 loops++;
-                if (loop.getStatus() != ThinkProcessStatus.IDLE
-                        || !wakeupService.isDue(loop, now)) {
+                if (loop.getStatus() != ThinkProcessStatus.IDLE) {
+                    continue;
+                }
+                // An IDLE loop with no appointment has fallen out of the
+                // schedule and cannot get back in on its own: arming
+                // happens at the loop's yield point, and it will not yield
+                // again until something wakes it. That happens whenever
+                // the world changed after the last yield — a worker that
+                // was RUNNING (and therefore suppressed the alarm) parked
+                // itself, say. Adopting it here is what keeps the watcher
+                // watched; arm() still refuses while a worker is running.
+                if (!wakeupService.isArmed(loop)) {
+                    adopted++;
+                    log.trace("Trillian heartbeat: loop id='{}' is IDLE without an "
+                            + "appointment — adopting it into the schedule", loop.getId());
+                    wakeupService.arm(loop, zone);
+                    continue;
+                }
+                if (!wakeupService.isDue(loop, now)) {
                     continue;
                 }
                 due++;
@@ -101,8 +119,9 @@ public class TrillianHeartbeatTick {
         // Traced every round, including the empty one: the silent path is
         // the normal one, and without a line for it there is no way to
         // tell a working heartbeat from a dead one.
-        log.trace("Trillian heartbeat node='{}' projects={} loops={} due={} quiet={} woken={}",
-                node, projects.size(), loops, due, quiet, woken);
+        log.trace("Trillian heartbeat node='{}' projects={} loops={} adopted={} due={} "
+                        + "quiet={} woken={}",
+                node, projects.size(), loops, adopted, due, quiet, woken);
     }
 
     /**

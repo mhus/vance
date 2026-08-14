@@ -116,6 +116,11 @@ public class TrillianWakeupService {
         thinkProcessService.setEngineParamOverride(loopProcessId, PARAM_WAKEUP_STEP, 0);
     }
 
+    /** Whether an appointment exists at all — armed, due or not. */
+    public boolean isArmed(ThinkProcessDocument loop) {
+        return longOverride(loop, PARAM_NEXT_WAKEUP_AT) != null;
+    }
+
     /** Whether this loop's self-check is due. */
     public boolean isDue(ThinkProcessDocument loop, Instant now) {
         Long at = longOverride(loop, PARAM_NEXT_WAKEUP_AT);

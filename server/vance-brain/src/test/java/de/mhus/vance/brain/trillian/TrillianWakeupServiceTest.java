@@ -130,6 +130,20 @@ class TrillianWakeupServiceTest {
     }
 
     @Test
+    void anUnarmedLoopIsRecognisableAsSuch() {
+        // The tick needs this to notice a loop that fell out of the
+        // schedule — armed-but-not-due and never-armed look the same to
+        // isDue, and only one of them is a problem.
+        ThinkProcessDocument loop = loop(ThinkProcessStatus.IDLE);
+
+        assertThat(service().isArmed(loop)).isFalse();
+
+        loop.getEngineParamOverrides().put(
+                TrillianWakeupService.PARAM_NEXT_WAKEUP_AT, Instant.now().toEpochMilli());
+        assertThat(service().isArmed(loop)).isTrue();
+    }
+
+    @Test
     void anUnarmedLoopIsNeverDue() {
         assertThat(service().isDue(loop(ThinkProcessStatus.IDLE), Instant.now())).isFalse();
     }

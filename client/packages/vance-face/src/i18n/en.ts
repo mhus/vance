@@ -477,7 +477,8 @@ export default {
     loading: 'Loading runs…',
     loadingDetail: 'Loading run…',
     count: '{n} runs',
-    filter: { project: 'Project', allSources: 'All sources' },
+    filter: { allSources: 'All sources' },
+    sidebar: { projectsHeading: 'Projects', filterPlaceholder: 'Filter projects…' },
     status: {
       RUNNING: 'running', WAITING: 'waiting', PAUSED: 'paused',
       STOPPING: 'stopping', DONE: 'done', FAILED: 'failed',

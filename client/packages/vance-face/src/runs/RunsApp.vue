@@ -17,26 +17,23 @@
  */
 import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { EditorShell, VAlert, VButton, VEmptyState, VSelect } from '@/components';
+import { EditorShell, ProjectListSidebar, VAlert, VButton, VEmptyState, VSelect } from '@/components';
 import { useTenantProjects } from '@/composables/useTenantProjects';
 import { useRuns } from './useRuns';
 import RunStatusBadge from './RunStatusBadge.vue';
 import RunDetailPanel from './RunDetailPanel.vue';
 
 const { t } = useI18n();
-const { projects, reload: reloadProjects } = useTenantProjects();
+const tenantProjects = useTenantProjects();
 const { runs, detail, loading, detailLoading, error, acting,
   loadRuns, loadDetail, perform, clearDetail } = useRuns();
 
 const params = new URLSearchParams(window.location.search);
-const projectId = ref<string>(params.get('project') ?? '');
+const projectId = ref<string | null>(params.get('project'));
 const selectedRunId = ref<string>(params.get('run') ?? '');
 const sourceFilter = ref<string>('');
 
 const focusZone = ref<'sidebar' | 'main' | 'right' | 'footer'>('main');
-
-const projectOptions = computed(() =>
-  projects.value.map((p) => ({ value: p.name, label: p.title || p.name })));
 
 /** Sources present in the current list — a filter built from data. */
 const sourceOptions = computed(() => {
@@ -83,10 +80,15 @@ watch(projectId, async () => {
   await refresh();
 });
 
+/** A freshly created project should be selectable without a reload. */
+async function onProjectListDataChanged(): Promise<void> {
+  await tenantProjects.reload();
+}
+
 onMounted(async () => {
-  await reloadProjects();
-  if (!projectId.value && projects.value.length > 0) {
-    projectId.value = projects.value[0].name;
+  await tenantProjects.reload();
+  if (!projectId.value && tenantProjects.projects.value.length > 0) {
+    projectId.value = tenantProjects.projects.value[0].name;
     return; // the watcher loads
   }
   await refresh();
@@ -102,18 +104,32 @@ onMounted(async () => {
     focus-model="auto"
   >
     <template #topbar-extra>
-      <VSelect
-        v-model="projectId"
-        size="sm"
-        :options="projectOptions"
-        :aria-label="t('runs.filter.project')"
-      />
       <VButton size="sm" variant="ghost" :disabled="loading" @click="refresh">
         ⟳ {{ t('runs.refresh') }}
       </VButton>
     </template>
 
+    <!-- Project selection is the same widget as everywhere else. The
+         run list used to sit here, which put two unrelated choices —
+         which project, which run — into one column. -->
     <template #sidebar>
+      <ProjectListSidebar
+        v-model:selected-project="projectId"
+        :groups="tenantProjects.groups.value"
+        :projects="tenantProjects.projects.value"
+        :loading="tenantProjects.loading.value"
+        :error="tenantProjects.error.value"
+        :heading="t('runs.sidebar.projectsHeading')"
+        :filter-placeholder="t('runs.sidebar.filterPlaceholder')"
+        @focus-main="focusZone = 'main'"
+        @data-changed="onProjectListDataChanged"
+      />
+    </template>
+
+    <!-- Master-detail: the runs of the chosen project on the left, the
+         chosen run on the right. Both belong to the same question, so
+         they share the content area. -->
+    <div class="split">
       <div class="list">
         <div class="list-head">
           <VSelect v-model="sourceFilter" size="sm" :options="sourceOptions" />
@@ -146,30 +162,41 @@ onMounted(async () => {
           </li>
         </ul>
       </div>
-    </template>
 
-    <div class="main">
-      <VAlert v-if="error" variant="error">{{ error }}</VAlert>
-      <p v-if="detailLoading" class="hint">{{ t('runs.loadingDetail') }}</p>
-      <RunDetailPanel
-        v-else-if="detail"
-        :detail="detail"
-        :project-id="projectId"
-        :acting="acting"
-        @open-run="selectRun"
-        @action="runAction"
-      />
-      <VEmptyState
-        v-else
-        :headline="t('runs.select.headline')"
-        :body="t('runs.select.body')"
-      />
+      <div class="detail">
+        <VAlert v-if="error" variant="error">{{ error }}</VAlert>
+        <p v-if="detailLoading" class="hint">{{ t('runs.loadingDetail') }}</p>
+        <RunDetailPanel
+          v-else-if="detail"
+          :detail="detail"
+          :project-id="projectId ?? ''"
+          :acting="acting"
+          @open-run="selectRun"
+          @action="runAction"
+        />
+        <VEmptyState
+          v-else
+          :headline="t('runs.select.headline')"
+          :body="t('runs.select.body')"
+        />
+      </div>
     </div>
   </EditorShell>
 </template>
 
 <style scoped>
-.list { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+/* Fixed list column, elastic detail: the rows have a natural width
+   (a name and a badge) while the detail grows with the viewport. */
+.split {
+  display: grid; grid-template-columns: minmax(14rem, 22rem) 1fr;
+  height: 100%; min-height: 0;
+}
+.list { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--color-base-300); }
+.detail { padding: 0.75rem; overflow-y: auto; min-height: 0; }
+@media (max-width: 60rem) {
+  .split { grid-template-columns: 1fr; grid-template-rows: minmax(0, 40%) 1fr; }
+  .list { border-right: 0; border-bottom: 1px solid var(--color-base-300); }
+}
 .list-head {
   display: flex; align-items: center; gap: 0.5rem;
   padding: 0.5rem; border-bottom: 1px solid var(--color-base-300);
@@ -191,6 +218,5 @@ onMounted(async () => {
 .row-sub { display: flex; gap: 0.3rem; font-size: 0.7rem; opacity: 0.6; }
 .row-source { font-family: ui-monospace, monospace; }
 .row-time { margin-left: auto; }
-.main { padding: 0.75rem; overflow-y: auto; height: 100%; }
-.hint { font-size: 0.85rem; opacity: 0.6; }
+.hint { font-size: 0.85rem; opacity: 0.6; padding: 0.5rem; }
 </style>

@@ -472,7 +472,8 @@ export default {
     loading: 'Lade Läufe…',
     loadingDetail: 'Lade Lauf…',
     count: '{n} Läufe',
-    filter: { project: 'Projekt', allSources: 'Alle Quellen' },
+    filter: { allSources: 'Alle Quellen' },
+    sidebar: { projectsHeading: 'Projekte', filterPlaceholder: 'Projekt filtern…' },
     status: {
       RUNNING: 'läuft', WAITING: 'wartet', PAUSED: 'pausiert',
       STOPPING: 'stoppt', DONE: 'fertig', FAILED: 'fehlgeschlagen',

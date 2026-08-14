@@ -245,6 +245,25 @@
 
     <build>
         <plugins>
+            <!--
+                Publishes one build property per resolved dependency, named
+                `groupId:artifactId:type` and holding the jar's path in the local
+                repository. Sole consumer is the Mockito `-javaagent` in the
+                Surefire argLine below (see the comment there for why the agent
+                has to be on the command line); the goal is otherwise a no-op.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>dependency-jar-properties</id>
+                        <goals>
+                            <goal>properties</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
@@ -274,8 +293,32 @@
                     -->
                     <forkCount>4</forkCount>
                     <reuseForks>true</reuseForks>
+                    <!--
+                        Mockito's inline-mock-maker (the 5.x default) rewrites
+                        bytecode of already-loaded classes, which needs a JVM
+                        instrumentation agent. Left alone, Mockito attaches that
+                        agent to the running JVM itself ("self-attach") and warns
+                        that this stops working in a future JDK — JEP 451
+                        deprecated self-attaching for removal in JDK 21. Passing
+                        the agent at JVM start is the supported route and drops
+                        the warning; `-XX:+EnableDynamicAgentLoading` (which only
+                        muted the JDK-side half of the same complaint) is gone
+                        with it, so a *new* library that starts self-attaching
+                        shows up in the log instead of hiding behind our flag.
+
+                        The path expands to mockito-core's jar in the local
+                        repository: `dependency:properties` (declared above) defines
+                        one property per resolved dependency, named
+                        `groupId:artifactId:type`. So the version stays wherever
+                        it comes from (spring-boot-starter-test) and is never
+                        spelled out twice. Surefire does NOT resolve that
+                        expression on its own — without the dependency-plugin
+                        execution the fork dies with "Error opening zip file or
+                        JAR manifest missing". Modules without tests never fork a
+                        JVM, so an unsubstituted expression there is inert.
+                    -->
                     <argLine>
-                        -XX:+EnableDynamicAgentLoading
+                        -javaagent:${org.mockito:mockito-core:jar}
                         --add-opens java.base/java.lang=ALL-UNNAMED
                         --add-opens java.base/java.lang.reflect=ALL-UNNAMED
                         --add-opens java.base/java.util=ALL-UNNAMED

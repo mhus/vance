@@ -68,10 +68,30 @@ public class TrillianWakeupService {
      */
     static final int[] LADDER = {10, 20, 40, 60};
 
+    /**
+     * How far an interval may stray from its nominal length, in either
+     * direction.
+     *
+     * <p>Without it every Trillian on a pod that started together stays
+     * in lockstep for good — they were armed in the same second and the
+     * ladder is deterministic, so they wake in the same second forever,
+     * and a human with three of them gets three nudges at once.
+     *
+     * <p>Twenty percent rather than the full-jitter of network retries
+     * (a uniform draw over the whole interval). The contention here is
+     * not a server being hammered but a rhythm that should stay
+     * recognisable: "about every twenty minutes" survives ±20%, and does
+     * not survive "somewhere between now and twenty minutes".
+     */
+    static final double JITTER = 0.2;
+
     /** Night cap. Nobody is waiting for an answer at 3 a.m. */
     static final int NIGHT_MINUTES = 120;
     static final LocalTime NIGHT_FROM = LocalTime.of(20, 0);
     static final LocalTime NIGHT_UNTIL = LocalTime.of(8, 0);
+
+    /** Only spreads alarm clocks — nothing here needs to be unguessable. */
+    private final java.util.Random random = new java.util.Random();
 
     private final ThinkProcessService thinkProcessService;
 
@@ -91,13 +111,14 @@ public class TrillianWakeupService {
             return;
         }
         int step = currentStep(loop);
-        Instant next = Instant.now().plus(Duration.ofMinutes(minutesFor(step, zone)));
+        Duration gap = jittered(Duration.ofMinutes(minutesFor(step, zone)));
+        Instant next = Instant.now().plus(gap);
         thinkProcessService.setEngineParamOverride(
                 loop.getId(), PARAM_NEXT_WAKEUP_AT, next.toEpochMilli());
         thinkProcessService.setEngineParamOverride(
                 loop.getId(), PARAM_WAKEUP_STEP, Math.min(step + 1, LADDER.length - 1));
-        log.trace("Trillian wakeup armed id='{}' in {} min (step {})",
-                loop.getId(), minutesFor(step, zone), step);
+        log.trace("Trillian wakeup armed id='{}' in {} min (step {}, nominal {})",
+                loop.getId(), gap.toMinutes(), step, minutesFor(step, zone));
     }
 
     /** Clears a pending self-check — something is in flight after all. */
@@ -148,6 +169,18 @@ public class TrillianWakeupService {
             }
         }
         return true;
+    }
+
+    /**
+     * The nominal gap, moved by up to {@link #JITTER} in either
+     * direction. Never below a minute, so a small interval and an
+     * unlucky draw cannot produce a wakeup that is due the moment it is
+     * armed.
+     */
+    Duration jittered(Duration nominal) {
+        double factor = 1.0 + (random.nextDouble() * 2.0 - 1.0) * JITTER;
+        long millis = Math.round(nominal.toMillis() * factor);
+        return Duration.ofMillis(Math.max(millis, Duration.ofMinutes(1).toMillis()));
     }
 
     /** Minutes for this step, capped harder during the night. */

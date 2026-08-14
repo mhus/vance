@@ -67,6 +67,16 @@ public class TrillianNatureAdam extends TrillianNatureBase {
     /** engineParamOverrides key on the *worker*: re-checks offered. */
     static final String PARAM_ASK_PROBES = "trillianAskProbes";
 
+    /** engineParamOverrides key on the *worker*: when the breaker opened. */
+    static final String PARAM_ASK_OPENED_AT = "trillianAskOpenedAt";
+
+    /**
+     * How long the breaker stays shut before allowing one further probe.
+     * Long enough that it is not polling, short enough that a lock lifted
+     * over lunch is noticed the same afternoon.
+     */
+    static final java.time.Duration ASK_PROBE_COOLDOWN = java.time.Duration.ofHours(2);
+
     /** A RUNNING worker quieter than this is worth a look. */
     private static final java.time.Duration SILENT_AFTER = java.time.Duration.ofMinutes(45);
 
@@ -355,17 +365,14 @@ public class TrillianNatureAdam extends TrillianNatureBase {
      */
     private SelfCheckFinding waitingFinding(ThinkProcessDocument worker, Instant now) {
         String waited = since(worker.getUpdatedAt(), now);
-        String detail;
-        if (isStateBlocker(worker) && incrementAskProbes(worker) <= MAX_ASK_PROBES) {
-            detail = "parked since " + waited + ", blocked by a state that may have "
-                    + "changed since. Before asking the human again, process_steer it "
-                    + "once with a short nudge to re-check its obstacle and carry on if "
-                    + "it cleared. If it comes back with the same question, then ask.";
-        } else {
-            detail = "parked since " + waited + " — it is waiting on a decision only a "
-                    + "human can make, and nothing will reach it until someone answers. "
-                    + "Ask Control again, briefly, saying how long it has waited.";
-        }
+        String detail = isStateBlocker(worker) && mayProbeAgain(worker, now)
+                ? "parked since " + waited + ", blocked by a state that may have "
+                        + "changed since. Before asking the human again, process_steer it "
+                        + "once with a short nudge to re-check its obstacle and carry on if "
+                        + "it cleared. If it comes back with the same question, then ask."
+                : "parked since " + waited + " — nothing will reach it until someone "
+                        + "answers. Ask Control again, briefly, saying how long it has "
+                        + "waited.";
         return new SelfCheckFinding(
                 SelfCheckFinding.Kind.WORKER_WAITING, nameOf(worker), worker.getId(), detail);
     }
@@ -376,18 +383,84 @@ public class TrillianNatureAdam extends TrillianNatureBase {
         return TrillianAskTool.BLOCKER_STATE.equals(raw);
     }
 
-    /** Counts the re-checks offered for this parked worker. */
-    private int incrementAskProbes(ThinkProcessDocument worker) {
+    /**
+     * Whether this parked worker gets another look at its obstacle.
+     *
+     * <p>Three rounds on a decelerating cadence, then the circuit opens
+     * and the human is asked instead of the world — a state that has not
+     * moved in over an hour is behaving like a decision.
+     *
+     * <p>But open is not forever. After {@link #ASK_PROBE_COOLDOWN} the
+     * breaker goes <b>half-open</b>: exactly one further probe, then shut
+     * again for the same span. A lock that survived three rounds can
+     * still be gone by the afternoon, and never looking again would make
+     * "give up" mean "give up permanently" — for the price of one worker
+     * turn every two hours.
+     */
+    private boolean mayProbeAgain(ThinkProcessDocument worker, Instant now) {
         Map<String, Object> overrides = worker.getEngineParamOverrides();
-        Object raw = overrides == null ? null : overrides.get(PARAM_ASK_PROBES);
-        int next = (raw instanceof Number n ? n.intValue() : 0) + 1;
+        int probes = intOverride(overrides, PARAM_ASK_PROBES);
+        if (probes < MAX_ASK_PROBES) {
+            setOverride(worker, PARAM_ASK_PROBES, probes + 1);
+            return true;
+        }
+        long openedAt = intOverrideLong(overrides, PARAM_ASK_OPENED_AT);
+        if (openedAt == 0L) {
+            // The circuit opens now; the cool-down starts running.
+            setOverride(worker, PARAM_ASK_OPENED_AT, now.toEpochMilli());
+            return false;
+        }
+        if (now.toEpochMilli() - openedAt < ASK_PROBE_COOLDOWN.toMillis()) {
+            return false;
+        }
+        // Half-open: one trial, and the cool-down restarts whatever it
+        // finds. Success ends the episode anyway — the worker finishes
+        // and closes — so there is nothing to reset on the way out.
+        setOverride(worker, PARAM_ASK_OPENED_AT, now.toEpochMilli());
+        log.info("Trillian adam: worker '{}' gets a half-open re-check after {}",
+                worker.getId(), ASK_PROBE_COOLDOWN);
+        return true;
+    }
+
+    /**
+     * Ends the episode of a worker that has been blocked too often.
+     *
+     * <p>Closing it here rather than telling the loop to do it: stopping
+     * is not a judgement, it follows from a count, and a cleanup that
+     * depends on the model remembering to perform it is a cleanup that
+     * eventually does not happen. The close also reaches the loop as a
+     * terminal event, so it learns the episode is over even if it ignores
+     * the finding.
+     */
+    private void closeLoopingWorker(ThinkProcessDocument worker) {
         try {
-            thinkProcessService.setEngineParamOverride(worker.getId(), PARAM_ASK_PROBES, next);
+            thinkProcessService.closeProcess(
+                    worker.getId(), de.mhus.vance.api.thinkprocess.CloseReason.STOPPED);
+            log.info("Trillian adam: stopped looping worker '{}' after {} safety-net rounds",
+                    worker.getId(), MAX_BLOCKED_RESUMES);
         } catch (RuntimeException e) {
-            log.warn("Trillian adam: could not count re-checks of '{}': {}",
+            log.warn("Trillian adam: could not stop looping worker '{}': {}",
                     worker.getId(), e.toString());
         }
-        return next;
+    }
+
+    private void setOverride(ThinkProcessDocument worker, String key, Object value) {
+        try {
+            thinkProcessService.setEngineParamOverride(worker.getId(), key, value);
+        } catch (RuntimeException e) {
+            log.warn("Trillian adam: could not write '{}' on '{}': {}",
+                    key, worker.getId(), e.toString());
+        }
+    }
+
+    private static int intOverride(@Nullable Map<String, Object> overrides, String key) {
+        Object raw = overrides == null ? null : overrides.get(key);
+        return raw instanceof Number n ? n.intValue() : 0;
+    }
+
+    private static long intOverrideLong(@Nullable Map<String, Object> overrides, String key) {
+        Object raw = overrides == null ? null : overrides.get(key);
+        return raw instanceof Number n ? n.longValue() : 0L;
     }
 
     /**
@@ -403,13 +476,26 @@ public class TrillianNatureAdam extends TrillianNatureBase {
      */
     private SelfCheckFinding blockedFinding(ThinkProcessDocument worker, Instant now) {
         int seen = incrementBlockedSeen(worker);
-        String detail = seen >= MAX_BLOCKED_RESUMES
-                ? "blocked for the " + seen + ". time — it is looping, not working. "
-                        + "Do NOT resume it. Report to Control what it managed and stop it."
-                : "blocked after hitting a safety net (" + since(worker.getUpdatedAt(), now)
-                        + " ago), context intact. Read its transcript: if it was making "
-                        + "progress, process_steer it to continue; if it was repeating "
-                        + "itself, report that to Control instead.";
+        String detail;
+        if (seen >= MAX_BLOCKED_RESUMES) {
+            // No half-open state here, deliberately. Frankie's two safety
+            // nets — wallclock and idle-stuck — both mean "it is going in
+            // circles", and circles do not heal by waiting; a trial every
+            // two hours would revive a worker that runs into the same net
+            // for the same reason. What was missing is the opposite: the
+            // episode never ended. The finding said "do not resume" and
+            // nobody closed it, so it was reported again on every round.
+            closeLoopingWorker(worker);
+            detail = "was stopped after " + seen + " rounds in a safety net — it was "
+                    + "looping, not working, and waiting would not have changed that. "
+                    + "Read its transcript for whatever it did manage and report that "
+                    + "to Control. Do not spawn a replacement for the same approach.";
+        } else {
+            detail = "blocked after hitting a safety net (" + since(worker.getUpdatedAt(), now)
+                    + " ago), context intact. Read its transcript: if it was making "
+                    + "progress, process_steer it to continue; if it was repeating "
+                    + "itself, report that to Control instead.";
+        }
         return new SelfCheckFinding(
                 SelfCheckFinding.Kind.WORKER_BLOCKED, nameOf(worker), worker.getId(), detail);
     }

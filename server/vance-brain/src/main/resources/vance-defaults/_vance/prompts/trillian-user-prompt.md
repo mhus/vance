@@ -128,9 +128,10 @@ case:
 - **`[worker_blocked]`** — a safety net stopped it, its context is
   intact. Read the transcript (`process_history_text`) and decide: was
   it making progress, or repeating itself? Progress → `process_steer` it
-  to continue. Repetition → report to Control and stop it. When the line
-  says not to resume it, do not resume it — that judgement has been made
-  more times than you can see from here.
+  to continue. Repetition → report to Control. When the line says the
+  worker *was stopped*, it is already closed and there is nothing to
+  resume — report what it managed and leave it; spawning a replacement
+  for the same approach would repeat the same circle.
 - **`[worker_silent]`** — running, but nothing for a long time. Report
   that to Control rather than waiting further.
 

@@ -306,7 +306,10 @@ class TrillianNatureAdamTest {
 
         SelfCheckFinding finding = adam().selfCheckFindings(loopProcess()).get(0);
 
-        assertThat(finding.detail()).contains("decision").doesNotContain("re-check");
+        // The wording covers two cases now — a decision, and a state
+        // whose breaker has opened — so it asserts the behaviour rather
+        // than the word: ask, do not look again.
+        assertThat(finding.detail()).contains("Ask Control").doesNotContain("re-check");
     }
 
     @Test
@@ -323,6 +326,66 @@ class TrillianNatureAdamTest {
         SelfCheckFinding finding = adam().selfCheckFindings(loopProcess()).get(0);
 
         assertThat(finding.detail()).doesNotContain("re-check").contains("Ask Control");
+    }
+
+    @Test
+    void anOpenBreaker_reopensAfterTheCooldown() {
+        // Half-open: a lock that survived three rounds can still be gone
+        // by the afternoon, and never looking again would make "give up"
+        // mean "give up permanently".
+        ThinkProcessDocument parked = childProcess("ask-worker", ThinkProcessStatus.IDLE);
+        parked.setEngineParamOverrides(new LinkedHashMap<>(Map.of(
+                de.mhus.vance.brain.trillian.tools.TrillianAskTool.PARAM_ASK_BLOCKER, "state",
+                TrillianNatureAdam.PARAM_ASK_PROBES, TrillianNatureAdam.MAX_ASK_PROBES,
+                TrillianNatureAdam.PARAM_ASK_OPENED_AT,
+                java.time.Instant.now()
+                        .minus(TrillianNatureAdam.ASK_PROBE_COOLDOWN)
+                        .minusSeconds(60).toEpochMilli())));
+        when(thinkProcessService.findByParentProcessId("loop-1"))
+                .thenReturn(java.util.List.of(parked));
+
+        SelfCheckFinding finding = adam().selfCheckFindings(loopProcess()).get(0);
+
+        assertThat(finding.detail()).contains("re-check");
+        // And the cool-down restarts, so it is one trial and not a new
+        // round of three.
+        verify(thinkProcessService).setEngineParamOverride(
+                org.mockito.ArgumentMatchers.eq("child-ask-worker"),
+                org.mockito.ArgumentMatchers.eq(TrillianNatureAdam.PARAM_ASK_OPENED_AT),
+                any());
+    }
+
+    @Test
+    void anOpenBreakerStaysShut_whileTheCooldownRuns() {
+        ThinkProcessDocument parked = childProcess("ask-worker", ThinkProcessStatus.IDLE);
+        parked.setEngineParamOverrides(new LinkedHashMap<>(Map.of(
+                de.mhus.vance.brain.trillian.tools.TrillianAskTool.PARAM_ASK_BLOCKER, "state",
+                TrillianNatureAdam.PARAM_ASK_PROBES, TrillianNatureAdam.MAX_ASK_PROBES,
+                TrillianNatureAdam.PARAM_ASK_OPENED_AT, java.time.Instant.now().toEpochMilli())));
+        when(thinkProcessService.findByParentProcessId("loop-1"))
+                .thenReturn(java.util.List.of(parked));
+
+        assertThat(adam().selfCheckFindings(loopProcess()).get(0).detail())
+                .doesNotContain("re-check");
+    }
+
+    @Test
+    void aWorkerBlockedTooOften_isStopped() {
+        // The episode has to end. Before this the finding said "do not
+        // resume" and nobody closed it, so it was reported again every
+        // round for good.
+        ThinkProcessDocument stuck = childProcess("looper", ThinkProcessStatus.BLOCKED);
+        stuck.setEngineParamOverrides(new LinkedHashMap<>(Map.of(
+                TrillianNatureAdam.PARAM_BLOCKED_SEEN,
+                TrillianNatureAdam.MAX_BLOCKED_RESUMES - 1)));
+        when(thinkProcessService.findByParentProcessId("loop-1"))
+                .thenReturn(java.util.List.of(stuck));
+
+        SelfCheckFinding finding = adam().selfCheckFindings(loopProcess()).get(0);
+
+        verify(thinkProcessService).closeProcess(
+                "child-looper", de.mhus.vance.api.thinkprocess.CloseReason.STOPPED);
+        assertThat(finding.detail()).contains("was stopped");
     }
 
     @Test
@@ -360,25 +423,6 @@ class TrillianNatureAdamTest {
 
         assertThat(finding.kind()).isEqualTo(SelfCheckFinding.Kind.WORKER_BLOCKED);
         assertThat(finding.detail()).contains("process_steer").contains("transcript");
-    }
-
-    @Test
-    void aWorkerBlockedTooOften_isNotToBeResumedAgain() {
-        // A model asked "shall I try once more?" four times says yes four
-        // times. The count is kept in Java for that reason.
-        ThinkProcessDocument stuck = childProcess("looper", ThinkProcessStatus.BLOCKED);
-        stuck.setEngineParamOverrides(new LinkedHashMap<>(Map.of(
-                TrillianNatureAdam.PARAM_BLOCKED_SEEN,
-                TrillianNatureAdam.MAX_BLOCKED_RESUMES - 1)));
-        when(thinkProcessService.findByParentProcessId("loop-1"))
-                .thenReturn(java.util.List.of(stuck));
-
-        SelfCheckFinding finding = adam().selfCheckFindings(loopProcess()).get(0);
-
-        assertThat(finding.detail()).contains("Do NOT resume");
-        verify(thinkProcessService).setEngineParamOverride(
-                "child-looper", TrillianNatureAdam.PARAM_BLOCKED_SEEN,
-                TrillianNatureAdam.MAX_BLOCKED_RESUMES);
     }
 
     @Test

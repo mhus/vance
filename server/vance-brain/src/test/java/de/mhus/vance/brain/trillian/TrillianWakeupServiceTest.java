@@ -111,6 +111,38 @@ class TrillianWakeupServiceTest {
     }
 
     @Test
+    void theGapIsJittered_butStaysRecognisable() {
+        // Trillians armed in the same second would otherwise wake in the
+        // same second for good — the ladder is deterministic — and a
+        // human with three of them would get three nudges at once.
+        TrillianWakeupService service = service();
+        java.time.Duration nominal = java.time.Duration.ofMinutes(20);
+
+        java.util.Set<Long> seen = new java.util.HashSet<>();
+        for (int i = 0; i < 200; i++) {
+            java.time.Duration gap = service.jittered(nominal);
+            seen.add(gap.toMillis());
+            // "about twenty minutes" has to survive the jitter, or the
+            // cadence stops meaning anything.
+            assertThat(gap).isBetween(
+                    java.time.Duration.ofMinutes(16), java.time.Duration.ofMinutes(24));
+        }
+        assertThat(seen).hasSizeGreaterThan(50);
+    }
+
+    @Test
+    void aJitteredGapIsNeverInstant() {
+        // A small interval and an unlucky draw must not produce a wakeup
+        // that is already due when it is armed.
+        TrillianWakeupService service = service();
+
+        for (int i = 0; i < 50; i++) {
+            assertThat(service.jittered(java.time.Duration.ofSeconds(5)))
+                    .isGreaterThanOrEqualTo(java.time.Duration.ofMinutes(1));
+        }
+    }
+
+    @Test
     void nightStretchesTheGap() {
         // Nobody is waiting for an answer at 3 a.m.
         assertThat(TrillianWakeupService.isNight(LocalTime.of(3, 0))).isTrue();

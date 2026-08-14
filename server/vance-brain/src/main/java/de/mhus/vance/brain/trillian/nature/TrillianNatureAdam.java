@@ -207,7 +207,15 @@ public class TrillianNatureAdam extends TrillianNatureBase {
                 + "Notes you wrote after finishing earlier tasks. They are "
                 + "yours and they are about this project — use them before "
                 + "rediscovering the same thing.\n\n"
-                + journal + "\n";
+                + journal + "\n\n"
+                + "Each note carries the date you wrote it. A note about a "
+                + "**state** — something locked, missing, unavailable — was "
+                + "true then and may not be now. Before refusing a task on "
+                + "the strength of one, check it cheaply (a single read or "
+                + "info call); being wrong here is worse than rediscovering, "
+                + "because a refusal produces no failure for you to learn "
+                + "from. A note about how something **works** needs no such "
+                + "check.\n";
     }
 
     /** The journal as a numbered list, or empty when there is none. */

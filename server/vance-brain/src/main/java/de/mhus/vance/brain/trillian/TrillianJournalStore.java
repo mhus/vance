@@ -3,12 +3,15 @@ package de.mhus.vance.brain.trillian;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.permission.WriteActor;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -45,6 +48,9 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class TrillianJournalStore {
 
+    /** A leading {@code YYYY-MM-DD:} — already stamped. */
+    private static final Pattern DATED = Pattern.compile("^\\d{4}-\\d{2}-\\d{2}:");
+
     private static final String FOLDER = "_vance/trillian/";
     private static final String DOC_TITLE_PREFIX = "Trillian journal — ";
     private static final List<String> TAGS = List.of("trillian", "journal");
@@ -57,13 +63,14 @@ public class TrillianJournalStore {
      */
     public static final int PROMPT_BUDGET_CHARS = 4_000;
 
-    private static final String HEADER = """
+    /** Package-private so the test can match on it instead of copying it. */
+    static final String HEADER = """
             # Trillian journal
 
             What this Trillian concluded after finishing tasks. Written by the
-            Trillian itself, newest entries at the bottom. Read-only in practice —
-            editing is possible but the value of a journal is that it was not
-            rewritten afterwards.
+            Trillian itself, newest entries at the bottom, each stamped with the
+            date it was written. Editing and deleting by hand is fine — earlier
+            versions of this document keep the history.
             """;
 
     private final DocumentService documentService;
@@ -97,10 +104,11 @@ public class TrillianJournalStore {
         }
         synchronized (lockFor(tenantId, projectId, account)) {
             try {
+                String stamped = stamp(entry.strip());
                 String existing = readText(tenantId, projectId, account);
                 String body = existing == null || existing.isBlank()
-                        ? HEADER + "\n" + entry.strip() + "\n"
-                        : existing.stripTrailing() + "\n" + entry.strip() + "\n";
+                        ? HEADER + "\n" + stamped + "\n"
+                        : existing.stripTrailing() + "\n" + stamped + "\n";
                 write(tenantId, projectId, account, body);
             } catch (RuntimeException e) {
                 log.warn("Trillian: could not append to journal of '{}': {}",
@@ -204,6 +212,28 @@ public class TrillianJournalStore {
                         account, e.toString());
             }
         }
+    }
+
+    /**
+     * Prefixes the entry with the date it was written.
+     *
+     * <p>Stamped here rather than asked of the model: the reflexion pass
+     * has no reliable notion of today, and an invented date is worse than
+     * none — it would make a stale note look fresh. Deterministic at the
+     * point of writing, so it is simply true.
+     *
+     * <p>The date is what lets a reader tell a standing fact from a
+     * state that may have moved since. UTC, matching the date the engines
+     * put in their prompts.
+     */
+    private static String stamp(String entry) {
+        String text = entry.startsWith("- ") ? entry.substring(2).strip() : entry;
+        // Idempotent: a model that imitated the format and wrote its own
+        // date must not end up with two.
+        if (DATED.matcher(text).find()) {
+            return "- " + text;
+        }
+        return "- " + LocalDate.now(ZoneOffset.UTC) + ": " + text;
     }
 
     private void write(String tenantId, String projectId, String account, String body) {

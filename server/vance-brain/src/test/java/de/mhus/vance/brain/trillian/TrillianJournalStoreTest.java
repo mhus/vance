@@ -40,7 +40,7 @@ class TrillianJournalStoreTest {
     void theFirstEntry_getsTheExplainingHeader() {
         store().append(TENANT, PROJECT, ACCOUNT, "- first lesson");
 
-        assertThat(written()).startsWith("# Trillian journal").contains("- first lesson");
+        assertThat(written()).startsWith("# Trillian journal").contains("first lesson");
     }
 
     @Test
@@ -52,9 +52,27 @@ class TrillianJournalStoreTest {
 
         store().append(TENANT, PROJECT, ACCOUNT, "- second lesson");
 
-        assertThat(written()).contains("- first lesson").contains("- second lesson");
+        assertThat(written()).contains("- first lesson").contains("second lesson");
         assertThat(written().indexOf("- first lesson"))
-                .isLessThan(written().indexOf("- second lesson"));
+                .isLessThan(written().indexOf("second lesson"));
+    }
+
+    @Test
+    void everyEntry_carriesTheDateItWasWritten() {
+        // Stamped by the store, not asked of the model: the reflexion
+        // pass has no reliable notion of today, and an invented date
+        // would make a stale note look fresh.
+        store().append(TENANT, PROJECT, ACCOUNT, "- reports/ is locked for AI");
+
+        assertThat(written()).containsPattern("- \\d{4}-\\d{2}-\\d{2}: reports/ is locked for AI");
+    }
+
+    @Test
+    void anEntryThatAlreadyHasADate_isNotStampedTwice() {
+        store().append(TENANT, PROJECT, ACCOUNT, "- 2026-01-02: something old");
+
+        assertThat(written()).contains("- 2026-01-02: something old");
+        assertThat(written()).doesNotContainPattern("- \\d{4}-\\d{2}-\\d{2}: 2026-01-02");
     }
 
     @Test
@@ -136,15 +154,9 @@ class TrillianJournalStoreTest {
         return new TrillianJournalStore(documentService);
     }
 
+    /** Uses the store's own header — a copy here broke the moment it changed. */
     private String headerPlus(String body) {
-        return """
-                # Trillian journal
-
-                What this Trillian concluded after finishing tasks. Written by the
-                Trillian itself, newest entries at the bottom. Read-only in practice —
-                editing is possible but the value of a journal is that it was not
-                rewritten afterwards.
-                """ + "\n" + body;
+        return TrillianJournalStore.HEADER + "\n" + body;
     }
 
     private void givenStored(String text) {

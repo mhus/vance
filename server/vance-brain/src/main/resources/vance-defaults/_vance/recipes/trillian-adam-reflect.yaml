@@ -48,7 +48,9 @@ promptPrefix: |
 
   ## What the agent already noted before
 
-  Numbered so you can point at entries to drop.
+  Numbered so you can point at entries to drop. Each carries the date it
+  was written — an old note is not wrong for being old, but a note about
+  a state that the task above just contradicted is.
 
   {% if journal %}{{ journal }}{% else %}(nothing yet){% endif %}
 
@@ -104,7 +106,9 @@ promptPrefix: |
 
   `remove` lists the **numbers** of entries above that should go. Use it
   for a note that has become false, that the project has outgrown, or
-  that says the same thing as another one. Removing costs nothing — the
+  that says the same thing as another one. The clearest case: the task
+  above shows a note is no longer true — something once locked was
+  written to, something once missing was found. Drop it. Removing costs nothing — the
   document keeps its earlier versions — while every entry that stays is
   read again on every single turn.
 

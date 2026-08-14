@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.magrathea;
 
+import de.mhus.vance.brain.cluster.ClusterMasterService;
 import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import java.time.Duration;
@@ -9,6 +10,7 @@ import java.util.List;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -39,6 +41,17 @@ import org.springframework.stereotype.Component;
  * watchdog means that net failed too, so its verdict is terminal:
  * {@code FAILED}, with the unwind a stop would do — agents closed,
  * gates dismissed, sub-runs stopped.
+ *
+ * <p><b>Master-only.</b> Unlike its neighbours in this package, this scan
+ * runs on one pod. The claimer and the reclaim scanner are pod-local
+ * because every step they take is a Mongo CAS, so a race just produces
+ * one winner; this one ends a whole run through a chain of side effects
+ * — closing processes, dismissing inbox items, stopping sub-runs,
+ * appending a terminal record — with no compare-and-set anywhere in it.
+ * Two pods arriving together would unwind the same run twice and journal
+ * two terminal records. So it takes the master lease like the other
+ * cluster-wide sweeps ({@code ClusterCleanupTick} and friends). Without
+ * a master service the pod is alone and runs it.
  */
 @Component
 @ConditionalOnProperty(
@@ -55,9 +68,13 @@ public class MagratheaWatchdogScanner {
     private final MagratheaTaskService taskService;
     private final MagratheaWorkflowService workflowService;
     private final MagratheaProperties properties;
+    /** Absent when the cluster-master feature is off — then this pod is alone. */
+    private final ObjectProvider<ClusterMasterService> masterServiceProvider;
 
     @Scheduled(fixedDelay = SCAN_INTERVAL_MS, initialDelay = SCAN_INTERVAL_MS)
     public void scan() {
+        if (!isResponsiblePod()) return;
+
         Duration ceiling = properties.getStallCeiling();
         if (ceiling == null || ceiling.isZero() || ceiling.isNegative()) return;
 
@@ -87,5 +104,16 @@ public class MagratheaWatchdogScanner {
                         runId, ex.toString());
             }
         }
+    }
+
+    /**
+     * One pod sweeps. A missing {@link ClusterMasterService} means the
+     * feature is switched off, which only happens in a single-pod
+     * deployment — refusing to sweep there would disable the net exactly
+     * where nobody else can take over.
+     */
+    private boolean isResponsiblePod() {
+        ClusterMasterService masterService = masterServiceProvider.getIfAvailable();
+        return masterService == null || masterService.isLocalPodMaster();
     }
 }

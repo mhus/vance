@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.magrathea.MagratheaTaskStatus;
+import de.mhus.vance.brain.cluster.ClusterMasterService;
 import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import java.time.Duration;
@@ -19,14 +20,20 @@ import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
 
 class MagratheaWatchdogScannerTest {
 
     private final MagratheaTaskService taskService = mock(MagratheaTaskService.class);
     private final MagratheaWorkflowService workflowService = mock(MagratheaWorkflowService.class);
     private final MagratheaProperties properties = new MagratheaProperties();
+    private final ClusterMasterService masterService = mock(ClusterMasterService.class);
     private final MagratheaWatchdogScanner scanner =
-            new MagratheaWatchdogScanner(taskService, workflowService, properties);
+            new MagratheaWatchdogScanner(taskService, workflowService, properties, provider(masterService));
+
+    {
+        when(masterService.isLocalPodMaster()).thenReturn(true);
+    }
 
     @Test
     void aStalledTask_failsItsRun() {
@@ -82,6 +89,38 @@ class MagratheaWatchdogScannerTest {
         scanner.scan();
 
         verify(workflowService, never()).failStalledRun(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void aNonMasterPod_doesNotSweep() {
+        // The unwind is a chain of side effects with no compare-and-set in
+        // it — two pods would end the same run twice.
+        when(masterService.isLocalPodMaster()).thenReturn(false);
+
+        scanner.scan();
+
+        verifyNoInteractions(taskService);
+    }
+
+    @Test
+    void withoutAMasterService_theLonePodSweeps() {
+        // Cluster-master switched off means single-pod; refusing there
+        // would disable the net where nobody can take over.
+        MagratheaWatchdogScanner lone = new MagratheaWatchdogScanner(
+                taskService, workflowService, properties, provider(null));
+        when(taskService.findStalledBefore(any(), anyInt())).thenReturn(List.of(task("run-1", "work")));
+
+        lone.scan();
+
+        verify(workflowService).failStalledRun(anyString(), anyString(), eq("run-1"), anyString());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static ObjectProvider<ClusterMasterService> provider(
+            @org.jspecify.annotations.Nullable ClusterMasterService service) {
+        ObjectProvider<ClusterMasterService> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(service);
+        return provider;
     }
 
     private static MagratheaTaskDocument task(String runId, String stateName) {

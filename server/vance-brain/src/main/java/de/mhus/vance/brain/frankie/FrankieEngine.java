@@ -103,6 +103,19 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>No {@code maxIterations} cap — Frankie is endless-by-design.
  *
+ * <p><b>This class is subclassed.</b>
+ * {@link de.mhus.vance.brain.trillian.TrillianWorkerEngine} runs the
+ * per-task workers of a Trillian on this loop and overrides exactly one
+ * thing — {@link #onWorkerTerminate}, so a worker that asked a question
+ * parks instead of closing. Two consequences for anyone changing this
+ * file: the constructor is part of that subclass's compile (a new
+ * dependency has to be threaded through there too, which the compiler
+ * will say loudly), and the turn loop is shared, so a change to how
+ * turns start, iterate or exit lands in Trillian's workers as well. If
+ * you need a second point where the two should differ, add a protected
+ * seam rather than a Trillian-shaped branch here — this engine knows
+ * nothing about Trillian and should stay that way.
+ *
  * <p>See {@code planning/frankie-engine.md} and
  * {@code planning/agent-stop-conditions.md}.
  */
@@ -794,10 +807,11 @@ public class FrankieEngine implements ThinkEngine {
      *
      * <p>The seam exists because "leave the loop" and "end the process"
      * are two different statements that the {@code _terminate} protocol
-     * says with one word. A subclass whose workers can also pause — to
-     * ask something and wait for an answer — overrides this to keep the
-     * process alive. Frankie itself does not have that case and behaves
-     * exactly as before.
+     * says with one word. {@link
+     * de.mhus.vance.brain.trillian.TrillianWorkerEngine} overrides this
+     * to keep a worker alive when it exited by asking a question rather
+     * than by finishing. Frankie itself does not have that case and
+     * behaves exactly as before.
      *
      * @return the status to write on exit, or {@code null} to leave it
      *         alone (which is what closing does — the close already

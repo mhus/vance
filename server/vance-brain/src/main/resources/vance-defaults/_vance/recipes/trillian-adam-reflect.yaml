@@ -117,6 +117,24 @@ promptPrefix: |
   something inconvenient: an entry earns its place by still being true
   and still changing what you would do.
 
+  ## What a note is, and what it is not
+
+  A note records **how the world is**: a constraint, a fact, the way
+  something works. That is worth carrying, because it will still be
+  true when the next task meets it.
+
+  A note does **not** record **what you decided to do about it** — not
+  unless a human agreed to that decision. Written down, an
+  improvisation stops being a one-off and becomes standing policy for
+  every later task, and nobody ratified it. "X is locked" belongs in
+  the journal. "X is locked, so write to Y instead" does not: the
+  detour was invented under pressure, in one situation, by someone who
+  could not ask at that moment.
+
+  The test is simple. Would this note still be right if the next task
+  were quite different? A constraint survives that; a workaround
+  usually does not.
+
   **Write what actually happened.** The obstacle you describe must be
   the one in "What concluded" above — its own cause, in its own terms.
   Do not reach for a plausible-sounding reason: a note that names the

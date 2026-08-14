@@ -154,6 +154,58 @@ class TrillianJournalStoreTest {
         return new TrillianJournalStore(documentService);
     }
 
+    @Test
+    void pruning_removesExactlyTheNumberedEntry() {
+        givenStored(headerPlus("- one\n- two\n- three\n"));
+
+        store().removeEntries(TENANT, PROJECT, ACCOUNT, java.util.List.of(2));
+
+        assertThat(written()).contains("- one").contains("- three").doesNotContain("- two");
+    }
+
+    @Test
+    void pruning_keepsTheOtherLinesOfAMultiLineEntry() {
+        // Nothing forbids an entry from running over several lines, and
+        // rebuilding the file from its "- " lines alone would silently
+        // delete every continuation in it.
+        givenStored(headerPlus("- one\n  with a second line\n- two\n"));
+
+        store().removeEntries(TENANT, PROJECT, ACCOUNT, java.util.List.of(2));
+
+        assertThat(written()).contains("with a second line").doesNotContain("- two");
+    }
+
+    @Test
+    void pruning_keepsWhatAHumanWroteBetweenTheEntries() {
+        // The header says editing by hand is fine, so a prune that drops
+        // everything that is not an entry is a deletion nobody asked for.
+        givenStored(headerPlus("- one\n\nNote from me: keep an eye on this.\n\n- two\n"));
+
+        store().removeEntries(TENANT, PROJECT, ACCOUNT, java.util.List.of(2));
+
+        assertThat(written()).contains("Note from me").doesNotContain("- two");
+    }
+
+    @Test
+    void anEntryIsWhatItSpansUpToTheNextOne() {
+        // The numbering the model answers against is this list, so a
+        // continuation line may not shift the positions.
+        givenStored(headerPlus("- one\n  continued\n- two\n"));
+
+        assertThat(store().entries(TENANT, PROJECT, ACCOUNT))
+                .containsExactly("- one\n  continued", "- two");
+    }
+
+    @Test
+    void pruningNothingThatMatches_writesNothing() {
+        givenStored(headerPlus("- one\n"));
+
+        store().removeEntries(TENANT, PROJECT, ACCOUNT, java.util.List.of(7));
+
+        verify(documentService, never()).upsertText(anyString(), anyString(), anyString(),
+                any(), any(), anyString(), any(), any());
+    }
+
     /** Uses the store's own header — a copy here broke the moment it changed. */
     private String headerPlus(String body) {
         return TrillianJournalStore.HEADER + "\n" + body;

@@ -158,16 +158,48 @@ public class TrillianJournalStore {
      * positions.
      */
     public List<String> entries(String tenantId, String projectId, String account) {
-        String body = body(readText(tenantId, projectId, account));
+        return blocks(body(readText(tenantId, projectId, account))).stream()
+                .filter(Block::isEntry)
+                .map(b -> b.text().strip())
+                .toList();
+    }
+
+    /**
+     * One piece of the journal: an entry (starts with {@code "- "}, and owns
+     * every line under it that does not start a new one) or a stretch of
+     * something else.
+     *
+     * <p>The something-else matters. The header invites hand-editing, an
+     * entry may be written over several lines, and a prune that rebuilt the
+     * file from the {@code "- "} lines alone would quietly delete both — a
+     * removal the caller did not ask for, in the one document whose whole
+     * point is that it is kept.
+     */
+    private record Block(String text, boolean isEntry) {
+    }
+
+    private static List<Block> blocks(@Nullable String body) {
         if (body == null) {
             return List.of();
         }
-        List<String> out = new ArrayList<>();
-        for (String line : body.split("\n")) {
-            String trimmed = line.strip();
-            if (trimmed.startsWith("- ")) {
-                out.add(trimmed);
+        List<Block> out = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean currentIsEntry = false;
+        for (String line : body.split("\n", -1)) {
+            if (line.strip().startsWith("- ")) {
+                if (!current.isEmpty()) {
+                    out.add(new Block(current.toString(), currentIsEntry));
+                    current.setLength(0);
+                }
+                currentIsEntry = true;
             }
+            if (!current.isEmpty()) {
+                current.append('\n');
+            }
+            current.append(line);
+        }
+        if (!current.isEmpty()) {
+            out.add(new Block(current.toString(), currentIsEntry));
         }
         return out;
     }
@@ -189,24 +221,36 @@ public class TrillianJournalStore {
         // reflexion must not read the same file and write it twice.
         synchronized (lockFor(tenantId, projectId, account)) {
             try {
-                List<String> entries = entries(tenantId, projectId, account);
-                if (entries.isEmpty()) {
+                List<Block> blocks = blocks(body(readText(tenantId, projectId, account)));
+                if (blocks.isEmpty()) {
                     return;
                 }
                 Set<Integer> drop = new HashSet<>(positions);
                 List<String> kept = new ArrayList<>();
-                for (int i = 0; i < entries.size(); i++) {
-                    if (!drop.contains(i + 1)) {
-                        kept.add(entries.get(i));
+                int position = 0;
+                int removed = 0;
+                for (Block block : blocks) {
+                    // Positions count entries, not blocks: what the model
+                    // saw numbered is what entries() returned.
+                    if (!block.isEntry()) {
+                        kept.add(block.text());
+                        continue;
+                    }
+                    position++;
+                    if (drop.contains(position)) {
+                        removed++;
+                    } else {
+                        kept.add(block.text());
                     }
                 }
-                if (kept.size() == entries.size()) {
+                if (removed == 0) {
                     return;
                 }
+                String body = String.join("\n", kept).strip();
                 write(tenantId, projectId, account,
-                        HEADER + "\n" + String.join("\n", kept) + (kept.isEmpty() ? "" : "\n"));
+                        HEADER + "\n" + body + (body.isEmpty() ? "" : "\n"));
                 log.info("Trillian: removed {} obsolete journal entr(y/ies) of '{}'",
-                        entries.size() - kept.size(), account);
+                        removed, account);
             } catch (RuntimeException e) {
                 log.warn("Trillian: could not prune journal of '{}': {}",
                         account, e.toString());

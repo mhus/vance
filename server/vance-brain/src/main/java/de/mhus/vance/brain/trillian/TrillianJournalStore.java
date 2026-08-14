@@ -3,8 +3,12 @@ package de.mhus.vance.brain.trillian;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.permission.WriteActor;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -21,9 +25,20 @@ import org.springframework.stereotype.Service;
  * file would let the agent rewrite what the human set, and would make a
  * hand-edit race with the next reflexion.
  *
- * <p>Append-only for the same reason a fact journal is: a Trillian that
- * may rewrite its history can quietly erase the entry that would have
- * stopped it repeating a mistake.
+ * <p><b>Entries can be removed.</b> An append-only journal was the first
+ * design, on the argument that an agent allowed to delete will eventually
+ * delete the inconvenient entry unseen. That argument does not survive
+ * contact with document versioning: a removed line is still in the
+ * previous version, so nothing disappears unnoticed anyway. What
+ * append-only does buy is a file that only grows — and every line of it
+ * is rendered into a prompt on every turn. Since notes go stale (the
+ * project changes) and are sometimes simply wrong, a journal without a
+ * way back accumulates exactly the material nobody wants in a prompt.
+ *
+ * <p>Removal happens through the reflexion pass, which already has the
+ * journal in front of it — so pruning occurs at the moment something new
+ * is learned, which is also the moment an old note is noticed to be
+ * obsolete.
  */
 @Service
 @RequiredArgsConstructor
@@ -86,11 +101,7 @@ public class TrillianJournalStore {
                 String body = existing == null || existing.isBlank()
                         ? HEADER + "\n" + entry.strip() + "\n"
                         : existing.stripTrailing() + "\n" + entry.strip() + "\n";
-                documentService.upsertText(
-                        tenantId, projectId, pathFor(account),
-                        DOC_TITLE_PREFIX + account, TAGS, body,
-                        /*createdBy*/ account,
-                        WriteActor.SYSTEM);
+                write(tenantId, projectId, account, body);
             } catch (RuntimeException e) {
                 log.warn("Trillian: could not append to journal of '{}': {}",
                         account, e.toString());
@@ -116,16 +127,12 @@ public class TrillianJournalStore {
      * than render an empty heading.
      */
     public @Nullable String tail(String tenantId, String projectId, String account) {
-        String text = readText(tenantId, projectId, account);
-        if (text == null || text.isBlank()) {
-            return null;
-        }
-        // Drop the self-describing header: it explains the file to a
-        // human opening it and says nothing to the Trillian. Matched as a
-        // prefix rather than parsed, so editing HEADER cannot silently
-        // start leaking it into the prompt.
-        String body = (text.startsWith(HEADER) ? text.substring(HEADER.length()) : text).strip();
-        if (body.isEmpty()) {
+        // body() drops the self-describing header: it explains the file
+        // to a human opening it and says nothing to the Trillian. Matched
+        // as a prefix rather than parsed, so editing HEADER cannot
+        // silently start leaking it into the prompt.
+        String body = body(readText(tenantId, projectId, account));
+        if (body == null) {
             return null;
         }
         if (body.length() <= PROMPT_BUDGET_CHARS) {
@@ -134,6 +141,87 @@ public class TrillianJournalStore {
         String cut = body.substring(body.length() - PROMPT_BUDGET_CHARS);
         int nl = cut.indexOf('\n');
         return (nl >= 0 ? cut.substring(nl + 1) : cut).strip();
+    }
+
+    /**
+     * The individual entries, oldest first — one per line, each starting
+     * with {@code "- "}. This is the list the reflexion pass sees
+     * numbered, so its {@code remove} indices refer to exactly these
+     * positions.
+     */
+    public List<String> entries(String tenantId, String projectId, String account) {
+        String body = body(readText(tenantId, projectId, account));
+        if (body == null) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (String line : body.split("\n")) {
+            String trimmed = line.strip();
+            if (trimmed.startsWith("- ")) {
+                out.add(trimmed);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Drops the entries at the given 1-based positions and rewrites the
+     * document.
+     *
+     * <p>Out-of-range positions are ignored rather than rejected: the
+     * caller is an LLM working from a numbered list, and a stray index
+     * should cost one skipped removal, not the whole write.
+     */
+    public void removeEntries(String tenantId, String projectId, String account,
+            Collection<Integer> positions) {
+        if (positions.isEmpty()) {
+            return;
+        }
+        // Same monitor as append: a prune and an append in the same
+        // reflexion must not read the same file and write it twice.
+        synchronized (lockFor(tenantId, projectId, account)) {
+            try {
+                List<String> entries = entries(tenantId, projectId, account);
+                if (entries.isEmpty()) {
+                    return;
+                }
+                Set<Integer> drop = new HashSet<>(positions);
+                List<String> kept = new ArrayList<>();
+                for (int i = 0; i < entries.size(); i++) {
+                    if (!drop.contains(i + 1)) {
+                        kept.add(entries.get(i));
+                    }
+                }
+                if (kept.size() == entries.size()) {
+                    return;
+                }
+                write(tenantId, projectId, account,
+                        HEADER + "\n" + String.join("\n", kept) + (kept.isEmpty() ? "" : "\n"));
+                log.info("Trillian: removed {} obsolete journal entr(y/ies) of '{}'",
+                        entries.size() - kept.size(), account);
+            } catch (RuntimeException e) {
+                log.warn("Trillian: could not prune journal of '{}': {}",
+                        account, e.toString());
+            }
+        }
+    }
+
+    private void write(String tenantId, String projectId, String account, String body) {
+        documentService.upsertText(
+                tenantId, projectId, pathFor(account),
+                DOC_TITLE_PREFIX + account, TAGS, body,
+                /*createdBy*/ account,
+                WriteActor.SYSTEM);
+    }
+
+    /** The entry part of the file, header stripped; {@code null} when empty. */
+    private @Nullable String body(@Nullable String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        String stripped =
+                (text.startsWith(HEADER) ? text.substring(HEADER.length()) : text).strip();
+        return stripped.isEmpty() ? null : stripped;
     }
 
     /** Removes the journal — the account it belongs to is going away. */

@@ -7,6 +7,7 @@ import de.mhus.vance.brain.trillian.TrillianJournalStore;
 import de.mhus.vance.brain.trillian.TrillianSessionBootstrapper;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -50,7 +51,12 @@ public class TrillianNatureAdam extends TrillianNatureBase {
             "type", "object",
             "properties", Map.of(
                     "keep", Map.of("type", "boolean"),
-                    "entry", Map.of("type", "string")),
+                    "entry", Map.of("type", "string"),
+                    // Positions in the numbered journal handed to the
+                    // pass. Optional: most reflexions prune nothing.
+                    "remove", Map.of(
+                            "type", "array",
+                            "items", Map.of("type", "integer"))),
             "required", java.util.List.of("keep", "entry"));
 
     private final TrillianAttributeStore attributeStore;
@@ -139,6 +145,11 @@ public class TrillianNatureAdam extends TrillianNatureBase {
         String tenantId = worker.getTenantId();
         String projectId = worker.getProjectId();
         try {
+            // Numbered, because the pass may point at entries to drop —
+            // by position, not by quoting them back: a model asked to
+            // repeat a line verbatim in order to delete it will sooner or
+            // later delete something it mistyped.
+            List<String> existing = journalStore.entries(tenantId, projectId, account);
             Map<String, Object> reply = lightLlm.callForJson(LightLlmRequest.builder()
                     .recipeName(REFLECT_RECIPE)
                     .userPrompt(summary)
@@ -149,12 +160,18 @@ public class TrillianNatureAdam extends TrillianNatureBase {
                             // The existing notes are what makes "already
                             // known" answerable — without them the pass
                             // rewrites the same lesson every time.
-                            "journal", nullToEmpty(
-                                    journalStore.tail(tenantId, projectId, account))))
+                            "journal", numbered(existing)))
                     .schema(REFLECT_SCHEMA)
                     .tenantId(tenantId)
                     .projectId(projectId)
                     .build());
+
+            // Prune before appending, so a position never refers to the
+            // line this same reflexion just added.
+            List<Integer> obsolete = positions(reply.get("remove"), existing.size());
+            if (!obsolete.isEmpty()) {
+                journalStore.removeEntries(tenantId, projectId, account, obsolete);
+            }
             if (!Boolean.TRUE.equals(reply.get("keep"))) {
                 return;
             }
@@ -193,8 +210,40 @@ public class TrillianNatureAdam extends TrillianNatureBase {
                 + journal + "\n";
     }
 
-    private static String nullToEmpty(@Nullable String value) {
-        return value == null ? "" : value;
+    /** The journal as a numbered list, or empty when there is none. */
+    private static String numbered(List<String> entries) {
+        if (entries.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < entries.size(); i++) {
+            String text = entries.get(i);
+            sb.append(i + 1).append(". ")
+                    .append(text.startsWith("- ") ? text.substring(2) : text)
+                    .append('\n');
+        }
+        return sb.toString();
+    }
+
+    /**
+     * The {@code remove} array as valid 1-based positions. Anything that
+     * is not an in-range integer is dropped silently — a stray index
+     * should cost one skipped prune, not the whole reflexion.
+     */
+    private static List<Integer> positions(@Nullable Object raw, int size) {
+        if (!(raw instanceof java.util.Collection<?> values) || size == 0) {
+            return List.of();
+        }
+        List<Integer> out = new java.util.ArrayList<>();
+        for (Object value : values) {
+            if (value instanceof Number n) {
+                int pos = n.intValue();
+                if (pos >= 1 && pos <= size && !out.contains(pos)) {
+                    out.add(pos);
+                }
+            }
+        }
+        return out;
     }
 
     /** The service account off the worker's own wiring. */

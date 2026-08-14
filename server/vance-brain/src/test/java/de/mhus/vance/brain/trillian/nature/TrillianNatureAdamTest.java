@@ -167,6 +167,53 @@ class TrillianNatureAdamTest {
     }
 
     @Test
+    void obsoleteEntries_arePrunedByPosition() {
+        when(journalStore.entries(TENANT, PROJECT, ACCOUNT))
+                .thenReturn(java.util.List.of("- one", "- two", "- three"));
+        when(lightLlm.callForJson(any())).thenReturn(
+                Map.of("keep", false, "entry", "", "remove", java.util.List.of(2)));
+
+        adam().taskConcluded(worker(ACCOUNT), "task-1",
+                TrillianNature.TaskOutcome.DONE, "done");
+
+        verify(journalStore).removeEntries(TENANT, PROJECT, ACCOUNT, java.util.List.of(2));
+    }
+
+    @Test
+    void pruningHappensBeforeAppending() {
+        // Otherwise a position could point at the line this very
+        // reflexion just added.
+        when(journalStore.entries(TENANT, PROJECT, ACCOUNT))
+                .thenReturn(java.util.List.of("- stale"));
+        when(lightLlm.callForJson(any())).thenReturn(
+                Map.of("keep", true, "entry", "- fresh", "remove", java.util.List.of(1)));
+
+        adam().taskConcluded(worker(ACCOUNT), "task-1",
+                TrillianNature.TaskOutcome.DONE, "done");
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(journalStore);
+        order.verify(journalStore).removeEntries(TENANT, PROJECT, ACCOUNT, java.util.List.of(1));
+        order.verify(journalStore).append(TENANT, PROJECT, ACCOUNT, "- fresh");
+    }
+
+    @Test
+    void aStrayPosition_costsOnlyThatPrune() {
+        // The indices come from an LLM reading a numbered list. One bad
+        // number must not take the reflexion down with it.
+        when(journalStore.entries(TENANT, PROJECT, ACCOUNT))
+                .thenReturn(java.util.List.of("- one"));
+        when(lightLlm.callForJson(any())).thenReturn(Map.of(
+                "keep", true, "entry", "- fresh",
+                "remove", java.util.List.of(0, 7, "x")));
+
+        adam().taskConcluded(worker(ACCOUNT), "task-1",
+                TrillianNature.TaskOutcome.DONE, "done");
+
+        verify(journalStore, never()).removeEntries(any(), any(), any(), any());
+        verify(journalStore).append(TENANT, PROJECT, ACCOUNT, "- fresh");
+    }
+
+    @Test
     void adamInheritsTheAttributeRendering() {
         // Rendering comes from TrillianNatureBase, not from Nature-0: it
         // is shared mechanics, and adam must not pick up whatever

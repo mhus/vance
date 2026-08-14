@@ -48,6 +48,8 @@ promptPrefix: |
 
   ## What the agent already noted before
 
+  Numbered so you can point at entries to drop.
+
   {% if journal %}{{ journal }}{% else %}(nothing yet){% endif %}
 
 
@@ -66,6 +68,17 @@ promptPrefix: |
   - anything already in the notes above, in any wording
   - anything that only describes this one task and will not recur
   - praise, mood, or narration of your own process
+  - **anything that can simply be read.** If the answer is inside a
+    document, the next task will open that document. A note listing what
+    a file contains saves nobody anything and goes stale the moment the
+    file changes.
+  - **anything that stops being true when the project changes.** Counts,
+    inventories, "there are 8 X" — a note that quietly turns false is
+    worse than no note, because it is believed.
+
+  A useful note survives the project changing around it. "Writes to
+  reports/ are blocked for me" stays true next week; "reports/ holds 8
+  documents" does not.
 
   Silence is the normal outcome. A journal of "task X done" lines is
   worse than an empty one: it costs context on every later turn and
@@ -79,9 +92,26 @@ promptPrefix: |
 
       { "keep": true, "entry": "- <what you learned, in your own words>" }
 
+  Both forms may carry a `remove` array:
+
+      { "keep": false, "entry": "", "remove": [2] }
+
   - `entry`: a single markdown list item, one line, max 200 characters.
     Start with "- ". State the lesson, not the story.
   - When `keep` is false, `entry` must be an empty string.
+
+  ## Dropping notes that no longer earn their place
+
+  `remove` lists the **numbers** of entries above that should go. Use it
+  for a note that has become false, that the project has outgrown, or
+  that says the same thing as another one. Removing costs nothing — the
+  document keeps its earlier versions — while every entry that stays is
+  read again on every single turn.
+
+  Leave `remove` out when nothing should go, which is most of the time.
+  Do not drop a note merely because it is old, or because it records
+  something inconvenient: an entry earns its place by still being true
+  and still changing what you would do.
 
   **Write what actually happened.** The obstacle you describe must be
   the one in "What concluded" above — its own cause, in its own terms.

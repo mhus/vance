@@ -53,4 +53,16 @@ public class MagratheaProperties {
      * <p>Held tasks are exempt: a paused run is stalled on purpose.
      */
     private Duration stallCeiling = Duration.ofDays(14);
+
+    /**
+     * How often the watchdog looks — bound in
+     * {@code MagratheaWatchdogScanner}'s {@code @Scheduled} placeholder
+     * ({@code vance.magrathea.watchdog-interval}), which resolves before
+     * this bean exists; the field is here so the key is documented in one
+     * place with the rest.
+     *
+     * <p>Unrelated to the ceiling: it decides how late a verdict may be,
+     * not when it is due. An hour against a fourteen-day ceiling.
+     */
+    private Duration watchdogInterval = Duration.ofHours(1);
 }

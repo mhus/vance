@@ -62,7 +62,6 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class MagratheaWatchdogScanner {
 
-    private static final long SCAN_INTERVAL_MS = 300_000L;
     private static final int SCAN_BATCH = 64;
 
     private final MagratheaTaskService taskService;
@@ -71,7 +70,16 @@ public class MagratheaWatchdogScanner {
     /** Absent when the cluster-master feature is off — then this pod is alone. */
     private final ObjectProvider<ClusterMasterService> masterServiceProvider;
 
-    @Scheduled(fixedDelay = SCAN_INTERVAL_MS, initialDelay = SCAN_INTERVAL_MS)
+    /**
+     * The cadence is unrelated to the ceiling: it decides how late a
+     * verdict may be, not when it is due. Against a fourteen-day ceiling
+     * an hour of lateness is nothing, so an hour is the cadence — a run
+     * that has stood for two weeks is not more urgent for having stood
+     * two weeks and five minutes.
+     */
+    @Scheduled(
+            fixedDelayString = "${vance.magrathea.watchdog-interval:PT1H}",
+            initialDelayString = "${vance.magrathea.watchdog-interval:PT1H}")
     public void scan() {
         if (!isResponsiblePod()) return;
 

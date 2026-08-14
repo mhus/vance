@@ -117,6 +117,26 @@ vance:
   services:
     storage-cleanup: true         # this brain instance runs the cleanup
     magrathea: true                  # workflow subsystem (planning/workflow-service.md)
+  magrathea:
+    # Deadlines against a run that stops moving. These are nets against
+    # DEFECTS, not business deadlines — a workflow with a real deadline
+    # writes timeoutSeconds: on the state. See workflows.md §12a.
+    #
+    # Fires when a state declares no timeoutSeconds:. Split by who is
+    # being waited for, because the legitimate waits differ by orders of
+    # magnitude. Recoverable — routes outcome: timeout through on:/catch:.
+    # A declared 0 opts a state out; a 0 here switches the default off.
+    default-agent-timeout: PT2H        # agent_task    — a ThinkProcess
+    default-gate-timeout: P7D          # gate_task     — a person
+    default-sub-workflow-timeout: PT24H  # workflow_task — a sub-run
+    # Backstop behind those: a task non-terminal for this long means the
+    # run is stalled, whatever the reason, and it is failed with the full
+    # unwind. Deliberately far above the deadlines above — reaching it
+    # means they failed too. Master-pod only. 0 switches it off.
+    stall-ceiling: P14D
+    # How often the watchdog looks. Decides how late a verdict may be,
+    # not when it is due — an hour against a 14-day ceiling is nothing.
+    watchdog-interval: PT1H
   # WebSocket layer — bound by VanceBrainProperties (prefix vance.ws). These
   # keys previously sat under vance.services by mistake and never bound, so the
   # welcome message silently fell back to the Java defaults. serverVersion now

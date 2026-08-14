@@ -6,6 +6,7 @@ import de.mhus.vance.api.magrathea.MagratheaTaskStatus;
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.api.magrathea.RunCapability;
 import de.mhus.vance.api.thinkprocess.CloseReason;
+import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.magrathea.MagratheaBoundsSpec;
@@ -474,6 +475,23 @@ public class MagratheaWorkflowService {
                         StatusRecord.builder().status(terminalStatus).reason(reason).build());
                 recordTerminalMetrics(workflowNameOf(tenantId, projectId, workflowRunId),
                         terminalStatus, tenantId, projectId, workflowRunId);
+                // Whoever owns this run finds out here or not at all: no
+                // task completion follows a stop or a watchdog fail, so the
+                // TERMINAL branch of onTaskCompleted never runs for it. A
+                // stop that a Vogon issued on itself gets the message back,
+                // which is harmless — the process is closing either way.
+                //
+                // The two ways in keep their meaning: a stop is a decision
+                // somebody made, a stall is a defect, and an owner that is
+                // told "failed" about its own stop would report it as one.
+                ProcessEventType eventType = terminalStatus == MagratheaRunStatus.FAILED
+                        ? ProcessEventType.FAILED
+                        : ProcessEventType.STOPPED;
+                journalService.readLast(tenantId, projectId, workflowRunId, StartRecord.class)
+                        .ifPresent(s -> ownerNotifier.runTerminated(
+                                s.getOwnerProcessId(), workflowRunId, eventType,
+                                "Workflow run " + terminalStatus.name().toLowerCase(Locale.ROOT)
+                                        + ": " + reason));
             }
             // Says what was ended, not just what was blocked: "0 held" on a
             // run whose only task was already claimed reads like nothing
@@ -757,8 +775,8 @@ public class MagratheaWorkflowService {
                     start.get().getOwnerProcessId(),
                     event.workflowRunId(),
                     runStatus == MagratheaRunStatus.DONE
-                            ? de.mhus.vance.api.thinkprocess.ProcessEventType.DONE
-                            : de.mhus.vance.api.thinkprocess.ProcessEventType.FAILED,
+                            ? ProcessEventType.DONE
+                            : ProcessEventType.FAILED,
                     terminalSummary(event, runStatus));
             log.info("Magrathea run {} reached terminal '{}' → {}",
                     event.workflowRunId(), event.stateName(), runStatus);
@@ -1022,6 +1040,13 @@ public class MagratheaWorkflowService {
         // unparseable frozen YAML. For a top-level run (no parent in the
         // StartRecord) the listener no-ops, so this is safe to fire always.
         start.ifPresent(s -> publishWorkflowCompleted(event, s, MagratheaRunStatus.FAILED));
+        // The same argument for the process that owns the run. A parent
+        // workflow_task and an owning ThinkProcess are two different waiters
+        // on the same event, and telling only the first leaves a Vogon
+        // process idling forever behind a run that already ended.
+        start.ifPresent(s -> ownerNotifier.runTerminated(
+                s.getOwnerProcessId(), event.workflowRunId(), ProcessEventType.FAILED,
+                "Workflow run failed: " + reason));
     }
 
     /**

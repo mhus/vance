@@ -89,9 +89,11 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
     private final de.mhus.vance.shared.magrathea.MagratheaStateProjector stateProjector =
             mock(de.mhus.vance.shared.magrathea.MagratheaStateProjector.class);
 
+    private final MagratheaOwnerNotifier ownerNotifier = mock(MagratheaOwnerNotifier.class);
+
     private final MagratheaWorkflowService workflowService = new MagratheaWorkflowService(
             workflowLoader, documentService, journalService, taskService, laneManager, taskExecutor,
-            localDispatch, stateProjector, mock(MagratheaOwnerNotifier.class), eventPublisher, metricService, thinkProcessService, inboxItemService,
+            localDispatch, stateProjector, ownerNotifier, eventPublisher, metricService, thinkProcessService, inboxItemService,
             timerService);
 
     private final List<MagratheaTaskDocument> insertedTasks = new ArrayList<>();
@@ -259,6 +261,32 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
         StatusRecord status = (StatusRecord) appendedRecords.stream()
                 .filter(r -> r instanceof StatusRecord).reduce((a, b) -> b).orElseThrow();
         assertThat(status.getReason()).contains("bounds exhausted").contains("maxTaskSpawns");
+    }
+
+    @Test
+    void aRunThatFailsWithoutReachingATerminal_stillTellsItsOwner() {
+        // Only the TERMINAL branch notifies the owner, and none of the
+        // failure paths goes through it. A Vogon that is not told sits
+        // IDLE behind a run that ended, for good.
+        StartRecord start = StartRecord.builder()
+                .workflowName("bounded-wf").definitionYaml(YAML_WITH_BOUNDS)
+                .ownerProcessId("vogon-1").build();
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
+                .thenReturn(Optional.of(start));
+        when(journalService.count(any(), any(), any(), eq(TaskStartedRecord.class))).thenReturn(3L);
+
+        String runId = workflowService.start("acme", "proj", "bounded-wf", Map.of(), null);
+        MagratheaTaskDocument firstTask = insertedTasks.get(0);
+
+        workflowService.handleCompletion(new TaskCompletedEvent(
+                "acme", "proj", runId, firstTask.getId(), "loop",
+                MagratheaTaskType.CONDITION_TASK, TaskCompletedEvent.OUTCOME_SUCCESS,
+                null, null, 1L, "loop"));
+
+        org.mockito.Mockito.verify(ownerNotifier).runTerminated(
+                eq("vogon-1"), eq(runId),
+                eq(de.mhus.vance.api.thinkprocess.ProcessEventType.FAILED),
+                org.mockito.ArgumentMatchers.contains("bounds exhausted"));
     }
 
     @Test

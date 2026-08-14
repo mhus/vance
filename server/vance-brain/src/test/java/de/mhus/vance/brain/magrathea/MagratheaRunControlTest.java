@@ -43,6 +43,7 @@ class MagratheaRunControlTest {
     private final de.mhus.vance.shared.inbox.InboxItemService inbox =
             mock(de.mhus.vance.shared.inbox.InboxItemService.class);
     private final MagratheaTimerService timers = mock(MagratheaTimerService.class);
+    private final MagratheaOwnerNotifier ownerNotifier = mock(MagratheaOwnerNotifier.class);
 
     private final MagratheaWorkflowService service = new MagratheaWorkflowService(
             mock(MagratheaWorkflowLoader.class),
@@ -50,7 +51,7 @@ class MagratheaRunControlTest {
             journal, tasks, lanes, mock(MagratheaTaskExecutor.class),
             mock(MagratheaLocalDispatch.class),
             mock(de.mhus.vance.shared.magrathea.MagratheaStateProjector.class),
-            mock(MagratheaOwnerNotifier.class),
+            ownerNotifier,
             mock(org.springframework.context.ApplicationEventPublisher.class),
             new de.mhus.vance.shared.metric.MetricService(
                     new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
@@ -171,6 +172,55 @@ class MagratheaRunControlTest {
         // The child run is stopped through the same path, so its own
         // in-flight work is unwound too.
         verify(tasks).holdRun("r2");
+    }
+
+    @Test
+    void aStoppedRunTellsItsOwnerItIsOver() {
+        // No task completion follows a stop, so the branch that normally
+        // notifies never runs. Told "stopped" and not "failed": the owner
+        // reports what it hears, and a stop is a decision, not a defect.
+        status(MagratheaRunStatus.RUNNING);
+        owner("vogon-1");
+
+        service.stopRun("acme", "proj", "r1", "why");
+
+        verify(ownerNotifier).runTerminated(
+                eq("vogon-1"), eq("r1"),
+                eq(de.mhus.vance.api.thinkprocess.ProcessEventType.STOPPED), any());
+    }
+
+    @Test
+    void aRunTheWatchdogFailsTellsItsOwnerToo() {
+        status(MagratheaRunStatus.RUNNING);
+        owner("vogon-1");
+
+        service.failStalledRun("acme", "proj", "r1", "stalled");
+
+        verify(ownerNotifier).runTerminated(
+                eq("vogon-1"), eq("r1"),
+                eq(de.mhus.vance.api.thinkprocess.ProcessEventType.FAILED), any());
+    }
+
+    @Test
+    void aRunThatIsStillWorkingTellsNobodyYet() {
+        // STOPPING is not terminal — the shell task is still out there,
+        // and the owner would be told about an end that has not happened.
+        status(MagratheaRunStatus.RUNNING);
+        owner("vogon-1");
+        when(tasks.findByRun("r1")).thenReturn(List.of(
+                claimed("t1", MagratheaTaskType.SHELL_TASK, t -> { })));
+
+        service.stopRun("acme", "proj", "r1", "why");
+
+        verify(ownerNotifier, never()).runTerminated(any(), any(), any(), any());
+    }
+
+    private void owner(String processId) {
+        when(journal.readLast(any(), any(), eq("r1"),
+                eq(de.mhus.vance.shared.magrathea.journal.StartRecord.class)))
+                .thenReturn(Optional.of(
+                        de.mhus.vance.shared.magrathea.journal.StartRecord.builder()
+                                .workflowName("wf").ownerProcessId(processId).build()));
     }
 
     private void status(MagratheaRunStatus status) {

@@ -55,6 +55,7 @@ public class TrillianAskTool implements Tool {
 
     private final ThinkProcessService thinkProcessService;
     private final ChatMessageService chatMessageService;
+    private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
 
     @Override
     public String name() {
@@ -100,10 +101,14 @@ public class TrillianAskTool implements Tool {
         thinkProcessService.setEngineParamOverride(
                 ctx.processId(), TrillianWorkerEngine.PARAM_ASK_PENDING, true);
 
-        // Persisted as an assistant message for the same reason
-        // trillian_done persists its summary: that is what
-        // ParentNotificationListener.enrichWithLastReply reads, and it is
-        // how the question reaches Trillian-User.
+        // Persist and then hand the question to the parent.
+        //
+        // The push is the load-bearing half. Frankie routes a worker's
+        // words to its parent from the natural-stop path only — this exit
+        // leaves through _terminate, where nothing notifies anyone. A
+        // parked worker whose question never arrives is worse than one
+        // that closed: the loop waits, the human hears nothing, and
+        // nothing in the system looks wrong.
         try {
             ThinkProcessDocument process =
                     thinkProcessService.findById(ctx.processId()).orElse(null);
@@ -115,9 +120,12 @@ public class TrillianAskTool implements Tool {
                         .role(ChatRole.ASSISTANT)
                         .content(text)
                         .build());
+                // Same channel a natural stop would use, so the loop sees
+                // the <worker-reply> shape it already knows.
+                progressEmitter.emitReply(process, text, /*inResponseToAt*/ null, null);
             }
         } catch (RuntimeException e) {
-            log.warn("trillian_ask: could not persist the question of process='{}': {}",
+            log.warn("trillian_ask: could not deliver the question of process='{}': {}",
                     ctx.processId(), e.toString());
         }
         log.info("Trillian worker id='{}' asks: {}", ctx.processId(),

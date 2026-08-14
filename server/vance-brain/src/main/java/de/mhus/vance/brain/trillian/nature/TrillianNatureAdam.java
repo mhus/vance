@@ -59,6 +59,9 @@ public class TrillianNatureAdam extends TrillianNatureBase {
                             "items", Map.of("type", "integer"))),
             "required", java.util.List.of("keep", "entry"));
 
+    /** Only picks a name and a trait — nothing here needs to be unguessable. */
+    private final java.util.Random random = new java.util.Random();
+
     private final TrillianAttributeStore attributeStore;
     private final TrillianJournalStore journalStore;
     private final LightLlmService lightLlm;
@@ -91,8 +94,17 @@ public class TrillianNatureAdam extends TrillianNatureBase {
         if (!stored.isEmpty()) {
             log.info("Trillian adam: seeded {} attribute(s) for '{}' from {}",
                     stored.size(), account, TrillianAttributeStore.pathFor(account));
+            return stored;
         }
-        return stored;
+        // Nothing stored: this account has never run. Give it a
+        // character — and write it down immediately, because an identity
+        // regenerated on the next boot is not an identity.
+        Map<String, Object> character = TrillianCharacter.generate(random);
+        attributeStore.save(tenantId, projectId, account, character);
+        log.info("Trillian adam: '{}' starts as '{}' ({})", account,
+                character.get(TrillianCharacter.ATTR_NAME),
+                character.get(TrillianCharacter.ATTR_GENDER));
+        return character;
     }
 
     @Override

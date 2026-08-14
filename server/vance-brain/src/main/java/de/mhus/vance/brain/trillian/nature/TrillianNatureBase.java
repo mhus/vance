@@ -79,10 +79,12 @@ public abstract class TrillianNatureBase implements TrillianNature {
         }
         StringBuilder sb = new StringBuilder();
         sb.append("## Attributes (").append(context).append(")\n\n");
-        sb.append("The human has configured the following attributes on this ")
-                .append("Trillian. Read them and let them shape how you act — ")
-                .append("they apply to both Control and the User-Loop, so the ")
-                .append("whole Trillian behaves consistently.\n\n");
+        sb.append("Who this Trillian is. Some of it was set when the ")
+                .append("Trillian was created, the rest by the human since; ")
+                .append("either way it is not decoration. Read it and let it ")
+                .append("shape how you act — it applies to both Control and ")
+                .append("the User-Loop, so the whole Trillian behaves as one.")
+                .append("\n\n");
         for (Map.Entry<String, Object> e : attrs.entrySet()) {
             sb.append("- **").append(e.getKey()).append(":** ")
                     .append(formatValue(e.getValue())).append('\n');

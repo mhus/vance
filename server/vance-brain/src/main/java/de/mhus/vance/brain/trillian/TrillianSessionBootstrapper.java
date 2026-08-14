@@ -330,6 +330,13 @@ public class TrillianSessionBootstrapper {
             log.info("Restored {} Trillian attribute(s) for control session '{}'",
                     carried.size(), controlSession.getSessionId());
         }
+        // A Nature that names its Trillians gets that name onto the
+        // account, so the UI shows "Ada" rather than "Trillian adam-4711".
+        // Only on mint: after that the title is the human's to change, and
+        // rewriting it on every bootstrap would undo their rename.
+        if (!adopted) {
+            adoptCharacterName(controlSession.getTenantId(), trillianName, carried);
+        }
         userParams.put(PARAM_WORKER_RECIPE, WORKER_RECIPE_PREFIX + nature);
         userParams.put(PARAM_PEER_PROCESS_ID, controlProcess.getId());
         userParams.put(PARAM_PEER_SESSION_ID, controlSession.getSessionId());
@@ -514,6 +521,26 @@ public class TrillianSessionBootstrapper {
                 ThinkProcessDocument::getCreatedAt,
                 java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())).reversed());
         return processes;
+    }
+
+    /**
+     * Sets the account title from the Nature's {@code name} attribute,
+     * when it has one. Cosmetic and best-effort — a Trillian without a
+     * title is odd-looking, one that fails to bootstrap is broken.
+     */
+    private void adoptCharacterName(
+            String tenantId, String trillianName, Map<String, Object> attributes) {
+        Object given = attributes.get("name");
+        if (!(given instanceof String name) || name.isBlank()) {
+            return;
+        }
+        try {
+            userService.update(tenantId, trillianName, name.strip(),
+                    /*email*/ null, /*status*/ null, /*loginEnabled*/ null);
+        } catch (RuntimeException e) {
+            log.warn("Trillian: could not title account '{}' as '{}': {}",
+                    trillianName, name, e.toString());
+        }
     }
 
     /**

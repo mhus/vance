@@ -51,6 +51,41 @@ class TrillianNatureAdamTest {
     }
 
     @Test
+    void aBrandNewAccount_getsACharacter() {
+        when(attributeStore.load(TENANT, PROJECT, ACCOUNT)).thenReturn(Map.of());
+
+        Map<String, Object> attrs = adam().initialAttributes(TENANT, PROJECT, ACCOUNT);
+
+        // A worker called _trillian-adam-4711 is a process; one called
+        // Ada is someone a human can talk about.
+        assertThat(attrs).containsKeys("name", "gender", "character");
+        assertThat((String) attrs.get("name")).startsWith("A");
+    }
+
+    @Test
+    void aGeneratedCharacter_isWrittenDownAtOnce() {
+        // Otherwise the next boot generates a different name, and an
+        // identity regenerated on restart is not an identity.
+        when(attributeStore.load(TENANT, PROJECT, ACCOUNT)).thenReturn(Map.of());
+
+        Map<String, Object> attrs = adam().initialAttributes(TENANT, PROJECT, ACCOUNT);
+
+        verify(attributeStore).save(TENANT, PROJECT, ACCOUNT, attrs);
+    }
+
+    @Test
+    void anAccountThatAlreadyHasAttributes_keepsThem() {
+        // Including a name the human changed — a generated character is a
+        // starting point, not a fact about the Trillian.
+        when(attributeStore.load(TENANT, PROJECT, ACCOUNT))
+                .thenReturn(Map.of("name", "Zaphod"));
+
+        assertThat(adam().initialAttributes(TENANT, PROJECT, ACCOUNT))
+                .containsEntry("name", "Zaphod");
+        verify(attributeStore, never()).save(any(), any(), any(), any());
+    }
+
+    @Test
     void aFreshWorker_isSeededFromTheStore() {
         when(attributeStore.load(TENANT, PROJECT, ACCOUNT))
                 .thenReturn(Map.of("language", "Deutsch"));

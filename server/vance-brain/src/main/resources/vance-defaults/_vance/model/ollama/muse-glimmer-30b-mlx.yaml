@@ -1,0 +1,7 @@
+wireName: muse-glimmer:30b-mlx
+contextWindowTokens: 131072
+defaultMaxOutputTokens: 8192
+size: LARGE
+capabilities:
+- vision
+timeoutSeconds: 600

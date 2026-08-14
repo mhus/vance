@@ -52,6 +52,9 @@ public class TrillianWakeupService {
      */
     public static final String COMMAND_SELF_CHECK = "trillian_self_check";
 
+    /** ExternalCommand param carrying the rendered findings. */
+    public static final String PARAM_FINDINGS = "findings";
+
     /** engineParamOverrides key: epoch millis of the next self-check. */
     public static final String PARAM_NEXT_WAKEUP_AT = "trillianNextWakeupAt";
     /** engineParamOverrides key: index into {@link #LADDER}. */

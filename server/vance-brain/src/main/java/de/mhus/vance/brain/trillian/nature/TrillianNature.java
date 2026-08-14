@@ -2,6 +2,7 @@ package de.mhus.vance.brain.trillian.nature;
 
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -121,6 +122,26 @@ public interface TrillianNature {
      */
     default String callName(Map<String, Object> attributes) {
         return "Trillian";
+    }
+
+    /**
+     * What, if anything, is worth waking this Trillian up for right now.
+     *
+     * <p>Called by the heartbeat before any turn is run. An empty list
+     * means the wakeup is dropped and simply re-armed — no model call, no
+     * tokens. That is the whole economics of the feature: looking around
+     * every hour costs one query, and only a real finding costs a turn.
+     *
+     * <p>Gather deterministically. Judging whether a blocked worker was
+     * making progress is the model's job on the turn that follows; deciding
+     * that a blocked worker exists is not.
+     *
+     * <p>Default empty — a Nature that does not say what it watches for
+     * never wakes up, which is the right behaviour for a baseline that is
+     * meant to be purely reactive.
+     */
+    default List<SelfCheckFinding> selfCheckFindings(ThinkProcessDocument loop) {
+        return List.of();
     }
 
     // ─── Attribute durability ─────────────────────────────────────

@@ -681,10 +681,21 @@ public class TrillianUserEngine implements ThinkEngine {
         if (m instanceof SteerMessage.ExternalCommand ec) {
             if (TrillianWakeupService.COMMAND_SELF_CHECK.equals(ec.command())) {
                 // Named plainly, because the turn it should produce is
-                // unlike any other: nobody asked anything, and "nothing
-                // to do" is the good outcome.
-                return "<self-check>Nobody asked you anything — this is your own"
-                        + " periodic look around.</self-check>";
+                // unlike any other: nobody asked anything. The findings
+                // are why it was worth waking at all — the heartbeat does
+                // not run a turn without them.
+                StringBuilder sb = new StringBuilder("<self-check>\n");
+                sb.append("Nobody asked you anything. You woke on your own clock, "
+                        + "and these are the things that will not resolve themselves:\n");
+                Object findings = ec.params() == null
+                        ? null : ec.params().get(TrillianWakeupService.PARAM_FINDINGS);
+                if (findings instanceof java.util.Collection<?> lines) {
+                    for (Object line : lines) {
+                        sb.append(escapeText(String.valueOf(line))).append('\n');
+                    }
+                }
+                sb.append("</self-check>");
+                return sb.toString();
             }
             return "<external-command command=\""
                     + escapeAttr(ec.command()) + "\">"

@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.trillian.TrillianAttributeStore;
 import de.mhus.vance.brain.trillian.TrillianSessionBootstrapper;
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.LinkedHashMap;
@@ -269,6 +270,83 @@ class TrillianNatureAdamTest {
     }
 
     @Test
+    void aParkedWorker_isWorthWakingFor() {
+        // It asked something and nothing will ever reach it on its own.
+        when(thinkProcessService.findByParentProcessId("loop-1"))
+                .thenReturn(java.util.List.of(
+                        childProcess("ask-worker", ThinkProcessStatus.IDLE)));
+
+        java.util.List<SelfCheckFinding> findings = adam().selfCheckFindings(loopProcess());
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.get(0).kind()).isEqualTo(SelfCheckFinding.Kind.WORKER_WAITING);
+    }
+
+    @Test
+    void aRunningWorker_isNotWorthWakingFor() {
+        // It will report by itself; waking to look at it is noise.
+        when(thinkProcessService.findByParentProcessId("loop-1"))
+                .thenReturn(java.util.List.of(
+                        childProcess("busy", ThinkProcessStatus.RUNNING)));
+
+        assertThat(adam().selfCheckFindings(loopProcess())).isEmpty();
+    }
+
+    @Test
+    void aRunningWorkerGoneQuiet_isWorthWakingFor() {
+        // Still RUNNING, but nothing for an hour — either it is deep in
+        // something or it died without saying so, and only a look tells
+        // which.
+        when(thinkProcessService.findByParentProcessId("loop-1"))
+                .thenReturn(java.util.List.of(
+                        childProcess("quiet", ThinkProcessStatus.RUNNING, 90)));
+
+        java.util.List<SelfCheckFinding> findings = adam().selfCheckFindings(loopProcess());
+
+        assertThat(findings).hasSize(1);
+        assertThat(findings.get(0).kind()).isEqualTo(SelfCheckFinding.Kind.WORKER_SILENT);
+    }
+
+    @Test
+    void aBlockedWorker_isReportedWithAResumeDecision() {
+        when(thinkProcessService.findByParentProcessId("loop-1"))
+                .thenReturn(java.util.List.of(
+                        childProcess("stuck", ThinkProcessStatus.BLOCKED)));
+
+        SelfCheckFinding finding = adam().selfCheckFindings(loopProcess()).get(0);
+
+        assertThat(finding.kind()).isEqualTo(SelfCheckFinding.Kind.WORKER_BLOCKED);
+        assertThat(finding.detail()).contains("process_steer").contains("transcript");
+    }
+
+    @Test
+    void aWorkerBlockedTooOften_isNotToBeResumedAgain() {
+        // A model asked "shall I try once more?" four times says yes four
+        // times. The count is kept in Java for that reason.
+        ThinkProcessDocument stuck = childProcess("looper", ThinkProcessStatus.BLOCKED);
+        stuck.setEngineParamOverrides(new LinkedHashMap<>(Map.of(
+                TrillianNatureAdam.PARAM_BLOCKED_SEEN,
+                TrillianNatureAdam.MAX_BLOCKED_RESUMES - 1)));
+        when(thinkProcessService.findByParentProcessId("loop-1"))
+                .thenReturn(java.util.List.of(stuck));
+
+        SelfCheckFinding finding = adam().selfCheckFindings(loopProcess()).get(0);
+
+        assertThat(finding.detail()).contains("Do NOT resume");
+        verify(thinkProcessService).setEngineParamOverride(
+                "child-looper", TrillianNatureAdam.PARAM_BLOCKED_SEEN,
+                TrillianNatureAdam.MAX_BLOCKED_RESUMES);
+    }
+
+    @Test
+    void natureZero_neverWakesItself() {
+        // The baseline is reactive by definition — no findings, so the
+        // heartbeat drops the wakeup without spending a turn.
+        assertThat(new TrillianNature0(thinkProcessService).selfCheckFindings(loopProcess()))
+                .isEmpty();
+    }
+
+    @Test
     void adamInheritsTheAttributeRendering() {
         // Rendering comes from TrillianNatureBase, not from Nature-0: it
         // is shared mechanics, and adam must not pick up whatever
@@ -297,6 +375,30 @@ class TrillianNatureAdamTest {
 
     private void givenReflexion(boolean keep, String entry) {
         when(lightLlm.callForJson(any())).thenReturn(Map.of("keep", keep, "entry", entry));
+    }
+
+    private static ThinkProcessDocument loopProcess() {
+        ThinkProcessDocument p = new ThinkProcessDocument();
+        p.setId("loop-1");
+        p.setTenantId(TENANT);
+        p.setProjectId(PROJECT);
+        p.setEngineParams(new LinkedHashMap<>());
+        return p;
+    }
+
+    private static ThinkProcessDocument childProcess(
+            String name, ThinkProcessStatus status) {
+        return childProcess(name, status, /*minutesAgo*/ 2);
+    }
+
+    private static ThinkProcessDocument childProcess(
+            String name, ThinkProcessStatus status, int minutesAgo) {
+        ThinkProcessDocument p = new ThinkProcessDocument();
+        p.setId("child-" + name);
+        p.setName(name);
+        p.setStatus(status);
+        p.setUpdatedAt(java.time.Instant.now().minusSeconds(minutesAgo * 60L));
+        return p;
     }
 
     private static ThinkProcessDocument worker(String account) {

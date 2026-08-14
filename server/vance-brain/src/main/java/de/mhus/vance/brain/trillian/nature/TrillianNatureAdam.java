@@ -8,6 +8,7 @@ import de.mhus.vance.brain.trillian.TrillianSessionBootstrapper;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.List;
+import java.time.Instant;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -43,6 +44,19 @@ import org.springframework.stereotype.Component;
 public class TrillianNatureAdam extends TrillianNatureBase {
 
     public static final String ID = "adam";
+
+    /**
+     * How often a worker may be surfaced as blocked before the finding
+     * says to stop resuming it. Three rounds of twenty minutes is an
+     * hour of a loop going nowhere — enough rope, and not more.
+     */
+    static final int MAX_BLOCKED_RESUMES = 3;
+
+    /** engineParamOverrides key on the *worker*: blocked-surfacing count. */
+    static final String PARAM_BLOCKED_SEEN = "trillianBlockedSeen";
+
+    /** A RUNNING worker quieter than this is worth a look. */
+    private static final java.time.Duration SILENT_AFTER = java.time.Duration.ofMinutes(45);
 
     /** LightLlm config profile for the reflexion pass. */
     static final String REFLECT_RECIPE = "trillian-adam-reflect";
@@ -275,6 +289,111 @@ public class TrillianNatureAdam extends TrillianNatureBase {
             }
         }
         return out;
+    }
+
+    /**
+     * Looks over the workers this loop owns and reports what will not
+     * resolve itself.
+     *
+     * <p>Derived, not remembered: every finding here comes from a process
+     * status, so nothing depends on the Trillian having written something
+     * down at the right moment. What it cannot see — a promise made in
+     * conversation, "I'll come back to this on Friday" — needs a written
+     * list, which is a separate matter.
+     */
+    @Override
+    public List<SelfCheckFinding> selfCheckFindings(ThinkProcessDocument loop) {
+        List<SelfCheckFinding> findings = new java.util.ArrayList<>();
+        Instant now = Instant.now();
+        for (ThinkProcessDocument worker : thinkProcessService.findByParentProcessId(loop.getId())) {
+            switch (worker.getStatus()) {
+                case IDLE -> findings.add(new SelfCheckFinding(
+                        SelfCheckFinding.Kind.WORKER_WAITING,
+                        nameOf(worker), worker.getId(),
+                        "parked since " + since(worker.getUpdatedAt(), now)
+                                + " — it asked something and nothing will reach it "
+                                + "until someone answers"));
+                case BLOCKED -> findings.add(blockedFinding(worker, now));
+                case RUNNING -> {
+                    if (silentFor(worker, now).compareTo(SILENT_AFTER) > 0) {
+                        findings.add(new SelfCheckFinding(
+                                SelfCheckFinding.Kind.WORKER_SILENT,
+                                nameOf(worker), worker.getId(),
+                                "running but silent for " + since(worker.getUpdatedAt(), now)
+                                        + " — check whether it is still making progress"));
+                    }
+                }
+                default -> {
+                    // Terminal states resolved themselves; nothing to say.
+                }
+            }
+        }
+        return findings;
+    }
+
+    /**
+     * A blocked worker, with the one judgement the model must not make
+     * freshly each round.
+     *
+     * <p>Blocked means a safety net tripped — its context is intact and
+     * {@code process_steer} would resume it with a fresh budget. Whether
+     * that is right depends on something only a reader of the transcript
+     * knows: was it working, or going in circles? The counter is there
+     * because a model asked that question four times in a row will say
+     * "one more try" four times.
+     */
+    private SelfCheckFinding blockedFinding(ThinkProcessDocument worker, Instant now) {
+        int seen = incrementBlockedSeen(worker);
+        String detail = seen >= MAX_BLOCKED_RESUMES
+                ? "blocked for the " + seen + ". time — it is looping, not working. "
+                        + "Do NOT resume it. Report to Control what it managed and stop it."
+                : "blocked after hitting a safety net (" + since(worker.getUpdatedAt(), now)
+                        + " ago), context intact. Read its transcript: if it was making "
+                        + "progress, process_steer it to continue; if it was repeating "
+                        + "itself, report that to Control instead.";
+        return new SelfCheckFinding(
+                SelfCheckFinding.Kind.WORKER_BLOCKED, nameOf(worker), worker.getId(), detail);
+    }
+
+    /**
+     * Counts how often this worker has been surfaced as blocked. Written
+     * here rather than at the resume, because a resume is a model
+     * decision and this must not depend on the model reporting it.
+     */
+    private int incrementBlockedSeen(ThinkProcessDocument worker) {
+        Map<String, Object> overrides = worker.getEngineParamOverrides();
+        Object raw = overrides == null ? null : overrides.get(PARAM_BLOCKED_SEEN);
+        int next = (raw instanceof Number n ? n.intValue() : 0) + 1;
+        try {
+            thinkProcessService.setEngineParamOverride(worker.getId(), PARAM_BLOCKED_SEEN, next);
+        } catch (RuntimeException e) {
+            log.warn("Trillian adam: could not count blocked worker '{}': {}",
+                    worker.getId(), e.toString());
+        }
+        return next;
+    }
+
+    private static String nameOf(ThinkProcessDocument worker) {
+        return worker.getName() == null || worker.getName().isBlank()
+                ? worker.getId() : worker.getName();
+    }
+
+    private static java.time.Duration silentFor(ThinkProcessDocument worker, Instant now) {
+        return worker.getUpdatedAt() == null
+                ? java.time.Duration.ZERO
+                : java.time.Duration.between(worker.getUpdatedAt(), now);
+    }
+
+    private static String since(@Nullable Instant at, Instant now) {
+        if (at == null) {
+            return "an unknown time";
+        }
+        long minutes = java.time.Duration.between(at, now).toMinutes();
+        if (minutes < 60) {
+            return minutes + " min";
+        }
+        long hours = minutes / 60;
+        return hours < 48 ? hours + " h" : (hours / 24) + " d";
     }
 
     /** The service account off the worker's own wiring. */

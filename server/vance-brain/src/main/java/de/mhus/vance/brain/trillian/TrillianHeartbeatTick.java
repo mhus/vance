@@ -11,6 +11,8 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;
 import java.time.ZoneId;
+import de.mhus.vance.brain.trillian.nature.SelfCheckFinding;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -54,6 +56,7 @@ public class TrillianHeartbeatTick {
     private final ThinkProcessService thinkProcessService;
     private final TrillianWakeupService wakeupService;
     private final ProcessEventEmitter eventEmitter;
+    private final de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry natureRegistry;
 
     @Scheduled(fixedDelayString = "${vance.trillian.heartbeat.intervalMs:60000}",
             initialDelayString = "${vance.trillian.heartbeat.intervalMs:60000}")
@@ -72,7 +75,16 @@ public class TrillianHeartbeatTick {
                         || !wakeupService.isDue(loop, now)) {
                     continue;
                 }
-                if (wake(loop)) {
+                // Ask the Nature what it sees *before* spending a turn.
+                // Nothing to look at means the wakeup costs one query and
+                // no tokens — which is what makes an hourly rhythm
+                // affordable at all.
+                List<SelfCheckFinding> findings = findingsOf(loop);
+                if (findings.isEmpty()) {
+                    wakeupService.arm(loop, zone);
+                    continue;
+                }
+                if (wake(loop, findings)) {
                     woken++;
                 }
             }
@@ -89,20 +101,37 @@ public class TrillianHeartbeatTick {
      * should cost one round, not turn into a tight loop of retries on
      * every tick. The next arming happens at the loop's own yield point.
      */
-    private boolean wake(ThinkProcessDocument loop) {
+    private List<SelfCheckFinding> findingsOf(ThinkProcessDocument loop) {
+        try {
+            Object nature = loop.getEngineParams() == null ? null
+                    : loop.getEngineParams().get(TrillianSessionBootstrapper.PARAM_NATURE);
+            return natureRegistry.resolve(nature == null ? null : nature.toString())
+                    .selfCheckFindings(loop);
+        } catch (RuntimeException e) {
+            // A Nature that throws must not stop the heartbeat for every
+            // other Trillian on this pod.
+            log.warn("Trillian heartbeat: findings for loop '{}' failed: {}",
+                    loop.getId(), e.toString());
+            return List.of();
+        }
+    }
+
+    private boolean wake(ThinkProcessDocument loop, List<SelfCheckFinding> findings) {
         try {
             wakeupService.disarm(loop);
             SteerMessage.ExternalCommand check = new SteerMessage.ExternalCommand(
                     Instant.now(),
                     /*idempotencyKey*/ "wakeup-" + loop.getId() + "-" + Instant.now().toEpochMilli(),
                     TrillianWakeupService.COMMAND_SELF_CHECK,
-                    Map.of());
+                    Map.of(TrillianWakeupService.PARAM_FINDINGS,
+                            findings.stream().map(SelfCheckFinding::render).toList()));
             if (!thinkProcessService.appendPending(
                     loop.getId(), SteerMessageCodec.toDocument(check))) {
                 return false;
             }
             eventEmitter.scheduleTurn(loop.getId());
-            log.info("Trillian self-check due — waking loop id='{}'", loop.getId());
+            log.info("Trillian self-check: waking loop id='{}' with {} finding(s)",
+                    loop.getId(), findings.size());
             return true;
         } catch (RuntimeException e) {
             log.warn("Trillian heartbeat: could not wake loop '{}': {}",

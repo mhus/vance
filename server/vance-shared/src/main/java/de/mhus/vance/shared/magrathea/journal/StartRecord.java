@@ -82,4 +82,15 @@ public class StartRecord implements JournalRecord {
      * into an illegal one halfway through.
      */
     private @Nullable Set<String> capabilities;
+
+    /**
+     * Parameters that were read out of what somebody said, rather than
+     * passed in by the caller.
+     *
+     * <p>The values themselves are already in {@link #params}. What this
+     * adds is that some of them are an <em>interpretation</em> — which is
+     * the first thing worth knowing when a run did something nobody
+     * expected, and the one thing the parameter list cannot show.
+     */
+    private @Nullable Set<String> derivedParamKeys;
 }

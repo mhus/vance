@@ -35,6 +35,11 @@ for*:
   persists to `_vance/workflows/<name>.yaml`, and you start it afterwards
   with `workflow_start`.
 
+**Running a plan is a separate question from writing one** — and it is
+not always `workflow_start`. A plan somebody is waiting for runs on the
+`vogon` recipe, from any path, and answers back into the conversation.
+See `manual_read('plans')`.
+
 Both may use every task type. The split is guidance for the author, not a
 restriction on the plan.
 

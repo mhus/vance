@@ -198,6 +198,22 @@ class MagratheaCapabilityGateTest {
     }
 
     @Test
+    void start_recordsWhichParamsWereInterpretedRatherThanGiven() {
+        // The values are in params either way. What this adds is that one of
+        // them was a reading of prose — the first thing worth knowing when a
+        // run did something nobody expected.
+        loaderReturns(CATCHING_YAML);
+        MagratheaRunBinding bound = new MagratheaRunBinding(
+                "session-1", "process-1", Set.of(RunCapability.OWNER_PROCESS))
+                .withDerivedParams(Set.of("version"));
+
+        service.start("t", "p", "demo", java.util.Map.of("version", "1.0.0"),
+                "someone", null, null, bound);
+
+        assertThat(capturedStartRecord().getDerivedParamKeys()).containsExactly("version");
+    }
+
+    @Test
     void start_headlessRun_recordsNoBinding() {
         loaderReturns(CATCHING_YAML);
 
@@ -207,6 +223,7 @@ class MagratheaCapabilityGateTest {
         assertThat(start.getSessionId()).isNull();
         assertThat(start.getOwnerProcessId()).isNull();
         assertThat(start.getCapabilities()).isEmpty();
+        assertThat(start.getDerivedParamKeys()).isNull();
     }
 
     private StartRecord capturedStartRecord() {

@@ -592,6 +592,8 @@ public class MagratheaWorkflowService {
                 .capabilities(binding.capabilities().stream()
                         .map(Enum::name)
                         .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new)))
+                .derivedParamKeys(binding.derivedParamKeys().isEmpty()
+                        ? null : new java.util.LinkedHashSet<>(binding.derivedParamKeys()))
                 .build());
 
         journalService.append(tenantId, projectId, runId,

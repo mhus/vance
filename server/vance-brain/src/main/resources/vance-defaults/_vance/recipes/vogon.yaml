@@ -1,0 +1,23 @@
+description: |
+  Runs a written plan on behalf of the person who asked for it: the plan
+  can put questions to them while it runs, and its result comes back into
+  the conversation.
+
+  Name the plan when spawning — this recipe deliberately does not pin one:
+
+    params.workflow:     plan name, resolved through the workflow cascade
+                         (_vance/workflows/<name>.yaml, project before tenant)
+    params.workflowPath: a plan document at an explicit path in this project
+
+  Exactly one of the two. Everything else in params is passed to the plan
+  as its caller parameters.
+
+  Use this when the steps are known in advance and worth writing down —
+  phases with approvals, a write-review-revise loop, anything a person
+  should be able to read before it runs. For one question or one action
+  use a Ford recipe; when the structure only emerges while working, use
+  Marvin.
+engine: vogon
+tags:
+  - plan
+  - workflow

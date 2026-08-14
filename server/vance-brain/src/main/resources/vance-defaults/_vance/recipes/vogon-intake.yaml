@@ -1,0 +1,35 @@
+description: |
+  Reads a spoken request into the parameters a plan declared. Used by the
+  Vogon engine before a run starts; not meant to be spawned directly.
+engine: jeltz
+internal: true
+params:
+  model: default:fast
+promptPrefix: |
+  You turn a request into values for a plan that is about to run.
+
+  Read only what the request actually says. Do not invent a value to fill
+  a field — a missing value is reported and asked for, an invented one
+  runs the plan on something nobody asked for.
+  {% if needsPlan %}
+
+  Pick the plan the request refers to. These are the only plans that
+  exist here; if none of them matches what was asked, say so by leaving
+  the field out rather than choosing the nearest one:
+  {% for p in plans %}
+    - {{ p }}
+  {% endfor %}
+  {% endif %}
+  {% if planName %}
+
+  The plan is already chosen: {{ planName }}.
+  {% endif %}
+  {% if missing %}
+
+  Values still needed: {{ missing | join(", ") }}.
+  {% endif %}
+
+  Answer with the JSON object the schema describes, and nothing else.
+tags:
+  - internal
+  - vogon

@@ -80,9 +80,20 @@ public class VogonEngine implements ThinkEngine {
     /** Where the run id is kept, so every later turn knows what it owns. */
     public static final String PARAM_RUN_ID = "workflowRunId";
 
+    /**
+     * {@code none} switches the intake stage off: this plan is never fed from
+     * prose, and a missing parameter is a start error rather than a question
+     * for a model.
+     */
+    public static final String PARAM_INTAKE = "intake";
+
+    /** The task text, always passed on so a plan can read it under its own name. */
+    public static final String PARAM_TASK = "task";
+
     private final MagratheaWorkflowService workflowService;
     private final MagratheaStateProjector projector;
     private final MagratheaGateChatAnswerService gateChatAnswerService;
+    private final VogonIntake intake;
     private final ThinkProcessService thinkProcessService;
     private final SessionService sessionService;
     /** Optional: absent on a pod where Magrathea is switched off. */
@@ -139,12 +150,61 @@ public class VogonEngine implements ThinkEngine {
 
     // ──────────────────── lifecycle ────────────────────
 
+    /**
+     * Start the plan now if everything needed is already known, otherwise wait
+     * for the task message.
+     *
+     * <p>A caller that passed the plan and all its required parameters gets the
+     * run immediately — no turn, no model, exactly as before. A caller that
+     * merely said what they want gets one turn of grace, because the message
+     * carrying it is pushed <em>after</em> this method returns
+     * ({@code SpawnActionExecutor}) and reading it here would mean reading
+     * something that is not there yet.
+     */
     @Override
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        if (!readyToStart(process)) {
+            log.debug("Vogon id='{}' waiting for its task before starting a plan",
+                    process.getId());
+            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+            return;
+        }
+        beginRun(process, /* taskText */ null);
+    }
+
+    /**
+     * True when the plan is named and has every required parameter — the case
+     * where nothing has to be read out of prose.
+     */
+    private boolean readyToStart(ThinkProcessDocument process) {
+        var plan = namedPlan(process);
+        if (plan.isEmpty()) return false;
+        return VogonIntake.missingRequired(plan.get(), callerParams(process)).isEmpty();
+    }
+
+    /** The plan this process names, by path or by name, if it names one. */
+    private Optional<de.mhus.vance.shared.magrathea.ResolvedMagratheaWorkflow> namedPlan(
+            ThinkProcessDocument process) {
+        String path = declaredPath(process);
+        if (path != null) {
+            return intake.loadPlanFromPath(
+                    process.getTenantId(), process.getProjectId(), path);
+        }
+        String name = declaredName(process);
+        if (name == null) return Optional.empty();
+        return intake.loadPlan(process.getTenantId(), process.getProjectId(), name);
+    }
+
+    /**
+     * Resolve what is missing, start the run, and remember it.
+     *
+     * @param taskText what the person asked for, when there is one to read
+     */
+    private void beginRun(ThinkProcessDocument process, @Nullable String taskText) {
         MagratheaRunBinding binding = bindingFor(process);
         String runId;
         try {
-            runId = startRun(process, binding);
+            runId = startRun(process, binding, taskText);
         } catch (RuntimeException ex) {
             log.warn("Vogon id='{}' could not start its plan: {}", process.getId(), ex.toString());
             // A plan that cannot start is not a process that should linger:
@@ -159,23 +219,86 @@ public class VogonEngine implements ThinkEngine {
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
     }
 
-    private String startRun(ThinkProcessDocument process, MagratheaRunBinding binding) {
+    private String startRun(
+            ThinkProcessDocument process,
+            MagratheaRunBinding binding,
+            @Nullable String taskText) {
         Map<String, Object> params = callerParams(process);
-        String path = stringParam(process, PARAM_WORKFLOW_PATH);
-        if (path != null) {
+        String intakeMode = stringParam(process, PARAM_INTAKE);
+        String effectiveTask = taskText != null ? taskText : process.getGoal();
+
+        String path = declaredPath(process);
+        String name = declaredName(process);
+        var plan = path != null
+                ? intake.loadPlanFromPath(process.getTenantId(), process.getProjectId(), path)
+                : name == null
+                        ? Optional.<de.mhus.vance.shared.magrathea.ResolvedMagratheaWorkflow>empty()
+                        : intake.loadPlan(process.getTenantId(), process.getProjectId(), name);
+
+        // Only ask about the plan when neither form was declared.
+        VogonIntake.Outcome intook = intake.resolve(
+                process.getTenantId(), process.getProjectId(),
+                plan.orElse(null),
+                path != null ? null : name,
+                params, effectiveTask, intakeMode);
+
+        Map<String, Object> planParams = withTask(intook.params(), effectiveTask);
+        MagratheaRunBinding withOrigin = binding.withDerivedParams(intook.derivedKeys());
+
+        String effectivePath = path != null ? path : intook.planPath();
+        if (effectivePath != null) {
             return workflowService.startFromDocument(
-                    process.getTenantId(), process.getProjectId(), path, params,
-                    startedBy(process), binding);
+                    process.getTenantId(), process.getProjectId(), effectivePath,
+                    planParams, startedBy(process), withOrigin);
         }
-        String workflow = stringParam(process, PARAM_WORKFLOW);
-        if (workflow == null) {
+
+        String effectiveName = name != null ? name : intook.planName();
+        if (effectiveName == null) {
             throw new IllegalArgumentException(
                     "Vogon needs a plan: set engineParams." + PARAM_WORKFLOW
-                            + " (name) or " + PARAM_WORKFLOW_PATH + " (document path)");
+                            + " (name) or " + PARAM_WORKFLOW_PATH + " (document path), "
+                            + "or name the plan in the task.");
         }
         return workflowService.start(
-                process.getTenantId(), process.getProjectId(), workflow, params,
-                startedBy(process), /* parentRun */ null, /* parentState */ null, binding);
+                process.getTenantId(), process.getProjectId(), effectiveName,
+                planParams, startedBy(process),
+                /* parentRun */ null, /* parentState */ null, withOrigin);
+    }
+
+    /**
+     * The document path this process declares, if any.
+     *
+     * <p>Read from either param: a {@code workflow:} that carries a slash or a
+     * YAML suffix is a path somebody put in the wrong field, and refusing it
+     * on that ground would be pedantry — the two fields exist to say how a
+     * plan is addressed, and the value already says it.
+     */
+    private @Nullable String declaredPath(ThinkProcessDocument process) {
+        String explicit = stringParam(process, PARAM_WORKFLOW_PATH);
+        if (explicit != null) return explicit;
+        String named = stringParam(process, PARAM_WORKFLOW);
+        return VogonIntake.looksLikePath(named) ? named : null;
+    }
+
+    /** The plan name this process declares — never a path (see {@link #declaredPath}). */
+    private @Nullable String declaredName(ThinkProcessDocument process) {
+        if (stringParam(process, PARAM_WORKFLOW_PATH) != null) return null;
+        String named = stringParam(process, PARAM_WORKFLOW);
+        return VogonIntake.looksLikePath(named) ? null : named;
+    }
+
+    /**
+     * The task text also travels as {@code params.task}, so a plan can read what
+     * was asked even when it names its own parameters differently.
+     */
+    private static Map<String, Object> withTask(
+            Map<String, Object> params, @Nullable String taskText) {
+        if (taskText == null || taskText.isBlank() || params.containsKey(PARAM_TASK)) {
+            return params;
+        }
+        Map<String, Object> out = new LinkedHashMap<>(params);
+        out.put(PARAM_TASK, taskText);
+        return out;
     }
 
     /**
@@ -273,10 +396,15 @@ public class VogonEngine implements ThinkEngine {
      * outcome, not a failure.
      */
     private void onUserSaid(ThinkProcessDocument process, SteerMessage.UserChatInput input) {
-        String runId = runId(process);
-        if (runId == null) return;
         String text = input.content();
         if (text == null || text.isBlank()) return;
+
+        String runId = runId(process);
+        if (runId == null) {
+            // No run yet means start() deferred it: this message is the job.
+            beginRun(process, text);
+            return;
+        }
 
         boolean answered = gateChatAnswerService.tryAnswer(
                 process.getTenantId(), runId, text,
@@ -310,11 +438,43 @@ public class VogonEngine implements ThinkEngine {
                 thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
                 emitStatus(process, de.mhus.vance.api.progress.StatusTag.WAITING, event.humanSummary());
             }
-            case DONE -> thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
-            case FAILED -> thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
-            case STOPPED -> thinkProcessService.closeProcess(process.getId(), CloseReason.STOPPED);
+            case DONE -> closeAndTellTheParent(process, CloseReason.DONE);
+            case FAILED -> closeAndTellTheParent(process, CloseReason.STALE);
+            case STOPPED -> closeAndTellTheParent(process, CloseReason.STOPPED);
             default -> log.trace("Vogon id='{}' ignoring run event {}", process.getId(), type);
         }
+    }
+
+    /**
+     * End this process so that whoever delegated to it finds out.
+     *
+     * <p>{@code ParentNotificationListener} suppresses the lifecycle event
+     * when the parent holds a {@code workerLink} to the child: for a
+     * streaming worker that is right, because the news rides the Working WS
+     * instead. Vogon streams nothing — it is a runner, not a talker — so for
+     * it the suppression means the news rides nothing at all. The parent
+     * would keep a delegation pointer aimed at a closed process, and every
+     * later thing the person says would go to it.
+     *
+     * <p>Dropping the link first is the smallest true statement available
+     * here: this process is not being watched over a WS, so the ordinary
+     * engine path should carry the event — and with it
+     * {@link #summarizeForParent}, which is how the result gets home at all.
+     *
+     * <p>Order matters. The link has to be gone <em>before</em> the close, or
+     * the event it triggers is suppressed on its way out.
+     */
+    private void closeAndTellTheParent(ThinkProcessDocument process, CloseReason reason) {
+        String parentId = process.getParentProcessId();
+        if (parentId != null && !parentId.isBlank()) {
+            try {
+                thinkProcessService.removeWorkerLink(parentId, process.getId());
+            } catch (RuntimeException ex) {
+                log.warn("Vogon id='{}' could not release its parent's watch: {}",
+                        process.getId(), ex.toString());
+            }
+        }
+        thinkProcessService.closeProcess(process.getId(), reason);
     }
 
     // ──────────────────── result ────────────────────
@@ -371,7 +531,10 @@ public class VogonEngine implements ThinkEngine {
 
     private void withRun(ThinkProcessDocument process, java.util.function.Consumer<String> action) {
         String runId = runId(process);
-        if (runId == null) return;
+        if (runId == null) {
+            log.debug("Vogon id='{}' has no run to control", process.getId());
+            return;
+        }
         try {
             action.accept(runId);
         } catch (RuntimeException ex) {
@@ -400,18 +563,21 @@ public class VogonEngine implements ThinkEngine {
         thinkProcessService.replaceEngineParams(process.getId(), params);
     }
 
+    /**
+     * The run this process owns, or null when it has not started one yet.
+     *
+     * <p>Silent about the null: before the first turn it is the normal state,
+     * not a fault — {@code start()} defers whenever the plan still has to be
+     * read out of the task. Callers for which a missing run <em>is</em>
+     * surprising say so themselves.
+     */
     private @Nullable String runId(ThinkProcessDocument process) {
-        // Re-read: start() wrote it after this document was loaded, and a
+        // Re-read: the id is written after this document was loaded, and a
         // later turn may be looking at a stale copy.
         String fromDoc = thinkProcessService.findById(process.getId())
                 .map(p -> stringParam(p, PARAM_RUN_ID))
                 .orElse(null);
-        if (fromDoc != null) return fromDoc;
-        String local = stringParam(process, PARAM_RUN_ID);
-        if (local == null) {
-            log.warn("Vogon id='{}' has no run id — the plan never started", process.getId());
-        }
-        return local;
+        return fromDoc != null ? fromDoc : stringParam(process, PARAM_RUN_ID);
     }
 
     /**

@@ -60,12 +60,15 @@ class WorkflowStartToolTest {
     }
 
     @Test
-    void missing_name_param_fails() {
+    void neither_name_nor_path_fails() {
+        // 'name' alone stopped being required when 'path' arrived: a plan is
+        // addressed one way or the other, and the error has to name both.
         assertThatThrownBy(() -> tool.invoke(
                 Map.of("params", Map.of()),
                 ctx("acme", "proj", "alice")))
                 .isInstanceOf(ToolException.class)
-                .hasMessageContaining("'name'");
+                .hasMessageContaining("name")
+                .hasMessageContaining("path");
     }
 
     @Test
@@ -108,6 +111,66 @@ class WorkflowStartToolTest {
         assertThat(tool.deferred()).isTrue();
         assertThat(tool.primary()).isFalse();
         assertThat(tool.labels()).contains("workflow").contains("side-effect");
+    }
+
+    // ──────────── addressing a plan by path ────────────
+    //
+    // The path form exists because its absence had a visible cost: an agent
+    // told "workflows live under _vance/workflows/" and holding a plan
+    // elsewhere starts copying the file to make the tool work.
+
+    @Test
+    void by_path_starts_that_document() {
+        when(workflowService.startFromDocument(
+                eq("acme"), eq("proj"), eq("workflows/hello.yaml"), any(), eq("alice")))
+                .thenReturn("run-2");
+
+        Map<String, Object> result = tool.invoke(
+                Map.of("path", "workflows/hello.yaml"),
+                ctx("acme", "proj", "alice"));
+
+        assertThat(result).containsEntry("workflowRunId", "run-2")
+                          .containsEntry("workflowPath", "workflows/hello.yaml")
+                          // The stem still names the run, so listings group.
+                          .containsEntry("workflowName", "hello");
+        verify(workflowService, never()).start(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void a_path_passed_as_name_is_understood_anyway() {
+        // Refusing it would be pedantry — the value already says how it wants
+        // to be resolved, and the workaround an agent reaches for is copying.
+        when(workflowService.startFromDocument(
+                any(), any(), eq("workflows/hello.yaml"), any(), any()))
+                .thenReturn("run-3");
+
+        Map<String, Object> result = tool.invoke(
+                Map.of("name", "workflows/hello.yaml"),
+                ctx("acme", "proj", "alice"));
+
+        assertThat(result).containsEntry("workflowRunId", "run-3");
+        verify(workflowService, never()).start(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void both_name_and_path_is_rejected_rather_than_silently_preferring_one() {
+        assertThatThrownBy(() -> tool.invoke(
+                Map.of("name", "demo", "path", "workflows/other.yaml"),
+                ctx("acme", "proj", "alice")))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("not both");
+    }
+
+    @Test
+    void params_are_forwarded_on_the_path_route_too() {
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.captor();
+        when(workflowService.startFromDocument(any(), any(), any(), captor.capture(), any()))
+                .thenReturn("run-4");
+
+        tool.invoke(Map.of("path", "workflows/hello.yaml", "params", Map.of("k", "v")),
+                ctx("acme", "proj", "alice"));
+
+        assertThat(captor.getValue()).containsEntry("k", "v");
     }
 
     private static ToolInvocationContext ctx(String tenant, String project, String user) {

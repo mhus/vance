@@ -13,7 +13,8 @@ A workflow is a **named state machine** — a document under
 subsystem, not a ThinkEngine. The whole YAML *is* the plan.
 
 A workflow is a **reusable asset**: authored once, started many
-times (via the `workflow_start` tool, the scheduler, or REST), each
+times (via the `workflow_start` tool, the scheduler, REST, or — when a
+person is waiting for it — the `vogon` recipe), each
 run with its own `parameters`. The Slart run that authors a workflow
 is **author-only** — it validates and persists the YAML and stops.
 Running it is a separate step.

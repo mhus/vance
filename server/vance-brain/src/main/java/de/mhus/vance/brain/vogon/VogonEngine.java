@@ -27,6 +27,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
@@ -60,10 +61,19 @@ import org.springframework.stereotype.Component;
  * <p>Everything else — advancing states, retries, counters, judgements,
  * bounds — is the runner's, and deliberately not duplicated here.
  *
+ * <p>Which is also why this engine follows the Magrathea switch: it is a
+ * binding over the runner, so on a brain where the runner is off there is
+ * nothing for it to bind to. Registering anyway would turn a switched-off
+ * subsystem into a failure to boot.
+ *
  * <p>See {@code specification/public/vogon-engine.md} and
  * {@code planning/vogon-magrathea-merge.md}.
  */
 @Component
+@ConditionalOnProperty(
+        value = "vance.services.magrathea",
+        havingValue = "true",
+        matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 public class VogonEngine implements ThinkEngine {
@@ -337,14 +347,32 @@ public class VogonEngine implements ThinkEngine {
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
     }
 
+    /**
+     * Pauses the run <em>and</em> marks this process suspended.
+     *
+     * <p>The status write is not bookkeeping: {@code ThinkEngineService}
+     * only delegates, so the engine is what makes a suspend visible. A
+     * process that pauses its run and keeps its old status stays
+     * schedulable inside a SUSPENDED session, and the cascade's re-scan
+     * keeps handing it back because it never reaches SUSPENDED.
+     */
     @Override
     public void suspend(ThinkProcessDocument process, ThinkEngineContext ctx) {
         withRun(process, runId -> {
             workflowService.pauseRun(process.getTenantId(), process.getProjectId(), runId);
             log.info("Vogon id='{}' paused run '{}'", process.getId(), runId);
         });
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.SUSPENDED);
     }
 
+    /**
+     * Stops the run <em>and</em> closes this process.
+     *
+     * <p>Outside {@code withRun} on purpose: a process whose run never
+     * started has nothing to stop and still has to close, or
+     * {@code process_stop} on it is a no-op that leaves the caller holding
+     * a delegation pointer at something nobody will ever finish.
+     */
     @Override
     public void stop(ThinkProcessDocument process, ThinkEngineContext ctx) {
         withRun(process, runId -> {
@@ -352,6 +380,7 @@ public class VogonEngine implements ThinkEngine {
                     "owner process stopped");
             log.info("Vogon id='{}' stopped run '{}'", process.getId(), runId);
         });
+        thinkProcessService.closeProcess(process.getId(), CloseReason.STOPPED);
     }
 
     // ──────────────────── turns ────────────────────

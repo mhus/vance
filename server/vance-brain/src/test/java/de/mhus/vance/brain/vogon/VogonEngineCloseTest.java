@@ -109,4 +109,53 @@ class VogonEngineCloseTest {
         verify(processes, never()).closeProcess(any(), any());
         verify(processes, never()).removeWorkerLink(any(), any());
     }
+
+    @Test
+    void stop_closesTheProcessAndNotJustTheRun() {
+        // ThinkEngineService only delegates: whatever the engine does not
+        // write here, nobody writes. A run that stops behind a process
+        // that never closes leaves its caller holding a delegation
+        // pointer at something nobody will finish.
+        ThinkProcessDocument running = withRun("run-7");
+
+        engine.stop(running, null);
+
+        verify(workflowService).stopRun("t", "p", "run-7", "owner process stopped");
+        verify(processes).closeProcess("vogon-1", CloseReason.STOPPED);
+    }
+
+    @Test
+    void stop_closesEvenWhenNoRunEverStarted() {
+        // The intake stage can defer the start until the person says what
+        // the job is. Stopped in that window, there is no run to stop —
+        // and still a process that has to go.
+        engine.stop(delegatedProcess(), null);
+
+        verify(workflowService, never()).stopRun(any(), any(), any(), any());
+        verify(processes).closeProcess("vogon-1", CloseReason.STOPPED);
+    }
+
+    @Test
+    void suspend_marksTheProcessSuspended() {
+        // The suspend cascade waits for every process in the session to
+        // reach SUSPENDED and re-scans until they do. A process that only
+        // pauses its run keeps being handed back to it.
+        ThinkProcessDocument running = withRun("run-7");
+
+        engine.suspend(running, null);
+
+        verify(workflowService).pauseRun("t", "p", "run-7");
+        verify(processes).updateStatus(
+                "vogon-1", de.mhus.vance.api.thinkprocess.ThinkProcessStatus.SUSPENDED);
+    }
+
+    /** A process that has a run behind it, as every started Vogon does. */
+    private ThinkProcessDocument withRun(String runId) {
+        ThinkProcessDocument p = delegatedProcess();
+        p.setEngineParams(new java.util.LinkedHashMap<>(
+                java.util.Map.of(VogonEngine.PARAM_RUN_ID, runId)));
+        org.mockito.Mockito.when(processes.findById("vogon-1"))
+                .thenReturn(java.util.Optional.of(p));
+        return p;
+    }
 }

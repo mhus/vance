@@ -64,6 +64,50 @@ class AgentOutcomeRefinerTest {
                 .hasMessageContaining("atLeast");
     }
 
+    @Test
+    void bandsThatDoNotDescend_areRejected() {
+        // Read top-down, first match wins: ascending thresholds would
+        // route 0.9 to 'revise' and never reach 'approved'.
+        assertThatThrownBy(() -> AgentOutcomeRefiner.judgementOf(state(Map.of(
+                "score", Map.of("bands", List.of(
+                        Map.of("atLeast", 0.2, "outcome", "revise"),
+                        Map.of("atLeast", 0.7, "outcome", "approved")))))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("descend");
+    }
+
+    @Test
+    void aDefaultBandThatIsNotLast_isRejected() {
+        // Everything after it is unreachable — every score would come out
+        // 'rejected'.
+        assertThatThrownBy(() -> AgentOutcomeRefiner.judgementOf(state(Map.of(
+                "score", Map.of("bands", List.of(
+                        Map.of("default", true, "outcome", "rejected"),
+                        Map.of("atLeast", 0.7, "outcome", "approved")))))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must be last");
+    }
+
+    @Test
+    void aThresholdOutsideTheFixedScale_isRejected() {
+        // The scale is 0.0–1.0 and answers outside it are re-asked, so a
+        // band above it can never match.
+        assertThatThrownBy(() -> AgentOutcomeRefiner.judgementOf(state(Map.of(
+                "score", Map.of("bands", List.of(
+                        Map.of("atLeast", 70, "outcome", "approved")))))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("0.0–1.0");
+    }
+
+    @Test
+    void descendingBandsWithADefaultLast_areAccepted() {
+        assertThat(AgentOutcomeRefiner.judgementOf(state(Map.of(
+                "score", Map.of("bands", List.of(
+                        Map.of("atLeast", 0.7, "outcome", "approved"),
+                        Map.of("atLeast", 0.2, "outcome", "revise"),
+                        Map.of("default", true, "outcome", "rejected"))))))).isPresent();
+    }
+
     // ──────────── decide ────────────
 
     private AgentOutcomeRefiner.Judgement decide(String... options) {
@@ -96,6 +140,25 @@ class AgentOutcomeRefinerTest {
                 decide("yes", "no"), "there is too much noise in this data", objectMapper);
 
         assertThat(r).isInstanceOf(AgentOutcomeRefiner.NeedsCorrection.class);
+    }
+
+    @Test
+    void decide_doesNotMatchInsideACompoundToken() {
+        // Outcome tokens are written with '_' and '-', so those are part
+        // of the word: "needs_work" is one word, and reading "work" out of
+        // it would route on an option the model never chose.
+        AgentOutcomeRefiner.Result r = AgentOutcomeRefiner.refine(
+                decide("work", "wait"), "the answer is needs_work", objectMapper);
+
+        assertThat(r).isInstanceOf(AgentOutcomeRefiner.NeedsCorrection.class);
+    }
+
+    @Test
+    void decide_stillMatchesAHyphenatedOptionItself() {
+        AgentOutcomeRefiner.Result r = AgentOutcomeRefiner.refine(
+                decide("go", "no-go"), "I say no-go on this one", objectMapper);
+
+        assertThat(((AgentOutcomeRefiner.Decided) r).outcome()).isEqualTo("no-go");
     }
 
     @Test

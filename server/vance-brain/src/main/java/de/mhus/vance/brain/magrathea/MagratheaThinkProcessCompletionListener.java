@@ -146,8 +146,6 @@ public class MagratheaThinkProcessCompletionListener {
                 .map(ChatMessageDocument::getContent)
                 .<JsonNode>map(objectMapper::valueToTree)
                 .orElse(null);
-        String answerText = output != null && output.isString() ? output.asString() : null;
-
         boolean asked = endStatus == ThinkProcessStatus.BLOCKED;
 
         // Before ending the step: if it asked for a judgement, read the

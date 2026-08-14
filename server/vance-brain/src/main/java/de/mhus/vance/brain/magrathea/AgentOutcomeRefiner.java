@@ -145,9 +145,53 @@ final class AgentOutcomeRefiner {
                         "agent_task '" + stateName + "' score.bands entry '" + outcome
                                 + "' needs atLeast: or default: true");
             }
+            if (atLeast != null && (atLeast < 0.0 || atLeast > 1.0)) {
+                throw new IllegalArgumentException(
+                        "agent_task '" + stateName + "' score.bands entry '" + outcome
+                                + "' has atLeast: " + atLeast + " outside the fixed 0.0–1.0"
+                                + " scale — it could never match");
+            }
             bands.add(new Band(atLeast, isDefault, outcome));
         }
+        requireBandOrder(stateName, bands);
         return new Score(List.copyOf(bands), maxCorrections(m));
+    }
+
+    /**
+     * Bands are read top-down and the first match wins, so their order is
+     * part of what they mean.
+     *
+     * <p>Rejected here rather than sorted, because the two plausible
+     * repairs disagree: ascending thresholds could mean "the author meant
+     * descending" or "the author meant the narrower band first", and
+     * quietly picking one produces a plan that routes differently from
+     * how it reads. The bands are also frequently written by the
+     * architect model from the examples in {@code SHAPE.md} — a model
+     * that drifts should hit an error at load, not a run that grades
+     * everything {@code revise}.
+     */
+    private static void requireBandOrder(String stateName, List<Band> bands) {
+        Double previous = null;
+        for (int i = 0; i < bands.size(); i++) {
+            Band band = bands.get(i);
+            if (band.isDefault()) {
+                if (i != bands.size() - 1) {
+                    throw new IllegalArgumentException(
+                            "agent_task '" + stateName + "' score.bands: the default band '"
+                                    + band.outcome() + "' must be last — bands after it can"
+                                    + " never be reached");
+                }
+                continue;
+            }
+            if (previous != null && band.atLeast() >= previous) {
+                throw new IllegalArgumentException(
+                        "agent_task '" + stateName + "' score.bands: '" + band.outcome()
+                                + "' has atLeast: " + band.atLeast() + " at or above the band"
+                                + " before it (" + previous + ") — bands are matched top-down,"
+                                + " so they have to descend");
+            }
+            previous = band.atLeast();
+        }
     }
 
     private static int maxCorrections(Map<String, Object> m) {
@@ -204,13 +248,26 @@ final class AgentOutcomeRefiner {
         while (true) {
             int at = text.indexOf(token, from);
             if (at < 0) return -1;
-            boolean leftFree = at == 0 || !Character.isLetterOrDigit(text.charAt(at - 1));
+            boolean leftFree = at == 0 || !isWordChar(text.charAt(at - 1));
             int end = at + token.length();
-            boolean rightFree = end >= text.length()
-                    || !Character.isLetterOrDigit(text.charAt(end));
+            boolean rightFree = end >= text.length() || !isWordChar(text.charAt(end));
             if (leftFree && rightFree) return at;
             from = at + 1;
         }
+    }
+
+    /**
+     * What counts as part of the same word.
+     *
+     * <p>{@code _} and {@code -} are in, because outcome tokens are
+     * written with them: without this, {@code work} matches inside
+     * {@code needs_work} and an answer that mentions "work" before
+     * concluding {@code needs_work} routes down the other branch. The
+     * "first mention wins" rule below cannot save that case — the
+     * substring occurs earlier than the option that contains it.
+     */
+    private static boolean isWordChar(char c) {
+        return Character.isLetterOrDigit(c) || c == '_' || c == '-';
     }
 
     private static Result refineScore(Score spec, String answer, ObjectMapper objectMapper) {
@@ -240,6 +297,8 @@ final class AgentOutcomeRefiner {
             return new NeedsCorrection(expectation(spec)
                     + " The score was " + score + ", outside 0.0–1.0.");
         }
+        // Top-down, first match wins. That the order is meaningful is
+        // enforced at load — see requireBandOrder.
         for (Band band : spec.bands()) {
             if (band.isDefault()) return new Decided(band.outcome(), node);
             if (band.atLeast() != null && score >= band.atLeast()) {

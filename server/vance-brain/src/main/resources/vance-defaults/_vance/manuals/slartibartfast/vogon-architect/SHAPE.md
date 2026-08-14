@@ -63,6 +63,11 @@ review:
   on: { good: publish, revise: writer, reject: escalate }
 ```
 
+Bands are matched top-down and the first match wins, so they must be
+written in descending order with `default:` last. Ascending thresholds
+are rejected when the plan is loaded — a `0.9` would otherwise come out
+as the lowest band. `atLeast` lives on the fixed `0.0`–`1.0` scale.
+
 ```yaml
 classify:
   type: agent_task

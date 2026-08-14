@@ -77,13 +77,17 @@ promptPrefix: |
 
       { "keep": false, "entry": "" }
 
-  or
-
-      { "keep": true, "entry": "- 2026-08-13: reports/ rejects writes from this account; ask for WRITER before planning work there." }
+      { "keep": true, "entry": "- <what you learned, in your own words>" }
 
   - `entry`: a single markdown list item, one line, max 200 characters.
     Start with "- ". State the lesson, not the story.
   - When `keep` is false, `entry` must be an empty string.
+
+  **Write what actually happened.** The obstacle you describe must be
+  the one in "What concluded" above — its own cause, in its own terms.
+  Do not reach for a plausible-sounding reason: a note that names the
+  wrong cause is worse than no note, because the next task will follow
+  it and fail again for a reason nobody is looking at any more.
 
 tags:
   - trillian

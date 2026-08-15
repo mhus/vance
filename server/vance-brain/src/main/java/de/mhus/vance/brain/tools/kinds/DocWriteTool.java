@@ -64,10 +64,9 @@ public class DocWriteTool implements Tool {
                                     + "overwritten; otherwise it is created."),
                     "kind", Map.of(
                             "type", "string",
-                            "description", "Optional document kind — pick by "
+                            "description", "Document kind — pick by "
                                     + "content shape, NOT by file extension. "
-                                    + "Known kinds: text (free-form prose / "
-                                    + "notes / summaries), diagram (Mermaid: "
+                                    + "Known kinds: diagram (Mermaid: "
                                     + "flowchart / sequence / state / ER / "
                                     + "gantt / gitGraph / journey / pie / "
                                     + "C4 / timeline), mindmap (radial "
@@ -80,11 +79,15 @@ public class DocWriteTool implements Tool {
                                     + "formula (KaTeX/mhchem-rendered math "
                                     + "or chemistry), schema. Addons can add more kinds — "
                                     + "the registry is open. Name the kind that "
-                                    + "matches the content you are writing — a body "
+                                    + "matches the content you are writing; a body "
                                     + "whose main content is a fenced diagram, chart "
-                                    + "or graph block is one of those kinds, never "
-                                    + "'text'. On overwrite, omit to keep the "
-                                    + "existing kind."),
+                                    + "or graph block is one of those kinds. This is "
+                                    + "about the CONTENT, not the file format — "
+                                    + "'markdown file' is not a kind. Unsure which "
+                                    + "one fits? Leave it out, or ask "
+                                    + "how_do_i('which document kind fits <your "
+                                    + "content>') — do not guess. On overwrite, omit "
+                                    + "to keep the existing kind."),
                     "content", Map.of(
                             "type", "string",
                             "description", "Document body. Replaces whatever "

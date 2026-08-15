@@ -5,3 +5,11 @@ size: LARGE
 capabilities:
 - vision
 timeoutSeconds: 600
+# Ollama renders this model with its built-in `glimmer` renderer, which
+# writes the COMPLETE tool manifest once per system message
+# (model/renderers/glimmer.go, v0.32.11). Vance sends up to nine system
+# blocks, so a 286-tool surface (~36.8K tokens) is multiplied until the
+# 131K window overflows. Merging the blocks on the way out is the only
+# lever — the renderer is server-side.
+# Measurements: planning/model-context-inflation-lab.md
+mergeSystemMessages: true

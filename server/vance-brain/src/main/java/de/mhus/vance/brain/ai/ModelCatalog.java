@@ -714,6 +714,7 @@ public class ModelCatalog {
             "capabilities", "stripThinkTags", "timeoutSeconds",
             "actionLoopCorrections", "messageParser", "outputTokenParam",
             "unsupportedParams", "reasoningEffortWhenOff", "pricing", "maxTools",
+            "mergeSystemMessages",
             // Image
             "supportedAspectRatios", "maxPromptChars", "costPerImage",
             // Discovery markers (informational)
@@ -776,9 +777,16 @@ public class ModelCatalog {
             maxTools = providerSpec == null ? null : readPositiveInt(
                     providerSpec.get("maxTools"), provider, "_provider", "maxTools");
         }
+        // Endpoint quirk, per model: some renderers repeat the whole tool
+        // manifest for every system message (Ollama's `glimmer`). Off
+        // unless a model asks for it — the block split carries the
+        // Anthropic cache boundary. See SystemMessageMerger.
+        boolean mergeSystemMessages = readBoolean(spec.get("mergeSystemMessages"),
+                FALLBACK_TEMPLATE.mergeSystemMessages());
         return new ModelInfo(provider, modelName, ctx, out, size, caps,
                 timeout, corrections, stripThinkTags, messageParser, pricing,
-                outputTokenParam, unsupported, reasoningOff, maxTools);
+                outputTokenParam, unsupported, reasoningOff, maxTools,
+                mergeSystemMessages);
     }
 
     /**

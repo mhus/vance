@@ -38,7 +38,45 @@ public record ModelInfo(
         OutputTokenParam outputTokenParam,
         Set<SamplingParam> unsupportedParams,
         @Nullable String reasoningEffortWhenOff,
-        @Nullable Integer maxTools) {
+        @Nullable Integer maxTools,
+        boolean mergeSystemMessages) {
+
+    /*
+     * mergeSystemMessages — collapse consecutive system messages into
+     * one before sending. Endpoint quirk, not a model property: Ollama's
+     * `glimmer` renderer writes the COMPLETE tool manifest once per
+     * system message (model/renderers/glimmer.go, v0.32.11), so Vance's
+     * nine-block system prompt multiplies a 36.8K-token manifest by nine.
+     *
+     * Default false, and deliberately opt-in per model: the block split
+     * is what lets AnthropicRequestMapper anchor `cache_control` on the
+     * last STATIC block, so merging everywhere would trade a working
+     * cost optimisation for one broken renderer. See
+     * SystemMessageMerger and planning/model-context-inflation-lab.md.
+     */
+
+    /** Pre-{@code mergeSystemMessages} constructor — defaults the flag to off. */
+    public ModelInfo(
+            String provider,
+            String modelName,
+            int contextWindowTokens,
+            int defaultMaxOutputTokens,
+            ModelSize size,
+            Set<ModelCapability> capabilities,
+            int timeoutSeconds,
+            int actionLoopCorrections,
+            boolean stripThinkTags,
+            @Nullable String messageParser,
+            @Nullable Pricing pricing,
+            OutputTokenParam outputTokenParam,
+            Set<SamplingParam> unsupportedParams,
+            @Nullable String reasoningEffortWhenOff,
+            @Nullable Integer maxTools) {
+        this(provider, modelName, contextWindowTokens, defaultMaxOutputTokens, size,
+                capabilities, timeoutSeconds, actionLoopCorrections, stripThinkTags,
+                messageParser, pricing, outputTokenParam, unsupportedParams,
+                reasoningEffortWhenOff, maxTools, /*mergeSystemMessages*/ false);
+    }
 
     /*
      * maxTools — hard cap the endpoint enforces on the `tools` array.
@@ -83,7 +121,7 @@ public record ModelInfo(
         this(provider, modelName, contextWindowTokens, defaultMaxOutputTokens, size,
                 capabilities, timeoutSeconds, actionLoopCorrections, stripThinkTags,
                 messageParser, pricing, outputTokenParam, unsupportedParams,
-                reasoningEffortWhenOff, /*maxTools*/ null);
+                reasoningEffortWhenOff, /*maxTools*/ null, /*mergeSystemMessages*/ false);
     }
 
     /*

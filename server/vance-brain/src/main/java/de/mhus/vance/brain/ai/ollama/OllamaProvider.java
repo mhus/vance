@@ -11,6 +11,8 @@ import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import de.mhus.vance.brain.ai.ProviderListingHttp;
 import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
+import de.mhus.vance.brain.ai.SystemMessageMergingChatModel;
+import de.mhus.vance.brain.ai.SystemMessageMergingStreamingChatModel;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.ollama.OllamaStreamingChatModel;
@@ -149,9 +151,20 @@ public class OllamaProvider extends AbstractChatProvider {
                 .logResponses(options.getLogRequests())
                 .build();
         log.debug("Built Ollama chat pair: model='{}', baseUrl='{}', numCtx={}, "
-                        + "numPredict={}, temperature={}, think={}, stripThinkTags={}",
+                        + "numPredict={}, temperature={}, think={}, stripThinkTags={}, "
+                        + "mergeSystemMessages={}",
                 config.modelName(), baseUrl, numCtx, options.getMaxTokens(),
-                options.getTemperature(), think, modelInfo.stripThinkTags());
+                options.getTemperature(), think, modelInfo.stripThinkTags(),
+                modelInfo.mergeSystemMessages());
+        if (modelInfo.mergeSystemMessages()) {
+            // Ollama's `glimmer` renderer repeats the entire tool manifest
+            // for every system message, so Vance's multi-block system
+            // prompt multiplies it. Merging on the way out is the only
+            // lever we have — the renderer is server-side.
+            return new BuiltChat(
+                    new SystemMessageMergingChatModel(sync),
+                    new SystemMessageMergingStreamingChatModel(streaming));
+        }
         return new BuiltChat(sync, streaming);
     }
 }

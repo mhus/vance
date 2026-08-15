@@ -4,7 +4,7 @@ import de.mhus.vance.brain.tools.exec.ExecLabels;
 import de.mhus.vance.brain.tools.exec.ExecManager;
 import de.mhus.vance.brain.tools.exec.ExecProperties;
 import de.mhus.vance.brain.tools.exec.SubmitOptions;
-import de.mhus.vance.brain.tools.workspace.WorkspaceDirResolver;
+import de.mhus.vance.brain.tools.workspace.TypedRootDirProvisioner;
 import de.mhus.vance.shared.workspace.PythonHandler;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceService;
@@ -95,9 +95,20 @@ public class PythonUninstallTool implements Tool {
         String flags = stringOrNull(params, "flags");
         long waitMs = waitMs(params, properties.getDefaultWaitMs());
 
-        String dirName = WorkspaceDirResolver.resolve(
-                workspaceService, ctx, stringOrNull(params, "dirName"));
-        ensurePythonType(ctx, dirName);
+        // Explicit dirName keeps the strict type check; without one we
+        // provision the canonical `_python` workspace rather than
+        // inheriting the process's temp RootDir. See
+        // TypedRootDirProvisioner.
+        String explicitDir = stringOrNull(params, "dirName");
+        String dirName;
+        if (StringUtils.isNotBlank(explicitDir)) {
+            dirName = explicitDir;
+            ensurePythonType(ctx, dirName);
+        } else {
+            dirName = TypedRootDirProvisioner.workingDirOfTypeOrProvision(
+                    workspaceService, ctx, PythonHandler.TYPE, PythonHandler.DEFAULT_LABEL,
+                    Map.of(PythonHandler.META_PYTHON_PATH, PythonHandler.DEFAULT_PYTHON_PATH));
+        }
 
         String pipUninstall = ".venv/bin/python -m pip uninstall -y "
                 + PythonShellEscape.quote(pkg);

@@ -576,7 +576,9 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                     ScriptExecutionException.ErrorClass.MISSING_CAPABILITY,
                     "[" + sourceName + "] @workspaceRoot '" + label
                             + "' does not resolve to a Node RootDir in project "
-                            + projectId + " — run node_create first");
+                            + projectId + " — run node_install for the packages you "
+                            + "need; it provisions the canonical Node workspace when "
+                            + "none exists");
         }
         return handle.getPath().toAbsolutePath().normalize();
     }

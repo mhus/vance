@@ -4,7 +4,7 @@ import de.mhus.vance.brain.tools.exec.ExecLabels;
 import de.mhus.vance.brain.tools.exec.ExecManager;
 import de.mhus.vance.brain.tools.exec.ExecProperties;
 import de.mhus.vance.brain.tools.exec.SubmitOptions;
-import de.mhus.vance.brain.tools.workspace.WorkspaceDirResolver;
+import de.mhus.vance.brain.tools.workspace.TypedRootDirProvisioner;
 import de.mhus.vance.shared.workspace.PythonHandler;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceService;
@@ -50,8 +50,10 @@ public class PythonRunTool implements Tool {
                     "dirName", Map.of(
                             "type", "string",
                             "description",
-                                    "Optional Python RootDir. Defaults to the "
-                                            + "current process's working RootDir."),
+                                    "Optional Python RootDir. When omitted the "
+                                            + "canonical project Python workspace is used "
+                                            + "and created if needed — no python_create "
+                                            + "call is required first."),
                     "waitMs", Map.of(
                             "type", "integer",
                             "description", "Milliseconds to wait before returning early.")),
@@ -106,9 +108,21 @@ public class PythonRunTool implements Tool {
         List<String> args = stringList(params, "args");
         long waitMs = waitMs(params, properties.getDefaultWaitMs());
 
-        String dirName = WorkspaceDirResolver.resolve(
-                workspaceService, ctx, stringOrNull(params, "dirName"));
-        ensurePythonType(ctx, dirName);
+        // Explicit dirName is a decision and keeps the strict type check.
+        // Without one we provision the canonical `_python` workspace
+        // instead of inheriting the process's temp RootDir — that
+        // inheritance is what produced "RootDir 'tmp' has type 'temp',
+        // expected 'python'" and left the model with nothing to act on.
+        String explicit = stringOrNull(params, "dirName");
+        String dirName;
+        if (StringUtils.isNotBlank(explicit)) {
+            dirName = explicit;
+            ensurePythonType(ctx, dirName);
+        } else {
+            dirName = TypedRootDirProvisioner.workingDirOfTypeOrProvision(
+                    workspaceService, ctx, PythonHandler.TYPE, PythonHandler.DEFAULT_LABEL,
+                    Map.of(PythonHandler.META_PYTHON_PATH, PythonHandler.DEFAULT_PYTHON_PATH));
+        }
 
         StringBuilder cmd = new StringBuilder(".venv/bin/python");
         if (StringUtils.isNotBlank(flags)) {

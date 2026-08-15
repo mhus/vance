@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.node;
 
+import de.mhus.vance.brain.tools.workspace.TypedRootDirProvisioner;
 import de.mhus.vance.shared.workspace.NodeHandler;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceException;
@@ -50,8 +51,10 @@ public class NodeInstallTool implements Tool {
                     "dirName", Map.of(
                             "type", "string",
                             "description",
-                                    "Optional Node RootDir name. Defaults to the "
-                                            + "current process's working RootDir.")),
+                                    "Optional Node RootDir name. When omitted the "
+                                            + "canonical project Node workspace is used and "
+                                            + "created if needed — no node_create call is "
+                                            + "required first.")),
             "required", List.of());
 
     private final WorkspaceService workspaceService;
@@ -156,27 +159,28 @@ public class NodeInstallTool implements Tool {
         String workingDir = creator == null ? null
                 : workspaceService.getWorkingDir(tenantId, projectId, creator).orElse(null);
         if (workingDir == null) {
-            // No working dir set — try the conventional default label.
-            return findByLabel(tenantId, projectId, NodeHandler.DEFAULT_LABEL)
-                    .orElseThrow(() -> new ToolException(
-                            "No Node RootDir found in project " + projectId
-                                    + ". Run node_create first."));
+            // No working dir set — use the canonical Node workspace and
+            // provision it when missing. Requiring node_create first made
+            // installing a package a two-step precondition that a model has
+            // to know about; a JS script declaring @requires implies the
+            // workspace, so creating it is bookkeeping, not a decision.
+            return TypedRootDirProvisioner.ensure(
+                    workspaceService, ctx, NodeHandler.TYPE, NodeHandler.DEFAULT_LABEL,
+                    Map.of());
         }
-        return workspaceService.getRootDir(tenantId, projectId, workingDir)
+        RootDirHandle working = workspaceService.getRootDir(tenantId, projectId, workingDir)
                 .orElseThrow(() -> new ToolException(
                         "Working RootDir '" + workingDir
                                 + "' not found in project " + projectId));
+        if (NodeHandler.TYPE.equals(working.getType())) {
+            return working;
+        }
+        // The process sits in a non-Node workspace (typically the temp
+        // RootDir). Installing there would put node_modules somewhere the
+        // script engine never looks, so fall through to the canonical one.
+        return TypedRootDirProvisioner.ensure(
+                workspaceService, ctx, NodeHandler.TYPE, NodeHandler.DEFAULT_LABEL,
+                Map.of());
     }
 
-    private java.util.Optional<RootDirHandle> findByLabel(
-            String tenantId, String projectId, String label) {
-        for (RootDirHandle h : workspaceService.listRootDirs(tenantId, projectId)) {
-            if (NodeHandler.TYPE.equals(h.getType())
-                    && h.getDescriptor() != null
-                    && label.equals(h.getDescriptor().getLabel())) {
-                return java.util.Optional.of(h);
-            }
-        }
-        return java.util.Optional.empty();
-    }
 }

@@ -4,10 +4,22 @@ summary: Python tooling (venv per RootDir, python_create / install / uninstall /
 ---
 # Python tooling
 
-When the project has a Python RootDir, you have a local `venv` plus
-five tools to drive it. The default `label` is `python`, so the
-RootDir's `dirName` is normally `python` (or `python-2` etc. when
-the worker created a custom-labeled one alongside it).
+You have a local `venv` plus five tools to drive it.
+
+**You do not need to create a workspace first.** `python_run`,
+`python_install` and `python_uninstall` provision the canonical project
+Python workspace `_python` on first use when you pass no `dirName` and
+your working RootDir is not a Python one. Just run the script.
+
+Naming a `dirName` explicitly stays strict: if that RootDir is not a
+Python one, the call is refused rather than silently redirected — a
+named workspace is your decision, and quietly working somewhere else
+would hide the mistake.
+
+`python_create` remains useful when you want a *separate*, labelled
+workspace (several environments side by side, or one cloned from a git
+repo). Its default `label` is `python`, so that RootDir's `dirName` is
+normally `python` (or `python-2` etc. alongside an existing one).
 
 Tools — all currently deferred, so `tool_list` / `tool_description`
 surface them unless your recipe promotes them (the bundled `python`
@@ -26,13 +38,16 @@ when it's set as the working RootDir.
 ## Lifecycle
 
 ```text
-python_create
+python_run file=…                        ← no setup call needed
+   ├─ working RootDir is python-type → use it
+   ├─ else `_python` exists          → use it
+   └─ else                           → create `_python` (venv included), then run
+   → .venv/bin/python <file>  (cwd = RootDir, stdout/stderr captured)
+python_install package=… (or packages=[…])
+   → same resolution, then pip install … && pip freeze > requirements.txt
+python_create                            ← only for a SEPARATE labelled workspace
    ├─ no rootdir yet → git init + python -m venv .venv (+ pip install -r if cloned with requirements.txt)
    └─ rootdir exists → return existing (status="exists")
-python_install package=… (or packages=[…])
-   → pip install … && pip freeze > requirements.txt
-python_run file=…
-   → .venv/bin/python <file>  (cwd = RootDir, stdout/stderr captured)
 ```
 
 `python_create` is **idempotent on `label`**. Calling it twice for the

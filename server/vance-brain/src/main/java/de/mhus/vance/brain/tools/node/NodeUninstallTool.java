@@ -143,10 +143,15 @@ public class NodeUninstallTool implements Tool {
                 ? Optional.empty()
                 : workspaceService.getWorkingDir(tenantId, projectId, creator);
         if (workingDir.isEmpty()) {
+            // Refusing is right here — with no Node workspace nothing is
+            // installed, and provisioning one just to uninstall from it
+            // would be busywork. The message must not send the caller to
+            // node_create though: that step is no longer part of any path.
             return findByLabel(tenantId, projectId, NodeHandler.DEFAULT_LABEL)
                     .orElseThrow(() -> new ToolException(
-                            "No Node RootDir found in project " + projectId
-                                    + ". Run node_create first."));
+                            "No Node workspace exists in project " + projectId
+                                    + " — nothing is installed, so there is nothing "
+                                    + "to uninstall."));
         }
         return workspaceService.getRootDir(tenantId, projectId, workingDir.get())
                 .orElseThrow(() -> new ToolException(

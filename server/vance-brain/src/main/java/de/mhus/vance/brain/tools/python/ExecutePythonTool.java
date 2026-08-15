@@ -4,16 +4,14 @@ import de.mhus.vance.brain.tools.exec.ExecLabels;
 import de.mhus.vance.brain.tools.exec.ExecManager;
 import de.mhus.vance.brain.tools.exec.ExecProperties;
 import de.mhus.vance.brain.tools.exec.SubmitOptions;
+import de.mhus.vance.brain.tools.workspace.TypedRootDirProvisioner;
 import de.mhus.vance.shared.workspace.PythonHandler;
 import de.mhus.vance.shared.workspace.RootDirHandle;
-import de.mhus.vance.shared.workspace.RootDirSpec;
-import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -46,10 +44,12 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class ExecutePythonTool implements Tool {
 
-    /** Label of the default Python RootDir that {@code execute_python}
+    /** @deprecated use {@link PythonHandler#DEFAULT_LABEL}. Kept as an
+     *  alias so existing references keep compiling.
+     *  Label of the default Python RootDir that {@code execute_python}
      *  creates on demand. Underscore prefix marks it as system-managed
      *  (same convention as {@code _user_*} / {@code _tenant} projects). */
-    static final String DEFAULT_LABEL = "_python";
+    static final String DEFAULT_LABEL = PythonHandler.DEFAULT_LABEL;
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
@@ -148,7 +148,9 @@ public class ExecutePythonTool implements Tool {
             throw new ToolException("execute_python needs a process or session scope");
         }
 
-        RootDirHandle handle = ensureDefaultPythonRootDir(tenantId, projectId, creator, ctx.sessionId());
+        RootDirHandle handle = TypedRootDirProvisioner.ensure(
+                workspaceService, ctx, PythonHandler.TYPE, PythonHandler.DEFAULT_LABEL,
+                Map.of(PythonHandler.META_PYTHON_PATH, PythonHandler.DEFAULT_PYTHON_PATH));
         String dirName = handle.getDirName();
 
         // Write the inline script. Timestamp suffix keeps successive
@@ -192,38 +194,6 @@ public class ExecutePythonTool implements Tool {
      * Lookup by label first (same idempotency rule as
      * {@link PythonCreateTool}); only create when absent.
      */
-    private RootDirHandle ensureDefaultPythonRootDir(
-            String tenantId, String projectId, String creator, String sessionId) {
-        for (RootDirHandle h : workspaceService.listRootDirs(tenantId, projectId)) {
-            if (!PythonHandler.TYPE.equals(h.getType())) continue;
-            String label = h.getDescriptor() == null ? null : h.getDescriptor().getLabel();
-            if (DEFAULT_LABEL.equals(label)) {
-                return h;
-            }
-        }
-        Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put(PythonHandler.META_PYTHON_PATH, PythonHandler.DEFAULT_PYTHON_PATH);
-        RootDirSpec spec = RootDirSpec.builder()
-                .tenantId(tenantId)
-                .projectId(projectId)
-                .type(PythonHandler.TYPE)
-                .creatorProcessId(creator)
-                .sessionId(sessionId)
-                .labelHint(DEFAULT_LABEL)
-                .deleteOnCreatorClose(false)
-                .metadata(metadata)
-                .build();
-        try {
-            RootDirHandle handle = workspaceService.createRootDir(spec);
-            log.info("execute_python: created default Python RootDir tenant='{}' "
-                    + "project='{}' dirName='{}'", tenantId, projectId, handle.getDirName());
-            return handle;
-        } catch (WorkspaceException e) {
-            throw new ToolException("execute_python: failed to provision Python RootDir: "
-                    + e.getMessage(), e);
-        }
-    }
-
     private static String requireString(Map<String, Object> params, String key) {
         Object raw = params == null ? null : params.get(key);
         if (!(raw instanceof String s) || s.isBlank()) {

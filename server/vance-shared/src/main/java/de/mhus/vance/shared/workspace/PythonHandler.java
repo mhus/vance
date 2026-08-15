@@ -54,6 +54,14 @@ public class PythonHandler implements WorkspaceContentHandler {
 
     public static final String TYPE = "python";
 
+    /** Default label for the canonical per-project Python workspace,
+     *  mirroring {@link NodeHandler#DEFAULT_LABEL}. Brain-side Python
+     *  tools provision it on demand so a model never has to name a
+     *  matching RootDir — it just runs the script. Underscore-prefix
+     *  marks the folder as system-managed, so user-facing tooling won't
+     *  list it alongside user content. */
+    public static final String DEFAULT_LABEL = "_python";
+
     public static final String META_PYTHON_PATH = "pythonPath";
     public static final String META_PACKAGES = "packages";
     public static final String DEFAULT_PYTHON_PATH = "python3";

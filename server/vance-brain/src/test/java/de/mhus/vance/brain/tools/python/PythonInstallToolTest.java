@@ -119,13 +119,38 @@ class PythonInstallToolTest {
     }
 
     @Test
-    void invoke_rejectsNonPythonRootDir() {
-        when(workspace.getRootDir(eq("acme"), eq("instant-hole"), eq("python")))
-                .thenReturn(Optional.of(gitHandle("python")));
+    void invoke_explicitNonPythonRootDir_isRejected() {
+        // Naming a RootDir is a decision. Silently redirecting to a
+        // different one would hide the caller's mistake.
+        when(workspace.getRootDir(eq("acme"), eq("instant-hole"), eq("elsewhere")))
+                .thenReturn(Optional.of(gitHandle("elsewhere")));
 
-        assertThatThrownBy(() -> tool.invoke(Map.of("package", "flask"), CTX))
+        assertThatThrownBy(() -> tool.invoke(
+                Map.of("package", "flask", "dirName", "elsewhere"), CTX))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("expected 'python'");
+    }
+
+    @Test
+    void invoke_workingDirNotPython_fallsBackToCanonicalWorkspace() {
+        // Previously this refused with "expected 'python'" and left the
+        // model with nothing to act on — the benchmark recorded 21 such
+        // refusals in one class. Now the canonical `_python` workspace is
+        // provisioned instead. See TypedRootDirProvisioner.
+        when(workspace.getRootDir(eq("acme"), eq("instant-hole"), eq("python")))
+                .thenReturn(Optional.of(gitHandle("python")));
+        when(workspace.listRootDirs(eq("acme"), eq("instant-hole")))
+                .thenReturn(java.util.List.of());
+        when(workspace.createRootDir(any()))
+                .thenReturn(pythonHandle(PythonHandler.DEFAULT_LABEL));
+
+        tool.invoke(Map.of("package", "flask"), CTX);
+
+        ArgumentCaptor<String> dir = ArgumentCaptor.forClass(String.class);
+        verify(execManager).submitTrackedAndRender(
+                anyString(), anyString(), any(), any(), dir.capture(), anyString(), anyLong(),
+                any(de.mhus.vance.brain.tools.exec.SubmitOptions.class));
+        assertThat(dir.getValue()).isEqualTo(PythonHandler.DEFAULT_LABEL);
     }
 
     private String capturedCommand() {

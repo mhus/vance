@@ -54,11 +54,37 @@ public class KindResolver {
      *         {@code "text"} as the silent ultimate fallback
      */
     public String resolve(@Nullable String requested, @Nullable String existingKind) {
+        return resolve(requested, existingKind, /*content*/ null);
+    }
+
+    /**
+     * As {@link #resolve(String, String)}, but lets the registered kinds
+     * claim un-typed content on create.
+     *
+     * <p>The {@code kind} parameter is optional and documented as defaulting
+     * to {@code text}; a model that omits it therefore stores a Mermaid
+     * document as prose. Measured: 7 of 27 such documents across three models
+     * (see {@code planning/model-context-inflation-lab.md}). Asking the
+     * {@link KindRegistry} closes that path without teaching this resolver
+     * anything about individual kinds — the handler owns its marker.
+     *
+     * <p>Only consulted when the caller named no kind AND no document exists
+     * at the path: an explicit kind is a decision, and an existing document
+     * keeps its kind on overwrite.
+     */
+    public String resolve(
+            @Nullable String requested,
+            @Nullable String existingKind,
+            @Nullable String content) {
         String norm = requested == null ? "" : requested.trim().toLowerCase();
         String existing = existingKind == null ? "" : existingKind.trim().toLowerCase();
 
         if (norm.isEmpty()) {
-            return !existing.isEmpty() ? existing : FALLBACK_KIND;
+            if (!existing.isEmpty()) {
+                return existing;
+            }
+            String detected = registry.detectKind(content);
+            return detected != null ? detected : FALLBACK_KIND;
         }
 
         if (registry.isKnown(norm)) {

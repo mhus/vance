@@ -39,7 +39,12 @@ public class CodecKindHandlers {
         return new CodecKindHandler("graph", GraphCodec::parse, GraphCodec::supports);
     }
     @Bean public KindHandler diagramKindHandler() {
-        return new CodecKindHandler("diagram", DiagramCodec::parse, DiagramCodec::supports);
+        // Claims un-typed bodies carrying a ```mermaid fence, ahead of the
+        // list-shaped kinds: the fence language is unambiguous, their markers
+        // are not. Measured need — 7 of 27 stored Mermaid docs across three
+        // models landed as kind: text because the parameter is optional.
+        return new CodecKindHandler("diagram", DiagramCodec::parse, DiagramCodec::supports,
+                DiagramCodec::looksLikeDiagram, /*detectionPriority*/ 10);
     }
     @Bean public KindHandler treeKindHandler() {
         return new CodecKindHandler("tree", TreeCodec::parse, TreeCodec::supports);

@@ -3,6 +3,7 @@ package de.mhus.vance.shared.document;
 import de.mhus.vance.shared.document.kind.KindHandler;
 import jakarta.annotation.PostConstruct;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -32,6 +33,8 @@ public class KindRegistry {
     private final List<KindHandler> handlers;
     private Set<String> names = Set.of();
     private Map<String, KindHandler> byName = Map.of();
+    /** Handlers in detection order — see {@link #detectKind}. */
+    private List<KindHandler> detectionOrder = List.of();
 
     public KindRegistry(List<KindHandler> handlers) {
         this.handlers = handlers;
@@ -57,6 +60,14 @@ public class KindRegistry {
         }
         this.names = Collections.unmodifiableSet(collected);
         this.byName = Collections.unmodifiableMap(handlerByName);
+        // Total, stable order: declared priority first, kind name as
+        // tiebreaker. Built once here rather than per detectKind call —
+        // the set is fixed after startup.
+        this.detectionOrder = handlerByName.values().stream()
+                .sorted(Comparator
+                        .comparingInt(KindHandler::detectionPriority)
+                        .thenComparing(KindHandler::getName))
+                .toList();
     }
 
     /** All registered kind names, lower-cased, in registration order. */
@@ -79,5 +90,35 @@ public class KindRegistry {
     public @Nullable KindHandler handlerFor(@Nullable String name) {
         if (name == null || name.isBlank()) return null;
         return byName.get(name.toLowerCase());
+    }
+
+    /**
+     * The kind that claims {@code content}, or {@code null} when none does.
+     *
+     * <p>For creates that carry no explicit {@code kind}. Handlers are asked
+     * in {@link KindHandler#detectionPriority()} order, name-ascending on
+     * ties, and the first claimant wins — short bodies are ambiguous by
+     * nature, so a unique-claimant rule would simply not detect in the common
+     * case. The order is declared on the kinds rather than inherited from
+     * bean-injection order, so the same body yields the same kind regardless
+     * of which addons happen to be deployed.
+     *
+     * <p>A detector that throws is treated as "does not claim": detection is
+     * a convenience on the write path and must never fail a write. The
+     * failure is logged, not propagated.
+     */
+    public @Nullable String detectKind(@Nullable String content) {
+        if (content == null || content.isBlank()) return null;
+        for (KindHandler h : detectionOrder) {
+            try {
+                if (h.detects(content)) {
+                    return h.getName();
+                }
+            } catch (RuntimeException e) {
+                log.warn("Kind detector '{}' failed — treated as no match: {}",
+                        h.getName(), e.toString());
+            }
+        }
+        return null;
     }
 }

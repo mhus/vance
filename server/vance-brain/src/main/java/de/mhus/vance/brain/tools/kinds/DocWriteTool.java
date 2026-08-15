@@ -80,8 +80,10 @@ public class DocWriteTool implements Tool {
                                     + "formula (KaTeX/mhchem-rendered math "
                                     + "or chemistry), schema. Addons can add more kinds — "
                                     + "the registry is open. On overwrite, "
-                                    + "omit to keep the existing kind; on "
-                                    + "create, omit to default to 'text'."),
+                                    + "omit to keep the existing kind. On create, "
+                                    + "omit and the kind is derived from the body "
+                                    + "when it is unmistakable (e.g. a ```mermaid "
+                                    + "fence -> diagram), otherwise 'text'."),
                     "content", Map.of(
                             "type", "string",
                             "description", "Document body. Replaces whatever "
@@ -163,7 +165,7 @@ public class DocWriteTool implements Tool {
         Optional<DocumentDocument> existing =
                 docService.findByPath(ctx.tenantId(), project.getName(), path);
         String existingKind = existing.map(DocumentDocument::getKind).orElse(null);
-        String resolvedKind = kindResolver.resolve(requestedKind, existingKind);
+        String resolvedKind = kindResolver.resolve(requestedKind, existingKind, content);
         if (mimeType == null) {
             mimeType = defaultMimeFor(resolvedKind);
         }

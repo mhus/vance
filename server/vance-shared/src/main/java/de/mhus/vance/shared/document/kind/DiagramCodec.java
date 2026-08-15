@@ -84,6 +84,31 @@ public final class DiagramCodec {
         return isMarkdown(mimeType) || isJson(mimeType) || isYaml(mimeType);
     }
 
+    /**
+     * Does {@code body} carry this kind's unmistakable marker — a fenced
+     * block whose language is a Mermaid dialect?
+     *
+     * <p>Used by {@code KindRegistry.detectKind} when a document is created
+     * without an explicit kind. Deliberately narrow: only the fence language
+     * counts, never prose that merely mentions a diagram. A fence tagged
+     * {@code mermaid} has exactly one meaning on disk, which is what makes it
+     * safe to claim ahead of kinds whose bodies are plain lists or JSON.
+     *
+     * <p>JSON/YAML diagram bodies ({@code source:} field) are NOT claimed:
+     * that shape is indistinguishable from other structured kinds without
+     * guessing, and guessing here would mistype other people's documents.
+     */
+    public static boolean looksLikeDiagram(@Nullable String body) {
+        if (body == null || body.isBlank()) return false;
+        for (String line : body.split("\\R")) {
+            Matcher m = CODE_FENCE_OPEN.matcher(line.strip());
+            if (m.matches() && "mermaid".equalsIgnoreCase(m.group(2))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // ── Mime ───────────────────────────────────────────────────────
 
     private static boolean isMarkdown(@Nullable String mime) {

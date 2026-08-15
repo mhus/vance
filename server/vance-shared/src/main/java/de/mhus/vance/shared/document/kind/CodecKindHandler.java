@@ -32,14 +32,46 @@ public final class CodecKindHandler implements KindHandler {
     private final String kind;
     private final BiFunction<String, String, Object> parser;
     private final Predicate<String> supports;
+    private final @Nullable Predicate<String> detector;
+    private final int detectionPriority;
 
     public CodecKindHandler(
             String kind,
             BiFunction<String, String, Object> parser,
             Predicate<String> supports) {
+        this(kind, parser, supports, /*detector*/ null, /*detectionPriority*/ 100);
+    }
+
+    /**
+     * Variant that also claims un-typed content on create.
+     *
+     * @param detector          returns true when the body carries this kind's
+     *                          unmistakable on-disk marker; see
+     *                          {@link KindHandler#detects}
+     * @param detectionPriority lower is asked first — see
+     *                          {@link KindHandler#detectionPriority()}
+     */
+    public CodecKindHandler(
+            String kind,
+            BiFunction<String, String, Object> parser,
+            Predicate<String> supports,
+            @Nullable Predicate<String> detector,
+            int detectionPriority) {
         this.kind = kind;
         this.parser = parser;
         this.supports = supports;
+        this.detector = detector;
+        this.detectionPriority = detectionPriority;
+    }
+
+    @Override
+    public boolean detects(String content) {
+        return detector != null && detector.test(content);
+    }
+
+    @Override
+    public int detectionPriority() {
+        return detectionPriority;
     }
 
     @Override

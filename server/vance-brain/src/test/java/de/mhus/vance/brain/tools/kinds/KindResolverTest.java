@@ -87,4 +87,56 @@ class KindResolverTest {
     void unresolvableKind_onOverwrite_keepsExisting() {
         assertThat(resolver.resolve("frobnicate", "slides")).isEqualTo("slides");
     }
+
+    // ── `text` is not a commitment ──────────────────────────────
+    //
+    // It is the name of "unspecified" and what a model picks when it does
+    // not decide: of 33 doc_write calls in one MermaidVariety run, 30 passed
+    // an explicit kind and every mis-typed diagram carried kind=text beside a
+    // ```mermaid body. So `text` lets the registered kinds claim the content;
+    // a specific kind never does.
+
+    private KindResolver resolverDetecting(String detected) {
+        KindRegistry registry = registryWith(KNOWN_KINDS);
+        when(registry.detectKind(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(detected);
+        return new KindResolver(registry);
+    }
+
+    @Test
+    void requestedText_withDetectableBody_yieldsDetectedKind() {
+        assertThat(resolverDetecting("diagram")
+                .resolve("text", null, "```mermaid\nflowchart TD\n```"))
+                .isEqualTo("diagram");
+    }
+
+    @Test
+    void requestedText_withUndetectableBody_staysText() {
+        assertThat(resolverDetecting(null).resolve("text", null, "just prose"))
+                .isEqualTo("text");
+    }
+
+    @Test
+    void requestedSpecificKind_isNeverOverriddenByDetection() {
+        // The caller committed to chart; a diagram detector must not win.
+        assertThat(resolverDetecting("diagram")
+                .resolve("chart", null, "```mermaid\npie\n```"))
+                .isEqualTo("chart");
+    }
+
+    @Test
+    void existingSpecificKind_survivesATextRequest() {
+        // Overwriting a diagram with kind=text must not retype the document.
+        assertThat(resolverDetecting("mindmap")
+                .resolve("text", "diagram", "```mermaid\nflowchart TD\n```"))
+                .isEqualTo("diagram");
+    }
+
+    @Test
+    void existingText_isReplacedByDetection() {
+        // An existing `text` is as unspecific as a requested one.
+        assertThat(resolverDetecting("diagram")
+                .resolve(null, "text", "```mermaid\nflowchart TD\n```"))
+                .isEqualTo("diagram");
+    }
 }

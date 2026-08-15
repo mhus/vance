@@ -79,12 +79,21 @@ public class KindResolver {
         String norm = requested == null ? "" : requested.trim().toLowerCase();
         String existing = existingKind == null ? "" : existingKind.trim().toLowerCase();
 
-        if (norm.isEmpty()) {
-            if (!existing.isEmpty()) {
+        // `text` is not a commitment — it is the name of "unspecified", and
+        // it is what a model picks when it does not decide. Measured: of 33
+        // doc_write calls in one MermaidVariety run, 30 passed an explicit
+        // kind, and every mis-typed diagram carried kind=text next to a
+        // ```mermaid body. Treating it as a decision meant the registered
+        // kinds never got asked. A specific kind still wins outright.
+        if (norm.isEmpty() || FALLBACK_KIND.equals(norm)) {
+            if (!existing.isEmpty() && !FALLBACK_KIND.equals(existing)) {
                 return existing;
             }
             String detected = registry.detectKind(content);
-            return detected != null ? detected : FALLBACK_KIND;
+            if (detected != null) {
+                return detected;
+            }
+            return !existing.isEmpty() ? existing : FALLBACK_KIND;
         }
 
         if (registry.isKnown(norm)) {

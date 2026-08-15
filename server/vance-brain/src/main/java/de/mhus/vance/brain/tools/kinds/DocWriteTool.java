@@ -79,11 +79,12 @@ public class DocWriteTool implements Tool {
                                     + "(kit-defined app), data (raw JSON), "
                                     + "formula (KaTeX/mhchem-rendered math "
                                     + "or chemistry), schema. Addons can add more kinds — "
-                                    + "the registry is open. On overwrite, "
-                                    + "omit to keep the existing kind. On create, "
-                                    + "omit and the kind is derived from the body "
-                                    + "when it is unmistakable (e.g. a ```mermaid "
-                                    + "fence -> diagram), otherwise 'text'."),
+                                    + "the registry is open. Name the kind that "
+                                    + "matches the content you are writing — a body "
+                                    + "whose main content is a fenced diagram, chart "
+                                    + "or graph block is one of those kinds, never "
+                                    + "'text'. On overwrite, omit to keep the "
+                                    + "existing kind."),
                     "content", Map.of(
                             "type", "string",
                             "description", "Document body. Replaces whatever "

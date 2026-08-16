@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Path handling for the sandbox gate. Two jobs:
@@ -25,6 +26,7 @@ import java.nio.file.PathMatcher;
  * single-session process, so the working directory does not change
  * underneath us.
  */
+@Slf4j
 public final class PermissionPaths {
 
     private PermissionPaths() {}
@@ -82,15 +84,46 @@ public final class PermissionPaths {
     }
 
     /**
-     * Compiles a permission path glob into an absolute matcher.
-     * {@code ~}/{@code ~/…} expand to the home directory; a leading
-     * {@code /} is taken as absolute; anything else (including
-     * {@code ./…}) is resolved against the CWD. The resulting pattern is
-     * matched against the {@link #canonicalize canonical} subject path.
+     * Compiles a permission path glob into an absolute matcher. Four
+     * forms, and every rule states its own scope — there is deliberately
+     * no file-level "base" switch, because in an allow-list a rule's
+     * meaning must not depend on a distant line:
+     *
+     * <ul>
+     *   <li>{@code ~} / {@code ~/…} — relative to the home directory</li>
+     *   <li>{@code /…} — absolute. Use {@code /**}{@code /name/**} to
+     *       match a folder wherever it sits in the filesystem.</li>
+     *   <li>{@code ./…} — relative to the CWD</li>
+     *   <li>anything else — also relative to the CWD</li>
+     * </ul>
+     *
+     * <p>The last form is the trap: a bare {@code **}{@code /target/**}
+     * looks filesystem-wide and silently becomes
+     * {@code <cwd>/**}{@code /target/**}, which matches nothing. That
+     * cost a full benchmark night — every {@code client_file_write} was
+     * refused while the policy file looked correct. A bare pattern
+     * starting with {@code **} can only be that mistake, so it is logged
+     * rather than left silent.
+     *
+     * <p>The resulting pattern is matched against the
+     * {@link #canonicalize canonical} subject path.
      */
     public static PathMatcher globMatcher(String glob) {
+        warnIfAccidentallyCwdRelative(glob);
         String absolute = expandPattern(glob);
         return FileSystems.getDefault().getPathMatcher("glob:" + absolute);
+    }
+
+    private static void warnIfAccidentallyCwdRelative(String glob) {
+        // `**` on its own is the correct spelling for "the working
+        // directory subtree" — only a bare `**/…` is the mistake.
+        if (glob.startsWith("**/")) {
+            log.warn("Permission path rule '{}' is CWD-relative and expands to '{}' — "
+                            + "it will match nothing. For a folder anywhere in the "
+                            + "filesystem write '/{}'; for the working directory write "
+                            + "'**' on its own.",
+                    glob, expandPattern(glob), glob);
+        }
     }
 
     /**

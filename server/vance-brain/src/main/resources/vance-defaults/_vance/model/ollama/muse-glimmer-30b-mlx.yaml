@@ -1,7 +1,14 @@
 wireName: muse-glimmer:30b-mlx
 contextWindowTokens: 131072
 defaultMaxOutputTokens: 8192
-size: LARGE
+# Local models get the small-tier prompt: it is markedly more directive
+# (arthur-prompt.md branches on `tier == "small"` — "every turn ends with
+# exactly one arthur_action call, no plain assistant text"), and that is
+# what a ~30B model needs. LARGE is for frontier models. Also keeps the
+# four local benchmark peers on one prompt branch — gpt-oss:20b was SMALL
+# while the others were LARGE, which made that comparison apples to
+# oranges.
+size: SMALL
 capabilities:
 - vision
 timeoutSeconds: 600

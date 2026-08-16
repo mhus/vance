@@ -67,4 +67,30 @@ class PermissionPathsTest {
         assertThat(PermissionPaths.expandPattern("./**")).isEqualTo(cwd + "/**");
         assertThat(PermissionPaths.expandPattern("build/**")).isEqualTo(cwd + "/build/**");
     }
+
+    // ── glob scoping: every rule states its own base ────────────────
+
+    @Test
+    void expandPattern_bareDoubleStar_isTheWorkingDirectorySubtree() {
+        // The correct spelling for "everything the foot may touch": foot
+        // runs IN its working directory, so CWD-relative is what we want.
+        assertThat(PermissionPaths.expandPattern("**"))
+                .isEqualTo(System.getProperty("user.dir") + "/**");
+    }
+
+    @Test
+    void expandPattern_barePathGlob_isCwdRelativeNotFilesystemWide() {
+        // The trap this warns about: it LOOKS filesystem-wide and is not.
+        // A benchmark policy written this way refused every write for a
+        // whole night while the file looked correct.
+        assertThat(PermissionPaths.expandPattern("**/target/**"))
+                .isEqualTo(System.getProperty("user.dir") + "/**/target/**");
+    }
+
+    @Test
+    void expandPattern_leadingSlash_matchesAnywhereInTheFilesystem() {
+        // The working spelling for "this folder wherever it sits".
+        assertThat(PermissionPaths.expandPattern("/**/target/**"))
+                .isEqualTo("/**/target/**");
+    }
 }

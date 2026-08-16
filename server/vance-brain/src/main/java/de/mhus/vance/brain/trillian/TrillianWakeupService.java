@@ -185,8 +185,17 @@ public class TrillianWakeupService {
 
     /** Minutes for this step, capped harder during the night. */
     int minutesFor(int step, ZoneId zone) {
+        return minutesFor(step, LocalTime.now(zone));
+    }
+
+    /**
+     * The same decision against a given time of day, so the ladder and
+     * the night cap can be checked without the caller's wall clock
+     * deciding which of the two answers is correct.
+     */
+    int minutesFor(int step, LocalTime now) {
         int minutes = LADDER[Math.max(0, Math.min(step, LADDER.length - 1))];
-        return isNight(LocalTime.now(zone)) ? Math.max(minutes, NIGHT_MINUTES) : minutes;
+        return isNight(now) ? Math.max(minutes, NIGHT_MINUTES) : minutes;
     }
 
     static boolean isNight(LocalTime now) {

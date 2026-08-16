@@ -37,6 +37,8 @@ class TrillianWakeupServiceTest {
 
     private static final String LOOP = "loop-1";
     private static final ZoneId ZONE = ZoneId.of("UTC");
+    /** Safely outside the night window, whatever the machine clock says. */
+    private static final LocalTime DAY = LocalTime.of(12, 0);
 
     @Mock
     ThinkProcessService thinkProcessService;
@@ -86,16 +88,30 @@ class TrillianWakeupServiceTest {
 
     @Test
     void theCadenceDecelerates() {
-        givenChildren();
+        // Fixed midday, because at night the cap would answer for the
+        // ladder and this test would pass without testing anything.
         TrillianWakeupService service = service();
 
-        assertThat(service.minutesFor(0, ZONE)).isEqualTo(10);
-        assertThat(service.minutesFor(1, ZONE)).isEqualTo(20);
-        assertThat(service.minutesFor(2, ZONE)).isEqualTo(40);
-        assertThat(service.minutesFor(3, ZONE)).isEqualTo(60);
+        assertThat(service.minutesFor(0, DAY)).isEqualTo(10);
+        assertThat(service.minutesFor(1, DAY)).isEqualTo(20);
+        assertThat(service.minutesFor(2, DAY)).isEqualTo(40);
+        assertThat(service.minutesFor(3, DAY)).isEqualTo(60);
         // Past the end of the ladder it stays at the cap rather than
         // running off the array.
-        assertThat(service.minutesFor(99, ZONE)).isEqualTo(60);
+        assertThat(service.minutesFor(99, DAY)).isEqualTo(60);
+    }
+
+    @Test
+    void theNightCapOutranksTheLadder() {
+        // Two hours from the very first step: the point of the cap is
+        // that a fresh quiet round at 3 a.m. is still quiet until
+        // morning, not that the ladder climbs faster in the dark.
+        TrillianWakeupService service = service();
+
+        assertThat(service.minutesFor(0, LocalTime.of(23, 0))).isEqualTo(120);
+        assertThat(service.minutesFor(0, LocalTime.of(3, 0))).isEqualTo(120);
+        assertThat(service.minutesFor(3, LocalTime.of(3, 0))).isEqualTo(120);
+        assertThat(service.minutesFor(99, LocalTime.of(3, 0))).isEqualTo(120);
     }
 
     @Test

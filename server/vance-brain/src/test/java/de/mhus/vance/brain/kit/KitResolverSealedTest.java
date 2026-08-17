@@ -25,20 +25,22 @@ import org.junit.jupiter.api.Test;
  */
 class KitResolverSealedTest {
 
-    private KitRepoLoader repoLoader;
+    private static final String TENANT = "t1";
+
+    private KitSourceLoaders sourceLoaders;
     private KitWorkspace workspace;
     private KitResolver resolver;
 
     @BeforeEach
     void setUp() {
-        repoLoader = mock(KitRepoLoader.class);
+        sourceLoaders = mock(KitSourceLoaders.class);
         workspace = mock(KitWorkspace.class);
 
         // Workspace hands out throwaway paths — the test never reaches
         // any code that reads them, so non-existent paths are fine.
         when(workspace.allocate(any())).thenReturn(Paths.get("/tmp/kit-fake"));
 
-        resolver = new KitResolver(repoLoader, workspace);
+        resolver = new KitResolver(sourceLoaders, workspace);
     }
 
     @Test
@@ -57,12 +59,12 @@ class KitResolverSealedTest {
                 .sealed(true)
                 .build();
 
-        when(repoLoader.load(eq(topSource), any(), any()))
+        when(sourceLoaders.load(any(), eq(topSource), any(), any()))
                 .thenReturn(loaded(topDescriptor));
-        when(repoLoader.load(eq(sealedInherit), any(), any()))
+        when(sourceLoaders.load(any(), eq(sealedInherit), any(), any()))
                 .thenReturn(loaded(sealedDescriptor));
 
-        assertThatThrownBy(() -> resolver.resolve(topSource, null))
+        assertThatThrownBy(() -> resolver.resolve(TENANT, topSource, null))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("locked-base")
                 .hasMessageContaining("sealed");
@@ -80,7 +82,7 @@ class KitResolverSealedTest {
                 .description("sealed but installable")
                 .sealed(true)
                 .build();
-        when(repoLoader.load(eq(src), any(), any())).thenReturn(loaded(sealedTop));
+        when(sourceLoaders.load(any(), eq(src), any(), any())).thenReturn(loaded(sealedTop));
 
         // Just calling resolve must not throw the sealed exception.
         // Note: we mock workspace.allocate to a fake path, so the
@@ -88,7 +90,7 @@ class KitResolverSealedTest {
         // different exception (filesystem-not-found wrapped in
         // KitException). The point of this test is that the *sealed*
         // exception is NOT raised for top layers.
-        assertThatThrownBy(() -> resolver.resolve(src, null))
+        assertThatThrownBy(() -> resolver.resolve(TENANT, src, null))
                 .isInstanceOf(KitException.class)
                 .extracting(Throwable::getMessage, org.assertj.core.api.InstanceOfAssertFactories.STRING)
                 .doesNotContain("cannot be inherited from");

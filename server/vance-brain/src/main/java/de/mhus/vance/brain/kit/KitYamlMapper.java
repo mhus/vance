@@ -13,6 +13,10 @@ import de.mhus.vance.api.kit.KitOriginDto;
 import de.mhus.vance.api.kit.KitPolicyAction;
 import de.mhus.vance.api.kit.KitPolicyDto;
 import de.mhus.vance.api.kit.KitPolicyRuleDto;
+import de.mhus.vance.api.kit.KitSignaturePolicy;
+import de.mhus.vance.api.kit.KitSourceDto;
+import de.mhus.vance.api.kit.KitSourceType;
+import de.mhus.vance.api.kit.KitSourcesDto;
 import de.mhus.vance.api.settings.SettingType;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -20,6 +24,7 @@ import java.util.Locale;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
@@ -96,6 +101,17 @@ public final class KitYamlMapper {
                 .artifact(artifact)
                 .installable(installable)
                 .sealed(sealed)
+                .vendor(stringOrNull(map.get("vendor")))
+                .license(stringOrNull(map.get("license")))
+                .homepage(stringOrNull(map.get("homepage")))
+                // Delivery-written fields. Parsed wherever a descriptor comes
+                // from, because refusing them for git kits would only mean a
+                // shop kit re-imported from a checkout loses its purchase
+                // trail — and they carry no authority anyway until a
+                // signature covers them.
+                .licensedTo(stringOrNull(map.get("licensedTo")))
+                .purchaseId(stringOrNull(map.get("purchaseId")))
+                .licenseExpiresAt(parseInstant(map.get("licenseExpiresAt")))
                 // Same grammar as the user's config document — one policy
                 // syntax to learn, whether you author kits or install them.
                 .policy(map.get("policy") == null ? null : parsePolicy(map.get("policy"), label))
@@ -113,6 +129,18 @@ public final class KitYamlMapper {
         root.put("description", descriptor.getDescription());
         if (descriptor.getVersion() != null) {
             root.put("version", descriptor.getVersion());
+        }
+        if (descriptor.getVendor() != null) root.put("vendor", descriptor.getVendor());
+        if (descriptor.getLicense() != null) root.put("license", descriptor.getLicense());
+        if (descriptor.getHomepage() != null) root.put("homepage", descriptor.getHomepage());
+        if (descriptor.getLicensedTo() != null) {
+            root.put("licensedTo", descriptor.getLicensedTo());
+        }
+        if (descriptor.getPurchaseId() != null) {
+            root.put("purchaseId", descriptor.getPurchaseId());
+        }
+        if (descriptor.getLicenseExpiresAt() != null) {
+            root.put("licenseExpiresAt", descriptor.getLicenseExpiresAt().toString());
         }
         if (descriptor.isHasEncryptedSecrets()) {
             root.put("hasEncryptedSecrets", true);
@@ -420,6 +448,104 @@ public final class KitYamlMapper {
         }
         out.put("rules", rules);
         return out;
+    }
+
+    // ──────────────────── config/kit-sources.yaml ────────────────────
+
+    /**
+     * Parse the tenant's source configuration.
+     *
+     * <p>Strict on every field, because this document decides where a
+     * tenant's kits may come from. A typo that silently degrades to
+     * "unconfigured" would quietly turn a required signature into no
+     * signature at all — so an unreadable entry is an error, not a
+     * shrug.
+     */
+    @SuppressWarnings("unchecked")
+    public static KitSourcesDto parseSources(String yamlText) {
+        final String label = "kit-sources.yaml";
+        Map<String, Object> map = loadMap(yamlText, label);
+
+        List<KitSourceDto> sources = new ArrayList<>();
+        Object raw = map.get("sources");
+        if (raw == null) return KitSourcesDto.builder().sources(sources).build();
+        if (!(raw instanceof List<?> list)) {
+            throw new KitException(label + ": 'sources' must be a list");
+        }
+        Set<String> seenIds = new java.util.LinkedHashSet<>();
+        for (int i = 0; i < list.size(); i++) {
+            String entryLabel = label + " sources[" + i + "]";
+            if (!(list.get(i) instanceof Map<?, ?> nested)) {
+                throw new KitException(entryLabel + " must be a map");
+            }
+            Map<String, Object> e = (Map<String, Object>) nested;
+            String id = requireString(e, "id", entryLabel);
+            if (!seenIds.add(id)) {
+                throw new KitException(entryLabel + ": duplicate source id '" + id + "'");
+            }
+            KitSourceType type = parseSourceType(requireString(e, "type", entryLabel), entryLabel);
+            sources.add(KitSourceDto.builder()
+                    .id(id)
+                    .type(type)
+                    .url(requireString(e, "url", entryLabel))
+                    .signature(e.get("signature") == null
+                            ? KitSignaturePolicy.defaultFor(type)
+                            : parseSignaturePolicy(e.get("signature"), entryLabel))
+                    .publicKey(stringOrNull(e.get("publicKey")))
+                    .build());
+        }
+        return KitSourcesDto.builder().sources(sources).build();
+    }
+
+    private static KitSourceType parseSourceType(String raw, String label) {
+        try {
+            return KitSourceType.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new KitException(label + ": unknown source type '" + raw.trim()
+                    + "' — expected one of git, folder, library");
+        }
+    }
+
+    /**
+     * Parse a signature policy, working around a YAML trap: in YAML 1.1
+     * the bare word {@code off} is a <em>boolean</em>, so
+     * {@code signature: off} arrives here as {@code false} and never as
+     * the string anyone typed. Rejecting that would fail the most
+     * obvious way to write the most common setting.
+     *
+     * <p>{@code true} is refused rather than guessed — {@code on} would
+     * be its source, and "on" says nothing about whether signatures are
+     * merely checked or actually required.
+     */
+    private static KitSignaturePolicy parseSignaturePolicy(Object raw, String label) {
+        if (Boolean.FALSE.equals(raw)) return KitSignaturePolicy.OFF;
+        if (Boolean.TRUE.equals(raw)) {
+            throw new KitException(label + ": signature must say how strict it is — "
+                    + "write 'required' or 'warn', not 'on'/'true'");
+        }
+        String value = raw.toString().trim();
+        try {
+            return KitSignaturePolicy.valueOf(value.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new KitException(label + ": unknown signature policy '" + value
+                    + "' — expected one of off, warn, required");
+        }
+    }
+
+    public static String writeSources(KitSourcesDto sources) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (KitSourceDto s : sources.getSources()) {
+            Map<String, Object> e = new LinkedHashMap<>();
+            e.put("id", s.getId());
+            e.put("type", s.getType().name().toLowerCase(Locale.ROOT));
+            e.put("url", s.getUrl());
+            e.put("signature", s.getSignature().name().toLowerCase(Locale.ROOT));
+            if (s.getPublicKey() != null) e.put("publicKey", s.getPublicKey());
+            out.add(e);
+        }
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("sources", out);
+        return dump(root);
     }
 
     // ──────────────────── kit-manifest.yaml ────────────────────

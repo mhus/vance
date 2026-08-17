@@ -38,10 +38,11 @@ public class TemplateDescribeService {
      * @throws KitException when the source has no {@code template.yaml}
      *                      or the file is invalid
      */
-    public ToolTemplateDescriptorDto describe(KitInheritDto source, @Nullable String token) {
+    public ToolTemplateDescriptorDto describe(
+            String tenantId, KitInheritDto source, @Nullable String token) {
         KitResolver.ResolvedKit resolved = null;
         try {
-            resolved = resolver.resolve(source, token);
+            resolved = resolver.resolve(tenantId, source, token);
             Path templatePath = resolved.buildRoot().resolve(TemplateApplier.TEMPLATE_FILENAME);
             if (!Files.isRegularFile(templatePath)) {
                 throw new KitException("kit at " + source.getUrl()

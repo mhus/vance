@@ -228,6 +228,64 @@ class KitYamlMapperRecordTest {
     }
 
     @Test
+    void descriptor_vendorAndLicence_roundTrip() {
+        String yaml = """
+                name: kernel-security
+                description: Kernel research
+                vendor: Acme Security GmbH
+                license: proprietary
+                homepage: https://acme.example/kits/kernel-security
+                """;
+        KitDescriptorDto parsed = KitYamlMapper.parseDescriptor(yaml);
+        assertThat(parsed.getVendor()).isEqualTo("Acme Security GmbH");
+        assertThat(parsed.getLicense()).isEqualTo("proprietary");
+        assertThat(parsed.getHomepage()).isEqualTo("https://acme.example/kits/kernel-security");
+
+        KitDescriptorDto reparsed = KitYamlMapper.parseDescriptor(
+                KitYamlMapper.writeDescriptor(parsed));
+        assertThat(reparsed.getVendor()).isEqualTo("Acme Security GmbH");
+    }
+
+    @Test
+    void descriptor_deliveryFields_roundTrip() {
+        // Written by the shop, not the author — but parsed everywhere, so a
+        // purchased kit that gets re-imported from a checkout keeps its trail.
+        String yaml = """
+                name: kernel-security
+                description: Kernel research
+                licensedTo: acme-tenant
+                purchaseId: pur_7f3a
+                licenseExpiresAt: 2027-01-31T00:00:00Z
+                """;
+        KitDescriptorDto parsed = KitYamlMapper.parseDescriptor(yaml);
+        assertThat(parsed.getLicensedTo()).isEqualTo("acme-tenant");
+        assertThat(parsed.getPurchaseId()).isEqualTo("pur_7f3a");
+        assertThat(parsed.getLicenseExpiresAt())
+                .isEqualTo(Instant.parse("2027-01-31T00:00:00Z"));
+
+        KitDescriptorDto reparsed = KitYamlMapper.parseDescriptor(
+                KitYamlMapper.writeDescriptor(parsed));
+        assertThat(reparsed.getLicenseExpiresAt())
+                .isEqualTo(Instant.parse("2027-01-31T00:00:00Z"));
+    }
+
+    @Test
+    void descriptor_withoutTheNewFields_leavesThemNull() {
+        // Absent must stay absent: an empty string in `vendor` would render
+        // as a vendor line in the UI for every kit that never named one.
+        KitDescriptorDto parsed = KitYamlMapper.parseDescriptor("""
+                name: plain
+                description: a kit that names nobody
+                """);
+        assertThat(parsed.getVendor()).isNull();
+        assertThat(parsed.getLicense()).isNull();
+        assertThat(parsed.getLicensedTo()).isNull();
+        assertThat(parsed.getLicenseExpiresAt()).isNull();
+        assertThat(KitYamlMapper.writeDescriptor(parsed))
+                .doesNotContain("vendor").doesNotContain("license");
+    }
+
+    @Test
     void descriptor_withoutPolicy_leavesItUnset() {
         // Absent means "no opinion" — which is different from "keep", and
         // the cascade relies on telling those apart.

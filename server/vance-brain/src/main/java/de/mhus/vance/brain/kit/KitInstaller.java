@@ -145,7 +145,7 @@ public class KitInstaller {
         // Only materialised if some artefact actually needs a common
         // ancestor — see KitBaseTree.
         KitBaseTree baseTree = tracked && previous != null
-                ? new KitBaseTree(resolver, workspace, source, token, previous.getOrigin())
+                ? new KitBaseTree(resolver, workspace, tenantId, source, token, previous.getOrigin())
                 : null;
         try {
             List<KitArtefactDto> documentArtefacts = applyDocuments(

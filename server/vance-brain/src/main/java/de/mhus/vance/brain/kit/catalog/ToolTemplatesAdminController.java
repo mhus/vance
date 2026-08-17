@@ -113,7 +113,7 @@ public class ToolTemplatesAdminController {
                     "Tool template '" + name + "' is not in the tenant catalog");
         }
         try {
-            return describeService.describe(entry.getSource(), null);
+            return describeService.describe(tenant, entry.getSource(), null);
         } catch (KitException e) {
             log.warn("tool-template describe failed for '{}': {}", name, e.getMessage());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);

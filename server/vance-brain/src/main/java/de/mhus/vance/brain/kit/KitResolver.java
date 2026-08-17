@@ -35,7 +35,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class KitResolver {
 
-    private final KitRepoLoader repoLoader;
+    private final KitSourceLoaders sourceLoaders;
     private final KitWorkspace workspace;
 
     /**
@@ -85,7 +85,7 @@ public class KitResolver {
      * warning if a private inherit fails to clone — the caller decides
      * whether to abort).
      */
-    public ResolvedKit resolve(KitInheritDto source, @Nullable String token) {
+    public ResolvedKit resolve(String tenantId, KitInheritDto source, @Nullable String token) {
         List<Path> tmp = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         Set<String> visited = new HashSet<>();
@@ -93,7 +93,7 @@ public class KitResolver {
 
         Path topLoadDir = workspace.allocate("kit-top");
         tmp.add(topLoadDir);
-        KitRepoLoader.LoadedKit top = repoLoader.load(source, token, topLoadDir);
+        KitRepoLoader.LoadedKit top = sourceLoaders.load(tenantId, source, token, topLoadDir);
         markVisited(visited, source);
         // Active DFS path for TRUE cycle detection (a key that is its own
         // ancestor), kept distinct from `visited` which now only dedupes
@@ -106,7 +106,8 @@ public class KitResolver {
         //    top layer last. We build a stack-style list so DFS-order
         //    becomes the desired application order.
         List<KitRepoLoader.LoadedKit> mergeOrder = new ArrayList<>();
-        collectInherits(top, token, visited, onPath, resolvedNames, tmp, warnings, mergeOrder);
+        collectInherits(tenantId, top, token, visited, onPath, resolvedNames, tmp, warnings,
+                mergeOrder);
         mergeOrder.add(top); // top layer applied last → wins
 
         // 2. Build the merged tree. Each layer is copy-on-top: same
@@ -219,6 +220,7 @@ public class KitResolver {
     // ──────────────────── private ────────────────────
 
     private void collectInherits(
+            String tenantId,
             KitRepoLoader.LoadedKit layer,
             @Nullable String token,
             Set<String> visited,
@@ -248,7 +250,7 @@ public class KitResolver {
                 tmp.add(dir);
                 KitRepoLoader.LoadedKit loaded;
                 try {
-                    loaded = repoLoader.load(parent, token, dir);
+                    loaded = sourceLoaders.load(tenantId, parent, token, dir);
                 } catch (KitException e) {
                     warnings.add("failed to load inherit " + key + ": " + e.getMessage());
                     log.warn("inherit load failed: {}", e.getMessage());
@@ -262,7 +264,7 @@ public class KitResolver {
                             + "' is sealed and cannot be inherited from (referenced as "
                             + key + ")");
                 }
-                collectInherits(loaded, token, visited, onPath, resolvedNames,
+                collectInherits(tenantId, loaded, token, visited, onPath, resolvedNames,
                         tmp, warnings, mergeOrder);
                 mergeOrder.add(loaded);
                 resolvedNames.add(loaded.descriptor().getName());

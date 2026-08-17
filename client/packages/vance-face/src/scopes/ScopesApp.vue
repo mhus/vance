@@ -1270,6 +1270,25 @@ const combinedError = computed<string | null>(() =>
             </div>
             <div v-if="record.kit.description" class="opacity-80">{{ record.kit.description }}</div>
             <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs opacity-80">
+              <dt v-if="record.descriptor?.vendor" class="opacity-60">
+                {{ $t('scopes.kit.vendor') }}
+              </dt>
+              <dd v-if="record.descriptor?.vendor">{{ record.descriptor.vendor }}</dd>
+              <dt v-if="record.descriptor?.license" class="opacity-60">
+                {{ $t('scopes.kit.license') }}
+              </dt>
+              <dd v-if="record.descriptor?.license">{{ record.descriptor.license }}</dd>
+              <!-- Only shown for purchased kits; a git kit has none of this. -->
+              <dt v-if="record.descriptor?.licensedTo" class="opacity-60">
+                {{ $t('scopes.kit.licensedTo') }}
+              </dt>
+              <dd v-if="record.descriptor?.licensedTo">{{ record.descriptor.licensedTo }}</dd>
+              <dt v-if="record.descriptor?.licenseExpiresAt" class="opacity-60">
+                {{ $t('scopes.kit.licenseExpires') }}
+              </dt>
+              <dd v-if="record.descriptor?.licenseExpiresAt">
+                {{ record.descriptor.licenseExpiresAt }}
+              </dd>
               <dt class="opacity-60">{{ $t('scopes.kit.origin') }}</dt>
               <dd class="break-all font-mono">{{ record.origin.url }}</dd>
               <dt v-if="record.origin.path" class="opacity-60">{{ $t('scopes.kit.path') }}</dt>

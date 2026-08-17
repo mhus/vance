@@ -10,6 +10,12 @@ export interface KitDescriptorDto {
   name: string;
   description: string;
   version?: string;
+  vendor?: string;
+  license?: string;
+  homepage?: string;
+  licensedTo?: string;
+  purchaseId?: string;
+  licenseExpiresAt?: Date;
   inherits: KitInheritDto[];
   hasEncryptedSecrets: boolean;
   artifact: boolean;

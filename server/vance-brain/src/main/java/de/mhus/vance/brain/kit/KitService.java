@@ -61,7 +61,7 @@ public class KitService {
 
         KitResolver.ResolvedKit resolved = null;
         try {
-            resolved = resolver.resolve(request.getSource(), request.getToken());
+            resolved = resolver.resolve(tenantId, request.getSource(), request.getToken());
             KitDescriptorDto top = resolved.topLayer();
             validateResolvedTopLayer(top, request.isWriteManifest());
 
@@ -313,7 +313,7 @@ public class KitService {
         requireProject(tenantId, projectId);
         KitResolver.ResolvedKit resolved = null;
         try {
-            resolved = resolver.resolve(source, token);
+            resolved = resolver.resolve(tenantId, source, token);
             // Templates are by definition artifact-style; reject any
             // attempt to track them in a manifest.
             if (!resolved.topLayer().isArtifact()) {

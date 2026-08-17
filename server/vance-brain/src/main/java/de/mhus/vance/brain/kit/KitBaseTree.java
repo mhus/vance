@@ -29,6 +29,7 @@ final class KitBaseTree {
 
     private final KitResolver resolver;
     private final KitWorkspace workspace;
+    private final String tenantId;
     private final KitInheritDto source;
     private final @Nullable String token;
     private final @Nullable String previousCommit;
@@ -37,10 +38,12 @@ final class KitBaseTree {
     private KitResolver.@Nullable ResolvedKit resolved;
     private final Map<String, String> contents = new HashMap<>();
 
-    KitBaseTree(KitResolver resolver, KitWorkspace workspace, KitInheritDto source,
-            @Nullable String token, @Nullable KitOriginDto previousOrigin) {
+    KitBaseTree(KitResolver resolver, KitWorkspace workspace, String tenantId,
+            KitInheritDto source, @Nullable String token,
+            @Nullable KitOriginDto previousOrigin) {
         this.resolver = resolver;
         this.workspace = workspace;
+        this.tenantId = tenantId;
         this.source = source;
         this.token = token;
         this.previousCommit = previousOrigin == null ? null : previousOrigin.getCommit();
@@ -76,7 +79,7 @@ final class KitBaseTree {
                 .commit(previousCommit)
                 .build();
         try {
-            resolved = resolver.resolve(pinned, token);
+            resolved = resolver.resolve(tenantId, pinned, token);
         } catch (RuntimeException e) {
             // A missing base is a degraded merge, never a failed update —
             // the kit itself resolved fine, only its history did not.

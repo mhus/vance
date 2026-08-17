@@ -2,6 +2,7 @@ package de.mhus.vance.api.kit;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -28,6 +29,43 @@ public class KitDescriptorDto {
     private String description;
 
     private @Nullable String version;
+
+    /**
+     * Who publishes this kit. Free text — a display name, not an
+     * identity: nothing here is verified. What a kit's origin actually
+     * <i>is</i> stays the source url it came from.
+     */
+    private @Nullable String vendor;
+
+    /** SPDX identifier or free text, e.g. {@code MIT} or {@code proprietary}. */
+    private @Nullable String license;
+
+    /** Where to read more about the kit — docs, support, changelog. */
+    private @Nullable String homepage;
+
+    /**
+     * Tenant this copy was licensed to. Written by the delivering shop,
+     * never by the kit author.
+     *
+     * <p><b>Says nothing on its own.</b> Until a signature covers it
+     * (see {@code planning/kit-shop.md} §5.3), the field is a claim
+     * anyone can edit — it is carried so the signature has something to
+     * bind to and so the UI can show a purchase, not so anything can be
+     * enforced by its presence.
+     */
+    private @Nullable String licensedTo;
+
+    /** Purchase this copy came from. Written by the shop — see {@link #licensedTo}. */
+    private @Nullable String purchaseId;
+
+    /**
+     * When the licence stops entitling updates. Written by the shop.
+     *
+     * <p>Expiry blocks <b>updates</b>; what is installed keeps working.
+     * Removing artefacts from a running system is a different class of
+     * act and is not what a date in a metadata field decides.
+     */
+    private @Nullable Instant licenseExpiresAt;
 
     @Builder.Default
     private List<KitInheritDto> inherits = new ArrayList<>();

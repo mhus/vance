@@ -187,7 +187,7 @@ class KitServiceTest {
                 TENANT, PROJECT, "ghost-000000", false, null, null, null, SettingWriteOrigin.USER))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("ghost-000000");
-        verify(resolver, never()).resolve(any(), any());
+        verify(resolver, never()).resolve(any(), any(), any());
     }
 
     @Test
@@ -317,6 +317,6 @@ class KitServiceTest {
                 new LinkedHashMap<>(),
                 new ArrayList<>(),
                 new ArrayList<>());
-        when(resolver.resolve(any(), any())).thenReturn(resolved);
+        when(resolver.resolve(any(), any(), any())).thenReturn(resolved);
     }
 }

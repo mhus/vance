@@ -13,6 +13,7 @@ import de.mhus.vance.api.kit.KitOriginDto;
 import de.mhus.vance.api.kit.KitPolicyAction;
 import de.mhus.vance.api.kit.KitPolicyDto;
 import de.mhus.vance.api.kit.KitPolicyRuleDto;
+import de.mhus.vance.api.kit.KitSignatureDto;
 import de.mhus.vance.api.kit.KitSignaturePolicy;
 import de.mhus.vance.api.kit.KitSourceDto;
 import de.mhus.vance.api.kit.KitSourceType;
@@ -448,6 +449,33 @@ public final class KitYamlMapper {
         }
         out.put("rules", rules);
         return out;
+    }
+
+    // ──────────────────── kit.sig.yaml ────────────────────
+
+    /** Parse a detached kit signature. Every field is required — a partial one verifies nothing. */
+    public static KitSignatureDto parseSignature(String yamlText) {
+        final String label = KitSignature.SIGNATURE_FILENAME;
+        Map<String, Object> map = loadMap(yamlText, label);
+        return KitSignatureDto.builder()
+                .algorithm(requireString(map, "algorithm", label))
+                .keyId(requireString(map, "keyId", label))
+                .treeHash(requireString(map, "treeHash", label))
+                .signedAt(parseInstant(map.get("signedAt")))
+                .signature(requireString(map, "signature", label))
+                .build();
+    }
+
+    public static String writeSignature(KitSignatureDto signature) {
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("algorithm", signature.getAlgorithm());
+        root.put("keyId", signature.getKeyId());
+        root.put("treeHash", signature.getTreeHash());
+        if (signature.getSignedAt() != null) {
+            root.put("signedAt", signature.getSignedAt().toString());
+        }
+        root.put("signature", signature.getSignature());
+        return dump(root);
     }
 
     // ──────────────────── config/kit-sources.yaml ────────────────────

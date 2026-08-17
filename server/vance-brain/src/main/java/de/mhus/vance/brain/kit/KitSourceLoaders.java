@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 public class KitSourceLoaders {
 
     private final KitSourceRegistry sources;
+    private final KitSignatureGate signatureGate;
     private final List<KitSourceLoader> loaders;
 
     /**
@@ -39,7 +40,13 @@ public class KitSourceLoaders {
         KitSourceDto config = sources.resolve(tenantId, source.getUrl());
         log.debug("KitSourceLoaders: {} resolves to source '{}' (type={}, signature={})",
                 source.getUrl(), config.getId(), config.getType(), config.getSignature());
-        return loaderFor(config.getType()).load(source, config, token, target);
+        KitRepoLoader.LoadedKit loaded = loaderFor(config.getType()).load(
+                source, config, token, target);
+        // Right here, and not in the installer: this is the one point where
+        // the loaded tree and the source it came from are both in hand. Every
+        // inherit passes through again with its own source's policy.
+        signatureGate.enforce(loaded.root(), loaded.descriptor(), config);
+        return loaded;
     }
 
     private KitSourceLoader loaderFor(KitSourceType type) {

@@ -186,13 +186,19 @@ public class KitAdminController {
      * <p>Fetched on request, never in the background: a library is a
      * remote service, and browsing one should not be something a
      * Vancetope install does on its own schedule.
+     *
+     * <p>A POST despite being a read, because the library credential
+     * belongs in a body. In a query string it would land in access logs,
+     * proxy logs and browser history — the same reason the other
+     * endpoints here take theirs in the body.
      */
-    @GetMapping("/{projectId}/library")
+    @PostMapping("/{projectId}/library")
     public List<KitLibraryEntryDto> library(
             @PathVariable("tenant") String tenant,
             @PathVariable("projectId") String projectId,
-            @RequestParam(name = "token", required = false) @Nullable String token,
+            @RequestBody(required = false) @Nullable KitImportRequestDto body,
             HttpServletRequest request) {
+        String token = body == null ? null : body.getToken();
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
         try {
             return libraryService.list(tenant, projectId, token);

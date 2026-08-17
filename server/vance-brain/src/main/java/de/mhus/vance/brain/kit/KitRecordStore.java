@@ -12,7 +12,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -53,6 +55,13 @@ public class KitRecordStore {
 
     private static final String YAML_SUFFIX = ".yaml";
 
+    /**
+     * Floor for explicitly ranked kits, above any plausible epoch second.
+     * Saying "configured beats unconfigured" needs the two scales kept
+     * apart; long arithmetic makes the headroom a non-question.
+     */
+    private static final long EXPLICIT_RANK_BASE = 1_000_000_000_000L;
+
     private final DocumentService documentService;
 
     // ──────────────────── install records ────────────────────
@@ -69,21 +78,40 @@ public class KitRecordStore {
      */
     public List<KitInstalledRecordDto> listInLayerOrder(String tenantId, String projectId) {
         List<KitInstalledRecordDto> records = list(tenantId, projectId);
+        // Ranks first, sort second. A comparator that reads a document would
+        // hit Mongo on every comparison — O(n log n) round trips to order a
+        // handful of kits.
+        Map<String, Long> ranks = new HashMap<>();
+        for (KitInstalledRecordDto record : records) {
+            ranks.put(record.getId(), layerRank(tenantId, projectId, record));
+        }
         records.sort(Comparator
-                .comparingInt((KitInstalledRecordDto r) -> layerRank(tenantId, projectId, r))
+                .comparingLong((KitInstalledRecordDto r) -> ranks.get(r.getId()))
                 .thenComparing(KitInstalledRecordDto::getId));
         return records;
     }
 
-    private int layerRank(String tenantId, String projectId, KitInstalledRecordDto record) {
+    /**
+     * Position in the layer order — <b>higher wins</b>, and the list is
+     * sorted ascending, so the winner comes last.
+     *
+     * <p>The two sources of a rank are on wildly different scales: a
+     * hand-written {@code sortIndex} is a small number, an install time is
+     * ~1.8e9 seconds. Comparing them directly would put every configured
+     * kit <em>below</em> every unconfigured one — so a user who sets
+     * {@code sortIndex: 20} to win would lose, which is precisely
+     * backwards. An explicit index therefore ranks above every
+     * time-derived one by construction.
+     */
+    private long layerRank(String tenantId, String projectId, KitInstalledRecordDto record) {
         Integer explicit = loadConfig(tenantId, projectId, record.getId()).getSortIndex();
-        if (explicit != null) return explicit;
-        // Without an explicit index, fall back to install time. Seconds are
-        // plenty — two kits installed in the same second are ordered by id,
-        // which is at least stable.
+        if (explicit != null) return EXPLICIT_RANK_BASE + explicit;
+        // No index: install order, most recent wins. Seconds are plenty —
+        // two kits installed in the same second fall back to id, which is at
+        // least stable.
         return record.getOrigin() != null && record.getOrigin().getInstalledAt() != null
-                ? (int) record.getOrigin().getInstalledAt().getEpochSecond()
-                : 0;
+                ? record.getOrigin().getInstalledAt().getEpochSecond()
+                : 0L;
     }
 
     /** Unordered list of every parseable install record in the project. */

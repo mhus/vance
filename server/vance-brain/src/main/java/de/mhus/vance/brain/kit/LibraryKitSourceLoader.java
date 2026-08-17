@@ -10,7 +10,9 @@ import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
+import java.net.URLEncoder;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -66,7 +68,7 @@ public class LibraryKitSourceLoader implements KitSourceLoader {
         }
 
         URI uri = URI.create(trimTrailingSlash(config.getUrl())
-                + "/library/kits/" + kitId + "/download");
+                + "/library/kits/" + encodePath(kitId) + "/download");
         log.debug("LibraryKitSourceLoader: fetching {}", uri);
 
         HttpResponse<InputStream> response;
@@ -150,6 +152,23 @@ public class LibraryKitSourceLoader implements KitSourceLoader {
             Files.createDirectories(destination.getParent());
             Files.copy(zip, destination);
         }
+    }
+
+    /**
+     * Percent-encode a path, keeping {@code /} as a separator.
+     *
+     * <p>The path comes from a kit reference, which comes from a document.
+     * Interpolating it raw lets a {@code ?} or {@code #} reshape the
+     * request against someone else's host — a clean 404 is the only
+     * acceptable outcome for a nonsensical path.
+     */
+    private static String encodePath(String path) {
+        StringBuilder out = new StringBuilder(path.length());
+        for (String segment : path.split("/", -1)) {
+            if (out.length() > 0) out.append('/');
+            out.append(URLEncoder.encode(segment, StandardCharsets.UTF_8).replace("+", "%20"));
+        }
+        return out.toString();
     }
 
     private static String trimTrailingSlash(String url) {

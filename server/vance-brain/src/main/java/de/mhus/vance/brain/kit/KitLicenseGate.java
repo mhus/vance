@@ -70,13 +70,22 @@ public class KitLicenseGate {
 
         Instant expires = descriptor.getLicenseExpiresAt();
         if (expires != null && expires.isBefore(now)) {
-            // Refusing the install, not touching anything installed: a lapsed
-            // licence stops entitling new versions. Removing artefacts from a
-            // running system is a different act entirely and is not something
-            // a date in a metadata field decides.
-            throw new KitException("the licence for kit '" + descriptor.getName()
-                    + "' expired on " + expires + ". Kits already installed keep working;"
-                    + " this only stops installing or updating from it.");
+            // Noted, not enforced — and that is a decision, not an omission.
+            //
+            // Expiry ends entitlement to versions published *after* it, and
+            // the library is the side that can tell: it knows publication
+            // dates, this side sees only a date in a file. It deliberately
+            // keeps serving what was already paid for, so that reinstalling a
+            // machine does not cost a tenant a version they may run. Refusing
+            // here would overrule that with less information and make the
+            // library's own guarantee unreachable — an HTTP 200 download that
+            // cannot be installed.
+            //
+            // What a lapsed licence does mean is visible in the UI, on the
+            // kit card, where it belongs.
+            log.info("KitLicenseGate: licence for '{}' expired on {} — installing anyway,"
+                            + " the library decides entitlement and it served this version",
+                    descriptor.getName(), expires);
         }
     }
 }

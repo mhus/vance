@@ -583,9 +583,18 @@ function openKitDialog(mode: KitDialogMode, origin?: KitOriginDto): void {
     kitForm.branch = prefill.branch ?? '';
   }
   showKitDialog.value = true;
-  // Only for install: update and export already know their source.
+  // Only for install: update and export already know their source. A
+  // library that needs no token answers straight away; one that does is
+  // re-asked when the token is entered (see the watcher below), because
+  // the dialog opens with an empty one.
   if (mode === 'install') void loadLibrary();
 }
+
+// Re-ask the library once a token is typed. Without this the picker is
+// unreachable for every library that requires one — which is all of them.
+watch(() => kitForm.token, () => {
+  if (showKitDialog.value && kitDialogMode.value === 'install') void loadLibrary();
+});
 
 /**
  * Update one installed kit. Goes through the same dialog as any other
@@ -628,7 +637,10 @@ async function loadLibrary(): Promise<void> {
 /** Fill the source fields from a library row, so nothing has to be typed. */
 function pickFromLibrary(entry: KitLibraryEntryDto): void {
   kitForm.url = entry.sourceUrl;
-  kitForm.path = entry.kitId;
+  // The entry's path already addresses the kit inside its library —
+  // vendor and id together. Rebuilding it here would be a second place
+  // to get it wrong.
+  kitForm.path = entry.path;
   kitForm.branch = '';
   kitForm.commit = '';
 }

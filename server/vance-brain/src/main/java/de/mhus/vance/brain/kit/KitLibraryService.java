@@ -102,9 +102,11 @@ public class KitLibraryService {
 
         List<KitLibraryEntryDto> out = new ArrayList<>(remote.size());
         for (RemoteEntry entry : remote) {
+            String path = libraryPath(entry.vendor(), entry.kitId());
             out.add(KitLibraryEntryDto.builder()
                     .sourceUrl(source.getUrl())
                     .sourceId(source.getId())
+                    .path(path)
                     .kitId(entry.kitId())
                     .vendor(entry.vendor())
                     .displayName(entry.displayName() == null ? entry.kitId() : entry.displayName())
@@ -114,7 +116,7 @@ public class KitLibraryService {
                     .licenseExpiresAt(entry.licenseExpiresAt())
                     .downloadable(entry.downloadable())
                     .installed(installed.contains(
-                            KitRecordId.hash(source.getUrl(), entry.kitId())))
+                            KitRecordId.hash(source.getUrl(), path)))
                     .build());
         }
         return out;
@@ -149,6 +151,17 @@ public class KitLibraryService {
             @Nullable String version,
             @Nullable Instant licenseExpiresAt,
             boolean downloadable) {}
+
+    /**
+     * How a kit is addressed inside a library: {@code vendor/kitId}.
+     *
+     * <p>Two vendors may use the same kit id, so the id alone does not
+     * identify anything — which is also why the delivery endpoint takes
+     * both segments.
+     */
+    static String libraryPath(@Nullable String vendor, String kitId) {
+        return vendor == null || vendor.isBlank() ? kitId : vendor + "/" + kitId;
+    }
 
     private static String trimTrailingSlash(String url) {
         String s = url.trim();

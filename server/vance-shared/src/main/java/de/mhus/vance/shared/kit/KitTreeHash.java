@@ -67,6 +67,12 @@ public final class KitTreeHash {
             String rel = root.relativize(file).toString().replace('\\', '/');
             // The signature file cannot be part of what it signs.
             if (rel.equals(SIGNATURE_FILENAME)) continue;
+            // Nor can the repository metadata. A kit cloned from git carries
+            // .git when it is addressed at the repo root, and its contents —
+            // packfiles, index, refs — differ between any two clones. Hashing
+            // them would make a signature over a git source unverifiable by
+            // construction.
+            if (rel.equals(".git") || rel.startsWith(".git/")) continue;
             lines.add(rel + "\0" + sha256Hex(file) + "\n");
         }
         Collections.sort(lines);

@@ -6,6 +6,7 @@
 export interface KitLibraryEntryDto {
   sourceUrl: string;
   sourceId: string;
+  path: string;
   kitId: string;
   vendor?: string;
   displayName: string;

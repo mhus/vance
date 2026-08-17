@@ -193,9 +193,10 @@ export function useKitAdmin(): {
   ): Promise<KitLibraryEntryDto[]> {
     error.value = null;
     try {
-      const query = token ? `?token=${encodeURIComponent(token)}` : '';
+      // POST for a read: the credential goes in the body, not the URL.
       return await brainFetch<KitLibraryEntryDto[]>(
-        'GET', `admin/kits/${encodeURIComponent(projectId)}/library${query}`);
+        'POST', `admin/kits/${encodeURIComponent(projectId)}/library`,
+        { body: { token } });
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load your kit library.';
       throw e;

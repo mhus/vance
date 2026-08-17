@@ -30,7 +30,18 @@ public class KitLibraryEntryDto {
     /** Id of the source in {@code kit-sources.yaml}, for display. */
     private String sourceId;
 
-    /** The {@code path} half. Together with {@link #sourceUrl} it addresses the kit. */
+    /**
+     * The {@code path} half of the install identity — {@code vendor/kitId},
+     * because that is what addresses a kit inside a library.
+     *
+     * <p>Assembled here rather than by every caller: the delivery endpoint,
+     * the record identity and the installed-check all have to agree on it,
+     * and three places building the same string is three places to get it
+     * wrong.
+     */
+    private String path;
+
+    /** Kit id on its own, for display next to the vendor. */
     private String kitId;
 
     private @Nullable String vendor;

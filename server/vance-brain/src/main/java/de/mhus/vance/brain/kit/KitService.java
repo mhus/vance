@@ -69,11 +69,18 @@ public class KitService {
             // Identity is the source coordinates, so "install what is already
             // installed" is not an error we can silently absorb — the user
             // would expect an update and get a surprise re-write instead.
-            String recordId = KitRecordId.of(top.getName(), request.getSource());
-            if (request.getMode() == KitImportMode.INSTALL
-                    && recordStore.find(tenantId, request.getProjectId(), recordId) != null) {
+            // By origin, not by derived id: the installer resolves the previous
+            // record that way because identity is (url, path). Looking it up by
+            // id here would miss a kit that renamed itself — INSTALL would then
+            // slip through and silently perform an update, which is the exact
+            // surprise this guard exists to prevent.
+            KitInstalledRecordDto existing = recordStore.findByOrigin(
+                    tenantId, request.getProjectId(),
+                    request.getSource().getUrl(), request.getSource().getPath());
+            if (request.getMode() == KitImportMode.INSTALL && existing != null) {
                 throw new KitException("kit '" + top.getName() + "' is already installed in project "
-                        + request.getProjectId() + " (record '" + recordId + "') — use update");
+                        + request.getProjectId() + " (record '" + existing.getId()
+                        + "') — use update");
             }
 
             return installer.apply(

@@ -44,16 +44,17 @@ class KitLicenseGateTest {
     }
 
     @Test
-    void expiredLicence_isRefused() {
-        assertThatThrownBy(() -> gate.enforce(
+    void expiredLicence_installsAnyway() {
+        // The library decides entitlement — it knows publication dates and
+        // deliberately keeps serving what was already paid for, so a tenant
+        // who reinstalls a machine does not lose a version they may run.
+        // Refusing here would overrule that with less information and make
+        // an HTTP 200 download uninstallable.
+        assertThatCode(() -> gate.enforce(
                 descriptor().licensedTo(TENANT)
                         .licenseExpiresAt(NOW.minusSeconds(1)).build(),
                 KitSignatureStatus.VERIFIED, TENANT, source(), NOW))
-                .isInstanceOf(KitException.class)
-                .hasMessageContaining("expired")
-                // The message has to say what does NOT happen, or an expiry
-                // reads as "your kits are about to disappear".
-                .hasMessageContaining("keep working");
+                .doesNotThrowAnyException();
     }
 
     @Test
@@ -77,12 +78,11 @@ class KitLicenseGateTest {
     }
 
     @Test
-    void failedSignatureWithExpiredLicence_isNotEnforced() {
-        // Same reasoning: a signature that did not verify gives its payload
-        // no authority, so neither field can be acted on.
+    void failedSignatureWithForeignTenant_isNotEnforced() {
+        // A signature that did not verify gives its payload no authority, so
+        // the tenant field cannot be acted on either way.
         assertThatCode(() -> gate.enforce(
-                descriptor().licensedTo(TENANT)
-                        .licenseExpiresAt(NOW.minusSeconds(1)).build(),
+                descriptor().licensedTo("someone-else").build(),
                 KitSignatureStatus.FAILED, TENANT, source(), NOW))
                 .doesNotThrowAnyException();
     }

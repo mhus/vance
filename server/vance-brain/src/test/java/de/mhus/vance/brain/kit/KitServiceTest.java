@@ -73,6 +73,8 @@ class KitServiceTest {
 
         // Nothing installed, no config document: the ordinary starting point.
         when(recordStore.find(anyString(), anyString(), anyString())).thenReturn(null);
+        when(recordStore.findByOrigin(anyString(), anyString(), anyString(), any()))
+                .thenReturn(null);
         when(recordStore.list(anyString(), anyString())).thenReturn(new ArrayList<>());
         when(recordStore.listInLayerOrder(anyString(), anyString())).thenReturn(new ArrayList<>());
         when(recordStore.loadConfig(anyString(), anyString(), anyString()))
@@ -156,13 +158,31 @@ class KitServiceTest {
     void importKit_install_sameSourceTwice_rejectsWithUpdateHint() {
         stubResolved(descriptor("normal-kit").build());
         String recordId = KitRecordId.of("normal-kit", SOURCE_URL, null);
-        when(recordStore.find(TENANT, PROJECT, recordId)).thenReturn(record("normal-kit", recordId));
+        when(recordStore.findByOrigin(TENANT, PROJECT, SOURCE_URL, null))
+                .thenReturn(record("normal-kit", recordId));
 
         assertThatThrownBy(() -> service.importKit(
                 TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("already installed")
                 .hasMessageContaining("update");
+        verifyInstallerNeverRan();
+    }
+
+    @Test
+    void importKit_install_afterTheKitRenamedItself_isStillRefused() {
+        // Identity is (url, path), so a new name does not make a new kit.
+        // Looking the record up by derived id would miss it here, let the
+        // INSTALL through, and silently perform an update instead — the
+        // surprise re-write the guard exists to prevent.
+        stubResolved(descriptor("renamed-kit").build());
+        when(recordStore.findByOrigin(TENANT, PROJECT, SOURCE_URL, null))
+                .thenReturn(record("the-old-name", "the-old-name-abc123"));
+
+        assertThatThrownBy(() -> service.importKit(
+                TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("already installed");
         verifyInstallerNeverRan();
     }
 

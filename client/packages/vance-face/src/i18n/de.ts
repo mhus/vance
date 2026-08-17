@@ -522,6 +522,12 @@ export default {
     projectFilterNoMatch: 'Keine Projekte passen zu „{filter}".',
     searchPlaceholder: 'Dokumente suchen…',
     pathBack: 'Eine Ebene höher',
+    kits: {
+      installed: '{count} Kits installiert',
+      update: 'Kits aktualisieren',
+      updated: '{count} Kits aktualisiert.',
+      updateFailed: 'Kit-Update fehlgeschlagen.',
+    },
     title: 'Dokumente',
     loading: 'Dokumente werden geladen…',
     totalItems: 'Einträge',
@@ -1593,6 +1599,7 @@ export default {
       empty: '(leer)',
       none: '—',
       noGroup: '(keine Gruppe)',
+      delete: 'Löschen',
       disabled: '(deaktiviert)',
       archived: '(archiviert)',
     },
@@ -1681,6 +1688,44 @@ export default {
       settings: 'Einstellungen',
       tools: 'Tools',
       inherits: 'Erbt',
+      isSource: 'Dieses Projekt ist die Quelle des Kits „{name}“.',
+      configure: 'Regeln…',
+      promote: 'Weiterentwickeln',
+      uninstall: 'Deinstallieren',
+      updateAll: 'Alle aktualisieren',
+      confirmUninstall:
+        'Kit „{name}“ deinstallieren? Der Eintrag wird entfernt; die Dateien bleiben zunächst erhalten.',
+      confirmUninstallPrune:
+        'Sollen auch die Dokumente und Einstellungen gelöscht werden, die „{name}“ mitgebracht hat? Abbrechen behält sie.',
+      confirmPromote:
+        'Dieses Projekt zur Quelle des Kits „{name}“ machen? Danach kann das Kit hier bearbeitet und exportiert werden. Ein Projekt kann nur die Quelle genau eines Kits sein.',
+      uninstalled_msg: 'Kit „{name}“ deinstalliert.',
+      promoted_msg: 'Projekt ist jetzt die Quelle des Kits „{name}“.',
+      updatedAll_msg: '{count} Kits aktualisiert.',
+      config: {
+        title: 'Regeln für „{name}“',
+        defaultAction: 'Standard-Verhalten bei Updates',
+        defaultActionHelp:
+          'Gilt für alles, worauf keine Regel passt. „Behalten“ aktualisiert nur, solange du die Datei nicht selbst geändert hast.',
+        sortIndex: 'Reihenfolge',
+        sortIndexHelp:
+          'Höher gewinnt, wenn zwei Kits dieselbe Datei mitbringen. Leer lassen = Reihenfolge der Installation, also zuletzt installiert gewinnt.',
+        rules: 'Ausnahmen',
+        rulesHelp:
+          'Die letzte passende Regel gewinnt — wie bei .gitignore. Server-Tools sind Dokumente: server-tools/*.yaml.',
+        addRule: 'Regel hinzufügen',
+        noRules: 'Keine Ausnahmen — es gilt überall das Standard-Verhalten.',
+        namespace: 'Bereich',
+        namespaceDocument: 'Dokument',
+        namespaceSetting: 'Einstellung',
+        pattern: 'Muster',
+        action: 'Verhalten',
+        actionKeep: 'Behalten (eigene Änderungen schützen)',
+        actionOverwrite: 'Überschreiben (Kit gewinnt immer)',
+        actionIgnore: 'Ignorieren (nie anfassen)',
+        actionMerge: 'Zusammenführen (eigene Änderungen mit dem Kit vereinen)',
+        saved_msg: 'Regeln gespeichert.',
+      },
       install: 'Installieren…',
       update: 'Aktualisieren…',
       export: 'Exportieren…',
@@ -1721,9 +1766,12 @@ export default {
         keepPasswords: 'Bestehende Passwörter behalten',
         keepPasswordsHelp:
           'Mit dem Kit gelieferte PASSWORD-Settings überspringen, damit bestehende Projekt-Anmeldedaten erhalten bleiben.',
-        trackManifest: 'Im Kit-Manifest erfassen',
-        trackManifestHelp:
-          'An (Default): Dateien werden im _vance/kit-manifest.yaml als Kit-Bestandteil verzeichnet, Update/Export bleiben möglich. Aus: einmaliger Splat ohne Tracking — gut für Tunings (Extra-Tools/Settings) ohne Bindung an das aktive Kit.',
+        trackInstall: 'Als installiertes Kit verwalten',
+        trackInstallHelp:
+          'An (Default): Das Kit bekommt einen Eintrag unter _vance/kits/installed/ und bleibt aktualisierbar. Aus: einmaliger Splat ohne Verwaltung — gut für Tunings (Extra-Tools/Settings), die nicht mitgeführt werden sollen.',
+        writeManifest: 'Dieses Projekt ist die Kit-Quelle',
+        writeManifestHelp:
+          'Aus (Default). An: Das Projekt wird als Quelle dieses Kits markiert (_vance/kits/manifest.yaml) und kann exportiert werden — gedacht für Kit-Entwickler, die das Kit hier anpassen. Ein Projekt kann nur die Quelle genau eines Kits sein.',
         submitInstall: 'Installieren',
         submitUpdate: 'Aktualisieren',
         submitExport: 'Exportieren',

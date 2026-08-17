@@ -58,4 +58,19 @@ public class KitImportRequestDto {
      */
     @Builder.Default
     private boolean keepPasswords = false;
+
+    /**
+     * Install/update only: additionally mark this project as a kit
+     * <i>source</i> by writing {@code _vance/kits/manifest.yaml}, which
+     * is what {@code export} works from.
+     *
+     * <p>Default off — the everyday case is installing a kit, not
+     * authoring one. Kit developers turn it on, either here or later via
+     * promote (which builds the manifest from an existing install
+     * record, no re-clone needed).
+     *
+     * <p>Spec: {@code planning/kit-installed-multi.md} §2.1.
+     */
+    @Builder.Default
+    private boolean writeManifest = false;
 }

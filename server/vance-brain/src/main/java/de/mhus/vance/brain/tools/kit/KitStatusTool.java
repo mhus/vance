@@ -1,10 +1,14 @@
 package de.mhus.vance.brain.tools.kit;
 
+import de.mhus.vance.api.kit.KitArtefactsDto;
+import de.mhus.vance.api.kit.KitInstalledRecordDto;
 import de.mhus.vance.api.kit.KitManifestDto;
+import de.mhus.vance.api.kit.KitOriginDto;
 import de.mhus.vance.brain.kit.KitService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,8 +17,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Reports the active kit-manifest of a project, or {@code null} when
- * no kit is installed.
+ * Lists the kits installed in a project, plus the authoring manifest
+ * when the project happens to be a kit source itself.
  */
 @Component
 @RequiredArgsConstructor
@@ -40,8 +44,8 @@ public class KitStatusTool implements Tool {
 
     @Override
     public String description() {
-        return "Return the active kit's manifest (name, origin, files, settings, tools) "
-                + "or null if no kit is installed in the project.";
+        return "List the kits installed in the project — id, name, version, origin and "
+                + "artefact counts each — plus whether this project is itself a kit source.";
     }
 
     @Override
@@ -67,43 +71,54 @@ public class KitStatusTool implements Tool {
         String projectId = KitToolSupport.requireProjectAuthorized(ctx,
                 KitToolSupport.optionalString(params, "project"),
                 permissionService, contextFactory, de.mhus.vance.shared.permission.Action.READ);
-        KitManifestDto manifest = kitService.status(ctx.tenantId(), projectId);
+        List<KitInstalledRecordDto> installed = kitService.status(ctx.tenantId(), projectId);
         Map<String, Object> out = new LinkedHashMap<>();
-        if (manifest == null) {
-            out.put("active", false);
-            return out;
-        }
-        out.put("active", true);
         out.put("project", projectId);
-        out.put("kit", Map.of(
-                "name", manifest.getKit().getName(),
-                "description", manifest.getKit().getDescription(),
-                "version", manifest.getKit().getVersion()));
-        out.put("origin", originMap(manifest));
-        out.put("counts", Map.of(
-                "documents", manifest.getDocuments().size(),
-                "settings", manifest.getSettings().size(),
-                "tools", manifest.getTools().size()));
-        if (!manifest.getResolvedInherits().isEmpty()) {
-            out.put("inherits", manifest.getResolvedInherits());
+
+        List<Map<String, Object>> kits = new ArrayList<>();
+        for (KitInstalledRecordDto record : installed) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("id", record.getId());
+            entry.put("name", record.getKit().getName());
+            entry.put("description", record.getKit().getDescription());
+            if (record.getKit().getVersion() != null) {
+                entry.put("version", record.getKit().getVersion());
+            }
+            entry.put("origin", originMap(record.getOrigin()));
+            KitArtefactsDto artefacts = record.getArtefacts();
+            entry.put("counts", Map.of(
+                    "documents", artefacts == null ? 0 : artefacts.getDocuments().size(),
+                    "settings", artefacts == null ? 0 : artefacts.getSettings().size()));
+            if (record.isHasEncryptedSecrets()) {
+                entry.put("hasEncryptedSecrets", true);
+            }
+            kits.add(entry);
         }
-        if (manifest.isHasEncryptedSecrets()) {
-            out.put("hasEncryptedSecrets", true);
+        out.put("installed", kits);
+
+        // A project is only a kit *source* when someone said so — reporting
+        // it here keeps the two concepts visibly apart for the model.
+        KitManifestDto manifest = kitService.authoringManifest(ctx.tenantId(), projectId);
+        out.put("isKitSource", manifest != null);
+        if (manifest != null) {
+            out.put("kitSource", Map.of(
+                    "name", manifest.getKit().getName(),
+                    "origin", originMap(manifest.getOrigin())));
         }
         return out;
     }
 
-    private static Map<String, Object> originMap(KitManifestDto manifest) {
+    private static Map<String, Object> originMap(KitOriginDto source) {
         Map<String, Object> origin = new LinkedHashMap<>();
-        origin.put("url", manifest.getOrigin().getUrl());
-        if (manifest.getOrigin().getPath() != null) origin.put("path", manifest.getOrigin().getPath());
-        if (manifest.getOrigin().getBranch() != null) origin.put("branch", manifest.getOrigin().getBranch());
-        if (manifest.getOrigin().getCommit() != null) origin.put("commit", manifest.getOrigin().getCommit());
-        if (manifest.getOrigin().getInstalledAt() != null) {
-            origin.put("installedAt", manifest.getOrigin().getInstalledAt().toString());
+        origin.put("url", source.getUrl());
+        if (source.getPath() != null) origin.put("path", source.getPath());
+        if (source.getBranch() != null) origin.put("branch", source.getBranch());
+        if (source.getCommit() != null) origin.put("commit", source.getCommit());
+        if (source.getInstalledAt() != null) {
+            origin.put("installedAt", source.getInstalledAt().toString());
         }
-        if (manifest.getOrigin().getInstalledBy() != null) {
-            origin.put("installedBy", manifest.getOrigin().getInstalledBy());
+        if (source.getInstalledBy() != null) {
+            origin.put("installedBy", source.getInstalledBy());
         }
         return origin;
     }

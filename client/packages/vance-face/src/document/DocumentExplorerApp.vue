@@ -30,6 +30,7 @@ import {
 import { useI18n } from 'vue-i18n';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import { useDocuments } from '@composables/useDocuments';
+import { useKitAdmin } from '@composables/useKitAdmin';
 import { brainFetch } from '@vance/shared';
 import type { DocumentFoldersResponse, DocumentSummary } from '@vance/generated';
 import DocumentIcon from './DocumentIcon.vue';
@@ -71,6 +72,7 @@ onMounted(async () => {
     docsState.pathPrefix.value = queryPath ?? DEFAULT_PATH_PREFIX;
     await docsState.loadPage(selectedProjectId.value, 0, docsState.pathPrefix.value);
     void docsState.loadFolders(selectedProjectId.value);
+    void loadKits();
   }
   window.addEventListener('popstate', onPopstate);
 });
@@ -124,6 +126,8 @@ watch(selectedProjectId, async (next, prev) => {
   search.value = '';
   await docsState.loadPage(next, 0, DEFAULT_PATH_PREFIX);
   void docsState.loadFolders(next);
+  kitState.clear();
+  void loadKits();
   syncUrl();
 });
 
@@ -374,6 +378,39 @@ async function confirmTrash(): Promise<void> {
 // action is "unpack", offered when the row is a ZIP; future single-file
 // actions (rename, duplicate, download, …) slot into rowMenuItems.
 const notice = ref('');
+
+// ── Installed kits (project root only) ────────────────────────────────
+//
+// The kit endpoints require project ADMIN. A reader browsing documents
+// gets an error rather than a list, and for them the row simply does not
+// exist — hence `kitsVisible` gates on a *successful* load, not on the
+// mere attempt.
+const kitState = useKitAdmin();
+const kitsVisible = computed(() =>
+  !docsState.pathPrefix.value
+  && !kitState.error.value
+  && kitState.installed.value.length > 0);
+
+const kitNames = computed(() =>
+  kitState.installed.value.map((record) => record.kit.name).join(', '));
+
+async function loadKits(): Promise<void> {
+  if (!selectedProjectId.value) return;
+  await kitState.load(selectedProjectId.value);
+}
+
+async function updateAllKits(): Promise<void> {
+  if (!selectedProjectId.value) return;
+  notice.value = '';
+  try {
+    const results = await kitState.updateAll(selectedProjectId.value, false);
+    notice.value = t('documents.kits.updated', { count: results.length });
+    // Kits write documents — the listing on screen is stale now.
+    await docsState.loadPage(selectedProjectId.value, 0, docsState.pathPrefix.value);
+  } catch {
+    notice.value = t('documents.kits.updateFailed');
+  }
+}
 
 function isZip(doc: DocumentSummary): boolean {
   const mime = (doc.mimeType ?? '').toLowerCase();
@@ -844,6 +881,26 @@ function confirmNewFolder(): void {
           :title="$t('documents.newDocument')"
           @click="openCreateInNotepad"
         >+ Neu</VButton>
+      </div>
+
+      <!-- Installed kits — only at the project root, where "this project"
+           is what the user is looking at. No "update available" badge:
+           knowing that would mean fetching every kit's remote on load. -->
+      <div
+        v-if="kitsVisible"
+        class="px-6 py-2 border-b border-base-300 bg-base-200/40 flex items-center gap-3 text-sm"
+      >
+        <span class="opacity-80">
+          {{ $t('documents.kits.installed', { count: kitState.installed.value.length }) }}
+        </span>
+        <span class="opacity-60 truncate">{{ kitNames }}</span>
+        <div class="flex-1"></div>
+        <VButton
+          variant="ghost"
+          size="sm"
+          :loading="kitState.busy.value"
+          @click="updateAllKits"
+        >{{ $t('documents.kits.update') }}</VButton>
       </div>
 
       <!-- Bulk-action bar — appears once at least one document is selected -->

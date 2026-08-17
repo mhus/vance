@@ -154,6 +154,8 @@ public class TemplateApplier {
                 /*prune*/ false,
                 /*keepPasswords*/ false,
                 /*vaultPassword*/ null,
+                /*writeManifest*/ false,
+                /*token*/ null,
                 origin,
                 actor);
 

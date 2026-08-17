@@ -5,6 +5,7 @@
 
 export interface KitOperationResultDto {
   kitName: string;
+  kitId?: string;
   mode: string;
   sourceCommit?: string;
   documentsAdded: string[];
@@ -17,6 +18,9 @@ export interface KitOperationResultDto {
   toolsAdded: string[];
   toolsUpdated: string[];
   toolsRemoved: string[];
+  documentsSkippedByPolicy: string[];
+  settingsSkippedByPolicy: string[];
+  documentsConflicted: string[];
   skippedPasswords: string[];
   inheritedKits: string[];
   warnings: string[];

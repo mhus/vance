@@ -1,14 +1,22 @@
 package de.mhus.vance.brain.kit;
 
 import de.mhus.vance.api.kit.InheritArtefactsDto;
+import de.mhus.vance.api.kit.KitArtefactDto;
+import de.mhus.vance.api.kit.KitArtefactsDto;
+import de.mhus.vance.api.kit.KitConfigDto;
 import de.mhus.vance.api.kit.KitDescriptorDto;
 import de.mhus.vance.api.kit.KitInheritDto;
+import de.mhus.vance.api.kit.KitInstalledRecordDto;
 import de.mhus.vance.api.kit.KitManifestDto;
 import de.mhus.vance.api.kit.KitMetadataDto;
 import de.mhus.vance.api.kit.KitOriginDto;
+import de.mhus.vance.api.kit.KitPolicyAction;
+import de.mhus.vance.api.kit.KitPolicyDto;
+import de.mhus.vance.api.kit.KitPolicyRuleDto;
 import de.mhus.vance.api.settings.SettingType;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Locale;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,9 +39,17 @@ public final class KitYamlMapper {
     // ──────────────────── kit.yaml ────────────────────
 
     public static KitDescriptorDto parseDescriptor(String yamlText) {
-        Map<String, Object> map = loadMap(yamlText, "kit.yaml");
-        String name = requireString(map, "name", "kit.yaml");
-        String description = requireString(map, "description", "kit.yaml");
+        return parseDescriptorMap(loadMap(yamlText, "kit.yaml"), "kit.yaml");
+    }
+
+    /**
+     * Shared by the standalone {@code kit.yaml} and by the
+     * {@code descriptor:} block embedded in an install record — one
+     * grammar, so a descriptor never means two different things.
+     */
+    private static KitDescriptorDto parseDescriptorMap(Map<String, Object> map, String label) {
+        String name = requireString(map, "name", label);
+        String description = requireString(map, "description", label);
         String version = stringOrNull(map.get("version"));
         boolean hasEncryptedSecrets = booleanOrFalse(map.get("hasEncryptedSecrets"));
         boolean artifact = booleanOrFalse(map.get("artifact"));
@@ -45,7 +61,7 @@ public final class KitYamlMapper {
         // front rather than failing later with a confusing message.
         if (!installable && sealed) {
             throw new KitException(
-                    "kit.yaml: 'installable: false' and 'sealed: true' together would make"
+                    label + ": 'installable: false' and 'sealed: true' together would make"
                             + " the kit unusable (no direct import, no inherit). Pick one.");
         }
 
@@ -55,11 +71,11 @@ public final class KitYamlMapper {
             for (int i = 0; i < list.size(); i++) {
                 Object element = list.get(i);
                 if (!(element instanceof Map<?, ?> nested)) {
-                    throw new KitException("kit.yaml inherits[" + i + "] must be a map");
+                    throw new KitException(label + " inherits[" + i + "] must be a map");
                 }
                 @SuppressWarnings("unchecked")
                 Map<String, Object> e = (Map<String, Object>) nested;
-                String url = requireString(e, "url", "kit.yaml inherits[" + i + "]");
+                String url = requireString(e, "url", label + " inherits[" + i + "]");
                 inherits.add(KitInheritDto.builder()
                         .url(url)
                         .path(stringOrNull(e.get("path")))
@@ -68,7 +84,7 @@ public final class KitYamlMapper {
                         .build());
             }
         } else if (inheritsRaw != null) {
-            throw new KitException("kit.yaml inherits must be a list");
+            throw new KitException(label + " inherits must be a list");
         }
 
         return KitDescriptorDto.builder()
@@ -80,10 +96,18 @@ public final class KitYamlMapper {
                 .artifact(artifact)
                 .installable(installable)
                 .sealed(sealed)
+                // Same grammar as the user's config document — one policy
+                // syntax to learn, whether you author kits or install them.
+                .policy(map.get("policy") == null ? null : parsePolicy(map.get("policy"), label))
                 .build();
     }
 
     public static String writeDescriptor(KitDescriptorDto descriptor) {
+        return dump(descriptorMap(descriptor));
+    }
+
+    /** Serialisable form of a descriptor, shared by kit.yaml and the record's {@code descriptor:}. */
+    private static Map<String, Object> descriptorMap(KitDescriptorDto descriptor) {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("name", descriptor.getName());
         root.put("description", descriptor.getDescription());
@@ -104,6 +128,9 @@ public final class KitYamlMapper {
         if (descriptor.isSealed()) {
             root.put("sealed", true);
         }
+        if (descriptor.getPolicy() != null) {
+            root.put("policy", policyMap(descriptor.getPolicy()));
+        }
         if (descriptor.getInherits() != null && !descriptor.getInherits().isEmpty()) {
             List<Map<String, Object>> inherits = new ArrayList<>();
             for (KitInheritDto i : descriptor.getInherits()) {
@@ -116,7 +143,283 @@ public final class KitYamlMapper {
             }
             root.put("inherits", inherits);
         }
+        return root;
+    }
+
+    // ──────────────────── kits/installed/<id>.yaml ────────────────────
+
+    /**
+     * Parse an install record. Unlike the manifest parser this is strict
+     * about {@code id} — a record without one cannot be addressed for
+     * update or uninstall, so silently tolerating it would produce a
+     * ghost entry the user cannot get rid of.
+     */
+    public static KitInstalledRecordDto parseInstalledRecord(String yamlText) {
+        final String label = "kits/installed/*.yaml";
+        Map<String, Object> map = loadMap(yamlText, label);
+
+        String id = requireString(map, "id", label);
+
+        Object kitRaw = map.get("kit");
+        if (!(kitRaw instanceof Map<?, ?> kitMap)) {
+            throw new KitException(label + " must have a 'kit' map");
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> kitTyped = (Map<String, Object>) kitMap;
+        KitMetadataDto metadata = KitMetadataDto.builder()
+                .name(requireString(kitTyped, "name", label + " kit"))
+                .description(requireString(kitTyped, "description", label + " kit"))
+                .version(stringOrNull(kitTyped.get("version")))
+                .build();
+
+        Object originRaw = map.get("origin");
+        if (!(originRaw instanceof Map<?, ?> originMap)) {
+            throw new KitException(label + " must have an 'origin' map");
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> originTyped = (Map<String, Object>) originMap;
+        KitOriginDto origin = KitOriginDto.builder()
+                .url(requireString(originTyped, "url", label + " origin"))
+                .path(stringOrNull(originTyped.get("path")))
+                .branch(stringOrNull(originTyped.get("branch")))
+                .commit(stringOrNull(originTyped.get("commit")))
+                .installedAt(parseInstant(originTyped.get("installedAt")))
+                .installedBy(stringOrNull(originTyped.get("installedBy")))
+                .build();
+
+        KitDescriptorDto descriptor = null;
+        Object descriptorRaw = map.get("descriptor");
+        if (descriptorRaw instanceof Map<?, ?> descriptorMap) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> typed = (Map<String, Object>) descriptorMap;
+            descriptor = parseDescriptorMap(typed, label + " descriptor");
+        }
+
+        KitArtefactsDto artefacts = KitArtefactsDto.builder().build();
+        Object artefactsRaw = map.get("artefacts");
+        if (artefactsRaw instanceof Map<?, ?> artefactsMap) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> typed = (Map<String, Object>) artefactsMap;
+            artefacts = KitArtefactsDto.builder()
+                    .documents(parseArtefactList(typed.get("documents"), "path", label))
+                    .settings(parseArtefactList(typed.get("settings"), "key", label))
+                    .build();
+        }
+
+        return KitInstalledRecordDto.builder()
+                .id(id)
+                .kit(metadata)
+                .origin(origin)
+                .descriptor(descriptor)
+                .artefacts(artefacts)
+                .hasEncryptedSecrets(booleanOrFalse(map.get("hasEncryptedSecrets")))
+                .build();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<KitArtefactDto> parseArtefactList(
+            @Nullable Object raw, String idField, String label) {
+        List<KitArtefactDto> out = new ArrayList<>();
+        if (raw == null) return out;
+        if (!(raw instanceof List<?> list)) {
+            throw new KitException(label + ": artefacts." + idField + " section must be a list");
+        }
+        for (Object element : list) {
+            if (!(element instanceof Map<?, ?> nested)) continue;
+            Map<String, Object> e = (Map<String, Object>) nested;
+            String id = stringOrNull(e.get(idField));
+            if (id == null) continue;
+            out.add(KitArtefactDto.builder()
+                    .id(id)
+                    .hash(stringOrNull(e.get("hash")))
+                    .layer(stringOrNull(e.get("layer")))
+                    .build());
+        }
+        return out;
+    }
+
+    public static String writeInstalledRecord(KitInstalledRecordDto record) {
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("id", record.getId());
+
+        Map<String, Object> kit = new LinkedHashMap<>();
+        kit.put("name", record.getKit().getName());
+        kit.put("description", record.getKit().getDescription());
+        if (record.getKit().getVersion() != null) {
+            kit.put("version", record.getKit().getVersion());
+        }
+        root.put("kit", kit);
+
+        Map<String, Object> origin = new LinkedHashMap<>();
+        KitOriginDto o = record.getOrigin();
+        origin.put("url", o.getUrl());
+        if (o.getPath() != null) origin.put("path", o.getPath());
+        if (o.getBranch() != null) origin.put("branch", o.getBranch());
+        if (o.getCommit() != null) origin.put("commit", o.getCommit());
+        if (o.getInstalledAt() != null) origin.put("installedAt", o.getInstalledAt().toString());
+        if (o.getInstalledBy() != null) origin.put("installedBy", o.getInstalledBy());
+        root.put("origin", origin);
+
+        if (record.getDescriptor() != null) {
+            root.put("descriptor", descriptorMap(record.getDescriptor()));
+        }
+
+        Map<String, Object> artefacts = new LinkedHashMap<>();
+        KitArtefactsDto a = record.getArtefacts();
+        if (a != null) {
+            if (a.getDocuments() != null && !a.getDocuments().isEmpty()) {
+                artefacts.put("documents", writeArtefactList(a.getDocuments(), "path"));
+            }
+            if (a.getSettings() != null && !a.getSettings().isEmpty()) {
+                artefacts.put("settings", writeArtefactList(a.getSettings(), "key"));
+            }
+        }
+        root.put("artefacts", artefacts);
+
+        if (record.isHasEncryptedSecrets()) {
+            root.put("hasEncryptedSecrets", true);
+        }
         return dump(root);
+    }
+
+    private static List<Map<String, Object>> writeArtefactList(
+            List<KitArtefactDto> artefacts, String idField) {
+        List<Map<String, Object>> out = new ArrayList<>(artefacts.size());
+        for (KitArtefactDto a : artefacts) {
+            Map<String, Object> e = new LinkedHashMap<>();
+            e.put(idField, a.getId());
+            if (a.getHash() != null) e.put("hash", a.getHash());
+            if (a.getLayer() != null) e.put("layer", a.getLayer());
+            out.add(e);
+        }
+        return out;
+    }
+
+    // ──────────────────── kits/config/<id>.yaml ────────────────────
+
+    /**
+     * Parse the optional user-authored config document. Hand-written, so
+     * every violation names the offending value — this is the one kit
+     * file a human edits directly.
+     */
+    public static KitConfigDto parseConfig(String yamlText) {
+        final String label = "kits/config/*.yaml";
+        Map<String, Object> map = loadMap(yamlText, label);
+
+        Integer sortIndex = null;
+        Object sortRaw = map.get("sortIndex");
+        if (sortRaw instanceof Number n) {
+            sortIndex = n.intValue();
+        } else if (sortRaw != null) {
+            try {
+                sortIndex = Integer.valueOf(sortRaw.toString().trim());
+            } catch (NumberFormatException e) {
+                throw new KitException(label + ": sortIndex must be a number, got '" + sortRaw + "'");
+            }
+        }
+
+        return KitConfigDto.builder()
+                .sortIndex(sortIndex)
+                // Absent means "no opinion", which is what lets the kit's own
+                // suggestion through — not the same as an explicit `keep`.
+                .policy(map.get("policy") == null ? null : parsePolicy(map.get("policy"), label))
+                .build();
+    }
+
+    /**
+     * Accepts the scalar shorthand ({@code policy: keep}) as well as the
+     * full map. The shorthand exists so the common case does not have to
+     * pay for the ceremony of an empty rule list.
+     */
+    @SuppressWarnings("unchecked")
+    private static KitPolicyDto parsePolicy(@Nullable Object raw, String label) {
+        if (raw == null) return KitPolicyDto.defaults();
+        if (!(raw instanceof Map<?, ?> nested)) {
+            return KitPolicyDto.builder()
+                    .defaultAction(parseAction(raw.toString(), label + " policy"))
+                    .build();
+        }
+        Map<String, Object> map = (Map<String, Object>) nested;
+        KitPolicyAction defaultAction = map.get("default") == null
+                ? KitPolicyAction.KEEP
+                : parseAction(map.get("default").toString(), label + " policy.default");
+
+        List<KitPolicyRuleDto> rules = new ArrayList<>();
+        Object rulesRaw = map.get("rules");
+        if (rulesRaw instanceof List<?> list) {
+            for (int i = 0; i < list.size(); i++) {
+                String ruleLabel = label + " policy.rules[" + i + "]";
+                if (!(list.get(i) instanceof Map<?, ?> ruleNested)) {
+                    throw new KitException(ruleLabel + " must be a map");
+                }
+                Map<String, Object> e = (Map<String, Object>) ruleNested;
+                String document = stringOrNull(e.get("document"));
+                String setting = stringOrNull(e.get("setting"));
+                if ((document == null) == (setting == null)) {
+                    throw new KitException(ruleLabel
+                            + " must name exactly one of 'document:' or 'setting:'"
+                            + " — document paths and setting keys are separate namespaces."
+                            + " Server-tool configs are documents:"
+                            + " document: \"server-tools/*.yaml\"");
+                }
+                Object actionRaw = e.get("action");
+                if (actionRaw == null) {
+                    throw new KitException(ruleLabel + " is missing 'action'");
+                }
+                rules.add(KitPolicyRuleDto.builder()
+                        .document(document)
+                        .setting(setting)
+                        .action(parseAction(actionRaw.toString(), ruleLabel + " action"))
+                        .build());
+            }
+        } else if (rulesRaw != null) {
+            throw new KitException(label + " policy.rules must be a list");
+        }
+
+        return KitPolicyDto.builder().defaultAction(defaultAction).rules(rules).build();
+    }
+
+    private static KitPolicyAction parseAction(String raw, String label) {
+        try {
+            return KitPolicyAction.parse(raw);
+        } catch (IllegalArgumentException e) {
+            throw new KitException(label + ": unknown action '" + raw.trim()
+                    + "' — expected one of keep, overwrite, ignore, merge");
+        }
+    }
+
+    public static String writeConfig(KitConfigDto config) {
+        Map<String, Object> root = new LinkedHashMap<>();
+        if (config.getSortIndex() != null) {
+            root.put("sortIndex", config.getSortIndex());
+        }
+        if (config.getPolicy() != null) {
+            root.put("policy", policyMap(config.getPolicy()));
+        }
+        return dump(root);
+    }
+
+    /**
+     * Serialise a policy, collapsing to the scalar shorthand when there
+     * are no exceptions — the common case should not pay for ceremony.
+     */
+    private static Object policyMap(KitPolicyDto policy) {
+        String defaultAction = policy.getDefaultAction().name().toLowerCase(Locale.ROOT);
+        if (policy.getRules() == null || policy.getRules().isEmpty()) {
+            return defaultAction;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("default", defaultAction);
+        List<Map<String, Object>> rules = new ArrayList<>();
+        for (KitPolicyRuleDto r : policy.getRules()) {
+            Map<String, Object> e = new LinkedHashMap<>();
+            if (r.getDocument() != null) e.put("document", r.getDocument());
+            if (r.getSetting() != null) e.put("setting", r.getSetting());
+            e.put("action", r.getAction().name().toLowerCase(Locale.ROOT));
+            rules.add(e);
+        }
+        out.put("rules", rules);
+        return out;
     }
 
     // ──────────────────── kit-manifest.yaml ────────────────────

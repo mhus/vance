@@ -35,7 +35,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class KitExporter {
 
-    private final KitInstaller installer;
+    private final KitRecordStore recordStore;
     private final KitRepoLoader repoLoader;
     private final KitWorkspace workspace;
     private final DocumentService documentService;
@@ -47,9 +47,11 @@ public class KitExporter {
             KitExportRequestDto request,
             @Nullable String actor) {
 
-        KitManifestDto manifest = installer.loadManifest(tenantId, projectId);
+        KitManifestDto manifest = recordStore.loadManifest(tenantId, projectId);
         if (manifest == null) {
-            throw new KitException("project " + projectId + " has no active kit to export");
+            throw new KitException("project " + projectId
+                    + " is not marked as a kit source — enable the authoring manifest"
+                    + " (promote an installed kit or install with writeManifest) before exporting");
         }
 
         String url = firstNonBlank(request.getUrl(), manifest.getOrigin().getUrl());

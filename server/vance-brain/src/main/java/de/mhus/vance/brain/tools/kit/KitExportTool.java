@@ -12,7 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Pushes the project's active kit (top-layer) back to its origin
+ * Pushes the kit this project *is* (its authoring manifest, top-layer) back to its origin
  * repository or to an overridden target. Inherits are referenced via
  * the kit.yaml descriptor — they are not re-emitted as files.
  */
@@ -55,7 +55,7 @@ public class KitExportTool implements Tool {
 
     @Override
     public String description() {
-        return "Push the project's active kit back to a git repository. "
+        return "Push the kit this project is the source of back to a git repository. "
                 + "Only the top-layer artefacts (per kit-manifest) are written; "
                 + "inherits are referenced via kit.yaml.";
     }

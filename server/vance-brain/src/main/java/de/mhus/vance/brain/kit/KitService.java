@@ -1,14 +1,18 @@
 package de.mhus.vance.brain.kit;
 
+import de.mhus.vance.api.kit.KitConfigDto;
 import de.mhus.vance.api.kit.KitDescriptorDto;
 import de.mhus.vance.api.kit.KitExportRequestDto;
 import de.mhus.vance.api.kit.KitImportMode;
 import de.mhus.vance.api.kit.KitImportRequestDto;
 import de.mhus.vance.api.kit.KitInheritDto;
+import de.mhus.vance.api.kit.KitInstalledRecordDto;
 import de.mhus.vance.api.kit.KitManifestDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.settings.SettingWriteOrigin;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -17,7 +21,12 @@ import org.springframework.stereotype.Service;
 /**
  * Public entry point for the kit subsystem. Wraps the
  * loader/resolver/installer/exporter chain in clean
- * {@code install/update/apply/export/status} verbs.
+ * {@code install/update/uninstall/apply/export/status} verbs.
+ *
+ * <p>A project holds any number of installed kits, one install record
+ * each. Installing is the everyday act; marking a project as a kit
+ * <i>source</i> (the authoring manifest, which {@code export} works
+ * from) is a separate, opt-in decision — see {@link #promoteToAuthoring}.
  *
  * <p>Every operation is project-scoped — the caller passes the target
  * project explicitly. Whether that's a regular project, the
@@ -33,45 +42,39 @@ public class KitService {
     private final KitInstaller installer;
     private final KitExporter exporter;
     private final KitWorkspace workspace;
+    private final KitRecordStore recordStore;
+    private final KitLegacyMigrator legacyMigrator;
     private final ProjectService projectService;
     private final TemplateApplier templateApplier;
 
     /**
      * Install / update / apply a kit. The {@code mode} on the request
-     * selects the variant. {@code INSTALL} requires no active manifest;
-     * {@code UPDATE} requires one; {@code APPLY} ignores the manifest.
+     * selects the variant: {@code INSTALL} and {@code UPDATE} write an
+     * install record, {@code APPLY} deliberately writes nothing but the
+     * artefacts themselves.
      */
     public KitOperationResultDto importKit(
             String tenantId, KitImportRequestDto request, @Nullable String actor,
             SettingWriteOrigin origin) {
         validateImport(request);
-        // The kit installer writes documents/settings/tools under
-        // request.projectId. If no ProjectDocument with that name
-        // exists, downstream Eddie/Ford tools that go through
-        // EddieContext.resolveProject would fail with "project not
-        // found in tenant". Reject the install up front rather than
-        // leaving the project in an inconsistent state.
-        if (projectService.findByTenantAndName(tenantId, request.getProjectId()).isEmpty()) {
-            throw new KitException("project '" + request.getProjectId()
-                    + "' does not exist in tenant '" + tenantId
-                    + "' — create it before installing a kit");
-        }
-        if (request.getMode() == KitImportMode.INSTALL || request.getMode() == KitImportMode.UPDATE) {
-            KitManifestDto current = installer.loadManifest(tenantId, request.getProjectId());
-            if (request.getMode() == KitImportMode.INSTALL && current != null) {
-                throw new KitException("project " + request.getProjectId()
-                        + " already has an active kit '" + current.getKit().getName()
-                        + "' — use update or uninstall first");
-            }
-            if (request.getMode() == KitImportMode.UPDATE && current == null) {
-                throw new KitException("project " + request.getProjectId()
-                        + " has no active kit — install first");
-            }
-        }
+        requireProject(tenantId, request.getProjectId());
+
         KitResolver.ResolvedKit resolved = null;
         try {
             resolved = resolver.resolve(request.getSource(), request.getToken());
-            validateResolvedTopLayer(resolved.topLayer(), request.getMode());
+            KitDescriptorDto top = resolved.topLayer();
+            validateResolvedTopLayer(top, request.isWriteManifest());
+
+            // Identity is the source coordinates, so "install what is already
+            // installed" is not an error we can silently absorb — the user
+            // would expect an update and get a surprise re-write instead.
+            String recordId = KitRecordId.of(top.getName(), request.getSource());
+            if (request.getMode() == KitImportMode.INSTALL
+                    && recordStore.find(tenantId, request.getProjectId(), recordId) != null) {
+                throw new KitException("kit '" + top.getName() + "' is already installed in project "
+                        + request.getProjectId() + " (record '" + recordId + "') — use update");
+            }
+
             return installer.apply(
                     tenantId,
                     request.getProjectId(),
@@ -81,6 +84,8 @@ public class KitService {
                     request.isPrune(),
                     request.isKeepPasswords(),
                     request.getVaultPassword(),
+                    request.isWriteManifest(),
+                    request.getToken(),
                     origin,
                     actor);
         } finally {
@@ -90,20 +95,25 @@ public class KitService {
 
     /**
      * Enforce the visibility flags of the resolved top-layer descriptor
-     * before any Mongo write happens. Spec: kits.md §3.2 + §6.1/§6.2.
+     * before any Mongo write happens. Spec: kits.md §3.2.
+     *
+     * <p>{@code artifact: true} gates the <b>authoring manifest</b>, not
+     * the install record: the flag's rationale is that export would work
+     * from an incomplete base, and export is the manifest's job.
+     * Tracking a tuning bundle so it can be updated is useful and was
+     * only ever forbidden because record and manifest were the same file.
      */
-    private static void validateResolvedTopLayer(
-            KitDescriptorDto top, KitImportMode mode) {
+    private static void validateResolvedTopLayer(KitDescriptorDto top, boolean writeManifest) {
         if (!top.isInstallable()) {
             throw new KitException("kit '" + top.getName()
                     + "' is marked installable=false — usable only as an inherits: entry,"
                     + " not for direct import");
         }
-        if (top.isArtifact()
-                && (mode == KitImportMode.INSTALL || mode == KitImportMode.UPDATE)) {
+        if (top.isArtifact() && writeManifest) {
             throw new KitException("kit '" + top.getName()
-                    + "' is marked as artifact and cannot be tracked in a manifest —"
-                    + " disable 'Manifest schreiben' / use apply instead");
+                    + "' is marked as artifact — it is a tuning bundle, not a complete kit,"
+                    + " and cannot serve as this project's kit source. Install it without"
+                    + " the authoring manifest.");
         }
     }
 
@@ -131,6 +141,151 @@ public class KitService {
         return importKit(tenantId, request, actor, origin);
     }
 
+    // ──────────────────── update by record ────────────────────
+
+    /**
+     * Re-run one installed kit against its source. The record supplies
+     * url, path and branch; the pinned {@code commit} is deliberately
+     * <b>not</b> reused — it records what is installed, not what to
+     * install, so an update follows the branch head.
+     */
+    public KitOperationResultDto updateInstalled(
+            String tenantId, String projectId, String kitId, boolean prune,
+            @Nullable String token, @Nullable String vaultPassword,
+            @Nullable String actor, SettingWriteOrigin origin) {
+        requireProject(tenantId, projectId);
+        KitInstalledRecordDto record = requireInstalled(tenantId, projectId, kitId);
+        return importKit(tenantId, updateRequestFor(record, projectId, prune, token, vaultPassword),
+                actor, origin);
+    }
+
+    /**
+     * Re-run every installed kit of a project, in layer order so the
+     * result on disk matches what the ordering promises.
+     *
+     * <p>One failing kit does not abort the rest: with several kits
+     * installed, an unreachable repo or a broken new version would
+     * otherwise block updates of everything behind it. Failures surface
+     * as a warning entry on that kit's result.
+     */
+    public List<KitOperationResultDto> updateAllInstalled(
+            String tenantId, String projectId, boolean prune,
+            @Nullable String token, @Nullable String vaultPassword,
+            @Nullable String actor, SettingWriteOrigin origin) {
+        requireProject(tenantId, projectId);
+        List<KitOperationResultDto> results = new ArrayList<>();
+        for (KitInstalledRecordDto record : recordStore.listInLayerOrder(tenantId, projectId)) {
+            try {
+                results.add(importKit(tenantId,
+                        updateRequestFor(record, projectId, prune, token, vaultPassword),
+                        actor, origin));
+            } catch (KitException e) {
+                log.warn("KitService: update of kit '{}' in {}/{} failed: {}",
+                        record.getId(), tenantId, projectId, e.getMessage());
+                results.add(KitOperationResultDto.builder()
+                        .kitName(record.getKit().getName())
+                        .kitId(record.getId())
+                        .mode(KitImportMode.UPDATE.name())
+                        .warnings(List.of("update failed: " + e.getMessage()))
+                        .build());
+            }
+        }
+        return results;
+    }
+
+    private static KitImportRequestDto updateRequestFor(
+            KitInstalledRecordDto record, String projectId, boolean prune,
+            @Nullable String token, @Nullable String vaultPassword) {
+        KitInheritDto source = KitInheritDto.builder()
+                .url(record.getOrigin().getUrl())
+                .path(record.getOrigin().getPath())
+                .branch(record.getOrigin().getBranch())
+                .build();
+        return KitImportRequestDto.builder()
+                .projectId(projectId)
+                .source(source)
+                .mode(KitImportMode.UPDATE)
+                .prune(prune)
+                .token(token)
+                .vaultPassword(vaultPassword)
+                .build();
+    }
+
+    /**
+     * Re-apply every installed kit at the version each one already has,
+     * in layer order.
+     *
+     * <p>Repairs the on-disk state after the layer order changed or after
+     * a kit stopped shipping an artefact a lower kit still owns: the
+     * artefact is then left holding the higher kit's old content, and
+     * only writing the layers out in order again fixes it. Uses each
+     * record's <b>pinned commit</b>, so this changes what is on disk but
+     * never which version is installed — that is what update is for.
+     *
+     * <p>Local edits stay safe: the ordinary policy applies, and a
+     * sibling kit's content is no longer mistaken for a user edit
+     * (see {@code KitPolicy.decide}).
+     */
+    public List<KitOperationResultDto> reapplyAll(
+            String tenantId, String projectId, @Nullable String token,
+            @Nullable String vaultPassword, @Nullable String actor, SettingWriteOrigin origin) {
+        requireProject(tenantId, projectId);
+        List<KitOperationResultDto> results = new ArrayList<>();
+        for (KitInstalledRecordDto record : recordStore.listInLayerOrder(tenantId, projectId)) {
+            try {
+                results.add(importKit(tenantId,
+                        reapplyRequestFor(record, projectId, token, vaultPassword),
+                        actor, origin));
+            } catch (KitException e) {
+                log.warn("KitService: reapply of kit '{}' in {}/{} failed: {}",
+                        record.getId(), tenantId, projectId, e.getMessage());
+                results.add(KitOperationResultDto.builder()
+                        .kitName(record.getKit().getName())
+                        .kitId(record.getId())
+                        .mode(KitImportMode.UPDATE.name())
+                        .warnings(List.of("reapply failed: " + e.getMessage()))
+                        .build());
+            }
+        }
+        return results;
+    }
+
+    /**
+     * Unlike {@link #updateRequestFor}, this one <b>keeps</b> the pinned
+     * commit — reapply is about the order things were written in, not
+     * about fetching anything newer.
+     */
+    private static KitImportRequestDto reapplyRequestFor(
+            KitInstalledRecordDto record, String projectId,
+            @Nullable String token, @Nullable String vaultPassword) {
+        return KitImportRequestDto.builder()
+                .projectId(projectId)
+                .source(KitInheritDto.builder()
+                        .url(record.getOrigin().getUrl())
+                        .path(record.getOrigin().getPath())
+                        .branch(record.getOrigin().getBranch())
+                        .commit(record.getOrigin().getCommit())
+                        .build())
+                .mode(KitImportMode.UPDATE)
+                .prune(false)
+                .token(token)
+                .vaultPassword(vaultPassword)
+                .build();
+    }
+
+    /**
+     * Remove one installed kit. Without {@code prune} this only forgets
+     * the record — the artefacts stay, because the user may well have
+     * built on them. With {@code prune} the artefacts go too, except
+     * those another installed kit also owns.
+     */
+    public KitOperationResultDto uninstall(
+            String tenantId, String projectId, String kitId, boolean prune) {
+        requireProject(tenantId, projectId);
+        return installer.uninstall(
+                tenantId, projectId, requireInstalled(tenantId, projectId, kitId), prune);
+    }
+
     /**
      * Apply a tool-template kit — one that ships a {@code template.yaml}
      * sibling of {@code kit.yaml}. The supplied {@code inputs} are
@@ -141,8 +296,8 @@ public class KitService {
      * inputs encrypted at rest).
      *
      * <p>Mode is always {@link KitImportMode#APPLY} — templates are
-     * artifact-style by design (no kit-manifest tracking, idempotent
-     * re-apply with new inputs is the supported update path).
+     * artifact-style by design (no tracking, idempotent re-apply with new
+     * inputs is the supported update path).
      *
      * @return result wrapping the underlying installer outcome plus the
      *         template's {@code postInstall} hook for the caller to surface
@@ -155,11 +310,7 @@ public class KitService {
             @Nullable String token,
             @Nullable String actor,
             SettingWriteOrigin origin) {
-        if (projectService.findByTenantAndName(tenantId, projectId).isEmpty()) {
-            throw new KitException("project '" + projectId
-                    + "' does not exist in tenant '" + tenantId
-                    + "' — create it before applying a template");
-        }
+        requireProject(tenantId, projectId);
         KitResolver.ResolvedKit resolved = null;
         try {
             resolved = resolver.resolve(source, token);
@@ -177,32 +328,133 @@ public class KitService {
         }
     }
 
+    // ──────────────────── authoring ────────────────────
+
     /**
-     * Export the active kit's top-layer back to a git remote. Uses the
-     * manifest's {@code origin} for url/path/branch defaults when
-     * {@link KitExportRequestDto} fields are blank.
+     * Export the project's kit source back to a git remote. Uses the
+     * authoring manifest's {@code origin} for url/path/branch defaults
+     * when {@link KitExportRequestDto} fields are blank.
      */
     public KitOperationResultDto export(
             String tenantId, KitExportRequestDto request, @Nullable String actor) {
         if (request.getProjectId() == null || request.getProjectId().isBlank()) {
             throw new KitException("export request must carry a projectId");
         }
-        if (projectService.findByTenantAndName(tenantId, request.getProjectId()).isEmpty()) {
-            throw new KitException("project '" + request.getProjectId()
-                    + "' does not exist in tenant '" + tenantId + "'");
-        }
+        requireProject(tenantId, request.getProjectId());
         return exporter.export(tenantId, request.getProjectId(), request, actor);
     }
 
     /**
-     * Returns the project's active kit-manifest or {@code null} if no
-     * kit is installed.
+     * Turn an installed kit into this project's kit source, so it can be
+     * edited here and exported back.
+     *
+     * <p>Exists because the decision comes late: at install time nobody
+     * knows yet that they will end up changing the kit. The record
+     * already carries origin, descriptor and per-layer ownership, so this
+     * needs neither a re-clone nor a reinstall.
      */
-    public @Nullable KitManifestDto status(String tenantId, String projectId) {
-        return installer.loadManifest(tenantId, projectId);
+    public KitManifestDto promoteToAuthoring(
+            String tenantId, String projectId, String kitId, @Nullable String actor) {
+        requireProject(tenantId, projectId);
+        KitInstalledRecordDto record = requireInstalled(tenantId, projectId, kitId);
+        KitManifestDto existing = recordStore.loadManifest(tenantId, projectId);
+        if (existing != null) {
+            throw new KitException("project " + projectId + " is already the source of kit '"
+                    + existing.getKit().getName() + "' — a project can only be one kit."
+                    + " Remove " + KitRecordStore.MANIFEST_PATH + " first.");
+        }
+        KitDescriptorDto descriptor = record.getDescriptor();
+        if (descriptor != null && descriptor.isArtifact()) {
+            throw new KitException("kit '" + record.getKit().getName()
+                    + "' is marked as artifact — a tuning bundle cannot serve as a kit source");
+        }
+        KitManifestDto manifest = installer.manifestFromRecord(record);
+        recordStore.saveManifest(tenantId, projectId, manifest, actor);
+        return manifest;
+    }
+
+    // ──────────────────── legacy migration ────────────────────
+
+    /**
+     * Convert a pre-multi-kit {@code _vance/kit-manifest.yaml} into an
+     * install record. Explicit by design — see {@link KitLegacyMigrator}.
+     */
+    public KitLegacyMigrator.Result migrateLegacy(
+            String tenantId, String projectId, boolean keepAsKitSource,
+            @Nullable String actor) {
+        requireProject(tenantId, projectId);
+        return legacyMigrator.migrate(tenantId, projectId, keepAsKitSource, actor);
+    }
+
+    /** True when this project still carries an old single-kit manifest. */
+    public boolean hasLegacyManifest(String tenantId, String projectId) {
+        requireProject(tenantId, projectId);
+        return legacyMigrator.hasLegacyManifest(tenantId, projectId);
+    }
+
+    // ──────────────────── user config ────────────────────
+
+    /**
+     * The user's config for one installed kit — update policy and layer
+     * order. Returns the defaults when no config document exists, which
+     * is the normal case.
+     */
+    public KitConfigDto loadConfig(String tenantId, String projectId, String kitId) {
+        requireProject(tenantId, projectId);
+        requireInstalled(tenantId, projectId, kitId);
+        return recordStore.loadConfig(tenantId, projectId, kitId);
+    }
+
+    /**
+     * Write the user's config for one installed kit.
+     *
+     * <p>Deliberately its own verb rather than a field on the install
+     * path: the record is machine-generated and rewritten on every
+     * update, this is hand-authored and must survive that untouched.
+     */
+    public void saveConfig(String tenantId, String projectId, String kitId, KitConfigDto config,
+            @Nullable String actor) {
+        requireProject(tenantId, projectId);
+        requireInstalled(tenantId, projectId, kitId);
+        recordStore.saveConfig(tenantId, projectId, kitId, config, actor);
+    }
+
+    private KitInstalledRecordDto requireInstalled(
+            String tenantId, String projectId, String kitId) {
+        KitInstalledRecordDto record = recordStore.find(tenantId, projectId, kitId);
+        if (record == null) {
+            throw new KitException("no installed kit '" + kitId + "' in project " + projectId);
+        }
+        return record;
+    }
+
+    // ──────────────────── status ────────────────────
+
+    /** Every kit installed in the project, in layer order (last one wins on collision). */
+    public List<KitInstalledRecordDto> status(String tenantId, String projectId) {
+        return recordStore.listInLayerOrder(tenantId, projectId);
+    }
+
+    /**
+     * The project's authoring manifest, or {@code null} when this project
+     * is not a kit source — which is the normal case.
+     */
+    public @Nullable KitManifestDto authoringManifest(String tenantId, String projectId) {
+        return recordStore.loadManifest(tenantId, projectId);
     }
 
     // ──────────────────── validation ────────────────────
+
+    private void requireProject(String tenantId, String projectId) {
+        // The installer writes documents and settings under projectId. Without
+        // a ProjectDocument, downstream tools that go through
+        // EddieContext.resolveProject would fail with "project not found in
+        // tenant" — reject up front rather than leaving a half-configured project.
+        if (projectService.findByTenantAndName(tenantId, projectId).isEmpty()) {
+            throw new KitException("project '" + projectId
+                    + "' does not exist in tenant '" + tenantId + "'");
+        }
+    }
 
     private static void validateImport(KitImportRequestDto request) {
         if (request.getProjectId() == null || request.getProjectId().isBlank()) {

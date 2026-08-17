@@ -27,9 +27,13 @@ import { useKitAdmin } from '@/composables/useKitAdmin';
 import { useSessionGroups } from '@/composables/useSessionGroups';
 import {
   KitImportMode,
+  KitPolicyAction,
   SettingType,
   type KitImportRequestDto,
   type KitExportRequestDto,
+  type KitConfigDto,
+  type KitInstalledRecordDto,
+  type KitOriginDto,
   type ProjectDto,
   type ProjectGroupSummary,
   type SessionGroupDto,
@@ -90,11 +94,14 @@ const kitForm = reactive({
   vaultPassword: '',
   prune: false,
   keepPasswords: false,
-  // Spec kits.md §10: "Manifest schreiben?" checkbox. On (default) ⇒
-  // install/update — files are tracked in _vance/kit-manifest.yaml.
-  // Off ⇒ apply (one-off splat without tracking) — used for tunings,
-  // e.g. extra tools that should not be bound to the active kit.
-  trackManifest: true,
+  // On (default) ⇒ install/update — the kit gets an install record and
+  // stays updatable. Off ⇒ apply (one-off splat without tracking), used
+  // for tunings that should not be managed at all.
+  trackInstall: true,
+  // Separate, opt-in role: mark this project as the *source* of the kit
+  // so it can be edited here and exported. Off by default — the everyday
+  // case is installing a kit, not authoring one.
+  writeManifest: false,
   commitMessage: '',
 });
 
@@ -552,7 +559,7 @@ const kitDialogSubmitLabel = computed(() => {
 
 const kitNeedsUrl = computed(() => kitDialogMode.value === 'install');
 
-function openKitDialog(mode: KitDialogMode): void {
+function openKitDialog(mode: KitDialogMode, origin?: KitOriginDto): void {
   kitDialogMode.value = mode;
   kitForm.url = '';
   kitForm.path = '';
@@ -562,17 +569,152 @@ function openKitDialog(mode: KitDialogMode): void {
   kitForm.vaultPassword = '';
   kitForm.prune = false;
   kitForm.keepPasswords = false;
-  kitForm.trackManifest = true;
+  kitForm.trackInstall = true;
+  kitForm.writeManifest = false;
   kitForm.commitMessage = '';
 
-  // Pre-fill from manifest origin when available (update / export).
-  const m = kitState.manifest.value;
-  if (m && (mode === 'update' || mode === 'export')) {
-    kitForm.url = m.origin?.url ?? '';
-    kitForm.path = m.origin?.path ?? '';
-    kitForm.branch = m.origin?.branch ?? '';
+  // Pre-fill the source: from the kit being updated, or — for export —
+  // from the authoring manifest that says what this project is.
+  const prefill = origin ?? (mode === 'export' ? kitState.manifest.value?.origin : undefined);
+  if (prefill) {
+    kitForm.url = prefill.url ?? '';
+    kitForm.path = prefill.path ?? '';
+    kitForm.branch = prefill.branch ?? '';
   }
   showKitDialog.value = true;
+}
+
+/**
+ * Update one installed kit. Goes through the same dialog as any other
+ * import because the knobs are the same — a private repo still needs a
+ * token, a kit with secrets still needs the vault passphrase — only the
+ * source is already known.
+ */
+function updateInstalledKit(record: KitInstalledRecordDto): void {
+  openKitDialog('update', record.origin);
+}
+
+/**
+ * Update every installed kit in one go. Uses the plain path — no token,
+ * no vault passphrase — because those differ per kit and cannot be
+ * meaningfully asked for once; a kit that needs them is updated singly.
+ */
+async function updateAllKits(): Promise<void> {
+  if (selection.value.kind !== 'project') return;
+  banner.value = null;
+  try {
+    const results = await kitState.updateAll(selection.value.name, false);
+    banner.value = t('scopes.kit.updatedAll_msg', { count: results.length });
+  } catch {
+    /* error already in kitState.error */
+  }
+}
+
+async function uninstallKit(record: KitInstalledRecordDto): Promise<void> {
+  if (selection.value.kind !== 'project') return;
+  if (!confirm(t('scopes.kit.confirmUninstall', { name: record.kit.name }))) return;
+  // Asked separately and defaulting to no: forgetting a kit is cheap to
+  // undo, deleting the files it brought is not.
+  const prune = confirm(t('scopes.kit.confirmUninstallPrune', { name: record.kit.name }));
+  banner.value = null;
+  try {
+    await kitState.uninstall(selection.value.name, record.id, prune);
+    banner.value = t('scopes.kit.uninstalled_msg', { name: record.kit.name });
+  } catch {
+    /* error already in kitState.error */
+  }
+}
+
+async function promoteKit(record: KitInstalledRecordDto): Promise<void> {
+  if (selection.value.kind !== 'project') return;
+  if (!confirm(t('scopes.kit.confirmPromote', { name: record.kit.name }))) return;
+  banner.value = null;
+  try {
+    await kitState.promote(selection.value.name, record.id);
+    banner.value = t('scopes.kit.promoted_msg', { name: record.kit.name });
+  } catch {
+    /* error already in kitState.error */
+  }
+}
+
+// ── per-kit config (update policy + layer order) ──────────────────────
+
+const showKitConfigDialog = ref(false);
+const kitConfigRecord = ref<KitInstalledRecordDto | null>(null);
+const kitConfigForm = reactive({
+  sortIndex: '',
+  defaultAction: KitPolicyAction.KEEP as KitPolicyAction,
+  rules: [] as { namespace: 'document' | 'setting'; pattern: string; action: KitPolicyAction }[],
+});
+
+const kitPolicyActionOptions = computed(() => [
+  { value: KitPolicyAction.KEEP, label: t('scopes.kit.config.actionKeep') },
+  { value: KitPolicyAction.OVERWRITE, label: t('scopes.kit.config.actionOverwrite') },
+  { value: KitPolicyAction.IGNORE, label: t('scopes.kit.config.actionIgnore') },
+  { value: KitPolicyAction.MERGE, label: t('scopes.kit.config.actionMerge') },
+]);
+
+const kitPolicyNamespaceOptions = computed(() => [
+  { value: 'document', label: t('scopes.kit.config.namespaceDocument') },
+  { value: 'setting', label: t('scopes.kit.config.namespaceSetting') },
+]);
+
+async function openKitConfigDialog(record: KitInstalledRecordDto): Promise<void> {
+  if (selection.value.kind !== 'project') return;
+  kitConfigRecord.value = record;
+  try {
+    const config = await kitState.loadConfig(selection.value.name, record.id);
+    kitConfigForm.sortIndex = config.sortIndex == null ? '' : String(config.sortIndex);
+    kitConfigForm.defaultAction = config.policy?.defaultAction ?? KitPolicyAction.KEEP;
+    kitConfigForm.rules = (config.policy?.rules ?? []).map((rule) => ({
+      namespace: rule.setting != null ? 'setting' : 'document',
+      pattern: rule.setting ?? rule.document ?? '',
+      action: rule.action,
+    }));
+    showKitConfigDialog.value = true;
+  } catch {
+    /* error already in kitState.error */
+  }
+}
+
+function addKitPolicyRule(): void {
+  kitConfigForm.rules.push({
+    namespace: 'document',
+    pattern: '',
+    action: KitPolicyAction.KEEP,
+  });
+}
+
+function removeKitPolicyRule(index: number): void {
+  kitConfigForm.rules.splice(index, 1);
+}
+
+async function submitKitConfig(): Promise<void> {
+  if (selection.value.kind !== 'project' || !kitConfigRecord.value) return;
+  const trimmed = kitConfigForm.sortIndex.trim();
+  const config: KitConfigDto = {
+    sortIndex: trimmed === '' ? undefined : Number(trimmed),
+    policy: {
+      defaultAction: kitConfigForm.defaultAction,
+      // Empty patterns would match nothing and only confuse the reader
+      // of the resulting YAML.
+      rules: kitConfigForm.rules
+        .filter((rule) => rule.pattern.trim() !== '')
+        .map((rule) => ({
+          document: rule.namespace === 'document' ? rule.pattern.trim() : undefined,
+          setting: rule.namespace === 'setting' ? rule.pattern.trim() : undefined,
+          action: rule.action,
+        })),
+    },
+  };
+  banner.value = null;
+  try {
+    await kitState.saveConfig(selection.value.name, kitConfigRecord.value.id, config);
+    showKitConfigDialog.value = false;
+    banner.value = t('scopes.kit.config.saved_msg');
+  } catch {
+    /* error already in kitState.error */
+  }
 }
 
 async function submitKitDialog(): Promise<void> {
@@ -608,11 +750,12 @@ async function submitKitDialog(): Promise<void> {
         mode: KitImportMode.INSTALL,
         prune: kitForm.prune,
         keepPasswords: kitForm.keepPasswords,
+        writeManifest: kitForm.writeManifest,
       };
-      // trackManifest=false ⇒ the user opted out of manifest tracking,
-      // which is exactly what `apply` does server-side (no manifest,
-      // no diff, no update path). Spec kits.md §10.
-      if (!kitForm.trackManifest) {
+      // trackInstall=false ⇒ the user wants a one-off splat, which is
+      // exactly what `apply` does server-side: no record, no diff, no
+      // update path.
+      if (!kitForm.trackInstall) {
         await kitState.apply(projectId, request);
         banner.value = t('scopes.kit.applied_msg');
       } else if (kitDialogMode.value === 'install') {
@@ -1110,67 +1253,102 @@ const combinedError = computed<string | null>(() =>
         <div v-if="kitState.loading.value" class="opacity-70 text-sm">
           {{ $t('scopes.kit.loading') }}
         </div>
-        <div v-else-if="kitState.manifest.value" class="flex flex-col gap-2 text-sm">
-          <div class="flex items-baseline justify-between">
-            <span class="font-semibold">{{ kitState.manifest.value.kit.name }}</span>
-            <span v-if="kitState.manifest.value.kit.version" class="opacity-60 text-xs">
-              {{ $t('scopes.kit.versionPrefix', { version: kitState.manifest.value.kit.version }) }}
-            </span>
+        <div v-else class="flex flex-col gap-3 text-sm">
+          <div v-if="kitState.installed.value.length === 0" class="opacity-70">
+            {{ $t('scopes.kit.none') }}
           </div>
-          <div v-if="kitState.manifest.value.kit.description" class="opacity-80">
-            {{ kitState.manifest.value.kit.description }}
+          <div
+            v-for="record in kitState.installed.value"
+            :key="record.id"
+            class="flex flex-col gap-1 border-b border-base-300 pb-2 last:border-b-0"
+          >
+            <div class="flex items-baseline justify-between">
+              <span class="font-semibold">{{ record.kit.name }}</span>
+              <span v-if="record.kit.version" class="opacity-60 text-xs">
+                {{ $t('scopes.kit.versionPrefix', { version: record.kit.version }) }}
+              </span>
+            </div>
+            <div v-if="record.kit.description" class="opacity-80">{{ record.kit.description }}</div>
+            <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs opacity-80">
+              <dt class="opacity-60">{{ $t('scopes.kit.origin') }}</dt>
+              <dd class="break-all font-mono">{{ record.origin.url }}</dd>
+              <dt v-if="record.origin.path" class="opacity-60">{{ $t('scopes.kit.path') }}</dt>
+              <dd v-if="record.origin.path">{{ record.origin.path }}</dd>
+              <dt v-if="record.origin.branch" class="opacity-60">{{ $t('scopes.kit.branch') }}</dt>
+              <dd v-if="record.origin.branch">{{ record.origin.branch }}</dd>
+              <dt v-if="record.origin.commit" class="opacity-60">{{ $t('scopes.kit.commit') }}</dt>
+              <dd v-if="record.origin.commit" class="font-mono">
+                {{ record.origin.commit.slice(0, 12) }}
+              </dd>
+              <dt v-if="record.origin.installedAt" class="opacity-60">
+                {{ $t('scopes.kit.installed') }}
+              </dt>
+              <dd v-if="record.origin.installedAt">{{ record.origin.installedAt }}</dd>
+              <dt class="opacity-60">{{ $t('scopes.kit.documents') }}</dt>
+              <dd>{{ record.artefacts?.documents?.length ?? 0 }}</dd>
+              <dt class="opacity-60">{{ $t('scopes.kit.settings') }}</dt>
+              <dd>{{ record.artefacts?.settings?.length ?? 0 }}</dd>
+              <dt v-if="(record.descriptor?.inherits?.length ?? 0) > 0" class="opacity-60">
+                {{ $t('scopes.kit.inherits') }}
+              </dt>
+              <dd v-if="(record.descriptor?.inherits?.length ?? 0) > 0">
+                {{ record.descriptor?.inherits?.length ?? 0 }}
+              </dd>
+            </dl>
+            <div class="flex flex-wrap justify-end gap-2 pt-1">
+              <VButton
+                variant="ghost"
+                size="sm"
+                @click="openKitConfigDialog(record)"
+              >{{ $t('scopes.kit.configure') }}</VButton>
+              <!-- Promoting is only offered while the project is not
+                   already some other kit's source — it can only be one. -->
+              <VButton
+                v-if="!kitState.manifest.value && !record.descriptor?.artifact"
+                variant="ghost"
+                size="sm"
+                :loading="kitState.busy.value"
+                @click="promoteKit(record)"
+              >{{ $t('scopes.kit.promote') }}</VButton>
+              <VButton
+                variant="ghost"
+                size="sm"
+                :loading="kitState.busy.value"
+                @click="uninstallKit(record)"
+              >{{ $t('scopes.kit.uninstall') }}</VButton>
+              <VButton
+                variant="ghost"
+                size="sm"
+                :loading="kitState.busy.value"
+                @click="updateInstalledKit(record)"
+              >{{ $t('scopes.kit.update') }}</VButton>
+            </div>
           </div>
-          <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs opacity-80">
-            <dt class="opacity-60">{{ $t('scopes.kit.origin') }}</dt>
-            <dd class="break-all font-mono">{{ kitState.manifest.value.origin.url }}</dd>
-            <dt v-if="kitState.manifest.value.origin.path" class="opacity-60">
-              {{ $t('scopes.kit.path') }}
-            </dt>
-            <dd v-if="kitState.manifest.value.origin.path">{{ kitState.manifest.value.origin.path }}</dd>
-            <dt v-if="kitState.manifest.value.origin.branch" class="opacity-60">
-              {{ $t('scopes.kit.branch') }}
-            </dt>
-            <dd v-if="kitState.manifest.value.origin.branch">{{ kitState.manifest.value.origin.branch }}</dd>
-            <dt v-if="kitState.manifest.value.origin.commit" class="opacity-60">
-              {{ $t('scopes.kit.commit') }}
-            </dt>
-            <dd v-if="kitState.manifest.value.origin.commit" class="font-mono">
-              {{ kitState.manifest.value.origin.commit.slice(0, 12) }}
-            </dd>
-            <dt v-if="kitState.manifest.value.origin.installedAt" class="opacity-60">
-              {{ $t('scopes.kit.installed') }}
-            </dt>
-            <dd v-if="kitState.manifest.value.origin.installedAt">
-              {{ kitState.manifest.value.origin.installedAt }}
-            </dd>
-            <dt class="opacity-60">{{ $t('scopes.kit.documents') }}</dt>
-            <dd>{{ kitState.manifest.value.documents?.length ?? 0 }}</dd>
-            <dt class="opacity-60">{{ $t('scopes.kit.settings') }}</dt>
-            <dd>{{ kitState.manifest.value.settings?.length ?? 0 }}</dd>
-            <dt class="opacity-60">{{ $t('scopes.kit.tools') }}</dt>
-            <dd>{{ kitState.manifest.value.tools?.length ?? 0 }}</dd>
-            <dt v-if="(kitState.manifest.value.resolvedInherits?.length ?? 0) > 0" class="opacity-60">
-              {{ $t('scopes.kit.inherits') }}
-            </dt>
-            <dd v-if="(kitState.manifest.value.resolvedInherits?.length ?? 0) > 0">
-              {{ kitState.manifest.value.resolvedInherits.join(', ') }}
-            </dd>
-          </dl>
-          <div class="flex flex-wrap justify-end gap-2 pt-2">
-            <VButton variant="ghost" size="sm" @click="openKitDialog('export')">
-              {{ $t('scopes.kit.export') }}
-            </VButton>
+
+          <!-- Being a kit *source* is a separate, opt-in role — only shown
+               when someone actually turned it on. -->
+          <div
+            v-if="kitState.manifest.value"
+            class="border-t border-base-300 pt-2 text-xs opacity-80"
+          >
+            <div class="font-semibold opacity-90">
+              {{ $t('scopes.kit.isSource', { name: kitState.manifest.value.kit.name }) }}
+            </div>
+            <div class="flex flex-wrap justify-end gap-2 pt-2">
+              <VButton variant="ghost" size="sm" @click="openKitDialog('export')">
+                {{ $t('scopes.kit.export') }}
+              </VButton>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap justify-end gap-2 pt-1">
             <VButton
-              variant="primary"
+              v-if="kitState.installed.value.length > 1"
+              variant="ghost"
               size="sm"
               :loading="kitState.busy.value"
-              @click="openKitDialog('update')"
-            >{{ $t('scopes.kit.update') }}</VButton>
-          </div>
-        </div>
-        <div v-else class="flex flex-col gap-2 text-sm">
-          <div class="opacity-70">{{ $t('scopes.kit.none') }}</div>
-          <div class="flex flex-wrap justify-end gap-2 pt-2">
+              @click="updateAllKits"
+            >{{ $t('scopes.kit.updateAll') }}</VButton>
             <VButton
               variant="primary"
               size="sm"
@@ -1448,6 +1626,81 @@ const combinedError = computed<string | null>(() =>
          shared {@link ProjectListSidebar} component — see template. -->
 
     <!-- ─── Kit modal (install / update / apply / export) ─── -->
+    <VModal
+      v-model="showKitConfigDialog"
+      :title="$t('scopes.kit.config.title', { name: kitConfigRecord?.kit.name ?? '' })"
+      :close-on-backdrop="false"
+    >
+      <div class="flex flex-col gap-3">
+        <VAlert v-if="kitState.error.value" variant="error">
+          <span>{{ kitState.error.value }}</span>
+        </VAlert>
+        <VSelect
+          v-model="kitConfigForm.defaultAction"
+          :label="$t('scopes.kit.config.defaultAction')"
+          :help="$t('scopes.kit.config.defaultActionHelp')"
+          :options="kitPolicyActionOptions"
+        />
+        <VInput
+          v-model="kitConfigForm.sortIndex"
+          type="number"
+          :label="$t('scopes.kit.config.sortIndex')"
+          :help="$t('scopes.kit.config.sortIndexHelp')"
+        />
+
+        <div class="flex flex-col gap-2">
+          <div class="flex items-baseline justify-between">
+            <span class="text-sm font-semibold">{{ $t('scopes.kit.config.rules') }}</span>
+            <VButton variant="ghost" size="sm" @click="addKitPolicyRule">
+              {{ $t('scopes.kit.config.addRule') }}
+            </VButton>
+          </div>
+          <p class="text-xs opacity-70">{{ $t('scopes.kit.config.rulesHelp') }}</p>
+          <div v-if="kitConfigForm.rules.length === 0" class="text-xs opacity-60">
+            {{ $t('scopes.kit.config.noRules') }}
+          </div>
+          <div
+            v-for="(rule, index) in kitConfigForm.rules"
+            :key="index"
+            class="flex flex-wrap items-end gap-2"
+          >
+            <VSelect
+              v-model="rule.namespace"
+              class="w-40"
+              :label="$t('scopes.kit.config.namespace')"
+              :options="kitPolicyNamespaceOptions"
+            />
+            <VInput
+              v-model="rule.pattern"
+              class="flex-1 min-w-48"
+              :label="$t('scopes.kit.config.pattern')"
+              :placeholder="rule.namespace === 'setting' ? 'ai.alias.*' : 'recipes/*.yaml'"
+            />
+            <VSelect
+              v-model="rule.action"
+              class="w-40"
+              :label="$t('scopes.kit.config.action')"
+              :options="kitPolicyActionOptions"
+            />
+            <VButton variant="ghost" size="sm" @click="removeKitPolicyRule(index)">
+              {{ $t('scopes.common.delete') }}
+            </VButton>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <VButton variant="ghost" @click="showKitConfigDialog = false">
+            {{ $t('scopes.common.cancel') }}
+          </VButton>
+          <VButton
+            variant="primary"
+            :loading="kitState.busy.value"
+            @click="submitKitConfig"
+          >{{ $t('scopes.common.save') }}</VButton>
+        </div>
+      </div>
+    </VModal>
+
     <VModal v-model="showKitDialog" :title="kitDialogTitle" :close-on-backdrop="false">
       <div class="flex flex-col gap-3">
         <VAlert v-if="kitState.error.value" variant="error">
@@ -1501,18 +1754,24 @@ const combinedError = computed<string | null>(() =>
         />
         <VCheckbox
           v-if="kitDialogMode !== 'export'"
-          v-model="kitForm.trackManifest"
-          :label="$t('scopes.kit.dialog.trackManifest')"
-          :help="$t('scopes.kit.dialog.trackManifestHelp')"
+          v-model="kitForm.trackInstall"
+          :label="$t('scopes.kit.dialog.trackInstall')"
+          :help="$t('scopes.kit.dialog.trackInstallHelp')"
         />
         <VCheckbox
-          v-if="kitDialogMode === 'update' && kitForm.trackManifest"
+          v-if="kitDialogMode !== 'export' && kitForm.trackInstall"
+          v-model="kitForm.writeManifest"
+          :label="$t('scopes.kit.dialog.writeManifest')"
+          :help="$t('scopes.kit.dialog.writeManifestHelp')"
+        />
+        <VCheckbox
+          v-if="kitDialogMode === 'update' && kitForm.trackInstall"
           v-model="kitForm.prune"
           :label="$t('scopes.kit.dialog.prune')"
           :help="$t('scopes.kit.dialog.pruneHelp')"
         />
         <VCheckbox
-          v-if="kitDialogMode !== 'export' && !kitForm.trackManifest"
+          v-if="kitDialogMode !== 'export' && !kitForm.trackInstall"
           v-model="kitForm.keepPasswords"
           :label="$t('scopes.kit.dialog.keepPasswords')"
           :help="$t('scopes.kit.dialog.keepPasswordsHelp')"

@@ -1,8 +1,10 @@
 package de.mhus.vance.brain.kit;
 
+import de.mhus.vance.api.kit.KitConfigDto;
 import de.mhus.vance.api.kit.KitExportRequestDto;
 import de.mhus.vance.api.kit.KitImportMode;
 import de.mhus.vance.api.kit.KitImportRequestDto;
+import de.mhus.vance.api.kit.KitInstalledRecordDto;
 import de.mhus.vance.api.kit.KitManifestDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.brain.permission.RequestAuthority;
@@ -11,6 +13,7 @@ import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -19,16 +22,19 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Admin REST endpoints for the kit subsystem.
  *
- * <p>{@code GET /status} returns 204 when no kit is installed; all
- * mutation endpoints return the {@link KitOperationResultDto}.
+ * <p>{@code GET /status} lists the installed kits (empty list when
+ * none); all mutation endpoints return the
+ * {@link KitOperationResultDto}.
  *
  * <p>Tenant in the path is validated by
  * {@link de.mhus.vance.brain.access.BrainAccessFilter} before the
@@ -44,17 +50,30 @@ public class KitAdminController {
     private final KitService kitService;
     private final RequestAuthority authority;
 
+    /** The kits installed in this project, in layer order. */
     @GetMapping("/{projectId}/status")
-    public ResponseEntity<KitManifestDto> status(
+    public List<KitInstalledRecordDto> status(
             @PathVariable("tenant") String tenant,
             @PathVariable("projectId") String projectId,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.ADMIN);
-        KitManifestDto manifest = kitService.status(tenant, projectId);
-        if (manifest == null) {
-            return ResponseEntity.noContent().build();
-        }
-        return ResponseEntity.ok(manifest);
+        return kitService.status(tenant, projectId);
+    }
+
+    /**
+     * The authoring manifest, i.e. the kit this project <i>is</i>.
+     * 204 when the project is not a kit source — the normal case.
+     */
+    @GetMapping("/{projectId}/manifest")
+    public ResponseEntity<KitManifestDto> manifest(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitManifestDto manifest = kitService.authoringManifest(tenant, projectId);
+        return manifest == null
+                ? ResponseEntity.noContent().build()
+                : ResponseEntity.ok(manifest);
     }
 
     @PostMapping("/{projectId}/install")
@@ -75,6 +94,156 @@ public class KitAdminController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
         return runImport(tenant, projectId, body, KitImportMode.UPDATE, request);
+    }
+
+    /**
+     * Re-run one installed kit against its source. The record supplies
+     * the coordinates, so the body only carries the knobs — token and
+     * vault passphrase travel in the body rather than the query string
+     * for the obvious reason.
+     */
+    @PostMapping("/{projectId}/update/{kitId}")
+    public KitOperationResultDto updateOne(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @PathVariable("kitId") String kitId,
+            @RequestBody(required = false) @Nullable KitImportRequestDto body,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitImportRequestDto options = body == null ? new KitImportRequestDto() : body;
+        try {
+            return kitService.updateInstalled(tenant, projectId, kitId, options.isPrune(),
+                    options.getToken(), options.getVaultPassword(),
+                    actor(request), SettingWriteOrigin.USER);
+        } catch (KitException e) {
+            throw kitError(e);
+        }
+    }
+
+    /** Re-run every installed kit of the project. One result entry per kit. */
+    @PostMapping("/{projectId}/update-all")
+    public List<KitOperationResultDto> updateAll(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestBody(required = false) @Nullable KitImportRequestDto body,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitImportRequestDto options = body == null ? new KitImportRequestDto() : body;
+        try {
+            return kitService.updateAllInstalled(tenant, projectId, options.isPrune(),
+                    options.getToken(), options.getVaultPassword(),
+                    actor(request), SettingWriteOrigin.USER);
+        } catch (KitException e) {
+            throw kitError(e);
+        }
+    }
+
+    /**
+     * Re-apply all installed kits at their pinned versions, in layer
+     * order. Repairs on-disk state; installs nothing newer.
+     */
+    @PostMapping("/{projectId}/reapply-all")
+    public List<KitOperationResultDto> reapplyAll(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestBody(required = false) @Nullable KitImportRequestDto body,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitImportRequestDto options = body == null ? new KitImportRequestDto() : body;
+        try {
+            return kitService.reapplyAll(tenant, projectId, options.getToken(),
+                    options.getVaultPassword(), actor(request), SettingWriteOrigin.USER);
+        } catch (KitException e) {
+            throw kitError(e);
+        }
+    }
+
+    /**
+     * Forget one installed kit. Without {@code prune} the artefacts stay
+     * in the project — the user may well have built on them.
+     */
+    @PostMapping("/{projectId}/uninstall/{kitId}")
+    public KitOperationResultDto uninstall(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @PathVariable("kitId") String kitId,
+            @RequestParam(name = "prune", defaultValue = "false") boolean prune,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        try {
+            return kitService.uninstall(tenant, projectId, kitId, prune);
+        } catch (KitException e) {
+            throw kitError(e);
+        }
+    }
+
+    /**
+     * The user's config for one installed kit — update policy and layer
+     * order. Returns the defaults when no config document exists, so the
+     * editor always has something to show.
+     */
+    @GetMapping("/{projectId}/config/{kitId}")
+    public KitConfigDto config(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @PathVariable("kitId") String kitId,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        try {
+            return kitService.loadConfig(tenant, projectId, kitId);
+        } catch (KitException e) {
+            throw kitError(e);
+        }
+    }
+
+    @PutMapping("/{projectId}/config/{kitId}")
+    public KitConfigDto saveConfig(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @PathVariable("kitId") String kitId,
+            @RequestBody KitConfigDto body,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        try {
+            kitService.saveConfig(tenant, projectId, kitId, body, actor(request));
+            return kitService.loadConfig(tenant, projectId, kitId);
+        } catch (KitException e) {
+            throw kitError(e);
+        }
+    }
+
+    /**
+     * Convert a pre-multi-kit {@code _vance/kit-manifest.yaml} into an
+     * install record. Only meaningful for projects that were set up before
+     * the rework; a no-op with an explanation everywhere else.
+     */
+    @PostMapping("/{projectId}/migrate-legacy")
+    public KitLegacyMigrator.Result migrateLegacy(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestParam(name = "keepAsKitSource", defaultValue = "false") boolean keepAsKitSource,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        try {
+            return kitService.migrateLegacy(tenant, projectId, keepAsKitSource, actor(request));
+        } catch (KitException e) {
+            throw kitError(e);
+        }
+    }
+
+    /** Make an installed kit this project's kit source, so it can be exported. */
+    @PostMapping("/{projectId}/promote/{kitId}")
+    public KitManifestDto promote(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @PathVariable("kitId") String kitId,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        try {
+            return kitService.promoteToAuthoring(tenant, projectId, kitId, actor(request));
+        } catch (KitException e) {
+            throw kitError(e);
+        }
     }
 
     @PostMapping("/{projectId}/apply")

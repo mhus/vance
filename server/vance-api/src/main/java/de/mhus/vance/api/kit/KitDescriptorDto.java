@@ -68,4 +68,15 @@ public class KitDescriptorDto {
      */
     @Builder.Default
     private boolean sealed = false;
+
+    /**
+     * Update policy the kit's author <i>suggests</i> — e.g. "my
+     * ai.alias.* settings are examples, never overwrite them".
+     *
+     * <p>Only a suggestion: it is never materialised into the project.
+     * It sits between the built-in default and the user's own config,
+     * so a kit can improve its recommendation in a later version for as
+     * long as the user has not said anything of their own.
+     */
+    private @Nullable KitPolicyDto policy;
 }

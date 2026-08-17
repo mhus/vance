@@ -527,6 +527,12 @@ export default {
     projectFilterNoMatch: 'No projects match "{filter}".',
     searchPlaceholder: 'Search documents…',
     pathBack: 'Up one level',
+    kits: {
+      installed: '{count} kits installed',
+      update: 'Update kits',
+      updated: '{count} kits updated.',
+      updateFailed: 'Kit update failed.',
+    },
     title: 'Documents',
     loading: 'Loading documents…',
     totalItems: 'items',
@@ -1586,6 +1592,7 @@ export default {
       empty: '(empty)',
       none: '—',
       noGroup: '(no group)',
+      delete: 'Delete',
       disabled: '(disabled)',
       archived: '(archived)',
     },
@@ -1674,6 +1681,44 @@ export default {
       settings: 'Settings',
       tools: 'Tools',
       inherits: 'Inherits',
+      isSource: 'This project is the source of kit "{name}".',
+      configure: 'Rules…',
+      promote: 'Develop this kit',
+      uninstall: 'Uninstall',
+      updateAll: 'Update all',
+      confirmUninstall:
+        'Uninstall kit "{name}"? The record goes; the files stay for now.',
+      confirmUninstallPrune:
+        'Also delete the documents and settings "{name}" brought along? Cancel keeps them.',
+      confirmPromote:
+        'Make this project the source of kit "{name}"? The kit can then be edited here and exported. A project can be the source of exactly one kit.',
+      uninstalled_msg: 'Kit "{name}" uninstalled.',
+      promoted_msg: 'Project is now the source of kit "{name}".',
+      updatedAll_msg: '{count} kits updated.',
+      config: {
+        title: 'Rules for "{name}"',
+        defaultAction: 'Default behaviour on update',
+        defaultActionHelp:
+          'Applies to everything no rule matches. "Keep" refreshes only as long as you have not changed the file yourself.',
+        sortIndex: 'Order',
+        sortIndexHelp:
+          'Higher wins when two kits ship the same file. Leave empty for install order, i.e. the most recently installed kit wins.',
+        rules: 'Exceptions',
+        rulesHelp:
+          'The last matching rule wins — like .gitignore. Server tools are documents: server-tools/*.yaml.',
+        addRule: 'Add rule',
+        noRules: 'No exceptions — the default applies everywhere.',
+        namespace: 'Namespace',
+        namespaceDocument: 'Document',
+        namespaceSetting: 'Setting',
+        pattern: 'Pattern',
+        action: 'Behaviour',
+        actionKeep: 'Keep (protect my edits)',
+        actionOverwrite: 'Overwrite (kit always wins)',
+        actionIgnore: 'Ignore (never touch)',
+        actionMerge: 'Merge (reconcile my edits with the kit)',
+        saved_msg: 'Rules saved.',
+      },
       install: 'Install…',
       update: 'Update…',
       export: 'Export…',
@@ -1714,9 +1759,12 @@ export default {
         keepPasswords: 'Keep existing passwords',
         keepPasswordsHelp:
           'Skip PASSWORD-settings shipped with the kit so existing project credentials are preserved.',
-        trackManifest: 'Record in kit manifest',
-        trackManifestHelp:
-          'On (default): files are tracked in _vance/kit-manifest.yaml as part of the kit, so update/export keep working. Off: one-off splat without tracking — useful for tunings (extra tools / settings) that should not be bound to the active kit.',
+        trackInstall: 'Manage as an installed kit',
+        trackInstallHelp:
+          'On (default): the kit gets a record under _vance/kits/installed/ and stays updatable. Off: one-off splat without management — useful for tunings (extra tools / settings) that should not be carried along.',
+        writeManifest: 'This project is the kit source',
+        writeManifestHelp:
+          'Off (default). On: mark the project as the source of this kit (_vance/kits/manifest.yaml) so it can be exported — for kit developers editing the kit here. A project can be the source of exactly one kit.',
         submitInstall: 'Install',
         submitUpdate: 'Update',
         submitExport: 'Export',

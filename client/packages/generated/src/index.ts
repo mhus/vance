@@ -103,15 +103,22 @@ export * from './inbox/ResolvedBy';
 
 
 export * from './kit/InheritArtefactsDto';
+export * from './kit/KitArtefactDto';
+export * from './kit/KitArtefactsDto';
+export * from './kit/KitConfigDto';
 export * from './kit/KitDescriptorDto';
 export * from './kit/KitExportRequestDto';
 export * from './kit/KitImportMode';
 export * from './kit/KitImportRequestDto';
 export * from './kit/KitInheritDto';
+export * from './kit/KitInstalledRecordDto';
 export * from './kit/KitManifestDto';
 export * from './kit/KitMetadataDto';
 export * from './kit/KitOperationResultDto';
 export * from './kit/KitOriginDto';
+export * from './kit/KitPolicyAction';
+export * from './kit/KitPolicyDto';
+export * from './kit/KitPolicyRuleDto';
 export * from './kit/ProjectKitEntry';
 export * from './kit/ProjectKitsCatalogDto';
 export * from './kit/ProjectKitsScanRequestDto';

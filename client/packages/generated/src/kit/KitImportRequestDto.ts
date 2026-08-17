@@ -14,4 +14,5 @@ export interface KitImportRequestDto {
   mode: KitImportMode;
   prune: boolean;
   keepPasswords: boolean;
+  writeManifest: boolean;
 }

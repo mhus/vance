@@ -4,6 +4,7 @@
 */
 
 import { KitInheritDto } from './KitInheritDto';
+import { KitPolicyDto } from './KitPolicyDto';
 
 export interface KitDescriptorDto {
   name: string;
@@ -14,4 +15,5 @@ export interface KitDescriptorDto {
   artifact: boolean;
   installable: boolean;
   sealed: boolean;
+  policy?: KitPolicyDto;
 }

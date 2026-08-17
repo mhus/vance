@@ -25,6 +25,13 @@ public class KitOperationResultDto {
 
     private String kitName;
 
+    /**
+     * Identity of the install record this operation wrote, i.e. the file
+     * name under {@code _vance/kits/installed/}. Null for {@code APPLY}
+     * and {@code EXPORT}, which do not track anything.
+     */
+    private @Nullable String kitId;
+
     /** {@code INSTALL}, {@code UPDATE}, {@code APPLY}, {@code EXPORT}. */
     private String mode;
 
@@ -67,6 +74,28 @@ public class KitOperationResultDto {
 
     @Builder.Default
     private List<String> toolsRemoved = new ArrayList<>();
+
+    /**
+     * Documents left untouched because the kit's policy said so —
+     * {@code KEEP} on a locally modified file, or {@code IGNORE}.
+     * Deliberately separate from {@link #documentsSkipped} (KIT lock):
+     * both mean "not written", but the operator needs to know which of
+     * the two it was.
+     */
+    @Builder.Default
+    private List<String> documentsSkippedByPolicy = new ArrayList<>();
+
+    /** Setting keys left untouched by the kit's policy. */
+    @Builder.Default
+    private List<String> settingsSkippedByPolicy = new ArrayList<>();
+
+    /**
+     * Documents whose three-way merge conflicted. The original is
+     * untouched; the merged text with conflict markers sits beside it as
+     * {@code <path>.kit-merge} for the user to resolve.
+     */
+    @Builder.Default
+    private List<String> documentsConflicted = new ArrayList<>();
 
     /** PASSWORD-setting keys skipped due to vault decryption failure. */
     @Builder.Default

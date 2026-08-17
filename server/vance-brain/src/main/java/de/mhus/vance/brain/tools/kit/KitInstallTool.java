@@ -14,10 +14,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Installs a kit into a project for the first time. Fails when the
- * project already has an active kit — use {@code kit_update} to
- * replace the version of an installed kit, or remove the manifest
- * first.
+ * Installs a kit into a project. Several kits may coexist; installing
+ * the same source twice is refused because that is an update, and the
+ * user asking for "install" would not expect a silent re-write.
  */
 @Component
 @RequiredArgsConstructor
@@ -35,8 +34,9 @@ public class KitInstallTool implements Tool {
     @Override
     public String description() {
         return "Install a kit (skills, recipes, documents, settings, server-tools) "
-                + "from a git repository into a project. Fails if the project already "
-                + "has an active kit.";
+                + "from a git repository into a project. Several kits can be installed "
+                + "side by side; re-installing the same source is refused — use "
+                + "kit_update for that.";
     }
 
     @Override

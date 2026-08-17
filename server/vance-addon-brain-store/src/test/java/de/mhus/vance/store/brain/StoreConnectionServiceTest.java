@@ -29,6 +29,7 @@ class StoreConnectionServiceTest {
     private static final String TENANT = "acme";
     private static final String USER = "marvin";
     private static final String ACCOUNT = "acc_7f3k9m2p4q";
+    private static final String PROJECT = "research";
     private static final String LINK_TOKEN = "vst_secret-token";
 
     @Mock private StoreClient client;
@@ -127,10 +128,22 @@ class StoreConnectionServiceTest {
     @Test
     void connectionOf_readsTheAccountThroughTheCascade() {
         when(settings.getStringValueUserProjectCascade(
-                TENANT, USER, null, null, "store.account.vancetope-library"))
+                TENANT, USER, PROJECT, null, "store.account.vancetope-library"))
                 .thenReturn(ACCOUNT);
 
-        assertThat(service.connectionOf(TENANT, USER, source()).isConnected()).isTrue();
+        assertThat(service.connectionOf(TENANT, USER, PROJECT, source()).isConnected()).isTrue();
+    }
+
+    @Test
+    void connectionOf_seesAnAccountHeldOnTheProject() {
+        // How a team shares one account. Reading without the project said
+        // "not signed in" for exactly that setup, while installing and
+        // reviewing on the same screen resolved the credential fine.
+        when(settings.getStringValueUserProjectCascade(
+                eq(TENANT), eq(USER), eq(PROJECT), any(), any()))
+                .thenReturn(ACCOUNT);
+
+        assertThat(service.connectionOf(TENANT, USER, PROJECT, source()).isConnected()).isTrue();
     }
 
     @Test
@@ -138,7 +151,7 @@ class StoreConnectionServiceTest {
         when(settings.getStringValueUserProjectCascade(any(), any(), any(), any(), any()))
                 .thenReturn(null);
 
-        assertThat(service.connectionOf(TENANT, USER, source()).isConnected()).isFalse();
+        assertThat(service.connectionOf(TENANT, USER, PROJECT, source()).isConnected()).isFalse();
     }
 
     private void givenLogin() {

@@ -41,9 +41,20 @@ public class StoreConnectionService {
         }
     }
 
-    public Connection connectionOf(String tenantId, String userId, KitSourceDto source) {
+    /**
+     * Which account this installation is signed in to for one source.
+     *
+     * <p>{@code projectId} matters: the cascade has a project layer, and it
+     * is how a team shares one account. Reading without it said "not signed
+     * in" for exactly that setup — while installing and reviewing on the
+     * same screen resolved the credential fine, because
+     * {@code KitStoreCredentials} did pass it. One cascade, asked the same
+     * way from both ends.
+     */
+    public Connection connectionOf(
+            String tenantId, String userId, @Nullable String projectId, KitSourceDto source) {
         return new Connection(source.getId(), settings.getStringValueUserProjectCascade(
-                tenantId, userId, null, null, accountKey(source)));
+                tenantId, userId, projectId, null, accountKey(source)));
     }
 
     /**

@@ -30,6 +30,7 @@ import org.springframework.stereotype.Service;
 public class TemplateDescribeService {
 
     private final KitResolver resolver;
+    private final KitStoreCredentials credentials;
     private final KitWorkspace workspace;
 
     /**
@@ -40,10 +41,18 @@ public class TemplateDescribeService {
      *                      or the file is invalid
      */
     public ToolTemplateDescriptorDto describe(
-            String tenantId, KitInheritDto source, @Nullable String token) {
+            String tenantId, @Nullable String projectId, @Nullable String actor,
+            KitInheritDto source, @Nullable String token) {
         KitResolver.ResolvedKit resolved = null;
         try {
-            resolved = resolver.resolve(KitAccess.of(tenantId).withToken(token), source);
+            // Resolved like every other entry point. Building the access by
+            // hand left storeAccount null, so describing a signed library
+            // template failed at the licence gate with "not signed in to any
+            // store account" on an installation that plainly was — while
+            // installing the same template worked.
+            resolved = resolver.resolve(
+                    credentials.resolve(tenantId, projectId, actor, source.getUrl(), token),
+                    source);
             Path templatePath = resolved.buildRoot().resolve(TemplateApplier.TEMPLATE_FILENAME);
             if (!Files.isRegularFile(templatePath)) {
                 throw new KitException("kit at " + source.getUrl()

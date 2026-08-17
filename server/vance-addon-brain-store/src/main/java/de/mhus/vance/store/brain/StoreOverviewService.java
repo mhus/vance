@@ -111,7 +111,7 @@ public class StoreOverviewService {
             String tenantId, String projectId, String userId, KitSourceDto source) {
 
         StoreConnectionService.Connection connection =
-                connections.connectionOf(tenantId, userId, source);
+                connections.connectionOf(tenantId, userId, projectId, source);
 
         List<StoreClient.CatalogueEntry> offered;
         try {

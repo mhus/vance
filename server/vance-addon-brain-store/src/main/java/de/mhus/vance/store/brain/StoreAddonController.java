@@ -7,6 +7,7 @@ import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.api.kit.KitSourceDto;
 import de.mhus.vance.api.kit.KitSourceType;
 import de.mhus.vance.brain.kit.KitAccess;
+import de.mhus.vance.brain.kit.KitRecordStore;
 import de.mhus.vance.brain.kit.KitService;
 import de.mhus.vance.brain.kit.KitStoreCredentials;
 import de.mhus.vance.brain.kit.KitSourceRegistry;
@@ -51,6 +52,7 @@ public class StoreAddonController {
     private final StoreOverviewService overview;
     private final StoreConnectionService connections;
     private final KitService kitService;
+    private final KitRecordStore recordStore;
     private final StoreClient storeClient;
     private final KitStoreCredentials credentials;
     private final RequestAuthority authority;
@@ -142,11 +144,15 @@ public class StoreAddonController {
 
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
         KitSourceDto source = library(tenant, body.sourceId());
-        boolean installed = overview.overview(tenant, projectId, actor(request)).stream()
-                .filter(view -> view.sourceId().equals(source.getId()))
-                .flatMap(view -> view.entries().stream())
-                .anyMatch(entry -> entry.path().equals(body.path())
-                        && entry.installedVersion() != null);
+        // Asked locally. It used to be answered by re-running the whole
+        // overview — two HTTP calls to decide a verb — and StoreOverviewService
+        // swallows a library failure into an empty list, so a hiccup at the
+        // delivery service made an installed kit look uninstalled and turned
+        // the request into an INSTALL that the installer then refused. The
+        // record is here, it is authoritative, and KitService looks it up the
+        // same way one line later.
+        boolean installed = recordStore.findByOrigin(
+                tenant, projectId, source.getUrl(), body.path()) != null;
 
         KitImportRequestDto importRequest = KitImportRequestDto.builder()
                 .projectId(projectId)

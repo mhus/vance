@@ -210,12 +210,12 @@ class StoreOverviewServiceTest {
     }
 
     private void givenSignedIn() {
-        when(connections.connectionOf(any(), any(), any()))
+        when(connections.connectionOf(any(), any(), any(), any()))
                 .thenReturn(new StoreConnectionService.Connection(SOURCE_ID, "acc_1"));
     }
 
     private void givenNotSignedIn() {
-        when(connections.connectionOf(any(), any(), any()))
+        when(connections.connectionOf(any(), any(), any(), any()))
                 .thenReturn(new StoreConnectionService.Connection(SOURCE_ID, null));
     }
 

@@ -73,7 +73,8 @@ public class ToolTemplateDescribeTool implements Tool {
         }
         ToolTemplateDescriptorDto dto;
         try {
-            dto = describeService.describe(ctx.tenantId(), entry.getSource(), null);
+            dto = describeService.describe(
+                    ctx.tenantId(), ctx.projectId(), ctx.userId(), entry.getSource(), null);
         } catch (KitException e) {
             log.warn("describe template '{}' failed: {}", name, e.getMessage());
             throw new ToolException("describe failed: " + e.getMessage(), e);

@@ -12,6 +12,7 @@ import de.mhus.vance.brain.kit.KitService;
 import de.mhus.vance.brain.kit.TemplateApplier;
 import de.mhus.vance.brain.kit.TemplateDescribeService;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.kit.catalog.ToolTemplateCatalogService;
 import de.mhus.vance.shared.permission.Action;
@@ -22,6 +23,7 @@ import jakarta.validation.Valid;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -113,7 +115,10 @@ public class ToolTemplatesAdminController {
                     "Tool template '" + name + "' is not in the tenant catalog");
         }
         try {
-            return describeService.describe(tenant, entry.getSource(), null);
+            // Tenant-scoped surface, so no project — the user layer of the
+            // cascade is what carries a store account anyway.
+            return describeService.describe(
+                    tenant, null, actorOf(request), entry.getSource(), null);
         } catch (KitException e) {
             log.warn("tool-template describe failed for '{}': {}", name, e.getMessage());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
@@ -180,5 +185,11 @@ public class ToolTemplatesAdminController {
                     name, body.getProjectId(), e.getMessage());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
+    }
+
+    /** The signed-in user, for resolving a store account out of the cascade. */
+    private static @Nullable String actorOf(HttpServletRequest request) {
+        Object user = request.getAttribute(AccessFilterBase.ATTR_USERNAME);
+        return user == null ? null : user.toString();
     }
 }

@@ -68,7 +68,8 @@ public class StoreAddonController {
 
     public record BuyRequest(
             String sourceId, String vendor, String kitId,
-            String email, String password) {}
+            String email, String password,
+            @Nullable String withdrawalNoticeVersion) {}
 
     /** The four lists, per configured library. */
     @GetMapping("/{projectId}/overview")
@@ -184,10 +185,33 @@ public class StoreAddonController {
             StoreClient.Session session =
                     storeClient.login(source, body.email(), body.password());
             try {
-                return storeClient.order(source, session, body.vendor(), body.kitId());
+                return storeClient.order(source, session, body.vendor(), body.kitId(),
+                        body.withdrawalNoticeVersion());
             } finally {
                 storeClient.logout(source, session);
             }
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /**
+     * The withdrawal notice a store currently requires.
+     *
+     * <p>Asked before the buy form is shown, so the version the buyer
+     * confirms is the one the store will accept. A stale one is refused
+     * rather than silently recorded under newer wording.
+     */
+    @GetMapping("/{projectId}/withdrawal-notice")
+    public StoreClient.WithdrawalNotice withdrawalNotice(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestParam("sourceId") String sourceId,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        try {
+            return storeClient.withdrawalNotice(library(tenant, sourceId));
         } catch (KitException e) {
             throw storeError(e);
         }

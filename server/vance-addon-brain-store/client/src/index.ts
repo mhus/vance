@@ -9,6 +9,7 @@ export {
   loadReviews,
   submitReview,
   buy,
+  loadWithdrawalNotice,
 } from './api';
 export type {
   EntryState,
@@ -18,4 +19,5 @@ export type {
   StoreOrder,
   StoreReview,
   StoreSourceView,
+  WithdrawalNotice,
 } from './types';

@@ -164,6 +164,28 @@ public class StoreClient {
         }
     }
 
+    /** What a buyer must agree to before a paid order is accepted. */
+    public record WithdrawalNotice(boolean required, @Nullable String version) {}
+
+    /**
+     * The withdrawal notice currently in force at a store.
+     *
+     * <p>Fetched rather than configured here: the wording belongs to
+     * whoever sells, and a brain that guessed the version would have its
+     * orders refused — which is the correct outcome, but a confusing way
+     * to discover it.
+     */
+    public WithdrawalNotice withdrawalNotice(KitSourceDto source) {
+        HttpResponse<String> response = send(HttpRequest.newBuilder(
+                uri(source, "/store/orders/withdrawal-notice"))
+                .timeout(TIMEOUT).GET().build(), source);
+        if (response.statusCode() != 200) {
+            throw new KitException("the store returned HTTP " + response.statusCode()
+                    + " for its withdrawal notice");
+        }
+        return read(response.body(), WithdrawalNotice.class, source);
+    }
+
     /** What an order came to. */
     public record Order(
             String orderId,
@@ -180,9 +202,11 @@ public class StoreClient {
      * — deliberately, and only here.
      */
     public Order order(
-            KitSourceDto source, Session session, String vendor, String kitId) {
+            KitSourceDto source, Session session, String vendor, String kitId,
+            @Nullable String withdrawalNoticeVersion) {
 
-        String body = json.writeValueAsString(new OrderBody(vendor, kitId));
+        String body = json.writeValueAsString(
+                new OrderBody(vendor, kitId, withdrawalNoticeVersion));
         HttpResponse<String> response = send(HttpRequest.newBuilder(
                         uri(source, "/store/orders"))
                 .timeout(TIMEOUT)
@@ -194,7 +218,7 @@ public class StoreClient {
         if (response.statusCode() == 403) {
             throw new KitException("this store account is not confirmed yet");
         }
-        if (response.statusCode() == 409) {
+        if (response.statusCode() == 400 || response.statusCode() == 409) {
             throw new KitException("the store refused the order: " + response.body());
         }
         if (response.statusCode() != 201 && response.statusCode() != 200) {
@@ -316,5 +340,6 @@ public class StoreClient {
 
     private record ReviewBody(int stars, @Nullable String text) {}
 
-    private record OrderBody(String vendorName, String kitId) {}
+    private record OrderBody(
+            String vendorName, String kitId, @Nullable String withdrawalNoticeVersion) {}
 }

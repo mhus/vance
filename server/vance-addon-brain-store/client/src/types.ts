@@ -73,3 +73,10 @@ export interface StoreOrder {
   redirectUrl?: string | null;
   failureReason?: string | null;
 }
+
+/** What a buyer must agree to before a paid order is accepted. */
+export interface WithdrawalNotice {
+  required: boolean;
+  /** Which wording is in force. Null when the notice is switched off. */
+  version?: string | null;
+}

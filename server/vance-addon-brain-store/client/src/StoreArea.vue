@@ -2,9 +2,12 @@
 import { computed, onMounted, ref } from 'vue';
 import { VAlert, VButton, VCard, VEmptyState, VInput, VTextarea } from '@vance/components';
 import {
-  buy, connect, disconnect, install, loadOverview, loadReviews, submitReview,
+  buy, connect, disconnect, install, loadOverview, loadReviews,
+  loadWithdrawalNotice, submitReview,
 } from './api';
-import type { EntryState, StoreEntry, StoreReview, StoreSourceView } from './types';
+import type {
+  EntryState, StoreEntry, StoreReview, StoreSourceView, WithdrawalNotice,
+} from './types';
 
 const props = defineProps<{ projectId?: string }>();
 
@@ -34,6 +37,8 @@ const notice = ref('');
 // for reviewing and for nothing that spends money.
 const buyingPath = ref<string>('');
 const buyPassword = ref('');
+const withdrawalNotice = ref<WithdrawalNotice | null>(null);
+const withdrawalAccepted = ref(false);
 
 // Review panel, per kit. Only one is open at a time.
 const reviewingPath = ref<string>('');
@@ -163,9 +168,28 @@ async function sendReview(entry: StoreEntry): Promise<void> {
   }
 }
 
-function openBuy(entry: StoreEntry): void {
+async function openBuy(entry: StoreEntry): Promise<void> {
+  error.value = '';
   buyingPath.value = entry.path;
   buyPassword.value = '';
+  withdrawalAccepted.value = false;
+  withdrawalNotice.value = null;
+  if (entry.priceCents <= 0) return;
+  try {
+    // Fetched now, not configured here: the wording belongs to whoever
+    // sells, and the version confirmed has to be the one in force.
+    withdrawalNotice.value = await loadWithdrawalNotice(projectId.value, entry.sourceId);
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not load the store terms.';
+    buyingPath.value = '';
+  }
+}
+
+/** Whether the confirm button may be pressed. */
+function buyReady(entry: StoreEntry): boolean {
+  if (entry.priceCents <= 0) return true;
+  if (!withdrawalNotice.value?.required) return true;
+  return withdrawalAccepted.value;
 }
 
 async function confirmBuy(entry: StoreEntry): Promise<void> {
@@ -176,6 +200,7 @@ async function confirmBuy(entry: StoreEntry): Promise<void> {
     const order = await buy(
       projectId.value, entry.sourceId, entry.vendor, entry.kitId,
       buyerEmail.value, buyPassword.value,
+      withdrawalAccepted.value ? withdrawalNotice.value?.version ?? undefined : undefined,
     );
     if (order.redirectUrl) {
       // A priced kit with a real provider. Nothing is owned yet.
@@ -356,10 +381,24 @@ onMounted(load);
                   ? `Updates for ${entry.licenseTermDays} days. What you install keeps working after that.`
                   : 'Updates without a time limit.'"
               />
+              <!--
+                The consent that ends the fourteen-day right of withdrawal.
+                An active checkbox, never pre-ticked: a pre-ticked one is
+                not consent, and a consent that is not consent extends the
+                period to twelve months instead of ending it.
+              -->
+              <label v-if="withdrawalNotice?.required" class="flex gap-2 items-start text-sm">
+                <input v-model="withdrawalAccepted" type="checkbox" class="mt-1" />
+                <span>
+                  I ask for the download to start immediately and I understand
+                  that I thereby lose my right of withdrawal.
+                </span>
+              </label>
+
               <div class="flex gap-2">
                 <VButton
                   size="sm"
-                  :disabled="busyPath === entry.path"
+                  :disabled="busyPath === entry.path || !buyReady(entry)"
                   @click="confirmBuy(entry)"
                 >
                   {{ busyPath === entry.path ? '…' : `Confirm — ${priceOf(entry)}` }}

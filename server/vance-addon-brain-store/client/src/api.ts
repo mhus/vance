@@ -5,6 +5,7 @@ import type {
   StoreOrder,
   StoreReview,
   StoreSourceView,
+  WithdrawalNotice,
 } from './types';
 
 function base(projectId: string): string {
@@ -100,8 +101,25 @@ export async function buy(
   kitId: string,
   email: string,
   password: string,
+  withdrawalNoticeVersion?: string,
 ): Promise<StoreOrder> {
   return brainFetch<StoreOrder>('POST', `${base(projectId)}/buy`, {
-    body: { sourceId, vendor, kitId, email, password },
+    body: { sourceId, vendor, kitId, email, password, withdrawalNoticeVersion },
   });
+}
+
+/**
+ * The withdrawal notice a store currently requires.
+ *
+ * Fetched before the buy form is shown, so the version the buyer confirms
+ * is the one the store will accept.
+ */
+export async function loadWithdrawalNotice(
+  projectId: string,
+  sourceId: string,
+): Promise<WithdrawalNotice> {
+  const query = new URLSearchParams({ sourceId }).toString();
+  return brainFetch<WithdrawalNotice>(
+    'GET', `${base(projectId)}/withdrawal-notice?${query}`,
+  );
 }

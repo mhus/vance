@@ -311,8 +311,15 @@ public class StoreClient {
             return http.send(request, HttpResponse.BodyHandlers.ofString());
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            // Connect failures often carry no message at all, and "not
+            // reachable: null" tells a reader nothing about whether the host
+            // is down, the port is wrong or DNS failed. The class name is
+            // not much, but it is the difference between a hint and noise.
+            String reason = e.getMessage() == null || e.getMessage().isBlank()
+                    ? e.getClass().getSimpleName()
+                    : e.getMessage();
             throw new KitException("store '" + source.getId() + "' is not reachable: "
-                    + e.getMessage(), e);
+                    + reason, e);
         }
     }
 

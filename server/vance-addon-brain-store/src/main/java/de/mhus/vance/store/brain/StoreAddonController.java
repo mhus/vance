@@ -6,7 +6,9 @@ import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.api.kit.KitSourceDto;
 import de.mhus.vance.api.kit.KitSourceType;
+import de.mhus.vance.brain.kit.KitAccess;
 import de.mhus.vance.brain.kit.KitService;
+import de.mhus.vance.brain.kit.KitStoreCredentials;
 import de.mhus.vance.brain.kit.KitSourceRegistry;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
@@ -25,6 +27,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -48,6 +51,8 @@ public class StoreAddonController {
     private final StoreOverviewService overview;
     private final StoreConnectionService connections;
     private final KitService kitService;
+    private final StoreClient storeClient;
+    private final KitStoreCredentials credentials;
     private final RequestAuthority authority;
 
     public record ConnectRequest(
@@ -56,6 +61,10 @@ public class StoreAddonController {
     public record DisconnectRequest(String sourceId) {}
 
     public record InstallRequest(String sourceId, String path) {}
+
+    public record ReviewRequest(
+            String sourceId, String vendor, String kitId,
+            int stars, @Nullable String text) {}
 
     /** The four lists, per configured library. */
     @GetMapping("/{projectId}/overview")
@@ -145,6 +154,56 @@ public class StoreAddonController {
         try {
             return kitService.importKit(
                     tenant, importRequest, actor(request), SettingWriteOrigin.USER);
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /** The reviews of one kit whose text an operator has cleared. */
+    @GetMapping("/{projectId}/reviews")
+    public List<StoreClient.Review> reviews(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestParam("sourceId") String sourceId,
+            @RequestParam("vendor") String vendor,
+            @RequestParam("kitId") String kitId,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        try {
+            return storeClient.reviews(library(tenant, sourceId), vendor, kitId);
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /**
+     * Leave or change a review of a kit.
+     *
+     * <p>Authenticated at the store by this installation's link token,
+     * which the browser never sees. Reviewing from the brain where the kit
+     * is actually used beats reviewing from a store front nobody has
+     * opened — see {@code StoreActorResolver} for why a link is allowed to
+     * do this and nothing else.
+     */
+    @PostMapping("/{projectId}/review")
+    public StoreClient.Review review(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestBody ReviewRequest body,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, body.sourceId());
+        KitAccess access = credentials.resolve(
+                tenant, projectId, actor(request), source.getUrl(), null);
+        if (access.token() == null || access.token().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "sign in to this store before reviewing");
+        }
+        try {
+            return storeClient.review(source, access.token(),
+                    body.vendor(), body.kitId(), body.stars(), body.text());
         } catch (KitException e) {
             throw storeError(e);
         }

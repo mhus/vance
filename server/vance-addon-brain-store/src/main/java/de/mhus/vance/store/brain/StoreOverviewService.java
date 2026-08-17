@@ -68,6 +68,8 @@ public class StoreOverviewService {
             @Nullable String installedVersion,
             @Nullable Instant licenseExpiresAt,
             boolean downloadable,
+            double averageStars,
+            long ratingCount,
             EntryState state) {}
 
     /** One store, as far as this user is concerned. */
@@ -127,14 +129,19 @@ public class StoreOverviewService {
 
         Map<String, String> installedVersions = installedVersions(tenantId, projectId, source);
 
+        Map<String, StoreClient.Score> scores = new LinkedHashMap<>();
         Map<String, Entry> byPath = new LinkedHashMap<>();
         for (StoreClient.CatalogueEntry entry : offered) {
             String path = path(entry.vendorName(), entry.kitId());
+            if (entry.score() != null) scores.put(path, entry.score());
             byPath.put(path, new Entry(
                     source.getId(), source.getUrl(), path,
                     entry.vendorName(), entry.kitId(), entry.displayName(),
                     entry.description(), entry.license(), entry.homepage(),
-                    entry.version(), null, null, true, EntryState.OFFERED));
+                    entry.version(), null, null, true,
+                    entry.score() == null ? 0d : entry.score().average(),
+                    entry.score() == null ? 0L : entry.score().count(),
+                    EntryState.OFFERED));
         }
         // Owned entries win over catalogue ones: they carry the licence
         // expiry and the version this account may actually have, which can
@@ -148,6 +155,13 @@ public class StoreOverviewService {
                     entry.getDescription(), entry.getLicense(), null,
                     entry.getVersion(), installed, entry.getLicenseExpiresAt(),
                     entry.isDownloadable(),
+                    // The score comes from the catalogue, which the library
+                    // listing knows nothing about — an owned kit would
+                    // otherwise lose its stars the moment it is bought.
+                    scores.containsKey(entry.getPath())
+                            ? scores.get(entry.getPath()).average() : 0d,
+                    scores.containsKey(entry.getPath())
+                            ? scores.get(entry.getPath()).count() : 0L,
                     stateOf(installed, entry.getVersion())));
         }
 

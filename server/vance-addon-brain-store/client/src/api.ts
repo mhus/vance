@@ -1,5 +1,10 @@
 import { brainFetch } from '@vance/shared';
-import type { KitOperationResult, StoreConnection, StoreSourceView } from './types';
+import type {
+  KitOperationResult,
+  StoreConnection,
+  StoreReview,
+  StoreSourceView,
+} from './types';
 
 function base(projectId: string): string {
   return `addon/store/${encodeURIComponent(projectId)}`;
@@ -47,5 +52,35 @@ export async function install(
 ): Promise<KitOperationResult> {
   return brainFetch<KitOperationResult>('POST', `${base(projectId)}/install`, {
     body: { sourceId, path },
+  });
+}
+
+/** The reviews of one kit whose text an operator has cleared. */
+export async function loadReviews(
+  projectId: string,
+  sourceId: string,
+  vendor: string,
+  kitId: string,
+): Promise<StoreReview[]> {
+  const query = new URLSearchParams({ sourceId, vendor, kitId }).toString();
+  return brainFetch<StoreReview[]>('GET', `${base(projectId)}/reviews?${query}`);
+}
+
+/**
+ * Leave or change a review.
+ *
+ * Authenticated at the store by this installation's link token, which the
+ * brain holds and the browser never sees.
+ */
+export async function submitReview(
+  projectId: string,
+  sourceId: string,
+  vendor: string,
+  kitId: string,
+  stars: number,
+  text?: string,
+): Promise<StoreReview> {
+  return brainFetch<StoreReview>('POST', `${base(projectId)}/review`, {
+    body: { sourceId, vendor, kitId, stars, text },
   });
 }

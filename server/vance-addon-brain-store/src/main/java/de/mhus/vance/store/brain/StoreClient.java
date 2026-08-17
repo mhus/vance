@@ -24,12 +24,12 @@ import tools.jackson.databind.json.JsonMapper;
  * else's purchases, and a link token there would be one away from their
  * whole library.
  *
- * <p>Only three calls, and that is the point: sign in, mint a link, read
- * the catalogue. Everything a buyer already owns is answered by the
+ * <p>Deliberately narrow: sign in, mint a link, read the catalogue, read
+ * and leave reviews. Everything a buyer already owns is answered by the
  * <em>delivery</em> service through the existing library path, and
- * everything installed is answered locally.
+ * everything installed is answered locally — so none of that appears here.
  *
- * <p>Spec: {@code planning/kit-store.md} §7 Phase S3.
+ * <p>Spec: {@code planning/kit-store.md} §7 Phases S3 and S4.
  */
 @Service
 @Slf4j
@@ -48,6 +48,17 @@ public class StoreClient {
     /** A freshly minted link. The token is the thing that lands in settings. */
     public record IssuedLink(String linkId, String token) {}
 
+    /** The score of one kit. */
+    public record Score(double average, long count) {}
+
+    /** One review as anyone browsing sees it — never with the author's account id. */
+    public record Review(
+            String reviewId,
+            @Nullable String displayName,
+            int stars,
+            @Nullable String text,
+            @Nullable Instant createdAt) {}
+
     /** One catalogue entry as the store presents it. */
     public record CatalogueEntry(
             String vendorName,
@@ -57,7 +68,8 @@ public class StoreClient {
             @Nullable String license,
             @Nullable String homepage,
             @Nullable String version,
-            @Nullable Instant publishedAt) {}
+            @Nullable Instant publishedAt,
+            @Nullable Score score) {}
 
     /**
      * Sign in.
@@ -149,6 +161,57 @@ public class StoreClient {
         }
     }
 
+    /** The reviews of one kit whose text has been cleared. */
+    public List<Review> reviews(KitSourceDto source, String vendor, String kitId) {
+        HttpResponse<String> response = send(HttpRequest.newBuilder(
+                uri(source, "/store/catalogue/" + encode(vendor) + "/" + encode(kitId)
+                        + "/ratings")).timeout(TIMEOUT).GET().build(), source);
+        if (response.statusCode() != 200) {
+            throw new KitException("the store returned HTTP " + response.statusCode()
+                    + " for the reviews of " + vendor + "/" + kitId);
+        }
+        try {
+            return json.readValue(response.body(), json.getTypeFactory()
+                    .constructCollectionType(List.class, Review.class));
+        } catch (RuntimeException e) {
+            throw new KitException("the store returned something that is not a review list", e);
+        }
+    }
+
+    /**
+     * Leave or change a review, authenticated by this installation's link
+     * token.
+     *
+     * <p>The link is the account's own agent here, and here is where the
+     * kit is actually used. The store accepts it for this one endpoint and
+     * for nothing else — a link cannot change a password or mint another
+     * link, because those are decisions about the account itself.
+     */
+    public Review review(
+            KitSourceDto source, String linkToken,
+            String vendor, String kitId, int stars, @Nullable String text) {
+
+        String body = json.writeValueAsString(new ReviewBody(stars, text));
+        HttpResponse<String> response = send(HttpRequest.newBuilder(
+                        uri(source, "/store/catalogue/" + encode(vendor) + "/"
+                                + encode(kitId) + "/ratings"))
+                .timeout(TIMEOUT)
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + linkToken)
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build(), source);
+
+        if (response.statusCode() == 401) {
+            throw new KitException("the store no longer accepts this installation's link"
+                    + " — sign in again");
+        }
+        if (response.statusCode() != 200) {
+            throw new KitException("the store returned HTTP " + response.statusCode()
+                    + " when leaving a review");
+        }
+        return read(response.body(), Review.class, source);
+    }
+
     /**
      * Where this source's store front lives.
      *
@@ -164,6 +227,12 @@ public class StoreClient {
         String trimmed = base.trim();
         while (trimmed.endsWith("/")) trimmed = trimmed.substring(0, trimmed.length() - 1);
         return trimmed;
+    }
+
+    /** Path segments come from a catalogue; a stray slash must not reshape the request. */
+    private static String encode(String segment) {
+        return java.net.URLEncoder.encode(segment, java.nio.charset.StandardCharsets.UTF_8)
+                .replace("+", "%20");
     }
 
     private static URI uri(KitSourceDto source, String path) {
@@ -201,4 +270,6 @@ public class StoreClient {
             @Nullable String label, @Nullable String tenantId, @Nullable String projectId) {}
 
     private record IssuedLinkBody(String linkId, String token, @Nullable String label) {}
+
+    private record ReviewBody(int stars, @Nullable String text) {}
 }

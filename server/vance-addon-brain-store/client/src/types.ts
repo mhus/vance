@@ -24,6 +24,8 @@ export interface StoreEntry {
   installedVersion?: string | null;
   licenseExpiresAt?: string | null;
   downloadable: boolean;
+  averageStars: number;
+  ratingCount: number;
   state: EntryState;
 }
 
@@ -36,6 +38,15 @@ export interface StoreSourceView {
   /** Why the store could not be asked. Only set when `reachable` is false. */
   problem?: string | null;
   entries: StoreEntry[];
+}
+
+/** A review whose text an operator has cleared. */
+export interface StoreReview {
+  reviewId: string;
+  displayName?: string | null;
+  stars: number;
+  text?: string | null;
+  createdAt?: string | null;
 }
 
 export interface StoreConnection {

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { VAlert, VButton, VCard, VEmptyState, VInput } from '@vance/components';
-import { connect, disconnect, install, loadOverview } from './api';
-import type { EntryState, StoreEntry, StoreSourceView } from './types';
+import { VAlert, VButton, VCard, VEmptyState, VInput, VTextarea } from '@vance/components';
+import { connect, disconnect, install, loadOverview, loadReviews, submitReview } from './api';
+import type { EntryState, StoreEntry, StoreReview, StoreSourceView } from './types';
 
 const props = defineProps<{ projectId?: string }>();
 
@@ -27,6 +27,12 @@ const loading = ref(false);
 const busyPath = ref<string>('');
 const error = ref('');
 const notice = ref('');
+
+// Review panel, per kit. Only one is open at a time.
+const reviewingPath = ref<string>('');
+const reviews = ref<StoreReview[]>([]);
+const reviewStars = ref(5);
+const reviewText = ref('');
 
 // Sign-in form, per source. Only one is open at a time.
 const signingIn = ref<string>('');
@@ -105,6 +111,51 @@ async function installEntry(entry: StoreEntry): Promise<void> {
   } finally {
     busyPath.value = '';
   }
+}
+
+async function openReviews(entry: StoreEntry): Promise<void> {
+  error.value = '';
+  if (reviewingPath.value === entry.path) {
+    reviewingPath.value = '';
+    return;
+  }
+  reviewingPath.value = entry.path;
+  reviews.value = [];
+  reviewStars.value = 5;
+  reviewText.value = '';
+  try {
+    reviews.value = await loadReviews(
+      projectId.value, entry.sourceId, entry.vendor, entry.kitId,
+    );
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not load the reviews.';
+  }
+}
+
+async function sendReview(entry: StoreEntry): Promise<void> {
+  error.value = '';
+  notice.value = '';
+  try {
+    await submitReview(
+      projectId.value, entry.sourceId, entry.vendor, entry.kitId,
+      reviewStars.value, reviewText.value || undefined,
+    );
+    // The star counts at once; the text waits to be read. Saying so beats
+    // a screen that looks like the words were dropped.
+    notice.value = reviewText.value
+      ? 'Thanks — your rating counts now, your text is waiting to be reviewed.'
+      : 'Thanks — your rating counts now.';
+    reviewText.value = '';
+    await load();
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not send the review.';
+  }
+}
+
+/** `★★★★☆` — plain text, so it needs no icon set and copies as what it is. */
+function starsOf(count: number): string {
+  const filled = Math.round(count);
+  return '★'.repeat(filled) + '☆'.repeat(Math.max(0, 5 - filled));
 }
 
 /** What the button on a row does, if anything. */
@@ -227,6 +278,53 @@ onMounted(load);
             <div v-if="entry.description" class="text-sm mt-1">{{ entry.description }}</div>
             <div v-if="expiryOf(entry)" class="text-xs mt-1 opacity-70">
               {{ expiryOf(entry) }}
+            </div>
+            <div class="text-xs mt-1 opacity-70">
+              <span v-if="entry.ratingCount > 0">
+                {{ starsOf(entry.averageStars) }}
+                {{ entry.averageStars.toFixed(1) }} ({{ entry.ratingCount }})
+              </span>
+              <span v-else>Not rated yet</span>
+              <button class="ml-2 underline" @click="openReviews(entry)">
+                {{ reviewingPath === entry.path ? 'Hide reviews' : 'Reviews' }}
+              </button>
+            </div>
+
+            <div v-if="reviewingPath === entry.path" class="mt-3 pl-2 border-l">
+              <div v-for="review in reviews" :key="review.reviewId" class="mb-2">
+                <div class="text-xs opacity-70">
+                  {{ starsOf(review.stars) }}
+                  <span v-if="review.displayName">· {{ review.displayName }}</span>
+                </div>
+                <div class="text-sm">{{ review.text }}</div>
+              </div>
+              <div v-if="reviews.length === 0" class="text-sm opacity-70 mb-2">
+                No reviews with text yet.
+              </div>
+
+              <!--
+                Reviewing needs this installation to be signed in: the store
+                is asked with the link token, not with anything the browser
+                holds.
+              -->
+              <div v-if="view.accountId" class="flex flex-col gap-2 mt-2">
+                <div class="flex items-center gap-1">
+                  <button
+                    v-for="star in 5"
+                    :key="star"
+                    class="text-lg"
+                    :aria-label="`${star} stars`"
+                    @click="reviewStars = star"
+                  >{{ star <= reviewStars ? '★' : '☆' }}</button>
+                </div>
+                <VTextarea v-model="reviewText" placeholder="Optional — a text waits for review." />
+                <div>
+                  <VButton size="sm" @click="sendReview(entry)">Send review</VButton>
+                </div>
+              </div>
+              <div v-else class="text-sm opacity-70 mt-2">
+                Sign in to this store to leave a review.
+              </div>
             </div>
           </div>
           <div class="flex items-center gap-2 shrink-0">

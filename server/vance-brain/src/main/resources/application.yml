@@ -82,7 +82,11 @@ vance:
     # property and not a setting, since an agent with settings write access could
     # otherwise widen its own permissions.
     # See planning/setting-type-hidden.md §6.4 (rule W3).
-    agentWriteDenyKeys: "ai.provider.*,vault.*"
+    # store.* is on the list because it holds the credential and the
+    # account identity that decide which kits this installation may
+    # fetch — an agent able to rewrite it could redirect a purchase
+    # identity (planning/kit-store.md §3 S3).
+    agentWriteDenyKeys: "ai.provider.*,vault.*,store.*"
   fook:
     # Master on/off switch for the Fook feedback/triage subsystem —
     # the vance_support_request LLM tool, the web user-menu feedback

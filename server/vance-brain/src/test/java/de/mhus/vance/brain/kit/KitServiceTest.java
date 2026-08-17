@@ -55,6 +55,7 @@ class KitServiceTest {
     private KitWorkspace workspace;
     private KitRecordStore recordStore;
     private ProjectService projectService;
+    private KitStoreCredentials storeCredentials;
     private KitService service;
 
     @BeforeEach
@@ -81,8 +82,13 @@ class KitServiceTest {
                 .thenReturn(KitConfigDto.builder().build());
         when(recordStore.loadManifest(anyString(), anyString())).thenReturn(null);
 
+        storeCredentials = mock(KitStoreCredentials.class);
+        when(storeCredentials.resolve(any(), any(), any(), any(), any()))
+                .thenReturn(KitAccess.of(TENANT));
+
         service = new KitService(resolver, installer, exporter, workspace, recordStore,
-                mock(KitLegacyMigrator.class), projectService, mock(TemplateApplier.class));
+                mock(KitLegacyMigrator.class), projectService, mock(TemplateApplier.class),
+                storeCredentials);
     }
 
     // ── installable=false ─────────────────────────────────────────────
@@ -123,7 +129,7 @@ class KitServiceTest {
                 TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER))
                 .doesNotThrowAnyException();
         verify(installer).apply(any(), any(), any(), any(), eq(KitImportMode.INSTALL),
-                anyBoolean(), anyBoolean(), any(), eq(false), any(), any(), any());
+                anyBoolean(), anyBoolean(), any(), eq(false), any(), any());
     }
 
     @Test
@@ -149,7 +155,7 @@ class KitServiceTest {
                 TENANT, importRequest(KitImportMode.APPLY), null, SettingWriteOrigin.USER))
                 .doesNotThrowAnyException();
         verify(installer).apply(any(), any(), any(), any(), eq(KitImportMode.APPLY),
-                anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any(), any());
+                anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any());
     }
 
     // ── multi-kit preconditions ──────────────────────────────────────
@@ -199,7 +205,7 @@ class KitServiceTest {
                 TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER))
                 .doesNotThrowAnyException();
         verify(installer).apply(any(), any(), any(), any(), eq(KitImportMode.INSTALL),
-                anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any(), any());
+                anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any());
     }
 
     @Test
@@ -208,7 +214,7 @@ class KitServiceTest {
                 TENANT, PROJECT, "ghost-000000", false, null, null, null, SettingWriteOrigin.USER))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("ghost-000000");
-        verify(resolver, never()).resolve(any(), any(), any());
+        verify(resolver, never()).resolve(any(), any());
     }
 
     @Test
@@ -290,19 +296,19 @@ class KitServiceTest {
                 SettingWriteOrigin.USER);
 
         verify(installer).apply(any(), any(), any(), any(), eq(KitImportMode.INSTALL),
-                anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any(), any());
+                anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any());
     }
 
     // ── helpers ──────────────────────────────────────────────────────
 
     private void verifyInstallerNeverRan() {
         verify(installer, never()).apply(any(), any(), any(), any(), any(),
-                anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any(), any());
+                anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any());
     }
 
     private void stubInstallerResult() {
         when(installer.apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(),
-                any(), anyBoolean(), any(), any(), any()))
+                any(), anyBoolean(), any(), any()))
                 .thenReturn(KitOperationResultDto.builder().build());
     }
 
@@ -340,6 +346,6 @@ class KitServiceTest {
                 new ArrayList<>(),
                 de.mhus.vance.api.kit.KitSignatureStatus.UNSIGNED,
                 "test-source");
-        when(resolver.resolve(any(), any(), any())).thenReturn(resolved);
+        when(resolver.resolve(any(), any())).thenReturn(resolved);
     }
 }

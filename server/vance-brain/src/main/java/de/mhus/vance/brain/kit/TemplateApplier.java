@@ -151,13 +151,12 @@ public class TemplateApplier {
         // Delegate the rest to KitInstaller — same code path as a regular
         // one-way kit (APPLY mode, no manifest, no vault).
         KitOperationResultDto installerResult = installer.apply(
-                tenantId, projectId, source, resolved,
+                KitAccess.of(tenantId), projectId, source, resolved,
                 KitImportMode.APPLY,
                 /*prune*/ false,
                 /*keepPasswords*/ false,
                 /*vaultPassword*/ null,
                 /*writeManifest*/ false,
-                /*token*/ null,
                 origin,
                 actor);
 

@@ -1,0 +1,40 @@
+package de.mhus.vance.brain.kit;
+
+import org.jspecify.annotations.Nullable;
+
+/**
+ * Who is fetching a kit, and with what.
+ *
+ * <p>Replaces the bare {@code (tenantId, token)} pair that used to travel
+ * through the resolve chain. It is one parameter fewer at every call site,
+ * and it carries the piece that pair could not: which store account this
+ * installation is signed in to.
+ *
+ * <p>That account is what {@link KitLicenseGate} compares a delivered
+ * kit's {@code licensedTo} against. It is deliberately not the tenant —
+ * a purchase belongs to a person, who may be signed in on several brains,
+ * and a tenant name is a local label anyone can choose. Spec:
+ * {@code planning/kit-store.md} §3 S2.
+ *
+ * @param tenantId whose source configuration applies — a url may be
+ *        reachable for one tenant and unconfigured for another
+ * @param token credential for the fetch: a bearer token for a library, a
+ *        personal access token for a private git repository
+ * @param storeAccount the linked store account, or null when this
+ *        installation is signed in to none
+ */
+public record KitAccess(
+        String tenantId,
+        @Nullable String token,
+        @Nullable String storeAccount) {
+
+    /** For paths that never touch a remote source — export, local folders, tests. */
+    public static KitAccess of(String tenantId) {
+        return new KitAccess(tenantId, null, null);
+    }
+
+    /** Same access, different credential — used where a caller supplies its own token. */
+    public KitAccess withToken(@Nullable String other) {
+        return new KitAccess(tenantId, other, storeAccount);
+    }
+}

@@ -583,18 +583,11 @@ function openKitDialog(mode: KitDialogMode, origin?: KitOriginDto): void {
     kitForm.branch = prefill.branch ?? '';
   }
   showKitDialog.value = true;
-  // Only for install: update and export already know their source. A
-  // library that needs no token answers straight away; one that does is
-  // re-asked when the token is entered (see the watcher below), because
-  // the dialog opens with an empty one.
+  // Only for install: update and export already know their source. The
+  // library answers straight away now — the credential is a server-side
+  // setting, so there is nothing to wait for the user to type.
   if (mode === 'install') void loadLibrary();
 }
-
-// Re-ask the library once a token is typed. Without this the picker is
-// unreachable for every library that requires one — which is all of them.
-watch(() => kitForm.token, () => {
-  if (showKitDialog.value && kitDialogMode.value === 'install') void loadLibrary();
-});
 
 /**
  * Update one installed kit. Goes through the same dialog as any other
@@ -624,11 +617,10 @@ async function loadLibrary(): Promise<void> {
   libraryEntries.value = [];
   libraryLoading.value = true;
   try {
-    libraryEntries.value = await kitState.loadLibrary(
-      selection.value.name, kitForm.token || undefined);
+    libraryEntries.value = await kitState.loadLibrary(selection.value.name);
   } catch {
-    // Not reachable, not configured, no token — all of them mean the same
-    // thing here: no picker. The url form is still there.
+    // Not reachable, not configured, not signed in — all of them mean the
+    // same thing here: no picker. The url form is still there.
   } finally {
     libraryLoading.value = false;
   }

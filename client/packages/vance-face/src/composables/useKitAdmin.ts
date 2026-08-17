@@ -37,7 +37,7 @@ export function useKitAdmin(): {
   updateAll: (projectId: string, prune: boolean) => Promise<KitOperationResultDto[]>;
   uninstall: (projectId: string, kitId: string, prune: boolean) => Promise<KitOperationResultDto>;
   promote: (projectId: string, kitId: string) => Promise<KitManifestDto>;
-  loadLibrary: (projectId: string, token?: string) => Promise<KitLibraryEntryDto[]>;
+  loadLibrary: (projectId: string) => Promise<KitLibraryEntryDto[]>;
   loadConfig: (projectId: string, kitId: string) => Promise<KitConfigDto>;
   saveConfig: (projectId: string, kitId: string, config: KitConfigDto) => Promise<KitConfigDto>;
   clear: () => void;
@@ -185,18 +185,19 @@ export function useKitAdmin(): {
   }
 
   /**
-   * What the tenant may install from their libraries. Fetched when the
-   * dialog opens, never on a schedule — a library is a remote service.
+   * What this account may install from the configured libraries. Fetched
+   * when the dialog opens, never on a schedule — a library is a remote
+   * service.
+   *
+   * <p>No credential travels from here. Which store account the
+   * installation is signed in to, and with what, is a server-side setting;
+   * the browser never sees the token.
    */
-  async function loadLibrary(
-    projectId: string, token?: string,
-  ): Promise<KitLibraryEntryDto[]> {
+  async function loadLibrary(projectId: string): Promise<KitLibraryEntryDto[]> {
     error.value = null;
     try {
-      // POST for a read: the credential goes in the body, not the URL.
       return await brainFetch<KitLibraryEntryDto[]>(
-        'POST', `admin/kits/${encodeURIComponent(projectId)}/library`,
-        { body: { token } });
+        'GET', `admin/kits/${encodeURIComponent(projectId)}/library`);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load your kit library.';
       throw e;

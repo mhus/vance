@@ -63,12 +63,12 @@ class KitResolverSealedTest {
                 .sealed(true)
                 .build();
 
-        when(sourceLoaders.loadFrom(any(), eq(topSource), any(), any()))
+        when(sourceLoaders.loadFrom(any(), eq(topSource), any()))
                 .thenReturn(loadResult(topDescriptor));
-        when(sourceLoaders.load(any(), eq(sealedInherit), any(), any()))
+        when(sourceLoaders.load(any(), eq(sealedInherit), any()))
                 .thenReturn(loaded(sealedDescriptor));
 
-        assertThatThrownBy(() -> resolver.resolve(TENANT, topSource, null))
+        assertThatThrownBy(() -> resolver.resolve(KitAccess.of(TENANT), topSource))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("locked-base")
                 .hasMessageContaining("sealed");
@@ -86,7 +86,7 @@ class KitResolverSealedTest {
                 .description("sealed but installable")
                 .sealed(true)
                 .build();
-        when(sourceLoaders.loadFrom(any(), eq(src), any(), any())).thenReturn(loadResult(sealedTop));
+        when(sourceLoaders.loadFrom(any(), eq(src), any())).thenReturn(loadResult(sealedTop));
 
         // Just calling resolve must not throw the sealed exception.
         // Note: we mock workspace.allocate to a fake path, so the
@@ -94,7 +94,7 @@ class KitResolverSealedTest {
         // different exception (filesystem-not-found wrapped in
         // KitException). The point of this test is that the *sealed*
         // exception is NOT raised for top layers.
-        assertThatThrownBy(() -> resolver.resolve(TENANT, src, null))
+        assertThatThrownBy(() -> resolver.resolve(KitAccess.of(TENANT), src))
                 .isInstanceOf(KitException.class)
                 .extracting(Throwable::getMessage, org.assertj.core.api.InstanceOfAssertFactories.STRING)
                 .doesNotContain("cannot be inherited from");

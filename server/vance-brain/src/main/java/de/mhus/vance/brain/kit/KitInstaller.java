@@ -92,7 +92,7 @@ public class KitInstaller {
     private final KitWorkspace workspace;
 
     public KitOperationResultDto apply(
-            String tenantId,
+            KitAccess access,
             String projectId,
             KitInheritDto source,
             KitResolver.ResolvedKit resolved,
@@ -101,9 +101,10 @@ public class KitInstaller {
             boolean keepPasswords,
             @Nullable String vaultPassword,
             boolean writeManifest,
-            @Nullable String token,
             SettingWriteOrigin origin,
             @Nullable String actor) {
+
+        String tenantId = access.tenantId();
 
         KitDescriptorDto top = resolved.topLayer();
         boolean tracked = mode != KitImportMode.APPLY;
@@ -148,7 +149,7 @@ public class KitInstaller {
         // Only materialised if some artefact actually needs a common
         // ancestor — see KitBaseTree.
         KitBaseTree baseTree = tracked && previous != null
-                ? new KitBaseTree(resolver, workspace, tenantId, source, token, previous.getOrigin())
+                ? new KitBaseTree(resolver, workspace, access, source, previous.getOrigin())
                 : null;
         try {
             List<KitArtefactDto> documentArtefacts = applyDocuments(

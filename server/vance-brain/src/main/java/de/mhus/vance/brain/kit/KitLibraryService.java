@@ -42,6 +42,7 @@ public class KitLibraryService {
 
     private final KitSourceRegistry sources;
     private final KitRecordStore recordStore;
+    private final KitStoreCredentials storeCredentials;
     private final ObjectMapper json = JsonMapper.builder().build();
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -55,13 +56,18 @@ public class KitLibraryService {
      * warning — one unreachable service must not blank out the others.
      */
     public List<KitLibraryEntryDto> list(
-            String tenantId, String projectId, @Nullable String token) {
+            String tenantId, String projectId, @Nullable String userId) {
         Set<String> installed = installedKeys(tenantId, projectId);
         List<KitLibraryEntryDto> out = new ArrayList<>();
         for (KitSourceDto source : sources.configuredSources(tenantId)) {
             if (source.getType() != KitSourceType.LIBRARY) continue;
+            // Per source, not once for the caller: someone may be signed in
+            // to one library and not another, and a token is only ever valid
+            // at the library it was issued by.
+            KitAccess access = storeCredentials.resolve(
+                    tenantId, projectId, userId, source.getUrl(), null);
             try {
-                out.addAll(fetch(source, token, installed));
+                out.addAll(fetch(source, access.token(), installed));
             } catch (KitException e) {
                 log.warn("KitLibraryService: library '{}' is not listable: {}",
                         source.getId(), e.getMessage());

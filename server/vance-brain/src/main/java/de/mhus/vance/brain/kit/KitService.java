@@ -47,6 +47,7 @@ public class KitService {
     private final KitLegacyMigrator legacyMigrator;
     private final ProjectService projectService;
     private final TemplateApplier templateApplier;
+    private final KitStoreCredentials storeCredentials;
 
     /**
      * Install / update / apply a kit. The {@code mode} on the request
@@ -60,9 +61,18 @@ public class KitService {
         validateImport(request);
         requireProject(tenantId, request.getProjectId());
 
+        // One lookup for the whole operation: which store account this
+        // installation is signed in to, and the credential to fetch with.
+        // Both the resolve and the install below need it, and asking twice
+        // could answer differently if a setting changed in between.
+        KitAccess access = storeCredentials.resolve(
+                tenantId, request.getProjectId(), actor,
+                request.getSource() == null ? null : request.getSource().getUrl(),
+                request.getToken());
+
         KitResolver.ResolvedKit resolved = null;
         try {
-            resolved = resolver.resolve(tenantId, request.getSource(), request.getToken());
+            resolved = resolver.resolve(access, request.getSource());
             KitDescriptorDto top = resolved.topLayer();
             validateResolvedTopLayer(top, request.isWriteManifest());
 
@@ -84,7 +94,7 @@ public class KitService {
             }
 
             return installer.apply(
-                    tenantId,
+                    access,
                     request.getProjectId(),
                     request.getSource(),
                     resolved,
@@ -93,7 +103,6 @@ public class KitService {
                     request.isKeepPasswords(),
                     request.getVaultPassword(),
                     request.isWriteManifest(),
-                    request.getToken(),
                     origin,
                     actor);
         } finally {
@@ -321,7 +330,10 @@ public class KitService {
         requireProject(tenantId, projectId);
         KitResolver.ResolvedKit resolved = null;
         try {
-            resolved = resolver.resolve(tenantId, source, token);
+            resolved = resolver.resolve(
+                    storeCredentials.resolve(
+                            tenantId, projectId, actor, source.getUrl(), token),
+                    source);
             // Templates are by definition artifact-style; reject any
             // attempt to track them in a manifest.
             if (!resolved.topLayer().isArtifact()) {

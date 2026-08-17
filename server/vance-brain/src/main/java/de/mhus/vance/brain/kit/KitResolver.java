@@ -84,13 +84,13 @@ public class KitResolver {
 
     /**
      * Resolve {@code source} against its inherits and build the merged
-     * tree. {@code token} authenticates remote clones; layers may
+     * tree. {@code access} authenticates remote clones; layers may
      * supply their own auth in the future, but v1 reuses the top-level
-     * token across all inherits (a {@code KitException} is logged as
+     * credential across all inherits (a {@code KitException} is logged as
      * warning if a private inherit fails to clone — the caller decides
      * whether to abort).
      */
-    public ResolvedKit resolve(String tenantId, KitInheritDto source, @Nullable String token) {
+    public ResolvedKit resolve(KitAccess access, KitInheritDto source) {
         List<Path> tmp = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         Set<String> visited = new HashSet<>();
@@ -99,7 +99,7 @@ public class KitResolver {
         Path topLoadDir = workspace.allocate("kit-top");
         tmp.add(topLoadDir);
         KitSourceLoaders.LoadResult topResult =
-                sourceLoaders.loadFrom(tenantId, source, token, topLoadDir);
+                sourceLoaders.loadFrom(access, source, topLoadDir);
         KitRepoLoader.LoadedKit top = topResult.kit();
         markVisited(visited, source);
         // Active DFS path for TRUE cycle detection (a key that is its own
@@ -113,7 +113,7 @@ public class KitResolver {
         //    top layer last. We build a stack-style list so DFS-order
         //    becomes the desired application order.
         List<KitRepoLoader.LoadedKit> mergeOrder = new ArrayList<>();
-        collectInherits(tenantId, top, token, visited, onPath, resolvedNames, tmp, warnings,
+        collectInherits(access, top, visited, onPath, resolvedNames, tmp, warnings,
                 mergeOrder);
         mergeOrder.add(top); // top layer applied last → wins
 
@@ -229,9 +229,8 @@ public class KitResolver {
     // ──────────────────── private ────────────────────
 
     private void collectInherits(
-            String tenantId,
+            KitAccess access,
             KitRepoLoader.LoadedKit layer,
-            @Nullable String token,
             Set<String> visited,
             Set<String> onPath,
             LinkedHashSet<String> resolvedNames,
@@ -259,7 +258,7 @@ public class KitResolver {
                 tmp.add(dir);
                 KitRepoLoader.LoadedKit loaded;
                 try {
-                    loaded = sourceLoaders.load(tenantId, parent, token, dir);
+                    loaded = sourceLoaders.load(access, parent, dir);
                 } catch (KitException e) {
                     warnings.add("failed to load inherit " + key + ": " + e.getMessage());
                     log.warn("inherit load failed: {}", e.getMessage());
@@ -273,7 +272,7 @@ public class KitResolver {
                             + "' is sealed and cannot be inherited from (referenced as "
                             + key + ")");
                 }
-                collectInherits(tenantId, loaded, token, visited, onPath, resolvedNames,
+                collectInherits(access, loaded, visited, onPath, resolvedNames,
                         tmp, warnings, mergeOrder);
                 mergeOrder.add(loaded);
                 resolvedNames.add(loaded.descriptor().getName());

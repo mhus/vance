@@ -12,86 +12,108 @@ import java.time.Instant;
 import org.junit.jupiter.api.Test;
 
 /**
- * Tenant binding and licence expiry — spec: {@code planning/kit-shop.md}
- * §4 E5.
+ * Account binding and licence expiry — spec:
+ * {@code planning/kit-store.md} §3 S2, {@code planning/kit-shop.md} §4 E5.
  */
 class KitLicenseGateTest {
 
-    private static final String TENANT = "acme-tenant";
+    /** The store account this installation is signed in to. */
+    private static final String ACCOUNT = "acc_7f3k9m2p4q";
     private static final Instant NOW = Instant.parse("2026-08-17T10:00:00Z");
 
     private final KitLicenseGate gate = new KitLicenseGate();
 
     @Test
-    void kitLicensedToThisTenant_passes() {
+    void kitLicensedToTheLinkedAccount_passes() {
         assertThatCode(() -> gate.enforce(
-                descriptor().licensedTo(TENANT).build(),
-                KitSignatureStatus.VERIFIED, TENANT, source(), NOW))
+                descriptor().licensedTo(ACCOUNT).build(),
+                KitSignatureStatus.VERIFIED, ACCOUNT, source(), NOW))
                 .doesNotThrowAnyException();
     }
 
     @Test
-    void kitLicensedToAnotherTenant_isRefused() {
-        // The reason tenant binding exists. A correctly signed kit for
+    void kitLicensedToAnotherAccount_isRefused() {
+        // The reason account binding exists. A correctly signed kit for
         // someone else is genuine and still not yours — the signature alone
         // would happily verify it here.
         assertThatThrownBy(() -> gate.enforce(
-                descriptor().licensedTo("someone-else").build(),
-                KitSignatureStatus.VERIFIED, TENANT, source(), NOW))
+                descriptor().licensedTo("acc_someoneelse").build(),
+                KitSignatureStatus.VERIFIED, ACCOUNT, source(), NOW))
                 .isInstanceOf(KitException.class)
-                .hasMessageContaining("someone-else")
-                .hasMessageContaining("not to this tenant");
+                .hasMessageContaining("acc_someoneelse")
+                .hasMessageContaining("signed in as '" + ACCOUNT + "'");
     }
+
+    @Test
+    void licensedKitOnAnUnlinkedInstallation_isRefusedAndSaysSo() {
+        // The likely case in practice: someone copies a purchased kit to a
+        // brain that was never signed in. The message has to name the cause,
+        // because "licensed to acc_x" alone reads as a defect rather than as
+        // "sign in first".
+        assertThatThrownBy(() -> gate.enforce(
+                descriptor().licensedTo("acc_owner0001").build(),
+                KitSignatureStatus.VERIFIED, null, source(), NOW))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("not signed in to any store account");
+    }
+
+    // No "same account on a second brain" case here. Under the old tenant
+    // binding that was the interesting one; now the gate takes no tenant at
+    // all, so it cannot be expressed at this level and any test claiming to
+    // cover it would only repeat the first one above under a name that
+    // promises more. What binding to the account buys is visible in the
+    // signature, not in an extra assertion.
 
     @Test
     void expiredLicence_installsAnyway() {
         // The library decides entitlement — it knows publication dates and
-        // deliberately keeps serving what was already paid for, so a tenant
+        // deliberately keeps serving what was already paid for, so a buyer
         // who reinstalls a machine does not lose a version they may run.
         // Refusing here would overrule that with less information and make
         // an HTTP 200 download uninstallable.
         assertThatCode(() -> gate.enforce(
-                descriptor().licensedTo(TENANT)
+                descriptor().licensedTo(ACCOUNT)
                         .licenseExpiresAt(NOW.minusSeconds(1)).build(),
-                KitSignatureStatus.VERIFIED, TENANT, source(), NOW))
+                KitSignatureStatus.VERIFIED, ACCOUNT, source(), NOW))
                 .doesNotThrowAnyException();
     }
 
     @Test
     void licenceExpiringLater_passes() {
         assertThatCode(() -> gate.enforce(
-                descriptor().licensedTo(TENANT)
+                descriptor().licensedTo(ACCOUNT)
                         .licenseExpiresAt(NOW.plusSeconds(86_400)).build(),
-                KitSignatureStatus.VERIFIED, TENANT, source(), NOW))
+                KitSignatureStatus.VERIFIED, ACCOUNT, source(), NOW))
                 .doesNotThrowAnyException();
     }
 
     @Test
-    void unsignedKitClaimingAnotherTenant_isNotEnforced() {
+    void unsignedKitClaimingAnotherAccount_isNotEnforced() {
         // Without a signature the field is text anyone can edit. Enforcing it
         // would stop the honest and inconvenience nobody else, while implying
         // a guarantee that is not there.
         assertThatCode(() -> gate.enforce(
-                descriptor().licensedTo("someone-else").build(),
-                KitSignatureStatus.UNSIGNED, TENANT, source(), NOW))
+                descriptor().licensedTo("acc_someoneelse").build(),
+                KitSignatureStatus.UNSIGNED, ACCOUNT, source(), NOW))
                 .doesNotThrowAnyException();
     }
 
     @Test
-    void failedSignatureWithForeignTenant_isNotEnforced() {
+    void failedSignatureWithForeignAccount_isNotEnforced() {
         // A signature that did not verify gives its payload no authority, so
-        // the tenant field cannot be acted on either way.
+        // the account field cannot be acted on either way.
         assertThatCode(() -> gate.enforce(
-                descriptor().licensedTo("someone-else").build(),
-                KitSignatureStatus.FAILED, TENANT, source(), NOW))
+                descriptor().licensedTo("acc_someoneelse").build(),
+                KitSignatureStatus.FAILED, ACCOUNT, source(), NOW))
                 .doesNotThrowAnyException();
     }
 
     @Test
     void kitWithoutLicenceFields_passesRegardlessOfSignature() {
-        // Everything from git. The gate must be invisible for them.
+        // Everything from git. The gate must be invisible for them — including
+        // on an installation that is signed in to no store at all.
         assertThatCode(() -> gate.enforce(
-                descriptor().build(), KitSignatureStatus.UNSIGNED, TENANT, source(), NOW))
+                descriptor().build(), KitSignatureStatus.UNSIGNED, null, source(), NOW))
                 .doesNotThrowAnyException();
     }
 

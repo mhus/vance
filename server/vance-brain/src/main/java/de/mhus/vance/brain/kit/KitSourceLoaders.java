@@ -45,26 +45,22 @@ public class KitSourceLoaders {
 
     /** Convenience for callers that only need the tree, e.g. inherit layers. */
     public KitRepoLoader.LoadedKit load(
-            String tenantId, KitInheritDto source, @Nullable String token, Path target) {
-        return loadFrom(tenantId, source, token, target).kit();
+            KitAccess access, KitInheritDto source, Path target) {
+        return loadFrom(access, source, target).kit();
     }
 
     /**
-     * Load {@code source} for {@code tenantId} into {@code target}.
-     *
-     * @param tenantId whose source configuration applies — a url may be
-     *        reachable for one tenant and unconfigured for another
+     * Load {@code source} for {@code access} into {@code target}.
      */
-    public LoadResult loadFrom(
-            String tenantId, KitInheritDto source, @Nullable String token, Path target) {
+    public LoadResult loadFrom(KitAccess access, KitInheritDto source, Path target) {
         if (source == null || source.getUrl() == null || source.getUrl().isBlank()) {
             throw new KitException("kit source url must not be blank");
         }
-        KitSourceDto config = sources.resolve(tenantId, source.getUrl());
+        KitSourceDto config = sources.resolve(access.tenantId(), source.getUrl());
         log.debug("KitSourceLoaders: {} resolves to source '{}' (type={}, signature={})",
                 source.getUrl(), config.getId(), config.getType(), config.getSignature());
         KitRepoLoader.LoadedKit loaded = loaderFor(config.getType()).load(
-                source, config, token, target);
+                source, config, access.token(), target);
         // Right here, and not in the installer: this is the one point where
         // the loaded tree and the source it came from are both in hand. Every
         // inherit passes through again with its own source's policy.
@@ -73,7 +69,8 @@ public class KitSourceLoaders {
         // Genuine and permitted are separate questions, asked in that order:
         // there is no point checking who a kit belongs to before knowing
         // whether the answer can be trusted.
-        licenseGate.enforce(loaded.descriptor(), signature, tenantId, config, Instant.now());
+        licenseGate.enforce(loaded.descriptor(), signature, access.storeAccount(),
+                config, Instant.now());
         return new LoadResult(loaded, config, signature);
     }
 

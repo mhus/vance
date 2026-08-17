@@ -43,7 +43,7 @@ public class TemplateDescribeService {
             String tenantId, KitInheritDto source, @Nullable String token) {
         KitResolver.ResolvedKit resolved = null;
         try {
-            resolved = resolver.resolve(tenantId, source, token);
+            resolved = resolver.resolve(KitAccess.of(tenantId).withToken(token), source);
             Path templatePath = resolved.buildRoot().resolve(TemplateApplier.TEMPLATE_FILENAME);
             if (!Files.isRegularFile(templatePath)) {
                 throw new KitException("kit at " + source.getUrl()

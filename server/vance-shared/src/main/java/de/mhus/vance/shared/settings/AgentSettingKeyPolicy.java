@@ -38,7 +38,7 @@ public class AgentSettingKeyPolicy {
     private final List<String> denyPatterns;
 
     public AgentSettingKeyPolicy(
-            @Value("${vance.settings.agentWriteDenyKeys:ai.provider.*,vault.*}") String raw) {
+            @Value("${vance.settings.agentWriteDenyKeys:ai.provider.*,vault.*,store.*}") String raw) {
         this.denyPatterns = SettingKeyPatterns.parse(raw);
         log.debug("AgentSettingKeyPolicy: {} deny pattern(s): {}", denyPatterns.size(), denyPatterns);
     }

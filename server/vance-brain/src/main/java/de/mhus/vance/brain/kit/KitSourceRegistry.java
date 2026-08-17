@@ -7,6 +7,7 @@ import de.mhus.vance.api.kit.KitSourcesDto;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.kit.KitException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;

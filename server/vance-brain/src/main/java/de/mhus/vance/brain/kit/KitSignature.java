@@ -2,6 +2,8 @@ package de.mhus.vance.brain.kit;
 
 import de.mhus.vance.api.kit.KitDescriptorDto;
 import de.mhus.vance.api.kit.KitSignatureDto;
+import de.mhus.vance.shared.kit.KitException;
+import de.mhus.vance.shared.kit.KitTreeHash;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,8 +30,8 @@ import org.jspecify.annotations.Nullable;
 @Slf4j
 public final class KitSignature {
 
-    /** Detached signature, beside {@code kit.yaml} in the kit root. */
-    public static final String SIGNATURE_FILENAME = "kit.sig.yaml";
+    /** Detached signature, beside {@code kit.yaml}. Defined with the hashing it excludes. */
+    public static final String SIGNATURE_FILENAME = KitTreeHash.SIGNATURE_FILENAME;
 
     public static final String ALGORITHM = "Ed25519";
 

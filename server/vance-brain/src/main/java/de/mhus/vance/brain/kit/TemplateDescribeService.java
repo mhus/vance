@@ -4,6 +4,7 @@ import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.ToolTemplateDescriptorDto;
 import de.mhus.vance.api.kit.ToolTemplateInputDto;
 import de.mhus.vance.api.kit.ToolTemplatePostInstallDto;
+import de.mhus.vance.shared.kit.KitException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

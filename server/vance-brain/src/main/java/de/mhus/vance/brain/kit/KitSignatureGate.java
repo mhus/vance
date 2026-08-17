@@ -2,7 +2,9 @@ package de.mhus.vance.brain.kit;
 
 import de.mhus.vance.api.kit.KitDescriptorDto;
 import de.mhus.vance.api.kit.KitSignaturePolicy;
+import de.mhus.vance.api.kit.KitSignatureStatus;
 import de.mhus.vance.api.kit.KitSourceDto;
+import de.mhus.vance.shared.kit.KitException;
 import java.nio.file.Path;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,26 +36,35 @@ public class KitSignatureGate {
      * @throws KitException when the policy is {@code required} and the
      *         kit does not satisfy it
      */
-    public void enforce(Path kitRoot, KitDescriptorDto descriptor, KitSourceDto config) {
+    public KitSignatureStatus enforce(
+            Path kitRoot, KitDescriptorDto descriptor, KitSourceDto config) {
         KitSignaturePolicy policy = config.getSignature() == null
                 ? KitSignaturePolicy.OFF
                 : config.getSignature();
-        if (policy == KitSignaturePolicy.OFF) return;
+        if (policy == KitSignaturePolicy.OFF) {
+            // Not checked, so nothing to claim either way. A kit that
+            // happens to carry a valid signature is still recorded as
+            // unsigned when nobody looked — saying "verified" would assert
+            // a check that did not happen.
+            return KitSignatureStatus.UNSIGNED;
+        }
 
         KitSignature.Result result =
                 KitSignature.verify(kitRoot, descriptor, config.getPublicKey());
         if (result == KitSignature.Result.VALID) {
             log.debug("KitSignatureGate: '{}' from source '{}' verified",
                     descriptor.getName(), config.getId());
-            return;
+            return KitSignatureStatus.VERIFIED;
         }
 
         String explanation = explain(result, descriptor.getName(), config);
         if (policy == KitSignaturePolicy.REQUIRED) {
             throw new KitException(explanation);
         }
-        // WARN exists for sources in transition — say it loudly, let it pass.
+        // WARN exists for sources in transition — say it loudly, let it pass,
+        // and leave a mark on the record so it is findable afterwards.
         log.warn("KitSignatureGate: {}", explanation);
+        return KitSignatureStatus.FAILED;
     }
 
     /**

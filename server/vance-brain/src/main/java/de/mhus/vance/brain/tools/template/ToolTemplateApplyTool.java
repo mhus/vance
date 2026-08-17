@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.tools.template;
 
 import de.mhus.vance.api.kit.ToolTemplateCatalogEntry;
-import de.mhus.vance.brain.kit.KitException;
+import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.brain.kit.KitService;
 import de.mhus.vance.brain.kit.TemplateApplier;
 import de.mhus.vance.brain.permission.SecurityContextFactory;

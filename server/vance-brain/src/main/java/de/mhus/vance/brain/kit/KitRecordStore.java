@@ -6,6 +6,7 @@ import de.mhus.vance.api.kit.KitManifestDto;
 import de.mhus.vance.api.kit.KitOriginDto;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.permission.WriteActor;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

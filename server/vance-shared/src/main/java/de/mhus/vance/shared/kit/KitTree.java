@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.kit;
+package de.mhus.vance.shared.kit;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -28,7 +28,7 @@ import java.util.stream.Stream;
  * links by default, which is why rejecting the link entry up-front (not
  * just dropping non-regular files) is required.
  */
-final class KitTree {
+public final class KitTree {
 
     private KitTree() {}
 
@@ -37,7 +37,7 @@ final class KitTree {
      * in natural sort order, with symbolic links rejected. The caller
      * applies its own regular-file / directory filter.
      */
-    static List<Path> walkNoSymlinks(Path root) {
+    public static List<Path> walkNoSymlinks(Path root) {
         List<Path> out = new ArrayList<>();
         try (Stream<Path> stream = Files.walk(root)) { // no FOLLOW_LINKS
             stream.sorted(Comparator.naturalOrder()).forEach(p -> {
@@ -55,7 +55,7 @@ final class KitTree {
      * links rejected. Mirrors {@link Files#list(Path)} semantics for the
      * flat {@code settings/} directory.
      */
-    static List<Path> listNoSymlinks(Path root) {
+    public static List<Path> listNoSymlinks(Path root) {
         List<Path> out = new ArrayList<>();
         try (Stream<Path> stream = Files.list(root)) {
             stream.forEach(p -> {

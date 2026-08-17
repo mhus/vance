@@ -14,6 +14,8 @@ import de.mhus.vance.api.kit.KitOriginDto;
 import de.mhus.vance.api.kit.KitPolicyAction;
 import de.mhus.vance.api.kit.KitPolicyDto;
 import de.mhus.vance.api.kit.KitPolicyRuleDto;
+import de.mhus.vance.api.kit.KitSignatureStatus;
+import de.mhus.vance.shared.kit.KitException;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -76,6 +78,28 @@ class KitYamlMapperRecordTest {
         assertThat(parsed.getArtefacts().getSettings().get(0).getLayer())
                 .isEqualTo("c-development");
         assertThat(parsed.isHasEncryptedSecrets()).isTrue();
+    }
+
+    @Test
+    void installedRecord_signatureStatusAndSource_roundTrip() {
+        KitInstalledRecordDto original = minimalRecord();
+        original.setSignatureStatus(KitSignatureStatus.VERIFIED);
+        original.setSourceId("vancetope-library");
+
+        KitInstalledRecordDto parsed = KitYamlMapper.parseInstalledRecord(
+                KitYamlMapper.writeInstalledRecord(original));
+
+        assertThat(parsed.getSignatureStatus()).isEqualTo(KitSignatureStatus.VERIFIED);
+        assertThat(parsed.getSourceId()).isEqualTo("vancetope-library");
+    }
+
+    @Test
+    void installedRecord_unknownSignatureStatus_isTreatedAsAbsent() {
+        // A value we cannot interpret says nothing; failing the parse would
+        // hide an installed kit from its owner over a cosmetic field.
+        String yaml = KitYamlMapper.writeInstalledRecord(minimalRecord())
+                + "signatureStatus: from-the-future\n";
+        assertThat(KitYamlMapper.parseInstalledRecord(yaml).getSignatureStatus()).isNull();
     }
 
     @Test

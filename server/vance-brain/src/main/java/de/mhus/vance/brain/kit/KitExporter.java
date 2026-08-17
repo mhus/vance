@@ -7,6 +7,7 @@ import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.settings.SettingDocument;
 import de.mhus.vance.shared.settings.SettingService;
 import java.io.IOException;

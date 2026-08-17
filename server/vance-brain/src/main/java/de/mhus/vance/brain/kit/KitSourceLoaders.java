@@ -1,8 +1,10 @@
 package de.mhus.vance.brain.kit;
 
 import de.mhus.vance.api.kit.KitInheritDto;
+import de.mhus.vance.api.kit.KitSignatureStatus;
 import de.mhus.vance.api.kit.KitSourceDto;
 import de.mhus.vance.api.kit.KitSourceType;
+import de.mhus.vance.shared.kit.KitException;
 import java.nio.file.Path;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -27,12 +29,31 @@ public class KitSourceLoaders {
     private final List<KitSourceLoader> loaders;
 
     /**
+     * A loaded kit together with where it came from.
+     *
+     * @param kit the materialised tree and its descriptor
+     * @param config the source that covered it
+     * @param signature what the signature check concluded — recorded so
+     *        the install can say what was true at the time
+     */
+    public record LoadResult(
+            KitRepoLoader.LoadedKit kit,
+            KitSourceDto config,
+            KitSignatureStatus signature) {}
+
+    /** Convenience for callers that only need the tree, e.g. inherit layers. */
+    public KitRepoLoader.LoadedKit load(
+            String tenantId, KitInheritDto source, @Nullable String token, Path target) {
+        return loadFrom(tenantId, source, token, target).kit();
+    }
+
+    /**
      * Load {@code source} for {@code tenantId} into {@code target}.
      *
      * @param tenantId whose source configuration applies — a url may be
      *        reachable for one tenant and unconfigured for another
      */
-    public KitRepoLoader.LoadedKit load(
+    public LoadResult loadFrom(
             String tenantId, KitInheritDto source, @Nullable String token, Path target) {
         if (source == null || source.getUrl() == null || source.getUrl().isBlank()) {
             throw new KitException("kit source url must not be blank");
@@ -45,8 +66,9 @@ public class KitSourceLoaders {
         // Right here, and not in the installer: this is the one point where
         // the loaded tree and the source it came from are both in hand. Every
         // inherit passes through again with its own source's policy.
-        signatureGate.enforce(loaded.root(), loaded.descriptor(), config);
-        return loaded;
+        KitSignatureStatus signature =
+                signatureGate.enforce(loaded.root(), loaded.descriptor(), config);
+        return new LoadResult(loaded, config, signature);
     }
 
     private KitSourceLoader loaderFor(KitSourceType type) {

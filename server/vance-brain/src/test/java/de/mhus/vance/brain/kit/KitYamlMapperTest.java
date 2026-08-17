@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import de.mhus.vance.api.kit.KitDescriptorDto;
+import de.mhus.vance.shared.kit.KitException;
 import org.junit.jupiter.api.Test;
 
 /**

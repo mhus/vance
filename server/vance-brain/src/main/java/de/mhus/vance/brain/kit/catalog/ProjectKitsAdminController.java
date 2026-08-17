@@ -2,8 +2,8 @@ package de.mhus.vance.brain.kit.catalog;
 
 import de.mhus.vance.api.kit.ProjectKitsCatalogDto;
 import de.mhus.vance.api.kit.ProjectKitsScanRequestDto;
-import de.mhus.vance.brain.kit.KitException;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.kit.catalog.ProjectKitsCatalogService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;

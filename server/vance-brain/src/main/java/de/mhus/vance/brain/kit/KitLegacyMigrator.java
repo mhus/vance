@@ -8,6 +8,8 @@ import de.mhus.vance.api.kit.KitInstalledRecordDto;
 import de.mhus.vance.api.kit.KitManifestDto;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.kit.KitException;
+import de.mhus.vance.shared.kit.KitHash;
 import de.mhus.vance.shared.permission.WriteActor;
 import de.mhus.vance.shared.settings.SettingService;
 import java.util.ArrayList;

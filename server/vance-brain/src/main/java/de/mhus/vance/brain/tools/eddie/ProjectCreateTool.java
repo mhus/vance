@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.tools.eddie;
 
 import de.mhus.vance.api.ws.Profiles;
-import de.mhus.vance.brain.kit.KitException;
+import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.brain.kit.catalog.ProjectKitInstaller;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.toolpack.Tool;

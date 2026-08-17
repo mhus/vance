@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.kit;
+package de.mhus.vance.shared.kit;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -37,6 +37,13 @@ import java.util.List;
  */
 public final class KitTreeHash {
 
+    /**
+     * Detached signature file, excluded from the hash it accompanies.
+     * Declared here rather than on the verifier because both ends of a
+     * delivery have to agree on it, and only one of them verifies.
+     */
+    public static final String SIGNATURE_FILENAME = "kit.sig.yaml";
+
     private KitTreeHash() {}
 
     /** {@code sha256:<hex>} over the whole directory. */
@@ -59,7 +66,7 @@ public final class KitTreeHash {
             if (!Files.isRegularFile(file)) continue;
             String rel = root.relativize(file).toString().replace('\\', '/');
             // The signature file cannot be part of what it signs.
-            if (rel.equals(KitSignature.SIGNATURE_FILENAME)) continue;
+            if (rel.equals(SIGNATURE_FILENAME)) continue;
             lines.add(rel + "\0" + sha256Hex(file) + "\n");
         }
         Collections.sort(lines);
@@ -89,7 +96,7 @@ public final class KitTreeHash {
      * suggestion. Everything the delivery asserts has to be inside the
      * signature or it asserts nothing.
      */
-    static byte[] signedPayload(
+    public static byte[] signedPayload(
             String treeHash, String licensedTo, String purchaseId, String licenseExpiresAt) {
         String payload = String.join("\n",
                 "vancetope-kit-signature/1",

@@ -58,4 +58,17 @@ public class KitInstalledRecordDto {
     /** True when the resolved kit shipped any encrypted setting. */
     @Builder.Default
     private boolean hasEncryptedSecrets = false;
+
+    /**
+     * What the signature check said at install time, and which source
+     * said it.
+     *
+     * <p>A record of the moment, not a live property: the kit tree is
+     * gone once its artefacts are in the project, so this cannot be
+     * re-derived — only replaced by the next update.
+     */
+    private @Nullable KitSignatureStatus signatureStatus;
+
+    /** Id of the source this kit was loaded through, for the same reason. */
+    private @Nullable String sourceId;
 }

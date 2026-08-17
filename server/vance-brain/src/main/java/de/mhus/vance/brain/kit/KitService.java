@@ -9,6 +9,7 @@ import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.KitInstalledRecordDto;
 import de.mhus.vance.api.kit.KitManifestDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
+import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import java.util.ArrayList;

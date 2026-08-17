@@ -3,6 +3,7 @@ package de.mhus.vance.brain.kit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import de.mhus.vance.shared.kit.KitException;
 import org.junit.jupiter.api.Test;
 
 class KitYamlMapperTemplateTest {

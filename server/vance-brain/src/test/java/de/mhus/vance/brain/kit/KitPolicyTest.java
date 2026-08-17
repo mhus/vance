@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import de.mhus.vance.api.kit.KitPolicyAction;
 import de.mhus.vance.api.kit.KitPolicyDto;
 import de.mhus.vance.api.kit.KitPolicyRuleDto;
+import de.mhus.vance.shared.kit.KitHash;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 

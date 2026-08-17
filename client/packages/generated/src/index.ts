@@ -121,6 +121,7 @@ export * from './kit/KitPolicyDto';
 export * from './kit/KitPolicyRuleDto';
 export * from './kit/KitSignatureDto';
 export * from './kit/KitSignaturePolicy';
+export * from './kit/KitSignatureStatus';
 export * from './kit/KitSourceDto';
 export * from './kit/KitSourceType';
 export * from './kit/KitSourcesDto';

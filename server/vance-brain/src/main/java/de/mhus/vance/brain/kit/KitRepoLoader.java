@@ -2,6 +2,8 @@ package de.mhus.vance.brain.kit;
 
 import de.mhus.vance.api.kit.KitDescriptorDto;
 import de.mhus.vance.api.kit.KitInheritDto;
+import de.mhus.vance.shared.kit.KitException;
+import de.mhus.vance.shared.kit.KitTree;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;

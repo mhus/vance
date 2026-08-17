@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.kit;
+package de.mhus.vance.shared.kit;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;

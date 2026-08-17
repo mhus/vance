@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.kit;
+package de.mhus.vance.shared.kit;
 
 import org.jspecify.annotations.Nullable;
 

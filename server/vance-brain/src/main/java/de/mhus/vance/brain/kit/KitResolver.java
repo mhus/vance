@@ -2,6 +2,9 @@ package de.mhus.vance.brain.kit;
 
 import de.mhus.vance.api.kit.KitDescriptorDto;
 import de.mhus.vance.api.kit.KitInheritDto;
+import de.mhus.vance.api.kit.KitSignatureStatus;
+import de.mhus.vance.shared.kit.KitException;
+import de.mhus.vance.shared.kit.KitTree;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -70,7 +73,9 @@ public class KitResolver {
             LayerArtefacts topLayerArtefacts,
             LinkedHashMap<String, LayerArtefacts> inheritArtefacts,
             List<Path> temporaryPaths,
-            List<String> warnings) {
+            List<String> warnings,
+            KitSignatureStatus topLayerSignature,
+            String topLayerSourceId) {
 
         public void cleanup(KitWorkspace ws) {
             for (Path p : temporaryPaths) ws.remove(p);
@@ -93,7 +98,9 @@ public class KitResolver {
 
         Path topLoadDir = workspace.allocate("kit-top");
         tmp.add(topLoadDir);
-        KitRepoLoader.LoadedKit top = sourceLoaders.load(tenantId, source, token, topLoadDir);
+        KitSourceLoaders.LoadResult topResult =
+                sourceLoaders.loadFrom(tenantId, source, token, topLoadDir);
+        KitRepoLoader.LoadedKit top = topResult.kit();
         markVisited(visited, source);
         // Active DFS path for TRUE cycle detection (a key that is its own
         // ancestor), kept distinct from `visited` which now only dedupes
@@ -132,7 +139,9 @@ public class KitResolver {
                 ownership.topLayer,
                 ownership.inheritLayers,
                 tmp,
-                warnings);
+                warnings,
+                topResult.signature(),
+                topResult.config().getId());
     }
 
     // ──────────────────── ownership ────────────────────

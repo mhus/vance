@@ -15,15 +15,17 @@ import de.mhus.vance.api.kit.KitPolicyDto;
 import de.mhus.vance.api.kit.KitPolicyRuleDto;
 import de.mhus.vance.api.kit.KitSignatureDto;
 import de.mhus.vance.api.kit.KitSignaturePolicy;
+import de.mhus.vance.api.kit.KitSignatureStatus;
 import de.mhus.vance.api.kit.KitSourceDto;
 import de.mhus.vance.api.kit.KitSourceType;
 import de.mhus.vance.api.kit.KitSourcesDto;
 import de.mhus.vance.api.settings.SettingType;
+import de.mhus.vance.shared.kit.KitException;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Locale;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -242,7 +244,25 @@ public final class KitYamlMapper {
                 .descriptor(descriptor)
                 .artefacts(artefacts)
                 .hasEncryptedSecrets(booleanOrFalse(map.get("hasEncryptedSecrets")))
+                .signatureStatus(parseSignatureStatus(map.get("signatureStatus")))
+                .sourceId(stringOrNull(map.get("sourceId")))
                 .build();
+    }
+
+    /**
+     * Tolerant on read: an unknown status is treated as absent rather
+     * than failing the whole record. A value we cannot interpret says
+     * nothing, and a record that cannot be parsed hides an installed kit
+     * from its owner.
+     */
+    private static @Nullable KitSignatureStatus parseSignatureStatus(@Nullable Object raw) {
+        String value = stringOrNull(raw);
+        if (value == null) return null;
+        try {
+            return KitSignatureStatus.valueOf(value.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -307,6 +327,13 @@ public final class KitYamlMapper {
 
         if (record.isHasEncryptedSecrets()) {
             root.put("hasEncryptedSecrets", true);
+        }
+        if (record.getSignatureStatus() != null) {
+            root.put("signatureStatus",
+                    record.getSignatureStatus().name().toLowerCase(Locale.ROOT));
+        }
+        if (record.getSourceId() != null) {
+            root.put("sourceId", record.getSourceId());
         }
         return dump(root);
     }

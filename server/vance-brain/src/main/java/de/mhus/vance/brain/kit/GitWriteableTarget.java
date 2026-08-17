@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.kit;
 
+import de.mhus.vance.shared.kit.KitException;
 import java.util.Optional;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;

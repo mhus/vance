@@ -15,6 +15,9 @@ import de.mhus.vance.api.kit.KitPolicyAction;
 import de.mhus.vance.brain.servertool.ServerToolRegistry;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.kit.KitException;
+import de.mhus.vance.shared.kit.KitHash;
+import de.mhus.vance.shared.kit.KitTree;
 import de.mhus.vance.shared.permission.WriteActor;
 import de.mhus.vance.shared.servertool.ServerToolLoader;
 import de.mhus.vance.shared.settings.AgentSettingKeyPolicy;
@@ -814,6 +817,8 @@ public class KitInstaller {
                         .settings(settings)
                         .build())
                 .hasEncryptedSecrets(hasAnyEncryptedSetting(scan))
+                .signatureStatus(resolved.topLayerSignature())
+                .sourceId(resolved.topLayerSourceId())
                 .build();
     }
 

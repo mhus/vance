@@ -8,6 +8,10 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.kit.KitDescriptorDto;
 import de.mhus.vance.api.kit.KitInheritDto;
+import de.mhus.vance.api.kit.KitSignatureStatus;
+import de.mhus.vance.api.kit.KitSourceDto;
+import de.mhus.vance.api.kit.KitSourceType;
+import de.mhus.vance.shared.kit.KitException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -59,8 +63,8 @@ class KitResolverSealedTest {
                 .sealed(true)
                 .build();
 
-        when(sourceLoaders.load(any(), eq(topSource), any(), any()))
-                .thenReturn(loaded(topDescriptor));
+        when(sourceLoaders.loadFrom(any(), eq(topSource), any(), any()))
+                .thenReturn(loadResult(topDescriptor));
         when(sourceLoaders.load(any(), eq(sealedInherit), any(), any()))
                 .thenReturn(loaded(sealedDescriptor));
 
@@ -82,7 +86,7 @@ class KitResolverSealedTest {
                 .description("sealed but installable")
                 .sealed(true)
                 .build();
-        when(sourceLoaders.load(any(), eq(src), any(), any())).thenReturn(loaded(sealedTop));
+        when(sourceLoaders.loadFrom(any(), eq(src), any(), any())).thenReturn(loadResult(sealedTop));
 
         // Just calling resolve must not throw the sealed exception.
         // Note: we mock workspace.allocate to a fake path, so the
@@ -99,6 +103,18 @@ class KitResolverSealedTest {
     private static KitRepoLoader.LoadedKit loaded(KitDescriptorDto descriptor) {
         Path fake = Paths.get("/tmp/kit-fake");
         return new KitRepoLoader.LoadedKit(fake, fake, "deadbeef", descriptor, true);
+    }
+
+    /** The top layer is loaded with its source attached; inherits are not. */
+    private static KitSourceLoaders.LoadResult loadResult(KitDescriptorDto descriptor) {
+        return new KitSourceLoaders.LoadResult(
+                loaded(descriptor),
+                KitSourceDto.builder()
+                        .id("test-source")
+                        .type(KitSourceType.GIT)
+                        .url("file:///fake")
+                        .build(),
+                KitSignatureStatus.UNSIGNED);
     }
 
     @SuppressWarnings("unused")

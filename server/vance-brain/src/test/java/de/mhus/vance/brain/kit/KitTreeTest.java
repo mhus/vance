@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import de.mhus.vance.shared.kit.KitException;
+import de.mhus.vance.shared.kit.KitTree;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

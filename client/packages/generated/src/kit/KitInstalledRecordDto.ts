@@ -7,6 +7,7 @@ import { KitMetadataDto } from './KitMetadataDto';
 import { KitArtefactsDto } from './KitArtefactsDto';
 import { KitDescriptorDto } from './KitDescriptorDto';
 import { KitOriginDto } from './KitOriginDto';
+import { KitSignatureStatus } from './KitSignatureStatus';
 
 export interface KitInstalledRecordDto {
   id: string;
@@ -15,4 +16,6 @@ export interface KitInstalledRecordDto {
   descriptor?: KitDescriptorDto;
   artefacts: KitArtefactsDto;
   hasEncryptedSecrets: boolean;
+  signatureStatus?: KitSignatureStatus;
+  sourceId?: string;
 }

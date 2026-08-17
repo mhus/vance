@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import de.mhus.vance.api.kit.ProjectKitEntry;
 import de.mhus.vance.api.kit.ProjectKitsCatalogDto;
-import de.mhus.vance.brain.kit.KitException;
 import de.mhus.vance.brain.kit.KitWorkspace;
+import de.mhus.vance.shared.kit.KitException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

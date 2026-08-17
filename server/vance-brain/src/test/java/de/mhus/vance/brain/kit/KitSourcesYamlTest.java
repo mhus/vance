@@ -7,6 +7,7 @@ import de.mhus.vance.api.kit.KitSignaturePolicy;
 import de.mhus.vance.api.kit.KitSourceDto;
 import de.mhus.vance.api.kit.KitSourceType;
 import de.mhus.vance.api.kit.KitSourcesDto;
+import de.mhus.vance.shared.kit.KitException;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 

@@ -21,6 +21,7 @@ import de.mhus.vance.api.kit.KitInstalledRecordDto;
 import de.mhus.vance.api.kit.KitMetadataDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.api.kit.KitOriginDto;
+import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.settings.SettingWriteOrigin;
@@ -316,7 +317,9 @@ class KitServiceTest {
                 KitResolver.LayerArtefacts.empty(),
                 new LinkedHashMap<>(),
                 new ArrayList<>(),
-                new ArrayList<>());
+                new ArrayList<>(),
+                de.mhus.vance.api.kit.KitSignatureStatus.UNSIGNED,
+                "test-source");
         when(resolver.resolve(any(), any(), any())).thenReturn(resolved);
     }
 }

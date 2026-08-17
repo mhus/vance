@@ -1,10 +1,15 @@
 import { brainFetch } from '@vance/shared';
 import type {
+  DeveloperView,
   KitOperationResult,
+  OperatorView,
+  ReleaseRequest,
   StoreConnection,
   StoreOrder,
   StoreReview,
   StoreSourceView,
+  Vendor,
+  VendorKit,
   WithdrawalNotice,
 } from './types';
 
@@ -122,4 +127,129 @@ export async function loadWithdrawalNotice(
   return brainFetch<WithdrawalNotice>(
     'GET', `${base(projectId)}/withdrawal-notice?${query}`,
   );
+}
+
+// ──────────────────── developer ────────────────────
+
+/**
+ * The developer's own view of a store.
+ *
+ * The terms and the fees come back even when this installation is not
+ * signed in: somebody deciding whether to sell here should not have to
+ * sign up to find out what it costs.
+ */
+export async function loadDeveloper(
+  projectId: string,
+  sourceId: string,
+): Promise<DeveloperView> {
+  const query = new URLSearchParams({ sourceId }).toString();
+  return brainFetch<DeveloperView>('GET', `${base(projectId)}/developer?${query}`);
+}
+
+/**
+ * Apply to be a vendor.
+ *
+ * Asks for the store password, like buying does: accepting terms is a
+ * decision by a person, and this installation's link token must not enter
+ * an agreement on their behalf.
+ */
+export async function applyVendor(
+  projectId: string,
+  sourceId: string,
+  email: string,
+  password: string,
+  name: string,
+  displayName: string,
+  termsVersion: string,
+  homepage?: string,
+): Promise<Vendor> {
+  return brainFetch<Vendor>('POST', `${base(projectId)}/developer/apply`, {
+    body: { sourceId, email, password, name, displayName, homepage, termsVersion },
+  });
+}
+
+/** Add a catalogue entry under one's own vendor. */
+export async function createKit(
+  projectId: string,
+  sourceId: string,
+  vendor: string,
+  kitId: string,
+  displayName: string,
+  description: string | undefined,
+  priceCents: number,
+  currency?: string,
+): Promise<VendorKit> {
+  return brainFetch<VendorKit>('POST', `${base(projectId)}/developer/kits`, {
+    body: { sourceId, vendor, kitId, displayName, description, priceCents, currency },
+  });
+}
+
+/**
+ * Export this project and submit it as a version.
+ *
+ * The project has to be a kit source — the export says so in its own words
+ * when it is not.
+ */
+export async function publish(
+  projectId: string,
+  sourceId: string,
+  vendor: string,
+  kitId: string,
+  version: string,
+  vaultPassword?: string,
+): Promise<ReleaseRequest> {
+  return brainFetch<ReleaseRequest>('POST', `${base(projectId)}/developer/publish`, {
+    body: { sourceId, vendor, kitId, version, vaultPassword },
+  });
+}
+
+// ──────────────────── operator ────────────────────
+
+/**
+ * The operator's queues.
+ *
+ * A POST although it reads: the operator surface takes a session, so this
+ * carries a password, and a password in a query string ends up in logs and
+ * in browser history.
+ */
+export async function loadOperatorQueue(
+  projectId: string,
+  sourceId: string,
+  email: string,
+  password: string,
+): Promise<OperatorView> {
+  return brainFetch<OperatorView>('POST', `${base(projectId)}/operator/queue`, {
+    body: { sourceId, email, password },
+  });
+}
+
+/** The switch: approve or refuse a vendor or a release. */
+export async function decide(
+  projectId: string,
+  decision: 'approve-vendor' | 'reject-vendor' | 'approve-release' | 'reject-release',
+  body: {
+    sourceId: string;
+    email: string;
+    password: string;
+    vendor?: string;
+    kitId?: string;
+    version?: string;
+    reason?: string;
+  },
+): Promise<OperatorView> {
+  return brainFetch<OperatorView>('POST', `${base(projectId)}/operator/${decision}`, { body });
+}
+
+/**
+ * The projects of this tenant.
+ *
+ * Needed because publishing exports a *particular* project, and the addon
+ * host mounts an area without telling it which one is open. Naming it in
+ * the panel beats inferring it from how somebody arrived at the page.
+ */
+export async function loadProjects(): Promise<{ name: string; title?: string }[]> {
+  const answer = await brainFetch<{ projects?: { name: string; title?: string }[] }>(
+    'GET', 'projects',
+  );
+  return answer.projects ?? [];
 }

@@ -12,6 +12,12 @@ import de.mhus.vance.brain.kit.KitService;
 import de.mhus.vance.brain.kit.KitStoreCredentials;
 import de.mhus.vance.brain.kit.KitSourceRegistry;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.store.brain.StoreClient.CatalogueEntry;
+import de.mhus.vance.store.brain.StoreClient.Fees;
+import de.mhus.vance.store.brain.StoreClient.Release;
+import de.mhus.vance.store.brain.StoreClient.ReleaseRequest;
+import de.mhus.vance.store.brain.StoreClient.Vendor;
+import de.mhus.vance.store.brain.StoreClient.VendorTerms;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.permission.Action;
@@ -56,6 +62,7 @@ public class StoreAddonController {
     private final StoreClient storeClient;
     private final KitStoreCredentials credentials;
     private final RequestAuthority authority;
+    private final StoreDeveloperService developerService;
 
     public record ConnectRequest(
             String sourceId, String email, String password, @Nullable String label) {}
@@ -271,6 +278,259 @@ public class StoreAddonController {
         } catch (KitException e) {
             throw storeError(e);
         }
+    }
+
+    // ──────────────────── developer ────────────────────
+
+    public record ApplyVendorRequest(
+            String sourceId, String email, String password,
+            String name, String displayName, @Nullable String homepage,
+            String termsVersion) {}
+
+    public record CreateKitRequest(
+            String sourceId, String vendor, String kitId, String displayName,
+            @Nullable String description, long priceCents, @Nullable String currency) {}
+
+    public record PublishRequest(
+            String sourceId, String vendor, String kitId, String version,
+            @Nullable String vaultPassword) {}
+
+    public record OperatorRequest(
+            String sourceId, String email, String password,
+            @Nullable String vendor, @Nullable String kitId,
+            @Nullable String version, @Nullable String reason) {}
+
+    /** Everything the developer screen needs in one answer. */
+    public record DeveloperView(
+            String sourceId,
+            boolean connected,
+            @Nullable VendorTerms terms,
+            @Nullable Fees fees,
+            List<Vendor> vendors,
+            List<CatalogueEntry> kits,
+            List<ReleaseRequest> requests,
+            @Nullable String problem) {}
+
+    /**
+     * The developer's own view of a store.
+     *
+     * <p>The terms and the fees are readable without being signed in —
+     * somebody deciding whether to sell here should not have to sign up to
+     * find out what it costs.
+     */
+    @GetMapping("/{projectId}/developer")
+    public DeveloperView developer(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestParam("sourceId") String sourceId,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, sourceId);
+        String token = credentials.resolve(
+                tenant, projectId, actor(request), source.getUrl(), null).token();
+        try {
+            VendorTerms terms = storeClient.vendorTerms(source);
+            Fees fees = storeClient.fees(source);
+            if (token == null || token.isBlank()) {
+                return new DeveloperView(sourceId, false, terms, fees,
+                        List.of(), List.of(), List.of(), null);
+            }
+            return new DeveloperView(sourceId, true, terms, fees,
+                    storeClient.myVendors(source, token),
+                    storeClient.myKits(source, token),
+                    storeClient.myRequests(source, token),
+                    null);
+        } catch (KitException e) {
+            // A store that could not be asked is not a store with nothing
+            // to say — the screen has to be able to tell those apart.
+            return new DeveloperView(sourceId, token != null && !token.isBlank(),
+                    null, null, List.of(), List.of(), List.of(), e.getMessage());
+        }
+    }
+
+    /**
+     * Apply to be a vendor.
+     *
+     * <p>Asks for the store password, like buying does: accepting terms is
+     * a decision by a person, and this installation's link token must not
+     * be able to enter an agreement on their behalf.
+     */
+    @PostMapping("/{projectId}/developer/apply")
+    public Vendor apply(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestBody ApplyVendorRequest body,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, body.sourceId());
+        try {
+            return withSession(source, body.email(), body.password(), session ->
+                    storeClient.applyVendor(source, session, body.name(),
+                            body.displayName(), body.homepage(), body.termsVersion()));
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /** Add a catalogue entry under one's own vendor. */
+    @PostMapping("/{projectId}/developer/kits")
+    public CatalogueEntry createKit(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestBody CreateKitRequest body,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, body.sourceId());
+        try {
+            return storeClient.createKit(source, requireToken(tenant, projectId, source, request),
+                    body.vendor(), body.kitId(), body.displayName(),
+                    body.description(), body.priceCents(), body.currency());
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /**
+     * Export this project and submit it as a version.
+     *
+     * <p>The same export that writes to a git remote, pointed at a
+     * directory and packed. Which means a project has to be a kit source
+     * for this to work, and the export says so in its own words when it is
+     * not.
+     */
+    @PostMapping("/{projectId}/developer/publish")
+    public ReleaseRequest publish(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestBody PublishRequest body,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, body.sourceId());
+        try {
+            return developerService.publish(tenant, projectId, actor(request), source,
+                    requireToken(tenant, projectId, source, request),
+                    body.vendor(), body.kitId(), body.version(), body.vaultPassword());
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    // ──────────────────── operator ────────────────────
+
+    /** What is waiting for the switch: vendors, then releases. */
+    public record OperatorView(
+            List<Vendor> pendingVendors,
+            List<Release> submittedReleases) {}
+
+    /**
+     * The operator's queues.
+     *
+     * <p>A POST although it reads: the operator surface takes a session,
+     * so this call carries a password. A password in a query string ends
+     * up in logs and in browser history.
+     */
+    @PostMapping("/{projectId}/operator/queue")
+    public OperatorView operatorQueue(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestBody OperatorRequest body,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, body.sourceId());
+        try {
+            return withSession(source, body.email(), body.password(), session ->
+                    new OperatorView(
+                            storeClient.pendingVendors(source, session),
+                            storeClient.submittedReleases(source, session)));
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /** The switch itself — approve or refuse a vendor or a release. */
+    @PostMapping("/{projectId}/operator/{decision}")
+    public OperatorView decide(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @PathVariable("decision") String decision,
+            @RequestBody OperatorRequest body,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, body.sourceId());
+        try {
+            return withSession(source, body.email(), body.password(), session -> {
+                String reason = body.reason() == null ? "" : body.reason();
+                switch (decision) {
+                    case "approve-vendor" ->
+                            storeClient.approveVendor(source, session, required(body.vendor()));
+                    case "reject-vendor" ->
+                            storeClient.rejectVendor(source, session,
+                                    required(body.vendor()), reason);
+                    case "approve-release" ->
+                            storeClient.approveRelease(source, session, required(body.vendor()),
+                                    required(body.kitId()), required(body.version()));
+                    case "reject-release" ->
+                            storeClient.rejectRelease(source, session, required(body.vendor()),
+                                    required(body.kitId()), required(body.version()), reason);
+                    default -> throw new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST, "unknown decision: " + decision);
+                }
+                // Re-read inside the same session: the queues are what the
+                // screen shows next, and a second sign-in for that would be
+                // a second password prompt.
+                return new OperatorView(
+                        storeClient.pendingVendors(source, session),
+                        storeClient.submittedReleases(source, session));
+            });
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /**
+     * Sign in, do one thing, sign out.
+     *
+     * <p>A brain is not a person: leaving a session open would be a live
+     * credential for an account that nobody is holding on purpose. The
+     * same shape {@code StoreConnectionService} uses when linking.
+     */
+    private <T> T withSession(
+            KitSourceDto source, String email, String password,
+            java.util.function.Function<StoreClient.Session, T> work) {
+
+        StoreClient.Session session = storeClient.login(source, email, password);
+        try {
+            return work.apply(session);
+        } finally {
+            storeClient.logout(source, session);
+        }
+    }
+
+    private static String required(@Nullable String value) {
+        if (value == null || value.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "this decision needs a vendor, kit and version");
+        }
+        return value;
+    }
+
+    /** This installation's link token, or a clear refusal. */
+    private String requireToken(
+            String tenant, String projectId, KitSourceDto source, HttpServletRequest request) {
+
+        KitAccess access = credentials.resolve(
+                tenant, projectId, actor(request), source.getUrl(), null);
+        if (access.token() == null || access.token().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "sign in to this store first");
+        }
+        return access.token();
     }
 
     /**

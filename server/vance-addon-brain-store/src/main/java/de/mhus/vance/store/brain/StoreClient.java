@@ -7,6 +7,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -332,8 +333,317 @@ public class StoreClient {
         }
     }
 
+    // ──────────────────── developer surface ────────────────────
+
+    /** The wording somebody accepts to become a vendor. */
+    public record VendorTerms(String version, String text) {}
+
+    /** What a store keeps of a sale, so a vendor can see it before pricing. */
+    public record Fees(double percent, long minimumFeeCents, long minimumPriceCents) {}
+
+    /** A vendor profile with its standing. */
+    public record Vendor(
+            String name,
+            String displayName,
+            @Nullable String homepage,
+            String status,
+            @Nullable String termsVersion,
+            @Nullable String rejectionReason) {}
+
+    /** One step of a release request — this is where a refusal is read. */
+    public record ReleaseRound(
+            int no,
+            @Nullable Instant at,
+            String source,
+            String verdict,
+            @Nullable String actor,
+            @Nullable String message) {}
+
+    /** A release request with its whole proceeding. */
+    public record ReleaseRequest(
+            String requestId,
+            String vendorName,
+            String kitId,
+            String version,
+            String status,
+            @Nullable Instant updatedAt,
+            List<ReleaseRound> rounds) {}
+
+    /** A release as the operator's queue shows it. */
+    public record Release(
+            String vendorName,
+            String kitId,
+            String version,
+            String status,
+            @Nullable Instant submittedAt,
+            @Nullable String rejectionReason) {}
+
+    /** The terms and the fees — both unauthenticated, both shown before applying. */
+    public VendorTerms vendorTerms(KitSourceDto source) {
+        return get(source, "/store/vendor/terms", null, VendorTerms.class, "vendor terms");
+    }
+
+    public Fees fees(KitSourceDto source) {
+        return get(source, "/store/vendor/fees", null, Fees.class, "store fees");
+    }
+
+    /**
+     * Apply to be a vendor.
+     *
+     * <p>Takes a <b>session</b>, not a link: accepting terms is a decision
+     * by a person, and a machine credential must not enter an agreement on
+     * their behalf. Everything afterwards takes the link.
+     */
+    public Vendor applyVendor(
+            KitSourceDto source, Session session,
+            String name, String displayName, @Nullable String homepage, String termsVersion) {
+
+        String body = json.writeValueAsString(
+                new ApplyVendorBody(name, displayName, homepage, termsVersion));
+        HttpResponse<String> response = send(HttpRequest.newBuilder(
+                        uri(source, "/store/vendor"))
+                .timeout(TIMEOUT)
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + session.token())
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build(), source);
+
+        if (response.statusCode() == 409) {
+            throw new KitException("the store refused the application: " + response.body());
+        }
+        if (response.statusCode() != 201 && response.statusCode() != 200) {
+            throw new KitException("the store returned HTTP " + response.statusCode()
+                    + " for the vendor application");
+        }
+        return read(response.body(), Vendor.class, source);
+    }
+
+    /** The vendor profiles this installation's account holds. */
+    public List<Vendor> myVendors(KitSourceDto source, String linkToken) {
+        return getList(source, "/store/vendor", linkToken, Vendor.class, "vendors");
+    }
+
+    public List<CatalogueEntry> myKits(KitSourceDto source, String linkToken) {
+        return getList(source, "/store/vendor/kits", linkToken, CatalogueEntry.class, "kits");
+    }
+
+    public List<ReleaseRequest> myRequests(KitSourceDto source, String linkToken) {
+        return getList(source, "/store/vendor/requests", linkToken,
+                ReleaseRequest.class, "release requests");
+    }
+
+    /** Add a catalogue entry under one's own vendor. */
+    public CatalogueEntry createKit(
+            KitSourceDto source, String linkToken, String vendorName, String kitId,
+            String displayName, @Nullable String description, long priceCents,
+            @Nullable String currency) {
+
+        String body = json.writeValueAsString(new CreateKitBody(
+                vendorName, kitId, displayName, description, null, null,
+                priceCents, currency, null));
+        HttpResponse<String> response = send(HttpRequest.newBuilder(
+                        uri(source, "/store/vendor/kits"))
+                .timeout(TIMEOUT)
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + linkToken)
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build(), source);
+
+        if (response.statusCode() != 201 && response.statusCode() != 200) {
+            throw new KitException("the store refused the kit: " + describe(response));
+        }
+        return read(response.body(), CatalogueEntry.class, source);
+    }
+
+    /**
+     * Upload a version of one's own kit.
+     *
+     * <p>Multipart, because that is what the store's endpoint takes and an
+     * archive has no business being base64 in a JSON body. Built by hand:
+     * the JDK client has no multipart publisher, and one file with one
+     * field is not worth a dependency.
+     */
+    public ReleaseRequest uploadRelease(
+            KitSourceDto source, String linkToken,
+            String vendorName, String kitId, String version, Path archive) {
+
+        String boundary = "vance-" + java.util.UUID.randomUUID();
+        byte[] body;
+        try {
+            body = multipart(boundary, archive);
+        } catch (IOException e) {
+            throw new KitException("could not read the packed kit at " + archive, e);
+        }
+        HttpResponse<String> response = send(HttpRequest.newBuilder(
+                        uri(source, "/store/vendor/kits/" + encode(vendorName) + "/"
+                                + encode(kitId) + "/releases/" + encode(version)))
+                .timeout(Duration.ofMinutes(2))
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .header("Authorization", "Bearer " + linkToken)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body))
+                .build(), source);
+
+        if (response.statusCode() == 403) {
+            throw new KitException("the store will not take this release yet: "
+                    + describe(response));
+        }
+        if (response.statusCode() != 201 && response.statusCode() != 200) {
+            throw new KitException("the store returned HTTP " + response.statusCode()
+                    + " for the upload: " + describe(response));
+        }
+        return read(response.body(), ReleaseRequest.class, source);
+    }
+
+    private static byte[] multipart(String boundary, Path archive) throws IOException {
+        var out = new java.io.ByteArrayOutputStream();
+        String head = "--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"archive\"; filename=\""
+                + archive.getFileName() + "\"\r\n"
+                + "Content-Type: application/zip\r\n\r\n";
+        out.write(head.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        out.write(java.nio.file.Files.readAllBytes(archive));
+        out.write(("\r\n--" + boundary + "--\r\n")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return out.toByteArray();
+    }
+
+    // ──────────────────── operator surface ────────────────────
+
+    /**
+     * The operator calls take a <b>session</b>.
+     *
+     * <p>Publishing is the widest thing that happens here — it puts
+     * software on other people's machines — and a link token sits in a
+     * settings document for years. Whoever presses this switch should be
+     * present.
+     */
+    public List<Vendor> pendingVendors(KitSourceDto source, Session session) {
+        return getList(source, "/store/admin/vendors/pending", session.token(),
+                Vendor.class, "pending vendors");
+    }
+
+    public List<Release> submittedReleases(KitSourceDto source, Session session) {
+        return getList(source, "/store/admin/releases", session.token(),
+                Release.class, "the release queue");
+    }
+
+    public void approveVendor(KitSourceDto source, Session session, String name) {
+        post(source, session, "/store/admin/vendors/" + encode(name) + "/approve",
+                null, "approving vendor " + name);
+    }
+
+    public void rejectVendor(
+            KitSourceDto source, Session session, String name, String reason) {
+        post(source, session, "/store/admin/vendors/" + encode(name) + "/reject",
+                new RejectBody(reason), "refusing vendor " + name);
+    }
+
+    public void approveRelease(
+            KitSourceDto source, Session session,
+            String vendor, String kitId, String version) {
+        post(source, session, releasePath(vendor, kitId, version) + "/approve",
+                null, "approving " + vendor + "/" + kitId + " " + version);
+    }
+
+    public void rejectRelease(
+            KitSourceDto source, Session session,
+            String vendor, String kitId, String version, String reason) {
+        post(source, session, releasePath(vendor, kitId, version) + "/reject",
+                new RejectBody(reason), "refusing " + vendor + "/" + kitId + " " + version);
+    }
+
+    private static String releasePath(String vendor, String kitId, String version) {
+        return "/store/admin/kits/" + encode(vendor) + "/" + encode(kitId)
+                + "/releases/" + encode(version);
+    }
+
+    // ──────────────────── plumbing ────────────────────
+
+    private <T> T get(
+            KitSourceDto source, String path, @Nullable String token,
+            Class<T> type, String what) {
+
+        return read(body(source, path, token, what), type, source);
+    }
+
+    private <T> List<T> getList(
+            KitSourceDto source, String path, @Nullable String token,
+            Class<T> type, String what) {
+
+        String body = body(source, path, token, what);
+        try {
+            return json.readValue(body, json.getTypeFactory()
+                    .constructCollectionType(List.class, type));
+        } catch (RuntimeException e) {
+            throw new KitException("the store returned something that is not " + what, e);
+        }
+    }
+
+    private String body(
+            KitSourceDto source, String path, @Nullable String token, String what) {
+
+        HttpRequest.Builder request = HttpRequest.newBuilder(uri(source, path))
+                .timeout(TIMEOUT).GET();
+        if (token != null) request.header("Authorization", "Bearer " + token);
+        HttpResponse<String> response = send(request.build(), source);
+        if (response.statusCode() == 401) {
+            throw new KitException("the store no longer accepts this credential"
+                    + " — sign in again");
+        }
+        if (response.statusCode() != 200) {
+            throw new KitException("the store returned HTTP " + response.statusCode()
+                    + " for " + what);
+        }
+        return response.body();
+    }
+
+    private void post(
+            KitSourceDto source, Session session, String path,
+            @Nullable Object body, String what) {
+
+        HttpRequest.Builder request = HttpRequest.newBuilder(uri(source, path))
+                .timeout(TIMEOUT)
+                .header("Authorization", "Bearer " + session.token());
+        if (body == null) {
+            request.POST(HttpRequest.BodyPublishers.noBody());
+        } else {
+            request.header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)));
+        }
+        HttpResponse<String> response = send(request.build(), source);
+        if (response.statusCode() == 404) {
+            // The operator surface answers 404 rather than 403 to an
+            // account that is not an operator. Saying "not found" back
+            // would send somebody looking for a typo.
+            throw new KitException("this account may not do that at " + source.getId()
+                    + ", or " + what + " no longer applies");
+        }
+        if (response.statusCode() != 200 && response.statusCode() != 201) {
+            throw new KitException("the store returned HTTP " + response.statusCode()
+                    + " when " + what + ": " + describe(response));
+        }
+    }
+
+    /** A store error body, trimmed to something a person can read in a banner. */
+    private static String describe(HttpResponse<String> response) {
+        String body = response.body();
+        if (body == null || body.isBlank()) return "HTTP " + response.statusCode();
+        return body.length() > 300 ? body.substring(0, 300) + "…" : body;
+    }
+
     // Wire shapes, mirrored only as far as this addon needs them.
     private record LoginBody(String email, String password) {}
+
+    private record ApplyVendorBody(
+            String name, String displayName,
+            @Nullable String homepage, String termsVersion) {}
+
+    private record CreateKitBody(
+            String vendorName, String kitId, String displayName,
+            @Nullable String description, @Nullable String license, @Nullable String homepage,
+            long priceCents, @Nullable String currency, @Nullable Integer licenseTermDays) {}
+
+    private record RejectBody(String reason) {}
 
     private record AccountBody(String accountId, String email,
             @Nullable String displayName, String status) {}

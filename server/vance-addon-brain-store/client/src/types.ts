@@ -80,3 +80,89 @@ export interface WithdrawalNotice {
   /** Which wording is in force. Null when the notice is switched off. */
   version?: string | null;
 }
+
+// ──────────────────── developer ────────────────────
+
+export type VendorStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+/** What somebody accepts to become a vendor. */
+export interface VendorTerms {
+  version: string;
+  text: string;
+}
+
+/** What the store keeps of a sale — shown before anything is priced. */
+export interface StoreFees {
+  percent: number;
+  minimumFeeCents: number;
+  minimumPriceCents: number;
+}
+
+export interface Vendor {
+  name: string;
+  displayName: string;
+  homepage?: string | null;
+  status: VendorStatus;
+  termsVersion?: string | null;
+  rejectionReason?: string | null;
+}
+
+/** One step of a release request. This is where a refusal is read. */
+export interface ReleaseRound {
+  no: number;
+  at?: string | null;
+  source: 'VENDOR' | 'OPERATOR' | 'MECHANICAL' | 'AI';
+  verdict: 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'WITHDRAWN';
+  actor?: string | null;
+  message?: string | null;
+}
+
+export interface ReleaseRequest {
+  requestId: string;
+  vendorName: string;
+  kitId: string;
+  version: string;
+  status: 'OPEN' | 'PUBLISHED' | 'REJECTED' | 'WITHDRAWN';
+  updatedAt?: string | null;
+  rounds: ReleaseRound[];
+}
+
+/** A catalogue entry as its own vendor sees it. */
+export interface VendorKit {
+  vendorName: string;
+  kitId: string;
+  displayName: string;
+  description?: string | null;
+  priceCents: number;
+  currency?: string | null;
+  version?: string | null;
+}
+
+export interface DeveloperView {
+  sourceId: string;
+  connected: boolean;
+  terms?: VendorTerms | null;
+  fees?: StoreFees | null;
+  vendors: Vendor[];
+  kits: VendorKit[];
+  requests: ReleaseRequest[];
+  /** Why the store could not be asked. */
+  problem?: string | null;
+}
+
+// ──────────────────── operator ────────────────────
+
+/** A release as the operator's queue shows it. */
+export interface QueuedRelease {
+  vendorName: string;
+  kitId: string;
+  version: string;
+  status: string;
+  submittedAt?: string | null;
+  rejectionReason?: string | null;
+}
+
+export interface OperatorView {
+  pendingVendors: Vendor[];
+  submittedReleases: QueuedRelease[];
+}

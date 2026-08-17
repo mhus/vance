@@ -5,6 +5,8 @@ import {
   buy, connect, disconnect, install, loadOverview, loadReviews,
   loadWithdrawalNotice, submitReview,
 } from './api';
+import DeveloperPanel from './DeveloperPanel.vue';
+import OperatorPanel from './OperatorPanel.vue';
 import type {
   EntryState, StoreEntry, StoreReview, StoreSourceView, WithdrawalNotice,
 } from './types';
@@ -25,6 +27,23 @@ const tabs: { key: 'ALL' | EntryState; label: string }[] = [
 ];
 
 const projectId = computed(() => props.projectId ?? '_tenant');
+
+/**
+ * Three audiences on one screen: someone acquiring kits, someone
+ * publishing them, someone running the store. Separate top-level modes
+ * rather than more tabs in the entry list — they share nothing but the
+ * library they point at.
+ */
+const modes = [
+  { key: 'STORE', label: 'Store' },
+  { key: 'DEVELOPER', label: 'Developer' },
+  { key: 'OPERATOR', label: 'Operator' },
+] as const;
+const mode = ref<'STORE' | 'DEVELOPER' | 'OPERATOR'>('STORE');
+
+/** Which library the developer and operator panels act on. */
+const activeSource = ref('');
+const sourceIds = computed(() => views.value.map((view) => view.sourceId));
 
 const views = ref<StoreSourceView[]>([]);
 const activeTab = ref<'ALL' | EntryState>('ALL');
@@ -60,6 +79,9 @@ async function load(): Promise<void> {
   loading.value = true;
   try {
     views.value = await loadOverview(projectId.value);
+    if (!activeSource.value && views.value.length) {
+      activeSource.value = views.value[0].sourceId;
+    }
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Could not load the store.';
   } finally {
@@ -254,6 +276,38 @@ onMounted(load);
 
 <template>
   <div class="flex flex-col gap-4">
+    <div class="flex gap-2 items-center">
+      <VButton
+        v-for="entry in modes"
+        :key="entry.key"
+        size="sm"
+        :variant="mode === entry.key ? 'primary' : 'secondary'"
+        :outline="mode !== entry.key"
+        @click="mode = entry.key"
+      >
+        {{ entry.label }}
+      </VButton>
+      <select
+        v-if="mode !== 'STORE' && sourceIds.length > 1"
+        v-model="activeSource"
+        class="ml-2 text-sm"
+      >
+        <option v-for="id in sourceIds" :key="id" :value="id">{{ id }}</option>
+      </select>
+    </div>
+
+    <DeveloperPanel
+      v-if="mode === 'DEVELOPER' && activeSource"
+      :project-id="projectId"
+      :source-id="activeSource"
+    />
+    <OperatorPanel
+      v-else-if="mode === 'OPERATOR' && activeSource"
+      :project-id="projectId"
+      :source-id="activeSource"
+    />
+
+    <template v-else>
     <VAlert v-if="error" variant="error">{{ error }}</VAlert>
     <VAlert v-if="notice" variant="info">{{ notice }}</VAlert>
 
@@ -469,5 +523,6 @@ onMounted(load);
         </div>
       </div>
     </VCard>
+    </template>
   </div>
 </template>

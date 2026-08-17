@@ -51,7 +51,7 @@
         <lombok.version>1.18.46</lombok.version>
         <spring.boot.version>4.1.0</spring.boot.version>
         <langchain4j.version>1.18.1</langchain4j.version>
-        <langgraph4j.version>1.8.23</langgraph4j.version>
+        <langgraph4j.version>1.8.24</langgraph4j.version>
         <picocli.version>4.7.7</picocli.version>
         <jspecify.version>1.0.1</jspecify.version>
         <jjwt.version>0.13.0</jjwt.version>
@@ -60,7 +60,7 @@
         <lanterna.version>3.1.5</lanterna.version>
         <graaljs.version>25.2.4</graaljs.version>
         <jgit.version>7.7.1.202607240634-r</jgit.version>
-        <anthropic.sdk.version>2.52.0</anthropic.sdk.version>
+        <anthropic.sdk.version>2.54.0</anthropic.sdk.version>
         <!-- swagger-parser 2.x supports both OpenAPI 3.x and Swagger 2.x. Used by
              RestApiToolPackFactory to materialise REST-API packs into Vance Tools. -->
         <swagger.parser.version>2.1.46</swagger.parser.version>

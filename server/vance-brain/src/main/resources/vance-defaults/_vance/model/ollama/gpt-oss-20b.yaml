@@ -1,6 +1,11 @@
 wireName: gpt-oss:20b
 contextWindowTokens: 131072
 defaultMaxOutputTokens: 4096
+# Measured 2026-08-16: this model scores 44/68 under SMALL and 49/68 under
+# LARGE — the smallest model in the local series prefers the long prompt
+# too, like the other three (+4 qwen3.6/35B, +5 gemma4/31B, +9
+# muse-glimmer/30B). Kept SMALL while the small-tier branch is reworked;
+# the branch is what needs fixing, not the classification.
 size: SMALL
 timeoutSeconds: 600
 stripThinkTags: true

@@ -1677,6 +1677,16 @@ export default {
       license: 'Licence',
       licensedTo: 'Licensed to',
       licenseExpires: 'Licence expires',
+      licenceExpired:
+        'The licence has expired. The kit stays installed and keeps working; only updates stop.',
+      licenceExpiringSoon: 'Licence expires on {date}.',
+      signature: {
+        verified: 'signed',
+        verifiedHelp: 'Origin was checked at install time and was valid.',
+        failed: 'bad signature',
+        failedHelp:
+          'Signature verification failed, but the source permits that. Origin and content are unverified.',
+      },
       path: 'Path',
       branch: 'Branch',
       commit: 'Commit',
@@ -1690,6 +1700,13 @@ export default {
       promote: 'Develop this kit',
       uninstall: 'Uninstall',
       updateAll: 'Update all',
+      library: {
+        title: 'From your library',
+        loading: 'Loading your library…',
+        choose: 'Use this',
+        alreadyInstalled: '(installed)',
+        notDeliverable: 'Your licence does not currently entitle any published version.',
+      },
       confirmUninstall:
         'Uninstall kit "{name}"? The record goes; the files stay for now.',
       confirmUninstallPrune:

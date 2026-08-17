@@ -33,6 +33,7 @@ import {
   type KitExportRequestDto,
   type KitConfigDto,
   type KitInstalledRecordDto,
+  type KitLibraryEntryDto,
   type KitOriginDto,
   type ProjectDto,
   type ProjectGroupSummary,
@@ -582,6 +583,8 @@ function openKitDialog(mode: KitDialogMode, origin?: KitOriginDto): void {
     kitForm.branch = prefill.branch ?? '';
   }
   showKitDialog.value = true;
+  // Only for install: update and export already know their source.
+  if (mode === 'install') void loadLibrary();
 }
 
 /**
@@ -599,6 +602,37 @@ function updateInstalledKit(record: KitInstalledRecordDto): void {
  * no vault passphrase — because those differ per kit and cannot be
  * meaningfully asked for once; a kit that needs them is updated singly.
  */
+// ── library picker ───────────────────────────────────────────────────
+//
+// Only shown when a library actually answers. A tenant with no libraries
+// configured — the common case today — sees the plain url form and no
+// hint that something is missing.
+const libraryEntries = ref<KitLibraryEntryDto[]>([]);
+const libraryLoading = ref(false);
+
+async function loadLibrary(): Promise<void> {
+  if (selection.value.kind !== 'project') return;
+  libraryEntries.value = [];
+  libraryLoading.value = true;
+  try {
+    libraryEntries.value = await kitState.loadLibrary(
+      selection.value.name, kitForm.token || undefined);
+  } catch {
+    // Not reachable, not configured, no token — all of them mean the same
+    // thing here: no picker. The url form is still there.
+  } finally {
+    libraryLoading.value = false;
+  }
+}
+
+/** Fill the source fields from a library row, so nothing has to be typed. */
+function pickFromLibrary(entry: KitLibraryEntryDto): void {
+  kitForm.url = entry.sourceUrl;
+  kitForm.path = entry.kitId;
+  kitForm.branch = '';
+  kitForm.commit = '';
+}
+
 async function updateAllKits(): Promise<void> {
   if (selection.value.kind !== 'project') return;
   banner.value = null;
@@ -608,6 +642,24 @@ async function updateAllKits(): Promise<void> {
   } catch {
     /* error already in kitState.error */
   }
+}
+
+/**
+ * Where a purchased kit stands: expired, close to it, or neither.
+ *
+ * <p>Kits without a licence date — everything from git — return null and
+ * render nothing at all.
+ */
+function licenceExpiry(record: KitInstalledRecordDto): 'expired' | 'soon' | null {
+  const raw = record.descriptor?.licenseExpiresAt;
+  if (!raw) return null;
+  const expires = new Date(raw).getTime();
+  if (Number.isNaN(expires)) return null;
+  const now = Date.now();
+  if (expires <= now) return 'expired';
+  // Four weeks: long enough to renew without hurry, short enough that the
+  // notice still means something when it appears.
+  return expires - now <= 28 * 24 * 60 * 60 * 1000 ? 'soon' : null;
 }
 
 async function uninstallKit(record: KitInstalledRecordDto): Promise<void> {
@@ -1262,12 +1314,41 @@ const combinedError = computed<string | null>(() =>
             :key="record.id"
             class="flex flex-col gap-1 border-b border-base-300 pb-2 last:border-b-0"
           >
-            <div class="flex items-baseline justify-between">
+            <div class="flex items-baseline justify-between gap-2">
               <span class="font-semibold">{{ record.kit.name }}</span>
-              <span v-if="record.kit.version" class="opacity-60 text-xs">
-                {{ $t('scopes.kit.versionPrefix', { version: record.kit.version }) }}
-              </span>
+              <div class="flex items-center gap-2 shrink-0">
+                <span
+                  v-if="record.signatureStatus === 'VERIFIED'"
+                  class="text-xs opacity-70"
+                  :title="$t('scopes.kit.signature.verifiedHelp')"
+                >✓ {{ $t('scopes.kit.signature.verified') }}</span>
+                <!-- Only FAILED is called out. `unsigned` is the normal state
+                     for kits from git and flagging it would train people to
+                     ignore the badge. -->
+                <span
+                  v-else-if="record.signatureStatus === 'FAILED'"
+                  class="text-xs text-warning"
+                  :title="$t('scopes.kit.signature.failedHelp')"
+                >⚠ {{ $t('scopes.kit.signature.failed') }}</span>
+                <span v-if="record.kit.version" class="opacity-60 text-xs">
+                  {{ $t('scopes.kit.versionPrefix', { version: record.kit.version }) }}
+                </span>
+              </div>
             </div>
+            <!-- An expired licence stops updates; it does not take anything
+                 away, so this is a note and not an error. -->
+            <VAlert
+              v-if="licenceExpiry(record) === 'expired'"
+              variant="warning"
+              class="text-xs"
+            >
+              <span>{{ $t('scopes.kit.licenceExpired') }}</span>
+            </VAlert>
+            <div
+              v-else-if="licenceExpiry(record) === 'soon'"
+              class="text-xs opacity-70"
+            >{{ $t('scopes.kit.licenceExpiringSoon', {
+                date: record.descriptor?.licenseExpiresAt }) }}</div>
             <div v-if="record.kit.description" class="opacity-80">{{ record.kit.description }}</div>
             <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs opacity-80">
               <dt v-if="record.descriptor?.vendor" class="opacity-60">
@@ -1725,6 +1806,49 @@ const combinedError = computed<string | null>(() =>
         <VAlert v-if="kitState.error.value" variant="error">
           <span>{{ kitState.error.value }}</span>
         </VAlert>
+        <!-- Library picker: only rendered when a library answered. With
+             none configured there is nothing to show and nothing to
+             explain. -->
+        <div
+          v-if="kitDialogMode === 'install' && (libraryLoading || libraryEntries.length > 0)"
+          class="flex flex-col gap-2 border border-base-300 rounded p-3"
+        >
+          <div class="text-sm font-semibold">{{ $t('scopes.kit.library.title') }}</div>
+          <div v-if="libraryLoading" class="text-xs opacity-70">
+            {{ $t('scopes.kit.library.loading') }}
+          </div>
+          <div
+            v-for="entry in libraryEntries"
+            :key="entry.sourceId + '/' + entry.kitId"
+            class="flex items-center gap-2 text-sm"
+          >
+            <div class="flex-1 min-w-0">
+              <div class="flex items-baseline gap-2">
+                <span class="font-medium truncate">{{ entry.displayName }}</span>
+                <span v-if="entry.version" class="text-xs opacity-60">
+                  {{ $t('scopes.kit.versionPrefix', { version: entry.version }) }}
+                </span>
+                <span v-if="entry.installed" class="text-xs opacity-60">
+                  {{ $t('scopes.kit.library.alreadyInstalled') }}
+                </span>
+              </div>
+              <div v-if="entry.vendor || entry.license" class="text-xs opacity-60 truncate">
+                {{ [entry.vendor, entry.license].filter(Boolean).join(' · ') }}
+              </div>
+            </div>
+            <!-- Owned but not deliverable stays visible and disabled: hiding
+                 it would look like the entitlement vanished. -->
+            <VButton
+              variant="ghost"
+              size="sm"
+              :disabled="!entry.downloadable"
+              :title="entry.downloadable
+                ? undefined : $t('scopes.kit.library.notDeliverable')"
+              @click="pickFromLibrary(entry)"
+            >{{ $t('scopes.kit.library.choose') }}</VButton>
+          </div>
+        </div>
+
         <VInput
           v-model="kitForm.url"
           :label="$t('scopes.kit.dialog.repoUrl')"

@@ -5,6 +5,7 @@ import de.mhus.vance.api.kit.KitExportRequestDto;
 import de.mhus.vance.api.kit.KitImportMode;
 import de.mhus.vance.api.kit.KitImportRequestDto;
 import de.mhus.vance.api.kit.KitInstalledRecordDto;
+import de.mhus.vance.api.kit.KitLibraryEntryDto;
 import de.mhus.vance.api.kit.KitManifestDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.brain.permission.RequestAuthority;
@@ -49,6 +50,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class KitAdminController {
 
     private final KitService kitService;
+    private final KitLibraryService libraryService;
     private final RequestAuthority authority;
 
     /** The kits installed in this project, in layer order. */
@@ -173,6 +175,27 @@ public class KitAdminController {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
         try {
             return kitService.uninstall(tenant, projectId, kitId, prune);
+        } catch (KitException e) {
+            throw kitError(e);
+        }
+    }
+
+    /**
+     * What this tenant may install from their configured libraries.
+     *
+     * <p>Fetched on request, never in the background: a library is a
+     * remote service, and browsing one should not be something a
+     * Vancetope install does on its own schedule.
+     */
+    @GetMapping("/{projectId}/library")
+    public List<KitLibraryEntryDto> library(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestParam(name = "token", required = false) @Nullable String token,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        try {
+            return libraryService.list(tenant, projectId, token);
         } catch (KitException e) {
             throw kitError(e);
         }

@@ -5,6 +5,7 @@ import {
   type KitExportRequestDto,
   type KitImportRequestDto,
   type KitInstalledRecordDto,
+  type KitLibraryEntryDto,
   type KitManifestDto,
   type KitOperationResultDto,
 } from '@vance/generated';
@@ -36,6 +37,7 @@ export function useKitAdmin(): {
   updateAll: (projectId: string, prune: boolean) => Promise<KitOperationResultDto[]>;
   uninstall: (projectId: string, kitId: string, prune: boolean) => Promise<KitOperationResultDto>;
   promote: (projectId: string, kitId: string) => Promise<KitManifestDto>;
+  loadLibrary: (projectId: string, token?: string) => Promise<KitLibraryEntryDto[]>;
   loadConfig: (projectId: string, kitId: string) => Promise<KitConfigDto>;
   saveConfig: (projectId: string, kitId: string, config: KitConfigDto) => Promise<KitConfigDto>;
   clear: () => void;
@@ -182,6 +184,24 @@ export function useKitAdmin(): {
     }, 'Failed to make this project the kit source.');
   }
 
+  /**
+   * What the tenant may install from their libraries. Fetched when the
+   * dialog opens, never on a schedule — a library is a remote service.
+   */
+  async function loadLibrary(
+    projectId: string, token?: string,
+  ): Promise<KitLibraryEntryDto[]> {
+    error.value = null;
+    try {
+      const query = token ? `?token=${encodeURIComponent(token)}` : '';
+      return await brainFetch<KitLibraryEntryDto[]>(
+        'GET', `admin/kits/${encodeURIComponent(projectId)}/library${query}`);
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to load your kit library.';
+      throw e;
+    }
+  }
+
   async function loadConfig(projectId: string, kitId: string): Promise<KitConfigDto> {
     // Reads do not go through runMutation (no reload, no busy flag), but
     // they must still surface: the caller opens a dialog on success and
@@ -244,6 +264,7 @@ export function useKitAdmin(): {
     updateAll,
     uninstall,
     promote,
+    loadLibrary,
     loadConfig,
     saveConfig,
     clear,

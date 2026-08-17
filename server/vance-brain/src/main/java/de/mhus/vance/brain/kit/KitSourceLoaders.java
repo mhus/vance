@@ -6,6 +6,7 @@ import de.mhus.vance.api.kit.KitSourceDto;
 import de.mhus.vance.api.kit.KitSourceType;
 import de.mhus.vance.shared.kit.KitException;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +27,7 @@ public class KitSourceLoaders {
 
     private final KitSourceRegistry sources;
     private final KitSignatureGate signatureGate;
+    private final KitLicenseGate licenseGate;
     private final List<KitSourceLoader> loaders;
 
     /**
@@ -68,6 +70,10 @@ public class KitSourceLoaders {
         // inherit passes through again with its own source's policy.
         KitSignatureStatus signature =
                 signatureGate.enforce(loaded.root(), loaded.descriptor(), config);
+        // Genuine and permitted are separate questions, asked in that order:
+        // there is no point checking who a kit belongs to before knowing
+        // whether the answer can be trusted.
+        licenseGate.enforce(loaded.descriptor(), signature, tenantId, config, Instant.now());
         return new LoadResult(loaded, config, signature);
     }
 

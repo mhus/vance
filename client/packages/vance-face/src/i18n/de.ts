@@ -1684,6 +1684,16 @@ export default {
       license: 'Lizenz',
       licensedTo: 'Lizenziert für',
       licenseExpires: 'Lizenz läuft ab',
+      licenceExpired:
+        'Die Lizenz ist abgelaufen. Das Kit bleibt installiert und funktioniert; nur Updates gibt es nicht mehr.',
+      licenceExpiringSoon: 'Lizenz läuft am {date} ab.',
+      signature: {
+        verified: 'signiert',
+        verifiedHelp: 'Herkunft wurde beim Installieren geprüft und war gültig.',
+        failed: 'Signatur ungültig',
+        failedHelp:
+          'Die Signaturprüfung schlug fehl, die Quelle erlaubt das aber. Herkunft und Inhalt sind ungeprüft.',
+      },
       path: 'Pfad',
       branch: 'Branch',
       commit: 'Commit',
@@ -1697,6 +1707,13 @@ export default {
       promote: 'Weiterentwickeln',
       uninstall: 'Deinstallieren',
       updateAll: 'Alle aktualisieren',
+      library: {
+        title: 'Aus deiner Bibliothek',
+        loading: 'Bibliothek wird geladen…',
+        choose: 'Übernehmen',
+        alreadyInstalled: '(installiert)',
+        notDeliverable: 'Deine Lizenz berechtigt derzeit zu keiner veröffentlichten Version.',
+      },
       confirmUninstall:
         'Kit „{name}“ deinstallieren? Der Eintrag wird entfernt; die Dateien bleiben zunächst erhalten.',
       confirmUninstallPrune:

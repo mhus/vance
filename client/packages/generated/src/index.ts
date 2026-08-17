@@ -112,6 +112,7 @@ export * from './kit/KitImportMode';
 export * from './kit/KitImportRequestDto';
 export * from './kit/KitInheritDto';
 export * from './kit/KitInstalledRecordDto';
+export * from './kit/KitLibraryEntryDto';
 export * from './kit/KitManifestDto';
 export * from './kit/KitMetadataDto';
 export * from './kit/KitOperationResultDto';

@@ -118,6 +118,20 @@ class StoreOverviewServiceTest {
     }
 
     @Test
+    void anOwnedKit_keepsThePriceFromTheCatalogue() {
+        // Same reason as the score: the library listing carries neither, and
+        // somebody comparing a second seat still wants to see what it costs.
+        givenSignedIn();
+        when(client.catalogue(any())).thenReturn(List.of(catalogue("security", "2.0.0")));
+        when(library.list(TENANT, PROJECT, USER)).thenReturn(List.of(owned("2.0.0")));
+        when(recordStore.list(TENANT, PROJECT)).thenReturn(List.of());
+
+        StoreOverviewService.Entry entry = firstEntries().get(0);
+        assertThat(entry.priceCents()).isEqualTo(1990L);
+        assertThat(entry.currency()).isEqualTo("EUR");
+    }
+
+    @Test
     void aRecordFromAnotherSource_doesNotCountAsInstalled() {
         // Two libraries can carry a kit with the same path. Matching on the
         // path alone would report one as installed because the other is.
@@ -213,7 +227,7 @@ class StoreOverviewServiceTest {
     private static StoreClient.CatalogueEntry catalogue(String kitId, String version) {
         return new StoreClient.CatalogueEntry(
                 "acme", kitId, "Security", "a kit", "MIT", null, version, null,
-                new StoreClient.Score(4.5d, 12L));
+                new StoreClient.Score(4.5d, 12L), 1990L, "EUR", 365);
     }
 
     private static KitLibraryEntryDto owned(String version) {

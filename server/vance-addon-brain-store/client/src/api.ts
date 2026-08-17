@@ -2,6 +2,7 @@ import { brainFetch } from '@vance/shared';
 import type {
   KitOperationResult,
   StoreConnection,
+  StoreOrder,
   StoreReview,
   StoreSourceView,
 } from './types';
@@ -82,5 +83,25 @@ export async function submitReview(
 ): Promise<StoreReview> {
   return brainFetch<StoreReview>('POST', `${base(projectId)}/review`, {
     body: { sourceId, vendor, kitId, stars, text },
+  });
+}
+
+/**
+ * Buy a kit.
+ *
+ * Asks for the store password, unlike everything else here: the store
+ * accepts this installation's link token for leaving a review and for
+ * nothing that spends money. The brain uses it once and closes the session.
+ */
+export async function buy(
+  projectId: string,
+  sourceId: string,
+  vendor: string,
+  kitId: string,
+  email: string,
+  password: string,
+): Promise<StoreOrder> {
+  return brainFetch<StoreOrder>('POST', `${base(projectId)}/buy`, {
+    body: { sourceId, vendor, kitId, email, password },
   });
 }

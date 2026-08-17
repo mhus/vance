@@ -66,6 +66,10 @@ public class StoreAddonController {
             String sourceId, String vendor, String kitId,
             int stars, @Nullable String text) {}
 
+    public record BuyRequest(
+            String sourceId, String vendor, String kitId,
+            String email, String password) {}
+
     /** The four lists, per configured library. */
     @GetMapping("/{projectId}/overview")
     public List<StoreOverviewService.SourceView> overview(
@@ -154,6 +158,36 @@ public class StoreAddonController {
         try {
             return kitService.importKit(
                     tenant, importRequest, actor(request), SettingWriteOrigin.USER);
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /**
+     * Buy a kit.
+     *
+     * <p>Asks for the store password, unlike everything else here — the
+     * store accepts a link token for reviewing and for nothing that spends
+     * money. The password is used once and discarded, exactly as when
+     * signing in, and the session is closed straight afterwards.
+     */
+    @PostMapping("/{projectId}/buy")
+    public StoreClient.Order buy(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestBody BuyRequest body,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, body.sourceId());
+        try {
+            StoreClient.Session session =
+                    storeClient.login(source, body.email(), body.password());
+            try {
+                return storeClient.order(source, session, body.vendor(), body.kitId());
+            } finally {
+                storeClient.logout(source, session);
+            }
         } catch (KitException e) {
             throw storeError(e);
         }

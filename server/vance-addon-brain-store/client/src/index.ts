@@ -8,12 +8,14 @@ export {
   install,
   loadReviews,
   submitReview,
+  buy,
 } from './api';
 export type {
   EntryState,
   KitOperationResult,
   StoreConnection,
   StoreEntry,
+  StoreOrder,
   StoreReview,
   StoreSourceView,
 } from './types';

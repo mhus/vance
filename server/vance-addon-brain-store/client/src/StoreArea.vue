@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { VAlert, VButton, VCard, VEmptyState, VInput, VTextarea } from '@vance/components';
-import { connect, disconnect, install, loadOverview, loadReviews, submitReview } from './api';
+import {
+  buy, connect, disconnect, install, loadOverview, loadReviews, submitReview,
+} from './api';
 import type { EntryState, StoreEntry, StoreReview, StoreSourceView } from './types';
 
 const props = defineProps<{ projectId?: string }>();
@@ -28,6 +30,11 @@ const busyPath = ref<string>('');
 const error = ref('');
 const notice = ref('');
 
+// Buying asks for the store password again — the store takes a link token
+// for reviewing and for nothing that spends money.
+const buyingPath = ref<string>('');
+const buyPassword = ref('');
+
 // Review panel, per kit. Only one is open at a time.
 const reviewingPath = ref<string>('');
 const reviews = ref<StoreReview[]>([]);
@@ -39,6 +46,9 @@ const signingIn = ref<string>('');
 const email = ref('');
 const password = ref('');
 const label = ref('');
+
+// Reused for buying, so somebody who just signed in does not retype it.
+const buyerEmail = ref('');
 
 async function load(): Promise<void> {
   error.value = '';
@@ -74,6 +84,7 @@ async function submitSignIn(sourceId: string): Promise<void> {
       projectId.value, sourceId, email.value, password.value, label.value || undefined,
     );
     notice.value = `Signed in as ${connection.accountId}.`;
+    buyerEmail.value = email.value;
     signingIn.value = '';
     password.value = '';
     await load();
@@ -152,6 +163,43 @@ async function sendReview(entry: StoreEntry): Promise<void> {
   }
 }
 
+function openBuy(entry: StoreEntry): void {
+  buyingPath.value = entry.path;
+  buyPassword.value = '';
+}
+
+async function confirmBuy(entry: StoreEntry): Promise<void> {
+  error.value = '';
+  notice.value = '';
+  busyPath.value = entry.path;
+  try {
+    const order = await buy(
+      projectId.value, entry.sourceId, entry.vendor, entry.kitId,
+      buyerEmail.value, buyPassword.value,
+    );
+    if (order.redirectUrl) {
+      // A priced kit with a real provider. Nothing is owned yet.
+      notice.value = 'Continue the payment in the window that just opened.';
+      window.open(order.redirectUrl, '_blank', 'noopener');
+    } else {
+      notice.value = `Done — ${entry.displayName} is yours.`;
+    }
+    buyingPath.value = '';
+    buyPassword.value = '';
+    await load();
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not complete the order.';
+  } finally {
+    busyPath.value = '';
+  }
+}
+
+/** `19.90 EUR`, or `Free`. */
+function priceOf(entry: StoreEntry): string {
+  if (entry.priceCents <= 0) return 'Free';
+  return `${(entry.priceCents / 100).toFixed(2)} ${entry.currency ?? ''}`.trim();
+}
+
 /** `★★★★☆` — plain text, so it needs no icon set and copies as what it is. */
 function starsOf(count: number): string {
   const filled = Math.round(count);
@@ -162,6 +210,8 @@ function starsOf(count: number): string {
 function actionOf(entry: StoreEntry): string | null {
   if (entry.state === 'OWNED') return 'Install';
   if (entry.state === 'UPDATABLE') return 'Update';
+  // An offered kit is acquired first; free or not, it becomes a purchase.
+  if (entry.state === 'OFFERED') return entry.priceCents > 0 ? 'Buy' : 'Get';
   return null;
 }
 
@@ -290,6 +340,36 @@ onMounted(load);
               </button>
             </div>
 
+            <!--
+              Buying needs the password again. The store takes this
+              installation's link token for a review and for nothing that
+              spends money.
+            -->
+            <div v-if="buyingPath === entry.path" class="mt-3 flex flex-col gap-2">
+              <VInput v-model="buyerEmail" label="Store email" type="email" />
+              <VInput
+                v-model="buyPassword"
+                label="Store password"
+                type="password"
+                autocomplete="current-password"
+                :help="entry.licenseTermDays
+                  ? `Updates for ${entry.licenseTermDays} days. What you install keeps working after that.`
+                  : 'Updates without a time limit.'"
+              />
+              <div class="flex gap-2">
+                <VButton
+                  size="sm"
+                  :disabled="busyPath === entry.path"
+                  @click="confirmBuy(entry)"
+                >
+                  {{ busyPath === entry.path ? '…' : `Confirm — ${priceOf(entry)}` }}
+                </VButton>
+                <VButton size="sm" variant="secondary" outline @click="buyingPath = ''">
+                  Cancel
+                </VButton>
+              </div>
+            </div>
+
             <div v-if="reviewingPath === entry.path" class="mt-3 pl-2 border-l">
               <div v-for="review in reviews" :key="review.reviewId" class="mb-2">
                 <div class="text-xs opacity-70">
@@ -329,8 +409,17 @@ onMounted(load);
           </div>
           <div class="flex items-center gap-2 shrink-0">
             <span class="text-xs opacity-60">{{ entry.state }}</span>
+            <span class="text-xs">{{ priceOf(entry) }}</span>
             <VButton
-              v-if="actionOf(entry)"
+              v-if="entry.state === 'OFFERED'"
+              size="sm"
+              :disabled="busyPath === entry.path || !view.accountId"
+              @click="openBuy(entry)"
+            >
+              {{ actionOf(entry) }}
+            </VButton>
+            <VButton
+              v-else-if="actionOf(entry)"
               size="sm"
               :disabled="busyPath === entry.path || !entry.downloadable"
               @click="installEntry(entry)"

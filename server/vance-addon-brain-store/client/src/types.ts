@@ -26,6 +26,10 @@ export interface StoreEntry {
   downloadable: boolean;
   averageStars: number;
   ratingCount: number;
+  /** Smallest currency unit. Zero means free. */
+  priceCents: number;
+  currency?: string | null;
+  licenseTermDays?: number | null;
   state: EntryState;
 }
 
@@ -59,4 +63,13 @@ export interface KitOperationResult {
   kitId?: string;
   mode?: string;
   warnings?: string[];
+}
+
+/** What an order came to. */
+export interface StoreOrder {
+  orderId: string;
+  status: string;
+  /** Where to go and pay. Null when there was nothing to pay. */
+  redirectUrl?: string | null;
+  failureReason?: string | null;
 }

@@ -70,6 +70,9 @@ public class StoreOverviewService {
             boolean downloadable,
             double averageStars,
             long ratingCount,
+            long priceCents,
+            @Nullable String currency,
+            @Nullable Integer licenseTermDays,
             EntryState state) {}
 
     /** One store, as far as this user is concerned. */
@@ -130,10 +133,12 @@ public class StoreOverviewService {
         Map<String, String> installedVersions = installedVersions(tenantId, projectId, source);
 
         Map<String, StoreClient.Score> scores = new LinkedHashMap<>();
+        Map<String, StoreClient.CatalogueEntry> offeredByPath = new LinkedHashMap<>();
         Map<String, Entry> byPath = new LinkedHashMap<>();
         for (StoreClient.CatalogueEntry entry : offered) {
             String path = path(entry.vendorName(), entry.kitId());
             if (entry.score() != null) scores.put(path, entry.score());
+            offeredByPath.put(path, entry);
             byPath.put(path, new Entry(
                     source.getId(), source.getUrl(), path,
                     entry.vendorName(), entry.kitId(), entry.displayName(),
@@ -141,6 +146,7 @@ public class StoreOverviewService {
                     entry.version(), null, null, true,
                     entry.score() == null ? 0d : entry.score().average(),
                     entry.score() == null ? 0L : entry.score().count(),
+                    entry.priceCents(), entry.currency(), entry.licenseTermDays(),
                     EntryState.OFFERED));
         }
         // Owned entries win over catalogue ones: they carry the licence
@@ -162,6 +168,14 @@ public class StoreOverviewService {
                             ? scores.get(entry.getPath()).average() : 0d,
                     scores.containsKey(entry.getPath())
                             ? scores.get(entry.getPath()).count() : 0L,
+                    // Price too: an owned kit still shows what it costs,
+                    // which is what somebody comparing a second seat wants.
+                    offeredByPath.containsKey(entry.getPath())
+                            ? offeredByPath.get(entry.getPath()).priceCents() : 0L,
+                    offeredByPath.containsKey(entry.getPath())
+                            ? offeredByPath.get(entry.getPath()).currency() : null,
+                    offeredByPath.containsKey(entry.getPath())
+                            ? offeredByPath.get(entry.getPath()).licenseTermDays() : null,
                     stateOf(installed, entry.getVersion())));
         }
 

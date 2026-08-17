@@ -69,7 +69,10 @@ public class StoreClient {
             @Nullable String homepage,
             @Nullable String version,
             @Nullable Instant publishedAt,
-            @Nullable Score score) {}
+            @Nullable Score score,
+            long priceCents,
+            @Nullable String currency,
+            @Nullable Integer licenseTermDays) {}
 
     /**
      * Sign in.
@@ -159,6 +162,46 @@ public class StoreClient {
         } catch (RuntimeException e) {
             throw new KitException("the store returned something that is not a catalogue", e);
         }
+    }
+
+    /** What an order came to. */
+    public record Order(
+            String orderId,
+            String status,
+            @Nullable String redirectUrl,
+            @Nullable String failureReason) {}
+
+    /**
+     * Buy a kit.
+     *
+     * <p>Takes a <b>session</b> token, not a link: spending is a decision
+     * about money and about the account, and the store only accepts a link
+     * for leaving a review. Which is why this asks for the password again
+     * — deliberately, and only here.
+     */
+    public Order order(
+            KitSourceDto source, Session session, String vendor, String kitId) {
+
+        String body = json.writeValueAsString(new OrderBody(vendor, kitId));
+        HttpResponse<String> response = send(HttpRequest.newBuilder(
+                        uri(source, "/store/orders"))
+                .timeout(TIMEOUT)
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + session.token())
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build(), source);
+
+        if (response.statusCode() == 403) {
+            throw new KitException("this store account is not confirmed yet");
+        }
+        if (response.statusCode() == 409) {
+            throw new KitException("the store refused the order: " + response.body());
+        }
+        if (response.statusCode() != 201 && response.statusCode() != 200) {
+            throw new KitException("the store returned HTTP " + response.statusCode()
+                    + " when ordering " + vendor + "/" + kitId);
+        }
+        return read(response.body(), Order.class, source);
     }
 
     /** The reviews of one kit whose text has been cleared. */
@@ -272,4 +315,6 @@ public class StoreClient {
     private record IssuedLinkBody(String linkId, String token, @Nullable String label) {}
 
     private record ReviewBody(int stars, @Nullable String text) {}
+
+    private record OrderBody(String vendorName, String kitId) {}
 }

@@ -97,16 +97,62 @@ public final class DiagramCodec {
      * <p>JSON/YAML diagram bodies ({@code source:} field) are NOT claimed:
      * that shape is indistinguishable from other structured kinds without
      * guessing, and guessing here would mistype other people's documents.
+     *
+     * <p>Only a fence that actually opens a block counts. A
+     * {@code ```mermaid} line that is itself <em>shown</em> — nested inside
+     * a longer outer fence, or indented by four spaces, both of which are
+     * how one writes documentation <em>about</em> Mermaid — is content, not
+     * a marker. Without that distinction the manual explaining how to write
+     * diagrams would be filed as a diagram.
      */
     public static boolean looksLikeDiagram(@Nullable String body) {
         if (body == null || body.isBlank()) return false;
+        String openFence = null;
         for (String line : body.split("\\R")) {
-            Matcher m = CODE_FENCE_OPEN.matcher(line.strip());
-            if (m.matches() && "mermaid".equalsIgnoreCase(m.group(2))) {
+            String candidate = withoutFenceIndent(line);
+            if (candidate == null) continue;
+            Matcher m = CODE_FENCE_OPEN.matcher(candidate);
+            if (!m.matches()) continue;
+            String marker = m.group(1);
+            if (openFence != null) {
+                // Inside a block: only a bare fence of the same character
+                // and at least the same length closes it. Everything else
+                // is the block's content.
+                if (m.group(2).isEmpty()
+                        && marker.charAt(0) == openFence.charAt(0)
+                        && marker.length() >= openFence.length()) {
+                    openFence = null;
+                }
+                continue;
+            }
+            if ("mermaid".equalsIgnoreCase(m.group(2))) {
                 return true;
             }
+            openFence = marker;
         }
         return false;
+    }
+
+    /**
+     * The line without its fence indentation, or {@code null} when it is
+     * indented far enough (4 columns, CommonMark) to be an indented code
+     * block — i.e. an example rather than a fence.
+     */
+    private static @Nullable String withoutFenceIndent(String line) {
+        int column = 0;
+        int i = 0;
+        while (i < line.length() && column < 4) {
+            char c = line.charAt(i);
+            if (c == ' ') {
+                column++;
+            } else if (c == '\t') {
+                column += 4;
+            } else {
+                return line.substring(i);
+            }
+            i++;
+        }
+        return column < 4 ? line.substring(i) : null;
     }
 
     // ── Mime ───────────────────────────────────────────────────────

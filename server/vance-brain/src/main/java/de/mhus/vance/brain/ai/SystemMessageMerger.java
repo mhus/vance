@@ -29,10 +29,13 @@ import dev.langchain4j.model.chat.request.ChatRequest;
  * request and are unaffected.
  *
  * <p>Merging is therefore opt-in per model ({@code mergeSystemMessages}
- * in the model catalog) and applied in the provider layer, never
- * globally: on Anthropic the separation carries real money, so
- * flattening everywhere would trade a working cost optimisation for one
- * broken renderer.
+ * in the model catalog), never unconditional: on Anthropic the
+ * separation carries real money, so flattening everywhere would trade a
+ * working cost optimisation for one broken renderer. It is applied once
+ * for every backend in {@code AbstractChatProvider} — the same renderer
+ * serves the local Ollama API, Ollama Cloud and any OpenAI-compatible
+ * gateway in front of it, so a per-provider wiring would silently miss
+ * two of the three routes.
  *
  * <p>The merge preserves content and order verbatim, joining blocks
  * with a blank line. Ollama reuses its KV prefix by token order, not by

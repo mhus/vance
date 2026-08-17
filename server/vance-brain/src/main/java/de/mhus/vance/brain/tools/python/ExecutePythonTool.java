@@ -44,13 +44,6 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class ExecutePythonTool implements Tool {
 
-    /** @deprecated use {@link PythonHandler#DEFAULT_LABEL}. Kept as an
-     *  alias so existing references keep compiling.
-     *  Label of the default Python RootDir that {@code execute_python}
-     *  creates on demand. Underscore prefix marks it as system-managed
-     *  (same convention as {@code _user_*} / {@code _tenant} projects). */
-    static final String DEFAULT_LABEL = PythonHandler.DEFAULT_LABEL;
-
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
             "properties", Map.of(
@@ -189,11 +182,6 @@ public class ExecutePythonTool implements Tool {
         }
     }
 
-    /**
-     * Find-or-create the default Python RootDir for this project.
-     * Lookup by label first (same idempotency rule as
-     * {@link PythonCreateTool}); only create when absent.
-     */
     private static String requireString(Map<String, Object> params, String key) {
         Object raw = params == null ? null : params.get(key);
         if (!(raw instanceof String s) || s.isBlank()) {

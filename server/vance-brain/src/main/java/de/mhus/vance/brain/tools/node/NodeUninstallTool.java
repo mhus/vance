@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.node;
 
+import de.mhus.vance.brain.tools.workspace.TypedRootDirProvisioner;
 import de.mhus.vance.shared.workspace.NodeHandler;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceException;
@@ -147,11 +148,16 @@ public class NodeUninstallTool implements Tool {
             // installed, and provisioning one just to uninstall from it
             // would be busywork. The message must not send the caller to
             // node_create though: that step is no longer part of any path.
-            return findByLabel(tenantId, projectId, NodeHandler.DEFAULT_LABEL)
-                    .orElseThrow(() -> new ToolException(
-                            "No Node workspace exists in project " + projectId
-                                    + " — nothing is installed, so there is nothing "
-                                    + "to uninstall."));
+            RootDirHandle canonical = TypedRootDirProvisioner.find(
+                    workspaceService, tenantId, projectId,
+                    NodeHandler.TYPE, NodeHandler.DEFAULT_LABEL);
+            if (canonical == null) {
+                throw new ToolException(
+                        "No Node workspace exists in project " + projectId
+                                + " — nothing is installed, so there is nothing "
+                                + "to uninstall.");
+            }
+            return canonical;
         }
         return workspaceService.getRootDir(tenantId, projectId, workingDir.get())
                 .orElseThrow(() -> new ToolException(
@@ -159,15 +165,4 @@ public class NodeUninstallTool implements Tool {
                                 + "' not found in project " + projectId));
     }
 
-    private Optional<RootDirHandle> findByLabel(
-            String tenantId, String projectId, String label) {
-        for (RootDirHandle h : workspaceService.listRootDirs(tenantId, projectId)) {
-            if (NodeHandler.TYPE.equals(h.getType())
-                    && h.getDescriptor() != null
-                    && label.equals(h.getDescriptor().getLabel())) {
-                return Optional.of(h);
-            }
-        }
-        return Optional.empty();
-    }
 }

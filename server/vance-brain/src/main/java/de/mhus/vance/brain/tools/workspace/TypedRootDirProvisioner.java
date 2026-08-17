@@ -55,9 +55,30 @@ public final class TypedRootDirProvisioner {
             String type,
             String label,
             Map<String, Object> metadata) {
+        return ensure(workspace, ctx.tenantId(), ctx.projectId(),
+                StringUtils.defaultIfBlank(ctx.processId(), ctx.sessionId()),
+                ctx.sessionId(), type, label, metadata);
+    }
 
-        String tenantId = ctx.tenantId();
-        String projectId = ctx.projectId();
+    /**
+     * As {@link #ensure(WorkspaceService, ToolInvocationContext, String,
+     * String, Map)}, for callers that are not a tool invocation — the
+     * REST-facing script services carry the same four scope values
+     * without a {@link ToolInvocationContext} around them.
+     *
+     * @param creator process or session id the RootDir is booked to; the
+     *                dir outlives it either way
+     */
+    public static RootDirHandle ensure(
+            WorkspaceService workspace,
+            @Nullable String tenantId,
+            @Nullable String projectId,
+            @Nullable String creator,
+            @Nullable String sessionId,
+            String type,
+            String label,
+            Map<String, Object> metadata) {
+
         if (StringUtils.isBlank(tenantId) || StringUtils.isBlank(projectId)) {
             throw new ToolException("Workspace tools require tenant and project scope");
         }
@@ -67,7 +88,6 @@ public final class TypedRootDirProvisioner {
             return existing;
         }
 
-        String creator = StringUtils.defaultIfBlank(ctx.processId(), ctx.sessionId());
         if (StringUtils.isBlank(creator)) {
             throw new ToolException(
                     "Workspace tool needs a process or session scope to provision a RootDir");
@@ -78,7 +98,7 @@ public final class TypedRootDirProvisioner {
                 .projectId(projectId)
                 .type(type)
                 .creatorProcessId(creator)
-                .sessionId(ctx.sessionId())
+                .sessionId(sessionId)
                 .labelHint(label)
                 // Survives the creating process: the canonical workspace is
                 // per project, not per turn. A venv or node_modules tree is

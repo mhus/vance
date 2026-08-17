@@ -8,5 +8,10 @@ defaultMaxOutputTokens: 8192
 # four local benchmark peers on one prompt branch — gpt-oss:20b was SMALL
 # while the others were LARGE, which made that comparison apples to
 # oranges.
+#
+# `size` carries a second effect: PromptDateBlock.autoFor gives SMALL a
+# day-granular date block where LARGE gets hours. Accepted here — the
+# local models do not need clock precision — but it is why the measured
+# LARGE/SMALL delta is not purely a prompt-branch delta.
 size: SMALL
 timeoutSeconds: 600

@@ -182,5 +182,4 @@ public class NodeInstallTool implements Tool {
                 workspaceService, ctx, NodeHandler.TYPE, NodeHandler.DEFAULT_LABEL,
                 Map.of());
     }
-
 }

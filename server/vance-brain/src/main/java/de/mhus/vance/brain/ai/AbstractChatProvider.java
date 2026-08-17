@@ -17,7 +17,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Concentrates the cross-cutting orchestration each backend has to
  * do — provider-name validation, {@link ModelCatalog} lookup, option
- * gates, {@link StandardAiChat} construction (including the
+ * gates, request-shape workarounds ({@link SystemMessageMerger}),
+ * {@link StandardAiChat} construction (including the
  * {@link LlmResponseSanitizer} decorator wiring), and the uniform
  * {@link AiChatException} wrap on failure — so new cross-cutting
  * concerns (caching policies, trace layers, decorators) land in one
@@ -99,7 +100,8 @@ public abstract class AbstractChatProvider implements AiModelProvider {
                     modelInfo.modelName(), modelInfo.messageParser());
         }
         try {
-            BuiltChat built = buildModels(config, effective, modelInfo);
+            BuiltChat built = mergeSystemMessages(
+                    buildModels(config, effective, modelInfo), modelInfo);
             return new StandardAiChat(
                     config.fullName(),
                     getType(),
@@ -120,6 +122,33 @@ public abstract class AbstractChatProvider implements AiModelProvider {
             throw new AiChatException(
                     "Failed to build " + wireName + " chat for " + config.fullName(), e);
         }
+    }
+
+    /**
+     * Wraps the built pair so consecutive system messages are collapsed
+     * before they go on the wire — for models whose catalog entry asks
+     * for it ({@code mergeSystemMessages}).
+     *
+     * <p>Deliberately in the template, not in one provider: the flag is
+     * a fact about the endpoint that renders the request, and the same
+     * model arrives through more than one backend. Ollama's
+     * {@code glimmer} renderer — the reason the flag exists — serves the
+     * same models through the local Ollama API, through Ollama Cloud, and
+     * through any OpenAI-compatible gateway in front of it. A workaround
+     * wired into a single provider would silently not apply to the other
+     * two, and the symptom (a context overflow) gives no hint why.
+     *
+     * @see SystemMessageMerger
+     */
+    static BuiltChat mergeSystemMessages(BuiltChat built, ModelInfo modelInfo) {
+        if (!modelInfo.mergeSystemMessages()) {
+            return built;
+        }
+        return new BuiltChat(
+                new SystemMessageMergingChatModel(built.sync()),
+                built.streaming() == null
+                        ? null
+                        : new SystemMessageMergingStreamingChatModel(built.streaming()));
     }
 
     /**

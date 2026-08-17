@@ -2,10 +2,9 @@ package de.mhus.vance.brain.tools.python;
 
 import de.mhus.vance.brain.tools.exec.ExecManager;
 import de.mhus.vance.brain.tools.exec.SubmitOptions;
+import de.mhus.vance.brain.tools.workspace.TypedRootDirProvisioner;
 import de.mhus.vance.shared.workspace.PythonHandler;
 import de.mhus.vance.shared.workspace.RootDirHandle;
-import de.mhus.vance.shared.workspace.RootDirSpec;
-import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -41,11 +40,6 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 @Slf4j
 public class PythonExecutionService {
-
-    /** Label of the default Python RootDir created on first
-     *  invocation. Underscore prefix marks it as system-managed
-     *  (same convention as {@code _user_*} / {@code _tenant} projects). */
-    public static final String DEFAULT_LABEL = "_python";
 
     /** Marker file inside the RootDir that records which inline-deps
      *  hash was last successfully installed. Lets us skip the pip
@@ -222,41 +216,16 @@ public class PythonExecutionService {
     }
 
     /**
-     * Idempotent RootDir bootstrap. Same logic as
-     * {@code ExecutePythonTool#ensureDefaultPythonRootDir} — looks up
-     * the project's {@code _python} RootDir by label, creates one with
-     * a fresh venv when absent.
+     * Idempotent RootDir bootstrap — one line, because the find-or-create
+     * rule belongs to {@link TypedRootDirProvisioner} and is shared with
+     * the LLM-facing python tools. Four hand-written copies of it is how
+     * {@code _python} and a user-labelled {@code python} drifted apart.
      */
     private RootDirHandle ensureDefaultPythonRootDir(
             String tenantId, String projectId, String creator, @Nullable String sessionId) {
-        for (RootDirHandle h : workspaceService.listRootDirs(tenantId, projectId)) {
-            if (!PythonHandler.TYPE.equals(h.getType())) continue;
-            String label = h.getDescriptor() == null ? null : h.getDescriptor().getLabel();
-            if (DEFAULT_LABEL.equals(label)) {
-                return h;
-            }
-        }
-        Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put(PythonHandler.META_PYTHON_PATH, PythonHandler.DEFAULT_PYTHON_PATH);
-        RootDirSpec spec = RootDirSpec.builder()
-                .tenantId(tenantId)
-                .projectId(projectId)
-                .type(PythonHandler.TYPE)
-                .creatorProcessId(creator)
-                .sessionId(sessionId)
-                .labelHint(DEFAULT_LABEL)
-                .deleteOnCreatorClose(false)
-                .metadata(metadata)
-                .build();
-        try {
-            RootDirHandle handle = workspaceService.createRootDir(spec);
-            log.info("PythonExecutionService: created default Python RootDir tenant='{}' "
-                    + "project='{}' dirName='{}'", tenantId, projectId, handle.getDirName());
-            return handle;
-        } catch (WorkspaceException e) {
-            throw new RuntimeException(
-                    "Python execute: failed to provision Python RootDir: "
-                            + e.getMessage(), e);
-        }
+        return TypedRootDirProvisioner.ensure(
+                workspaceService, tenantId, projectId, creator, sessionId,
+                PythonHandler.TYPE, PythonHandler.DEFAULT_LABEL,
+                Map.of(PythonHandler.META_PYTHON_PATH, PythonHandler.DEFAULT_PYTHON_PATH));
     }
 }

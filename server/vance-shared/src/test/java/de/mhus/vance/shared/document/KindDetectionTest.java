@@ -84,6 +84,63 @@ class KindDetectionTest {
     }
 
     @Test
+    void looksLikeDiagram_fenceNestedInALongerFence_isNotAMarker() {
+        // A manual that SHOWS how to write a mermaid block wraps it in a
+        // four-backtick fence. Claiming that would file the documentation
+        // about diagrams as a diagram.
+        assertThat(DiagramCodec.looksLikeDiagram("""
+                Write a diagram like this:
+
+                ````markdown
+                ```mermaid
+                flowchart TD
+                ```
+                ````
+                """)).isFalse();
+    }
+
+    @Test
+    void looksLikeDiagram_fourSpaceIndentedFence_isAnExampleNotAMarker() {
+        // Four columns of indent is an indented code block in CommonMark —
+        // the line is shown verbatim, it opens nothing.
+        assertThat(DiagramCodec.looksLikeDiagram("""
+                Example:
+
+                    ```mermaid
+                    flowchart TD
+                    ```
+                """)).isFalse();
+    }
+
+    @Test
+    void looksLikeDiagram_fenceIndentedInsideAListItem_stillCounts() {
+        // Up to three columns is still a fence — a diagram under a bullet
+        // is a real diagram.
+        assertThat(DiagramCodec.looksLikeDiagram("""
+                - the flow:
+
+                  ```mermaid
+                  flowchart TD
+                  ```
+                """)).isTrue();
+    }
+
+    @Test
+    void looksLikeDiagram_afterAClosedCodeBlock_stillCounts() {
+        // The fence tracker must reopen: a closed block leaves no state
+        // behind, so a later mermaid fence is claimed as before.
+        assertThat(DiagramCodec.looksLikeDiagram("""
+                ```json
+                {"a": 1}
+                ```
+
+                ```mermaid
+                flowchart TD
+                ```
+                """)).isTrue();
+    }
+
+    @Test
     void detectKind_ambiguousShortBody_lowestPriorityWins() {
         // The case that makes "first wins" load-bearing: `- a` is a
         // plausible list, checklist and tree at once. Priority decides,

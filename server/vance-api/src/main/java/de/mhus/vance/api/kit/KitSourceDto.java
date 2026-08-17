@@ -48,4 +48,16 @@ public class KitSourceDto {
      * signatures has to bring its own.
      */
     private @Nullable String publicKey;
+
+    /**
+     * Where this library's <b>store front</b> answers, when it differs
+     * from {@link #url}.
+     *
+     * <p>Delivery and store are two processes (see
+     * {@code planning/kit-store.md} §3 S4) but they normally sit behind
+     * one hostname on different path prefixes — {@code /library/…} and
+     * {@code /store/…} — so this stays null for almost every
+     * configuration. Null means "the same host as the library".
+     */
+    private @Nullable String storeUrl;
 }

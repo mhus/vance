@@ -99,9 +99,10 @@ public class KitSourceRegistry {
 
     /**
      * The built-in library entry. Present from the start so a tenant sees
-     * what the default is and can override it by url — the entry being
-     * configured is not the same as the library being reachable, which
-     * needs a loader that does not exist yet.
+     * what the default is and can override it by url.
+     *
+     * <p>No {@code storeUrl}: the default library serves its store front
+     * on the same host, under {@code /store/…}.
      */
     public static KitSourceDto defaultLibrary() {
         return KitSourceDto.builder()

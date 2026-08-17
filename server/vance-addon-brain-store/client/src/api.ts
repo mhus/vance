@@ -1,0 +1,51 @@
+import { brainFetch } from '@vance/shared';
+import type { KitOperationResult, StoreConnection, StoreSourceView } from './types';
+
+function base(projectId: string): string {
+  return `addon/store/${encodeURIComponent(projectId)}`;
+}
+
+/** The four lists, per configured library. */
+export async function loadOverview(projectId: string): Promise<StoreSourceView[]> {
+  return brainFetch<StoreSourceView[]>('GET', `${base(projectId)}/overview`);
+}
+
+/**
+ * Sign in to a store.
+ *
+ * The password goes to the brain, which uses it once against the store and
+ * discards it. No store credential ever comes back here — what returns is
+ * an account id, which is not a secret.
+ */
+export async function connect(
+  projectId: string,
+  sourceId: string,
+  email: string,
+  password: string,
+  label?: string,
+): Promise<StoreConnection> {
+  return brainFetch<StoreConnection>('POST', `${base(projectId)}/connect`, {
+    body: { sourceId, email, password, label },
+  });
+}
+
+/** Forget the credential here. The link at the store survives. */
+export async function disconnect(
+  projectId: string,
+  sourceId: string,
+): Promise<StoreConnection> {
+  return brainFetch<StoreConnection>('POST', `${base(projectId)}/disconnect`, {
+    body: { sourceId },
+  });
+}
+
+/** Install, or update when it is already installed — the brain decides which. */
+export async function install(
+  projectId: string,
+  sourceId: string,
+  path: string,
+): Promise<KitOperationResult> {
+  return brainFetch<KitOperationResult>('POST', `${base(projectId)}/install`, {
+    body: { sourceId, path },
+  });
+}

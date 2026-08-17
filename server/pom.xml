@@ -40,6 +40,7 @@
         <module>vance-addon-brain-binder</module>
         <module>vance-addon-brain-rlang</module>
         <module>vance-addon-brain-tex</module>
+        <module>vance-addon-brain-store</module>
         <module>vance-addon-brain-common-desktop</module>
         <module>vance-brain-all1</module>
         <module>vance-brain-all2</module>

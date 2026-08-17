@@ -1,0 +1,9 @@
+id: store
+version: "@project.version@"
+# Brain-side only. The store itself is a separate service this addon talks
+# to over HTTP; nothing of it runs inside a customer's installation.
+host: brain
+tile:
+  label: Store
+  description: Browse the kit library, sign in and install what you own.
+  minLevel: admin

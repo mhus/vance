@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { VAlert, VButton, VCard, VEmptyState, VInput, VTextarea } from '@vance/components';
+import {
+  VAlert, VButton, VCard, VEmptyState, VInput, VSelect, VTextarea,
+} from '@vance/components';
 import {
   buy, install, loadOverview, loadReviews,
   loadSurfaces, loadWithdrawalNotice, submitReview,
@@ -199,6 +201,23 @@ async function refreshAfterPayment(): Promise<void> {
 // for reviewing and for nothing that spends money.
 const buyingPath = ref<string>('');
 const buyPassword = ref('');
+
+/**
+ * Where the buyer is, and their VAT id if they have one.
+ *
+ * A kit is taxed where its buyer is, so the store refuses a sale without a
+ * country rather than guessing one — a guessed country is a number nobody
+ * can defend later. The list is the store's, not this screen's: it sells
+ * where it is set up for tax, and nowhere else yet.
+ */
+const billingCountry = ref('DE');
+const buyVatId = ref('');
+
+/** The union, which is the set the store's default covers. */
+const countryOptions = [
+  'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU',
+  'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE',
+].map((code) => ({ value: code, label: code }));
 const withdrawalNotice = ref<WithdrawalNotice | null>(null);
 const withdrawalAccepted = ref(false);
 
@@ -375,6 +394,7 @@ async function confirmBuy(entry: StoreEntry): Promise<void> {
     const order = await buy(
       projectId.value, entry.sourceId, entry.vendor, entry.kitId,
       buyerEmail.value, buyPassword.value,
+      billingCountry.value, buyVatId.value || undefined,
       withdrawalAccepted.value ? withdrawalNotice.value?.version ?? undefined : undefined,
     );
     if (order.redirectUrl) {
@@ -622,6 +642,22 @@ onUnmounted(() => {
                 :help="entry.licenseTermDays
                   ? `Updates for ${entry.licenseTermDays} days. What you install keeps working after that.`
                   : 'Updates without a time limit.'"
+              />
+              <!--
+                Where the buyer is. Asked rather than derived: a kit is
+                taxed where its buyer is, and the store refuses a sale
+                without a country instead of guessing one.
+              -->
+              <VSelect
+                v-model="billingCountry"
+                :options="countryOptions"
+                label="Country"
+                help="This store sells in the EU. Elsewhere means registering for tax there first."
+              />
+              <VInput
+                v-model="buyVatId"
+                label="VAT id (optional)"
+                help="For a business buyer. Recorded as given."
               />
               <!--
                 The consent that ends the fourteen-day right of withdrawal.

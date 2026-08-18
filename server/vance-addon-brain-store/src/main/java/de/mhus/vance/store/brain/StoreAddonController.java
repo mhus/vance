@@ -81,6 +81,10 @@ public class StoreAddonController {
     public record BuyRequest(
             String sourceId, String vendor, String kitId,
             String email, String password,
+            /** Where the buyer is — the store taxes by it and refuses without it. */
+            String billingCountry,
+            /** For a business buyer, as given. */
+            @Nullable String vatId,
             @Nullable String withdrawalNoticeVersion) {}
 
     /** The four lists, per configured library. */
@@ -202,7 +206,7 @@ public class StoreAddonController {
                     storeClient.login(source, body.email(), body.password());
             try {
                 return storeClient.order(source, session, body.vendor(), body.kitId(),
-                        body.withdrawalNoticeVersion());
+                        body.withdrawalNoticeVersion(), body.billingCountry(), body.vatId());
             } finally {
                 storeClient.logout(source, session);
             }

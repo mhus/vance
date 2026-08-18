@@ -211,10 +211,11 @@ public class StoreClient {
      */
     public Order order(
             KitSourceDto source, Session session, String vendor, String kitId,
-            @Nullable String withdrawalNoticeVersion) {
+            @Nullable String withdrawalNoticeVersion,
+            String billingCountry, @Nullable String vatId) {
 
-        String body = json.writeValueAsString(
-                new OrderBody(vendor, kitId, withdrawalNoticeVersion));
+        String body = json.writeValueAsString(new OrderBody(
+                vendor, kitId, billingCountry, vatId, withdrawalNoticeVersion));
         HttpResponse<String> response = send(HttpRequest.newBuilder(
                         uri(source, "/store/orders"))
                 .timeout(TIMEOUT)
@@ -737,5 +738,6 @@ public class StoreClient {
             int stars, @Nullable String text, @Nullable String version) {}
 
     private record OrderBody(
-            String vendorName, String kitId, @Nullable String withdrawalNoticeVersion) {}
+            String vendorName, String kitId, String billingCountry,
+            @Nullable String vatId, @Nullable String withdrawalNoticeVersion) {}
 }

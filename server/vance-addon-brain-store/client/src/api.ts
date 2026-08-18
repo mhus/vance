@@ -108,10 +108,15 @@ export async function buy(
   kitId: string,
   email: string,
   password: string,
+  billingCountry: string,
+  vatId?: string,
   withdrawalNoticeVersion?: string,
 ): Promise<StoreOrder> {
   return brainFetch<StoreOrder>('POST', `${base(projectId)}/buy`, {
-    body: { sourceId, vendor, kitId, email, password, withdrawalNoticeVersion },
+    body: {
+      sourceId, vendor, kitId, email, password,
+      billingCountry, vatId, withdrawalNoticeVersion,
+    },
   });
 }
 

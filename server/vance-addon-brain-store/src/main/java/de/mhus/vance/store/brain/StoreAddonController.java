@@ -22,9 +22,9 @@ import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
-import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -64,10 +64,7 @@ public class StoreAddonController {
     private final KitStoreCredentials credentials;
     private final RequestAuthority authority;
     private final StoreDeveloperService developerService;
-    private final SettingService settings;
 
-    /** Per source: whether this brain offers the operator surface for it. */
-    static final String OPERATOR_KEY_PREFIX = "store.operator.";
 
     public record ConnectRequest(
             String sourceId, String email, String password, @Nullable String label) {}
@@ -301,7 +298,7 @@ public class StoreAddonController {
             @Nullable String vaultPassword) {}
 
     public record OperatorRequest(
-            String sourceId, String email, String password,
+            String sourceId,
             @Nullable String vendor, @Nullable String kitId,
             @Nullable String version, @Nullable String reason) {}
 
@@ -451,35 +448,25 @@ public class StoreAddonController {
 
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
         String actor = actor(request);
-        return new Surfaces(sources.configuredSources(tenant).stream()
-                .filter(source -> source.getType() == KitSourceType.LIBRARY)
-                .map(KitSourceDto::getId)
-                .filter(id -> operates(tenant, projectId, actor, id))
-                .toList());
-    }
-
-    /** {@code store.operator.<sourceId>}, read through the usual cascade. */
-    private boolean operates(String tenant, String projectId, String actor, String sourceId) {
-        return "true".equalsIgnoreCase(String.valueOf(settings.getStringValueUserProjectCascade(
-                tenant, actor, projectId, null, OPERATOR_KEY_PREFIX + sourceId)));
-    }
-
-    /**
-     * Refuse the operator calls where the surface is not offered.
-     *
-     * <p>Not a second lock — the store decides who may publish, and this
-     * cannot widen that. What it prevents is an installation that hides the
-     * surface still answering for it, which would make the setting a
-     * decoration rather than a statement about this brain.
-     */
-    private void requireOperatorSurface(
-            String tenant, String projectId, String sourceId, HttpServletRequest request) {
-
-        if (!operates(tenant, projectId, actor(request), sourceId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "this installation is not set up to operate '" + sourceId
-                            + "' — set " + OPERATOR_KEY_PREFIX + sourceId + " to enable it");
+        List<String> operated = new ArrayList<>();
+        for (KitSourceDto source : sources.configuredSources(tenant)) {
+            if (source.getType() != KitSourceType.LIBRARY) continue;
+            String token = credentials.resolve(tenant, projectId, actor, source.getUrl(), null)
+                    .token();
+            if (token == null || token.isBlank()) continue;
+            try {
+                if (storeClient.identity(source, token).operator()) {
+                    operated.add(source.getId());
+                }
+            } catch (KitException e) {
+                // An unreachable store is not a store this account operates,
+                // and it is not worth an error banner over a tab: the shop
+                // window already says the store could not be asked.
+                log.debug("StoreAddonController: could not ask '{}' who we are: {}",
+                        source.getId(), e.getMessage());
+            }
         }
+        return new Surfaces(operated);
     }
 
     // ──────────────────── operator ────────────────────
@@ -492,25 +479,25 @@ public class StoreAddonController {
     /**
      * The operator's queues.
      *
-     * <p>A POST although it reads: the operator surface takes a session,
-     * so this call carries a password. A password in a query string ends
-     * up in logs and in browser history.
+     * <p>Authenticated by this installation's link, like everything else
+     * here. Whether this account may operate is the store's answer — it
+     * refuses anyone not in its own operator configuration, and a sign-in
+     * on this screen would establish nothing it does not already know.
      */
-    @PostMapping("/{projectId}/operator/queue")
+    @GetMapping("/{projectId}/operator/queue")
     public OperatorView operatorQueue(
             @PathVariable("tenant") String tenant,
             @PathVariable("projectId") String projectId,
-            @RequestBody OperatorRequest body,
+            @RequestParam("sourceId") String sourceId,
             HttpServletRequest request) {
 
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
-        requireOperatorSurface(tenant, projectId, body.sourceId(), request);
-        KitSourceDto source = library(tenant, body.sourceId());
+        KitSourceDto source = library(tenant, sourceId);
+        String token = requireToken(tenant, projectId, source, request);
         try {
-            return withSession(source, body.email(), body.password(), session ->
-                    new OperatorView(
-                            storeClient.pendingVendors(source, session),
-                            storeClient.submittedReleases(source, session)));
+            return new OperatorView(
+                    storeClient.pendingVendors(source, token),
+                    storeClient.submittedReleases(source, token));
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -526,33 +513,28 @@ public class StoreAddonController {
             HttpServletRequest request) {
 
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
-        requireOperatorSurface(tenant, projectId, body.sourceId(), request);
         KitSourceDto source = library(tenant, body.sourceId());
+        String token = requireToken(tenant, projectId, source, request);
         try {
-            return withSession(source, body.email(), body.password(), session -> {
-                String reason = body.reason() == null ? "" : body.reason();
-                switch (decision) {
-                    case "approve-vendor" ->
-                            storeClient.approveVendor(source, session, required(body.vendor()));
-                    case "reject-vendor" ->
-                            storeClient.rejectVendor(source, session,
-                                    required(body.vendor()), reason);
-                    case "approve-release" ->
-                            storeClient.approveRelease(source, session, required(body.vendor()),
-                                    required(body.kitId()), required(body.version()));
-                    case "reject-release" ->
-                            storeClient.rejectRelease(source, session, required(body.vendor()),
-                                    required(body.kitId()), required(body.version()), reason);
-                    default -> throw new ResponseStatusException(
-                            HttpStatus.BAD_REQUEST, "unknown decision: " + decision);
-                }
-                // Re-read inside the same session: the queues are what the
-                // screen shows next, and a second sign-in for that would be
-                // a second password prompt.
-                return new OperatorView(
-                        storeClient.pendingVendors(source, session),
-                        storeClient.submittedReleases(source, session));
-            });
+            String reason = body.reason() == null ? "" : body.reason();
+            switch (decision) {
+                case "approve-vendor" ->
+                        storeClient.approveVendor(source, token, required(body.vendor()));
+                case "reject-vendor" ->
+                        storeClient.rejectVendor(source, token, required(body.vendor()), reason);
+                case "approve-release" ->
+                        storeClient.approveRelease(source, token, required(body.vendor()),
+                                required(body.kitId()), required(body.version()));
+                case "reject-release" ->
+                        storeClient.rejectRelease(source, token, required(body.vendor()),
+                                required(body.kitId()), required(body.version()), reason);
+                default -> throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "unknown decision: " + decision);
+            }
+            // The queues are what the screen shows next.
+            return new OperatorView(
+                    storeClient.pendingVendors(source, token),
+                    storeClient.submittedReleases(source, token));
         } catch (KitException e) {
             throw storeError(e);
         }

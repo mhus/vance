@@ -1,23 +1,21 @@
 package de.mhus.vance.store.brain;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.kit.KitSourceDto;
 import de.mhus.vance.api.kit.KitSourceType;
+import de.mhus.vance.brain.kit.KitAccess;
 import de.mhus.vance.brain.kit.KitRecordStore;
 import de.mhus.vance.brain.kit.KitService;
 import de.mhus.vance.brain.kit.KitSourceRegistry;
 import de.mhus.vance.brain.kit.KitStoreCredentials;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
-import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.shared.kit.KitException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,14 +25,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Who is offered the operator area.
  *
- * <p>It grants nothing — the store refuses anyone who is not on its own
- * operator list, and that list is a property rather than data. What this
- * decides is whether the surface is shown and served at all.
+ * <p>The answer is the store's. It knows who may operate — from its own
+ * configuration, where nothing that can write to a database reaches it —
+ * and a brain keeping a local claim about that would be a second copy of
+ * one truth.
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -43,6 +41,7 @@ class StoreOperatorSurfaceTest {
     private static final String TENANT = "acme";
     private static final String PROJECT = "_tenant";
     private static final String USER = "road.runner";
+    private static final String TOKEN = "vst_link";
 
     @Mock private KitSourceRegistry sources;
     @Mock private StoreOverviewService overview;
@@ -53,7 +52,6 @@ class StoreOperatorSurfaceTest {
     @Mock private KitStoreCredentials credentials;
     @Mock private RequestAuthority authority;
     @Mock private StoreDeveloperService developerService;
-    @Mock private SettingService settings;
 
     private StoreAddonController controller;
     private HttpServletRequest request;
@@ -61,72 +59,69 @@ class StoreOperatorSurfaceTest {
     @BeforeEach
     void setUp() {
         controller = new StoreAddonController(sources, overview, connections, kitService,
-                recordStore, storeClient, credentials, authority, developerService, settings);
+                recordStore, storeClient, credentials, authority, developerService);
         request = mock(HttpServletRequest.class);
         when(request.getAttribute(AccessFilterBase.ATTR_USERNAME)).thenReturn(USER);
         when(sources.configuredSources(TENANT)).thenReturn(List.of(
                 library("devstore"), library("other-store")));
+        when(credentials.resolve(any(), any(), any(), any(), any()))
+                .thenReturn(new KitAccess(TENANT, TOKEN, "acc_1"));
     }
 
     @Test
-    void surfaces_listsOnlyWhatThisBrainIsSetUpToOperate() {
-        givenOperator("devstore", "true");
-        givenOperator("other-store", null);
+    void surfaces_listsTheStoresThisAccountOperates() {
+        givenIdentity("devstore", true);
+        givenIdentity("other-store", false);
 
         assertThat(controller.surfaces(TENANT, PROJECT, request).operatorSources())
                 .containsExactly("devstore");
     }
 
     @Test
-    void surfaces_withoutTheSetting_isEmpty() {
-        // The ordinary case. A button nobody can use puzzles everyone it
-        // does not belong to and invites the rest to try it.
-        givenOperator("devstore", null);
-        givenOperator("other-store", null);
+    void surfaces_forAnOrdinaryAccount_isEmpty() {
+        // The ordinary case, and the reason the tab is hidden at all: a
+        // button nobody can use puzzles everyone it does not belong to and
+        // invites the rest to try it.
+        givenIdentity("devstore", false);
+        givenIdentity("other-store", false);
 
         assertThat(controller.surfaces(TENANT, PROJECT, request).operatorSources()).isEmpty();
     }
 
     @Test
-    void theQueue_forAStoreThisBrainDoesNotOperate_isNotFound() {
-        // Hiding a surface that still answers would make the setting a
-        // decoration rather than a statement about this installation.
-        givenOperator("devstore", null);
+    void surfaces_withoutASignIn_asksNobody() {
+        // No link, no question to ask — and no error either.
+        when(credentials.resolve(any(), any(), any(), any(), any()))
+                .thenReturn(new KitAccess(TENANT, null, null));
 
-        assertThatThrownBy(() -> controller.operatorQueue(TENANT, PROJECT,
-                new StoreAddonController.OperatorRequest("devstore", "op@example.com", "pw",
-                        null, null, null, null),
-                request))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("not set up to operate");
-        // and no credential ever leaves this process
-        verify(storeClient, never()).login(any(), any(), any());
+        assertThat(controller.surfaces(TENANT, PROJECT, request).operatorSources()).isEmpty();
     }
 
     @Test
-    void aDecision_forAStoreThisBrainDoesNotOperate_isNotFound() {
-        givenOperator("devstore", null);
+    void surfaces_whenAStoreCannotBeAsked_leavesItOut() {
+        // An unreachable store is not one this account operates, and it is
+        // not worth an error banner over a tab — the shop window already
+        // says the store could not be reached.
+        when(storeClient.identity(any(), eq(TOKEN)))
+                .thenThrow(new KitException("not reachable"));
 
-        assertThatThrownBy(() -> controller.decide(TENANT, PROJECT, "approve-vendor",
-                new StoreAddonController.OperatorRequest("devstore", "op@example.com", "pw",
-                        "acmelabs", null, null, null),
-                request))
-                .isInstanceOf(ResponseStatusException.class);
-        verify(storeClient, never()).approveVendor(any(), any(), any());
+        assertThat(controller.surfaces(TENANT, PROJECT, request).operatorSources()).isEmpty();
     }
 
-    private void givenOperator(String sourceId, String value) {
-        when(settings.getStringValueUserProjectCascade(
-                eq(TENANT), eq(USER), eq(PROJECT), eq(null),
-                eq(StoreAddonController.OPERATOR_KEY_PREFIX + sourceId)))
-                .thenReturn(value);
+    private void givenIdentity(String sourceId, boolean operator) {
+        when(storeClient.identity(
+                org.mockito.ArgumentMatchers.argThat(
+                        source -> source != null && sourceId.equals(source.getId())),
+                eq(TOKEN)))
+                .thenReturn(new StoreClient.Identity(
+                        "acc_1", "Someone", "ACTIVE", operator, "LINK"));
     }
 
     private static KitSourceDto library(String id) {
         return KitSourceDto.builder()
                 .id(id)
                 .type(KitSourceType.LIBRARY)
-                .url("http://localhost:9821")
+                .url("http://localhost:9821/" + id)
                 .build();
     }
 }

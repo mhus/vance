@@ -209,19 +209,15 @@ export async function publish(
 /**
  * The operator's queues.
  *
- * A POST although it reads: the operator surface takes a session, so this
- * carries a password, and a password in a query string ends up in logs and
- * in browser history.
+ * No sign-in: whether this account may operate is the store's answer, and
+ * the brain asks it with the link this installation already holds.
  */
 export async function loadOperatorQueue(
   projectId: string,
   sourceId: string,
-  email: string,
-  password: string,
 ): Promise<OperatorView> {
-  return brainFetch<OperatorView>('POST', `${base(projectId)}/operator/queue`, {
-    body: { sourceId, email, password },
-  });
+  const query = new URLSearchParams({ sourceId }).toString();
+  return brainFetch<OperatorView>('GET', `${base(projectId)}/operator/queue?${query}`);
 }
 
 /** The switch: approve or refuse a vendor or a release. */
@@ -230,8 +226,6 @@ export async function decide(
   decision: 'approve-vendor' | 'reject-vendor' | 'approve-release' | 'reject-release',
   body: {
     sourceId: string;
-    email: string;
-    password: string;
     vendor?: string;
     kitId?: string;
     version?: string;

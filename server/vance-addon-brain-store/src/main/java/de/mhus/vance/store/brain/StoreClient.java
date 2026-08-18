@@ -378,6 +378,25 @@ public class StoreClient {
             @Nullable Instant submittedAt,
             @Nullable String rejectionReason) {}
 
+    /** Who a credential belongs to at a store, and whether it may operate there. */
+    public record Identity(
+            String accountId,
+            @Nullable String displayName,
+            String status,
+            boolean operator,
+            String via) {}
+
+    /**
+     * Ask the store who this installation is acting as.
+     *
+     * <p>The operator role is the store's to know: it comes from that
+     * service's own configuration, and a brain keeping its own claim about
+     * it would be a second copy of a truth that lives elsewhere.
+     */
+    public Identity identity(KitSourceDto source, String linkToken) {
+        return get(source, "/store/me", linkToken, Identity.class, "this account");
+    }
+
     /** The terms and the fees — both unauthenticated, both shown before applying. */
     public VendorTerms vendorTerms(KitSourceDto source) {
         return get(source, "/store/vendor/terms", null, VendorTerms.class, "vendor terms");
@@ -510,45 +529,46 @@ public class StoreClient {
     // ──────────────────── operator surface ────────────────────
 
     /**
-     * The operator calls take a <b>session</b>.
+     * The operator calls take this installation's link, like reviewing.
      *
-     * <p>Publishing is the widest thing that happens here — it puts
-     * software on other people's machines — and a link token sits in a
-     * settings document for years. Whoever presses this switch should be
-     * present.
+     * <p>Whether an account may operate is the store's answer, from its own
+     * configuration — a link belonging to that account is that account
+     * acting, and a second sign-in would establish nothing the store does
+     * not already know. Asking for the password per approval would teach
+     * people to type it into a brain screen instead.
      */
-    public List<Vendor> pendingVendors(KitSourceDto source, Session session) {
-        return getList(source, "/store/admin/vendors/pending", session.token(),
+    public List<Vendor> pendingVendors(KitSourceDto source, String linkToken) {
+        return getList(source, "/store/admin/vendors/pending", linkToken,
                 Vendor.class, "pending vendors");
     }
 
-    public List<Release> submittedReleases(KitSourceDto source, Session session) {
-        return getList(source, "/store/admin/releases", session.token(),
+    public List<Release> submittedReleases(KitSourceDto source, String linkToken) {
+        return getList(source, "/store/admin/releases", linkToken,
                 Release.class, "the release queue");
     }
 
-    public void approveVendor(KitSourceDto source, Session session, String name) {
-        post(source, session, "/store/admin/vendors/" + encode(name) + "/approve",
+    public void approveVendor(KitSourceDto source, String linkToken, String name) {
+        post(source, linkToken, "/store/admin/vendors/" + encode(name) + "/approve",
                 null, "approving vendor " + name);
     }
 
     public void rejectVendor(
-            KitSourceDto source, Session session, String name, String reason) {
-        post(source, session, "/store/admin/vendors/" + encode(name) + "/reject",
+            KitSourceDto source, String linkToken, String name, String reason) {
+        post(source, linkToken, "/store/admin/vendors/" + encode(name) + "/reject",
                 new RejectBody(reason), "refusing vendor " + name);
     }
 
     public void approveRelease(
-            KitSourceDto source, Session session,
+            KitSourceDto source, String linkToken,
             String vendor, String kitId, String version) {
-        post(source, session, releasePath(vendor, kitId, version) + "/approve",
+        post(source, linkToken, releasePath(vendor, kitId, version) + "/approve",
                 null, "approving " + vendor + "/" + kitId + " " + version);
     }
 
     public void rejectRelease(
-            KitSourceDto source, Session session,
+            KitSourceDto source, String linkToken,
             String vendor, String kitId, String version, String reason) {
-        post(source, session, releasePath(vendor, kitId, version) + "/reject",
+        post(source, linkToken, releasePath(vendor, kitId, version) + "/reject",
                 new RejectBody(reason), "refusing " + vendor + "/" + kitId + " " + version);
     }
 
@@ -598,12 +618,12 @@ public class StoreClient {
     }
 
     private void post(
-            KitSourceDto source, Session session, String path,
+            KitSourceDto source, String token, String path,
             @Nullable Object body, String what) {
 
         HttpRequest.Builder request = HttpRequest.newBuilder(uri(source, path))
                 .timeout(TIMEOUT)
-                .header("Authorization", "Bearer " + session.token());
+                .header("Authorization", "Bearer " + token);
         if (body == null) {
             request.POST(HttpRequest.BodyPublishers.noBody());
         } else {

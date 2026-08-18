@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { VAlert, VButton, VCard, VEmptyState, VInput } from '@vance/components';
 import { decide, loadOperatorQueue } from './api';
 import type { OperatorView } from './types';
@@ -11,13 +11,10 @@ const loading = ref(false);
 const error = ref('');
 const notice = ref('');
 
-// The operator surface takes a store session, not this installation's link
-// token: publishing puts software on other people's machines, and a link
-// sits in a settings document for years. Whoever presses the switch should
-// be present. Held in memory for the panel and never persisted.
-const email = ref('');
-const password = ref('');
-
+// No sign-in here. Whether this account may operate is the store's answer,
+// asked with the link this installation already holds — a password prompt
+// would establish nothing the store does not already know, and would teach
+// people to type their store password into a brain screen.
 const rejecting = ref('');
 const reason = ref('');
 
@@ -26,15 +23,15 @@ async function openQueue(): Promise<void> {
   notice.value = '';
   loading.value = true;
   try {
-    view.value = await loadOperatorQueue(
-      props.projectId, props.sourceId, email.value, password.value,
-    );
+    view.value = await loadOperatorQueue(props.projectId, props.sourceId);
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Could not open the queue.';
   } finally {
     loading.value = false;
   }
 }
+
+watch(() => [props.projectId, props.sourceId], openQueue, { immediate: true });
 
 async function run(
   decision: 'approve-vendor' | 'reject-vendor' | 'approve-release' | 'reject-release',
@@ -46,8 +43,6 @@ async function run(
   try {
     view.value = await decide(props.projectId, decision, {
       sourceId: props.sourceId,
-      email: email.value,
-      password: password.value,
       ...body,
     });
     notice.value = 'Done.';
@@ -66,24 +61,14 @@ async function run(
     <VAlert v-if="error" variant="error">{{ error }}</VAlert>
     <VAlert v-if="notice" variant="info">{{ notice }}</VAlert>
 
-    <VCard>
-      <div class="font-semibold mb-2">Operator sign-in</div>
-      <div class="flex flex-col gap-2">
-        <VInput v-model="email" label="Store email" type="email" autocomplete="username" />
-        <VInput
-          v-model="password"
-          label="Store password"
-          type="password"
-          autocomplete="current-password"
-          help="Not kept. Each decision signs in, acts, and signs out again."
-        />
-        <div>
-          <VButton :disabled="loading || !email || !password" @click="openQueue">
-            {{ loading ? '…' : 'Open the queue' }}
-          </VButton>
-        </div>
-      </div>
-    </VCard>
+    <div class="flex items-center gap-2">
+      <VButton size="sm" :disabled="loading" @click="openQueue">
+        {{ loading ? '…' : 'Refresh' }}
+      </VButton>
+      <span class="text-xs opacity-60">
+        Acting as this installation's store account.
+      </span>
+    </div>
 
     <!-- ── vendors waiting ── -->
     <VCard v-if="view">

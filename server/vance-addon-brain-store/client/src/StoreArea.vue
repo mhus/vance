@@ -102,6 +102,7 @@ const showModeTabs = computed(() => modes.value.length > 1);
 
 const views = ref<StoreSourceView[]>([]);
 const activeTab = ref<'ALL' | EntryState>('ALL');
+const search = ref('');
 const loading = ref(false);
 const busyPath = ref<string>('');
 const error = ref('');
@@ -144,10 +145,24 @@ async function load(): Promise<void> {
   }
 }
 
+/**
+ * Filtered by the state tab and by the search box.
+ *
+ * Client-side: the catalogue is fetched whole anyway, so a round-trip per
+ * keystroke would buy nothing and cost the store a request per letter.
+ * Searched are the things a person actually remembers about a kit — its
+ * name, its address and what it says it is for.
+ */
 function entriesOf(view: StoreSourceView | null): StoreEntry[] {
   if (!view) return [];
-  if (activeTab.value === 'ALL') return view.entries;
-  return view.entries.filter((entry) => entry.state === activeTab.value);
+  const byState = activeTab.value === 'ALL'
+    ? view.entries
+    : view.entries.filter((entry) => entry.state === activeTab.value);
+
+  const needle = search.value.trim().toLowerCase();
+  if (!needle) return byState;
+  return byState.filter((entry) => [entry.displayName, entry.path, entry.description]
+    .some((field) => field?.toLowerCase().includes(needle)));
 }
 
 async function installEntry(entry: StoreEntry): Promise<void> {
@@ -368,7 +383,7 @@ onMounted(load);
       </div>
 
       <div v-if="activeView.reachable" class="mt-4">
-        <div class="flex gap-2 mb-3">
+        <div class="flex gap-2 mb-3 items-center">
           <VButton
             v-for="tab in tabs"
             :key="tab.key"
@@ -379,12 +394,21 @@ onMounted(load);
           >
             {{ tab.label }}
           </VButton>
+          <!-- Narrows whichever list the tabs selected, rather than
+               replacing it: "installed, and something about widgets" is a
+               question people actually have. -->
+          <div class="ml-auto w-56">
+            <VInput v-model="search" size="sm" placeholder="Search kits" />
+          </div>
         </div>
 
+        <!-- A filtered-empty list must not read as an empty store. -->
         <VEmptyState
           v-if="entriesOf(activeView).length === 0"
-          headline="Nothing here"
-          body="Nothing in this list yet."
+          :headline="search.trim() ? 'Nothing matches' : 'Nothing here'"
+          :body="search.trim()
+            ? `No kit in this list matches “${search.trim()}”.`
+            : 'Nothing in this list yet.'"
         />
 
         <div

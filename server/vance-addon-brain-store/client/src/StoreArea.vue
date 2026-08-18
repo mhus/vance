@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { VAlert, VButton, VCard, VEmptyState, VInput, VTextarea } from '@vance/components';
 import {
   buy, install, loadOverview, loadReviews,
@@ -107,6 +107,93 @@ const loading = ref(false);
 const busyPath = ref<string>('');
 const error = ref('');
 const notice = ref('');
+
+/**
+ * A payment is happening in another window.
+ *
+ * <p>The provider's pages are not ours and cannot tell us anything —
+ * {@code noopener} is deliberate, and a real provider's tab could not
+ * reach us either. So the signal is the one thing that always arrives:
+ * the buyer coming back to this tab. Without it the row still said
+ * "offered" after a completed payment until somebody reloaded, which
+ * reads as a payment that did not work.
+ */
+const awaitingPayment = ref(false);
+
+/**
+ * Second signal, because the first one can never arrive.
+ *
+ * A buyer may close the payment tab, or finish on their phone, and then
+ * nothing brings them back to this one. Polling while — and only while —
+ * a payment is in flight covers that, and it is what checkout pages do.
+ * Bounded, because an unanswered payment is a page somebody left open,
+ * not a reason to keep asking all afternoon.
+ */
+const PAYMENT_POLL_MS = 5000;
+const PAYMENT_POLL_LIMIT = 24;
+let paymentPoll: ReturnType<typeof setInterval> | null = null;
+let paymentPollsLeft = 0;
+
+/** Which kit is being paid for, so the poll knows what it is waiting for. */
+const awaitingEntry = ref<StoreEntry | null>(null);
+
+function watchForPayment(entry: StoreEntry): void {
+  stopWatchingForPayment();
+  awaitingPayment.value = true;
+  awaitingEntry.value = entry;
+  paymentPollsLeft = PAYMENT_POLL_LIMIT;
+  paymentPoll = setInterval(async () => {
+    if (paymentPollsLeft-- <= 0) {
+      // Left open and never paid. The notice stays, because that is still
+      // what is true — the payment window is where this ends.
+      stopWatchingForPayment();
+      awaitingPayment.value = false;
+      return;
+    }
+    await load();
+    if (!stillOffered(entry)) settled(entry);
+  }, PAYMENT_POLL_MS);
+}
+
+/** Fresh from the last load, because the old object is a stale copy. */
+function stillOffered(entry: StoreEntry): boolean {
+  const current = views.value
+    .find((view) => view.sourceId === entry.sourceId)?.entries
+    .find((candidate) => candidate.path === entry.path);
+  return current == null || current.state === 'OFFERED';
+}
+
+/**
+ * The payment went through.
+ *
+ * <p>Replacing the notice matters as much as refreshing the row: an
+ * instruction to go and pay, left standing under a kit that is already
+ * owned, reads as a payment that did not work.
+ */
+function settled(entry: StoreEntry): void {
+  stopWatchingForPayment();
+  awaitingPayment.value = false;
+  awaitingEntry.value = null;
+  notice.value = `Done — ${entry.displayName} is yours.`;
+}
+
+function stopWatchingForPayment(): void {
+  if (paymentPoll !== null) {
+    clearInterval(paymentPoll);
+    paymentPoll = null;
+  }
+}
+
+/** The buyer came back to this tab — the fastest signal there is. */
+async function refreshAfterPayment(): Promise<void> {
+  if (!awaitingPayment.value || document.hidden) return;
+  const entry = awaitingEntry.value;
+  awaitingPayment.value = false;
+  stopWatchingForPayment();
+  notice.value = '';
+  await load();
+  if (entry && !stillOffered(entry)) settled(entry);
+}
 
 // Buying asks for the store password again — the store takes a link token
 // for reviewing and for nothing that spends money.
@@ -292,7 +379,9 @@ async function confirmBuy(entry: StoreEntry): Promise<void> {
     );
     if (order.redirectUrl) {
       // A priced kit with a real provider. Nothing is owned yet.
-      notice.value = 'Continue the payment in the window that just opened.';
+      notice.value = 'Continue the payment in the window that just opened.'
+        + ' This page updates by itself once it goes through.';
+      watchForPayment(entry);
       window.open(order.redirectUrl, '_blank', 'noopener');
     } else {
       notice.value = `Done — ${entry.displayName} is yours.`;
@@ -337,7 +426,19 @@ function expiryOf(entry: StoreEntry): string | null {
     : `Updates until ${when.toLocaleDateString()}`;
 }
 
-onMounted(load);
+onMounted(() => {
+  load();
+  // Both, because they fire in different situations: switching tabs is a
+  // visibility change, returning from another window is a focus event.
+  document.addEventListener('visibilitychange', refreshAfterPayment);
+  window.addEventListener('focus', refreshAfterPayment);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', refreshAfterPayment);
+  window.removeEventListener('focus', refreshAfterPayment);
+  stopWatchingForPayment();
+});
 </script>
 
 <template>

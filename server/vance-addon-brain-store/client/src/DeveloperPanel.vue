@@ -28,6 +28,9 @@ const kitId = ref('');
 const kitDisplayName = ref('');
 const kitDescription = ref('');
 const kitPrice = ref('0');
+// Free text, comma-separated. The store normalises and bounds it — what a
+// kit is *for* nobody can derive, so this is the one part a vendor says.
+const kitTopics = ref('');
 
 const publishing = ref('');
 const version = ref('');
@@ -99,12 +102,14 @@ async function submitKit(): Promise<void> {
       kitDisplayName.value, kitDescription.value || undefined,
       Number.isFinite(cents) ? cents : 0,
       cents > 0 ? 'EUR' : undefined,
+      kitTopics.value.split(',').map((tag) => tag.trim()).filter(Boolean),
     );
     notice.value = `${kitDisplayName.value} is in the catalogue. Publish a version next.`;
     creatingKit.value = false;
     kitId.value = '';
     kitDisplayName.value = '';
     kitDescription.value = '';
+    kitTopics.value = '';
     await load();
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Could not create the kit.';
@@ -312,6 +317,12 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
         <VInput v-model="kitId" label="Kit id" help="Part of the address. It cannot change later." />
         <VInput v-model="kitDisplayName" label="Display name" />
         <VTextarea v-model="kitDescription" placeholder="What this kit is for." />
+        <VInput
+          v-model="kitTopics"
+          label="Topics"
+          help="What this kit is for — comma separated, e.g. security, onboarding.
+                What it contains is read off the release; you do not tag that."
+        />
         <VInput
           v-model="kitPrice"
           label="Price"

@@ -73,6 +73,9 @@ public class StoreOverviewService {
             long priceCents,
             @Nullable String currency,
             @Nullable Integer licenseTermDays,
+            /** What the vendor says it is for, and what it contains. */
+            List<String> topics,
+            List<String> contains,
             EntryState state) {}
 
     /** One store, as far as this user is concerned. */
@@ -149,6 +152,7 @@ public class StoreOverviewService {
                     entry.score() == null ? 0d : entry.score().average(),
                     entry.score() == null ? 0L : entry.score().count(),
                     entry.priceCents(), entry.currency(), entry.licenseTermDays(),
+                    orEmpty(entry.topics()), orEmpty(entry.contains()),
                     EntryState.OFFERED));
         }
         // Owned entries win over catalogue ones: they carry the licence
@@ -178,6 +182,12 @@ public class StoreOverviewService {
                             ? offeredByPath.get(entry.getPath()).currency() : null,
                     offeredByPath.containsKey(entry.getPath())
                             ? offeredByPath.get(entry.getPath()).licenseTermDays() : null,
+                    // Tags come from the catalogue as well: the library
+                    // listing describes an entitlement, not a product.
+                    offeredByPath.containsKey(entry.getPath())
+                            ? orEmpty(offeredByPath.get(entry.getPath()).topics()) : List.of(),
+                    offeredByPath.containsKey(entry.getPath())
+                            ? orEmpty(offeredByPath.get(entry.getPath()).contains()) : List.of(),
                     stateOf(installed, entry.getVersion())));
         }
 
@@ -185,6 +195,10 @@ public class StoreOverviewService {
         entries.sort(Comparator.comparing(Entry::vendor).thenComparing(Entry::kitId));
         return new SourceView(source.getId(), titleOf(source), source.getUrl(),
                 connection.accountId(), true, null, entries);
+    }
+
+    private static List<String> orEmpty(@Nullable List<String> values) {
+        return values == null ? List.of() : values;
     }
 
     /** Its configured title, else its id — the id is a handle, not a name. */

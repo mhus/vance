@@ -161,8 +161,21 @@ function entriesOf(view: StoreSourceView | null): StoreEntry[] {
 
   const needle = search.value.trim().toLowerCase();
   if (!needle) return byState;
-  return byState.filter((entry) => [entry.displayName, entry.path, entry.description]
-    .some((field) => field?.toLowerCase().includes(needle)));
+  return byState.filter((entry) => [
+    entry.displayName, entry.path, entry.description,
+    ...entry.topics, ...entry.contains,
+  ].some((field) => field?.toLowerCase().includes(needle)));
+}
+
+/**
+ * A chip is a search, not a second filter mechanism.
+ *
+ * One box that everything narrows keeps the state of this screen in one
+ * place — otherwise a person stares at an empty list wondering which of
+ * two filters is hiding it.
+ */
+function filterBy(tag: string): void {
+  search.value = search.value.trim().toLowerCase() === tag ? '' : tag;
 }
 
 async function installEntry(entry: StoreEntry): Promise<void> {
@@ -426,6 +439,36 @@ onMounted(load);
               </span>
             </div>
             <div v-if="entry.description" class="text-sm mt-1">{{ entry.description }}</div>
+
+            <!--
+              Two kinds of chip, told apart by weight: what the vendor says
+              it is for, and what it actually contains. Clicking either one
+              searches for it.
+            -->
+            <div
+              v-if="entry.topics.length || entry.contains.length"
+              class="flex flex-wrap gap-1 mt-1"
+            >
+              <button
+                v-for="tag in entry.topics"
+                :key="`topic-${tag}`"
+                class="text-xs px-2 py-0.5 rounded-full border"
+                :class="search.trim().toLowerCase() === tag
+                  ? 'border-primary text-primary'
+                  : 'border-base-300 opacity-80'"
+                @click="filterBy(tag)"
+              >{{ tag }}</button>
+              <button
+                v-for="tag in entry.contains"
+                :key="`has-${tag}`"
+                class="text-xs px-2 py-0.5 rounded-full border border-dashed"
+                :class="search.trim().toLowerCase() === tag
+                  ? 'border-primary text-primary'
+                  : 'border-base-300 opacity-60'"
+                :title="`Contains ${tag}`"
+                @click="filterBy(tag)"
+              >{{ tag }}</button>
+            </div>
             <div v-if="expiryOf(entry)" class="text-xs mt-1 opacity-70">
               {{ expiryOf(entry) }}
             </div>

@@ -219,6 +219,22 @@ class StoreOverviewServiceTest {
                 .thenReturn(new StoreConnectionService.Connection(SOURCE_ID, null));
     }
 
+    @Test
+    void ownedEntries_keepTheCataloguesTags() {
+        // The library listing describes an entitlement, not a product: an
+        // owned kit would otherwise lose its tags the moment it is bought,
+        // exactly as it once lost its stars.
+        givenSignedIn();
+        when(client.catalogue(any())).thenReturn(List.of(catalogue("security", "1.2.0")));
+        when(library.list(TENANT, PROJECT, USER)).thenReturn(List.of(owned("1.2.0")));
+        when(recordStore.list(TENANT, PROJECT)).thenReturn(List.of());
+
+        StoreOverviewService.Entry entry = firstEntries().get(0);
+
+        assertThat(entry.topics()).containsExactly("security");
+        assertThat(entry.contains()).containsExactly("skills", "documents");
+    }
+
     private static KitSourceDto source() {
         return KitSourceDto.builder()
                 .id(SOURCE_ID).type(KitSourceType.LIBRARY).url(URL).build();
@@ -227,7 +243,8 @@ class StoreOverviewServiceTest {
     private static StoreClient.CatalogueEntry catalogue(String kitId, String version) {
         return new StoreClient.CatalogueEntry(
                 "acme", kitId, "Security", "a kit", "MIT", null, version, null,
-                new StoreClient.Score(4.5d, 12L), 1990L, "EUR", 365);
+                new StoreClient.Score(4.5d, 12L), 1990L, "EUR", 365,
+                List.of("security"), List.of("skills", "documents"));
     }
 
     private static KitLibraryEntryDto owned(String version) {

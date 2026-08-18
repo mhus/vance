@@ -30,6 +30,10 @@ export interface StoreEntry {
   priceCents: number;
   currency?: string | null;
   licenseTermDays?: number | null;
+  /** What the vendor says this kit is for — free text, normalised. */
+  topics: string[];
+  /** What its newest published version contains — derived at the store. */
+  contains: string[];
   state: EntryState;
 }
 
@@ -138,6 +142,7 @@ export interface VendorKit {
   priceCents: number;
   currency?: string | null;
   version?: string | null;
+  topics: string[];
 }
 
 export interface DeveloperView {

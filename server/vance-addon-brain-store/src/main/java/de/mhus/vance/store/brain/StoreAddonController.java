@@ -291,7 +291,8 @@ public class StoreAddonController {
 
     public record CreateKitRequest(
             String sourceId, String vendor, String kitId, String displayName,
-            @Nullable String description, long priceCents, @Nullable String currency) {}
+            @Nullable String description, long priceCents, @Nullable String currency,
+            @Nullable List<String> topics) {}
 
     public record PublishRequest(
             String sourceId, String vendor, String kitId, String version,
@@ -389,7 +390,7 @@ public class StoreAddonController {
         try {
             return storeClient.createKit(source, requireToken(tenant, projectId, source, request),
                     body.vendor(), body.kitId(), body.displayName(),
-                    body.description(), body.priceCents(), body.currency());
+                    body.description(), body.priceCents(), body.currency(), body.topics());
         } catch (KitException e) {
             throw storeError(e);
         }

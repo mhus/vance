@@ -73,7 +73,11 @@ public class StoreClient {
             @Nullable Score score,
             long priceCents,
             @Nullable String currency,
-            @Nullable Integer licenseTermDays) {}
+            @Nullable Integer licenseTermDays,
+            /** What the vendor says the kit is for. */
+            @Nullable List<String> topics,
+            /** What its newest published version contains — derived at the store. */
+            @Nullable List<String> contains) {}
 
     /**
      * Sign in.
@@ -457,11 +461,11 @@ public class StoreClient {
     public CatalogueEntry createKit(
             KitSourceDto source, String linkToken, String vendorName, String kitId,
             String displayName, @Nullable String description, long priceCents,
-            @Nullable String currency) {
+            @Nullable String currency, @Nullable List<String> topics) {
 
         String body = json.writeValueAsString(new CreateKitBody(
                 vendorName, kitId, displayName, description, null, null,
-                priceCents, currency, null));
+                priceCents, currency, null, topics));
         HttpResponse<String> response = send(HttpRequest.newBuilder(
                         uri(source, "/store/vendor/kits"))
                 .timeout(TIMEOUT)
@@ -663,7 +667,8 @@ public class StoreClient {
     private record CreateKitBody(
             String vendorName, String kitId, String displayName,
             @Nullable String description, @Nullable String license, @Nullable String homepage,
-            long priceCents, @Nullable String currency, @Nullable Integer licenseTermDays) {}
+            long priceCents, @Nullable String currency, @Nullable Integer licenseTermDays,
+            @Nullable List<String> topics) {}
 
     private record RejectBody(String reason) {}
 

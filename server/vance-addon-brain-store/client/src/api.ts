@@ -180,9 +180,10 @@ export async function createKit(
   description: string | undefined,
   priceCents: number,
   currency?: string,
+  topics?: string[],
 ): Promise<VendorKit> {
   return brainFetch<VendorKit>('POST', `${base(projectId)}/developer/kits`, {
-    body: { sourceId, vendor, kitId, displayName, description, priceCents, currency },
+    body: { sourceId, vendor, kitId, displayName, description, priceCents, currency, topics },
   });
 }
 

@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { VAlert, VButton, VCard, VEmptyState, VInput, VTextarea } from '@vance/components';
 import {
   buy, connect, disconnect, install, loadOverview, loadReviews,
-  loadWithdrawalNotice, submitReview,
+  loadSurfaces, loadWithdrawalNotice, submitReview,
 } from './api';
 import DeveloperPanel from './DeveloperPanel.vue';
 import OperatorPanel from './OperatorPanel.vue';
@@ -34,12 +34,41 @@ const projectId = computed(() => props.projectId ?? '_tenant');
  * rather than more tabs in the entry list — they share nothing but the
  * library they point at.
  */
-const modes = [
-  { key: 'STORE', label: 'Store' },
-  { key: 'DEVELOPER', label: 'Developer' },
-  { key: 'OPERATOR', label: 'Operator' },
-] as const;
 const mode = ref<'STORE' | 'DEVELOPER' | 'OPERATOR'>('STORE');
+
+/**
+ * The operator area appears only where this brain is set up to operate
+ * that store (`store.operator.<sourceId>`).
+ *
+ * Hiding it is not security — the store refuses anyone who is not on its
+ * own operator list, and that list lives in its config rather than in a
+ * database. It is that a visible button puzzles everyone it does not
+ * belong to, and invites the rest to try it.
+ */
+const operatorSources = ref<string[]>([]);
+
+/**
+ * Switching to a store one does not operate closes the operator view.
+ *
+ * Only that view: an earlier version reset *any* mode, so picking another
+ * store from the Developer tab threw you back to the shop window.
+ */
+function leaveOperatorIfNotOffered(): void {
+  if (mode.value === 'OPERATOR' && !operatorSources.value.includes(activeSource.value)) {
+    mode.value = 'STORE';
+  }
+}
+
+const modes = computed(() => {
+  const entries: { key: 'STORE' | 'DEVELOPER' | 'OPERATOR'; label: string }[] = [
+    { key: 'STORE', label: 'Store' },
+    { key: 'DEVELOPER', label: 'Developer' },
+  ];
+  if (operatorSources.value.includes(activeSource.value)) {
+    entries.push({ key: 'OPERATOR', label: 'Operator' });
+  }
+  return entries;
+});
 
 /** Which library the developer and operator panels act on. */
 const activeSource = ref('');
@@ -82,6 +111,10 @@ async function load(): Promise<void> {
     if (!activeSource.value && views.value.length) {
       activeSource.value = views.value[0].sourceId;
     }
+    operatorSources.value = (await loadSurfaces(projectId.value)).operatorSources;
+    // The tab can disappear under an open panel — a setting removed, or a
+    // reload on a store this user does not operate.
+    leaveOperatorIfNotOffered();
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Could not load the store.';
   } finally {
@@ -291,6 +324,7 @@ onMounted(load);
         v-if="mode !== 'STORE' && sourceIds.length > 1"
         v-model="activeSource"
         class="ml-2 text-sm"
+        @change="leaveOperatorIfNotOffered()"
       >
         <option v-for="id in sourceIds" :key="id" :value="id">{{ id }}</option>
       </select>

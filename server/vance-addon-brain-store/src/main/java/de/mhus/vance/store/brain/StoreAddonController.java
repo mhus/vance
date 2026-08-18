@@ -22,6 +22,7 @@ import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
@@ -63,6 +64,10 @@ public class StoreAddonController {
     private final KitStoreCredentials credentials;
     private final RequestAuthority authority;
     private final StoreDeveloperService developerService;
+    private final SettingService settings;
+
+    /** Per source: whether this brain offers the operator surface for it. */
+    static final String OPERATOR_KEY_PREFIX = "store.operator.";
 
     public record ConnectRequest(
             String sourceId, String email, String password, @Nullable String label) {}
@@ -419,6 +424,64 @@ public class StoreAddonController {
         }
     }
 
+    // ──────────────────── which surfaces this user gets ────────────────────
+
+    /**
+     * Which stores this user is set up to operate.
+     *
+     * <p><b>Why hide the surface at all.</b> It grants nothing — the store
+     * answers 404 to an account that is not in {@code vance.store.operators},
+     * and that property lives in the operator's own config where nothing in
+     * a database can reach it. But a visible button is an invitation:
+     * it puzzles everyone it does not belong to, and invites the rest to
+     * try. Showing it only where it applies is not security, it is not
+     * putting a door in a wall that has no room behind it.
+     *
+     * <p>Per source, because operating one store says nothing about
+     * another — same shape as {@code store.account.<id>} and
+     * {@code store.token.<id>}.
+     */
+    public record Surfaces(List<String> operatorSources) {}
+
+    @GetMapping("/{projectId}/surfaces")
+    public Surfaces surfaces(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        String actor = actor(request);
+        return new Surfaces(sources.configuredSources(tenant).stream()
+                .filter(source -> source.getType() == KitSourceType.LIBRARY)
+                .map(KitSourceDto::getId)
+                .filter(id -> operates(tenant, projectId, actor, id))
+                .toList());
+    }
+
+    /** {@code store.operator.<sourceId>}, read through the usual cascade. */
+    private boolean operates(String tenant, String projectId, String actor, String sourceId) {
+        return "true".equalsIgnoreCase(String.valueOf(settings.getStringValueUserProjectCascade(
+                tenant, actor, projectId, null, OPERATOR_KEY_PREFIX + sourceId)));
+    }
+
+    /**
+     * Refuse the operator calls where the surface is not offered.
+     *
+     * <p>Not a second lock — the store decides who may publish, and this
+     * cannot widen that. What it prevents is an installation that hides the
+     * surface still answering for it, which would make the setting a
+     * decoration rather than a statement about this brain.
+     */
+    private void requireOperatorSurface(
+            String tenant, String projectId, String sourceId, HttpServletRequest request) {
+
+        if (!operates(tenant, projectId, actor(request), sourceId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "this installation is not set up to operate '" + sourceId
+                            + "' — set " + OPERATOR_KEY_PREFIX + sourceId + " to enable it");
+        }
+    }
+
     // ──────────────────── operator ────────────────────
 
     /** What is waiting for the switch: vendors, then releases. */
@@ -441,6 +504,7 @@ public class StoreAddonController {
             HttpServletRequest request) {
 
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        requireOperatorSurface(tenant, projectId, body.sourceId(), request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
             return withSession(source, body.email(), body.password(), session ->
@@ -462,6 +526,7 @@ public class StoreAddonController {
             HttpServletRequest request) {
 
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        requireOperatorSurface(tenant, projectId, body.sourceId(), request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
             return withSession(source, body.email(), body.password(), session -> {

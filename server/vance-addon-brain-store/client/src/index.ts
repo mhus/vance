@@ -18,6 +18,7 @@ export {
   publish,
   loadOperatorQueue,
   loadProjects,
+  loadSurfaces,
   decide,
 } from './api';
 export type {
@@ -37,4 +38,5 @@ export type {
   VendorKit,
   VendorTerms,
   StoreFees,
+  Surfaces,
 } from './types';

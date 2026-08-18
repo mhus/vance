@@ -166,3 +166,15 @@ export interface OperatorView {
   pendingVendors: Vendor[];
   submittedReleases: QueuedRelease[];
 }
+
+/**
+ * Which surfaces this user gets.
+ *
+ * The operator area grants nothing — the store refuses anyone who is not
+ * in its own operator list — but a visible button puzzles everyone it does
+ * not belong to and invites the rest to try it.
+ */
+export interface Surfaces {
+  /** Source ids this brain is set up to operate (`store.operator.<id>`). */
+  operatorSources: string[];
+}

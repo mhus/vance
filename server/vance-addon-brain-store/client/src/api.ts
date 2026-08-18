@@ -8,6 +8,7 @@ import type {
   StoreOrder,
   StoreReview,
   StoreSourceView,
+  Surfaces,
   Vendor,
   VendorKit,
   WithdrawalNotice,
@@ -252,4 +253,9 @@ export async function loadProjects(): Promise<{ name: string; title?: string }[]
     'GET', 'projects',
   );
   return answer.projects ?? [];
+}
+
+/** Which stores this user is set up to operate. */
+export async function loadSurfaces(projectId: string): Promise<Surfaces> {
+  return brainFetch<Surfaces>('GET', `${base(projectId)}/surfaces`);
 }

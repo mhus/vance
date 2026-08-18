@@ -162,6 +162,50 @@ class StoreOverviewServiceTest {
     }
 
     @Test
+    void notSignedIn_stillKnowsWhatIsInstalledHere() {
+        // What is installed is this installation's own knowledge. Reading
+        // the record only in the owned branch made an installed kit look
+        // like a fresh offer to anyone who had not signed in — the screen
+        // said "install" for something already there.
+        givenNotSignedIn();
+        when(client.catalogue(any())).thenReturn(List.of(catalogue("security", "2.0.0")));
+        when(recordStore.list(TENANT, PROJECT)).thenReturn(List.of(record("library:2.0.0")));
+
+        assertThat(firstEntries())
+                .singleElement()
+                .satisfies(entry -> {
+                    assertThat(entry.state()).isEqualTo(StoreOverviewService.EntryState.INSTALLED);
+                    assertThat(entry.installedVersion()).isEqualTo("2.0.0");
+                });
+    }
+
+    @Test
+    void notSignedIn_andAnOlderVersionInstalled_isUpdatable() {
+        givenNotSignedIn();
+        when(client.catalogue(any())).thenReturn(List.of(catalogue("security", "2.0.0")));
+        when(recordStore.list(TENANT, PROJECT)).thenReturn(List.of(record("library:1.0.0")));
+
+        assertThat(firstEntries())
+                .singleElement()
+                .extracting(StoreOverviewService.Entry::state)
+                .isEqualTo(StoreOverviewService.EntryState.UPDATABLE);
+    }
+
+    @Test
+    void notSignedIn_andNothingInstalled_staysOffered() {
+        // Ownership is what the link answers, and there is no link — so
+        // "not installed" must not become "owned".
+        givenNotSignedIn();
+        when(client.catalogue(any())).thenReturn(List.of(catalogue("security", "2.0.0")));
+        when(recordStore.list(TENANT, PROJECT)).thenReturn(List.of());
+
+        assertThat(firstEntries())
+                .singleElement()
+                .extracting(StoreOverviewService.Entry::state)
+                .isEqualTo(StoreOverviewService.EntryState.OFFERED);
+    }
+
+    @Test
     void unreachableStore_saysSoInsteadOfLookingEmpty() {
         // "Nothing for sale" and "could not ask" are different answers, and
         // the screen has to be able to tell them apart.

@@ -47,9 +47,15 @@ public class StoreOverviewService {
         OFFERED,
         /** Owned, not installed in this project. */
         OWNED,
-        /** Owned and installed at the version the library currently offers. */
+        /**
+         * Installed here, at the version the library currently offers.
+         *
+         * <p>Says nothing about ownership on purpose: an installation
+         * knows what it has installed without asking anybody, and that
+         * answer must not disappear when nobody is signed in.
+         */
         INSTALLED,
-        /** Owned and installed, but the library offers a newer version. */
+        /** Installed here, but the library offers a different version. */
         UPDATABLE
     }
 
@@ -144,16 +150,27 @@ public class StoreOverviewService {
             String path = path(entry.vendorName(), entry.kitId());
             if (entry.score() != null) scores.put(path, entry.score());
             offeredByPath.put(path, entry);
+            // Whether it is installed here is this installation's own
+            // knowledge, and it does not become unknowable because nobody
+            // has signed in: without a link the owned list is empty, and
+            // reading the record only there meant an installed kit was
+            // offered as if it were new.
+            String installed = installedVersions.get(path);
             byPath.put(path, new Entry(
                     source.getId(), source.getUrl(), path,
                     entry.vendorName(), entry.kitId(), entry.displayName(),
                     entry.description(), entry.license(), entry.homepage(),
-                    entry.version(), null, null, true,
+                    entry.version(), installed, null, true,
                     entry.score() == null ? 0d : entry.score().average(),
                     entry.score() == null ? 0L : entry.score().count(),
                     entry.priceCents(), entry.currency(), entry.licenseTermDays(),
                     orEmpty(entry.topics()), orEmpty(entry.contains()),
-                    EntryState.OFFERED));
+                    // Not stateOf() alone: with nothing installed this row
+                    // is OFFERED, not OWNED — ownership is what the link
+                    // answers, and there is no link here.
+                    installed == null
+                            ? EntryState.OFFERED
+                            : stateOf(installed, entry.version())));
         }
         // Owned entries win over catalogue ones: they carry the licence
         // expiry and the version this account may actually have, which can

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { VAlert, VButton, VCard, VEmptyState, VInput, VTextarea } from '@vance/components';
+import {
+  VAlert, VButton, VCard, VEmptyState, VInput, VSelect, VTextarea,
+} from '@vance/components';
 import { applyVendor, createKit, loadDeveloper, loadProjects, publish } from './api';
 import type { DeveloperView, ReleaseRequest, Vendor } from './types';
 
@@ -51,6 +53,19 @@ const approvedVendors = computed(
   () => (view.value?.vendors ?? []).filter((v) => v.status === 'APPROVED'),
 );
 
+/**
+ * Whose kit this is — chosen, never typed.
+ *
+ * The handle is claimed once when applying and the store rejects a kit
+ * under somebody else's, so a free text field here could only produce a
+ * value that fails. With one approved vendor there is no choice to make
+ * and the name is simply stated; with several it is a picker.
+ */
+const vendorOptions = computed(
+  () => approvedVendors.value.map((v) => ({ value: v.name, label: v.displayName
+    ? `${v.displayName} (${v.name})` : v.name })),
+);
+
 async function load(): Promise<void> {
   error.value = '';
   loading.value = true;
@@ -58,7 +73,11 @@ async function load(): Promise<void> {
     view.value = await loadDeveloper(props.projectId, props.sourceId);
     if (projects.value.length === 0) projects.value = await loadProjects();
     if (view.value.problem) error.value = view.value.problem;
-    if (!kitVendor.value && approvedVendors.value.length) {
+    // Also when the current pick is no longer approved: a handle that was
+    // withdrawn between two loads must not stay selected, because the only
+    // thing it can still do is fail on create.
+    const stillApproved = approvedVendors.value.some((v) => v.name === kitVendor.value);
+    if (!stillApproved && approvedVendors.value.length) {
       kitVendor.value = approvedVendors.value[0].name;
     }
   } catch (e) {
@@ -313,7 +332,16 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
       </div>
 
       <div v-if="creatingKit" class="mt-3 flex flex-col gap-2 border-t pt-3">
-        <VInput v-model="kitVendor" label="Vendor handle" />
+        <VSelect
+          v-if="vendorOptions.length > 1"
+          v-model="kitVendor"
+          :options="vendorOptions"
+          label="Vendor"
+        />
+        <div v-else class="text-sm">
+          <span class="opacity-70">Vendor</span>
+          <div class="font-medium">{{ kitVendor }}</div>
+        </div>
         <VInput v-model="kitId" label="Kit id" help="Part of the address. It cannot change later." />
         <VInput v-model="kitDisplayName" label="Display name" />
         <VTextarea v-model="kitDescription" placeholder="What this kit is for." />

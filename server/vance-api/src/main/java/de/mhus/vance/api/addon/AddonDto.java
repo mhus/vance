@@ -44,5 +44,12 @@ public class AddonDto {
      * renders a launcher tile from it, gated by the viewer's UI level.
      */
     private @Nullable AddonTileDto tile;
+
+    /**
+     * The tab this addon adds to the profile screen, or null when it adds
+     * none. Declared in the manifest so the strip can be built without
+     * loading remotes first.
+     */
+    private @Nullable AddonProfileTabDto profile;
 }
 

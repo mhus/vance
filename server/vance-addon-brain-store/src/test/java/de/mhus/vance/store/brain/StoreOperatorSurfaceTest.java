@@ -89,12 +89,27 @@ class StoreOperatorSurfaceTest {
     }
 
     @Test
+    void surfaces_reportsTheDeveloperRoleSeparately() {
+        // Two roles, two lists. Somebody can publish at one store and
+        // operate another, and the tab strip has to say which is which.
+        givenIdentity("devstore", false, true);
+        givenIdentity("other-store", true, false);
+
+        StoreAddonController.Surfaces surfaces = controller.surfaces(TENANT, PROJECT, request);
+
+        assertThat(surfaces.developerSources()).containsExactly("devstore");
+        assertThat(surfaces.operatorSources()).containsExactly("other-store");
+    }
+
+    @Test
     void surfaces_withoutASignIn_asksNobody() {
         // No link, no question to ask — and no error either.
         when(credentials.resolve(any(), any(), any(), any(), any()))
                 .thenReturn(new KitAccess(TENANT, null, null));
 
-        assertThat(controller.surfaces(TENANT, PROJECT, request).operatorSources()).isEmpty();
+        StoreAddonController.Surfaces surfaces = controller.surfaces(TENANT, PROJECT, request);
+        assertThat(surfaces.operatorSources()).isEmpty();
+        assertThat(surfaces.developerSources()).isEmpty();
     }
 
     @Test
@@ -109,12 +124,16 @@ class StoreOperatorSurfaceTest {
     }
 
     private void givenIdentity(String sourceId, boolean operator) {
+        givenIdentity(sourceId, operator, false);
+    }
+
+    private void givenIdentity(String sourceId, boolean operator, boolean vendor) {
         when(storeClient.identity(
                 org.mockito.ArgumentMatchers.argThat(
                         source -> source != null && sourceId.equals(source.getId())),
                 eq(TOKEN)))
                 .thenReturn(new StoreClient.Identity(
-                        "acc_1", "Someone", "ACTIVE", operator, "LINK"));
+                        "acc_1", "Someone", "ACTIVE", operator, vendor, "LINK"));
     }
 
     private static KitSourceDto library(String id) {

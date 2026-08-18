@@ -78,6 +78,8 @@ public class StoreOverviewService {
     /** One store, as far as this user is concerned. */
     public record SourceView(
             String sourceId,
+            /** What a person calls this store — its configured title, else its id. */
+            String title,
             String url,
             @Nullable String accountId,
             boolean reachable,
@@ -119,7 +121,7 @@ public class StoreOverviewService {
         } catch (KitException e) {
             log.info("StoreOverviewService: store '{}' is not listable: {}",
                     source.getId(), e.getMessage());
-            return new SourceView(source.getId(), source.getUrl(),
+            return new SourceView(source.getId(), titleOf(source), source.getUrl(),
                     connection.accountId(), false, e.getMessage(), List.of());
         }
 
@@ -181,8 +183,15 @@ public class StoreOverviewService {
 
         List<Entry> entries = new ArrayList<>(byPath.values());
         entries.sort(Comparator.comparing(Entry::vendor).thenComparing(Entry::kitId));
-        return new SourceView(source.getId(), source.getUrl(),
+        return new SourceView(source.getId(), titleOf(source), source.getUrl(),
                 connection.accountId(), true, null, entries);
+    }
+
+    /** Its configured title, else its id — the id is a handle, not a name. */
+    private static String titleOf(KitSourceDto source) {
+        return source.getTitle() == null || source.getTitle().isBlank()
+                ? source.getId()
+                : source.getTitle();
     }
 
     /**

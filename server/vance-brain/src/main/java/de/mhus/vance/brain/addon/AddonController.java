@@ -39,6 +39,7 @@ public class AddonController {
                 .path(doc.getPath())
                 .checksum(doc.getChecksum())
                 .tile(manifestRegistry.tileFor(doc.getName()))
+                .profile(manifestRegistry.profileTabFor(doc.getName()))
                 .build();
     }
 }

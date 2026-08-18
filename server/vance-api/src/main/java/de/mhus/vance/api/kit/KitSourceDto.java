@@ -60,4 +60,13 @@ public class KitSourceDto {
      * configuration. Null means "the same host as the library".
      */
     private @Nullable String storeUrl;
+
+    /**
+     * What a person calls this store, if the id is not that already.
+     *
+     * <p>The id is a handle — short, url-safe, used in configuration. A
+     * title is what belongs on a screen where somebody is picking a kit:
+     * they choose by the name of the place, not by its address.
+     */
+    private @Nullable String title;
 }

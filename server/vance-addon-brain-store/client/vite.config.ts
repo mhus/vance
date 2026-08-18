@@ -18,6 +18,9 @@ export default defineConfig({
       filename: 'remoteEntry.js',
       exposes: {
         './area': './src/StoreArea.vue',
+        // The profile tab — declared in META-INF/vance-addon.yaml, loaded
+        // by the host's profile extension point.
+        './profile': './src/StoreProfile.vue',
       },
       shared: {
         vue: { singleton: true, requiredVersion: '^3.5.0' },

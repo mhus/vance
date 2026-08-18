@@ -1,5 +1,6 @@
 import { brainFetch } from '@vance/shared';
 import type {
+  Connection,
   DeveloperView,
   KitOperationResult,
   OperatorView,
@@ -252,4 +253,9 @@ export async function loadProjects(): Promise<{ name: string; title?: string }[]
 /** Which stores this user is set up to operate. */
 export async function loadSurfaces(projectId: string): Promise<Surfaces> {
   return brainFetch<Surfaces>('GET', `${base(projectId)}/surfaces`);
+}
+
+/** Every configured store, with roles and reachability — for the profile. */
+export async function loadConnections(projectId: string): Promise<Connection[]> {
+  return brainFetch<Connection[]>('GET', `${base(projectId)}/connections`);
 }

@@ -1,6 +1,7 @@
 // Barrel for the store addon's client surface.
 
 export { default as StoreArea } from './StoreArea.vue';
+export { default as StoreProfile } from './StoreProfile.vue';
 export { default as DeveloperPanel } from './DeveloperPanel.vue';
 export { default as OperatorPanel } from './OperatorPanel.vue';
 export {
@@ -19,6 +20,7 @@ export {
   loadOperatorQueue,
   loadProjects,
   loadSurfaces,
+  loadConnections,
   decide,
 } from './api';
 export type {
@@ -39,4 +41,5 @@ export type {
   VendorTerms,
   StoreFees,
   Surfaces,
+  Connection,
 } from './types';

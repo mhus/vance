@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.addon;
 
+import de.mhus.vance.api.addon.AddonProfileTabDto;
 import de.mhus.vance.api.addon.AddonTileDto;
 import java.io.InputStream;
 import java.util.HashMap;
@@ -24,9 +25,11 @@ import org.yaml.snakeyaml.Yaml;
 public class AddonManifestRegistry {
 
     private final Map<String, AddonTileDto> tilesById;
+    private final Map<String, AddonProfileTabDto> profileTabsById;
 
     public AddonManifestRegistry(ResourcePatternResolver resourceResolver) {
         Map<String, AddonTileDto> map = new HashMap<>();
+        Map<String, AddonProfileTabDto> profiles = new HashMap<>();
         try {
             Resource[] manifests = resourceResolver.getResources("classpath*:META-INF/vance-addon.yaml");
             Yaml yaml = new Yaml();
@@ -38,6 +41,18 @@ public class AddonManifestRegistry {
                     }
                     if (!(m.get("id") instanceof String id) || id.isBlank()) {
                         continue;
+                    }
+                    // A profile tab and a landing tile are independent: an
+                    // addon may contribute one, both or neither.
+                    if (m.get("profile") instanceof Map<?, ?> profile) {
+                        String tabLabel = str(profile.get("label"));
+                        if (tabLabel != null && !tabLabel.isBlank()) {
+                            profiles.put(id, AddonProfileTabDto.builder()
+                                    .label(tabLabel)
+                                    .expose(str(profile.get("expose")))
+                                    .sortIndex(intOrNull(profile.get("sortIndex")))
+                                    .build());
+                        }
                     }
                     if (!(m.get("tile") instanceof Map<?, ?> tile)) {
                         continue;
@@ -59,7 +74,9 @@ public class AddonManifestRegistry {
             log.warn("AddonManifestRegistry: classpath scan failed: {}", e.toString());
         }
         this.tilesById = Map.copyOf(map);
-        log.info("AddonManifestRegistry: {} addon tile(s) discovered", tilesById.size());
+        this.profileTabsById = Map.copyOf(profiles);
+        log.info("AddonManifestRegistry: {} addon tile(s), {} profile tab(s) discovered",
+                tilesById.size(), profileTabsById.size());
     }
 
     /** The declarative tile for {@code addonId}, or {@code null} when it declares none. */
@@ -67,7 +84,16 @@ public class AddonManifestRegistry {
         return tilesById.get(addonId);
     }
 
+    /** The profile tab {@code addonId} declares, or {@code null} for none. */
+    public @Nullable AddonProfileTabDto profileTabFor(String addonId) {
+        return profileTabsById.get(addonId);
+    }
+
     private static @Nullable String str(@Nullable Object v) {
         return v == null ? null : v.toString();
+    }
+
+    private static @Nullable Integer intOrNull(@Nullable Object v) {
+        return v instanceof Number n ? n.intValue() : null;
     }
 }

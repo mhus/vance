@@ -35,6 +35,8 @@ export interface StoreEntry {
 
 export interface StoreSourceView {
   sourceId: string;
+  /** What a person calls this store. The url lives in the profile. */
+  title: string;
   url: string;
   /** Which store account this user is signed in as, or null. */
   accountId?: string | null;
@@ -175,6 +177,26 @@ export interface OperatorView {
  * not belong to and invites the rest to try it.
  */
 export interface Surfaces {
-  /** Source ids this brain is set up to operate (`store.operator.<id>`). */
+  /** Source ids where this account is an operator — the store's answer. */
   operatorSources: string[];
+  /** Source ids where it has a vendor profile — the developer role. */
+  developerSources: string[];
+}
+
+/**
+ * One store as the profile screen shows it.
+ *
+ * The address and the reachability live here and not in the store area:
+ * somebody browsing kits picks by the name of the place, and an error they
+ * cannot act on from there is furniture.
+ */
+export interface Connection {
+  sourceId: string;
+  title: string;
+  url: string;
+  reachable: boolean;
+  problem?: string | null;
+  accountId?: string | null;
+  operator: boolean;
+  developer: boolean;
 }

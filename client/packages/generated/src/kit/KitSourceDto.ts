@@ -13,4 +13,5 @@ export interface KitSourceDto {
   signature: KitSignaturePolicy;
   publicKey?: string;
   storeUrl?: string;
+  title?: string;
 }

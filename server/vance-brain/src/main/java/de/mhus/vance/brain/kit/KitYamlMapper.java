@@ -548,6 +548,7 @@ public final class KitYamlMapper {
                             : parseSignaturePolicy(e.get("signature"), entryLabel))
                     .publicKey(stringOrNull(e.get("publicKey")))
                     .storeUrl(stringOrNull(e.get("storeUrl")))
+                    .title(stringOrNull(e.get("title")))
                     .build());
         }
         return KitSourcesDto.builder().sources(sources).build();

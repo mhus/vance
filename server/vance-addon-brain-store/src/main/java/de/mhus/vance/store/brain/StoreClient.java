@@ -384,6 +384,8 @@ public class StoreClient {
             @Nullable String displayName,
             String status,
             boolean operator,
+            /** Has a vendor profile — the developer role, any status. */
+            boolean vendor,
             String via) {}
 
     /**

@@ -438,7 +438,69 @@ public class StoreAddonController {
      * another — same shape as {@code store.account.<id>} and
      * {@code store.token.<id>}.
      */
-    public record Surfaces(List<String> operatorSources) {}
+    public record Surfaces(List<String> operatorSources, List<String> developerSources) {}
+
+    /**
+     * One store as the profile screen shows it.
+     *
+     * <p>Everything about the connection lives here: which store, where it
+     * is, whether it answered, who this installation is signed in as and
+     * what that account may do. The store area itself shows none of it —
+     * a person picks a kit by its name, not by the host it came from, and
+     * an address they cannot act on is furniture.
+     */
+    public record Connection(
+            String sourceId,
+            String title,
+            String url,
+            boolean reachable,
+            @Nullable String problem,
+            @Nullable String accountId,
+            boolean operator,
+            boolean developer) {}
+
+    /** Every configured library, for the profile. */
+    @GetMapping("/{projectId}/connections")
+    public List<Connection> connections(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        String actor = actor(request);
+        List<Connection> out = new ArrayList<>();
+        for (KitSourceDto source : sources.configuredSources(tenant)) {
+            if (source.getType() != KitSourceType.LIBRARY) continue;
+            String token = credentials.resolve(tenant, projectId, actor, source.getUrl(), null)
+                    .token();
+            if (token == null || token.isBlank()) {
+                // Not signed in is not a failure — and asking an
+                // unauthenticated store who we are would answer nothing.
+                out.add(new Connection(source.getId(), titleOf(source), source.getUrl(),
+                        true, null, null, false, false));
+                continue;
+            }
+            try {
+                StoreClient.Identity identity = storeClient.identity(source, token);
+                out.add(new Connection(source.getId(), titleOf(source), source.getUrl(),
+                        true, null, identity.accountId(),
+                        identity.operator(), identity.vendor()));
+            } catch (KitException e) {
+                // This is the one screen where the address and the reason
+                // belong: somebody here can act on them.
+                out.add(new Connection(source.getId(), titleOf(source), source.getUrl(),
+                        false, e.getMessage(), null, false, false));
+            }
+        }
+        return out;
+    }
+
+    /** What a person calls this store — its configured title, else its id. */
+    private static String titleOf(KitSourceDto source) {
+        return source.getTitle() == null || source.getTitle().isBlank()
+                ? source.getId()
+                : source.getTitle();
+    }
 
     @GetMapping("/{projectId}/surfaces")
     public Surfaces surfaces(
@@ -449,24 +511,26 @@ public class StoreAddonController {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
         String actor = actor(request);
         List<String> operated = new ArrayList<>();
+        List<String> developed = new ArrayList<>();
         for (KitSourceDto source : sources.configuredSources(tenant)) {
             if (source.getType() != KitSourceType.LIBRARY) continue;
             String token = credentials.resolve(tenant, projectId, actor, source.getUrl(), null)
                     .token();
             if (token == null || token.isBlank()) continue;
             try {
-                if (storeClient.identity(source, token).operator()) {
-                    operated.add(source.getId());
-                }
+                StoreClient.Identity identity = storeClient.identity(source, token);
+                if (identity.operator()) operated.add(source.getId());
+                if (identity.vendor()) developed.add(source.getId());
             } catch (KitException e) {
-                // An unreachable store is not a store this account operates,
-                // and it is not worth an error banner over a tab: the shop
-                // window already says the store could not be asked.
+                // An unreachable store is no role, and it is not worth an
+                // error banner over a tab strip. The profile screen is where
+                // that failure is shown, because that is where it can be
+                // acted on.
                 log.debug("StoreAddonController: could not ask '{}' who we are: {}",
                         source.getId(), e.getMessage());
             }
         }
-        return new Surfaces(operated);
+        return new Surfaces(operated, developed);
     }
 
     // ──────────────────── operator ────────────────────

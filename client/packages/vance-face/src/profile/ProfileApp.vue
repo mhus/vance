@@ -42,6 +42,7 @@ import {
   VSideTabs,
 } from '@components/index';
 import { useProfile } from '@composables/useProfile';
+import { loadProfileTabs, type ProfileTab } from '@/platform/loadProfileTabs';
 
 const { t } = useI18n();
 const {
@@ -51,6 +52,17 @@ const {
 // Left-rail tabs. Ids double as the URL hash fragment (deep-linkable:
 // profile.html#speech) and the VSideTabs slot names.
 const activeTab = ref('identity');
+
+/**
+ * Tabs addons contribute (`profile:` in their manifest).
+ *
+ * What belongs here is what a person owns rather than what a project
+ * needs — which store account this installation is signed in to, and
+ * which roles it has. Loaded after the built-in tabs so a slow or broken
+ * remote never delays the screen somebody opened to change a password.
+ */
+const addonTabs = ref<ProfileTab[]>([]);
+
 const tabs = computed<SideTab[]>(() => [
   { id: 'identity', label: t('profile.identity.title') },
   { id: 'security', label: t('profile.security.title') },
@@ -58,6 +70,7 @@ const tabs = computed<SideTab[]>(() => [
   { id: 'speech', label: t('profile.speech.title') },
   { id: 'actions', label: t('profile.actions.title') },
   { id: 'teams', label: t('profile.teams.title'), badge: profile.value?.teams.length },
+  ...addonTabs.value.map((tab) => ({ id: tab.id, label: tab.label })),
 ]);
 
 // ─── Password change (self-service) ───────────────────────────────
@@ -307,6 +320,11 @@ onMounted(() => {
     refreshVoiceOptions();
   }
   void load();
+  // Not awaited: the built-in tabs are what somebody came for, and a
+  // federation remote must never keep them waiting.
+  void loadProfileTabs().then((contributed) => {
+    addonTabs.value = contributed;
+  });
 });
 
 onBeforeUnmount(() => {
@@ -1024,6 +1042,11 @@ async function onResetTalkCommands(): Promise<void> {
             </li>
           </ul>
         </VCard>
+        </template>
+
+        <!-- Addon-contributed tabs — one slot per contributor. -->
+        <template v-for="tab in addonTabs" :key="tab.id" #[tab.id]>
+          <component :is="tab.component" />
         </template>
         </VSideTabs>
       </template>

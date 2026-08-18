@@ -7,3 +7,9 @@ tile:
   label: Store
   description: Browse the kit library, sign in and install what you own.
   minLevel: admin
+profile:
+  # Where a person's store belonging lives: which stores, which account,
+  # which roles. The store area shows kits and nothing about connections.
+  label: Store
+  expose: ./profile
+  sortIndex: 50

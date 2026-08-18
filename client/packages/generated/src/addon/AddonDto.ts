@@ -3,6 +3,7 @@
  Source: de.mhus.vance.api.addon.AddonDto
 */
 
+import { AddonProfileTabDto } from './AddonProfileTabDto';
 import { AddonTileDto } from './AddonTileDto';
 
 export interface AddonDto {
@@ -10,4 +11,5 @@ export interface AddonDto {
   path: string;
   checksum?: string;
   tile?: AddonTileDto;
+  profile?: AddonProfileTabDto;
 }

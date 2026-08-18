@@ -95,7 +95,9 @@ function vanceAddonDevServe(): Plugin {
         // and runtime Kind contributions never reach the registry.
         if (pathname === '/face/addons') {
           const addonsRoot = resolve(workspaceRoot, 'server');
-          let entries: { name: string; path: string; tile?: unknown }[] = [];
+          let entries: {
+            name: string; path: string; tile?: unknown; profile?: unknown;
+          }[] = [];
           try {
             entries = readdirSync(addonsRoot, { withFileTypes: true })
               .filter((d) => d.isDirectory() && d.name.startsWith('vance-addon-brain-'))
@@ -104,7 +106,9 @@ function vanceAddonDevServe(): Plugin {
                 existsSync(resolve(addonsRoot, `vance-addon-brain-${id}`, 'client', 'dist', 'remoteEntry.js')),
               )
               .map((id) => {
-                const entry: { name: string; path: string; tile?: unknown } = {
+                const entry: {
+                  name: string; path: string; tile?: unknown; profile?: unknown;
+                } = {
                   name: id,
                   path: `bundled:${id}`,
                 };
@@ -126,10 +130,14 @@ function vanceAddonDevServe(): Plugin {
                       ),
                       'utf8',
                     ),
-                  ) as { tile?: unknown } | null;
+                  ) as { tile?: unknown; profile?: unknown } | null;
                   if (manifest?.tile) entry.tile = manifest.tile;
+                  // The profile tab an addon contributes — same single
+                  // source as the landing tile, so the profile screen can
+                  // build its strip without loading a remote first.
+                  if (manifest?.profile) entry.profile = manifest.profile;
                 } catch {
-                  // no manifest / no tile — addon simply has no landing tile
+                  // no manifest — addon contributes neither tile nor tab
                 }
                 return entry;
               });

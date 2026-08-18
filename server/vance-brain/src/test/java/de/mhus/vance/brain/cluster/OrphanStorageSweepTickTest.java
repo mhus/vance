@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.shared.document.OrphanArchiveCleanupService;
 import de.mhus.vance.shared.storage.StorageOrphanCleanupService;
 import java.lang.reflect.Field;
 import java.time.Duration;
@@ -25,13 +26,15 @@ class OrphanStorageSweepTickTest {
 
     private ClusterMasterService masterService;
     private StorageOrphanCleanupService cleanupService;
+    private OrphanArchiveCleanupService archiveCleanupService;
     private OrphanStorageSweepTick tick;
 
     @BeforeEach
     void setUp() throws Exception {
         masterService = mock(ClusterMasterService.class);
         cleanupService = mock(StorageOrphanCleanupService.class);
-        tick = new OrphanStorageSweepTick(masterService, cleanupService);
+        archiveCleanupService = mock(OrphanArchiveCleanupService.class);
+        tick = new OrphanStorageSweepTick(masterService, cleanupService, archiveCleanupService);
         // Override @Value defaults so the test pins the values it asserts on.
         setField(tick, "gracePeriod", Duration.ofMinutes(90));
         setField(tick, "batchSize", 250);
@@ -40,10 +43,10 @@ class OrphanStorageSweepTickTest {
     @Test
     void sweep_passesConfiguredGraceAndBatchSize() {
         Instant now = Instant.parse("2026-06-12T08:00:00Z");
-        when(cleanupService.sweepOnce(any(), any(), anyInt()))
-                .thenReturn(new StorageOrphanCleanupService.CleanupResult(2, 3));
+        when(archiveCleanupService.sweepOnce(anyInt())).thenReturn(2L);
+        when(cleanupService.sweepOnce(any(), any(), anyInt())).thenReturn(3L);
 
-        StorageOrphanCleanupService.CleanupResult r = tick.sweep(now);
+        OrphanStorageSweepTick.CleanupResult r = tick.sweep(now);
 
         assertThat(r.orphanArchivesDeleted()).isEqualTo(2);
         assertThat(r.orphanStorageDeleted()).isEqualTo(3);
@@ -62,8 +65,7 @@ class OrphanStorageSweepTickTest {
     @Test
     void tick_runsWhenMaster() {
         when(masterService.isLocalPodMaster()).thenReturn(true);
-        when(cleanupService.sweepOnce(any(), any(), anyInt()))
-                .thenReturn(new StorageOrphanCleanupService.CleanupResult(0, 0));
+        when(cleanupService.sweepOnce(any(), any(), anyInt())).thenReturn(0L);
 
         tick.tick();
 

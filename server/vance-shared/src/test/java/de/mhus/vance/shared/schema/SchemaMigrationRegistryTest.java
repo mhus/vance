@@ -2,22 +2,25 @@ package de.mhus.vance.shared.schema;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import de.mhus.vance.shared.schema.SchemaMigrationService.RegisteredMigration;
+import de.mhus.vance.shared.braindb.BrainSchemaMigrations;
+import de.mhus.vance.shared.schema.SchemaMigrationSource.Registered;
 import java.lang.reflect.Modifier;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * Integrity of {@link SchemaMigrationService#MIGRATIONS}. These are properties of
- * the source, not of a running system, so they are asserted here instead of on
- * every boot — a violation must fail the build, and it costs nothing at runtime.
+ * Integrity of the brain's registry. These are properties of the source,
+ * not of a running system, so they are asserted here instead of on every
+ * boot — a violation must fail the build, and it costs nothing at runtime.
  *
- * <p>Empty registry passes trivially today; the point is that every future
- * registration is checked.
+ * <p>The same four rules are checked for the kit store's registry in its
+ * own module. Duplicated on purpose: each source is owned by the
+ * application whose database it describes, and a shared test-jar to save
+ * fifteen lines would tie those modules together for nothing.
  */
 class SchemaMigrationRegistryTest {
 
-    private static final List<RegisteredMigration> REGISTRY = SchemaMigrationService.MIGRATIONS;
+    private static final List<Registered> REGISTRY = new BrainSchemaMigrations().migrations();
 
     @Test
     void everyMigrationHasANonBlankId() {
@@ -30,8 +33,8 @@ class SchemaMigrationRegistryTest {
     @Test
     void idsAreUnique() {
         // A duplicate id means two migrations share one marker document, so one of
-        // them would never run — and the LinkedHashMap build would drop it silently.
-        assertThat(REGISTRY.stream().map(RegisteredMigration::id).toList())
+        // them would never run.
+        assertThat(REGISTRY.stream().map(Registered::id).toList())
                 .doesNotHaveDuplicates();
     }
 
@@ -39,7 +42,7 @@ class SchemaMigrationRegistryTest {
     void idsAreInAscendingOrder() {
         // The version model is linear: an id registered below its predecessor sits
         // below the current database version forever and is skipped.
-        List<String> ids = REGISTRY.stream().map(RegisteredMigration::id).toList();
+        List<String> ids = REGISTRY.stream().map(Registered::id).toList();
         assertThat(ids).isSorted();
     }
 

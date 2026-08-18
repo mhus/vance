@@ -1,6 +1,6 @@
 package de.mhus.vance.shared.schema;
 
-import de.mhus.vance.shared.schema.migrations.Migrator_2026_08_12_001_Baseline;
+import de.mhus.vance.shared.database.DatabaseIdentityGuard;
 import jakarta.annotation.PostConstruct;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -10,12 +10,14 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.stereotype.Service;
 
@@ -25,10 +27,15 @@ import org.springframework.stereotype.Service;
  *
  * <h2>Version model</h2>
  * Linear and derived, never hand-maintained: the <b>required</b> version is the
- * last entry of {@link #MIGRATIONS}, the <b>current</b> version is the highest
- * id carrying an {@code APPLIED} or {@code BASELINED} marker, and pending is
- * everything in between. Ids are {@code YYYY-MM-DD_NNN} (see {@link #MIGRATIONS}),
- * so lexicographic order is chronological order.
+ * last id the registered {@link SchemaMigrationSource}s declare, the
+ * <b>current</b> version is the highest id carrying an {@code APPLIED} or
+ * {@code BASELINED} marker, and pending is everything in between. Ids are
+ * {@code YYYY-MM-DD_NNN}, so lexicographic order is chronological order.
+ *
+ * <p>Which migrations exist is <b>not</b> a property of this class: each
+ * application contributes its own through {@link SchemaMigrationSource},
+ * because the brain's migrations reshape the brain's collections and the
+ * kit store's reshape the store's.
  *
  * <p>A database with <b>no marker at all</b> is taken to be new and is
  * <b>baselined</b> — stamped at the current version without running anything, on
@@ -37,8 +44,9 @@ import org.springframework.stereotype.Service;
  * migration exists; see {@link #baseline()}.
  *
  * <h2>Ordering</h2>
- * {@link SchemaMigrationOrderingPostProcessor} makes every Mongo repository bean
- * depend on this one, and this one depends on nothing above {@code MongoTemplate}.
+ * {@code DatabaseGateOrderingPostProcessor} makes every Mongo repository bean
+ * depend on this one, and this one depends on nothing above {@code MongoTemplate}
+ * and the identity guard.
  * The migrator therefore runs <em>between</em> the Mongo infrastructure and the
  * repository layer: no service can read a shape that has not been migrated yet,
  * and nobody has to sprinkle {@code @DependsOn} anywhere.
@@ -58,97 +66,119 @@ import org.springframework.stereotype.Service;
  * </ul>
  */
 @Service(SchemaMigrationService.BEAN_NAME)
+// Reshaping a database before knowing whose it is would be the worst
+// possible order of those two questions.
+@DependsOn(DatabaseIdentityGuard.BEAN_NAME)
 @Slf4j
 public class SchemaMigrationService {
 
-    /** Fixed so {@link SchemaMigrationOrderingPostProcessor} can name it. */
+    /** Fixed so {@code DatabaseGateOrderingPostProcessor} can name it. */
     public static final String BEAN_NAME = "schemaMigrationService";
-
-    /**
-     * Every migration this build knows, in ascending id order.
-     *
-     * <p><b>To add one:</b> write a {@link SchemaMigration} implementation (a
-     * plain public class, no bean) and append one line here. The id becomes the
-     * {@code _id} of the marker document and is never changed afterwards — a
-     * renamed id re-runs the migration.
-     *
-     * <p><b>Id format {@code YYYY-MM-DD_NNN}</b>: ISO date of the release plus a
-     * three-digit counter, counting from {@code _001} within the day. The counter
-     * is mandatory, not "only when there are two on one day" — a single id shape
-     * means a single comparison rule, and zero padding keeps lexicographic order
-     * equal to numeric order ({@code _002} before {@code _010}).
-     *
-     * <pre>
-     * private static final List&lt;RegisteredMigration&gt; MIGRATIONS = List.of(
-     *         new RegisteredMigration("2026-08-01_001", Migrator_2026_08_01_001_NewSecretSettingsType.class),
-     *         new RegisteredMigration("2026-08-01_002", Migrator_2026_08_01_002_DropLegacyTrashPaths.class));
-     * </pre>
-     *
-     * <p>Integrity of this list — unique, ascending, instantiable — is asserted by
-     * {@code SchemaMigrationRegistryTest}, not re-checked on every boot.
-     *
-     * <p>The only entry today is the anchor
-     * {@link Migrator_2026_08_12_001_Baseline}: it does nothing and exists so a
-     * database is "known" before the first real migration ever ships — see its
-     * class comment. The three hand-written {@code @PostConstruct} backfills in
-     * vance-brain still run the old way ({@code planning/schema-migration.md} §3)
-     * — moving them over is a separate track.
-     */
-    static final List<RegisteredMigration> MIGRATIONS = List.of(
-            new RegisteredMigration("2026-08-12_001", Migrator_2026_08_12_001_Baseline.class));
-
-    /** One registry line: the id that becomes the marker, and the class to run. */
-    record RegisteredMigration(String id, Class<? extends SchemaMigration> type) {}
 
     private final MongoTemplate mongoTemplate;
     private final SchemaMigrationLockStore lockStore;
     private final SchemaMigrationProperties properties;
 
-    /** Validated registry, id → class, in run order. */
+    /**
+     * Where the registry comes from.
+     *
+     * <p><b>To add a migration:</b> write a {@link SchemaMigration}
+     * implementation (a plain public class, no bean) and append one line to
+     * the {@link SchemaMigrationSource} of the application it belongs to —
+     * {@code BrainSchemaMigrations} for the brain, {@code
+     * StoreSchemaMigrations} for the kit store. The id becomes the
+     * {@code _id} of the marker document and is never changed afterwards —
+     * a renamed id re-runs the migration.
+     *
+     * <p><b>Id format {@code YYYY-MM-DD_NNN}</b>: ISO date of the release
+     * plus a three-digit counter, counting from {@code _001} within the
+     * day. The counter is mandatory, not "only when there are two on one
+     * day" — a single id shape means a single comparison rule, and zero
+     * padding keeps lexicographic order equal to numeric order
+     * ({@code _002} before {@code _010}).
+     *
+     * <p>Sources are merged and sorted by id. A duplicate id across two
+     * sources fails the boot: ids are the version scale, and letting one
+     * silently win would make the scale meaningless.
+     */
     private final Map<String, Class<? extends SchemaMigration>> migrations;
 
     /** Lease-holder and marker identity of this process. */
     private final String ownerId = resolveOwnerId();
 
-    // Explicit: the second constructor exists for tests, so Spring cannot pick by
-    // arity and would look for a default constructor.
     @Autowired
     public SchemaMigrationService(
             MongoTemplate mongoTemplate,
             SchemaMigrationLockStore lockStore,
-            SchemaMigrationProperties properties) {
-        this(mongoTemplate, lockStore, properties, MIGRATIONS);
-    }
-
-    SchemaMigrationService(
-            MongoTemplate mongoTemplate,
-            SchemaMigrationLockStore lockStore,
             SchemaMigrationProperties properties,
-            List<RegisteredMigration> registry) {
+            List<SchemaMigrationSource> sources) {
         this.mongoTemplate = mongoTemplate;
         this.lockStore = lockStore;
         this.properties = properties;
-        this.migrations = index(registry);
+        this.migrations = index(sources);
     }
 
     /**
-     * Ordered id → class map. Pure translation: the registry's integrity (unique,
-     * ascending, instantiable ids) is a build-time property asserted by
-     * {@code SchemaMigrationRegistryTest}, so there is nothing to validate at
-     * runtime on every boot.
+     * Merges the sources into one ordered id → class map.
+     *
+     * <p>Three things fail here rather than later, all for the same reason:
+     * every one of them would otherwise leave data in an old shape while
+     * the code reads it as the new one.
+     *
+     * <ul>
+     *   <li><b>No source at all</b> — a context that runs this service but
+     *       declares no migrations has almost certainly forgotten to
+     *       contribute one. "Nothing to do" and "nobody asked" look
+     *       identical from here, and only one of them is safe.</li>
+     *   <li><b>An empty source</b> — same thing, said explicitly, so the
+     *       message can name it.</li>
+     *   <li><b>A duplicate id</b> — ids are the version scale; two classes
+     *       under one id means one of them never runs.</li>
+     * </ul>
+     *
+     * <p>Ordering within a source is a build-time property asserted by that
+     * source's test; here the merged set is sorted by id, which is what
+     * makes the {@code YYYY-MM-DD_NNN} shape mandatory.
      */
     private static Map<String, Class<? extends SchemaMigration>> index(
-            List<RegisteredMigration> registry) {
-        Map<String, Class<? extends SchemaMigration>> byId = new LinkedHashMap<>();
-        for (RegisteredMigration entry : registry) {
-            byId.put(entry.id(), entry.type());
+            List<SchemaMigrationSource> sources) {
+
+        if (sources.isEmpty()) {
+            throw new SchemaMigrationException(
+                    "No SchemaMigrationSource registered. A context that runs the schema migrator "
+                            + "must declare which migrations belong to its database — see "
+                            + "SchemaMigrationSource. Refusing to boot rather than treating an "
+                            + "unmigrated database as up to date.");
         }
+        Map<String, Class<? extends SchemaMigration>> byId = new TreeMap<>();
+        Map<String, String> declaredBy = new LinkedHashMap<>();
+        for (SchemaMigrationSource source : sources) {
+            List<SchemaMigrationSource.Registered> declared = source.migrations();
+            if (declared.isEmpty()) {
+                throw new SchemaMigrationException("Schema migration source '" + source.sourceName()
+                        + "' declares no migrations. Every source ships at least the anchor that "
+                        + "makes an existing database known — see BaselineAnchorMigration.");
+            }
+            for (SchemaMigrationSource.Registered entry : declared) {
+                String previous = declaredBy.put(entry.id(), source.sourceName());
+                if (previous != null) {
+                    throw new SchemaMigrationException("Duplicate schema migration id '"
+                            + entry.id() + "', declared by '" + previous + "' and '"
+                            + source.sourceName() + "'. Ids are the version scale and must be "
+                            + "unique across all sources in one application.");
+                }
+                byId.put(entry.id(), entry.type());
+            }
+        }
+        log.debug("Schema migrations: {} migration(s) from {} source(s): {}",
+                byId.size(), sources.size(),
+                sources.stream().map(SchemaMigrationSource::sourceName).toList());
         return byId;
     }
 
     /**
      * Runs during bean creation, i.e. before the repository layer
-     * ({@link SchemaMigrationOrderingPostProcessor}). Throwing here fails the
+     * ({@code DatabaseGateOrderingPostProcessor}). Throwing here fails the
      * context — brain never becomes ready against a database it cannot handle.
      */
     @PostConstruct
@@ -215,7 +245,7 @@ public class SchemaMigrationService {
      * <p><b>The one case this gets wrong</b> is a database that predates the
      * framework and does hold old-shaped data — from here it looks exactly like a
      * new one and gets baselined instead of migrated. Harmless as long as the
-     * anchor {@link Migrator_2026_08_12_001_Baseline} is the only thing baselined
+     * anchor {@link BaselineAnchorMigration} is the only thing baselined
      * away, which is why the anchor ships <em>before</em> the first real
      * migration: afterwards every database is known, and nothing is ever silently
      * skipped again. See {@code specification/schema-migration.md} §2.2.
@@ -362,6 +392,11 @@ public class SchemaMigrationService {
                 .map(SchemaMigrationDocument::getId)
                 .max(String::compareTo)
                 .orElse("");
+    }
+
+    /** Every registered id, ascending — the version scale this build knows. */
+    List<String> declaredIds() {
+        return List.copyOf(migrations.keySet());
     }
 
     /** Registered ids above {@code current}, in registry order. */

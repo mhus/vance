@@ -11,7 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.shared.schema.SchemaMigrationService.RegisteredMigration;
+import de.mhus.vance.shared.schema.SchemaMigrationSource.Registered;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -202,7 +202,7 @@ class SchemaMigrationServiceTest {
     }
 
     @Test
-    void runPending_baseline_marksEveryRegisteredMigration_asBaselined() {
+    void runPending_baseline_marksEveryRegistered_asBaselined() {
         // Not APPLIED: the history must not claim work that never happened. And
         // every entry gets a marker, otherwise the ones below the version would be
         // reported as skipped on the next boot.
@@ -337,12 +337,30 @@ class SchemaMigrationServiceTest {
 
     // ─── helpers ────────────────────────────────────────────────────
 
-    private SchemaMigrationService service(RegisteredMigration... registry) {
-        return new SchemaMigrationService(mongoTemplate, lockStore, properties, List.of(registry));
+    private SchemaMigrationService service(Registered... registry) {
+        // One source is the normal case; what happens with none, with an
+        // empty one and with a clashing id is covered by
+        // SchemaMigrationSourceMergeTest.
+        return new SchemaMigrationService(mongoTemplate, lockStore, properties,
+                List.of(source("test", List.of(registry))));
     }
 
-    private static RegisteredMigration entry(String id, Class<? extends SchemaMigration> type) {
-        return new RegisteredMigration(id, type);
+    private static SchemaMigrationSource source(String name, List<Registered> entries) {
+        return new SchemaMigrationSource() {
+            @Override
+            public List<Registered> migrations() {
+                return entries;
+            }
+
+            @Override
+            public String sourceName() {
+                return name;
+            }
+        };
+    }
+
+    private static Registered entry(String id, Class<? extends SchemaMigration> type) {
+        return new Registered(id, type);
     }
 
     /**

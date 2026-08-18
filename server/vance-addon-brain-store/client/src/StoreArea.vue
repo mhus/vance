@@ -29,10 +29,16 @@ const tabs: { key: 'ALL' | EntryState; label: string }[] = [
 const projectId = computed(() => props.projectId ?? '_tenant');
 
 /**
- * Three audiences on one screen: someone acquiring kits, someone
- * publishing them, someone running the store. Separate top-level modes
- * rather than more tabs in the entry list — they share nothing but the
- * library they point at.
+ * Two rows, in this order: which store, then what you are doing there.
+ *
+ * The store is the frame — a role is held *at* a store, not in general,
+ * and an account can be a developer at one and a plain buyer at another.
+ * Making the store the outer choice removes the picker that used to sit
+ * inside the developer and operator panels: there is nothing left for it
+ * to decide.
+ *
+ * Both rows disappear when they have nothing to offer. One store is not a
+ * choice, and a role strip that only ever says "Store" is furniture.
  */
 const mode = ref<'STORE' | 'DEVELOPER' | 'OPERATOR'>('STORE');
 
@@ -54,6 +60,12 @@ const developerSources = ref<string[]>([]);
  * Only that view: an earlier version reset *any* mode, so picking another
  * store from the Developer tab threw you back to the shop window.
  */
+/** Pick a store. A role that does not exist there closes with it. */
+function selectSource(sourceId: string): void {
+  activeSource.value = sourceId;
+  leaveModeIfNotOffered();
+}
+
 function leaveModeIfNotOffered(): void {
   const offered = modes.value.some((entry) => entry.key === mode.value);
   if (!offered) mode.value = 'STORE';
@@ -76,9 +88,17 @@ const modes = computed(() => {
   return entries;
 });
 
-/** Which library the developer and operator panels act on. */
+/** Which store everything on this screen is about. */
 const activeSource = ref('');
-const sourceIds = computed(() => views.value.map((view) => view.sourceId));
+const activeView = computed(
+  () => views.value.find((view) => view.sourceId === activeSource.value) ?? null,
+);
+
+/** Shown only when there is something to pick between. */
+const showStoreTabs = computed(() => views.value.length > 1);
+
+/** Shown only when this account holds a role beyond buying. */
+const showModeTabs = computed(() => modes.value.length > 1);
 
 const views = ref<StoreSourceView[]>([]);
 const activeTab = ref<'ALL' | EntryState>('ALL');
@@ -124,7 +144,8 @@ async function load(): Promise<void> {
   }
 }
 
-function entriesOf(view: StoreSourceView): StoreEntry[] {
+function entriesOf(view: StoreSourceView | null): StoreEntry[] {
+  if (!view) return [];
   if (activeTab.value === 'ALL') return view.entries;
   return view.entries.filter((entry) => entry.state === activeTab.value);
 }
@@ -270,7 +291,28 @@ onMounted(load);
 
 <template>
   <div class="flex flex-col gap-4">
-    <div class="flex gap-2 items-center">
+    <!--
+      Which store. First, because everything below is about one: a role is
+      held at a store, not in general.
+    -->
+    <div v-if="showStoreTabs" class="flex gap-2 items-center flex-wrap">
+      <VButton
+        v-for="view in views"
+        :key="view.sourceId"
+        size="sm"
+        :variant="activeSource === view.sourceId ? 'primary' : 'secondary'"
+        :outline="activeSource !== view.sourceId"
+        @click="selectSource(view.sourceId)"
+      >
+        {{ view.title }}
+      </VButton>
+    </div>
+
+    <!--
+      What you are doing there. Hidden when this account holds nothing but
+      the right to buy — a strip that only ever says "Store" is furniture.
+    -->
+    <div v-if="showModeTabs" class="flex gap-2 items-center">
       <VButton
         v-for="entry in modes"
         :key="entry.key"
@@ -281,14 +323,6 @@ onMounted(load);
       >
         {{ entry.label }}
       </VButton>
-      <select
-        v-if="mode !== 'STORE' && sourceIds.length > 1"
-        v-model="activeSource"
-        class="ml-2 text-sm"
-        @change="leaveModeIfNotOffered()"
-      >
-        <option v-for="id in sourceIds" :key="id" :value="id">{{ id }}</option>
-      </select>
     </div>
 
     <DeveloperPanel
@@ -312,28 +346,28 @@ onMounted(load);
       body="Add a library source in _vance/config/kit-sources.yaml of the _tenant project."
     />
 
-    <VCard v-for="view in views" :key="view.sourceId">
+    <VCard v-if="activeView" :key="activeView.sourceId">
       <!--
-        The name of the place and nothing else. Where it lives, whether it
-        answered and who we are there belong in the profile — a person
-        browsing kits picks by name, and an address they cannot act on
-        from here is furniture.
+        The name only where the tab strip is not already carrying it. Where
+        the store lives, whether it answered and who we are there belong in
+        the profile — a person browsing kits picks by name, and an address
+        they cannot act on from here is furniture.
       -->
-      <div class="font-semibold">{{ view.title }}</div>
+      <div v-if="!showStoreTabs" class="font-semibold">{{ activeView.title }}</div>
 
       <!--
         Unreachable is not the same as empty: a store that could not be
         asked must not read as a store with nothing for sale. The reason
         is in the profile, where somebody can do something about it.
       -->
-      <div v-if="!view.reachable" class="text-sm opacity-70 mt-1">
+      <div v-if="!activeView.reachable" class="text-sm opacity-70 mt-1">
         Not available right now — see the Store tab of your profile.
       </div>
-      <div v-else-if="!view.accountId" class="text-sm opacity-70 mt-1">
+      <div v-else-if="!activeView.accountId" class="text-sm opacity-70 mt-1">
         Sign in to this store in your profile to see what you own.
       </div>
 
-      <div v-if="view.reachable" class="mt-4">
+      <div v-if="activeView.reachable" class="mt-4">
         <div class="flex gap-2 mb-3">
           <VButton
             v-for="tab in tabs"
@@ -348,13 +382,13 @@ onMounted(load);
         </div>
 
         <VEmptyState
-          v-if="entriesOf(view).length === 0"
+          v-if="entriesOf(activeView).length === 0"
           headline="Nothing here"
           body="Nothing in this list yet."
         />
 
         <div
-          v-for="entry in entriesOf(view)"
+          v-for="entry in entriesOf(activeView)"
           :key="entry.path"
           class="flex items-start justify-between gap-4 py-2 border-t"
         >
@@ -443,7 +477,7 @@ onMounted(load);
                 is asked with the link token, not with anything the browser
                 holds.
               -->
-              <div v-if="view.accountId" class="flex flex-col gap-2 mt-2">
+              <div v-if="activeView.accountId" class="flex flex-col gap-2 mt-2">
                 <div class="flex items-center gap-1">
                   <button
                     v-for="star in 5"
@@ -469,7 +503,7 @@ onMounted(load);
             <VButton
               v-if="entry.state === 'OFFERED'"
               size="sm"
-              :disabled="busyPath === entry.path || !view.accountId"
+              :disabled="busyPath === entry.path || !activeView.accountId"
               @click="openBuy(entry)"
             >
               {{ actionOf(entry) }}

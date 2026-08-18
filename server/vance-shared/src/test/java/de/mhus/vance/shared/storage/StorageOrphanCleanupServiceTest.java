@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.storage;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -12,6 +13,8 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.shared.document.DocumentArchiveService;
 import de.mhus.vance.shared.document.DocumentArchiveService.ArchiveOrphanCandidate;
+import de.mhus.vance.shared.document.DocumentStorageReferenceSource;
+import de.mhus.vance.shared.document.ArchiveStorageReferenceSource;
 import de.mhus.vance.shared.document.DocumentService;
 import java.time.Duration;
 import java.time.Instant;
@@ -39,91 +42,21 @@ class StorageOrphanCleanupServiceTest {
         documentService = mock(DocumentService.class);
         archiveService = mock(DocumentArchiveService.class);
         storageService = mock(StorageService.class);
-        service = new StorageOrphanCleanupService(documentService, archiveService, storageService);
-    }
-
-    @Test
-    void sweepOnce_callsBothPhasesAndAggregatesCounts() {
-        // Archive batch: a1 → lineage "L1" (live), a2 → lineage "L2" (gone).
-        feedArchiveBatch(new ArchiveOrphanCandidate("a1", "L1"),
-                new ArchiveOrphanCandidate("a2", "L2"));
-        when(documentService.findLineageIdsWithLiveDocument(any()))
-                .thenReturn(Set.of("L1"));
-
-        // Storage batch: s1 referenced by doc, s2 by archive, s3 orphan.
-        feedStorageBatch("s1", "s2", "s3");
-        when(documentService.findReferencedStorageIds(any())).thenReturn(Set.of("s1"));
-        when(archiveService.findReferencedStorageIds(any())).thenReturn(Set.of("s2"));
-
-        StorageOrphanCleanupService.CleanupResult result =
-                service.sweepOnce(Instant.parse("2026-06-12T08:00:00Z"),
-                        Duration.ofHours(1), 100);
-
-        assertThat(result.orphanArchivesDeleted()).isEqualTo(1);
-        assertThat(result.orphanStorageDeleted()).isEqualTo(1);
-        verify(archiveService).deleteArchive("a2");
-        verify(archiveService, never()).deleteArchive("a1");
-        verify(storageService).delete("s3");
-        verify(storageService, never()).delete("s1");
-        verify(storageService, never()).delete("s2");
-    }
-
-    @Test
-    void sweepOnce_skipsArchiveDeleteWhenLineageHasLiveDoc() {
-        feedArchiveBatch(new ArchiveOrphanCandidate("a1", "L1"));
-        when(documentService.findLineageIdsWithLiveDocument(any()))
-                .thenReturn(Set.of("L1"));
-        feedStorageBatch(); // empty storage batch
-
-        service.sweepOnce(Instant.now(), Duration.ofHours(1), 100);
-
-        verify(archiveService, never()).deleteArchive(any());
-    }
-
-    @Test
-    void sweepOnce_archiveWithoutLineageId_isOrphan() {
-        // Archive entries that somehow have a blank lineageId — defensive
-        // path. Treat as orphan since they can never be re-anchored.
-        feedArchiveBatch(new ArchiveOrphanCandidate("a-empty", ""));
-        when(documentService.findLineageIdsWithLiveDocument(any())).thenReturn(Set.of());
-        feedStorageBatch();
-
-        long n = service.sweepOnce(Instant.now(), Duration.ofHours(1), 100)
-                .orphanArchivesDeleted();
-
-        assertThat(n).isEqualTo(1);
-        verify(archiveService).deleteArchive("a-empty");
-    }
-
-    @Test
-    void sweepOnce_archiveDeleteFailure_doesNotAbortBatch() {
-        // a1 fails, a2 still gets processed.
-        feedArchiveBatch(new ArchiveOrphanCandidate("a1", "L1"),
-                new ArchiveOrphanCandidate("a2", "L2"));
-        when(documentService.findLineageIdsWithLiveDocument(any())).thenReturn(Set.of());
-        doAnswer(inv -> {
-            throw new RuntimeException("boom");
-        }).when(archiveService).deleteArchive("a1");
-        feedStorageBatch();
-
-        long n = service.sweepOnce(Instant.now(), Duration.ofHours(1), 100)
-                .orphanArchivesDeleted();
-
-        // Only a2 counts towards deleted — a1 failed.
-        assertThat(n).isEqualTo(1);
-        verify(archiveService).deleteArchive("a1");
-        verify(archiveService).deleteArchive("a2");
+        // The two sources a brain contributes — the behaviour this test
+        // covered before they were pluggable.
+        service = new StorageOrphanCleanupService(storageService,
+                List.of(
+                        new DocumentStorageReferenceSource(documentService),
+                        new ArchiveStorageReferenceSource(archiveService)));
     }
 
     @Test
     void sweepOnce_storageReferencedByBothSides_isNotDeleted() {
-        feedArchiveBatch();
         feedStorageBatch("shared");
         when(documentService.findReferencedStorageIds(any())).thenReturn(Set.of("shared"));
         when(archiveService.findReferencedStorageIds(any())).thenReturn(Set.of("shared"));
 
-        long n = service.sweepOnce(Instant.now(), Duration.ofHours(1), 100)
-                .orphanStorageDeleted();
+        long n = service.sweepOnce(Instant.now(), Duration.ofHours(1), 100);
 
         assertThat(n).isZero();
         verify(storageService, never()).delete(any(String.class));
@@ -131,7 +64,6 @@ class StorageOrphanCleanupServiceTest {
 
     @Test
     void sweepOnce_cutoffIsNowMinusGracePeriod() {
-        feedArchiveBatch();
         feedStorageBatch();
         Instant now = Instant.parse("2026-06-12T08:00:00Z");
         Duration grace = Duration.ofMinutes(90);
@@ -144,28 +76,11 @@ class StorageOrphanCleanupServiceTest {
 
     @Test
     void sweepOnce_emptyBatches_returnsZero() {
-        feedArchiveBatch();
         feedStorageBatch();
 
-        StorageOrphanCleanupService.CleanupResult r =
-                service.sweepOnce(Instant.now(), Duration.ofHours(1), 100);
-
-        assertThat(r.orphanArchivesDeleted()).isZero();
-        assertThat(r.orphanStorageDeleted()).isZero();
-        assertThat(r.isClean()).isTrue();
+        assertThat(service.sweepOnce(Instant.now(), Duration.ofHours(1), 100)).isZero();
     }
 
-    /** Configures {@code archiveService.forEachArchive} to feed a single batch. */
-    private void feedArchiveBatch(ArchiveOrphanCandidate... batch) {
-        doAnswer(inv -> {
-            @SuppressWarnings("unchecked")
-            Consumer<List<ArchiveOrphanCandidate>> handler = inv.getArgument(1);
-            if (batch.length > 0) handler.accept(List.of(batch));
-            return null;
-        }).when(archiveService).forEachArchive(anyInt(), any());
-    }
-
-    /** Configures {@code storageService.forEachFinalStorageIdOlderThan} to feed a single batch. */
     private void feedStorageBatch(String... batch) {
         doAnswer(inv -> {
             @SuppressWarnings("unchecked")
@@ -179,5 +94,65 @@ class StorageOrphanCleanupServiceTest {
                 .thenReturn(Set.of());
         when(archiveService.findReferencedStorageIds(any(Collection.class)))
                 .thenReturn(Set.of());
+    }
+
+    // ── Leitplanken der pluggable Quellen ────────────────────────────
+
+    @Test
+    void withoutAnySource_nothingIsDeleted() {
+        // An empty registry reads as "nobody references anything", which
+        // would delete every blob. It never means that — it means this
+        // deployment wired no source. The kit store reusing this storage
+        // is exactly that case.
+        StorageOrphanCleanupService bare =
+                new StorageOrphanCleanupService(storageService, List.of());
+
+        assertThat(bare.checkOrphanStorageBatch(List.of("sid-1", "sid-2"))).isZero();
+        verify(storageService, never()).delete(any());
+    }
+
+    @Test
+    void aSourceThatCannotAnswer_abortsTheSweep() {
+        // Skipping it would treat its blobs as unreferenced. A failed
+        // sweep costs disk until the next run; a half-blind one costs
+        // data that is gone.
+        StorageReferenceSource broken = new StorageReferenceSource() {
+            @Override
+            public Set<String> findReferencedStorageIds(java.util.Collection<String> candidates) {
+                throw new IllegalStateException("index unavailable");
+            }
+
+            @Override
+            public String sourceName() {
+                return "broken";
+            }
+        };
+        StorageOrphanCleanupService withBroken = new StorageOrphanCleanupService(storageService,
+                List.of(new DocumentStorageReferenceSource(documentService), broken));
+
+        assertThatThrownBy(() -> withBroken.checkOrphanStorageBatch(List.of("sid-1")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("broken");
+        verify(storageService, never()).delete(any());
+    }
+
+    @Test
+    void aBlobHeldByAnyOneSource_survives() {
+        // Sources are additive: the store's releases and the brain's
+        // documents both keep their own blobs alive.
+        StorageReferenceSource releases = new StorageReferenceSource() {
+            @Override
+            public Set<String> findReferencedStorageIds(java.util.Collection<String> candidates) {
+                return Set.of("sid-release");
+            }
+        };
+        when(documentService.findReferencedStorageIds(any())).thenReturn(Set.of());
+        when(archiveService.findReferencedStorageIds(any())).thenReturn(Set.of());
+        StorageOrphanCleanupService mixed = new StorageOrphanCleanupService(storageService,
+                List.of(new DocumentStorageReferenceSource(documentService), releases));
+
+        assertThat(mixed.checkOrphanStorageBatch(List.of("sid-release", "sid-loose"))).isEqualTo(1);
+        verify(storageService).delete("sid-loose");
+        verify(storageService, never()).delete("sid-release");
     }
 }

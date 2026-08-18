@@ -5,6 +5,7 @@ import de.mhus.vance.shared.document.DocumentArchiveService.ArchiveOrphanCandida
 import de.mhus.vance.shared.document.DocumentService;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -13,8 +14,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
- * Cluster-wide orphan cleanup driven by {@code OrphanStorageSweepTick} on
- * the master pod only. Two phases, in order:
+ * Cluster-wide blob cleanup driven by {@code OrphanStorageSweepTick} on
+ * the master pod only.
+ *
+ * <p>What it knows about is blobs. <b>Who</b> keeps a blob alive comes
+ * from the registered {@link StorageReferenceSource}s — documents and
+ * archives in a brain, releases in the kit store — so this class works
+ * anywhere the chunked storage does. Archives are swept by their own
+ * service in the document package; that is a statement about documents,
+ * not about blobs.
+ *
+ * <p>Formerly two phases:
  *
  * <ol>
  *   <li><b>Orphan archives</b> — archive entries whose {@code lineageId}
@@ -64,9 +74,18 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class StorageOrphanCleanupService {
 
-    private final DocumentService documentService;
-    private final DocumentArchiveService archiveService;
     private final StorageService storageService;
+
+    /**
+     * Everything that keeps a blob alive, in this deployment.
+     *
+     * <p>A list rather than two fixed collaborators: a brain contributes
+     * documents and archives, the kit store contributes releases, and
+     * anything that writes a blob without contributing a source would have
+     * its data deleted — which is why an empty list stops the sweep
+     * instead of licensing it.
+     */
+    private final List<StorageReferenceSource> referenceSources;
 
     /**
      * Run both phases once. Caller (typically a scheduled tick) provides
@@ -79,57 +98,32 @@ public class StorageOrphanCleanupService {
      *                      per-batch JVM memory and on the size of the
      *                      reverse-lookup {@code $in} queries
      */
-    public CleanupResult sweepOnce(Instant now, Duration gracePeriod, int batchSize) {
-        long archivesDeleted = sweepOrphanArchives(batchSize);
+    public long sweepOnce(Instant now, Duration gracePeriod, int batchSize) {
         Instant cutoff = now.minus(gracePeriod);
         long storageDeleted = sweepOrphanStorage(cutoff, batchSize);
-        if (archivesDeleted > 0 || storageDeleted > 0) {
-            log.info("Storage-orphan sweep: archives={} storage={} (cutoff={})",
-                    archivesDeleted, storageDeleted, cutoff);
+        if (storageDeleted > 0) {
+            log.info("Storage-orphan sweep: storage={} (cutoff={})", storageDeleted, cutoff);
         }
-        return new CleanupResult(archivesDeleted, storageDeleted);
-    }
-
-    long sweepOrphanArchives(int batchSize) {
-        long[] deleted = {0L};
-        long[] failed = {0L};
-        archiveService.forEachArchive(batchSize, batch -> {
-            Set<String> lineageIds = new HashSet<>();
-            for (ArchiveOrphanCandidate c : batch) {
-                if (c.lineageId() != null && !c.lineageId().isBlank()) {
-                    lineageIds.add(c.lineageId());
-                }
-            }
-            Set<String> alive = documentService.findLineageIdsWithLiveDocument(lineageIds);
-            for (ArchiveOrphanCandidate c : batch) {
-                boolean orphan = c.lineageId() == null
-                        || c.lineageId().isBlank()
-                        || !alive.contains(c.lineageId());
-                if (!orphan) continue;
-                try {
-                    archiveService.deleteArchive(c.archiveId());
-                    deleted[0]++;
-                } catch (RuntimeException e) {
-                    failed[0]++;
-                    log.warn("Storage-orphan sweep: deleteArchive id='{}' failed: {}",
-                            c.archiveId(), e.toString());
-                }
-            }
-        });
-        if (failed[0] > 0) {
-            log.warn("Storage-orphan sweep: {} archive deletion(s) failed", failed[0]);
-        }
-        return deleted[0];
+        return storageDeleted;
     }
 
     long sweepOrphanStorage(Instant cutoff, int batchSize) {
+        if (referenceSources.isEmpty()) {
+            // Nothing claims to reference anything, which reads as "delete
+            // everything". It never means that — it means this deployment
+            // wired no source, and the honest answer is to do nothing and
+            // say so.
+            log.warn("Storage-orphan sweep: no reference source registered — skipping."
+                    + " A deployment that stores blobs must contribute a"
+                    + " StorageReferenceSource, or its data would look orphaned.");
+            return 0;
+        }
         long[] deleted = {0L};
         long[] failed = {0L};
         storageService.forEachFinalStorageIdOlderThan(cutoff, batchSize, batch -> {
-            Set<String> refByDocs = documentService.findReferencedStorageIds(batch);
-            Set<String> refByArchives = archiveService.findReferencedStorageIds(batch);
+            Set<String> referenced = referencedIn(batch);
             for (String sid : batch) {
-                if (refByDocs.contains(sid) || refByArchives.contains(sid)) continue;
+                if (referenced.contains(sid)) continue;
                 try {
                     storageService.delete(sid);
                     deleted[0]++;
@@ -146,10 +140,26 @@ public class StorageOrphanCleanupService {
         return deleted[0];
     }
 
-    public record CleanupResult(long orphanArchivesDeleted, long orphanStorageDeleted) {
-        public boolean isClean() {
-            return orphanArchivesDeleted == 0 && orphanStorageDeleted == 0;
+    /**
+     * Ask every source, and let one failure stop the run.
+     *
+     * <p>Skipping a source that could not answer would treat its blobs as
+     * unreferenced and delete them. A failed sweep costs disk until the
+     * next run; a half-blind sweep costs data that is gone. The exception
+     * therefore propagates out of the batch callback and aborts the sweep.
+     */
+    private Set<String> referencedIn(Collection<String> batch) {
+        Set<String> referenced = new HashSet<>();
+        for (StorageReferenceSource source : referenceSources) {
+            try {
+                referenced.addAll(source.findReferencedStorageIds(batch));
+            } catch (RuntimeException e) {
+                throw new IllegalStateException("Storage-orphan sweep aborted: reference source '"
+                        + source.sourceName() + "' could not answer — deleting on an incomplete"
+                        + " answer would remove live blobs", e);
+            }
         }
+        return referenced;
     }
 
     /**
@@ -159,11 +169,11 @@ public class StorageOrphanCleanupService {
      */
     long checkOrphanStorageBatch(List<String> batch) {
         if (batch.isEmpty()) return 0;
-        Set<String> refByDocs = documentService.findReferencedStorageIds(batch);
-        Set<String> refByArchives = archiveService.findReferencedStorageIds(batch);
+        if (referenceSources.isEmpty()) return 0;
+        Set<String> referenced = referencedIn(batch);
         long deleted = 0;
         for (String sid : batch) {
-            if (refByDocs.contains(sid) || refByArchives.contains(sid)) continue;
+            if (referenced.contains(sid)) continue;
             storageService.delete(sid);
             deleted++;
         }

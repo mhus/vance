@@ -3,8 +3,10 @@ import { computed, ref, watch } from 'vue';
 import {
   VAlert, VButton, VCard, VEmptyState, VInput, VSelect, VTextarea,
 } from '@vance/components';
-import { applyVendor, createKit, loadDeveloper, loadProjects, publish } from './api';
-import type { DeveloperView, ReleaseRequest, Vendor } from './types';
+import {
+  applyVendor, createKit, loadDeveloper, loadProjects, publish, renewPublishing,
+} from './api';
+import type { DeveloperView, Publishing, ReleaseRequest, Vendor } from './types';
 
 const props = defineProps<{ projectId: string; sourceId: string }>();
 
@@ -61,6 +63,50 @@ const approvedVendors = computed(
  * value that fails. With one approved vendor there is no choice to make
  * and the name is simply stated; with several it is a picker.
  */
+/**
+ * Publishing right per handle.
+ *
+ * Only shown where the store asks for one — a library that hands out
+ * publishing for nothing should not display an empty obligation.
+ */
+const publishingRights = computed(() => (view.value?.publishing ?? [])
+  .filter((right) => right.standing !== 'NOT_REQUIRED'));
+
+function publishingLabel(entry: Publishing): string {
+  const until = entry.paidUntil ? new Date(entry.paidUntil).toLocaleDateString() : null;
+  if (entry.standing === 'VALID') return `may publish until ${until}`;
+  if (entry.standing === 'GRACE') return `ran out on ${until} — grace period`;
+  return until ? `ran out on ${until}` : 'never renewed';
+}
+
+const renewing = ref('');
+const renewEmail = ref('');
+const renewPassword = ref('');
+
+async function submitRenewal(vendorName: string): Promise<void> {
+  error.value = '';
+  notice.value = '';
+  loading.value = true;
+  try {
+    const order = await renewPublishing(
+      props.projectId, props.sourceId, vendorName, renewEmail.value, renewPassword.value,
+    );
+    if (order.redirectUrl) {
+      notice.value = 'Continue the payment in the window that just opened.';
+      window.open(order.redirectUrl, '_blank', 'noopener');
+    } else {
+      notice.value = `${vendorName} may publish again.`;
+    }
+    renewing.value = '';
+    renewPassword.value = '';
+    await load();
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not renew publishing.';
+  } finally {
+    loading.value = false;
+  }
+}
+
 const vendorOptions = computed(
   () => approvedVendors.value.map((v) => ({ value: v.name, label: v.displayName
     ? `${v.displayName} (${v.name})` : v.name })),
@@ -256,6 +302,49 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
             Apply
           </VButton>
           <VButton variant="secondary" outline @click="applying = false">Cancel</VButton>
+        </div>
+      </div>
+    </VCard>
+
+    <!-- ── publishing right ── -->
+    <VCard v-if="publishingRights.length">
+      <div class="font-semibold">Publishing</div>
+      <p class="text-sm opacity-70">
+        Renewed once a year, per handle. Without it: no new kits and nothing
+        paid — free kits stay in the catalogue and may still receive versions.
+      </p>
+
+      <div v-for="right in publishingRights" :key="right.vendorName" class="py-2 border-t">
+        <div class="flex items-start justify-between gap-4">
+          <div class="min-w-0">
+            <div class="font-medium">{{ right.vendorName }}</div>
+            <div
+              class="text-sm"
+              :class="right.standing === 'EXPIRED' ? 'text-error' : 'opacity-70'"
+            >{{ publishingLabel(right) }}</div>
+          </div>
+          <VButton
+            v-if="renewing !== right.vendorName"
+            size="sm"
+            @click="renewing = right.vendorName"
+          >Renew — {{ (right.renewalPriceCents / 100).toFixed(2) }} {{ right.currency }}</VButton>
+        </div>
+
+        <div v-if="renewing === right.vendorName" class="mt-2 flex flex-col gap-2">
+          <VInput v-model="renewEmail" label="Store email" type="email" autocomplete="username" />
+          <VInput
+            v-model="renewPassword"
+            label="Store password"
+            type="password"
+            autocomplete="current-password"
+            help="Used once and discarded, exactly as when buying a kit."
+          />
+          <div class="flex gap-2">
+            <VButton :disabled="loading" @click="submitRenewal(right.vendorName)">
+              Confirm
+            </VButton>
+            <VButton variant="secondary" outline @click="renewing = ''">Cancel</VButton>
+          </div>
         </div>
       </div>
     </VCard>

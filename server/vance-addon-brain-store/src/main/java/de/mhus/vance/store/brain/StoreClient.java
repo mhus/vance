@@ -446,6 +446,54 @@ public class StoreClient {
         return read(response.body(), Vendor.class, source);
     }
 
+    /**
+     * Where a vendor stands on publishing.
+     *
+     * @param standing NOT_REQUIRED, VALID, GRACE or EXPIRED
+     */
+    public record Publishing(
+            String vendorName,
+            String standing,
+            @Nullable Instant paidUntil,
+            long renewalPriceCents,
+            @Nullable String currency,
+            boolean mayCreateKits,
+            boolean mayPublishPaid) {}
+
+    /** One answer per handle: the right is bought per shop front. */
+    public List<Publishing> publishing(KitSourceDto source, String linkToken) {
+        return getList(source, "/store/vendor/publishing", linkToken,
+                Publishing.class, "publishing rights");
+    }
+
+    /**
+     * Buy one more publishing period.
+     *
+     * <p>The session rather than the link token, like every other line that
+     * spends money: a machine's credential does not enter agreements.
+     */
+    public Order renewPublishing(KitSourceDto source, Session session, String vendorName) {
+        String body = json.writeValueAsString(new RenewBody(vendorName));
+        HttpResponse<String> response = send(HttpRequest.newBuilder(
+                        uri(source, "/store/vendor/publishing/renew"))
+                .timeout(TIMEOUT)
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + session.token())
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build(), source);
+
+        if (response.statusCode() == 400 || response.statusCode() == 409) {
+            throw new KitException("the store refused the renewal: " + response.body());
+        }
+        if (response.statusCode() != 201 && response.statusCode() != 200) {
+            throw new KitException("the store returned HTTP " + response.statusCode()
+                    + " when renewing publishing for " + vendorName);
+        }
+        return read(response.body(), Order.class, source);
+    }
+
+    private record RenewBody(String vendorName) {}
+
     /** The vendor profiles this installation's account holds. */
     public List<Vendor> myVendors(KitSourceDto source, String linkToken) {
         return getList(source, "/store/vendor", linkToken, Vendor.class, "vendors");

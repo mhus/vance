@@ -151,6 +151,18 @@ export interface VendorKit {
   topics: string[];
 }
 
+/** Where one handle stands on publishing — see kit-store §3 S20. */
+export interface Publishing {
+  vendorName: string;
+  /** NOT_REQUIRED · VALID · GRACE · EXPIRED */
+  standing: 'NOT_REQUIRED' | 'VALID' | 'GRACE' | 'EXPIRED';
+  paidUntil?: string | null;
+  renewalPriceCents: number;
+  currency?: string | null;
+  mayCreateKits: boolean;
+  mayPublishPaid: boolean;
+}
+
 export interface DeveloperView {
   sourceId: string;
   connected: boolean;
@@ -159,6 +171,7 @@ export interface DeveloperView {
   vendors: Vendor[];
   kits: VendorKit[];
   requests: ReleaseRequest[];
+  publishing: Publishing[];
   /** Why the store could not be asked. */
   problem?: string | null;
 }

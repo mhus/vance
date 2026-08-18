@@ -322,6 +322,8 @@ public class StoreAddonController {
             List<Vendor> vendors,
             List<CatalogueEntry> kits,
             List<ReleaseRequest> requests,
+            /** One entry per handle — the right is bought per shop front. */
+            List<StoreClient.Publishing> publishing,
             @Nullable String problem) {}
 
     /**
@@ -347,20 +349,54 @@ public class StoreAddonController {
             Fees fees = storeClient.fees(source);
             if (token == null || token.isBlank()) {
                 return new DeveloperView(sourceId, false, terms, fees,
-                        List.of(), List.of(), List.of(), null);
+                        List.of(), List.of(), List.of(), List.of(), null);
             }
             return new DeveloperView(sourceId, true, terms, fees,
                     storeClient.myVendors(source, token),
                     storeClient.myKits(source, token),
                     storeClient.myRequests(source, token),
+                    storeClient.publishing(source, token),
                     null);
         } catch (KitException e) {
             // A store that could not be asked is not a store with nothing
             // to say — the screen has to be able to tell those apart.
             return new DeveloperView(sourceId, token != null && !token.isBlank(),
-                    null, null, List.of(), List.of(), List.of(), e.getMessage());
+                    null, null, List.of(), List.of(), List.of(), List.of(), e.getMessage());
         }
     }
+
+    /**
+     * Buy one more publishing period.
+     *
+     * <p>The store password, as with any line that spends money — and the
+     * same shape as buying a kit, because it is the same order going
+     * through the same provider.
+     */
+    @PostMapping("/{projectId}/developer/renew")
+    public StoreClient.Order renewPublishing(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestBody RenewRequest body,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, body.sourceId());
+        try {
+            StoreClient.Session session =
+                    storeClient.login(source, body.email(), body.password());
+            try {
+                return storeClient.renewPublishing(source, session, body.vendorName());
+            } finally {
+                storeClient.logout(source, session);
+            }
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /** What the renew form sends. */
+    public record RenewRequest(
+            String sourceId, String vendorName, String email, String password) {}
 
     /**
      * Apply to be a vendor.

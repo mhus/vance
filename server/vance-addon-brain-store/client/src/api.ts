@@ -155,6 +155,19 @@ export async function loadDeveloper(
  * decision by a person, and this installation's link token must not enter
  * an agreement on their behalf.
  */
+/** Buy one more publishing period for one handle. */
+export async function renewPublishing(
+  projectId: string,
+  sourceId: string,
+  vendorName: string,
+  email: string,
+  password: string,
+): Promise<StoreOrder> {
+  return brainFetch<StoreOrder>('POST', `${base(projectId)}/developer/renew`, {
+    body: { sourceId, vendorName, email, password },
+  });
+}
+
 export async function applyVendor(
   projectId: string,
   sourceId: string,

@@ -5,10 +5,10 @@ import {
 } from '@vance/components';
 import {
   applyVendor, claimDomain, createKit, loadDeveloper, loadProjects, loadVendorMoney,
-  publish, renewPublishing, setPayoutAccount, verifyDomain,
+  openCreditNotePdf, publish, renewPublishing, setPayoutAccount, verifyDomain,
 } from './api';
 import type {
-  DeveloperView, Publishing, ReleaseRequest, Vendor, VendorMoneyView,
+  CreditNote, DeveloperView, Publishing, ReleaseRequest, Vendor, VendorMoneyView,
 } from './types';
 
 const props = defineProps<{ projectId: string; sourceId: string }>();
@@ -104,6 +104,15 @@ function endingSoon(entry: Publishing): boolean {
  * with several is rare, and a screen that fetched every one on open would
  * pay for that rarity on every visit. The picker changes which.
  */
+async function openNote(note: CreditNote): Promise<void> {
+  error.value = '';
+  try {
+    await openCreditNotePdf(props.projectId, props.sourceId, moneyVendor.value, note.number);
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not render the credit note.';
+  }
+}
+
 /** Every action ends with a reload: the screen shows state, not hope. */
 async function act(run: () => Promise<void>): Promise<void> {
   error.value = '';
@@ -600,6 +609,8 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
           <span class="opacity-70">
             {{ note.kind === 'CORRECTION' ? `corrects ${note.correctsNumber}` : note.treatment }}
           </span>
+          <!-- A vendor books this document; booking needs the document. -->
+          <button class="underline opacity-70" @click="openNote(note)">PDF</button>
         </div>
       </div>
     </VCard>

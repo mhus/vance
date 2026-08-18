@@ -826,6 +826,82 @@ public class StoreClient {
                 + "/releases/" + encode(version);
     }
 
+    /** One line per receipt this account holds. */
+    public record Receipt(
+            String number,
+            String orderName,
+            String vendorName,
+            String kitId,
+            @Nullable String kitDisplayName,
+            long grossCents,
+            @Nullable String currency,
+            @Nullable Instant issuedAt) {}
+
+    public List<Receipt> receipts(KitSourceDto source, String sessionToken) {
+        return getList(source, "/store/orders/invoices", sessionToken,
+                Receipt.class, "receipts");
+    }
+
+    // ──────────────────── documents on paper ────────────────────
+
+    /** A rendered document and the name the store suggested for it. */
+    public record Paper(byte[] bytes, String filename) {}
+
+    public Paper invoicePdf(KitSourceDto source, String linkToken, String orderName) {
+        return paper(source, "/store/orders/" + encode(orderName) + "/invoice.pdf",
+                linkToken, orderName + ".pdf", "the receipt");
+    }
+
+    public Paper creditNotePdf(
+            KitSourceDto source, String linkToken, String vendorName, String number) {
+        return paper(source,
+                "/store/vendor/credit-notes/" + encode(vendorName) + "/" + encode(number) + ".pdf",
+                linkToken, number + ".pdf", "the credit note");
+    }
+
+    public Paper taxReportPdf(
+            KitSourceDto source, String linkToken, String from, String to) {
+        return paper(source, "/store/admin/tax-report.pdf?from=" + from + "&to=" + to,
+                linkToken, "tax-report.pdf", "the tax report");
+    }
+
+    /**
+     * Fetch bytes rather than JSON.
+     *
+     * <p>Its own path because the ordinary one parses: a PDF read as a
+     * string and re-encoded is a PDF that no longer opens.
+     */
+    private Paper paper(
+            KitSourceDto source, String path, String token,
+            String fallbackName, String what) {
+
+        HttpResponse<byte[]> response;
+        try {
+            response = http.send(HttpRequest.newBuilder(uri(source, path))
+                            .timeout(TIMEOUT)
+                            .header("Authorization", "Bearer " + token)
+                            .GET().build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+        } catch (IOException e) {
+            throw new KitException("could not reach " + source.getId(), e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new KitException("interrupted while fetching " + what, e);
+        }
+        if (response.statusCode() == 404) {
+            throw new KitException(what + " is not available at " + source.getId());
+        }
+        if (response.statusCode() != 200) {
+            throw new KitException("the store returned HTTP " + response.statusCode()
+                    + " for " + what);
+        }
+        String filename = response.headers().firstValue("Content-Disposition")
+                .map(header -> header.replaceFirst(".*filename=\"?([^\"]+)\"?.*", "$1"))
+                .filter(name -> !name.isBlank())
+                .orElse(fallbackName);
+        return new Paper(response.body(), filename);
+    }
+
     // ──────────────────── plumbing ────────────────────
 
     private <T> T get(

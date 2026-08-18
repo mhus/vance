@@ -14,8 +14,8 @@
 import { computed, onMounted, ref } from 'vue';
 import { VAlert, VButton, VCard, VEmptyState, VInput } from '@vance/components';
 import {
-  classifyOrder, loadMoney, loadTaxReport, loadUnclassified, payVendor, reconcilePayouts,
-  refundOrder, reissueCreditNote, releasePayout,
+  classifyOrder, loadMoney, loadTaxReport, loadUnclassified, openTaxReportPdf, payVendor,
+  reconcilePayouts, refundOrder, reissueCreditNote, releasePayout,
 } from './api';
 import type { MoneyView, SaleRow, TaxLine, TaxReport, Unclassified } from './types';
 
@@ -138,6 +138,19 @@ async function runReport(): Promise<void> {
       `${from.value}T00:00:00Z`, `${to.value}T00:00:00Z`);
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Could not build the report.';
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function downloadReport(): Promise<void> {
+  error.value = '';
+  loading.value = true;
+  try {
+    await openTaxReportPdf(props.projectId, props.sourceId,
+      `${from.value}T00:00:00Z`, `${to.value}T00:00:00Z`);
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not render the report.';
   } finally {
     loading.value = false;
   }
@@ -409,6 +422,14 @@ onMounted(load);
         <VInput v-model="from" label="From" help="YYYY-MM-DD" />
         <VInput v-model="to" label="To (exclusive)" help="YYYY-MM-DD" />
         <VButton size="sm" :disabled="loading" @click="runReport">Build</VButton>
+        <!--
+          The same period as the screen shows, rendered. Not a second
+          computation — a printed report that disagreed with this one is
+          the copy somebody would file.
+        -->
+        <VButton size="sm" variant="secondary" outline :disabled="loading" @click="downloadReport">
+          PDF
+        </VButton>
       </div>
 
       <div v-if="report" class="mt-3 flex flex-col gap-3">

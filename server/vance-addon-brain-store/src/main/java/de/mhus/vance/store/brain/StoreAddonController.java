@@ -32,6 +32,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -781,6 +783,96 @@ public class StoreAddonController {
 
     /** Which settlement to write again. */
     public record ReissueRequest(String sourceId, String payoutName) {}
+
+    /** Every receipt this account holds at one store. */
+    @GetMapping("/{projectId}/documents/invoices")
+    public List<StoreClient.Receipt> receipts(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestParam("sourceId") String sourceId,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, sourceId);
+        try {
+            return storeClient.receipts(
+                    source, requireToken(tenant, projectId, source, request));
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /**
+     * The three documents, as the thing somebody files.
+     *
+     * <p>Proxied rather than linked: the store is reachable with a link
+     * token this browser does not have, and handing the browser one so it
+     * could fetch a PDF directly would put a credential in a URL.
+     */
+    @GetMapping(value = "/{projectId}/documents/invoice", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> invoicePdf(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestParam("sourceId") String sourceId,
+            @RequestParam("orderName") String orderName,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, sourceId);
+        try {
+            return paper(storeClient.invoicePdf(
+                    source, requireToken(tenant, projectId, source, request), orderName));
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    @GetMapping(value = "/{projectId}/documents/credit-note",
+            produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> creditNotePdf(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestParam("sourceId") String sourceId,
+            @RequestParam("vendorName") String vendorName,
+            @RequestParam("number") String number,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, sourceId);
+        try {
+            return paper(storeClient.creditNotePdf(source,
+                    requireToken(tenant, projectId, source, request), vendorName, number));
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    @GetMapping(value = "/{projectId}/documents/tax-report",
+            produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> taxReportPdf(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestParam("sourceId") String sourceId,
+            @RequestParam("from") String from,
+            @RequestParam("to") String to,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, sourceId);
+        try {
+            return paper(storeClient.taxReportPdf(
+                    source, requireToken(tenant, projectId, source, request), from, to));
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    private static ResponseEntity<byte[]> paper(StoreClient.Paper paper) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header("Content-Disposition", "inline; filename=\"" + paper.filename() + "\"")
+                .body(paper.bytes());
+    }
 
     /** What is owed for a period. */
     @GetMapping("/{projectId}/operator/tax-report")

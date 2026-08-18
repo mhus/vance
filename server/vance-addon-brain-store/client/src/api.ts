@@ -1,10 +1,11 @@
-import { brainFetch } from '@vance/shared';
+import { brainFetch, brainFetchBlob } from '@vance/shared';
 import type {
   Connection,
   CreditNote,
   DeveloperView,
   KitOperationResult,
   OperatorView,
+  Receipt,
   ReleaseRequest,
   StoreConnection,
   MoneyView,
@@ -242,6 +243,49 @@ export async function reissueCreditNote(
     'POST', `${base(projectId)}/operator/credit-notes/reissue`, {
       body: { sourceId, payoutName },
     });
+}
+
+/**
+ * Open a rendered document in a new tab.
+ *
+ * <p>Through the brain rather than as a plain link: the store wants a link
+ * token the browser does not hold, and putting one in a URL would be a
+ * credential in the address bar and in the history.
+ */
+async function openPdf(path: string): Promise<void> {
+  const { blob } = await brainFetchBlob(path);
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  // Revoked late: revoking straight away can beat the new tab to the file.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+export async function loadReceipts(
+  projectId: string, sourceId: string,
+): Promise<Receipt[]> {
+  const query = new URLSearchParams({ sourceId }).toString();
+  return brainFetch<Receipt[]>('GET', `${base(projectId)}/documents/invoices?${query}`);
+}
+
+export async function openInvoicePdf(
+  projectId: string, sourceId: string, orderName: string,
+): Promise<void> {
+  const query = new URLSearchParams({ sourceId, orderName }).toString();
+  return openPdf(`${base(projectId)}/documents/invoice?${query}`);
+}
+
+export async function openCreditNotePdf(
+  projectId: string, sourceId: string, vendorName: string, number: string,
+): Promise<void> {
+  const query = new URLSearchParams({ sourceId, vendorName, number }).toString();
+  return openPdf(`${base(projectId)}/documents/credit-note?${query}`);
+}
+
+export async function openTaxReportPdf(
+  projectId: string, sourceId: string, from: string, to: string,
+): Promise<void> {
+  const query = new URLSearchParams({ sourceId, from, to }).toString();
+  return openPdf(`${base(projectId)}/documents/tax-report?${query}`);
 }
 
 export async function loadTaxReport(

@@ -14,8 +14,11 @@
  */
 import { computed, onMounted, ref } from 'vue';
 import { VAlert, VButton, VCard, VEmptyState, VInput } from '@vance/components';
-import { applyVendor, connect, disconnect, loadConnections, loadDeveloper } from './api';
-import type { Connection, VendorTerms } from './types';
+import {
+  applyVendor, connect, disconnect, loadConnections, loadDeveloper, loadReceipts,
+  openInvoicePdf,
+} from './api';
+import type { Connection, Receipt, VendorTerms } from './types';
 
 /** The profile is per person, so its store connections hang on `_tenant`. */
 const PROJECT = '_tenant';
@@ -138,6 +141,32 @@ async function submitApply(entry: Connection): Promise<void> {
 }
 
 /** What this account may do at a store, in words rather than flags. */
+/** Receipts are per account, so the open list names one connection. */
+const receiptsFor = ref('');
+const receipts = ref<Receipt[]>([]);
+
+async function showReceipts(entry: Connection): Promise<void> {
+  error.value = '';
+  loading.value = true;
+  try {
+    receipts.value = await loadReceipts(PROJECT, entry.sourceId);
+    receiptsFor.value = entry.sourceId;
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not read the receipts.';
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function openReceipt(entry: Connection, receipt: Receipt): Promise<void> {
+  error.value = '';
+  try {
+    await openInvoicePdf(PROJECT, entry.sourceId, receipt.orderName);
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not render the receipt.';
+  }
+}
+
 function rolesOf(entry: Connection): string {
   const roles: string[] = [];
   if (entry.developer) roles.push('developer');
@@ -196,6 +225,44 @@ onMounted(load);
       <VAlert v-if="!entry.reachable" variant="warning" class="mt-3">
         This store could not be reached: {{ entry.problem }}
       </VAlert>
+
+      <!--
+        Receipts belong to the account, so they live where the account
+        does. A buyer files these; a list that only showed a number would
+        be a list nobody can use.
+      -->
+      <div v-if="entry.accountId" class="mt-3">
+        <VButton
+          v-if="receiptsFor !== entry.sourceId"
+          size="sm"
+          variant="secondary"
+          outline
+          :disabled="loading"
+          @click="showReceipts(entry)"
+        >Receipts</VButton>
+
+        <div v-else class="flex flex-col gap-1">
+          <div class="text-sm font-semibold">Receipts</div>
+          <div v-if="!receipts.length" class="text-sm opacity-70">
+            Nothing bought here yet.
+          </div>
+          <div v-for="receipt in receipts" :key="receipt.number" class="text-sm flex gap-3">
+            <span class="w-40 font-mono">{{ receipt.number }}</span>
+            <span class="w-24 text-right">
+              {{ (receipt.grossCents / 100).toFixed(2) }} {{ receipt.currency ?? 'EUR' }}
+            </span>
+            <span class="opacity-70 truncate">
+              {{ receipt.kitDisplayName ?? `${receipt.vendorName}/${receipt.kitId}` }}
+            </span>
+            <button class="underline opacity-70" @click="openReceipt(entry, receipt)">PDF</button>
+          </div>
+          <div>
+            <VButton size="sm" variant="secondary" outline @click="receiptsFor = ''">
+              Hide
+            </VButton>
+          </div>
+        </div>
+      </div>
 
       <!-- ── sign in ── -->
       <div v-if="signingIn === entry.sourceId" class="mt-3 flex flex-col gap-2">

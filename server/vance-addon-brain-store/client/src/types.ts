@@ -307,6 +307,18 @@ export interface MoneyView {
   problem?: string | null;
 }
 
+/** One receipt this account holds — the buyer's side of a sale. */
+export interface Receipt {
+  number: string;
+  orderName: string;
+  vendorName: string;
+  kitId: string;
+  kitDisplayName?: string | null;
+  grossCents: number;
+  currency?: string | null;
+  issuedAt?: string | null;
+}
+
 /** What a vendor sees about their own money. */
 export interface VendorMoneyView {
   due?: Due | null;

@@ -100,6 +100,10 @@ async function openApply(entry: Connection): Promise<void> {
   vendorName.value = '';
   vendorDisplayName.value = '';
   password.value = '';
+  // The email is deliberately left alone: applying signs in again, and the
+  // form used to clear the very field it signs in with — which sent an
+  // empty address and produced "the store returned HTTP 400 when signing
+  // in", a sentence about the wrong thing entirely.
   try {
     terms.value = (await loadDeveloper(PROJECT, entry.sourceId)).terms ?? null;
   } catch (e) {
@@ -110,6 +114,10 @@ async function openApply(entry: Connection): Promise<void> {
 
 async function submitApply(entry: Connection): Promise<void> {
   if (!terms.value) return;
+  if (!email.value.trim() || !password.value) {
+    error.value = 'Store email and password are needed — applying signs in again.';
+    return;
+  }
   error.value = '';
   notice.value = '';
   loading.value = true;
@@ -212,6 +220,13 @@ onMounted(load);
       <!-- ── become a developer ── -->
       <div v-if="applying === entry.sourceId && terms" class="mt-3 flex flex-col gap-2">
         <VInput
+          v-model="email"
+          label="Store email"
+          type="email"
+          autocomplete="username"
+          help="Applying signs in again, and the brain holds no password."
+        />
+        <VInput
           v-model="vendorName"
           label="Vendor handle"
           help="Lowercase, and part of every kit coordinate. It must not claim an
@@ -239,7 +254,7 @@ onMounted(load);
         </label>
         <div class="flex gap-2">
           <VButton
-            :disabled="loading || !termsAccepted || !vendorName || !password"
+            :disabled="loading || !termsAccepted || !vendorName || !password || !email"
             @click="submitApply(entry)"
           >
             Apply

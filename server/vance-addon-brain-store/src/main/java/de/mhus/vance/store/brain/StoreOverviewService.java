@@ -82,6 +82,12 @@ public class StoreOverviewService {
             /** What the vendor says it is for, and what it contains. */
             List<String> topics,
             List<String> contains,
+            /**
+             * The vendor's proven domain — the one line that answers "is
+             * this really from them", so it travels with the entry rather
+             * than being fetched per card.
+             */
+            @Nullable String vendorDomain,
             EntryState state) {}
 
     /** One store, as far as this user is concerned. */
@@ -165,6 +171,7 @@ public class StoreOverviewService {
                     entry.score() == null ? 0L : entry.score().count(),
                     entry.priceCents(), entry.currency(), entry.licenseTermDays(),
                     orEmpty(entry.topics()), orEmpty(entry.contains()),
+                    entry.vendorDomain(),
                     // Not stateOf() alone: with nothing installed this row
                     // is OFFERED, not OWNED — ownership is what the link
                     // answers, and there is no link here.
@@ -205,6 +212,8 @@ public class StoreOverviewService {
                             ? orEmpty(offeredByPath.get(entry.getPath()).topics()) : List.of(),
                     offeredByPath.containsKey(entry.getPath())
                             ? orEmpty(offeredByPath.get(entry.getPath()).contains()) : List.of(),
+                    offeredByPath.containsKey(entry.getPath())
+                            ? offeredByPath.get(entry.getPath()).vendorDomain() : null,
                     stateOf(installed, entry.getVersion())));
         }
 

@@ -588,6 +588,17 @@ onUnmounted(() => {
             <div class="font-medium truncate">{{ entry.displayName }}</div>
             <div class="text-sm opacity-70 truncate">
               {{ entry.path }}
+              <!--
+                The one line that answers "is this really from them". Next to
+                the coordinate, because the coordinate is the thing somebody
+                would otherwise read as identity — and a handle is claimed,
+                not proven.
+              -->
+              <span
+                v-if="entry.vendorDomain"
+                class="text-success"
+                :title="`The vendor proved they control ${entry.vendorDomain}`"
+              >· ✓ {{ entry.vendorDomain }}</span>
               <span v-if="entry.availableVersion"> · {{ entry.availableVersion }}</span>
               <span v-if="entry.installedVersion && entry.state === 'UPDATABLE'">
                 (installed {{ entry.installedVersion }})

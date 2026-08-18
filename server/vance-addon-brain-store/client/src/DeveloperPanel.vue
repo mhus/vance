@@ -4,8 +4,8 @@ import {
   VAlert, VButton, VCard, VEmptyState, VInput, VSelect, VTextarea,
 } from '@vance/components';
 import {
-  applyVendor, createKit, loadDeveloper, loadProjects, loadVendorMoney, publish,
-  renewPublishing, setPayoutAccount,
+  applyVendor, claimDomain, createKit, loadDeveloper, loadProjects, loadVendorMoney,
+  publish, renewPublishing, setPayoutAccount, verifyDomain,
 } from './api';
 import type {
   DeveloperView, Publishing, ReleaseRequest, Vendor, VendorMoneyView,
@@ -75,11 +75,26 @@ const approvedVendors = computed(
 const publishingRights = computed(() => (view.value?.publishing ?? [])
   .filter((right) => right.standing !== 'NOT_REQUIRED'));
 
+/** Whole days from now to a date, negative once it has passed. */
+function daysUntil(when: string): number {
+  return Math.round((new Date(when).getTime() - Date.now()) / 86_400_000);
+}
+
 function publishingLabel(entry: Publishing): string {
   const until = entry.paidUntil ? new Date(entry.paidUntil).toLocaleDateString() : null;
-  if (entry.standing === 'VALID') return `may publish until ${until}`;
-  if (entry.standing === 'GRACE') return `ran out on ${until} — grace period`;
+  // The date alone makes somebody count. The count is the thing they came
+  // for, and it is the difference between "noted" and "acted on".
+  const left = entry.paidUntil ? daysUntil(entry.paidUntil) : 0;
+  if (entry.standing === 'VALID') return `may publish until ${until} — ${left} day(s) left`;
+  if (entry.standing === 'GRACE') {
+    return `ran out on ${until} — grace period, ${-left} day(s) ago`;
+  }
   return until ? `ran out on ${until}` : 'never renewed';
+}
+
+/** Near the end, but not past it — worth a colour before it is a problem. */
+function endingSoon(entry: Publishing): boolean {
+  return entry.standing === 'VALID' && !!entry.paidUntil && daysUntil(entry.paidUntil) <= 30;
 }
 
 /**
@@ -89,6 +104,47 @@ function publishingLabel(entry: Publishing): string {
  * with several is rare, and a screen that fetched every one on open would
  * pay for that rarity on every visit. The picker changes which.
  */
+/** Every action ends with a reload: the screen shows state, not hope. */
+async function act(run: () => Promise<void>): Promise<void> {
+  error.value = '';
+  notice.value = '';
+  loading.value = true;
+  try {
+    await run();
+    await load();
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'That did not work.';
+  } finally {
+    loading.value = false;
+  }
+}
+
+/** Claiming a domain is per handle, so the open form names one. */
+const claimingDomain = ref('');
+const domainInput = ref('');
+
+function openDomain(vendor: Vendor): void {
+  claimingDomain.value = vendor.name;
+  domainInput.value = vendor.domain ?? '';
+}
+
+async function claim(vendor: Vendor): Promise<void> {
+  await act(async () => {
+    const updated = await claimDomain(
+      props.projectId, props.sourceId, vendor.name, domainInput.value.trim());
+    notice.value = updated.domainVerifiedAt
+      ? `${updated.domain} is verified.`
+      : `Publish the record shown, then check.`;
+  });
+}
+
+async function verify(vendor: Vendor): Promise<void> {
+  await act(async () => {
+    const updated = await verifyDomain(props.projectId, props.sourceId, vendor.name);
+    notice.value = `${updated.domain} is verified.`;
+  });
+}
+
 const moneyVendor = ref('');
 const money = ref<VendorMoneyView | null>(null);
 
@@ -309,9 +365,57 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
       </div>
 
       <div v-for="vendor in view?.vendors ?? []" :key="vendor.name" class="mt-2 text-sm">
-        <span class="font-mono">{{ vendor.name }}</span>
-        · {{ vendor.displayName }}
-        · <span class="opacity-70">{{ statusLabel(vendor) }}</span>
+        <div>
+          <span class="font-mono">{{ vendor.name }}</span>
+          · {{ vendor.displayName }}
+          · <span class="opacity-70">{{ statusLabel(vendor) }}</span>
+          <span v-if="vendor.domainVerifiedAt" class="text-success">
+            · ✓ {{ vendor.domain }}
+          </span>
+        </div>
+
+        <!--
+          A badge, never the handle: the handle sits in every kit
+          coordinate and every signature payload and cannot follow a domain
+          that is sold or lapses.
+        -->
+        <div v-if="vendor.status === 'APPROVED'" class="mt-1">
+          <VButton
+            v-if="claimingDomain !== vendor.name"
+            size="sm"
+            variant="secondary"
+            outline
+            @click="openDomain(vendor)"
+          >{{ vendor.domainVerifiedAt ? 'Change domain' : 'Prove a domain' }}</VButton>
+
+          <div v-else class="flex flex-col gap-2 mt-1">
+            <VInput
+              v-model="domainInput"
+              label="Domain"
+              help="Just the name, e.g. example.com — the badge next to your display
+                    name. Your handle does not change."
+            />
+            <div class="flex gap-2">
+              <VButton :disabled="loading || !domainInput.trim()" @click="claim(vendor)">
+                Claim
+              </VButton>
+              <VButton
+                v-if="vendor.domain"
+                variant="secondary"
+                outline
+                :disabled="loading"
+                @click="verify(vendor)"
+              >Check now</VButton>
+              <VButton variant="secondary" outline @click="claimingDomain = ''">Cancel</VButton>
+            </div>
+            <div v-if="vendor.domainRecord" class="text-xs">
+              <div class="opacity-70">
+                Publish this as a TXT record at {{ vendor.domain }}, then check:
+              </div>
+              <code class="font-mono break-all">{{ vendor.domainRecord }}</code>
+            </div>
+          </div>
+        </div>
       </div>
       <VEmptyState
         v-if="!applying && (view?.vendors ?? []).length === 0"
@@ -378,7 +482,9 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
             <div class="font-medium">{{ right.vendorName }}</div>
             <div
               class="text-sm"
-              :class="right.standing === 'EXPIRED' ? 'text-error' : 'opacity-70'"
+              :class="right.standing === 'EXPIRED' ? 'text-error'
+                : right.standing === 'GRACE' || endingSoon(right) ? 'text-warning'
+                : 'opacity-70'"
             >{{ publishingLabel(right) }}</div>
           </div>
           <VButton

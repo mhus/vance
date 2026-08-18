@@ -251,6 +251,22 @@ export async function loadTaxReport(
   return brainFetch<TaxReport>('GET', `${base(projectId)}/operator/tax-report?${query}`);
 }
 
+export async function claimDomain(
+  projectId: string, sourceId: string, vendorName: string, domain: string,
+): Promise<Vendor> {
+  return brainFetch<Vendor>('POST', `${base(projectId)}/developer/domain`, {
+    body: { sourceId, vendorName, domain },
+  });
+}
+
+export async function verifyDomain(
+  projectId: string, sourceId: string, vendorName: string,
+): Promise<Vendor> {
+  return brainFetch<Vendor>('POST', `${base(projectId)}/developer/domain/verify`, {
+    body: { sourceId, vendorName },
+  });
+}
+
 export async function loadVendorMoney(
   projectId: string, sourceId: string, vendorName: string,
 ): Promise<VendorMoneyView> {

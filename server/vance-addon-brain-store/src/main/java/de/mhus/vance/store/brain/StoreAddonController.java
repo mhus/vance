@@ -804,6 +804,47 @@ public class StoreAddonController {
 
     // ──────────────────── money in, for the vendor ────────────────────
 
+    /** Claim a domain as a badge — never as the handle. */
+    @PostMapping("/{projectId}/developer/domain")
+    public StoreClient.Vendor claimDomain(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestBody DomainRequest body,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, body.sourceId());
+        try {
+            return storeClient.claimDomain(source,
+                    requireToken(tenant, projectId, source, request),
+                    body.vendorName(), body.domain());
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /** Ask the store to look for the record now. */
+    @PostMapping("/{projectId}/developer/domain/verify")
+    public StoreClient.Vendor verifyDomain(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestBody DomainRequest body,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, body.sourceId());
+        try {
+            return storeClient.verifyDomain(source,
+                    requireToken(tenant, projectId, source, request), body.vendorName());
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /** What the domain form sends; the domain is absent when verifying. */
+    public record DomainRequest(
+            String sourceId, String vendorName, @Nullable String domain) {}
+
     /** What this vendor is owed, was paid, and can book against. */
     @GetMapping("/{projectId}/developer/money")
     public VendorMoneyView vendorMoney(

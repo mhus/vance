@@ -32,6 +32,8 @@ export interface StoreEntry {
   licenseTermDays?: number | null;
   /** What the vendor says this kit is for — free text, normalised. */
   topics: string[];
+  /** A domain the vendor proved they control, shown next to their name. */
+  vendorDomain?: string | null;
   /** What its newest published version contains — derived at the store. */
   contains: string[];
   state: EntryState;
@@ -114,6 +116,11 @@ export interface Vendor {
   name: string;
   displayName: string;
   homepage?: string | null;
+  /** Claimed. Only `domainVerifiedAt` turns it into a badge. */
+  domain?: string | null;
+  /** The TXT record to publish, while the claim is unproven. */
+  domainRecord?: string | null;
+  domainVerifiedAt?: string | null;
   status: VendorStatus;
   termsVersion?: string | null;
   rejectionReason?: string | null;

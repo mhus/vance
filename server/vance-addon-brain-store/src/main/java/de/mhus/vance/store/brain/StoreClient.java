@@ -81,7 +81,9 @@ public class StoreClient {
             /** What the vendor says the kit is for. */
             @Nullable List<String> topics,
             /** What its newest published version contains — derived at the store. */
-            @Nullable List<String> contains) {}
+            @Nullable List<String> contains,
+            /** A domain the vendor proved they control, or null. */
+            @Nullable String vendorDomain) {}
 
     /**
      * Sign in.
@@ -229,7 +231,7 @@ public class StoreClient {
             throw new KitException("this store account is not confirmed yet");
         }
         if (response.statusCode() == 400 || response.statusCode() == 409) {
-            throw new KitException("the store refused the order: " + response.body());
+            throw new KitException("the store refused the order: " + describe(response));
         }
         if (response.statusCode() != 201 && response.statusCode() != 200) {
             throw new KitException("the store returned HTTP " + response.statusCode()
@@ -355,6 +357,11 @@ public class StoreClient {
             String name,
             String displayName,
             @Nullable String homepage,
+            /** Claimed; only {@code domainVerifiedAt} makes it a badge. */
+            @Nullable String domain,
+            /** The TXT record to publish, while it is unproven. */
+            @Nullable String domainRecord,
+            @Nullable Instant domainVerifiedAt,
             String status,
             @Nullable String termsVersion,
             @Nullable String rejectionReason) {}
@@ -439,7 +446,7 @@ public class StoreClient {
                 .build(), source);
 
         if (response.statusCode() == 409) {
-            throw new KitException("the store refused the application: " + response.body());
+            throw new KitException("the store refused the application: " + describe(response));
         }
         if (response.statusCode() != 201 && response.statusCode() != 200) {
             throw new KitException("the store returned HTTP " + response.statusCode()
@@ -628,6 +635,23 @@ public class StoreClient {
             String vendorName, String type, String handle,
             @Nullable String holderName, @Nullable String country, @Nullable String vatId) {}
 
+    public Vendor claimDomain(
+            KitSourceDto source, String linkToken, String vendorName, String domain) {
+        String body = json.writeValueAsString(new DomainBody(vendorName, domain));
+        return postFor(source, "/store/vendor/domain", linkToken, body,
+                Vendor.class, "claiming " + domain);
+    }
+
+    public Vendor verifyDomain(KitSourceDto source, String linkToken, String vendorName) {
+        String body = json.writeValueAsString(new VerifyDomainBody(vendorName));
+        return postFor(source, "/store/vendor/domain/verify", linkToken, body,
+                Vendor.class, "verifying the domain");
+    }
+
+    private record DomainBody(String vendorName, String domain) {}
+
+    private record VerifyDomainBody(String vendorName) {}
+
     /** One answer per handle: the right is bought per shop front. */
     public List<Publishing> publishing(KitSourceDto source, String linkToken) {
         return getList(source, "/store/vendor/publishing", linkToken,
@@ -651,7 +675,7 @@ public class StoreClient {
                 .build(), source);
 
         if (response.statusCode() == 400 || response.statusCode() == 409) {
-            throw new KitException("the store refused the renewal: " + response.body());
+            throw new KitException("the store refused the renewal: " + describe(response));
         }
         if (response.statusCode() != 201 && response.statusCode() != 200) {
             throw new KitException("the store returned HTTP " + response.statusCode()

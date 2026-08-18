@@ -288,7 +288,7 @@ class StoreOverviewServiceTest {
         return new StoreClient.CatalogueEntry(
                 "acme", kitId, "Security", "a kit", "MIT", null, version, null,
                 new StoreClient.Score(4.5d, 12L), 1990L, "EUR", 365,
-                List.of("security"), List.of("skills", "documents"));
+                List.of("security"), List.of("skills", "documents"), "acme.example");
     }
 
     private static KitLibraryEntryDto owned(String version) {
@@ -315,4 +315,18 @@ class StoreOverviewServiceTest {
                         .build())
                 .build();
     }
+    @Test
+    void aProvenDomain_travelsWithTheEntry() {
+        // The badge answers "is this really from them", which is a question
+        // asked while looking at the card — not one worth a second call.
+        givenNotSignedIn();
+        when(client.catalogue(any())).thenReturn(List.of(catalogue("security", "2.0.0")));
+        when(recordStore.list(TENANT, PROJECT)).thenReturn(List.of());
+
+        assertThat(firstEntries())
+                .singleElement()
+                .extracting(StoreOverviewService.Entry::vendorDomain)
+                .isEqualTo("acme.example");
+    }
+
 }

@@ -716,6 +716,72 @@ public class StoreAddonController {
             String sourceId, String orderName,
             @Nullable String reason, boolean alreadyReturned) {}
 
+    /**
+     * Sales and notes carrying no usable classification.
+     *
+     * <p>The report counts them; this is where somebody can act on them.
+     */
+    @GetMapping("/{projectId}/operator/unclassified")
+    public StoreClient.Unclassified unclassified(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestParam("sourceId") String sourceId,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, sourceId);
+        try {
+            return storeClient.unclassified(
+                    source, requireToken(tenant, projectId, source, request));
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /** Supply the buyer's country; the rate follows from it. */
+    @PostMapping("/{projectId}/operator/classify")
+    public StoreClient.SaleRow classify(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestBody ClassifyRequest body,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, body.sourceId());
+        try {
+            return storeClient.classify(source,
+                    requireToken(tenant, projectId, source, request),
+                    body.orderName(), body.billingCountry(), body.vatId());
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /** What the classification form sends. */
+    public record ClassifyRequest(
+            String sourceId, String orderName, String billingCountry, @Nullable String vatId) {}
+
+    /** Reverse an unclassifiable note and write it again. */
+    @PostMapping("/{projectId}/operator/credit-notes/reissue")
+    public StoreClient.CreditNote reissueCreditNote(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestBody ReissueRequest body,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, body.sourceId());
+        try {
+            return storeClient.reissueCreditNote(source,
+                    requireToken(tenant, projectId, source, request), body.payoutName());
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /** Which settlement to write again. */
+    public record ReissueRequest(String sourceId, String payoutName) {}
+
     /** What is owed for a period. */
     @GetMapping("/{projectId}/operator/tax-report")
     public StoreClient.TaxReport taxReport(

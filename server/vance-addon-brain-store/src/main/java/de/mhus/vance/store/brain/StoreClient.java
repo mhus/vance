@@ -14,6 +14,7 @@ import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -494,7 +495,15 @@ public class StoreClient {
     public record SaleRow(
             String orderId, String vendorName, String kitId, long amountCents,
             @Nullable String currency, String provider, String status,
-            @Nullable Instant createdAt, @Nullable Instant fulfilledAt) {}
+            @Nullable Instant createdAt, @Nullable Instant fulfilledAt,
+            @Nullable String billingCountry, @Nullable String vatTreatment) {}
+
+    /**
+     * What nobody could classify.
+     *
+     * <p>Sales and notes together, because clearing them is one job.
+     */
+    public record Unclassified(List<SaleRow> orders, List<CreditNote> creditNotes) {}
 
     /** What a refund did. */
     public record RefundResult(
@@ -552,6 +561,34 @@ public class StoreClient {
     }
 
     private record RefundBody(@Nullable String reason, boolean alreadyReturned) {}
+
+    public Unclassified unclassified(KitSourceDto source, String linkToken) {
+        return get(source, "/store/admin/unclassified", linkToken,
+                Unclassified.class, "unclassified sales");
+    }
+
+    /**
+     * Say where a buyer was, and let the store derive the rate.
+     *
+     * <p>The rate is never sent: a hand-entered one is a number nobody can
+     * trace back to a decision.
+     */
+    public SaleRow classify(
+            KitSourceDto source, String linkToken, String orderName,
+            String billingCountry, @Nullable String vatId) {
+
+        String body = json.writeValueAsString(new ClassifyBody(billingCountry, vatId));
+        return postFor(source, "/store/admin/orders/" + orderName + "/classify", linkToken,
+                body, SaleRow.class, "classifying " + orderName);
+    }
+
+    private record ClassifyBody(String billingCountry, @Nullable String vatId) {}
+
+    public CreditNote reissueCreditNote(
+            KitSourceDto source, String linkToken, String payoutName) {
+        return postFor(source, "/store/admin/credit-notes/" + payoutName + "/reissue", linkToken,
+                "{}", CreditNote.class, "reissuing the note for " + payoutName);
+    }
 
     public TaxReport taxReport(KitSourceDto source, String linkToken, String from, String to) {
         return get(source, "/store/admin/tax-report?from=" + from + "&to=" + to,
@@ -864,9 +901,28 @@ public class StoreClient {
     }
 
     /** A store error body, trimmed to something a person can read in a banner. */
-    private static String describe(HttpResponse<String> response) {
+    /**
+     * What to tell the person, out of what the store said.
+     *
+     * <p>A refusal from the store carries a written sentence; the JSON
+     * around it is for machines. Pasting the whole envelope into a screen
+     * shows a timestamp and a path where a reason belongs, so the message
+     * is taken out when there is one and the raw body kept only when there
+     * is not.
+     */
+    private String describe(HttpResponse<String> response) {
         String body = response.body();
         if (body == null || body.isBlank()) return "HTTP " + response.statusCode();
+        try {
+            JsonNode parsed = json.readTree(body);
+            String message = parsed.path("message").asText("");
+            if (!message.isBlank() && !"No message available".equals(message)) {
+                return message;
+            }
+        } catch (RuntimeException e) {
+            // Not JSON, or not the shape we hoped for. The body itself is
+            // then the best thing available.
+        }
         return body.length() > 300 ? body.substring(0, 300) + "…" : body;
     }
 

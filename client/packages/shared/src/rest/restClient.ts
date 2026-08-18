@@ -14,6 +14,31 @@ export class RestError extends Error {
 }
 
 /**
+ * The sentence out of an error body, not the envelope around it.
+ *
+ * The Brain answers a refusal as Spring's error JSON: a timestamp, a path,
+ * a status — and the written reason under `message`. Handing the whole
+ * object to a screen shows the machinery where the reason belongs, which
+ * is how "already has a receipt" reached a user as a line of JSON. Anything
+ * that is not that shape is passed through untouched: a proxy's HTML or a
+ * plain string is still better than nothing.
+ */
+function reasonFrom(text: string, response: Response): string {
+  if (text) {
+    try {
+      const body = JSON.parse(text) as { message?: unknown; error?: unknown };
+      const message = typeof body.message === 'string' ? body.message.trim() : '';
+      if (message && message !== 'No message available') return message;
+      const error = typeof body.error === 'string' ? body.error.trim() : '';
+      if (error) return error;
+    } catch {
+      // Not JSON. The body itself is then the most informative thing here.
+    }
+  }
+  return text || response.statusText;
+}
+
+/**
  * Resolve the Brain's base URL from the host-bound configuration.
  * The host calls {@link configurePlatform} once at boot with the
  * appropriate value (`''` for same-origin Web, an explicit origin
@@ -103,7 +128,7 @@ export async function brainFetch<T>(
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new RestError(response.status, path, text || response.statusText);
+    throw new RestError(response.status, path, reasonFrom(text, response));
   }
   return parseJson<T>(response);
 }
@@ -181,7 +206,7 @@ export async function brainFetchWithMeta<T>(
   }
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new RestError(response.status, path, text || response.statusText);
+    throw new RestError(response.status, path, reasonFrom(text, response));
   }
   const data = await parseJson<T>(response);
   return { data, response };
@@ -220,7 +245,7 @@ export async function brainFetchBlob(
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new RestError(response.status, path, text || response.statusText);
+    throw new RestError(response.status, path, reasonFrom(text, response));
   }
 
   const blob = await response.blob();
@@ -277,7 +302,7 @@ export async function brainFetchText(path: string): Promise<string | null> {
   if (response.status === 404) return null;
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new RestError(response.status, path, text || response.statusText);
+    throw new RestError(response.status, path, reasonFrom(text, response));
   }
   return response.text();
 }
@@ -341,7 +366,7 @@ export async function brainSendRaw<T>(
   }
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new RestError(response.status, path, text || response.statusText);
+    throw new RestError(response.status, path, reasonFrom(text, response));
   }
   return parseJson<T>(response);
 }

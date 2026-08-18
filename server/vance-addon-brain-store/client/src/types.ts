@@ -244,6 +244,16 @@ export interface SaleRow {
   status: string;
   createdAt?: string | null;
   fulfilledAt?: string | null;
+  /** Where the buyer said they were — null when nobody asked. */
+  billingCountry?: string | null;
+  /** DOMESTIC_STANDARD · EU_REVERSE_CHARGE · NON_EU · UNCLEAR · null */
+  vatTreatment?: string | null;
+}
+
+/** Sales and notes nobody could classify — one job, one answer. */
+export interface Unclassified {
+  orders: SaleRow[];
+  creditNotes: CreditNote[];
 }
 
 export interface RefundResult {

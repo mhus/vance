@@ -14,9 +14,10 @@
 import { computed, onMounted, ref } from 'vue';
 import { VAlert, VButton, VCard, VEmptyState, VInput } from '@vance/components';
 import {
-  loadMoney, loadTaxReport, payVendor, reconcilePayouts, refundOrder, releasePayout,
+  classifyOrder, loadMoney, loadTaxReport, loadUnclassified, payVendor, reconcilePayouts,
+  refundOrder, reissueCreditNote, releasePayout,
 } from './api';
-import type { MoneyView, SaleRow, TaxLine, TaxReport } from './types';
+import type { MoneyView, SaleRow, TaxLine, TaxReport, Unclassified } from './types';
 
 const props = defineProps<{ projectId: string; sourceId: string }>();
 
@@ -33,6 +34,14 @@ const open = computed(() => view.value?.open ?? []);
 /** Refundable sales only — the rest is noise on a refund screen. */
 const refundable = computed(() => (view.value?.orders ?? [])
   .filter((order) => order.status === 'FULFILLED' || order.status === 'PAID'));
+
+const unclassified = ref<Unclassified | null>(null);
+const classifying = ref('');
+const classifyCountry = ref('');
+const classifyVatId = ref('');
+
+const unclassifiedOrders = computed(() => unclassified.value?.orders ?? []);
+const unclassifiedNotes = computed(() => unclassified.value?.creditNotes ?? []);
 
 const refunding = ref('');
 const refundReason = ref('');
@@ -52,6 +61,7 @@ async function load(): Promise<void> {
   try {
     view.value = await loadMoney(props.projectId, props.sourceId);
     if (view.value?.problem) error.value = view.value.problem;
+    unclassified.value = await loadUnclassified(props.projectId, props.sourceId);
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Could not load the money view.';
   } finally {
@@ -97,6 +107,26 @@ async function refund(order: SaleRow): Promise<void> {
     refunding.value = '';
     refundReason.value = '';
     refundAlreadyReturned.value = false;
+  });
+}
+
+/** The country is supplied; the rate is the store's to derive from it. */
+async function classify(order: SaleRow): Promise<void> {
+  await act(async () => {
+    const classified = await classifyOrder(props.projectId, props.sourceId, order.orderId,
+      classifyCountry.value.trim().toUpperCase(), classifyVatId.value.trim());
+    notice.value = `${classified.orderId} is now ${classified.vatTreatment}.`;
+    classifying.value = '';
+    classifyCountry.value = '';
+    classifyVatId.value = '';
+  });
+}
+
+/** Not an edit: the old note is reversed in full and a new one written. */
+async function reissue(payoutName: string): Promise<void> {
+  await act(async () => {
+    const note = await reissueCreditNote(props.projectId, props.sourceId, payoutName);
+    notice.value = `${note.number} written — the old one was reversed in full.`;
   });
 }
 
@@ -294,6 +324,75 @@ onMounted(load);
             <VButton :disabled="loading" @click="refund(order)">Confirm refund</VButton>
             <VButton variant="secondary" outline @click="refunding = ''">Cancel</VButton>
           </div>
+        </div>
+      </div>
+    </VCard>
+
+    <!-- ── what nobody could classify ── -->
+    <VCard v-if="unclassifiedOrders.length || unclassifiedNotes.length">
+      <div class="font-semibold">Needs classification</div>
+      <p class="text-sm opacity-70">
+        Sales and notes the store could not place under a tax rule. They are
+        in the report as a count; here they can be resolved. A sale whose
+        receipt is already written cannot be changed — that needs a
+        correction, which is a document of its own.
+      </p>
+
+      <div v-for="order in unclassifiedOrders" :key="order.orderId" class="py-2 border-t">
+        <div class="flex items-start justify-between gap-4">
+          <div class="min-w-0">
+            <div class="font-medium truncate">{{ order.vendorName }}/{{ order.kitId }}</div>
+            <div class="text-sm opacity-70">
+              {{ order.orderId }} · {{ money(order.amountCents, order.currency) }} ·
+              {{ order.billingCountry || 'no country on record' }}
+              <span v-if="order.vatTreatment"> · {{ order.vatTreatment }}</span>
+            </div>
+          </div>
+          <VButton
+            v-if="classifying !== order.orderId"
+            size="sm"
+            variant="secondary"
+            outline
+            @click="classifying = order.orderId; classifyCountry = order.billingCountry ?? ''"
+          >Classify</VButton>
+        </div>
+
+        <div v-if="classifying === order.orderId" class="mt-2 flex flex-col gap-2">
+          <VInput v-model="classifyCountry" label="Buyer's country" help="Two letters, e.g. DE." />
+          <VInput
+            v-model="classifyVatId"
+            label="VAT id"
+            help="Only for a business buyer. Empty means a consumer."
+          />
+          <p class="text-sm opacity-60">
+            The rate is not entered — it follows from the country, by the same
+            rules the sale itself would have used.
+          </p>
+          <div class="flex gap-2">
+            <VButton :disabled="loading || !classifyCountry.trim()" @click="classify(order)">
+              Apply
+            </VButton>
+            <VButton variant="secondary" outline @click="classifying = ''">Cancel</VButton>
+          </div>
+        </div>
+      </div>
+
+      <div v-for="note in unclassifiedNotes" :key="note.number" class="py-2 border-t">
+        <div class="flex items-start justify-between gap-4">
+          <div class="min-w-0">
+            <div class="font-medium">{{ note.number }} · {{ note.vendorName }}</div>
+            <div class="text-sm opacity-70">
+              {{ money(note.grossCents, note.currency) }} · {{ note.payoutName }} ·
+              needs the vendor's country and VAT id
+            </div>
+          </div>
+          <VButton
+            size="sm"
+            variant="secondary"
+            outline
+            :disabled="loading"
+            @click="reissue(note.payoutName)"
+          >Write again</VButton>
         </div>
       </div>
     </VCard>

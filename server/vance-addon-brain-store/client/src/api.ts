@@ -1,6 +1,7 @@
 import { brainFetch } from '@vance/shared';
 import type {
   Connection,
+  CreditNote,
   DeveloperView,
   KitOperationResult,
   OperatorView,
@@ -10,8 +11,10 @@ import type {
   Payout,
   ReconcileResult,
   RefundResult,
+  SaleRow,
   StoreOrder,
   TaxReport,
+  Unclassified,
   VendorMoneyView,
   StoreReview,
   StoreSourceView,
@@ -213,6 +216,32 @@ export async function refundOrder(
   return brainFetch<RefundResult>('POST', `${base(projectId)}/operator/refund`, {
     body: { sourceId, orderName, reason: reason || undefined, alreadyReturned },
   });
+}
+
+export async function loadUnclassified(
+  projectId: string, sourceId: string,
+): Promise<Unclassified> {
+  const query = new URLSearchParams({ sourceId }).toString();
+  return brainFetch<Unclassified>('GET', `${base(projectId)}/operator/unclassified?${query}`);
+}
+
+/** The country is sent; the rate is the store's to derive. */
+export async function classifyOrder(
+  projectId: string, sourceId: string, orderName: string,
+  billingCountry: string, vatId?: string,
+): Promise<SaleRow> {
+  return brainFetch<SaleRow>('POST', `${base(projectId)}/operator/classify`, {
+    body: { sourceId, orderName, billingCountry, vatId: vatId || undefined },
+  });
+}
+
+export async function reissueCreditNote(
+  projectId: string, sourceId: string, payoutName: string,
+): Promise<CreditNote> {
+  return brainFetch<CreditNote>(
+    'POST', `${base(projectId)}/operator/credit-notes/reissue`, {
+      body: { sourceId, payoutName },
+    });
 }
 
 export async function loadTaxReport(

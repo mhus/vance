@@ -235,6 +235,7 @@ public class KitExporter {
         KitOperationResultDto.KitOperationResultDtoBuilder result =
                 KitOperationResultDto.builder()
                         .kitName(manifest.getKit().getName())
+                        .version(manifest.getKit().getVersion())
                         .mode("EXPORT")
                         .documentsAdded(writtenDocs)
                         .settingsAdded(writtenSettings)

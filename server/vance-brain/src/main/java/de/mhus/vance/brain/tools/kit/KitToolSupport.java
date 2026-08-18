@@ -91,6 +91,10 @@ final class KitToolSupport {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("kit", r.getKitName());
         out.put("mode", r.getMode());
+        // Before the version: the model was left to read it out of the
+        // commit string, which spells it for a store kit and hides it in a
+        // SHA for a git one.
+        if (r.getVersion() != null) out.put("version", r.getVersion());
         if (r.getSourceCommit() != null) out.put("commit", r.getSourceCommit());
         putIfPresent(out, "documentsAdded", r.getDocumentsAdded());
         putIfPresent(out, "documentsUpdated", r.getDocumentsUpdated());

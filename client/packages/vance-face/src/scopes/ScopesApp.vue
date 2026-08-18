@@ -1466,7 +1466,12 @@ const combinedError = computed<string | null>(() =>
           class="mt-3 border-t border-base-300 pt-2 text-xs opacity-80"
         >
           <div class="font-semibold opacity-90 mb-1">
-            {{ $t('scopes.kit.lastOperation', { mode: kitState.lastResult.value.mode }) }}
+            {{ kitState.lastResult.value.version
+              ? $t('scopes.kit.lastOperationVersion', {
+                  mode: kitState.lastResult.value.mode,
+                  version: kitState.lastResult.value.version,
+                })
+              : $t('scopes.kit.lastOperation', { mode: kitState.lastResult.value.mode }) }}
           </div>
           <ul class="flex flex-col gap-0.5">
             <li v-if="(kitState.lastResult.value.documentsAdded?.length ?? 0) > 0">

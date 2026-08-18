@@ -7,6 +7,7 @@ export interface KitOperationResultDto {
   kitName: string;
   kitId?: string;
   mode: string;
+  version?: string;
   sourceCommit?: string;
   documentsAdded: string[];
   documentsUpdated: string[];

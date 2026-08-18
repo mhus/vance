@@ -126,6 +126,7 @@ public class KitInstaller {
                         .kitName(top.getName())
                         .kitId(tracked ? recordId : null)
                         .mode(mode.name())
+                        .version(top.getVersion())
                         .sourceCommit(resolved.sourceCommit())
                         .inheritedKits(new ArrayList<>(resolved.resolvedInherits()))
                         .warnings(new ArrayList<>(resolved.warnings()));
@@ -782,6 +783,7 @@ public class KitInstaller {
                 KitOperationResultDto.builder()
                         .kitName(record.getKit().getName())
                         .kitId(record.getId())
+                        .version(record.getKit().getVersion())
                         .mode("UNINSTALL");
         pruneLostArtefacts(tenantId, projectId, record.getId(), record, empty, prune, result);
         recordStore.delete(tenantId, projectId, record.getId());

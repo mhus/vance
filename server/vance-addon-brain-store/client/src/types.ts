@@ -72,6 +72,8 @@ export interface KitOperationResult {
   kitName?: string;
   kitId?: string;
   mode?: string;
+  /** Which version landed — what the row promised before the click. */
+  version?: string;
   warnings?: string[];
 }
 

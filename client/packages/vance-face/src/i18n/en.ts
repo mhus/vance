@@ -1748,6 +1748,7 @@ export default {
       applied_msg: 'Kit applied.',
       exported_msg: 'Kit exported.',
       lastOperation: 'Last operation: {mode}',
+      lastOperationVersion: 'Last operation: {mode} → {version}',
       docsAdded: '+ {count} documents',
       docsUpdated: '~ {count} documents',
       docsRemoved: '− {count} documents',

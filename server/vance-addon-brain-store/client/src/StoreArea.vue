@@ -202,7 +202,11 @@ async function installEntry(entry: StoreEntry): Promise<void> {
   busyPath.value = entry.path;
   try {
     const result = await install(projectId.value, entry.sourceId, entry.path);
-    notice.value = `${result.kitName ?? entry.displayName}: ${result.mode?.toLowerCase() ?? 'done'}.`;
+    // The version is what the person was deciding about — the row said
+    // "3.1.0 available", so the confirmation says which one arrived.
+    const version = result.version ? ` → ${result.version}` : '';
+    notice.value =
+      `${result.kitName ?? entry.displayName}: ${result.mode?.toLowerCase() ?? 'done'}${version}.`;
     if (result.warnings?.length) notice.value += ` ${result.warnings.join(' ')}`;
     await load();
   } catch (e) {

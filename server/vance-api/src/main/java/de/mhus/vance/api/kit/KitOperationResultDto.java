@@ -35,6 +35,20 @@ public class KitOperationResultDto {
     /** {@code INSTALL}, {@code UPDATE}, {@code APPLY}, {@code EXPORT}. */
     private String mode;
 
+    /**
+     * Version of the kit that was installed, as its descriptor declares it.
+     *
+     * <p>Callers used to read this off {@link #sourceCommit}, which happens
+     * to spell {@code library:3.1.0} for a store kit — and a bare SHA for a
+     * git one, where there is no version to recover at all. Two different
+     * questions were answered by one string, so the display of "updated to
+     * X" worked for one source and quietly failed for the other.
+     *
+     * <p>Null only where the operation never got as far as a descriptor —
+     * an update that failed before resolving.
+     */
+    private @Nullable String version;
+
     /** SHA of the source commit at the time of the operation. */
     private @Nullable String sourceCommit;
 

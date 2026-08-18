@@ -176,6 +176,128 @@ export interface DeveloperView {
   problem?: string | null;
 }
 
+// ──────────────────── money ────────────────────
+
+/** What a vendor is owed and whether it can be sent. */
+export interface Due {
+  vendorName: string;
+  orderCount: number;
+  grossCents: number;
+  feeCents: number;
+  /** Their share of those sales, before anything is held back. */
+  earnedCents: number;
+  /** Refunds of sales already paid out. */
+  clawbackCents: number;
+  /** Earned, but waiting for a dispute to be decided. */
+  disputedCents: number;
+  /** What would actually be sent. */
+  amountCents: number;
+  currency?: string | null;
+  payable: boolean;
+  blockedReason?: string | null;
+}
+
+export interface Payout {
+  payoutName: string;
+  vendorName: string;
+  orderCount: number;
+  amountCents: number;
+  currency?: string | null;
+  /** CREATED · SENT · PAID · FAILED */
+  status: string;
+  provider?: string | null;
+  providerRef?: string | null;
+  failureReason?: string | null;
+  createdAt?: string | null;
+  sentAt?: string | null;
+  settledAt?: string | null;
+}
+
+/** The store's own invoice for what it bought from a vendor. */
+export interface CreditNote {
+  number: string;
+  /** SETTLEMENT · CORRECTION */
+  kind?: string | null;
+  /** On a correction: the note it takes back part of. */
+  correctsNumber?: string | null;
+  payoutName: string;
+  vendorName: string;
+  grossCents: number;
+  netCents: number;
+  taxCents: number;
+  taxRateBasisPoints: number;
+  currency?: string | null;
+  treatment: string;
+  treatmentNote?: string | null;
+  orderCount: number;
+  issuedAt?: string | null;
+}
+
+/** A sale as the operator's list shows it. */
+export interface SaleRow {
+  orderId: string;
+  vendorName: string;
+  kitId: string;
+  amountCents: number;
+  currency?: string | null;
+  provider: string;
+  status: string;
+  createdAt?: string | null;
+  fulfilledAt?: string | null;
+}
+
+export interface RefundResult {
+  orderName: string;
+  amountCents: number;
+  entitlementRevoked: boolean;
+  /** NEVER_PAID · CLAWED_BACK */
+  vendorShare: string;
+  providerRef?: string | null;
+}
+
+export interface TaxLine {
+  country: string;
+  rateBasisPoints: number;
+  netCents: number;
+  taxCents: number;
+  grossCents: number;
+  orderCount: number;
+}
+
+/** A period, split into the returns it feeds. */
+export interface TaxReport {
+  domestic: TaxLine[];
+  oss: TaxLine[];
+  reverseCharge: TaxLine[];
+  refunded: TaxLine[];
+  totalTaxCents: number;
+  /** Sales nobody classified — the number that should be zero. */
+  unclear: number;
+}
+
+export interface ReconcileResult {
+  asked: number;
+  arrived: number;
+  failed: number;
+  stillOpen: number;
+}
+
+/** Everything the operator's money screen needs, in one answer. */
+export interface MoneyView {
+  due: Due[];
+  open: Payout[];
+  orders: SaleRow[];
+  problem?: string | null;
+}
+
+/** What a vendor sees about their own money. */
+export interface VendorMoneyView {
+  due?: Due | null;
+  payouts: Payout[];
+  creditNotes: CreditNote[];
+  problem?: string | null;
+}
+
 // ──────────────────── operator ────────────────────
 
 /** A release as the operator's queue shows it. */

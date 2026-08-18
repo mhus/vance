@@ -14,6 +14,7 @@ import de.mhus.vance.brain.kit.KitStoreCredentials;
 import de.mhus.vance.brain.kit.KitSourceRegistry;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.store.brain.StoreClient.CatalogueEntry;
+import de.mhus.vance.store.brain.StoreClient.Due;
 import de.mhus.vance.store.brain.StoreClient.Fees;
 import de.mhus.vance.store.brain.StoreClient.Release;
 import de.mhus.vance.store.brain.StoreClient.ReleaseRequest;
@@ -599,6 +600,201 @@ public class StoreAddonController {
      * refuses anyone not in its own operator configuration, and a sign-in
      * on this screen would establish nothing it does not already know.
      */
+    // ──────────────────── money out, for the operator ────────────────────
+
+    /**
+     * Everything the operator's money screen needs, in one answer.
+     *
+     * <p>One call rather than five: the screen shows them together, and five
+     * round trips would give it five chances to be half-loaded.
+     */
+    @GetMapping("/{projectId}/operator/money")
+    public MoneyView money(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestParam("sourceId") String sourceId,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, sourceId);
+        String token = requireToken(tenant, projectId, source, request);
+        try {
+            return new MoneyView(
+                    storeClient.payoutsDue(source, token),
+                    storeClient.openPayouts(source, token),
+                    storeClient.orders(source, token, null),
+                    null);
+        } catch (KitException e) {
+            return new MoneyView(List.of(), List.of(), List.of(), e.getMessage());
+        }
+    }
+
+    /** What the operator's money screen shows. */
+    public record MoneyView(
+            List<StoreClient.Due> due,
+            List<StoreClient.Payout> open,
+            List<StoreClient.SaleRow> orders,
+            @Nullable String problem) {}
+
+    /** Pay one vendor what they are owed. */
+    @PostMapping("/{projectId}/operator/payouts/{vendorName}")
+    public StoreClient.Payout pay(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @PathVariable("vendorName") String vendorName,
+            @RequestParam("sourceId") String sourceId,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, sourceId);
+        try {
+            return storeClient.payVendor(
+                    source, requireToken(tenant, projectId, source, request), vendorName);
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /** Give a failed payout's orders back so a new one can carry them. */
+    @PostMapping("/{projectId}/operator/payouts/{payoutName}/release")
+    public StoreClient.Payout releasePayout(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @PathVariable("payoutName") String payoutName,
+            @RequestParam("sourceId") String sourceId,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, sourceId);
+        try {
+            return storeClient.releasePayout(
+                    source, requireToken(tenant, projectId, source, request), payoutName);
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /** Ask the rail about everything in flight, now. */
+    @PostMapping("/{projectId}/operator/payouts-reconcile")
+    public StoreClient.ReconcileResult reconcile(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestParam("sourceId") String sourceId,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, sourceId);
+        try {
+            return storeClient.reconcilePayouts(
+                    source, requireToken(tenant, projectId, source, request));
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /** Give a sale back. */
+    @PostMapping("/{projectId}/operator/refund")
+    public StoreClient.RefundResult refund(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestBody RefundRequest body,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, body.sourceId());
+        try {
+            return storeClient.refund(source,
+                    requireToken(tenant, projectId, source, request),
+                    body.orderName(), body.reason(), body.alreadyReturned());
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /** What the refund form sends. */
+    public record RefundRequest(
+            String sourceId, String orderName,
+            @Nullable String reason, boolean alreadyReturned) {}
+
+    /** What is owed for a period. */
+    @GetMapping("/{projectId}/operator/tax-report")
+    public StoreClient.TaxReport taxReport(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestParam("sourceId") String sourceId,
+            @RequestParam("from") String from,
+            @RequestParam("to") String to,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, sourceId);
+        try {
+            return storeClient.taxReport(
+                    source, requireToken(tenant, projectId, source, request), from, to);
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    // ──────────────────── money in, for the vendor ────────────────────
+
+    /** What this vendor is owed, was paid, and can book against. */
+    @GetMapping("/{projectId}/developer/money")
+    public VendorMoneyView vendorMoney(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestParam("sourceId") String sourceId,
+            @RequestParam("vendorName") String vendorName,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, sourceId);
+        String token = credentials.resolve(
+                tenant, projectId, actor(request), source.getUrl(), null).token();
+        try {
+            return new VendorMoneyView(
+                    storeClient.myDue(source, token, vendorName),
+                    storeClient.myPayouts(source, token, vendorName),
+                    storeClient.myCreditNotes(source, token, vendorName),
+                    null);
+        } catch (KitException e) {
+            return new VendorMoneyView(null, List.of(), List.of(), e.getMessage());
+        }
+    }
+
+    /** What a vendor sees about their own money. */
+    public record VendorMoneyView(
+            @Nullable Due due,
+            List<StoreClient.Payout> payouts,
+            List<StoreClient.CreditNote> creditNotes,
+            @Nullable String problem) {}
+
+    /** Say where the money should go. */
+    @PostMapping("/{projectId}/developer/payout-account")
+    public Vendor setPayoutAccount(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("projectId") String projectId,
+            @RequestBody PayoutAccountRequest body,
+            HttpServletRequest request) {
+
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        KitSourceDto source = library(tenant, body.sourceId());
+        String token = credentials.resolve(
+                tenant, projectId, actor(request), source.getUrl(), null).token();
+        try {
+            return storeClient.setPayoutAccount(source, token, body.vendorName(),
+                    body.type(), body.handle(), body.holderName(),
+                    body.country(), body.vatId());
+        } catch (KitException e) {
+            throw storeError(e);
+        }
+    }
+
+    /** What the payout-account form sends. */
+    public record PayoutAccountRequest(
+            String sourceId, String vendorName, String type, String handle,
+            @Nullable String holderName, @Nullable String country, @Nullable String vatId) {}
+
     @GetMapping("/{projectId}/operator/queue")
     public OperatorView operatorQueue(
             @PathVariable("tenant") String tenant,

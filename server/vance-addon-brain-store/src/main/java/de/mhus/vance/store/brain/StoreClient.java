@@ -461,6 +461,136 @@ public class StoreClient {
             boolean mayCreateKits,
             boolean mayPublishPaid) {}
 
+    // ──────────────────── money out ────────────────────
+
+    /** What a vendor is owed and whether it can be sent. */
+    public record Due(
+            String vendorName, int orderCount, long grossCents, long feeCents,
+            long earnedCents, long clawbackCents, long disputedCents, long amountCents,
+            @Nullable String currency, boolean payable, @Nullable String blockedReason) {}
+
+    /** One transfer from the store to one vendor. */
+    public record Payout(
+            String payoutName, String vendorName, int orderCount, long amountCents,
+            @Nullable String currency, String status, @Nullable String provider,
+            @Nullable String providerRef, @Nullable String failureReason,
+            @Nullable Instant createdAt, @Nullable Instant sentAt, @Nullable Instant settledAt) {}
+
+    /** The store's own invoice for what it bought from a vendor. */
+    public record CreditNote(
+            String number, @Nullable String kind, @Nullable String correctsNumber,
+            String payoutName, String vendorName, long grossCents, long netCents,
+            long taxCents, int taxRateBasisPoints, @Nullable String currency,
+            String treatment, @Nullable String treatmentNote, int orderCount,
+            @Nullable Instant issuedAt) {}
+
+    /**
+     * A sale as the operator's list shows it.
+     *
+     * <p>Not {@code Order} — that name is taken by what a checkout answers,
+     * and the two are different views of the same thing: one is what a buyer
+     * gets back, this is what somebody looking for a sale sees.
+     */
+    public record SaleRow(
+            String orderId, String vendorName, String kitId, long amountCents,
+            @Nullable String currency, String provider, String status,
+            @Nullable Instant createdAt, @Nullable Instant fulfilledAt) {}
+
+    /** What a refund did. */
+    public record RefundResult(
+            String orderName, long amountCents, boolean entitlementRevoked,
+            String vendorShare, @Nullable String providerRef) {}
+
+    /** One country at one rate. */
+    public record TaxLine(
+            String country, int rateBasisPoints, long netCents, long taxCents,
+            long grossCents, int orderCount) {}
+
+    /** A period, as the returns it feeds. */
+    public record TaxReport(
+            List<TaxLine> domestic, List<TaxLine> oss, List<TaxLine> reverseCharge,
+            List<TaxLine> refunded, long totalTaxCents, int unclear) {}
+
+    /** What a reconciliation sweep did. */
+    public record ReconcileResult(int asked, int arrived, int failed, int stillOpen) {}
+
+    public List<Due> payoutsDue(KitSourceDto source, String linkToken) {
+        return getList(source, "/store/admin/payouts/due", linkToken, Due.class, "payouts due");
+    }
+
+    public List<Payout> openPayouts(KitSourceDto source, String linkToken) {
+        return getList(source, "/store/admin/payouts/open", linkToken, Payout.class, "payouts");
+    }
+
+    public Payout payVendor(KitSourceDto source, String linkToken, String vendorName) {
+        return postFor(source, "/store/admin/payouts/" + vendorName, linkToken, "{}",
+                Payout.class, "paying out " + vendorName);
+    }
+
+    public Payout releasePayout(KitSourceDto source, String linkToken, String payoutName) {
+        return postFor(source, "/store/admin/payouts/" + payoutName + "/release", linkToken, "{}",
+                Payout.class, "releasing " + payoutName);
+    }
+
+    public ReconcileResult reconcilePayouts(KitSourceDto source, String linkToken) {
+        return postFor(source, "/store/admin/payouts/reconcile", linkToken, "{}",
+                ReconcileResult.class, "reconciling payouts");
+    }
+
+    public List<SaleRow> orders(KitSourceDto source, String linkToken, @Nullable String status) {
+        String path = "/store/admin/orders" + (status == null ? "" : "?status=" + status);
+        return getList(source, path, linkToken, SaleRow.class, "orders");
+    }
+
+    public RefundResult refund(
+            KitSourceDto source, String linkToken, String orderName,
+            @Nullable String reason, boolean alreadyReturned) {
+
+        String body = json.writeValueAsString(new RefundBody(reason, alreadyReturned));
+        return postFor(source, "/store/admin/orders/" + orderName + "/refund", linkToken, body,
+                RefundResult.class, "refunding " + orderName);
+    }
+
+    private record RefundBody(@Nullable String reason, boolean alreadyReturned) {}
+
+    public TaxReport taxReport(KitSourceDto source, String linkToken, String from, String to) {
+        return get(source, "/store/admin/tax-report?from=" + from + "&to=" + to,
+                linkToken, TaxReport.class, "the tax report");
+    }
+
+    // ─── the vendor's own side ───
+
+    public Due myDue(KitSourceDto source, String linkToken, String vendorName) {
+        return get(source, "/store/vendor/payouts/due/" + vendorName, linkToken,
+                Due.class, "what is due");
+    }
+
+    public List<Payout> myPayouts(KitSourceDto source, String linkToken, String vendorName) {
+        return getList(source, "/store/vendor/payouts/" + vendorName, linkToken,
+                Payout.class, "payouts");
+    }
+
+    public List<CreditNote> myCreditNotes(
+            KitSourceDto source, String linkToken, String vendorName) {
+        return getList(source, "/store/vendor/credit-notes/" + vendorName, linkToken,
+                CreditNote.class, "credit notes");
+    }
+
+    public Vendor setPayoutAccount(
+            KitSourceDto source, String linkToken, String vendorName, String type,
+            String handle, @Nullable String holderName, @Nullable String country,
+            @Nullable String vatId) {
+
+        String body = json.writeValueAsString(new PayoutAccountBody(
+                vendorName, type, handle, holderName, country, vatId));
+        return postFor(source, "/store/vendor/payout-account", linkToken, body,
+                Vendor.class, "setting the payout account");
+    }
+
+    private record PayoutAccountBody(
+            String vendorName, String type, String handle,
+            @Nullable String holderName, @Nullable String country, @Nullable String vatId) {}
+
     /** One answer per handle: the right is bought per shop front. */
     public List<Publishing> publishing(KitSourceDto source, String linkToken) {
         return getList(source, "/store/vendor/publishing", linkToken,
@@ -673,6 +803,37 @@ public class StoreClient {
                     + " for " + what);
         }
         return response.body();
+    }
+
+    /**
+     * A POST whose answer matters.
+     *
+     * <p>Separate from the void one rather than replacing it: most of the
+     * operator's actions say only whether they worked, and giving them all a
+     * return type would invite callers to parse a body that is not there.
+     */
+    private <T> T postFor(
+            KitSourceDto source, String path, String token,
+            @Nullable String body, Class<T> type, String what) {
+
+        HttpRequest.Builder request = HttpRequest.newBuilder(uri(source, path))
+                .timeout(TIMEOUT)
+                .header("Authorization", "Bearer " + token);
+        if (body == null) {
+            request.POST(HttpRequest.BodyPublishers.noBody());
+        } else {
+            request.header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body));
+        }
+        HttpResponse<String> response = send(request.build(), source);
+        if (response.statusCode() == 404) {
+            throw new KitException("this account may not do that at " + source.getId()
+                    + ", or " + what + " no longer applies");
+        }
+        if (response.statusCode() != 200 && response.statusCode() != 201) {
+            throw new KitException("the store refused " + what + ": " + describe(response));
+        }
+        return read(response.body(), type, source);
     }
 
     private void post(

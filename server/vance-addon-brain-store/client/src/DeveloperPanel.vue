@@ -4,9 +4,12 @@ import {
   VAlert, VButton, VCard, VEmptyState, VInput, VSelect, VTextarea,
 } from '@vance/components';
 import {
-  applyVendor, createKit, loadDeveloper, loadProjects, publish, renewPublishing,
+  applyVendor, createKit, loadDeveloper, loadProjects, loadVendorMoney, publish,
+  renewPublishing, setPayoutAccount,
 } from './api';
-import type { DeveloperView, Publishing, ReleaseRequest, Vendor } from './types';
+import type {
+  DeveloperView, Publishing, ReleaseRequest, Vendor, VendorMoneyView,
+} from './types';
 
 const props = defineProps<{ projectId: string; sourceId: string }>();
 
@@ -79,6 +82,58 @@ function publishingLabel(entry: Publishing): string {
   return until ? `ran out on ${until}` : 'never renewed';
 }
 
+/**
+ * A vendor's own money, per handle.
+ *
+ * Loaded for the first approved handle rather than all of them: a vendor
+ * with several is rare, and a screen that fetched every one on open would
+ * pay for that rarity on every visit. The picker changes which.
+ */
+const moneyVendor = ref('');
+const money = ref<VendorMoneyView | null>(null);
+
+const payoutHandle = ref('');
+const payoutHolder = ref('');
+const payoutCountry = ref('DE');
+const payoutVatId = ref('');
+const editingAccount = ref(false);
+
+async function loadMoneyFor(vendorName: string): Promise<void> {
+  moneyVendor.value = vendorName;
+  try {
+    money.value = await loadVendorMoney(props.projectId, props.sourceId, vendorName);
+    if (money.value?.problem) error.value = money.value.problem;
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not load your payouts.';
+  }
+}
+
+async function saveAccount(): Promise<void> {
+  error.value = '';
+  notice.value = '';
+  loading.value = true;
+  try {
+    await setPayoutAccount(
+      props.projectId, props.sourceId, moneyVendor.value, 'paypal', payoutHandle.value,
+      payoutHolder.value || undefined, payoutCountry.value || undefined,
+      payoutVatId.value || undefined,
+    );
+    // The country and VAT id are not decoration: they decide how the store's
+    // own invoice for your work is taxed.
+    notice.value = 'Payout account saved.';
+    editingAccount.value = false;
+    await loadMoneyFor(moneyVendor.value);
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not save the payout account.';
+  } finally {
+    loading.value = false;
+  }
+}
+
+function euro(cents: number, currency?: string | null): string {
+  return `${(cents / 100).toFixed(2)} ${currency ?? 'EUR'}`.trim();
+}
+
 const renewing = ref('');
 const renewEmail = ref('');
 const renewPassword = ref('');
@@ -125,6 +180,9 @@ async function load(): Promise<void> {
     const stillApproved = approvedVendors.value.some((v) => v.name === kitVendor.value);
     if (!stillApproved && approvedVendors.value.length) {
       kitVendor.value = approvedVendors.value[0].name;
+    }
+    if (!moneyVendor.value && approvedVendors.value.length) {
+      await loadMoneyFor(approvedVendors.value[0].name);
     }
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Could not load the developer view.';
@@ -345,6 +403,97 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
             </VButton>
             <VButton variant="secondary" outline @click="renewing = ''">Cancel</VButton>
           </div>
+        </div>
+      </div>
+    </VCard>
+
+    <!-- ── your money ── -->
+    <VCard v-if="approvedVendors.length && money">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <div class="font-semibold">Your money</div>
+          <p class="text-sm opacity-70">
+            Paid out per handle. A sale waits out the buyer's window before
+            its share can leave.
+          </p>
+        </div>
+        <VSelect
+          v-if="vendorOptions.length > 1"
+          :model-value="moneyVendor"
+          :options="vendorOptions"
+          @update:model-value="(v: string | null) => v && loadMoneyFor(v)"
+        />
+      </div>
+
+      <div v-if="money.due" class="py-2 border-t">
+        <div class="flex items-baseline justify-between gap-4">
+          <div class="text-sm opacity-70">
+            {{ money.due.orderCount }} sale(s) · earned
+            {{ euro(money.due.earnedCents, money.due.currency) }}
+            <span v-if="money.due.clawbackCents">
+              · refunds {{ euro(money.due.clawbackCents, money.due.currency) }}
+            </span>
+            <span v-if="money.due.disputedCents">
+              · disputed {{ euro(money.due.disputedCents, money.due.currency) }}
+            </span>
+          </div>
+          <div class="font-medium">{{ euro(money.due.amountCents, money.due.currency) }}</div>
+        </div>
+        <div v-if="money.due.blockedReason" class="text-sm text-warning">
+          {{ money.due.blockedReason }}
+        </div>
+      </div>
+
+      <!-- where it goes -->
+      <div class="py-2 border-t">
+        <div class="flex items-center justify-between gap-4">
+          <div class="text-sm font-semibold">Payout account</div>
+          <VButton
+            v-if="!editingAccount"
+            size="sm"
+            variant="secondary"
+            outline
+            @click="editingAccount = true"
+          >Change</VButton>
+        </div>
+        <div v-if="editingAccount" class="mt-2 flex flex-col gap-2">
+          <VInput
+            v-model="payoutHandle"
+            label="PayPal address"
+            help="This store pays out via PayPal."
+          />
+          <VInput v-model="payoutHolder" label="Account holder (optional)" />
+          <VInput
+            v-model="payoutCountry"
+            label="Country"
+            help="Decides how the store's own invoice for your work is taxed."
+          />
+          <VInput v-model="payoutVatId" label="VAT id (optional)" />
+          <div class="flex gap-2">
+            <VButton :disabled="loading || !payoutHandle" @click="saveAccount">Save</VButton>
+            <VButton variant="secondary" outline @click="editingAccount = false">Cancel</VButton>
+          </div>
+        </div>
+      </div>
+
+      <!-- what was sent -->
+      <div v-for="payout in money.payouts" :key="payout.payoutName" class="py-2 border-t text-sm">
+        <div class="flex justify-between gap-4">
+          <span>{{ payout.payoutName }} · {{ payout.orderCount }} sale(s)</span>
+          <span>{{ euro(payout.amountCents, payout.currency) }} · {{ payout.status }}</span>
+        </div>
+        <div v-if="payout.failureReason" class="text-error">{{ payout.failureReason }}</div>
+      </div>
+
+      <!-- what to book against -->
+      <div v-if="money.creditNotes.length" class="py-2 border-t">
+        <div class="text-sm font-semibold mb-1">Credit notes</div>
+        <div v-for="note in money.creditNotes" :key="note.number" class="text-sm flex gap-3">
+          <span class="w-40">{{ note.number }}</span>
+          <span class="w-24 text-right">{{ euro(note.grossCents, note.currency) }}</span>
+          <span class="opacity-70">
+            {{ note.kind === 'CORRECTION' ? `corrects ${note.correctsNumber}` : note.treatment }}
+          </span>
         </div>
       </div>
     </VCard>

@@ -8,6 +8,7 @@ import {
   loadSurfaces, loadWithdrawalNotice, submitReview,
 } from './api';
 import DeveloperPanel from './DeveloperPanel.vue';
+import MoneyPanel from './MoneyPanel.vue';
 import OperatorPanel from './OperatorPanel.vue';
 import type {
   EntryState, StoreEntry, StoreReview, StoreSourceView, WithdrawalNotice,
@@ -42,7 +43,7 @@ const projectId = computed(() => props.projectId ?? '_tenant');
  * Both rows disappear when they have nothing to offer. One store is not a
  * choice, and a role strip that only ever says "Store" is furniture.
  */
-const mode = ref<'STORE' | 'DEVELOPER' | 'OPERATOR'>('STORE');
+const mode = ref<'STORE' | 'DEVELOPER' | 'OPERATOR' | 'MONEY'>('STORE');
 
 /**
  * The operator area appears only where this brain is set up to operate
@@ -74,7 +75,7 @@ function leaveModeIfNotOffered(): void {
 }
 
 const modes = computed(() => {
-  const entries: { key: 'STORE' | 'DEVELOPER' | 'OPERATOR'; label: string }[] = [
+  const entries: { key: 'STORE' | 'DEVELOPER' | 'OPERATOR' | 'MONEY'; label: string }[] = [
     { key: 'STORE', label: 'Store' },
   ];
   // Both roles come from the store, and neither is shown to somebody who
@@ -86,6 +87,11 @@ const modes = computed(() => {
   }
   if (operatorSources.value.includes(activeSource.value)) {
     entries.push({ key: 'OPERATOR', label: 'Operator' });
+    // Its own tab rather than a section under Operator: moderation and money
+    // are done by different people on different days, and a screen mixing a
+    // release queue with a payout button would be used for both by whoever
+    // happened to have it open.
+    entries.push({ key: 'MONEY', label: 'Money' });
   }
   return entries;
 });
@@ -499,6 +505,11 @@ onUnmounted(() => {
 
     <DeveloperPanel
       v-if="mode === 'DEVELOPER' && activeSource"
+      :project-id="projectId"
+      :source-id="activeSource"
+    />
+    <MoneyPanel
+      v-else-if="mode === 'MONEY' && activeSource"
       :project-id="projectId"
       :source-id="activeSource"
     />

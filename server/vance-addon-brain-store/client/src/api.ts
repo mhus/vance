@@ -6,7 +6,13 @@ import type {
   OperatorView,
   ReleaseRequest,
   StoreConnection,
+  MoneyView,
+  Payout,
+  ReconcileResult,
+  RefundResult,
   StoreOrder,
+  TaxReport,
+  VendorMoneyView,
   StoreReview,
   StoreSourceView,
   Surfaces,
@@ -170,6 +176,65 @@ export async function renewPublishing(
 ): Promise<StoreOrder> {
   return brainFetch<StoreOrder>('POST', `${base(projectId)}/developer/renew`, {
     body: { sourceId, vendorName, email, password },
+  });
+}
+
+// ──────────────────── money ────────────────────
+
+export async function loadMoney(projectId: string, sourceId: string): Promise<MoneyView> {
+  return brainFetch<MoneyView>('GET', `${base(projectId)}/operator/money?sourceId=${sourceId}`);
+}
+
+export async function payVendor(
+  projectId: string, sourceId: string, vendorName: string,
+): Promise<Payout> {
+  return brainFetch<Payout>(
+    'POST', `${base(projectId)}/operator/payouts/${vendorName}?sourceId=${sourceId}`);
+}
+
+export async function releasePayout(
+  projectId: string, sourceId: string, payoutName: string,
+): Promise<Payout> {
+  return brainFetch<Payout>(
+    'POST', `${base(projectId)}/operator/payouts/${payoutName}/release?sourceId=${sourceId}`);
+}
+
+export async function reconcilePayouts(
+  projectId: string, sourceId: string,
+): Promise<ReconcileResult> {
+  return brainFetch<ReconcileResult>(
+    'POST', `${base(projectId)}/operator/payouts-reconcile?sourceId=${sourceId}`);
+}
+
+export async function refundOrder(
+  projectId: string, sourceId: string, orderName: string,
+  reason: string, alreadyReturned: boolean,
+): Promise<RefundResult> {
+  return brainFetch<RefundResult>('POST', `${base(projectId)}/operator/refund`, {
+    body: { sourceId, orderName, reason: reason || undefined, alreadyReturned },
+  });
+}
+
+export async function loadTaxReport(
+  projectId: string, sourceId: string, from: string, to: string,
+): Promise<TaxReport> {
+  const query = new URLSearchParams({ sourceId, from, to }).toString();
+  return brainFetch<TaxReport>('GET', `${base(projectId)}/operator/tax-report?${query}`);
+}
+
+export async function loadVendorMoney(
+  projectId: string, sourceId: string, vendorName: string,
+): Promise<VendorMoneyView> {
+  const query = new URLSearchParams({ sourceId, vendorName }).toString();
+  return brainFetch<VendorMoneyView>('GET', `${base(projectId)}/developer/money?${query}`);
+}
+
+export async function setPayoutAccount(
+  projectId: string, sourceId: string, vendorName: string, type: string, handle: string,
+  holderName?: string, country?: string, vatId?: string,
+): Promise<Vendor> {
+  return brainFetch<Vendor>('POST', `${base(projectId)}/developer/payout-account`, {
+    body: { sourceId, vendorName, type, handle, holderName, country, vatId },
   });
 }
 

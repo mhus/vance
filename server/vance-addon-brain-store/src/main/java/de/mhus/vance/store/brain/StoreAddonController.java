@@ -5,6 +5,7 @@ import de.mhus.vance.api.kit.KitImportRequestDto;
 import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.api.kit.KitSourceDto;
+import de.mhus.vance.api.kit.KitInstalledRecordDto;
 import de.mhus.vance.api.kit.KitSourceType;
 import de.mhus.vance.brain.kit.KitAccess;
 import de.mhus.vance.brain.kit.KitRecordStore;
@@ -275,8 +276,17 @@ public class StoreAddonController {
                     "sign in to this store before reviewing");
         }
         try {
+            // Which version this opinion is about: the install record knows,
+            // and the store deliberately cannot — it learns nothing about
+            // what runs on an installation. Not installed here means no
+            // claim, and the store stamps its newest published instead.
+            KitInstalledRecordDto record = recordStore.findByOrigin(
+                    tenant, projectId, source.getUrl(), body.vendor() + "/" + body.kitId());
+            String version = record == null || record.getOrigin() == null
+                    ? null
+                    : stripLibraryPrefix(record.getOrigin().getCommit());
             return storeClient.review(source, access.token(),
-                    body.vendor(), body.kitId(), body.stars(), body.text());
+                    body.vendor(), body.kitId(), body.stars(), body.text(), version);
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -660,6 +670,13 @@ public class StoreAddonController {
                 .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "no library source '" + sourceId + "'"));
+    }
+
+    /** {@code library:1.2.0} → {@code 1.2.0}; a git commit hash is no version. */
+    private static @Nullable String stripLibraryPrefix(@Nullable String commit) {
+        if (commit == null || !commit.startsWith("library:")) return null;
+        String version = commit.substring("library:".length());
+        return version.isBlank() || "unversioned".equals(version) ? null : version;
     }
 
     private static ResponseStatusException storeError(KitException e) {

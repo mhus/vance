@@ -57,7 +57,10 @@ public class StoreClient {
             String reviewId,
             @Nullable String displayName,
             int stars,
+            /** Null while a text waits for moderation — the star still counts. */
             @Nullable String text,
+            @Nullable String version,
+            @Nullable Integer majorVersion,
             @Nullable Instant createdAt) {}
 
     /** One catalogue entry as the store presents it. */
@@ -260,10 +263,10 @@ public class StoreClient {
      * link, because those are decisions about the account itself.
      */
     public Review review(
-            KitSourceDto source, String linkToken,
-            String vendor, String kitId, int stars, @Nullable String text) {
+            KitSourceDto source, String linkToken, String vendor, String kitId,
+            int stars, @Nullable String text, @Nullable String version) {
 
-        String body = json.writeValueAsString(new ReviewBody(stars, text));
+        String body = json.writeValueAsString(new ReviewBody(stars, text, version));
         HttpResponse<String> response = send(HttpRequest.newBuilder(
                         uri(source, "/store/catalogue/" + encode(vendor) + "/"
                                 + encode(kitId) + "/ratings"))
@@ -682,7 +685,8 @@ public class StoreClient {
 
     private record IssuedLinkBody(String linkId, String token, @Nullable String label) {}
 
-    private record ReviewBody(int stars, @Nullable String text) {}
+    private record ReviewBody(
+            int stars, @Nullable String text, @Nullable String version) {}
 
     private record OrderBody(
             String vendorName, String kitId, @Nullable String withdrawalNoticeVersion) {}

@@ -55,7 +55,11 @@ export interface StoreReview {
   reviewId: string;
   displayName?: string | null;
   stars: number;
+  /** Null while a text waits for moderation — the star still counts. */
   text?: string | null;
+  /** Which version this opinion is about. */
+  version?: string | null;
+  majorVersion?: number | null;
   createdAt?: string | null;
 }
 

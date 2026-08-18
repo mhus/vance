@@ -118,6 +118,24 @@ const withdrawalAccepted = ref(false);
 // Review panel, per kit. Only one is open at a time.
 const reviewingPath = ref<string>('');
 const reviews = ref<StoreReview[]>([]);
+/**
+ * Optional split by major, never the default.
+ *
+ * The major is the vendor's number to choose — splitting by it always
+ * would hand them a reset button for criticism, and would halve evidence
+ * that is thin to begin with. As a filter it costs nothing and answers
+ * "does 2.x still have this problem".
+ */
+const reviewMajor = ref<number | null>(null);
+
+const reviewMajors = computed(() => [...new Set(
+  reviews.value.map((review) => review.majorVersion).filter((major): major is number =>
+    major != null),
+)].sort((a, b) => b - a));
+
+const shownReviews = computed(() => reviewMajor.value == null
+  ? reviews.value
+  : reviews.value.filter((review) => review.majorVersion === reviewMajor.value));
 const reviewStars = ref(5);
 const reviewText = ref('');
 
@@ -202,6 +220,7 @@ async function openReviews(entry: StoreEntry): Promise<void> {
   }
   reviewingPath.value = entry.path;
   reviews.value = [];
+  reviewMajor.value = null;
   reviewStars.value = 5;
   reviewText.value = '';
   try {
@@ -528,15 +547,33 @@ onMounted(load);
             </div>
 
             <div v-if="reviewingPath === entry.path" class="mt-3 pl-2 border-l">
-              <div v-for="review in reviews" :key="review.reviewId" class="mb-2">
+              <!-- One list across all versions; the split is offered, not imposed. -->
+              <div v-if="reviewMajors.length > 1" class="flex gap-1 mb-2 items-center">
+                <button
+                  class="text-xs px-2 py-0.5 rounded-full border"
+                  :class="reviewMajor === null ? 'border-primary text-primary' : 'opacity-70'"
+                  @click="reviewMajor = null"
+                >all versions</button>
+                <button
+                  v-for="major in reviewMajors"
+                  :key="`major-${major}`"
+                  class="text-xs px-2 py-0.5 rounded-full border"
+                  :class="reviewMajor === major ? 'border-primary text-primary' : 'opacity-70'"
+                  @click="reviewMajor = major"
+                >{{ major }}.x</button>
+              </div>
+
+              <div v-for="review in shownReviews" :key="review.reviewId" class="mb-2">
                 <div class="text-xs opacity-70">
                   {{ starsOf(review.stars) }}
+                  <span v-if="review.version"> · {{ review.version }}</span>
                   <span v-if="review.displayName">· {{ review.displayName }}</span>
                 </div>
-                <div class="text-sm">{{ review.text }}</div>
+                <!-- A star with a version is a usable row even with no text. -->
+                <div v-if="review.text" class="text-sm">{{ review.text }}</div>
               </div>
-              <div v-if="reviews.length === 0" class="text-sm opacity-70 mb-2">
-                No reviews with text yet.
+              <div v-if="shownReviews.length === 0" class="text-sm opacity-70 mb-2">
+                {{ reviewMajor === null ? 'No reviews yet.' : `No reviews for ${reviewMajor}.x.` }}
               </div>
 
               <!--

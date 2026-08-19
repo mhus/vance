@@ -22,11 +22,13 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -62,6 +64,14 @@ public class LightLlmServiceImpl implements LightLlmService {
     static final String OUTCOME_RECIPE_MISSING = "recipe_missing";
     static final String OUTCOME_REQUEST_INVALID = "request_invalid";
     static final String OUTCOME_DISABLED = "disabled";
+
+    /**
+     * Wall-clock ceiling for one light call including retries and
+     * fallbacks. Generous enough to ride out a rate-limit blip, short
+     * enough to stay inside the timeouts light callers live under (the
+     * translation event, for one, is a synchronous HTTP request).
+     */
+    private static final Duration SYNC_DEADLINE = Duration.ofSeconds(90);
 
     private final RecipeLoader recipeLoader;
     private final PromptTemplateRenderer templateRenderer;
@@ -288,11 +298,23 @@ public class LightLlmServiceImpl implements LightLlmService {
     // ──────────────────── ChatModel build ────────────────────
 
     /**
-     * A chat model together with the qualified name of the model behind
-     * it. Kept as one value because the second is only knowable where the
-     * first is built.
+     * A chat model together with the name of the model that answered.
+     *
+     * <p>The name arrives through a sink rather than as a fixed value,
+     * because the answering model is only settled once the call has
+     * happened: {@link ResilientChatModel} may have retried onto a
+     * fallback entry. {@code primaryName} is what we asked for and stands
+     * in when nothing reported back.
      */
-    private record BuiltChat(ChatModel model, String modelName) {}
+    private record BuiltChat(ChatModel model, String primaryName,
+            AtomicReference<String> answered) {
+
+        /** The model that answered, falling back to the one asked for. */
+        String modelName() {
+            String reported = answered.get();
+            return reported != null ? reported : primaryName;
+        }
+    }
 
     private ChatModel buildChatModel(ResolvedRecipe recipe, LightLlmRequest req) {
         return buildChat(recipe, req).model();
@@ -349,16 +371,23 @@ public class LightLlmServiceImpl implements LightLlmService {
                     recipeName, tokensIn, tokensOut, elapsedMs);
         });
 
+        // Reported by the resilient decorator once a call succeeds, so a
+        // fallback is named as the fallback. Reading the name off the
+        // response instead would be provider-dependent — most put the
+        // model in the client, not the request, and it comes back null.
+        AtomicReference<String> answered = new AtomicReference<>();
+        options.setSyncAnsweredBy(answered::set);
+        // A light call is single-shot and usually has someone waiting on
+        // the other end of an HTTP request, so it must not sit in the
+        // default retry ladder for minutes. Engines, which do stream, keep
+        // the unbounded behaviour.
+        options.setSyncCallDeadline(SYNC_DEADLINE);
+
         AiChat chat = aiModelService.createChat(behavior, options);
-        // The primary, not a guess: a light call goes through the sync
-        // ChatModel, and ChainedAiChat.chatModel() hands out entry 0 by
-        // design — the chain is only in effect on the streaming side that
-        // engines drive. Reading the name off the request instead would be
-        // provider-dependent (most put the model in the client, not the
-        // request) and comes back null more often than not.
-        AiChatConfig used = entries.get(0).config();
+        AiChatConfig asked = entries.get(0).config();
         return new BuiltChat(chat.chatModel(),
-                used.providerInstance() + ":" + used.modelName());
+                asked.providerInstance() + ":" + asked.modelName(),
+                answered);
     }
 
     /**

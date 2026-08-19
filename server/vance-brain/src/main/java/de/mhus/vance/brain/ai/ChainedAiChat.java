@@ -18,9 +18,12 @@ import java.util.function.Consumer;
  * so the inner retries happen there. The outer policy here is "advance only" —
  * try once per entry, on any error move on, no further retries.
  *
- * <p>Sync side (sync {@code chatModel()} / {@link #ask(String)}) intentionally
- * uses only the primary entry. Engines drive their tool loops through
- * {@link #streamingChatModel()}, where the chain is in effect.
+ * <p>Both sides chain. That was not always true: the sync side used to
+ * hand out the primary entry alone, on the reasoning that engines drive
+ * their tool loops through {@link #streamingChatModel()}. But plenty does
+ * not stream — Jeltz, Marvin, the Slartibartfast phases, memory
+ * compaction, Eddie's triage, {@code LightLlmService} — and all of it was
+ * silently running without the fallback the tenant had configured.
  */
 class ChainedAiChat implements AiChat {
 
@@ -40,8 +43,13 @@ class ChainedAiChat implements AiChat {
     private final String name;
     private final List<AiChat> entries;
     private final StreamingChatModel streaming;
+    private final ChatModel sync;
 
     ChainedAiChat(String name, List<AiChat> entries) {
+        this(name, entries, AiChatOptions.builder().build());
+    }
+
+    ChainedAiChat(String name, List<AiChat> entries, AiChatOptions options) {
         if (entries == null || entries.isEmpty()) {
             throw new IllegalArgumentException("entries must not be empty");
         }
@@ -51,6 +59,15 @@ class ChainedAiChat implements AiChat {
                 .map(c -> new ChainEntry(c.streamingChatModel(), c.getName(), ADVANCE_ONLY))
                 .toList();
         this.streaming = new ResilientStreamingChatModel(outerChain);
+        List<SyncChainEntry> outerSyncChain = entries.stream()
+                .map(c -> new SyncChainEntry(c.chatModel(), c.getName(), ADVANCE_ONLY))
+                .toList();
+        this.sync = new ResilientChatModel(
+                outerSyncChain,
+                options.getUserNotifier(),
+                options.getToolLimitLearner(),
+                options.getSyncCallDeadline(),
+                options.getSyncAnsweredBy());
     }
 
     @Override
@@ -65,8 +82,9 @@ class ChainedAiChat implements AiChat {
 
     @Override
     public ChatModel chatModel() {
-        // Sync calls don't chain — only the primary handles them.
-        return entries.get(0).chatModel();
+        // Advance-only across entries; each entry's own retries already
+        // happened inside its StandardAiChat wrapper, same as streaming.
+        return sync;
     }
 
     @Override

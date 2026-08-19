@@ -18,7 +18,9 @@ import org.jspecify.annotations.Nullable;
  * written by a consumer can be lined up against the cost of the call.
  *
  * @param json  the parsed reply object — never {@code null}
- * @param model never {@code null} on this path today, but a consumer
+ * @param model the model that <em>answered</em>, which after a retry
+ *              onto a fallback is not the one the call started with.
+ *              Never {@code null} on this path today, but a consumer
  *              must still handle it as unknown rather than substituting
  *              the model it assumed — an older producer may not send it
  */

@@ -151,7 +151,7 @@ public class OpenAiProvider extends AbstractChatProvider {
                 // langchain4j's default retries just re-issue the same
                 // slow request and multiply the wait. One retry still
                 // covers a genuine transient blip (429 / 5xx).
-                .maxRetries(1)
+                .maxRetries(0)   // ResilientChatModel retries above; provider-level would multiply.
                 .logRequests(options.getLogRequests())
                 .logResponses(options.getLogRequests());
         OpenAiStreamingChatModel.OpenAiStreamingChatModelBuilder streamBuilder =

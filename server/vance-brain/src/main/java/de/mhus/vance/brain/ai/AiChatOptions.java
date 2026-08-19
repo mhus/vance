@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.ai;
 
 import de.mhus.vance.shared.metric.MetricService;
+import java.time.Duration;
 import java.util.List;
 import java.util.function.Consumer;
 import lombok.Builder;
@@ -130,6 +131,34 @@ public class AiChatOptions {
      * {@code null} disables learning — the rejection is then only logged.
      */
     private @Nullable ToolLimitLearner toolLimitLearner;
+
+    /**
+     * Wall-clock budget for a synchronous call, spanning every retry and
+     * chain-advance {@link ResilientChatModel} performs. {@code null}
+     * (default) leaves it unbounded, which is right for an engine turn
+     * nobody is timing.
+     *
+     * <p>Set it wherever an external caller has already committed to a
+     * deadline — a synchronous HTTP event, a UI request. Without it the
+     * default policy can legitimately spend minutes retrying an answer
+     * that stopped being useful when the caller timed out.
+     *
+     * <p>Bounds how long we keep <em>trying</em>; a request already in
+     * flight runs to its own HTTP timeout.
+     */
+    private @Nullable Duration syncCallDeadline;
+
+    /**
+     * Fired with the label of the chain entry that produced a synchronous
+     * response — {@code "instance:modelName"}. The decorator is the only
+     * place that knows it: after a fallback the answering model is not the
+     * one the caller asked for, and the response itself does not carry the
+     * name in a provider-independent way.
+     *
+     * <p>For callers that record what they got, {@code LightLlmService}
+     * being the first. {@code null} skips the reporting.
+     */
+    private @Nullable Consumer<String> syncAnsweredBy;
 
     /**
      * Optional hook fired by {@link LoggingChatModel} /

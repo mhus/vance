@@ -80,7 +80,7 @@ public class AiModelService {
                 .reduce((a, b) -> a + "+" + b)
                 .orElse("chained");
         log.debug("ChatBehavior chain built: {} ({} entries)", name, built.size());
-        return new ChainedAiChat(name, built);
+        return new ChainedAiChat(name, built, options);
     }
 
     /** Wire-names of all registered providers, in no particular order. */

@@ -111,14 +111,32 @@ public class StandardAiChat implements AiChat {
         //                       call-graph exactly)
         this.sync = sync == null
                 ? null
-                : maybeSanitize(
-                        new LoggingChatModel(
-                                name, sync,
-                                options.getLlmTraceWriter(),
-                                options.getMetricService()),
+                : maybeSanitize(wrapSync(name, sync, options),
                         sanitizer, stripThinkTags, messageParser);
         this.streaming = wrapStreaming(name, streaming, options, messageParser);
         this.options = options;
+    }
+
+    /**
+     * Stack the sync model the same way {@link #wrapStreaming} stacks the
+     * streaming one: trace-logging inside, retry outside. Before this
+     * existed a sync call had no retry at all — a single 429 from the
+     * provider surfaced straight to Jeltz, Marvin, the Slartibartfast
+     * phases and {@code LightLlmService}, none of which stream.
+     *
+     * <p>Single-entry chain: the fallback entries live one level up in
+     * {@link ChainedAiChat}, mirroring the streaming side, so the inner
+     * layer only ever retries the model it wraps.
+     */
+    private static ChatModel wrapSync(String name, ChatModel raw, AiChatOptions options) {
+        ChatModel logged = new LoggingChatModel(
+                name, raw, options.getLlmTraceWriter(), options.getMetricService());
+        return new ResilientChatModel(
+                List.of(new SyncChainEntry(logged, name, RetryPolicy.DEFAULT)),
+                options.getUserNotifier(),
+                options.getToolLimitLearner(),
+                options.getSyncCallDeadline(),
+                options.getSyncAnsweredBy());
     }
 
     /**

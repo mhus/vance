@@ -26,7 +26,11 @@ public interface CentauriHttpClient {
 
     record Response(int statusCode, String body) {
 
-        boolean isSuccess() {
+        /**
+         * Public because the protocols that read it no longer all live in this
+         * package — the example sources ship with the Feeds addon.
+         */
+        public boolean isSuccess() {
             return statusCode >= 200 && statusCode < 300;
         }
     }

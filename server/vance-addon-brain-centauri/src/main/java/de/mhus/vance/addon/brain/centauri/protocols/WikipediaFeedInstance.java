@@ -1,5 +1,6 @@
-package de.mhus.vance.brain.centauri.protocols;
+package de.mhus.vance.addon.brain.centauri.protocols;
 
+import de.mhus.vance.brain.centauri.protocols.CentauriHttpClient;
 import de.mhus.vance.toolpack.feed.FeedCapabilities;
 import de.mhus.vance.toolpack.feed.FeedDirection;
 import de.mhus.vance.toolpack.feed.FeedException;

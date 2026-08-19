@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.centauri.protocols;
+package de.mhus.vance.addon.brain.centauri.protocols;
 
 import de.mhus.vance.toolpack.feed.FeedItem;
 import java.util.ArrayList;

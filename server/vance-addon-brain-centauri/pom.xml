@@ -10,7 +10,7 @@
 
     <artifactId>vance-addon-brain-centauri</artifactId>
     <name>vance-addon-brain-centauri</name>
-    <description>Feeds Vance Application (app: feeds) — the reading surface of Centauri. Endless scroll over mixed foreign streams, plus the configuration form that says which streams and which filter. Holds no source knowledge: the protocols live in the brain.</description>
+    <description>Feeds Vance Application (app: feeds) — the reading surface of Centauri. Endless scroll over mixed foreign streams, the configuration form that says which streams and which filter, and two example protocols (USGS, Wikipedia). Only the ode contract itself is built into the brain; the examples ship here so an installation that does not want them simply does not load this addon.</description>
     <packaging>jar</packaging>
 
     <properties>

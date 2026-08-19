@@ -309,6 +309,15 @@ public class StoreClient {
     }
 
     /** Path segments come from a catalogue; a stray slash must not reshape the request. */
+    /**
+     * Escape one value going into a url — a path segment or a query value.
+     *
+     * <p>Everything that reaches a store url goes through here, including
+     * the ones that look harmless. A timestamp is the example worth
+     * remembering: {@code 2026-01-01T00:00:00+01:00} carries a literal
+     * {@code +}, and a query string reads that as a space, so an unescaped
+     * offset silently asks the store about a different hour.
+     */
     private static String encode(String segment) {
         return java.net.URLEncoder.encode(segment, java.nio.charset.StandardCharsets.UTF_8)
                 .replace("+", "%20");
@@ -539,12 +548,12 @@ public class StoreClient {
     }
 
     public Payout payVendor(KitSourceDto source, String linkToken, String vendorName) {
-        return postFor(source, "/store/admin/payouts/" + vendorName, linkToken, "{}",
+        return postFor(source, "/store/admin/payouts/" + encode(vendorName), linkToken, "{}",
                 Payout.class, "paying out " + vendorName);
     }
 
     public Payout releasePayout(KitSourceDto source, String linkToken, String payoutName) {
-        return postFor(source, "/store/admin/payouts/" + payoutName + "/release", linkToken, "{}",
+        return postFor(source, "/store/admin/payouts/" + encode(payoutName) + "/release", linkToken, "{}",
                 Payout.class, "releasing " + payoutName);
     }
 
@@ -563,7 +572,7 @@ public class StoreClient {
             @Nullable String reason, boolean alreadyReturned) {
 
         String body = json.writeValueAsString(new RefundBody(reason, alreadyReturned));
-        return postFor(source, "/store/admin/orders/" + orderName + "/refund", linkToken, body,
+        return postFor(source, "/store/admin/orders/" + encode(orderName) + "/refund", linkToken, body,
                 RefundResult.class, "refunding " + orderName);
     }
 
@@ -585,7 +594,7 @@ public class StoreClient {
             String billingCountry, @Nullable String vatId) {
 
         String body = json.writeValueAsString(new ClassifyBody(billingCountry, vatId));
-        return postFor(source, "/store/admin/orders/" + orderName + "/classify", linkToken,
+        return postFor(source, "/store/admin/orders/" + encode(orderName) + "/classify", linkToken,
                 body, SaleRow.class, "classifying " + orderName);
     }
 
@@ -593,30 +602,30 @@ public class StoreClient {
 
     public CreditNote reissueCreditNote(
             KitSourceDto source, String linkToken, String payoutName) {
-        return postFor(source, "/store/admin/credit-notes/" + payoutName + "/reissue", linkToken,
+        return postFor(source, "/store/admin/credit-notes/" + encode(payoutName) + "/reissue", linkToken,
                 "{}", CreditNote.class, "reissuing the note for " + payoutName);
     }
 
     public TaxReport taxReport(KitSourceDto source, String linkToken, String from, String to) {
-        return get(source, "/store/admin/tax-report?from=" + from + "&to=" + to,
+        return get(source, "/store/admin/tax-report?from=" + encode(from) + "&to=" + encode(to),
                 linkToken, TaxReport.class, "the tax report");
     }
 
     // ─── the vendor's own side ───
 
     public Due myDue(KitSourceDto source, String linkToken, String vendorName) {
-        return get(source, "/store/vendor/payouts/due/" + vendorName, linkToken,
+        return get(source, "/store/vendor/payouts/due/" + encode(vendorName), linkToken,
                 Due.class, "what is due");
     }
 
     public List<Payout> myPayouts(KitSourceDto source, String linkToken, String vendorName) {
-        return getList(source, "/store/vendor/payouts/" + vendorName, linkToken,
+        return getList(source, "/store/vendor/payouts/" + encode(vendorName), linkToken,
                 Payout.class, "payouts");
     }
 
     public List<CreditNote> myCreditNotes(
             KitSourceDto source, String linkToken, String vendorName) {
-        return getList(source, "/store/vendor/credit-notes/" + vendorName, linkToken,
+        return getList(source, "/store/vendor/credit-notes/" + encode(vendorName), linkToken,
                 CreditNote.class, "credit notes");
     }
 
@@ -664,8 +673,11 @@ public class StoreClient {
      * <p>The session rather than the link token, like every other line that
      * spends money: a machine's credential does not enter agreements.
      */
-    public Order renewPublishing(KitSourceDto source, Session session, String vendorName) {
-        String body = json.writeValueAsString(new RenewBody(vendorName));
+    public Order renewPublishing(
+            KitSourceDto source, Session session, String vendorName,
+            String billingCountry, @Nullable String vatId) {
+        String body = json.writeValueAsString(
+                new RenewBody(vendorName, billingCountry, vatId));
         HttpResponse<String> response = send(HttpRequest.newBuilder(
                         uri(source, "/store/vendor/publishing/renew"))
                 .timeout(TIMEOUT)
@@ -684,7 +696,14 @@ public class StoreClient {
         return read(response.body(), Order.class, source);
     }
 
-    private record RenewBody(String vendorName) {}
+    /**
+     * A renewal is a sale, so the store asks the same two questions it asks
+     * of a kit purchase: where the buyer is, and whether they are a
+     * business. Without them the order would carry no tax classification
+     * and no receipt.
+     */
+    private record RenewBody(
+            String vendorName, String billingCountry, @Nullable String vatId) {}
 
     /** The vendor profiles this installation's account holds. */
     public List<Vendor> myVendors(KitSourceDto source, String linkToken) {
@@ -844,8 +863,26 @@ public class StoreClient {
 
     // ──────────────────── documents on paper ────────────────────
 
-    /** A rendered document and the name the store suggested for it. */
+    /**
+     * A rendered document and the name the store suggested for it.
+     *
+     * <p>{@code filename} has been through {@link #safeFilename}: it is a
+     * remote party's text and ends up in a header this brain writes.
+     */
     public record Paper(byte[] bytes, String filename) {}
+
+    /**
+     * Reduce a suggested name to what may go in a {@code Content-Disposition}.
+     *
+     * <p>Letters, digits and the three punctuation marks a filename needs.
+     * Everything else — quotes, semicolons, control characters, path
+     * separators — is dropped rather than escaped: this is a label on a
+     * download, and no legitimate one loses anything by the rule.
+     */
+    static String safeFilename(String suggested) {
+        String cleaned = suggested.trim().replaceAll("[^A-Za-z0-9._-]", "");
+        return cleaned.length() <= 120 ? cleaned : cleaned.substring(0, 120);
+    }
 
     public Paper invoicePdf(KitSourceDto source, String linkToken, String orderName) {
         return paper(source, "/store/orders/" + encode(orderName) + "/invoice.pdf",
@@ -861,7 +898,7 @@ public class StoreClient {
 
     public Paper taxReportPdf(
             KitSourceDto source, String linkToken, String from, String to) {
-        return paper(source, "/store/admin/tax-report.pdf?from=" + from + "&to=" + to,
+        return paper(source, "/store/admin/tax-report.pdf?from=" + encode(from) + "&to=" + encode(to),
                 linkToken, "tax-report.pdf", "the tax report");
     }
 
@@ -895,8 +932,13 @@ public class StoreClient {
             throw new KitException("the store returned HTTP " + response.statusCode()
                     + " for " + what);
         }
+        // The store's suggestion, reduced to something that can safely be
+        // put back into a header of ours. It is a remote party's string —
+        // the brain is the one that has to hand it to a browser, and a name
+        // carrying a quote would end the quoted value it sits in.
         String filename = response.headers().firstValue("Content-Disposition")
-                .map(header -> header.replaceFirst(".*filename=\"?([^\"]+)\"?.*", "$1"))
+                .map(header -> header.replaceFirst(".*filename=\"?([^\";]+)\"?.*", "$1"))
+                .map(StoreClient::safeFilename)
                 .filter(name -> !name.isBlank())
                 .orElse(fallbackName);
         return new Paper(response.body(), filename);

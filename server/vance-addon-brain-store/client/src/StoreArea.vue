@@ -7,6 +7,7 @@ import {
   buy, install, loadOverview, loadReviews,
   loadSurfaces, loadWithdrawalNotice, submitReview,
 } from './api';
+import { COUNTRY_OPTIONS } from './countries';
 import DeveloperPanel from './DeveloperPanel.vue';
 import MoneyPanel from './MoneyPanel.vue';
 import OperatorPanel from './OperatorPanel.vue';
@@ -220,10 +221,7 @@ const billingCountry = ref('DE');
 const buyVatId = ref('');
 
 /** The union, which is the set the store's default covers. */
-const countryOptions = [
-  'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU',
-  'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE',
-].map((code) => ({ value: code, label: code }));
+const countryOptions = COUNTRY_OPTIONS;
 const withdrawalNotice = ref<WithdrawalNotice | null>(null);
 const withdrawalAccepted = ref(false);
 

@@ -170,16 +170,24 @@ export async function loadDeveloper(
  * decision by a person, and this installation's link token must not enter
  * an agreement on their behalf.
  */
-/** Buy one more publishing period for one handle. */
+/**
+ * Buy one more publishing period for one handle.
+ *
+ * Takes a country and an optional VAT id for the same reason buying a kit
+ * does: it is a sale, the store taxes it where the buyer is, and a renewal
+ * that recorded neither would sit in the unclassified list for good.
+ */
 export async function renewPublishing(
   projectId: string,
   sourceId: string,
   vendorName: string,
   email: string,
   password: string,
+  billingCountry: string,
+  vatId?: string,
 ): Promise<StoreOrder> {
   return brainFetch<StoreOrder>('POST', `${base(projectId)}/developer/renew`, {
-    body: { sourceId, vendorName, email, password },
+    body: { sourceId, vendorName, email, password, billingCountry, vatId: vatId || undefined },
   });
 }
 

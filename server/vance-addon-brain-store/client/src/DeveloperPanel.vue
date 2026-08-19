@@ -7,6 +7,7 @@ import {
   applyVendor, claimDomain, createKit, loadDeveloper, loadProjects, loadVendorMoney,
   openCreditNotePdf, publish, renewPublishing, setPayoutAccount, verifyDomain,
 } from './api';
+import { COUNTRY_OPTIONS } from './countries';
 import type {
   CreditNote, DeveloperView, Publishing, ReleaseRequest, Vendor, VendorMoneyView,
 } from './types';
@@ -202,6 +203,13 @@ function euro(cents: number, currency?: string | null): string {
 const renewing = ref('');
 const renewEmail = ref('');
 const renewPassword = ref('');
+// A renewal is a sale, so the store asks the same two questions as a kit
+// purchase: where the business is, and whether it has a VAT id. Not taken
+// from the payout account — a vendor with only free kits never sets one,
+// and a renewal must not depend on being paid.
+const countryOptions = COUNTRY_OPTIONS;
+const renewCountry = ref('DE');
+const renewVatId = ref('');
 
 async function submitRenewal(vendorName: string): Promise<void> {
   error.value = '';
@@ -210,6 +218,7 @@ async function submitRenewal(vendorName: string): Promise<void> {
   try {
     const order = await renewPublishing(
       props.projectId, props.sourceId, vendorName, renewEmail.value, renewPassword.value,
+      renewCountry.value, renewVatId.value || undefined,
     );
     if (order.redirectUrl) {
       notice.value = 'Continue the payment in the window that just opened.';
@@ -511,6 +520,22 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
             type="password"
             autocomplete="current-password"
             help="Used once and discarded, exactly as when buying a kit."
+          />
+          <!--
+            The renewal is a sale the store has to tax and invoice, so it
+            asks where you are — the same question the buy form asks, for
+            the same reason.
+          -->
+          <VSelect
+            v-model="renewCountry"
+            :options="countryOptions"
+            label="Country"
+            help="Where your business is. It decides the tax on the receipt."
+          />
+          <VInput
+            v-model="renewVatId"
+            label="VAT id (optional)"
+            help="A id from your own country shifts the VAT to you (reverse charge)."
           />
           <div class="flex gap-2">
             <VButton :disabled="loading" @click="submitRenewal(right.vendorName)">

@@ -392,7 +392,8 @@ public class StoreAddonController {
             StoreClient.Session session =
                     storeClient.login(source, body.email(), body.password());
             try {
-                return storeClient.renewPublishing(source, session, body.vendorName());
+                return storeClient.renewPublishing(source, session, body.vendorName(),
+                        body.billingCountry(), body.vatId());
             } finally {
                 storeClient.logout(source, session);
             }
@@ -403,7 +404,11 @@ public class StoreAddonController {
 
     /** What the renew form sends. */
     public record RenewRequest(
-            String sourceId, String vendorName, String email, String password) {}
+            String sourceId, String vendorName, String email, String password,
+            /** Where the vendor is — the store taxes the renewal by it. */
+            String billingCountry,
+            /** The vendor's VAT id, for the usual reverse-charge case. */
+            @Nullable String vatId) {}
 
     /**
      * Apply to be a vendor.

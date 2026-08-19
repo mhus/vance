@@ -1,0 +1,12 @@
+$meta:
+  kind: application
+  app: feeds
+title: "{{ title }}"
+{% if description %}description: "{{ description }}"{% endif %}
+feeds:
+  streams: []
+  filter:
+{% if since %}    since: "{{ since }}"{% endif %}
+{% if languages %}    languages: "{{ languages }}"{% endif %}
+{% if exclude %}    exclude: "{{ exclude }}"{% endif %}
+  pageSize: 20

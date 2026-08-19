@@ -1,0 +1,39 @@
+title:       { de: "Feeds",  en: "Feeds" }
+description: { de: "Ein neuer Feed — Endlos-Scroll über fremde Ströme. Welche Ströme es liest, stellst du danach im Feed selbst ein.",
+               en: "A new feed — an endless scroll over foreign streams. Which streams it reads is set afterwards in the feed itself." }
+icon: newspaper
+tags: [app, feeds]
+
+# Application templates write only the _app.yaml manifest; the folder is chosen
+# by the user. Streams are added afterwards in the feed's configuration tab,
+# because which sources exist depends on the project's
+# centauri.endpoint.<id>.* settings and the form cannot know them here.
+name:
+  mode: fixed
+  value: _app.yaml
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel", en: "Title" }
+  - name: description
+    type: textarea
+    rows: 2
+    label: { de: "Beschreibung", en: "Description" }
+  - name: languages
+    type: string
+    label: { de: "Sprachen",  en: "Languages" }
+    help:  { de: "Komma-getrennt, z.B. „de, en\". Leer heißt: alle Sprachen. Einträge, deren Sprache die Quelle nicht angibt, bleiben immer drin.",
+             en: "Comma-separated, e.g. \"de, en\". Empty means every language. Entries whose language the source does not declare always pass." }
+  - name: exclude
+    type: string
+    label: { de: "Ausschließen", en: "Exclude" }
+    help:  { de: "Komma-getrennte Stichwörter. Ein Eintrag, der eins davon enthält, wird nicht gezeigt.",
+             en: "Comma-separated keywords. An entry containing one of them is not shown." }
+  - name: since
+    type: string
+    defaultValue: "-7d"
+    label: { de: "Zeitfenster", en: "Time window" }
+    help:  { de: "Relativ angeben: -7d, -12h, -30m. Relativ, weil ein festes Datum in einer gespeicherten Konfiguration leise aufhört zu passen, während es altert.",
+             en: "Relative: -7d, -12h, -30m. Relative because a fixed date in a stored configuration quietly stops matching as it ages." }

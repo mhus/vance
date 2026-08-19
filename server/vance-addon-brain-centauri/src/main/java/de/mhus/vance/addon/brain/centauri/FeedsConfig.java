@@ -188,7 +188,27 @@ public record FeedsConfig(
         return v instanceof String s && !s.isBlank() ? s.trim() : null;
     }
 
+    /**
+     * A YAML list, or a comma-separated string.
+     *
+     * <p>The scalar form is not sloppiness — it is what a create form can
+     * produce. Building a YAML list inside a Pebble template needs
+     * {@code loop.last} to place the commas, and {@code loop.*} is a method
+     * call, which the deny-all method-access validator refuses. Taking the
+     * string here is cheaper than teaching every template a workaround, and it
+     * makes hand-written manifests nicer too.
+     */
     private static List<String> asStringList(@Nullable Object v) {
+        if (v instanceof String s) {
+            List<String> out = new ArrayList<>();
+            for (String part : s.split(",")) {
+                String trimmed = part.trim();
+                if (!trimmed.isEmpty()) {
+                    out.add(trimmed);
+                }
+            }
+            return List.copyOf(out);
+        }
         if (!(v instanceof List<?> list)) {
             return List.of();
         }

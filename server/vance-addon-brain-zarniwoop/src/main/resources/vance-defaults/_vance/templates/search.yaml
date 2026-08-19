@@ -1,0 +1,35 @@
+title:       { de: "Suche",  en: "Search" }
+description: { de: "Eine Such-Oberfläche über die konfigurierten Research-Provider. Welche Modalitäten sie anbietet, ergibt sich aus den Providern des Projekts — nicht aus dieser Vorlage.",
+               en: "A search surface over the configured research providers. Which modalities it offers follows from the project's providers, not from this template." }
+icon: magnifying-glass
+tags: [app, search]
+
+# Application templates write only the _app.yaml manifest; the folder is chosen
+# by the user. Everything else is set afterwards in the app itself, because the
+# available modalities depend on the project's research.endpoint.<id>.* settings
+# and the form cannot know them here.
+name:
+  mode: fixed
+  value: _app.yaml
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel", en: "Title" }
+  - name: description
+    type: textarea
+    rows: 2
+    label: { de: "Beschreibung", en: "Description" }
+  - name: defaultModality
+    type: string
+    defaultValue: "web"
+    label: { de: "Standard-Modalität", en: "Default modality" }
+    help:  { de: "web, news, image, video, pdf, academic, encyclopedia, book. Wenn kein Provider sie bedient, öffnet die App auf der ersten, die bedient wird — ein Tab, der nicht antworten kann, wird nicht angezeigt.",
+             en: "web, news, image, video, pdf, academic, encyclopedia, book. If no provider serves it, the app opens on the first one that is served — a tab that cannot answer is not shown." }
+  - name: defaultNum
+    type: string
+    defaultValue: "10"
+    label: { de: "Treffer pro Suche", en: "Results per search" }
+    help:  { de: "Jede Suche kostet Provider-Quota. Der Wert ist die Obergrenze pro Anfrage, nicht ein Ziel.",
+             en: "Every search costs provider quota. This is the ceiling per request, not a target." }

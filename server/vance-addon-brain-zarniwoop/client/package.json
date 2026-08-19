@@ -1,0 +1,38 @@
+{
+  "name": "@vance-addon/zarniwoop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Client surface of the Search addon. Registers the application:search app kind — a search surface for people over the brain's existing Zarniwoop providers, with per-modality rendering and a detail panel that only offers a full text where one exists.",
+  "license": "SEE LICENSE IN ../../../../client/LICENSE.txt",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "files": ["src", "dist"],
+  "scripts": {
+    "build": "vue-tsc -b && vite build",
+    "dev": "vite",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@vance/components": "workspace:*",
+    "@vance/generated": "workspace:*",
+    "@vance/kind-registry": "workspace:*",
+    "@vance/shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@module-federation/vite": "^1.20.5",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "vite": "^8.2.1",
+    "vue": "^3.5.41",
+    "vue-tsc": "^3.3.9"
+  }
+}

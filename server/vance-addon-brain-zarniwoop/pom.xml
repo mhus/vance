@@ -13,6 +13,10 @@
     <description>Search Vance Application (app: search) — a surface for people over Zarniwoop. Everything it does is already in the brain: eight providers, twelve modalities, expert filters, a curated pipeline and a provider inventory with quota. What was missing is a way to reach any of it without asking a model to call a tool.</description>
     <packaging>jar</packaging>
 
+    <properties>
+        <skip.pnpm>false</skip.pnpm>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>de.mhus.vance</groupId>
@@ -68,17 +72,7 @@
             </resource>
         </resources>
         <plugins>
-            <!--
-                TypeScript types for the view DTOs. Runs already, although the
-                client package arrives with the next phase: the generated files
-                are what that phase consumes, and generating them now is also
-                the check that the @GenerateTypeScript annotations are right.
-
-                The pnpm build, the .vab assembly and the antrun rename come
-                with the client (see vance-addon-brain-centauri for the shape).
-                A filtered pnpm build against a package that does not exist yet
-                would only fail the build for a phase that has not happened.
-            -->
+            <!-- TypeScript types for the view DTOs, consumed by client/. -->
             <plugin>
                 <groupId>de.mhus.vance</groupId>
                 <artifactId>generate-java-to-ts-maven-plugin</artifactId>
@@ -93,6 +87,73 @@
                         <configuration>
                             <inputDirectory>${project.basedir}/src/main/java</inputDirectory>
                             <outputDirectory>${project.basedir}/client/src/generated</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.6.3</version>
+                <executions>
+                    <execution>
+                        <id>build-addon-face</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>pnpm</executable>
+                            <workingDirectory>${project.basedir}/../..</workingDirectory>
+                            <arguments>
+                                <argument>--filter</argument>
+                                <argument>@vance-addon/zarniwoop</argument>
+                                <argument>build</argument>
+                            </arguments>
+                            <skip>${skip.pnpm}</skip>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>vab</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>src/assembly/vab.xml</descriptor>
+                            </descriptors>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <finalName>${project.artifactId}-${project.version}</finalName>
+                            <attach>false</attach>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>rename-vab</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <move file="${project.build.directory}/${project.artifactId}-${project.version}.zip"
+                                      tofile="${project.build.directory}/${project.artifactId}-${project.version}.vab"/>
+                            </target>
                         </configuration>
                     </execution>
                 </executions>

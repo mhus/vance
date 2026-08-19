@@ -1,0 +1,8 @@
+$meta:
+  kind: application
+  app: search
+title: "{{ title }}"
+{% if description %}description: "{{ description }}"{% endif %}
+search:
+  defaultModality: "{{ defaultModality | default('web') }}"
+  defaultNum: {{ defaultNum | default(10) }}

@@ -1,7 +1,7 @@
 ---
 triggers: feed anlegen, feeds app, newsfeed anlegen, nachrichten feed, stream anlegen, endlos scroll, create feed, new feed, feed setup, wikipedia feed, erdbeben feed
 summary: Bootstrap a feed application (app: feeds) with feeds_app_create — the endless scroll over foreign time-ordered streams. Use this instead of hand-writing _app.yaml.
-requires-tools: feeds_app_create
+requires-tools: feeds_app_create, feed_sources
 ---
 # Tool — `feeds_app_create`
 
@@ -39,19 +39,15 @@ The tool builds it server-side from typed parameters, so neither can happen.
 | `overwrite` | boolean | no | Default false. |
 | `projectId` | string | no | Default: active project. |
 
-¹ May be empty — a feed without streams opens and says so, and the user picks sources in its configuration tab. That is often the right answer: see the next section.
+¹ May be empty — a feed without streams opens and says so, and the user picks sources in its configuration tab. Fill it when `feed_sources` gave you the ids.
 
-## You cannot invent a source id
+## Look the source ids up — never guess them
 
-`source` must be an **endpoint configured in this project's settings** (`centauri.endpoint.<id>.*`). Those are operator settings; **no tool can read or write them**, so you cannot look them up and you cannot create one.
+`source` must be an **endpoint configured in this project**. Call **`feed_sources()`** first: it returns the ids with the selectors each offers.
 
-Consequences for how you behave:
-
-- If the user named a source you have not seen in this conversation, **do not guess an id**. A wrong id produces a feed that stays empty and a note the user has to decode.
-- Either create the feed **with empty `streams`** and tell the user to pick the sources in the configuration tab, or ask which endpoint ids exist.
-- Never claim a feed „is now reading X" unless the user gave you that id.
-
-`manual_read('feeds-sources')` has the exact setting keys, for when the user asks how to add a source.
+- A guessed id produces a feed that stays empty and a note the user has to decode. There is no reason to guess when a tool answers it.
+- `feed_sources` returns nothing? Then no source is configured. Create the feed **with empty `streams`** anyway if the user wants it, and tell them what to set — `manual_read('feeds-sources')` has the keys. You cannot configure a source yourself.
+- For a `FREEFORM` source (`selectorMode: FREEFORM`) the selector is free text of the declared kinds, e.g. `hashtag:opensource`.
 
 ## Time window
 

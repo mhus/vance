@@ -178,8 +178,11 @@ public class FeedsApplication implements VanceApplication {
 
     // ── shared with the controller ───────────────────────────────────
 
-    /** The manifest of this feed, or empty defaults when it is unreadable. */
-    FeedsConfig readConfig(String tenantId, String projectName, String folder) {
+    /**
+     * The manifest of this feed. Public because the tool package reads it too —
+     * the alternative would be a second parse of the same document.
+     */
+    public FeedsConfig readConfig(String tenantId, String projectName, String folder) {
         return FeedsConfig.from(readManifest(tenantId, projectName, folder));
     }
 

@@ -1,21 +1,22 @@
 ---
 triggers: feed quelle, feed source, centauri endpoint, quelle hinzufügen, add feed source, wikipedia quelle, usgs quelle, hrafnagud, keine quellen, no sources configured, feed leer
-summary: How feed sources (centauri.endpoint.*) are configured, and what to tell the user — an agent can neither read nor write these settings.
+summary: How feed sources (centauri.endpoint.*) are configured and what to tell the user — you can list the sources with feed_sources but cannot create or change one.
+requires-tools: feed_sources
 ---
 # Feed sources — the settings behind a feed
 
 A feed reads **streams**, and a stream is one configured **source** plus one **selector**. This manual is about the source half: where it comes from and what to do when it is missing.
 
-## Read this first: you cannot do it yourself
+## What you can and cannot do
 
-There is **no tool and no script API** that reads or writes `centauri.endpoint.*`. That is operator configuration.
+**You can see which sources exist:** `feed_sources()` lists them with their selectors. Use it — do not ask the user and do not guess.
 
-So when a feed has no sources, your job is to **say precisely what to set** — not to attempt it, and not to claim you did. Two failure modes to avoid:
+**You cannot create or change one.** No tool and no script API writes `centauri.endpoint.*`; that is operator configuration. So when `feed_sources` comes back empty, your job is to **say precisely what to set** — not to attempt it, and not to claim you did.
+
+Two failure modes to avoid:
 
 - **Inventing a setting key.** The keys below are the whole surface; a near-miss silently configures nothing.
-- **Claiming to have checked.** You cannot list the configured sources. If you need to know which exist, ask.
-
-You *can* create the feed itself with empty streams (`manual_read('feeds-app-create')`) and let the user pick sources afterwards in its configuration tab. That is usually the fastest path.
+- **Claiming to have configured it.** You can verify afterwards with `feed_sources`, and that is the only honest evidence.
 
 ## The keys
 

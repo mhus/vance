@@ -7,10 +7,11 @@ recurring stream — rather than get one answer:
   chronologically. Bootstrap it with
   `feeds_app_create(folder="apps/<name>", title="…")`.
 - A stream is `{ source, selector }`. The `source` must be an endpoint already
-  configured in this project — **never invent one.** If you do not know which
-  exist, create the feed with empty `streams` and let the user pick them in its
-  configuration tab.
-- You can neither read nor write the source settings. Asked how to add one, run
+  configured in this project — **never invent one.** `feed_sources()` lists the
+  ids and their selectors; call it before naming a source.
+- Read a feed with `feed_read(folder=…)` or `feed_read(streams=[…], since="-24h")`
+  — for digests and "what happened since…", not for searching.
+- You cannot *configure* a source. Asked how to add one, run
   `manual_read('feeds-sources')` and quote the keys from there.
 - A feed does not archive. Entries stay at the source until somebody clips one.
 

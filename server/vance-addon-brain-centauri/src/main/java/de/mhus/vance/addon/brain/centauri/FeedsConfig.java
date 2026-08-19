@@ -141,7 +141,7 @@ public record FeedsConfig(
      * ignored rather than fatal, because a typo in a filter should not stop the
      * feed from opening.
      */
-    @Nullable Instant resolveSince(Instant now) {
+    public @Nullable Instant resolveSince(Instant now) {
         if (since == null) {
             return null;
         }

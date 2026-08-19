@@ -33,6 +33,8 @@ final class FakeFeedSource implements FeedSourceInstance {
             40, Set.of(), false, Duration.ofMinutes(30));
 
     private @Nullable RuntimeException failure;
+    private @Nullable RuntimeException signalFailure;
+    private final List<de.mhus.vance.toolpack.feed.FeedSignalRequest> signals = new ArrayList<>();
 
     FakeFeedSource(String id) {
         this.id = id;
@@ -53,6 +55,16 @@ final class FakeFeedSource implements FeedSourceInstance {
     FakeFeedSource failingWith(RuntimeException e) {
         this.failure = e;
         return this;
+    }
+
+    FakeFeedSource failingSignalWith(RuntimeException e) {
+        this.signalFailure = e;
+        return this;
+    }
+
+    /** What actually reached the source — the dispatcher must not send more. */
+    List<de.mhus.vance.toolpack.feed.FeedSignalRequest> signals() {
+        return List.copyOf(signals);
     }
 
     List<FeedFetch> received() {
@@ -102,6 +114,16 @@ final class FakeFeedSource implements FeedSourceInstance {
     @Override
     public List<de.mhus.vance.toolpack.feed.FeedSelector> listSelectors() {
         return List.of();
+    }
+
+    @Override
+    public de.mhus.vance.toolpack.feed.FeedSignalOutcome sendSignal(
+            de.mhus.vance.toolpack.feed.FeedSignalRequest request) {
+        if (signalFailure != null) {
+            throw signalFailure;
+        }
+        signals.add(request);
+        return de.mhus.vance.toolpack.feed.FeedSignalOutcome.ACCEPTED;
     }
 
     @Override

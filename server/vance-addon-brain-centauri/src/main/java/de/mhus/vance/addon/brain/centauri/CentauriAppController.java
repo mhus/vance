@@ -21,6 +21,11 @@ import de.mhus.vance.toolpack.feed.FeedItem;
 import de.mhus.vance.toolpack.feed.FeedScope;
 import de.mhus.vance.toolpack.feed.FeedSelector;
 import de.mhus.vance.toolpack.feed.FeedSelectorKind;
+import de.mhus.vance.brain.centauri.CentauriException;
+import de.mhus.vance.toolpack.feed.FeedReportReason;
+import de.mhus.vance.toolpack.feed.FeedRequestKind;
+import de.mhus.vance.toolpack.feed.FeedSignalOutcome;
+import de.mhus.vance.toolpack.feed.FeedSignalRequest;
 import de.mhus.vance.toolpack.feed.FeedSignal;
 import de.mhus.vance.toolpack.feed.FeedSourceInstance;
 import jakarta.servlet.http.HttpServletRequest;
@@ -37,6 +42,9 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import java.util.Map;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -198,6 +206,65 @@ public class CentauriAppController {
                     stored.getPath(), linkBuilder.linkFor(stored, projectId)));
         } catch (IOException e) {
             throw new IllegalStateException("could not write clip '" + path + "'", e);
+        }
+    }
+
+    /**
+     * Send a back-channel signal about one entry.
+     *
+     * <p>`200` with the outcome when the source answered — including
+     * `UNSUPPORTED`, which is a verdict and not an error. A source that is
+     * unknown or gated raises, because that is our refusal and not the source's;
+     * the exception handler below turns it into `409`.
+     */
+    @PostMapping("/brain/{tenant}/addon/centauri/signal")
+    public SignalResponseView signal(@PathVariable String tenant,
+                                     @RequestParam String projectId,
+                                     @RequestBody SignalRequestView body,
+                                     HttpServletRequest request) {
+        // WRITE, not READ: a signal leaves the house. Reading a feed is not
+        // permission to speak in the project's name to a foreign service.
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
+        FeedScope scope = scope(tenant, projectId, request);
+
+        FeedSignal signal = parseEnum(FeedSignal.class, body.signal(), "signal");
+        FeedSignalRequest signalRequest = new FeedSignalRequest(
+                body.itemId(),
+                signal,
+                signal == FeedSignal.REPORT
+                        ? parseEnum(FeedReportReason.class, body.reason(), "reason") : null,
+                signal == FeedSignal.REQUEST
+                        ? parseEnum(FeedRequestKind.class, body.requestKind(), "requestKind")
+                        : null,
+                body.note(),
+                null);
+
+        FeedSignalOutcome outcome =
+                centauriService.sendSignal(body.sourceId(), signalRequest, scope);
+        return new SignalResponseView(outcome.name());
+    }
+
+    /**
+     * A refused signal or an unreadable request is the caller's problem, not a
+     * server fault — and a 5xx here would invite the client to retry something
+     * that cannot succeed.
+     */
+    @ExceptionHandler({CentauriException.class, IllegalArgumentException.class})
+    public ResponseEntity<Map<String, String>> onRefused(RuntimeException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of("error", String.valueOf(e.getMessage())));
+    }
+
+    private static <E extends Enum<E>> E parseEnum(
+            Class<E> type, @Nullable String raw, String field) {
+        if (raw == null || raw.isBlank()) {
+            throw new IllegalArgumentException(field + " is required");
+        }
+        try {
+            return Enum.valueOf(type, raw.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("unknown " + field + " '" + raw + "' — allowed: "
+                    + java.util.Arrays.toString(type.getEnumConstants()));
         }
     }
 

@@ -9,6 +9,8 @@ import de.mhus.vance.toolpack.feed.FeedFetch;
 import de.mhus.vance.toolpack.feed.FeedFilter;
 import de.mhus.vance.toolpack.feed.FeedPage;
 import de.mhus.vance.toolpack.feed.FeedScope;
+import de.mhus.vance.toolpack.feed.FeedSignalOutcome;
+import de.mhus.vance.toolpack.feed.FeedSignalRequest;
 import de.mhus.vance.toolpack.feed.FeedSourceInstance;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -112,6 +114,67 @@ public class CentauriService {
                 merged.droppedAsDuplicate());
     }
 
+    /**
+     * Send one back-channel signal about one entry (§12a of the plan).
+     *
+     * <p>Three refusals, and they are deliberately different things:
+     * <ul>
+     *   <li>An unknown or gated source is <b>our</b> decision, not the source's —
+     *       that raises {@link CentauriException} rather than returning an
+     *       outcome, because "we did not send" is not a verdict the source gave.
+     *   <li>A signal the source did not declare returns
+     *       {@link FeedSignalOutcome#UNSUPPORTED} without a call. The UI should
+     *       not have offered it; this is the second line, not the gate.
+     *   <li>A transport failure goes to the failure tracker like a failed fetch
+     *       and then surfaces as a {@link CentauriException}.
+     * </ul>
+     *
+     * <p>Nothing is recorded locally. What the source does with a signal is its
+     * business, so there is no state here to reconcile and nothing to retry —
+     * a lost signal costs one click.
+     */
+    public FeedSignalOutcome sendSignal(
+            String sourceId, FeedSignalRequest request, FeedScope scope) {
+        if (scope == null || StringUtils.isBlank(scope.projectId())) {
+            throw new CentauriException("feeds require a project scope");
+        }
+        FeedSourceInstance instance = factory.find(scope, sourceId);
+        if (instance == null) {
+            throw new CentauriException("unknown feed source '" + sourceId + "'");
+        }
+        var blocked = gate.check(scope, sourceId);
+        if (blocked.isPresent()) {
+            throw new CentauriException("source '" + sourceId + "' is "
+                    + blocked.get().name().toLowerCase(java.util.Locale.ROOT)
+                    + " — nothing was sent");
+        }
+
+        FeedCapabilities caps = capabilities.get(instance);
+        if (!caps.accepts(request.signal())) {
+            metrics.counter("vance.centauri.signal",
+                    "source", sourceId, "outcome", "unsupported").increment();
+            return FeedSignalOutcome.UNSUPPORTED;
+        }
+
+        FeedSignalRequest withActor = new FeedSignalRequest(
+                request.itemId(), request.signal(), request.reason(), request.requestKind(),
+                request.note(), actorResolver.resolve(scope, sourceId));
+
+        FeedSignalOutcome outcome;
+        try {
+            outcome = instance.sendSignal(withActor);
+        } catch (RuntimeException e) {
+            reportFailure(instance, scope, e);
+            throw new CentauriException(
+                    "source '" + sourceId + "' refused the signal: " + e.getMessage(), e);
+        }
+        metrics.counter("vance.centauri.signal", "source", sourceId,
+                "outcome", outcome.name().toLowerCase(java.util.Locale.ROOT)).increment();
+        log.info("Centauri: signal {} on '{}' item '{}' → {}",
+                request.signal(), sourceId, request.itemId(), outcome);
+        return outcome;
+    }
+
     // ── internals ────────────────────────────────────────────────────
 
     /**
@@ -184,16 +247,25 @@ public class CentauriService {
     private void reportFailure(Planned p, FeedScope scope, Throwable cause) {
         log.warn("Centauri: source '{}' selector '{}' failed: {}",
                 p.instance().id(), p.stream().selector(), cause.toString());
+        reportFailure(p.instance(), scope, cause);
+    }
+
+    /**
+     * Hand a hard failure to the failure tracker, which classifies it and may set
+     * a cooldown the gate will see next time. Failing to report must not turn
+     * into a second failure.
+     */
+    private void reportFailure(FeedSourceInstance instance, FeedScope scope, Throwable cause) {
         try {
             agrajagChecker.handle(
-                    CentauriSettings.cooldownSubject(p.instance().id()),
+                    CentauriSettings.cooldownSubject(instance.id()),
                     cause,
                     new ToolInvocationContext(
                             scope.tenantId(), scope.projectId(), null,
                             scope.processId(), scope.userId()));
         } catch (RuntimeException e) {
             log.warn("Centauri: failure triage for '{}' raised: {}",
-                    p.instance().id(), e.toString());
+                    instance.id(), e.toString());
         }
     }
 

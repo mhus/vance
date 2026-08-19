@@ -5,6 +5,8 @@ import type { FeedConfigView } from './generated/centauri/FeedConfigView';
 import type { FeedPageRequest } from './generated/centauri/FeedPageRequest';
 import type { FeedPageView } from './generated/centauri/FeedPageView';
 import type { FeedSourceView } from './generated/centauri/FeedSourceView';
+import type { SignalRequestView } from './generated/centauri/SignalRequestView';
+import type { SignalResponseView } from './generated/centauri/SignalResponseView';
 
 function qs(params: Record<string, string>): string {
   const u = new URLSearchParams();
@@ -56,6 +58,19 @@ export async function loadPage(
 
 export async function clipItem(projectId: string, request: ClipRequest): Promise<ClipResponse> {
   return brainFetch<ClipResponse>('POST', `addon/centauri/clip?${qs({ projectId })}`, {
+    body: request,
+  });
+}
+
+/**
+ * Send a back-channel signal. The outcome says whether the source took it —
+ * never what it will do about it, because only the source knows that.
+ */
+export async function sendSignal(
+  projectId: string,
+  request: SignalRequestView,
+): Promise<SignalResponseView> {
+  return brainFetch<SignalResponseView>('POST', `addon/centauri/signal?${qs({ projectId })}`, {
     body: request,
   });
 }

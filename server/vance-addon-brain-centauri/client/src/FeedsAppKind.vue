@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { VAlert, VButton, VCard, VEmptyState, VInput, VSelect } from '@vance/components';
-import { clipItem, listSources, loadConfig, loadPage, saveConfig } from './api';
+import {
+  VAlert, VButton, VCard, VEmptyState, VInput, VModal, VSelect, VTextarea,
+} from '@vance/components';
+import { clipItem, listSources, loadConfig, loadPage, saveConfig, sendSignal } from './api';
 import type { FeedConfigView } from './generated/centauri/FeedConfigView';
 import type { FeedItemView } from './generated/centauri/FeedItemView';
 import type { FeedNoteView } from './generated/centauri/FeedNoteView';
@@ -36,6 +38,19 @@ const hasMore = ref(true);
 const loading = ref(false);
 const error = ref<string | null>(null);
 const clipped = ref<Record<string, string>>({});
+/** Per entry what we told the source. Transient — nothing is stored anywhere. */
+const signalled = ref<Record<string, string>>({});
+
+const REPORT_REASONS = [
+  { value: 'WRONG_CATEGORY', label: 'Wrong category' },
+  { value: 'WRONG_LANGUAGE', label: 'Wrong language' },
+  { value: 'BROKEN_LINK', label: 'Broken link' },
+  { value: 'DUPLICATE', label: 'Duplicate' },
+  { value: 'SPAM', label: 'Spam' },
+];
+
+const report = ref<{ item: FeedItemView; reason: string; note: string } | null>(null);
+const reportOpen = ref(false);
 
 const sentinel = ref<HTMLElement | null>(null);
 let observer: IntersectionObserver | null = null;
@@ -141,6 +156,68 @@ async function clip(item: FeedItemView): Promise<void> {
   } catch (e) {
     error.value = String(e);
   }
+}
+
+/** Which signals this entry's source declared. Empty = the buttons stay hidden. */
+function signalsFor(sourceId: string): string[] {
+  return sources.value.find((s) => s.id === sourceId)?.capabilities?.signalsAccepted ?? [];
+}
+
+function openReport(item: FeedItemView): void {
+  report.value = { item, reason: REPORT_REASONS[0].value, note: '' };
+  reportOpen.value = true;
+}
+
+async function submitReport(): Promise<void> {
+  const pending = report.value;
+  if (!pending) return;
+  try {
+    const result = await sendSignal(props.document.projectId, {
+      sourceId: pending.item.sourceId,
+      itemId: pending.item.id,
+      signal: 'REPORT',
+      reason: pending.reason,
+      note: pending.note.trim() ? pending.note.trim() : undefined,
+      requestKind: undefined,
+    });
+    // "reported", never "fixed": what the source does with it is its business.
+    signalled.value = { ...signalled.value, [pending.item.id]: outcomeText(result.outcome) };
+    reportOpen.value = false;
+  } catch (e) {
+    error.value = String(e);
+  }
+}
+
+async function requestKind(item: FeedItemView, kind: string): Promise<void> {
+  try {
+    const result = await sendSignal(props.document.projectId, {
+      sourceId: item.sourceId,
+      itemId: item.id,
+      signal: 'REQUEST',
+      requestKind: kind,
+      reason: undefined,
+      note: undefined,
+    });
+    signalled.value = { ...signalled.value, [item.id]: outcomeText(result.outcome) };
+  } catch (e) {
+    error.value = String(e);
+  }
+}
+
+function outcomeText(outcome: string): string {
+  switch (outcome) {
+    case 'ACCEPTED':
+      return 'reported';
+    case 'UNSUPPORTED':
+      return 'source does not accept this';
+    default:
+      return 'source declined';
+  }
+}
+
+/** Display name of the source a note would travel to — the reader should know. */
+function sourceName(sourceId: string): string {
+  return sources.value.find((s) => s.id === sourceId)?.displayName ?? sourceId;
 }
 
 async function persist(): Promise<void> {
@@ -305,6 +382,25 @@ function slug(title: string): string {
                 >
                   {{ clipped[item.id] ? 'Clipped' : 'Clip' }}
                 </VButton>
+                <VButton
+                  v-if="signalsFor(item.sourceId).includes('REPORT') && !signalled[item.id]"
+                  size="sm"
+                  variant="ghost"
+                  @click="openReport(item)"
+                >
+                  Report
+                </VButton>
+                <VButton
+                  v-if="signalsFor(item.sourceId).includes('REQUEST') && !signalled[item.id]"
+                  size="sm"
+                  variant="ghost"
+                  @click="requestKind(item, 'TRANSLATION')"
+                >
+                  Ask for translation
+                </VButton>
+                <span v-if="signalled[item.id]" class="text-xs opacity-70">
+                  {{ signalled[item.id] }}
+                </span>
                 <a
                   v-if="item.controlUrl"
                   :href="item.controlUrl"
@@ -422,5 +518,33 @@ function slug(title: string): string {
         </div>
       </div>
     </div>
+    <VModal v-model="reportOpen" title="Report this entry">
+      <div v-if="report" class="flex flex-col gap-3">
+        <p class="text-sm opacity-70">{{ report.item.title }}</p>
+        <VSelect
+          :model-value="report.reason"
+          :options="REPORT_REASONS"
+          label="What is wrong"
+          @update:model-value="(v: string | null) => (report!.reason = v ?? 'SPAM')"
+        />
+        <VTextarea
+          :model-value="report.note"
+          :rows="3"
+          label="Note (optional)"
+          @update:model-value="(v: string) => (report!.note = v)"
+        />
+        <!-- The reader is looking at a form in their own workspace and has no
+             reason to suspect the text leaves the house. So it says so. -->
+        <p class="text-xs opacity-60">
+          This text is sent to <strong>{{ sourceName(report.item.sourceId) }}</strong>.
+          The source decides what happens with a report — we can only tell you it
+          was delivered.
+        </p>
+      </div>
+      <template #actions>
+        <VButton variant="ghost" @click="reportOpen = false">Cancel</VButton>
+        <VButton variant="primary" @click="submitReport()">Send</VButton>
+      </template>
+    </VModal>
   </div>
 </template>

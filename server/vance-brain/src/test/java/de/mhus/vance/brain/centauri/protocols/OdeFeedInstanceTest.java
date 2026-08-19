@@ -20,8 +20,6 @@ import de.mhus.vance.toolpack.feed.FeedSourceInstance;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -39,7 +37,7 @@ class OdeFeedInstanceTest {
 
     private static final String BASE = "https://hrafnagud.example";
 
-    private final FakeHttp http = new FakeHttp();
+    private final RecordingHttpClient http = new RecordingHttpClient();
 
     // ── capabilities ─────────────────────────────────────────────────
 
@@ -297,7 +295,7 @@ class OdeFeedInstanceTest {
     // ── helpers ──────────────────────────────────────────────────────
 
     private FeedSignalOutcome signalWithStatus(int status) {
-        FakeHttp fresh = new FakeHttp();
+        RecordingHttpClient fresh = new RecordingHttpClient();
         fresh.reply("/signal", status, "{}");
         return build(fresh, Map.of(), null).sendSignal(report());
     }
@@ -333,43 +331,4 @@ class OdeFeedInstanceTest {
         return new OdeFeedProtocol(http, JsonMapper.builder().build()).instantiate(cfg);
     }
 
-    /** Records requests and answers by URL suffix. */
-    private static final class FakeHttp implements CentauriHttpClient {
-
-        record Call(String method, URI url, Map<String, String> headers, String body) { }
-
-        private final Map<String, Response> replies = new LinkedHashMap<>();
-        private final List<Call> calls = new ArrayList<>();
-
-        void reply(String pathSuffix, int status, String body) {
-            replies.put(pathSuffix, new Response(status, body));
-        }
-
-        Call last() {
-            return calls.get(calls.size() - 1);
-        }
-
-        @Override
-        public Response get(URI url, Map<String, String> headers, Duration timeout) {
-            calls.add(new Call("GET", url, headers, ""));
-            return match(url);
-        }
-
-        @Override
-        public Response postJson(
-                URI url, String body, Map<String, String> headers, Duration timeout) {
-            calls.add(new Call("POST", url, headers, body));
-            return match(url);
-        }
-
-        private Response match(URI url) {
-            String path = url.getPath();
-            for (Map.Entry<String, Response> entry : replies.entrySet()) {
-                if (path.endsWith(entry.getKey())) {
-                    return entry.getValue();
-                }
-            }
-            return new Response(404, "");
-        }
-    }
 }

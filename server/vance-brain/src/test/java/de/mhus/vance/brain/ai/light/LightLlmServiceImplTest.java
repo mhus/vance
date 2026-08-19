@@ -285,6 +285,34 @@ class LightLlmServiceImplTest {
     }
 
     @Test
+    void callForJsonWithModel_namesTheResolvedModel_notTheRecipesAlias() {
+        when(recipeLoader.load(any(), any(), any()))
+                .thenReturn(Optional.of(stubRecipe("how-do-i", true)));
+        chatModel.script(List.of("{\"loaded\": {\"name\": \"x\"}}"));
+
+        LightLlmJsonAnswer answer = service.callForJsonWithModel(jsonRequest());
+
+        assertThat(answer.json()).containsEntry("loaded", Map.of("name", "x"));
+        // The recipe says an alias; what the consumer needs is what the
+        // cascade resolved it to, in the same shape the usage ledger uses.
+        assertThat(answer.model()).isEqualTo("openai:gpt-4o-mini");
+    }
+
+    @Test
+    void callForJson_delegatesToTheModelAwarePath_andDropsTheMetadata() {
+        // One implementation, two shapes — so the plain path cannot drift
+        // into answering something different from the annotated one.
+        when(recipeLoader.load(any(), any(), any()))
+                .thenReturn(Optional.of(stubRecipe("how-do-i", true)));
+        chatModel.script(List.of(
+                "{\"loaded\": {\"name\": \"x\"}}",
+                "{\"loaded\": {\"name\": \"x\"}}"));
+
+        assertThat(service.callForJson(jsonRequest()))
+                .isEqualTo(service.callForJsonWithModel(jsonRequest()).json());
+    }
+
+    @Test
     void callForJson_succeedsOnSecondAttempt_afterInvalidJson() {
         when(recipeLoader.load(any(), any(), any()))
                 .thenReturn(Optional.of(stubRecipe("how-do-i", true)));

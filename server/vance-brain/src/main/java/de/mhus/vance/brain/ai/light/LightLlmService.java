@@ -40,4 +40,19 @@ public interface LightLlmService {
      *     found, LLM provider exhausted, etc.).
      */
     Map<String, Object> callForJson(LightLlmRequest request);
+
+    /**
+     * {@link #callForJson} plus the identity of the model that actually
+     * answered — see {@link LightLlmJsonAnswer} for why that is not the
+     * same as the model the recipe names.
+     *
+     * <p>For callers that write the reply down somewhere durable. A
+     * stored result whose origin is unrecorded cannot be compared
+     * against a later one, which is usually the reason it was stored.
+     *
+     * <p>Deliberately no {@code callWithModel} counterpart on the raw
+     * text path: nothing needs one yet, and an unused method is a
+     * maintenance burden with no user to keep it honest.
+     */
+    LightLlmJsonAnswer callForJsonWithModel(LightLlmRequest request);
 }

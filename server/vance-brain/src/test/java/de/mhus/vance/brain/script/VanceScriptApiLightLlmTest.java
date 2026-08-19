@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.ai.light.LightLlmException;
+import de.mhus.vance.brain.ai.light.LightLlmJsonAnswer;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.brain.ai.light.SchemaValidationException;
@@ -82,6 +83,51 @@ class VanceScriptApiLightLlmTest {
         verify(lightLlmService).callForJson(captor.capture());
         assertThat(captor.getValue().getTenantId()).isEqualTo("acme");
         assertThat(captor.getValue().getProjectId()).isEqualTo("proj");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void callForJsonWithModel_nestsTheReplyUnderResult_soFieldsCannotCollide() {
+        when(lightLlmService.callForJsonWithModel(any(LightLlmRequest.class)))
+                .thenReturn(new LightLlmJsonAnswer(
+                        // A reply that carries its own `model` field is the
+                        // case the nesting exists for.
+                        Map.of("title", "Rat beschliesst Plan", "model", "sedan"),
+                        "openai:deepseek-v4-pro"));
+
+        Map<String, Object> result = api.llm.callForJsonWithModel(
+                "article-translate", "Uebersetze.", Map.of("targetLang", "de"));
+
+        assertThat(result).containsOnlyKeys("result", "model");
+        assertThat(result).containsEntry("model", "openai:deepseek-v4-pro");
+        assertThat((Map<String, Object>) result.get("result"))
+                .as("the caller's own 'model' field must survive untouched")
+                .containsEntry("model", "sedan")
+                .containsEntry("title", "Rat beschliesst Plan");
+    }
+
+    @Test
+    void callForJsonWithModel_unknownModel_staysNull_ratherThanBeingInvented() {
+        when(lightLlmService.callForJsonWithModel(any(LightLlmRequest.class)))
+                .thenReturn(new LightLlmJsonAnswer(Map.of("title", "x"), null));
+
+        Map<String, Object> result = api.llm.callForJsonWithModel("article-translate", "x");
+
+        // A consumer writing this into an archive must be able to tell
+        // "unknown" from a plausible default it never actually used.
+        assertThat(result).containsKey("model");
+        assertThat(result.get("model")).isNull();
+    }
+
+    @Test
+    void callForJsonWithModel_schemaValidationExhausted_mapsToScriptHostException() {
+        when(lightLlmService.callForJsonWithModel(any(LightLlmRequest.class)))
+                .thenThrow(new SchemaValidationException(2, Map.of("a", "b"), "shape mismatch"));
+
+        assertThatThrownBy(() -> api.llm.callForJsonWithModel("article-translate", "x", null))
+                .isInstanceOf(VanceScriptApi.ScriptHostException.class)
+                .hasMessageContaining("article-translate")
+                .hasMessageContaining("schema validation");
     }
 
     @Test

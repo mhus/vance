@@ -3,6 +3,7 @@ package de.mhus.vance.brain.script;
 import de.mhus.vance.api.magrathea.MagratheaProcessDto;
 import de.mhus.vance.api.notification.NotificationSeverity;
 import de.mhus.vance.brain.ai.light.LightLlmException;
+import de.mhus.vance.brain.ai.light.LightLlmJsonAnswer;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.brain.ai.light.SchemaValidationException;
@@ -1450,6 +1451,53 @@ public final class VanceScriptApi {
         @HostAccess.Export
         public Map<String, Object> callForJson(String recipeName, String userPrompt) {
             return callForJson(recipeName, userPrompt, null);
+        }
+
+        /**
+         * {@link #callForJson} for scripts that store the reply
+         * somewhere durable and need to record what produced it.
+         * Returns two keys:
+         *
+         * <pre>
+         *   { result: { …the LLM's object… },
+         *     model:  "openai:deepseek-v4-pro" }
+         * </pre>
+         *
+         * <p>Nested rather than merged, because merging would make the
+         * caller's field names collide with ours — a reply that itself
+         * has a {@code model} field is not exotic, and the collision
+         * would be silent.
+         *
+         * <p>{@code model} may be {@code null}; that means unknown, and
+         * a caller writing it down must keep it unknown rather than
+         * substituting the model it expected.
+         */
+        @HostAccess.Export
+        public Map<String, Object> callForJsonWithModel(String recipeName, String userPrompt,
+                                                        @Nullable Map<String, Object> pebbleVars) {
+            validateInputs(recipeName, userPrompt);
+            try {
+                LightLlmJsonAnswer answer = service.callForJsonWithModel(
+                        buildRequest(recipeName, userPrompt, pebbleVars, null));
+                Map<String, Object> wrapped = new java.util.HashMap<>();
+                wrapped.put("result", answer.json());
+                wrapped.put("model", answer.model());
+                return wrapped;
+            } catch (SchemaValidationException e) {
+                throw new ScriptHostException(
+                        "vance.llm.callForJsonWithModel(" + recipeName + "): "
+                                + "schema validation exhausted: " + e.getMessage(), e);
+            } catch (LightLlmException e) {
+                throw new ScriptHostException(
+                        "vance.llm.callForJsonWithModel(" + recipeName + "): "
+                                + e.getMessage(), e);
+            }
+        }
+
+        /** Convenience overload — no pebble vars. */
+        @HostAccess.Export
+        public Map<String, Object> callForJsonWithModel(String recipeName, String userPrompt) {
+            return callForJsonWithModel(recipeName, userPrompt, null);
         }
 
         private void validateInputs(String recipeName, String userPrompt) {

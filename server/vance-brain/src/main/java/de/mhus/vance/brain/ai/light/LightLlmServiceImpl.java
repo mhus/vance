@@ -94,12 +94,17 @@ public class LightLlmServiceImpl implements LightLlmService {
 
     @Override
     public Map<String, Object> callForJson(LightLlmRequest req) {
+        return callForJsonWithModel(req).json();
+    }
+
+    @Override
+    public LightLlmJsonAnswer callForJsonWithModel(LightLlmRequest req) {
         long startNanos = System.nanoTime();
         String recipeName = req == null ? "unknown" : nullToUnknown(req.getRecipeName());
         String outcome = OUTCOME_LLM_ERROR;
         try {
             checkEnabled(req);
-            Map<String, Object> result = doCallForJson(req);
+            LightLlmJsonAnswer result = doCallForJson(req);
             outcome = OUTCOME_SUCCESS;
             return result;
         } catch (SchemaValidationException e) {
@@ -133,11 +138,12 @@ public class LightLlmServiceImpl implements LightLlmService {
         return reply != null && reply.text() != null ? reply.text() : "";
     }
 
-    private Map<String, Object> doCallForJson(LightLlmRequest req) {
+    private LightLlmJsonAnswer doCallForJson(LightLlmRequest req) {
         validateRequest(req);
         ResolvedRecipe recipe = resolveInternalRecipe(req);
         String systemPrompt = renderSystemPrompt(recipe, req);
-        ChatModel chatModel = buildChatModel(recipe, req);
+        BuiltChat built = buildChat(recipe, req);
+        ChatModel chatModel = built.model();
         int maxAttempts = effectiveMaxAttempts(req, recipe);
 
         List<ChatMessage> messages = new ArrayList<>();
@@ -189,7 +195,7 @@ public class LightLlmServiceImpl implements LightLlmService {
                 recordAttempts(req.getRecipeName(), attempt);
                 @SuppressWarnings("unchecked")
                 Map<String, Object> typed = (Map<String, Object>) parsed;
-                return typed;
+                return new LightLlmJsonAnswer(typed, built.modelName());
             }
             lastError = vr.errorsJoined();
             lastInvalid = parsed;
@@ -281,7 +287,18 @@ public class LightLlmServiceImpl implements LightLlmService {
 
     // ──────────────────── ChatModel build ────────────────────
 
+    /**
+     * A chat model together with the qualified name of the model behind
+     * it. Kept as one value because the second is only knowable where the
+     * first is built.
+     */
+    private record BuiltChat(ChatModel model, String modelName) {}
+
     private ChatModel buildChatModel(ResolvedRecipe recipe, LightLlmRequest req) {
+        return buildChat(recipe, req).model();
+    }
+
+    private BuiltChat buildChat(ResolvedRecipe recipe, LightLlmRequest req) {
         Map<String, Object> params = recipe.params();
         String modelSpec = readModelSpec(params);
         AiChatConfig primary = ChatBehaviorBuilder.resolveOne(
@@ -333,7 +350,15 @@ public class LightLlmServiceImpl implements LightLlmService {
         });
 
         AiChat chat = aiModelService.createChat(behavior, options);
-        return chat.chatModel();
+        // The primary, not a guess: a light call goes through the sync
+        // ChatModel, and ChainedAiChat.chatModel() hands out entry 0 by
+        // design — the chain is only in effect on the streaming side that
+        // engines drive. Reading the name off the request instead would be
+        // provider-dependent (most put the model in the client, not the
+        // request) and comes back null more often than not.
+        AiChatConfig used = entries.get(0).config();
+        return new BuiltChat(chat.chatModel(),
+                used.providerInstance() + ":" + used.modelName());
     }
 
     /**

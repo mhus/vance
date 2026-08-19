@@ -46,8 +46,13 @@ import org.springframework.stereotype.Service;
 public class CentauriService {
 
     /**
-     * Per-stream budget. A mixed page waits for its slowest source, so this
-     * is the ceiling on how long one bad source may hold up the others.
+     * Budget for the <b>whole</b> fan-out, not per stream.
+     *
+     * <p>It has to be one shared deadline rather than a per-future timeout: the
+     * futures are awaited in sequence, so {@code get(15s)} in a loop over five
+     * dead sources spends seventy-five seconds — each wait starting only when
+     * the one before it gave up. A page someone is scrolling gets fifteen
+     * seconds in total, and whatever answered inside it is what renders.
      */
     static final Duration STREAM_TIMEOUT = Duration.ofSeconds(15);
 
@@ -90,7 +95,10 @@ public class CentauriService {
                         null));
                 continue;
             }
-            planned.add(new Planned(stream, instance, capabilities.get(instance)));
+            // Capabilities are resolved inside the fetch task, not here: for an
+            // HTTP-backed source this is a network call, and on the request
+            // thread it would sit outside every timeout in this method.
+            planned.add(new Planned(stream, instance));
         }
 
         if (planned.isEmpty()) {
@@ -149,7 +157,7 @@ public class CentauriService {
                     + " — nothing was sent");
         }
 
-        FeedCapabilities caps = capabilities.get(instance);
+        FeedCapabilities caps = capabilities.get(scope, instance);
         if (!caps.accepts(request.signal())) {
             metrics.counter("vance.centauri.signal",
                     "source", sourceId, "outcome", "unsupported").increment();
@@ -187,17 +195,26 @@ public class CentauriService {
             CentauriCursor incoming, List<CentauriNote> notes) {
 
         List<FeedMerger.StreamFetch> out = new ArrayList<>(planned.size());
+        // One deadline for the whole fan-out. Awaiting the futures in sequence
+        // with a per-future timeout would multiply the budget by the number of
+        // dead sources; the remaining budget is what each wait actually gets.
+        long deadlineNanos = System.nanoTime() + STREAM_TIMEOUT.toNanos();
         try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
-            List<Future<FeedPage>> futures = new ArrayList<>(planned.size());
+            List<Future<Fetched>> futures = new ArrayList<>(planned.size());
             for (Planned p : planned) {
                 futures.add(pool.submit(() -> fetchOne(p, request, scope, incoming)));
             }
             for (int i = 0; i < planned.size(); i++) {
                 Planned p = planned.get(i);
                 try {
-                    FeedPage page = futures.get(i)
-                            .get(STREAM_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
-                    out.add(new FeedMerger.StreamFetch(p.stream(), p.instance(), page));
+                    long remainingNanos = deadlineNanos - System.nanoTime();
+                    if (remainingNanos <= 0) {
+                        throw new TimeoutException("shared fetch deadline spent");
+                    }
+                    Fetched fetched = futures.get(i)
+                            .get(remainingNanos, TimeUnit.NANOSECONDS);
+                    out.add(new FeedMerger.StreamFetch(
+                            p.stream(), p.instance(), fetched.page(), fetched.pushdown()));
                     metrics.counter("vance.centauri.fetch",
                             "source", p.instance().id(), "outcome", "success").increment();
                 } catch (TimeoutException e) {
@@ -222,21 +239,25 @@ public class CentauriService {
         return out;
     }
 
-    private FeedPage fetchOne(
+    private Fetched fetchOne(
             Planned p, CentauriPageRequest request, FeedScope scope, CentauriCursor incoming) {
         FeedFilter filter = request.filter();
-        FeedCapabilities caps = p.capabilities();
+        FeedCapabilities caps = capabilities.get(scope, p.instance());
         int limit = FeedMerger.fetchLimit(
                 request.pageSize(), filter.needsPostFilter(caps), caps.maxPageSize());
         @Nullable FeedActor actor = actorResolver.resolve(scope, p.instance().id());
+        FeedFilter pushdown = filter.projectTo(caps);
         FeedFetch fetch = new FeedFetch(
                 p.stream().selector(),
                 incoming.cursorFor(p.stream()),
                 request.direction(),
                 limit,
-                filter.projectTo(caps),
+                pushdown,
                 actor);
-        return p.instance().fetch(fetch);
+        // The pushdown travels back out: the merge has to know what this source
+        // already answered, or it re-checks a text match against text the
+        // source never delivered and drops hits it found correctly.
+        return new Fetched(p.instance().fetch(fetch), pushdown);
     }
 
     /**
@@ -269,9 +290,13 @@ public class CentauriService {
         }
     }
 
-    /** A stream that survived resolution and gating, with its capabilities. */
+    /** A stream that survived resolution and gating. */
     private record Planned(
             FeedStream stream,
-            FeedSourceInstance instance,
-            FeedCapabilities capabilities) { }
+            FeedSourceInstance instance) { }
+
+    /** What one fetch task produced, plus what it had delegated to the source. */
+    private record Fetched(
+            FeedPage page,
+            FeedFilter pushdown) { }
 }

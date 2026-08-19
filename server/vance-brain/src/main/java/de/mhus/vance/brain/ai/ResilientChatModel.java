@@ -78,12 +78,26 @@ public class ResilientChatModel implements ChatModel {
      */
     private static final int EMPTY_MAX_ATTEMPTS = 3;
 
-    private static final AiChatException EMPTY_RESPONSE = new AiChatException(
-            "provider returned an empty response (neither text nor a tool call)");
+    private static final String EMPTY_RESPONSE_MESSAGE =
+            "provider returned an empty response (neither text nor a tool call)";
 
-    private static final AiChatException EMPTY_AT_OUTPUT_CAP = new AiChatException(
+    private static final String EMPTY_AT_OUTPUT_CAP_MESSAGE =
             "provider hit the output-token cap before producing text or a tool call "
-                    + "(finish=LENGTH) — raise maxTokens or reduce reasoning effort");
+                    + "(finish=LENGTH) — raise maxTokens or reduce reasoning effort";
+
+    /**
+     * Built per occurrence, not held as a constant.
+     *
+     * <p>A shared {@link Throwable} carries the stack trace of whenever the class
+     * happened to be initialised, so the one place a reader looks to find out
+     * which call produced the empty reply points at class loading instead. It is
+     * also mutable state shared across threads the moment anything calls
+     * {@code addSuppressed} on it.
+     */
+    private static AiChatException emptyResponse(boolean atOutputCap) {
+        return new AiChatException(
+                atOutputCap ? EMPTY_AT_OUTPUT_CAP_MESSAGE : EMPTY_RESPONSE_MESSAGE);
+    }
 
     private final List<SyncChainEntry> chain;
     private final @Nullable Consumer<String> userNotifier;
@@ -128,6 +142,7 @@ public class ResilientChatModel implements ChatModel {
         long startNanos = System.nanoTime();
         Throwable lastError = null;
         ChatResponse lastEmpty = null;
+        SyncChainEntry lastEmptyFrom = null;
 
         for (int chainIdx = 0; chainIdx < chain.size(); chainIdx++) {
             SyncChainEntry entry = chain.get(chainIdx);
@@ -172,8 +187,9 @@ public class ResilientChatModel implements ChatModel {
                 // handed back so the caller's own empty-reply handling stays
                 // in charge.
                 lastEmpty = response;
+                lastEmptyFrom = entry;
                 boolean atOutputCap = isAtOutputCap(response);
-                AiChatException cause = atOutputCap ? EMPTY_AT_OUTPUT_CAP : EMPTY_RESPONSE;
+                AiChatException cause = emptyResponse(atOutputCap);
                 lastError = cause;
                 emptyAttempts++;
                 if (atOutputCap || emptyAttempts >= emptyBudget) {
@@ -209,6 +225,13 @@ public class ResilientChatModel implements ChatModel {
             // "hit the cap" from "provider returned blanks".
             log.warn("ResilientChatModel: all {} entries returned empty — delivering empty",
                     chain.size());
+            // Reported here too: this response came from a model, and a caller
+            // that names the answering model would otherwise show nothing for
+            // exactly the case worth naming. The deadline path a few lines up
+            // already reports; not doing it here made the two disagree.
+            if (lastEmptyFrom != null) {
+                reportAnsweredBy(lastEmptyFrom);
+            }
             return lastEmpty;
         }
         throw exhausted(lastError);

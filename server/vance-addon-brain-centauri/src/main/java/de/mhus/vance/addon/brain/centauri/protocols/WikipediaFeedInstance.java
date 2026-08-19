@@ -34,11 +34,16 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Recent changes of one wiki, via the Action API.
  *
- * <p>Two contract details this source exercises that USGS does not: an
- * <b>opaque upstream cursor</b> ({@code rccontinue}, used as-is when a page is
- * fully consumed) and a real <b>{@code controlUrl}</b> — the diff page, which is
- * the source's own UI for exactly this entry, as opposed to {@code url} which
- * points at the article.
+ * <p>The contract detail this source exercises that USGS does not is a real
+ * <b>{@code controlUrl}</b> — the diff page, which is the source's own UI for
+ * exactly this entry, as opposed to {@code url} which points at the article.
+ *
+ * <p><b>Paging is derived, not delegated.</b> The API's {@code rccontinue} is
+ * read only as a „there is more" flag; the cursor is rebuilt from the last
+ * entry actually delivered. The token names the first entry of the <em>next</em>
+ * batch, so treating it as a cursor made the anchor mean two different things
+ * and silently dropped one change per page boundary. See {@link AnchoredCursor}
+ * for what the anchor is for.
  */
 @Slf4j
 class WikipediaFeedInstance implements FeedSourceInstance {
@@ -164,24 +169,42 @@ class WikipediaFeedInstance implements FeedSourceInstance {
         }
         List<FeedItem> items = AnchoredCursor.dropAnchor(raw, cursor);
 
-        // The API's own continue token is exact and exclusive, so it is preferred
-        // whenever it exists — the derived cursor below only has to cover a cut
-        // in the middle of a page.
+        // The API's continue token says whether more exists, and nothing else.
+        //
+        // It is NOT used as the cursor, and that is the correction: it names the
+        // *first entry of the next batch* — an entry this page never delivered.
+        // Handed back it returns that entry, which is right, and then
+        // dropAnchor would remove it as the anchor, which loses one change at
+        // every page boundary. Deriving the cursor from the last entry we did
+        // deliver has the anchor mean the one thing it can mean everywhere:
+        // "already shown, drop the repeat". Same shape as the USGS adapter.
         String continueToken = root.path("continue").path("rccontinue").asString("");
-        return new FeedPage(
-                items,
-                StringUtils.isBlank(continueToken) ? null : continueToken,
-                StringUtils.isNotBlank(continueToken));
+        return new FeedPage(items, nextCursor(items), StringUtils.isNotBlank(continueToken));
     }
 
     /**
      * {@code rccontinue} is {@code <compact timestamp>|<rcid>}, so a cursor can
      * be rebuilt from a single entry — which is what a page cut in the middle
-     * needs. It is inclusive of the entry it names, hence the anchor.
+     * needs, and here what every page uses. It is inclusive of the entry it
+     * names, hence the anchor.
      */
     @Override
     public String cursorAfter(FeedItem item) {
         return new AnchoredCursor(COMPACT.format(item.publishedAt()), item.id()).encode();
+    }
+
+    /**
+     * Resume after the last entry actually delivered, or nowhere.
+     *
+     * <p>Null on an empty page rather than the API's token: with nothing
+     * delivered there is nothing to resume after, and the merge treats a stream
+     * that claims more without a way forward as retired instead of asking again
+     * forever. Reaching that state needs an empty batch alongside a continue
+     * token, which the API does not produce for this query — and if it ever
+     * does, one retired stream with a log line beats a spinning scroll.
+     */
+    private @Nullable String nextCursor(List<FeedItem> items) {
+        return items.isEmpty() ? null : cursorAfter(items.get(items.size() - 1));
     }
 
     // ── internals ────────────────────────────────────────────────────
@@ -218,6 +241,9 @@ class WikipediaFeedInstance implements FeedSourceInstance {
 
         return new FeedItem(
                 String.valueOf(rcid),
+                // Cursor derived in cursorAfter(), not carried per item: this
+                // adapter knows its own paging scheme.
+                /* cursor */ null,
                 timestamp,
                 title,
                 articleUrl(title),

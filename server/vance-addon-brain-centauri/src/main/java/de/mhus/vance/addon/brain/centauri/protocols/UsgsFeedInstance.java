@@ -215,6 +215,9 @@ class UsgsFeedInstance implements FeedSourceInstance {
         String type = properties.path("type").asString("earthquake");
         return new FeedItem(
                 id,
+                // Cursor derived in cursorAfter(), not carried per item: this
+                // adapter knows its own paging scheme.
+                /* cursor */ null,
                 Instant.ofEpochMilli(time),
                 StringUtils.defaultIfBlank(properties.path("title").asString(""), url),
                 url,

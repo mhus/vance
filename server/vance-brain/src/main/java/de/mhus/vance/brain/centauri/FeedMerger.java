@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -49,7 +50,16 @@ import org.jspecify.annotations.Nullable;
  * page", which is the only way to make progress when a page came back empty
  * — and without it an empty page with {@code hasMore} would leave the cursor
  * untouched and the client asking the same question forever.
+ *
+ * <h2>Why a stream that cannot advance is retired</h2>
+ * A source may hand back an empty page, no {@code nextCursor} and
+ * {@code hasMore = true}. None of that is representable as progress: the next
+ * request would be identical to this one, so the scroll would spin. The claim
+ * is therefore not believed — the stream is marked exhausted and the reason
+ * logged. One stream drops out of this scroll; believing it costs the whole
+ * view.
  */
+@Slf4j
 public final class FeedMerger {
 
     /**
@@ -64,11 +74,25 @@ public final class FeedMerger {
         /* static entry point only */
     }
 
-    /** One stream's answer, as handed to the merge. */
+    /**
+     * One stream's answer, as handed to the merge.
+     *
+     * @param pushdown exactly the filter subset this source was given, so the
+     *                 post-filter can skip what the source already answered.
+     *                 See {@link FeedFilter#matches(FeedItem, FeedFilter)} —
+     *                 re-checking a text match against text the source does not
+     *                 deliver drops hits the source found correctly.
+     */
     public record StreamFetch(
             FeedStream stream,
             FeedSourceInstance instance,
-            FeedPage page) { }
+            FeedPage page,
+            FeedFilter pushdown) {
+
+        public StreamFetch {
+            pushdown = pushdown == null ? FeedFilter.none() : pushdown;
+        }
+    }
 
     /** The merged page plus the cursor that resumes after it. */
     public record MergeResult(
@@ -105,7 +129,7 @@ public final class FeedMerger {
         for (StreamFetch fetch : fetches) {
             List<Candidate> mine = new ArrayList<>(fetch.page().items().size());
             for (FeedItem item : fetch.page().items()) {
-                mine.add(new Candidate(fetch, item, filter.matches(item)));
+                mine.add(new Candidate(fetch, item, filter.matches(item, fetch.pushdown())));
             }
             mine.sort(order);
             byStream.put(fetch.stream().key(), mine);
@@ -169,10 +193,26 @@ public final class FeedMerger {
                         fetch.instance().cursorAfter(mine.get(passed - 1).item()));
             }
 
-            if (fetch.page().hasMore() || leftOver) {
+            if (leftOver) {
+                // Entries already fetched and not yet shown: the next request
+                // resumes from the unchanged cursor and consumes them.
                 hasMore = true;
-            } else {
+            } else if (!fetch.page().hasMore()) {
                 next.markExhausted(fetch.stream());
+            } else if (mine.isEmpty() && fetch.page().nextCursor() == null) {
+                // Claims more, delivered nothing, and gave nothing to resume
+                // from — the next request would be identical to this one. That
+                // is the one shape that turns an endless scroll into an endless
+                // loop, so the stream is retired instead of believed. Costs one
+                // stream on a page; believing it costs the whole view.
+                log.warn("Centauri: stream '{}' reports hasMore with an empty page and no "
+                                + "nextCursor — retiring it for this scroll, since asking again "
+                                + "would send the identical request. Fix the source: an empty "
+                                + "page with hasMore must carry a cursor that moves.",
+                        fetch.stream().key());
+                next.markExhausted(fetch.stream());
+            } else {
+                hasMore = true;
             }
         }
         // Streams already exhausted before this round were not fetched, so the
@@ -180,9 +220,12 @@ public final class FeedMerger {
         for (String key : incoming.exhausted()) {
             next.markExhausted(FeedStream.parseKey(key));
         }
-        if (!delivered.isEmpty()) {
-            next.watermark(delivered.get(delivered.size() - 1).item().publishedAt());
-        } else if (cut != null) {
+        // The cut, not the last delivered entry. They differ whenever the page
+        // ended on a rejected candidate, and then the delivered one is behind the
+        // cursor — a watermark that lags the position it is supposed to describe.
+        // Nothing filters on it today; a field that quietly disagrees with its
+        // neighbour is how that stops being true safely.
+        if (cut != null) {
             next.watermark(cut.item().publishedAt());
         }
 

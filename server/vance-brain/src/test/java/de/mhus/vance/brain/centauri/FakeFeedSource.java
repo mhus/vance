@@ -74,19 +74,28 @@ final class FakeFeedSource implements FeedSourceInstance {
     // ── helpers used by the tests ────────────────────────────────────
 
     static FeedItem item(String id, String isoInstant, String url) {
-        return new FeedItem(id, Instant.parse(isoInstant), "title-" + id, url,
+        return new FeedItem(id, /* cursor */ null, Instant.parse(isoInstant), "title-" + id, url,
                 null, null, null, null, null, null, List.of(), Map.of());
     }
 
     static FeedItem item(String id, String isoInstant, String url, String title) {
-        return new FeedItem(id, Instant.parse(isoInstant), title, url,
+        return new FeedItem(id, /* cursor */ null, Instant.parse(isoInstant), title, url,
                 null, null, null, null, null, null, List.of(), Map.of());
     }
 
     static FeedItem item(
             String id, String isoInstant, String url, String title, @Nullable String language) {
-        return new FeedItem(id, Instant.parse(isoInstant), title, url,
+        return new FeedItem(id, /* cursor */ null, Instant.parse(isoInstant), title, url,
                 null, null, null, language, null, null, List.of(), Map.of());
+    }
+
+    /**
+     * An entry carrying the source's own resume token — the case a source paging
+     * by (publishedAt, id) has, where a bare item id is not a usable cursor.
+     */
+    static FeedItem itemWithCursor(String id, String isoInstant, String url, String cursor) {
+        return new FeedItem(id, cursor, Instant.parse(isoInstant), "title-" + id, url,
+                null, null, null, null, null, null, List.of(), Map.of());
     }
 
     // ── FeedSourceInstance ───────────────────────────────────────────

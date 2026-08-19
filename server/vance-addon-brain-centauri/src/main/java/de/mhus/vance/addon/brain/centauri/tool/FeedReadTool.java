@@ -8,6 +8,7 @@ import de.mhus.vance.brain.centauri.CentauriPage;
 import de.mhus.vance.brain.centauri.CentauriPageRequest;
 import de.mhus.vance.brain.centauri.CentauriService;
 import de.mhus.vance.brain.centauri.FeedStream;
+import de.mhus.vance.brain.prompt.UntrustedContent;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
@@ -175,10 +176,20 @@ public class FeedReadTool implements Tool {
 
     // ── internals ────────────────────────────────────────────────────
 
+    /**
+     * One entry as the model sees it.
+     *
+     * <p>Every field a source wrote — title, summary, author, language — goes
+     * through {@link UntrustedContent#collapseWhitespace}. This is foreign text
+     * on its way into a prompt, and left as it arrived it can introduce line
+     * breaks and headings where the surrounding template has structure. Same
+     * rule and same reason as {@code SearchHitRows} on the research side; the
+     * two surfaces must not differ in how much they trust a stranger.
+     */
     private static Map<String, Object> toMap(CentauriItem entry) {
         FeedItem item = entry.item();
         Map<String, Object> map = new LinkedHashMap<>();
-        map.put("title", item.title());
+        map.put("title", UntrustedContent.collapseWhitespace(item.title()));
         map.put("url", item.url());
         map.put("publishedAt", item.publishedAt().toString());
         map.put("source", entry.sourceId());
@@ -186,15 +197,16 @@ public class FeedReadTool implements Tool {
             map.put("stream", entry.selector());
         }
         if (item.language() != null) {
-            map.put("language", item.language());
+            map.put("language", UntrustedContent.collapseWhitespace(item.language()));
         }
         if (item.author() != null) {
-            map.put("author", item.author());
+            map.put("author", UntrustedContent.collapseWhitespace(item.author()));
         }
         String summary = item.summary();
         if (summary != null && !summary.isBlank()) {
-            map.put("summary", summary.length() <= SUMMARY_LIMIT
-                    ? summary : summary.substring(0, SUMMARY_LIMIT) + "…");
+            String flat = UntrustedContent.collapseWhitespace(summary);
+            map.put("summary", flat.length() <= SUMMARY_LIMIT
+                    ? flat : flat.substring(0, SUMMARY_LIMIT) + "…");
         }
         return map;
     }

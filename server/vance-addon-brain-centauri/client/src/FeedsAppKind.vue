@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   VAlert, VButton, VCard, VEmptyState, VInput, VModal, VSelect, VTextarea,
 } from '@vance/components';
+import { safeUrl } from '@vance/shared';
 import { clipItem, listSources, loadConfig, loadPage, saveConfig, sendSignal } from './api';
 import type { FeedConfigView } from './generated/centauri/FeedConfigView';
 import type { FeedItemView } from './generated/centauri/FeedItemView';
@@ -37,9 +38,33 @@ const cursor = ref<string | null>(null);
 const hasMore = ref(true);
 const loading = ref(false);
 const error = ref<string | null>(null);
+/**
+ * Per entry, keyed the same way the cards are.
+ *
+ * `item.id` alone is not a key here: it is unique within its source, not across
+ * the merged stream, so two sources that both count from 1 would share a
+ * „clipped" mark. The card's `:key` already says what identity means on this
+ * screen — these maps have to agree with it.
+ */
 const clipped = ref<Record<string, string>>({});
 /** Per entry what we told the source. Transient — nothing is stored anywhere. */
 const signalled = ref<Record<string, string>>({});
+
+/** The identity of one entry on this screen. Same expression as the card key. */
+function entryKey(item: FeedItemView): string {
+  return item.sourceId + '\u0000' + item.id;
+}
+
+/**
+ * A remote URL as an `href` or `src`, or null when it must not become one.
+ *
+ * Feed entries are written by foreign services. `controlUrl` is already
+ * scheme- and host-checked on the server, but `url` and `imageUrl` are not —
+ * this is the second line, at the point where the value becomes a link.
+ */
+function link(raw: string | null | undefined): string | null {
+  return safeUrl(raw);
+}
 
 const REPORT_REASONS = [
   { value: 'WRONG_CATEGORY', label: 'Wrong category' },
@@ -108,7 +133,21 @@ async function restart(): Promise<void> {
   await nextPage();
 }
 
-async function nextPage(): Promise<void> {
+/**
+ * How many pages that delivered nothing we keep pulling before waiting for the
+ * reader.
+ *
+ * A page can legitimately come back empty with `hasMore` — the filter rejected
+ * everything this round — and the cursor still moved, so asking again is
+ * progress. But it appends no cards, so the sentinel never changes position and
+ * the observer never fires again: without pulling on our own the scroll would
+ * dead-end silently. Bounded rather than unbounded so a very selective filter
+ * cannot turn one scroll gesture into an unlimited number of requests; past the
+ * bound the „Load more" button takes over.
+ */
+const MAX_EMPTY_ROUNDS = 5;
+
+async function nextPage(emptyRounds = 0): Promise<void> {
   if (loading.value || !hasMore.value) return;
   if (configuredStreams.value.length === 0) {
     hasMore.value = false;
@@ -130,6 +169,13 @@ async function nextPage(): Promise<void> {
     // An empty page with hasMore is normal — it means the filter rejected
     // everything this round. Stopping here would cut the scroll short.
     hasMore.value = page.hasMore;
+    if (page.items.length === 0 && page.hasMore && emptyRounds < MAX_EMPTY_ROUNDS) {
+      // Nothing was appended, so nothing on screen moved and the observer will
+      // not fire again by itself. Carry on for the reader.
+      loading.value = false;
+      await nextPage(emptyRounds + 1);
+      return;
+    }
   } catch (e) {
     error.value = String(e);
     hasMore.value = false;
@@ -346,11 +392,11 @@ function slug(title: string): string {
       />
 
       <div class="flex flex-col gap-3">
-        <VCard v-for="item in items" :key="item.sourceId + item.id">
+        <VCard v-for="item in items" :key="entryKey(item)">
           <div class="flex gap-3">
             <img
-              v-if="item.imageUrl"
-              :src="item.imageUrl"
+              v-if="link(item.imageUrl)"
+              :src="link(item.imageUrl)!"
               alt=""
               referrerpolicy="no-referrer"
               class="h-24 w-32 flex-none rounded object-cover"
@@ -362,14 +408,19 @@ function slug(title: string): string {
                 <span>· {{ when(item.publishedAt) }}</span>
                 <span v-if="item.language">· {{ item.language }}</span>
               </div>
+              <!-- Through link(): `url` is written by the feed source, and a
+                   `javascript:` value would run on this origin the moment the
+                   headline is clicked. No link is better than that one. -->
               <a
-                :href="item.url"
+                v-if="link(item.url)"
+                :href="link(item.url)!"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="truncate font-semibold hover:underline"
               >
                 {{ item.title }}
               </a>
+              <span v-else class="truncate font-semibold">{{ item.title }}</span>
               <p v-if="item.summary" class="line-clamp-3 text-sm opacity-80">
                 {{ item.summary }}
               </p>
@@ -377,13 +428,13 @@ function slug(title: string): string {
                 <VButton
                   size="sm"
                   variant="ghost"
-                  :disabled="!!clipped[item.id]"
+                  :disabled="!!clipped[entryKey(item)]"
                   @click="clip(item)"
                 >
-                  {{ clipped[item.id] ? 'Clipped' : 'Clip' }}
+                  {{ clipped[entryKey(item)] ? 'Clipped' : 'Clip' }}
                 </VButton>
                 <VButton
-                  v-if="signalsFor(item.sourceId).includes('REPORT') && !signalled[item.id]"
+                  v-if="signalsFor(item.sourceId).includes('REPORT') && !signalled[entryKey(item)]"
                   size="sm"
                   variant="ghost"
                   @click="openReport(item)"
@@ -391,27 +442,27 @@ function slug(title: string): string {
                   Report
                 </VButton>
                 <VButton
-                  v-if="signalsFor(item.sourceId).includes('REQUEST') && !signalled[item.id]"
+                  v-if="signalsFor(item.sourceId).includes('REQUEST') && !signalled[entryKey(item)]"
                   size="sm"
                   variant="ghost"
                   @click="requestKind(item, 'TRANSLATION')"
                 >
                   Ask for translation
                 </VButton>
-                <span v-if="signalled[item.id]" class="text-xs opacity-70">
-                  {{ signalled[item.id] }}
+                <span v-if="signalled[entryKey(item)]" class="text-xs opacity-70">
+                  {{ signalled[entryKey(item)] }}
                 </span>
                 <a
-                  v-if="item.controlUrl"
-                  :href="item.controlUrl"
+                  v-if="link(item.controlUrl)"
+                  :href="link(item.controlUrl)!"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="text-xs hover:underline"
                 >
                   Open in source ↗
                 </a>
-                <span v-if="clipped[item.id]" class="text-xs opacity-70">
-                  → {{ clipped[item.id] }}
+                <span v-if="clipped[entryKey(item)]" class="text-xs opacity-70">
+                  → {{ clipped[entryKey(item)] }}
                 </span>
               </div>
             </div>
@@ -420,6 +471,12 @@ function slug(title: string): string {
 
         <div ref="sentinel" class="h-8"></div>
         <p v-if="loading" class="p-2 text-center text-sm opacity-70">Loading…</p>
+        <!-- The observer only fires when the sentinel's visibility changes, and
+             a round that appends nothing changes nothing. This is the way
+             forward that does not depend on that. -->
+        <div v-else-if="hasMore && items.length > 0" class="p-2 text-center">
+          <VButton size="sm" variant="ghost" @click="nextPage()">Load more</VButton>
+        </div>
         <p
           v-else-if="!hasMore && items.length > 0"
           class="p-2 text-center text-sm opacity-50"

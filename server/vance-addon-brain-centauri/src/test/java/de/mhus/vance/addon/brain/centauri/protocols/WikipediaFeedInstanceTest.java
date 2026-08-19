@@ -112,14 +112,31 @@ class WikipediaFeedInstanceTest {
     }
 
     @Test
-    void fetch_usesTheApiContinueTokenAsNextCursor() {
+    void fetch_derivesTheCursorFromTheLastDeliveredEntry() {
         http.replyAny(200, TWO_CHANGES);
 
         FeedPage page = instance().fetch(fetch(null, FeedDirection.OLDER));
 
-        // The API's own token is exact and exclusive, so it beats anything derived.
-        assertThat(page.nextCursor()).isEqualTo("20260819090709|383610853");
+        // NOT the API's continue token ("20260819090709|383610853"): that names
+        // the first entry of the NEXT batch — rcid 383610853, which is not in
+        // this response. Handed back as a cursor it returns that entry and the
+        // anchor logic then drops it, losing one change per page boundary. The
+        // last entry we actually delivered is the only anchor that can mean
+        // "already shown".
+        assertThat(page.nextCursor()).isEqualTo("20260819090721|383610862");
         assertThat(page.hasMore()).isTrue();
+    }
+
+    @Test
+    void fetch_theEntryTheContinueTokenNamesIsNotSilentlyDropped() {
+        // Second page: the cursor is what the previous page derived, so its
+        // anchor (383610862) is an entry the reader has seen — and the batch
+        // that comes back starts with an entry it has not.
+        http.replyAny(200, TWO_CHANGES);
+
+        FeedPage page = instance().fetch(fetch("20260819090721|383610862", FeedDirection.OLDER));
+
+        assertThat(page.items()).extracting(FeedItem::id).containsExactly("383610864");
     }
 
     @Test

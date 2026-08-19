@@ -81,13 +81,19 @@ public interface FeedSourceInstance {
      * page-end cursor cannot say that. So a cursor has to be derivable from
      * a single entry, and the source is the only party that knows how.
      *
-     * <p>The default — the item id — is right for every source whose
-     * paging is id-based, which includes Mastodon's {@code max_id} and the
-     * ode contract. A source that pages by timestamp or opaque token
-     * overrides it.
+     * <p>The default answers that in the one way that works for any source:
+     * {@link FeedItem#cursor()} when the source supplied a token for this
+     * entry, and the item id otherwise. The id alone is right for id-based
+     * paging (Mastodon's {@code max_id}); it is <b>wrong</b> for a source
+     * paging by {@code (publishedAt, id)}, and wrong silently — such a source
+     * reads a bare id as „start from the beginning" and the merged scroll
+     * repeats a page forever instead of advancing. That is why the token
+     * travels on the item: the protocol cannot derive it, only the source can.
+     *
+     * <p>A protocol whose paging is neither may still override this.
      */
     default String cursorAfter(FeedItem item) {
-        return item.id();
+        return item.cursor() == null ? item.id() : item.cursor();
     }
 
     /**

@@ -17,7 +17,6 @@ import de.mhus.vance.toolpack.research.SearchResult;
 import de.mhus.vance.toolpack.research.SearchScope;
 import de.mhus.vance.toolpack.research.SearchTier;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -34,6 +33,7 @@ import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
+import org.springframework.web.util.UriUtils;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -59,9 +59,17 @@ import tools.jackson.databind.ObjectMapper;
  * project cache — so the existing "Reload" in the insights tab, which evicts
  * that cache, is also the escape hatch here. A second cache with a second
  * refresh button would only give an operator two things to distrust. A long-
- * lived instance still re-reads after {@link #DEFAULT_CAPS_TTL} so a source that
- * gains a modality is picked up without a restart, and
- * {@link #EXTRA_CAPS_TTL_SECONDS} moves that per endpoint.
+ * lived instance still re-reads once its hold time is up, so a source that gains
+ * a modality is picked up without a restart. How long that is comes from the
+ * source's own {@code cacheTtl}, falling back to {@link #DEFAULT_CAPS_TTL}, with
+ * {@link #EXTRA_CAPS_TTL_SECONDS} overriding both for the operator who is
+ * debugging.
+ *
+ * <p><b>A failed read is remembered as failed</b> for {@link #FAILED_CAPS_TTL}.
+ * Several methods here consult the declaration and each is called during
+ * provider selection, so without that an unreachable endpoint paid the request
+ * timeout three or four times per search — and never entered cooldown, because a
+ * source reporting „serves nothing" is skipped rather than reported as broken.
  */
 @Slf4j
 final class OdeSearchInstance implements SearchProviderInstance {
@@ -69,14 +77,38 @@ final class OdeSearchInstance implements SearchProviderInstance {
     /** Per-request budget. A slow source holds up a turn someone is waiting on. */
     static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(15);
 
-    /** Capabilities are cheap to re-read and this only bounds a stale declaration. */
+    /**
+     * Fallback hold time when the source states none. The source's own
+     * {@code cacheTtl} wins — it is part of the contract and says how long it
+     * wants to be believed; a catalogue that moves hourly should not be pinned
+     * to our half hour.
+     */
     static final Duration DEFAULT_CAPS_TTL = Duration.ofMinutes(30);
 
     /**
-     * Endpoint setting that overrides {@link #DEFAULT_CAPS_TTL}, in seconds —
-     * {@code research.endpoint.<id>.capsTtlSeconds}. For a source whose
-     * abilities move (a catalogue that gains a collection), and {@code 0} for
-     * one being set up, where waiting out a cache is the wrong kind of puzzle.
+     * How long a failed capabilities read is remembered as failed.
+     *
+     * <p>Without this the instance retries on every call, and the calls are not
+     * one per search: the dispatcher asks {@code modalities()},
+     * {@code domains()} and {@code tiers()} while selecting providers, and the
+     * insights view asks again per row. Against an unreachable endpoint each of
+     * those pays {@link #REQUEST_TIMEOUT}, so a single dead source used to add
+     * three quarters of a minute to every search — and nothing ever put it in
+     * cooldown, because a source that reports „serves nothing" is skipped
+     * rather than reported as failing.
+     *
+     * <p>Short on purpose: this is a backoff, not a cache. An endpoint that
+     * comes back is usable again within the minute.
+     */
+    static final Duration FAILED_CAPS_TTL = Duration.ofSeconds(30);
+
+    /**
+     * Endpoint setting that overrides both the source's declared TTL and
+     * {@link #DEFAULT_CAPS_TTL}, in seconds —
+     * {@code research.endpoint.<id>.capsTtlSeconds}. The operator's figure wins
+     * over the source's: it is the one who is debugging. {@code 0} means „never
+     * hold", for a source being set up, where waiting out a cache is the wrong
+     * kind of puzzle.
      */
     static final String EXTRA_CAPS_TTL_SECONDS = "capsTtlSeconds";
 
@@ -87,11 +119,24 @@ final class OdeSearchInstance implements SearchProviderInstance {
     private final ObjectMapper objectMapper;
     private final ZarniwoopContentStore contentStore;
     private final OdeSearchProtocol.OdeSearchHttp http;
-    private final Duration capsTtl;
+
+    /**
+     * Operator override, or null to follow whatever the source declares.
+     * {@link Duration#ZERO} means „never hold".
+     */
+    private final @Nullable Duration capsTtlOverride;
 
     /** Last successfully fetched declaration, or null while none has arrived. */
     private volatile @Nullable Caps caps;
     private volatile Instant capsFetchedAt = Instant.EPOCH;
+
+    /**
+     * When the last <em>attempt</em> failed, so a dead endpoint is asked again at
+     * most once per {@link #FAILED_CAPS_TTL} instead of once per method call.
+     * Separate from {@link #capsFetchedAt}, which must keep meaning „when the
+     * declaration we are serving was fetched".
+     */
+    private volatile Instant capsFailedAt = Instant.EPOCH;
 
     /**
      * Why the last capabilities read failed, for the operator-facing status
@@ -111,26 +156,41 @@ final class OdeSearchInstance implements SearchProviderInstance {
         this.objectMapper = objectMapper;
         this.contentStore = contentStore;
         this.http = http;
-        this.capsTtl = readCapsTtl(cfg);
+        this.capsTtlOverride = readCapsTtlOverride(cfg);
     }
 
     /**
      * Endpoint settings arrive as strings, and a wrong one must not take the
-     * endpoint down — an unreadable value falls back to the default and says so.
+     * endpoint down — an unreadable value is ignored and said so, which leaves
+     * the source's own declaration in charge.
      */
-    private static Duration readCapsTtl(ProviderInstanceConfig cfg) {
+    private static @Nullable Duration readCapsTtlOverride(ProviderInstanceConfig cfg) {
         Object raw = cfg.extras().get(EXTRA_CAPS_TTL_SECONDS);
         if (raw == null) {
-            return DEFAULT_CAPS_TTL;
+            return null;
         }
         try {
             long seconds = Long.parseLong(String.valueOf(raw).trim());
-            return seconds < 0 ? DEFAULT_CAPS_TTL : Duration.ofSeconds(seconds);
+            return seconds < 0 ? null : Duration.ofSeconds(seconds);
         } catch (NumberFormatException e) {
-            log.warn("Ode endpoint '{}': {}='{}' is not a number, using {}",
-                    cfg.instanceId(), EXTRA_CAPS_TTL_SECONDS, raw, DEFAULT_CAPS_TTL);
-            return DEFAULT_CAPS_TTL;
+            log.warn("Ode endpoint '{}': {}='{}' is not a number, ignoring it and following "
+                            + "the source's declared cacheTtl",
+                    cfg.instanceId(), EXTRA_CAPS_TTL_SECONDS, raw);
+            return null;
         }
+    }
+
+    /**
+     * How long the declaration we hold may be held: the operator's override, else
+     * the source's own {@code cacheTtl}, else our default.
+     */
+    private Duration capsTtl(@Nullable Caps current) {
+        if (capsTtlOverride != null) {
+            return capsTtlOverride;
+        }
+        return current == null || current.cacheTtl() == null
+                ? DEFAULT_CAPS_TTL
+                : current.cacheTtl();
     }
 
     @Override
@@ -245,6 +305,7 @@ final class OdeSearchInstance implements SearchProviderInstance {
         SearchTier tier = c.tiers().contains(req.tier()) ? req.tier() : SearchTier.NORMAL;
         int maxResults = clampMaxResults(req.maxResults(), c.maxResults());
         String body = requestJson(req, tier, maxResults);
+        // The number actually asked for is what the answer is held to, below.
 
         OdeSearchProtocol.OdeSearchHttp.Response response;
         try {
@@ -267,7 +328,7 @@ final class OdeSearchInstance implements SearchProviderInstance {
                     + shortDetail(response.body()));
         }
 
-        return parseResult(response.body(), req, tier);
+        return parseResult(response.body(), req, tier, maxResults);
     }
 
     /**
@@ -286,8 +347,12 @@ final class OdeSearchInstance implements SearchProviderInstance {
             throw new IllegalArgumentException("contentId is required");
         }
         String remoteId = remoteContentId(ref.contentId());
+        // Path-segment encoding, not URLEncoder: that is form encoding, where a
+        // space becomes '+' — a literal plus in a path, addressing something
+        // else. Content ids are usually opaque tokens, which is why the
+        // difference would be found late.
         URI uri = URI.create(baseUrl() + "/content/"
-                + URLEncoder.encode(remoteId, StandardCharsets.UTF_8));
+                + UriUtils.encodePathSegment(remoteId, StandardCharsets.UTF_8));
         OdeSearchProtocol.OdeSearchHttp.BinaryResponse response;
         try {
             response = http.getBytes(uri, apiKey(scope), REQUEST_TIMEOUT);
@@ -323,9 +388,19 @@ final class OdeSearchInstance implements SearchProviderInstance {
      */
     private @Nullable Caps capsOrNull() {
         Caps current = caps;
-        if (current != null && !capsTtl.isZero()
-                && Duration.between(capsFetchedAt, Instant.now()).compareTo(capsTtl) < 0) {
+        Duration ttl = capsTtl(current);
+        Instant now = Instant.now();
+        if (current != null && !ttl.isZero()
+                && Duration.between(capsFetchedAt, now).compareTo(ttl) < 0) {
             return current;
+        }
+        // Back off after a failure instead of re-dialling per method call. Not
+        // applied when a declaration is still being served — there the TTL above
+        // already bounds the retries, and holding a stale answer back would take
+        // a working source out of dispatch.
+        if (current == null && !FAILED_CAPS_TTL.isZero()
+                && Duration.between(capsFailedAt, now).compareTo(FAILED_CAPS_TTL) < 0) {
+            return null;
         }
         try {
             OdeSearchProtocol.OdeSearchHttp.Response response = http.get(
@@ -356,6 +431,9 @@ final class OdeSearchInstance implements SearchProviderInstance {
      */
     private @Nullable Caps failedCaps(@Nullable Caps previous, String message) {
         lastError = message;
+        // Stamped whether or not a stale declaration survives: it is what stops
+        // the next of several calls in one dispatch from paying the timeout again.
+        capsFailedAt = Instant.now();
         log.warn("Ode endpoint '{}': {}", cfg.instanceId(), message);
         return previous;
     }
@@ -388,7 +466,30 @@ final class OdeSearchInstance implements SearchProviderInstance {
                 modalities, domains, tiers,
                 maxResults <= 0 ? DEFAULT_MAX_RESULTS : maxResults,
                 List.copyOf(expertParams),
-                root.path("servesContent").asBoolean(false));
+                root.path("servesContent").asBoolean(false),
+                // The contract's own field, and it had no reader: a source that
+                // said PT1M was still held for half an hour. Unparseable or
+                // non-positive is treated as "not stated" rather than as an
+                // error — a bad duration must not take the declaration down.
+                duration(root.path("cacheTtl").asString(null)));
+    }
+
+    /** ISO-8601 duration, or null when absent or unusable. */
+    private @Nullable Duration duration(@Nullable String raw) {
+        if (StringUtils.isBlank(raw)) {
+            return null;
+        }
+        try {
+            Duration parsed = Duration.parse(raw.trim());
+            if (parsed.isNegative() || parsed.isZero()) {
+                return null;
+            }
+            return parsed;
+        } catch (RuntimeException e) {
+            log.warn("Ode endpoint '{}': cacheTtl '{}' is not an ISO-8601 duration — using {}",
+                    cfg.instanceId(), raw, DEFAULT_CAPS_TTL);
+            return null;
+        }
     }
 
     /**
@@ -440,7 +541,8 @@ final class OdeSearchInstance implements SearchProviderInstance {
         return objectMapper.writeValueAsString(body);
     }
 
-    SearchResult parseResult(String json, SearchRequest req, SearchTier tier) {
+    SearchResult parseResult(
+            String json, SearchRequest req, SearchTier tier, int maxResults) {
         JsonNode root;
         try {
             root = objectMapper.readTree(json);
@@ -469,11 +571,14 @@ final class OdeSearchInstance implements SearchProviderInstance {
                     + "a title and a url to be shown at all", cfg.instanceId(), skipped);
         }
         // Truncate rather than complain: the source was told the limit and the
-        // caller cannot use more than it asked for.
-        if (hits.size() > req.maxResults()) {
+        // caller cannot use more than it asked for. Measured against the number
+        // actually sent, not against the request — those differ whenever the
+        // source declared a smaller ceiling, and holding it to a limit it was
+        // never given would log a broken promise it did not make.
+        if (hits.size() > maxResults) {
             log.warn("Ode endpoint '{}' returned {} hits for maxResults={} — truncating",
-                    cfg.instanceId(), hits.size(), req.maxResults());
-            hits = hits.subList(0, req.maxResults());
+                    cfg.instanceId(), hits.size(), maxResults);
+            hits = hits.subList(0, maxResults);
         }
         String note = root.path("note").asString(null);
         int dropped = root.path("droppedCount").asInt(0) + skipped;
@@ -645,12 +750,19 @@ final class OdeSearchInstance implements SearchProviderInstance {
                 List.of(), 0, 0, null, message, Map.of());
     }
 
-    /** The far end's declaration, once parsed. */
+    /**
+     * The far end's declaration, once parsed.
+     *
+     * @param cacheTtl how long the source asks to be believed, or null when it
+     *                 did not say. Honoured unless the operator set
+     *                 {@link #EXTRA_CAPS_TTL_SECONDS}.
+     */
     record Caps(
             Set<SearchModality> modalities,
             Set<SearchDomain> domains,
             Set<SearchTier> tiers,
             int maxResults,
             List<String> expertParams,
-            boolean servesContent) { }
+            boolean servesContent,
+            @Nullable Duration cacheTtl) { }
 }

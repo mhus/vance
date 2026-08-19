@@ -24,6 +24,13 @@ import org.jspecify.annotations.Nullable;
  * <p>The wire form {@code position|anchorId} is not arbitrary — it is exactly
  * what MediaWiki already uses, so for Wikipedia the encoded cursor doubles as a
  * valid {@code rccontinue}.
+ *
+ * <p><b>The anchor must always name an entry that was delivered.</b> That is the
+ * whole invariant, and it is the one worth stating because a plausible-looking
+ * alternative breaks it: MediaWiki's own {@code continue} token names the first
+ * entry of the <em>next</em> batch, so adopting it as a cursor makes
+ * {@link #dropAnchor} delete an entry nobody has seen. Both adapters therefore
+ * derive their cursor from the last entry they returned.
  */
 record AnchoredCursor(String position, String anchorId) {
 

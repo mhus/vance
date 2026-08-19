@@ -18,6 +18,13 @@ import org.jspecify.annotations.Nullable;
  * {@link UntrustedContent#collapseWhitespace}. Three copies of a shaping rule is
  * how two of them end up without a hardening the third has.
  *
+ * <p><b>Everything a provider wrote is collapsed, extras included, and the
+ * canonical fields are written last.</b> Both halves of that matter: extras are
+ * as foreign as the title beside them, and a provider that could put a
+ * {@code title} key in extras would otherwise overwrite the sanitised value
+ * with raw remote text — making the hardening this class centralises optional at
+ * the far end's discretion.
+ *
  * <p><b>The body.</b> A hit may carry the source's own text — an OpenAlex or
  * arXiv abstract, a Wikipedia extract — in
  * {@link ContentReference#inlineText()}. Those were already being fetched and
@@ -60,6 +67,20 @@ final class SearchHitRows {
      */
     static Map<String, Object> shape(SearchHit hit) {
         Map<String, Object> row = new LinkedHashMap<>();
+        // Extras first, and the canonical fields after them.
+        //
+        // Inlined rather than wrapped in a sub-map, so the LLM sees them as
+        // first-class fields per modality (imageUrl, doi, citedByCount, …) —
+        // but a provider fills this map, so it must not be able to land on a
+        // key this class is responsible for. Written last, the canonical fields
+        // win: otherwise an `extras.title` would replace the collapsed title
+        // with raw remote text, and the one hardening this class exists to
+        // centralise would be optional at the source's discretion.
+        if (hit.extras() != null && !hit.extras().isEmpty()) {
+            for (Map.Entry<String, Object> e : hit.extras().entrySet()) {
+                row.put(e.getKey(), safeExtra(e.getValue()));
+            }
+        }
         row.put("title", UntrustedContent.collapseWhitespace(hit.title()));
         row.put("url", hit.url());
         if (!StringUtils.isBlank(hit.snippet())) {
@@ -68,19 +89,27 @@ final class SearchHitRows {
         if (!StringUtils.isBlank(hit.source())) {
             row.put("source", UntrustedContent.collapseWhitespace(hit.source()));
         }
-        if (hit.extras() != null && !hit.extras().isEmpty()) {
-            // Inlined, never wrapped in a sub-map, so the LLM sees them as
-            // first-class fields per modality (imageUrl, doi, citedByCount, …).
-            row.putAll(hit.extras());
-        }
-        // After extras on purpose: the content channel is the authoritative
-        // body, so a provider that happens to put a `body` key in extras does
-        // not shadow it.
         String body = bodyOf(hit.content());
         if (body != null) {
             row.put("body", body);
         }
         return row;
+    }
+
+    /**
+     * An extra value on its way into a prompt. Numbers and booleans pass
+     * through; anything textual is collapsed like every other remote string —
+     * extras are as foreign as the title beside them, and an unsanitised one is
+     * a hole in exactly the wall the sibling fields stand behind.
+     */
+    private static Object safeExtra(@Nullable Object value) {
+        if (value == null) {
+            return "";
+        }
+        if (value instanceof Number || value instanceof Boolean) {
+            return value;
+        }
+        return UntrustedContent.collapseWhitespace(String.valueOf(value));
     }
 
     /**

@@ -17,16 +17,37 @@ import org.jspecify.annotations.Nullable;
  * <ul>
  *   <li>{@link #projectTo(FeedCapabilities)} yields the subset a given
  *       source can apply itself, which travels in {@link FeedFetch#pushdown()}.
- *   <li>{@link #matches(FeedItem)} applies the <b>whole</b> filter after the
+ *   <li>{@link #matches(FeedItem, FeedFilter)} applies the rest after the
  *       fetch.
  * </ul>
  *
- * <p>Post-filtering always re-applies everything, including the parts that
- * were pushed down. That is deliberate: filtering twice is idempotent and
- * free, while tracking which half still needs applying is bookkeeping that
- * fails silently the day a capability flag and a wire implementation
- * disagree. The rule that must hold is "no filter is ever skipped", and
- * the cheapest way to guarantee it is to not rely on the source at all.
+ * <h2>Why the post-filter does not simply re-apply everything</h2>
+ *
+ * <p>It used to, on the reasoning that filtering twice is idempotent and free
+ * while tracking halves is bookkeeping that drifts. That reasoning holds only
+ * for a criterion whose local check reads the same text the source searched —
+ * and for two of them it demonstrably does not:
+ *
+ * <ul>
+ *   <li><b>text.</b> A source may index fields it does not deliver. The
+ *       archive that prompted this indexes an article's original title and
+ *       teaser but delivers the <em>translation</em>: it correctly returns a
+ *       hit for {@code tariffs}, the local re-check looks for that word in a
+ *       German title and drops it. Re-applying turned "found by one of two
+ *       words" into "found by neither".
+ *   <li><b>languages.</b> Same shape — the source may match the original
+ *       language and hand back an entry labelled with the pivot.
+ * </ul>
+ *
+ * <p>So a criterion the source <em>actually applied</em> is not re-applied.
+ * That is keyed on what was sent ({@link #projectTo}'s result), not on a
+ * capability flag, so a source cannot get a criterion skipped by declaring an
+ * ability it was never asked to use. {@code since} stays re-applied — it reads
+ * {@code publishedAt}, which every source must deliver honestly because the
+ * merge orders on it — and {@code include}/{@code exclude} are never pushed
+ * down and therefore always applied here. In particular {@code exclude} is
+ * never delegated: "never show me this" must not depend on a foreign
+ * implementation.
  */
 public record FeedFilter(
         @Nullable String text,
@@ -89,21 +110,41 @@ public record FeedFilter(
         return since != null && !caps.pushdownSince();
     }
 
-    /** Apply the whole filter to one item. */
+    /**
+     * Apply the whole filter to one item — for a source that pushed nothing
+     * down, and for callers filtering a list they assembled themselves.
+     */
     public boolean matches(FeedItem item) {
+        return matches(item, none());
+    }
+
+    /**
+     * Apply the parts of this filter that {@code appliedBySource} did not
+     * already answer.
+     *
+     * @param appliedBySource exactly what was sent to the source, i.e. the
+     *                        result of {@link #projectTo(FeedCapabilities)}.
+     *                        Keyed on what was sent rather than on the
+     *                        capability flag, so declaring an ability cannot by
+     *                        itself get a criterion skipped. See the class note
+     *                        for why text and language are not re-applied.
+     */
+    public boolean matches(FeedItem item, FeedFilter appliedBySource) {
         if (since != null && item.publishedAt().isBefore(since)) {
             return false;
         }
-        if (!matchesLanguage(item)) {
+        if (appliedBySource.languages().isEmpty() && !matchesLanguage(item)) {
             return false;
         }
         String haystack = haystack(item);
+        // exclude first, and never delegated: "do not show me this" must not
+        // depend on a foreign implementation getting it right.
         for (String term : exclude) {
             if (contains(haystack, term)) {
                 return false;
             }
         }
-        if (text != null && !contains(haystack, text)) {
+        if (text != null && appliedBySource.text() == null && !contains(haystack, text)) {
             return false;
         }
         if (include.isEmpty()) {

@@ -164,7 +164,8 @@ class FeedReadToolTest {
 
     private static CentauriItem item(String summary) {
         FeedItem feedItem = new FeedItem(
-                "us1", Instant.parse("2026-08-19T10:00:00Z"), "M 4.7 — somewhere",
+                "us1", /* cursor */ null,
+                Instant.parse("2026-08-19T10:00:00Z"), "M 4.7 — somewhere",
                 "https://earthquake.usgs.gov/1", summary, null, null, null, null, null,
                 List.of("earthquake"), Map.of());
         return new CentauriItem(feedItem, "usgs", "USGS earthquakes", "all");

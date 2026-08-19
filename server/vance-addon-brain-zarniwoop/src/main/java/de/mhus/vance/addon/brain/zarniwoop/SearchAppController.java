@@ -25,11 +25,13 @@ import de.mhus.vance.toolpack.research.SearchScope;
 import de.mhus.vance.toolpack.research.SearchTier;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -217,7 +219,18 @@ public class SearchAppController {
                     "could not read stashed content of '" + body.contentId() + "'", e);
         }
         return ResponseEntity.ok()
-                .contentType(mediaType(loaded.mimeType()))
+                // The type is clamped, not echoed. These bytes come from a
+                // foreign service and are rendered by the browser on the brain's
+                // own origin, so letting the far end pick text/html or
+                // image/svg+xml would let it run script next to the session it
+                // was fetched with. Anything not on the allow-list is served as
+                // an opaque download instead of being refused — a body we cannot
+                // safely inline is still a body someone may want.
+                .contentType(safeMediaType(loaded.mimeType()))
+                // Belt to the same braces: without this a browser may sniff past
+                // the declared type and render the very markup the clamp removed.
+                .header("X-Content-Type-Options", "nosniff")
+                .header("Content-Disposition", "inline")
                 .body(bytes);
     }
 
@@ -378,12 +391,59 @@ public class SearchAppController {
         throw new IllegalArgumentException("unknown provider endpoint '" + instanceId + "'");
     }
 
-    private static MediaType mediaType(String raw) {
+    /**
+     * Types a hit body may be served as, everything else becoming an opaque
+     * download.
+     *
+     * <p>An allow-list rather than a block-list of the dangerous ones, because
+     * the dangerous set is not enumerable — {@code text/html},
+     * {@code image/svg+xml}, {@code application/xhtml+xml} and
+     * {@code text/xml} all execute script in a browser, and the next such type
+     * would arrive without anyone editing this file. {@code image/svg+xml} is
+     * deliberately absent even though it is an image: it carries script.
+     */
+    private static final Set<String> INLINE_SAFE_TYPES = Set.of(
+            "text/plain",
+            "text/markdown",
+            "text/csv",
+            "application/pdf",
+            "application/json",
+            "image/png",
+            "image/jpeg",
+            "image/gif",
+            "image/webp");
+
+    /**
+     * The type these bytes will be served as: what the source said, if that is
+     * on {@link #INLINE_SAFE_TYPES}, otherwise {@code application/octet-stream}.
+     *
+     * <p>Clamping rather than trusting is the whole point. The source is foreign
+     * software, the response renders on the brain's origin, and a body announced
+     * as a PDF in the search result may arrive as HTML here — the two statements
+     * come from the same untrusted place and agreeing with either is a choice we
+     * do not have to make.
+     */
+    private static MediaType safeMediaType(String raw) {
+        MediaType parsed;
         try {
-            return MediaType.parseMediaType(raw);
+            parsed = MediaType.parseMediaType(raw);
         } catch (RuntimeException e) {
             return MediaType.APPLICATION_OCTET_STREAM;
         }
+        String essence = parsed.getType().toLowerCase(Locale.ROOT)
+                + "/" + parsed.getSubtype().toLowerCase(Locale.ROOT);
+        if (!INLINE_SAFE_TYPES.contains(essence)) {
+            log.debug("Search app: hit body declared '{}' — serving it as an opaque "
+                    + "download instead", essence);
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
+        // Rebuilt from the essence so a boundary or other parameter the source
+        // attached cannot ride along. UTF-8 is stated for text, where the bytes
+        // are decoded and the browser would otherwise guess; declaring a charset
+        // on a PDF or an image would only be noise.
+        return essence.startsWith("text/")
+                ? new MediaType(parsed.getType(), parsed.getSubtype(), StandardCharsets.UTF_8)
+                : new MediaType(parsed.getType(), parsed.getSubtype());
     }
 
     /**

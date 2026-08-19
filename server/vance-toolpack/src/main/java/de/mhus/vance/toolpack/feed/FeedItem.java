@@ -27,6 +27,18 @@ import org.jspecify.annotations.Nullable;
  */
 public record FeedItem(
         String id,
+        /**
+         * The source's own resume token for exactly this entry, when it has
+         * one — see {@link FeedSourceInstance#cursorAfter(FeedItem)}, which
+         * prefers it over the item id.
+         *
+         * <p>Carried on the item rather than derived by the protocol because
+         * only the source knows its paging scheme. A source paging by
+         * {@code (publishedAt, id)} cannot be resumed from an id alone, and
+         * the failure is silent: it reads a bare id as „start from the top"
+         * and the merged scroll repeats a page instead of advancing.
+         */
+        @Nullable String cursor,
         Instant publishedAt,
         String title,
         String url,
@@ -51,6 +63,9 @@ public record FeedItem(
         }
         if (title == null || title.isBlank()) {
             title = url;
+        }
+        if (cursor != null && cursor.isBlank()) {
+            cursor = null;
         }
         tags = tags == null ? List.of() : List.copyOf(tags);
         extras = extras == null ? Map.of() : Map.copyOf(extras);

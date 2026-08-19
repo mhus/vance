@@ -13,7 +13,7 @@ final class FakeFeedItems {
     }
 
     static FeedItem at(String id, String isoInstant) {
-        return new FeedItem(id, Instant.parse(isoInstant), "title-" + id,
+        return new FeedItem(id, /* cursor */ null, Instant.parse(isoInstant), "title-" + id,
                 "https://example.test/" + id,
                 null, null, null, null, null, null, List.of(), Map.of());
     }

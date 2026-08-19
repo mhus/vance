@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, onMounted } from 'vue';
 import { VAlert, VButton, VCard, VEmptyState, VInput, VSelect } from '@vance/components';
 import type { ZarniwoopInsightsDto } from '@vance/generated';
+import { safeUrl } from '@vance/shared';
 import { investigate, listProviders, loadConfig, saveConfig, search, loadContentBlob } from './api';
 import type { InvestigateResultView } from './generated/search/InvestigateResultView';
 import type { SearchConfigView } from './generated/search/SearchConfigView';
@@ -82,6 +83,21 @@ const curated = ref<InvestigateResultView | null>(null);
 const selected = ref<SearchHitView | null>(null);
 const fullText = ref<string | null>(null);
 const fullTextUrl = ref<string | null>(null);
+
+/**
+ * Types that may be handed to the browser's own viewer in an iframe.
+ *
+ * Mirrors the server's allow-list, and both are allow-lists for the same reason:
+ * `image/svg+xml` is an image that carries script, so „is it an image" is not the
+ * question. Text is handled separately, as text.
+ */
+const INLINE_VIEWABLE = new Set([
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+]);
 const loadingBody = ref(false);
 
 const loading = ref(false);
@@ -235,12 +251,27 @@ async function loadBody(): Promise<void> {
       contentId: hit.contentId,
       mimeType: hit.mimeType ?? undefined,
     });
-    if ((hit.mimeType ?? '').startsWith('text/') || !hit.mimeType) {
+    // Branch on what the RESPONSE says, never on hit.mimeType.
+    //
+    // Both come from the searched service, but only one of them describes the
+    // bytes in hand — and the server clamps that one to a small set of types it
+    // is willing to have rendered here. Trusting the declaration in the search
+    // result instead meant a hit could announce `application/pdf`, answer with
+    // HTML, and get rendered from a blob URL, which inherits this origin: script
+    // in the page, next to the session that fetched it.
+    const type = (blob.type || '').split(';')[0].trim().toLowerCase();
+    if (!type || type.startsWith('text/')) {
       fullText.value = await blob.text();
-    } else {
+    } else if (INLINE_VIEWABLE.has(type)) {
       // A PDF or an image: hand it to the browser's own viewer rather than
       // trying to render bytes we do not understand.
       fullTextUrl.value = URL.createObjectURL(blob);
+    } else {
+      // Anything the server would not vouch for arrives as octet-stream. There
+      // is nothing safe to show, so say so instead of guessing.
+      error.value =
+        'This source returned a body in a format that cannot be displayed here. ' +
+        'Use the source link to open it.';
     }
   } catch (e) {
     error.value = message(e);
@@ -335,13 +366,30 @@ function runSaved(saved: { query: string; modality: string; tier: string; instan
 function thumbnail(hit: SearchHitView): string | null {
   const extras = hit.extras ?? {};
   const thumb = extras.thumbnailUrl ?? extras.coverThumbnailUrl ?? extras.imageUrl;
-  return typeof thumb === 'string' ? thumb : null;
+  return typeof thumb === 'string' ? safeUrl(thumb) : null;
 }
 
 /** The file for an image hit; `url` is the page it sits on, which is not the same. */
 function imageFile(hit: SearchHitView): string | null {
   const raw = (hit.extras ?? {}).imageUrl;
-  return typeof raw === 'string' ? raw : null;
+  return typeof raw === 'string' ? safeUrl(raw) : null;
+}
+
+/**
+ * A remote URL as an `href`, or null when it must not become one.
+ *
+ * Every link on this surface goes through here. `url` and every `extras` entry
+ * are written by the searched service, so a `javascript:` value would run on
+ * this origin the moment somebody clicks a headline — and hiding the link is
+ * better than a link that attacks the reader.
+ */
+function link(raw: string | null | undefined): string | null {
+  return safeUrl(raw);
+}
+
+/** The `extras` value at `key` if it is a linkable URL. */
+function extraLink(hit: SearchHitView, key: string): string | null {
+  return safeUrl(extraText(hit, key));
 }
 
 function extraText(hit: SearchHitView, key: string): string | null {
@@ -566,13 +614,15 @@ function message(e: unknown): string {
           <VCard v-for="(hit, i) in result.hits" :key="hit.url + i">
             <div class="flex flex-col gap-1">
               <a
-                :href="hit.url"
+                v-if="link(hit.url)"
+                :href="link(hit.url)!"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="font-semibold hover:underline"
               >
                 {{ hit.title }}
               </a>
+              <span v-else class="font-semibold">{{ hit.title }}</span>
               <span v-if="metaLine(hit)" class="text-xs opacity-60">{{ metaLine(hit) }}</span>
               <p v-if="hit.snippet" class="line-clamp-3 text-sm opacity-80">{{ hit.snippet }}</p>
               <div class="flex items-center gap-2">
@@ -602,13 +652,15 @@ function message(e: unknown): string {
           <VCard v-for="(hit, i) in curated.hits" :key="hit.url + i">
             <div class="flex flex-col gap-1">
               <a
-                :href="hit.url"
+                v-if="link(hit.url)"
+                :href="link(hit.url)!"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="font-semibold hover:underline"
               >
                 {{ hit.title }}
               </a>
+              <span v-else class="font-semibold">{{ hit.title }}</span>
               <span class="text-xs opacity-60">
                 {{ hit.providerInstanceId }} · score {{ hit.finalScore.toFixed(2) }}
               </span>
@@ -657,12 +709,22 @@ function message(e: unknown): string {
             </span>
           </VButton>
           <p v-if="fullText" class="whitespace-pre-wrap text-sm">{{ fullText }}</p>
-          <iframe v-if="fullTextUrl" :src="fullTextUrl" class="h-96 w-full rounded border"></iframe>
+          <!-- sandbox with nothing enabled: the bytes are foreign and a blob URL
+               inherits this origin, so the frame gets no script, no forms and no
+               same-origin access. A PDF or an image needs none of them. -->
+          <iframe
+            v-if="fullTextUrl"
+            :src="fullTextUrl"
+            sandbox=""
+            referrerpolicy="no-referrer"
+            class="h-96 w-full rounded border"
+          ></iframe>
         </template>
 
         <div class="mt-2 flex flex-col gap-1 text-sm">
           <a
-            :href="selected.url"
+            v-if="link(selected.url)"
+            :href="link(selected.url)!"
             target="_blank"
             rel="noopener noreferrer"
             class="hover:underline"
@@ -681,8 +743,8 @@ function message(e: unknown): string {
             Open image file ↗
           </a>
           <a
-            v-if="extraText(selected, 'videoUrl')"
-            :href="extraText(selected, 'videoUrl')!"
+            v-if="extraLink(selected, 'videoUrl')"
+            :href="extraLink(selected, 'videoUrl')!"
             target="_blank"
             rel="noopener noreferrer"
             class="hover:underline"
@@ -690,8 +752,8 @@ function message(e: unknown): string {
             Watch video ↗
           </a>
           <a
-            v-if="extraText(selected, 'pdfUrl')"
-            :href="extraText(selected, 'pdfUrl')!"
+            v-if="extraLink(selected, 'pdfUrl')"
+            :href="extraLink(selected, 'pdfUrl')!"
             target="_blank"
             rel="noopener noreferrer"
             class="hover:underline"
@@ -699,8 +761,8 @@ function message(e: unknown): string {
             Open PDF ↗
           </a>
           <a
-            v-if="extraText(selected, 'hnDiscussion')"
-            :href="extraText(selected, 'hnDiscussion')!"
+            v-if="extraLink(selected, 'hnDiscussion')"
+            :href="extraLink(selected, 'hnDiscussion')!"
             target="_blank"
             rel="noopener noreferrer"
             class="hover:underline"

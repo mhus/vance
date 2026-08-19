@@ -5,6 +5,7 @@ import de.mhus.vance.brain.centauri.CentauriNote;
 import de.mhus.vance.brain.centauri.CentauriPage;
 import de.mhus.vance.brain.centauri.CentauriPageRequest;
 import de.mhus.vance.brain.centauri.CentauriService;
+import de.mhus.vance.brain.centauri.FeedCapabilitiesCache;
 import de.mhus.vance.brain.centauri.FeedSourceFactory;
 import de.mhus.vance.brain.centauri.FeedStream;
 import de.mhus.vance.brain.permission.RequestAuthority;
@@ -71,6 +72,7 @@ public class CentauriAppController {
 
     private final CentauriService centauriService;
     private final FeedSourceFactory sourceFactory;
+    private final FeedCapabilitiesCache capabilitiesCache;
     private final FeedsApplication application;
     private final DocumentService documentService;
     private final DocumentLinkBuilder linkBuilder;
@@ -95,6 +97,11 @@ public class CentauriAppController {
             // and that wait looks exactly like a wrong key. Let the caller say
             // "read again" instead of guessing.
             sourceFactory.evict(scope);
+            // Both caches, or the two views disagree: rebuilt instances would
+            // still be dispatched against the declarations cached for the old
+            // ones, so this list would show the new abilities while the feed
+            // kept pushing down by the old.
+            capabilitiesCache.invalidate(scope, null);
         }
 
         List<FeedSourceView> out = new ArrayList<>();
@@ -181,15 +188,25 @@ public class CentauriAppController {
      * Store one entry as a markdown document — the bridge from transient to
      * permanent. Source, author, date and URL go into the frontmatter, so what
      * the entry was remains answerable after the stream has moved on.
+     *
+     * <p><b>Normalise before enforcing, always.</b> Authorising the path as it
+     * arrived and then writing a different one is a bypass, and here it was a
+     * real one: the reserved-namespace rule that reads {@code _vance/} as
+     * admin-only matches on a prefix, so {@code /_vance/manuals/x.md} passed as
+     * an ordinary document and landed as {@code _vance/manuals/x.md} — a system
+     * manual, writable by anyone with CREATE on the project. The service-level
+     * check is no backstop for this: it derives its write actor from the
+     * <em>target</em> path and vouches for reserved ones as internal writes, so
+     * this call site is the only place the question is really asked.
      */
     @PostMapping("/brain/{tenant}/addon/centauri/clip")
     public ResponseEntity<ClipResponse> clip(@PathVariable String tenant,
                                              @RequestParam String projectId,
                                              @RequestBody ClipRequest body,
                                              HttpServletRequest request) {
-        authority.enforce(request, new Resource.Document(tenant, projectId, body.targetPath()),
-                Action.CREATE);
         String path = normalisePath(body.targetPath());
+        authority.enforce(request, new Resource.Document(tenant, projectId, path),
+                Action.CREATE);
         if (documentService.findByPath(tenant, projectId, path).isPresent()) {
             return ResponseEntity.status(409).body(new ClipResponse(path, null));
         }
@@ -372,11 +389,49 @@ public class CentauriAppController {
         return sb.toString();
     }
 
-    /** Quote defensively — a headline with a colon would otherwise break the block. */
+    /**
+     * Quote defensively — a headline with a colon would otherwise break the
+     * block, and one with a line break would end the scalar and leave the rest
+     * of the headline standing where a key belongs.
+     *
+     * <p>Every value here is remote text from a feed, so the escaping has to
+     * cover what a double-quoted YAML scalar cannot carry literally rather than
+     * only what is likely: backslash and quote first (order matters — quoting
+     * after escaping backslashes would double them), then the line and tab
+     * breaks as their YAML escapes, then anything else below the printable
+     * range as a numeric escape.
+     */
     private static String yaml(String raw) {
-        return "\"" + raw.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+        StringBuilder out = new StringBuilder(raw.length() + 2).append('"');
+        for (int i = 0; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            switch (c) {
+                case '\\' -> out.append("\\\\");
+                case '"' -> out.append("\\\"");
+                case '\n' -> out.append("\\n");
+                case '\r' -> out.append("\\r");
+                case '\t' -> out.append("\\t");
+                default -> {
+                    if (c < 0x20 || c == 0x7f) {
+                        out.append(String.format("\\x%02x", (int) c));
+                    } else {
+                        out.append(c);
+                    }
+                }
+            }
+        }
+        return out.append('"').toString();
     }
 
+    /**
+     * The one path this call works with — the value that is authorised and the
+     * value that is written, in that order.
+     *
+     * <p>{@code ..} is refused rather than collapsed. Collapsing would leave a
+     * second normalisation step between the check and the write, which is the
+     * shape of the bug this method exists to prevent; a clip target is a name
+     * someone picked in a dialog and has no business containing one.
+     */
     private static String normalisePath(String raw) {
         String path = raw == null ? "" : raw.trim();
         while (path.startsWith("/")) {
@@ -384,6 +439,14 @@ public class CentauriAppController {
         }
         if (path.isEmpty()) {
             throw new IllegalArgumentException("targetPath is required");
+        }
+        if (path.contains("..")) {
+            throw new IllegalArgumentException(
+                    "targetPath must not contain '..': " + raw);
+        }
+        if (path.contains("//")) {
+            throw new IllegalArgumentException(
+                    "targetPath must not contain an empty segment: " + raw);
         }
         return path.endsWith(".md") ? path : path + ".md";
     }

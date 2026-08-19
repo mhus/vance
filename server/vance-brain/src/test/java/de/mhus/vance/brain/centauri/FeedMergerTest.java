@@ -117,6 +117,59 @@ class FeedMergerTest {
     }
 
     @Test
+    void merge_emptyPageClaimingMoreWithNoCursor_retiresTheStream() {
+        FakeFeedSource alpha = new FakeFeedSource("alpha");
+
+        var result = FeedMerger.merge(
+                // hasMore with nothing delivered and nothing to resume from: the
+                // next request would be identical, so believing it would spin the
+                // scroll forever.
+                List.of(fetch(ALPHA, alpha, new FeedPage(List.of(), null, true))),
+                FeedFilter.none(), 10, FeedDirection.OLDER, CentauriCursor.fresh());
+
+        assertThat(result.items()).isEmpty();
+        assertThat(result.cursor().exhausted()).contains(ALPHA.key());
+        assertThat(result.hasMore()).isFalse();
+    }
+
+    @Test
+    void merge_midPageCut_usesTheSourcesOwnPerItemCursor() {
+        FakeFeedSource alpha = new FakeFeedSource("alpha");
+
+        var result = FeedMerger.merge(
+                List.of(fetch(ALPHA, alpha, page(true, "page-end",
+                        FakeFeedSource.itemWithCursor(
+                                "a1", "2026-08-19T10:00:00Z", "https://a.test/1", "ts-10|a1"),
+                        FakeFeedSource.itemWithCursor(
+                                "a2", "2026-08-19T09:00:00Z", "https://a.test/2", "ts-09|a2")))),
+                FeedFilter.none(), 1, FeedDirection.OLDER, CentauriCursor.fresh());
+
+        // The token the source supplied, not the bare id. A source paging by
+        // (publishedAt, id) cannot resume from an id, and it fails silently:
+        // it reads one as "start from the top" and the scroll repeats.
+        assertThat(result.cursor().perStream()).containsEntry(ALPHA.key(), "ts-10|a1");
+    }
+
+    @Test
+    void merge_textAppliedBySource_isNotRejectedByThePostFilter() {
+        FakeFeedSource alpha = new FakeFeedSource("alpha");
+        FeedFilter filter = new FeedFilter("tariffs", Set.of(), List.of(), List.of(), null);
+
+        var result = FeedMerger.merge(
+                // The source matched on text it does not deliver — a translated
+                // entry, indexed by its original words. Re-checking locally used
+                // to drop a hit the source had found correctly.
+                List.of(fetch(ALPHA, alpha, page(false, null,
+                                item("a1", "2026-08-19T10:00:00Z", "https://a.test/1",
+                                        "Zoelle auf Stahl")),
+                        filter)),
+                filter, 10, FeedDirection.OLDER, CentauriCursor.fresh());
+
+        assertThat(result.items()).extracting(i -> i.item().id()).containsExactly("a1");
+        assertThat(result.droppedByFilter()).isZero();
+    }
+
+    @Test
     void merge_exhaustedStream_isMarkedAndStaysMarked() {
         FakeFeedSource beta = new FakeFeedSource("beta");
         CentauriCursor incoming = new CentauriCursor(
@@ -216,7 +269,13 @@ class FeedMergerTest {
 
     private static FeedMerger.StreamFetch fetch(
             FeedStream stream, FakeFeedSource source, FeedPage page) {
-        return new FeedMerger.StreamFetch(stream, source, page);
+        return new FeedMerger.StreamFetch(stream, source, page, FeedFilter.none());
+    }
+
+    /** A fetch where the source had already applied part of the filter. */
+    private static FeedMerger.StreamFetch fetch(
+            FeedStream stream, FakeFeedSource source, FeedPage page, FeedFilter pushdown) {
+        return new FeedMerger.StreamFetch(stream, source, page, pushdown);
     }
 
     private static FeedPage page(boolean hasMore, String nextCursor, FeedItem... items) {

@@ -277,6 +277,11 @@ class OdeFeedInstance implements FeedSourceInstance {
         }
         return new FeedItem(
                 id,
+                // The source's own resume token for this entry. Without it the
+                // merge falls back to the item id, which is wrong for any source
+                // paging by (publishedAt, id) — and wrong silently: such a source
+                // reads a bare id as "start from the top" and the scroll repeats.
+                blankToNull(text(node, "cursor")),
                 publishedAt,
                 StringUtils.defaultIfBlank(text(node, "title"), url),
                 url,
@@ -395,8 +400,17 @@ class OdeFeedInstance implements FeedSourceInstance {
         return s == null || s.isBlank() ? null : s;
     }
 
+    /**
+     * Percent-encode one path segment.
+     *
+     * <p>Not {@code URLEncoder}: that is form encoding, where a space becomes
+     * {@code +} — which in a path is a literal plus and addresses a different
+     * entry. Item ids are usually opaque tokens where the difference never
+     * shows, which is exactly why it would be found late.
+     */
     private static String urlPathSegment(String raw) {
-        return java.net.URLEncoder.encode(raw, java.nio.charset.StandardCharsets.UTF_8);
+        return org.springframework.web.util.UriUtils.encodePathSegment(
+                raw, java.nio.charset.StandardCharsets.UTF_8);
     }
 
     private static String abbreviate(String s) {

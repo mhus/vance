@@ -63,6 +63,12 @@ public class SearchProviderFactory {
                 .expireAfterWrite(DEFAULT_TTL)
                 .<ScopeKey, List<SearchProviderInstance>>removalListener(
                         (key, value, cause) -> disposeAll(value))
+                // The removal listener is the ONE dispose path — for expiry it is
+                // the only one there can be, so an explicit dispose beside a manual
+                // remove would run it twice. Same-thread so that an explicit evict
+                // has finished disposing by the time it returns; the default pool
+                // would make that asynchronous for no benefit here.
+                .executor(Runnable::run)
                 .build();
         log.info("SearchProviderFactory initialised with {} protocol(s): {}",
                 protocolsById.size(), protocolsById.keySet());
@@ -105,7 +111,6 @@ public class SearchProviderFactory {
         if (evicted != null) {
             log.debug("Zarniwoop: evicted {} provider instance(s) for '{}/{}' (explicit refresh)",
                     evicted.size(), scope.tenantId(), scope.projectId());
-            disposeAll(evicted);
         }
     }
 
@@ -121,7 +126,6 @@ public class SearchProviderFactory {
         if (evicted != null) {
             log.debug("Zarniwoop: evicted {} provider instance(s) for '{}/{}' (project stop)",
                     evicted.size(), event.tenantId(), event.projectName());
-            disposeAll(evicted);
         }
     }
 

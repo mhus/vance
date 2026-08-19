@@ -1,0 +1,247 @@
+title:
+  de: "Feeds — Quellen"
+  en: "Feeds — Sources"
+description:
+  de: "Konfiguriert die Feed-Quellen (Centauri). Werte werden tenant-weit
+       geschrieben (`_tenant`) und gelten dadurch für alle Projekte. Hier
+       stehen die mitgelieferten Beispiele und eine Ode-Quelle; welche Ströme
+       ein Feed daraus liest, wird im Feed selbst eingestellt, nicht hier.
+       Neue Quellen können jederzeit per Raw-Setting unter
+       `centauri.endpoint.<id>.*` angelegt werden — dieses Formular deckt die
+       häufigen Fälle ab, nicht alle."
+  en: "Configures the feed sources (Centauri). Values are written tenant-wide
+       (`_tenant`) and apply to all projects. This covers the bundled examples
+       plus one ode source; which streams a feed reads from them is set in the
+       feed itself, not here. Further sources can always be added as raw
+       settings under `centauri.endpoint.<id>.*` — this form covers the common
+       cases, not every one."
+icon: newspaper
+category: integrations
+defaultScope: tenant
+
+fields:
+
+  # ─── Ode source (Hrafnagud and anything else embedding vance-ode) ──
+  #
+  # The real production case: a foreign application that speaks the ode
+  # feed contract. Listed first because the two below it are examples.
+
+  - name: odeEnabled
+    type: boolean
+    defaultValue: "false"
+    label:
+      de: "Ode-Quelle aktivieren"
+      en: "Enable ode source"
+    help:
+      de: "Eine Fremdsoftware, die den Ode-Feed-Vertrag bereitstellt (z.B.
+           Hrafnagud über `vance-ode-centauri`). Anders als bei den Beispielen
+           unten gibt es hier keinen sinnvollen Default — die URL kennt nur du."
+      en: "A foreign application serving the ode feed contract (e.g. Hrafnagud
+           via `vance-ode-centauri`). Unlike the examples below there is no
+           sensible default here — only you know the URL."
+    bindsTo:
+      key: "centauri.endpoint.ode-main.enabled"
+
+  - name: odeBaseUrl
+    type: string
+    label:
+      de: "Ode Base-URL"
+      en: "Ode base URL"
+    help:
+      de: "Wurzel der Anwendung, z.B. `https://hrafnagud.example`. Ohne diesen
+           Wert wird die Quelle beim Zusammenbauen übersprungen."
+      en: "Root of the application, e.g. `https://hrafnagud.example`. Without
+           it the source is skipped when sources are assembled."
+    showIf:  "odeEnabled"
+    writeIf: "odeEnabled"
+    bindsTo:
+      key: "centauri.endpoint.ode-main.baseUrl"
+
+  - name: odeApiKey
+    type: password
+    label:
+      de: "Ode API-Key (optional)"
+      en: "Ode API key (optional)"
+    help:
+      de: "Wird als `Authorization: Bearer …` gesendet. Leer lassen, um einen
+           bereits gespeicherten Key unverändert zu übernehmen; leer ist auch
+           richtig, wenn die Quelle den Pfad selbst absichert."
+      en: "Sent as `Authorization: Bearer …`. Leave empty to keep an already
+           stored key; empty is also correct when the source guards the path
+           itself."
+    showIf:  "odeEnabled"
+    writeIf: "odeEnabled"
+    bindsTo:
+      key: "centauri.endpoint.ode-main.apiKey"
+
+  - name: odeFeedPath
+    type: string
+    label:
+      de: "Ode Feed-Pfad (optional)"
+      en: "Ode feed path (optional)"
+    help:
+      de: "Leer = `/ode/feed` (Default der Quell-Seite). Nur setzen, wenn die
+           Quelle ihr `vance.ode.centauri.path` verschoben hat."
+      en: "Empty = `/ode/feed` (the serving side's default). Set this only when
+           the source moved its `vance.ode.centauri.path`."
+    showIf:  "odeEnabled"
+    writeIf: "odeEnabled"
+    bindsTo:
+      key: "centauri.endpoint.ode-main.feedPath"
+
+  - name: odeSendActor
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "Leser-Pseudonym mitsenden"
+      en: "Send reader pseudonym"
+    help:
+      de: "Erlaubt der Quelle eine nutzerbezogene Darstellung (personalisierte
+           Auswahl, quellseitige Lesemarken). Das Pseudonym ist pro Quelle
+           gesalzen, zwei Quellen können ihre Profile also nicht zusammenführen
+           — innerhalb einer Quelle wird die Lesehistorie aber verknüpfbar.
+           Abschalten, wenn die Leser nicht profiliert werden sollen."
+      en: "Lets the source offer a reader-specific view (personalised
+           selection, source-side read marks). The pseudonym is salted per
+           source, so two sources cannot join their profiles — within one
+           source the reading history does become linkable. Turn off when
+           readers should not be profiled."
+    showIf:  "odeEnabled"
+    writeIf: "odeEnabled"
+    bindsTo:
+      key: "centauri.endpoint.ode-main.sendActor"
+
+  # ─── USGS earthquakes — example, keyless ──────────────────────────
+  #
+  # Default `true` mirrors the gate: CentauriGateService treats a missing
+  # `.enabled` as enabled. A `false` default here would silently disable an
+  # endpoint configured via init-settings the first time somebody saves
+  # this form.
+
+  - name: usgsEnabled
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "USGS Erdbeben aktivieren"
+      en: "Enable USGS earthquakes"
+    help:
+      de: "Beispielquelle ohne Anmeldung. Liefert weltweite Erdbeben mit Titel,
+           Ort und Link — geeignet, um einen Feed zum ersten Mal laufen zu
+           sehen. Die Ströme (alle / ab Magnitude 2.5 / 4.5 / 6) wählst du im
+           Feed."
+      en: "Keyless example source. Serves worldwide earthquakes with title,
+           place and link — useful for seeing a feed work for the first time.
+           The streams (all / magnitude 2.5+ / 4.5+ / 6+) are picked in the
+           feed."
+    bindsTo:
+      key: "centauri.endpoint.usgs.enabled"
+
+  - name: usgsBaseUrl
+    type: string
+    defaultValue: "https://earthquake.usgs.gov"
+    label:
+      de: "USGS Base-URL"
+      en: "USGS base URL"
+    help:
+      de: "Vorbelegt mit dem öffentlichen Dienst. Nur für Mirrors ändern."
+      en: "Pre-filled with the public service. Change only for mirrors."
+    showIf:  "usgsEnabled"
+    writeIf: "usgsEnabled"
+    bindsTo:
+      key: "centauri.endpoint.usgs.baseUrl"
+
+  # ─── Wikipedia — example, keyless, one endpoint per language wiki ──
+
+  - name: wikiDeEnabled
+    type: boolean
+    defaultValue: "false"
+    label:
+      de: "Wikipedia (deutsch) aktivieren"
+      en: "Enable Wikipedia (German)"
+    help:
+      de: "Beispielquelle ohne Anmeldung: die letzten Änderungen eines Wikis.
+           Ein Wiki ist eine Sprache — für mehrere Sprachen mehrere Quellen
+           aktivieren, dann trägt jeder Eintrag seine Sprache und der
+           Sprachfilter im Feed greift."
+      en: "Keyless example source: a wiki's recent changes. One wiki is one
+           language — enable several for a multilingual feed, and each entry
+           then carries its language so the feed's language filter has
+           something to work with."
+    bindsTo:
+      key: "centauri.endpoint.wikipedia-de.enabled"
+
+  - name: wikiDeBaseUrl
+    type: string
+    defaultValue: "https://de.wikipedia.org"
+    label:
+      de: "Wikipedia (deutsch) Base-URL"
+      en: "Wikipedia (German) base URL"
+    help:
+      de: "Die Sprache wird aus dem Host abgeleitet; nur bei Hosts wie
+           `commons.wikimedia.org` ist
+           `centauri.endpoint.wikipedia-de.language` per Raw-Setting nötig.
+           Das Protokoll verweigert eine Quelle ohne Base-URL, deshalb ist das
+           Feld vorbelegt statt optional."
+      en: "The language is derived from the host; only for hosts like
+           `commons.wikimedia.org` is
+           `centauri.endpoint.wikipedia-de.language` needed as a raw setting.
+           The protocol refuses a source without a base URL, which is why this
+           field is pre-filled rather than optional."
+    showIf:  "wikiDeEnabled"
+    writeIf: "wikiDeEnabled"
+    bindsTo:
+      key: "centauri.endpoint.wikipedia-de.baseUrl"
+
+  - name: wikiEnEnabled
+    type: boolean
+    defaultValue: "false"
+    label:
+      de: "Wikipedia (englisch) aktivieren"
+      en: "Enable Wikipedia (English)"
+    help:
+      de: "Zweite Wikipedia-Quelle, damit ein Feed zweisprachig werden kann."
+      en: "A second Wikipedia source, so a feed can become bilingual."
+    bindsTo:
+      key: "centauri.endpoint.wikipedia-en.enabled"
+
+  - name: wikiEnBaseUrl
+    type: string
+    defaultValue: "https://en.wikipedia.org"
+    label:
+      de: "Wikipedia (englisch) Base-URL"
+      en: "Wikipedia (English) base URL"
+    help:
+      de: "Vorbelegt; siehe den Hinweis bei der deutschen Quelle."
+      en: "Pre-filled; see the note on the German source."
+    showIf:  "wikiEnEnabled"
+    writeIf: "wikiEnEnabled"
+    bindsTo:
+      key: "centauri.endpoint.wikipedia-en.baseUrl"
+
+settings:
+
+  # Protocol pinning per endpoint — and this is what the toggles actually
+  # do. FeedSourceFactory skips an endpoint without `.protocol`, so
+  # deleting it (via writeIf) is what makes a disabled source disappear
+  # from the sources list. `.enabled` survives as the toggle state but has
+  # no effect once the endpoint is not instantiated at all.
+
+  - key: "centauri.endpoint.ode-main.protocol"
+    settingType: STRING
+    writeIf: "odeEnabled"
+    value: "ode"
+
+  - key: "centauri.endpoint.usgs.protocol"
+    settingType: STRING
+    writeIf: "usgsEnabled"
+    value: "usgs"
+
+  - key: "centauri.endpoint.wikipedia-de.protocol"
+    settingType: STRING
+    writeIf: "wikiDeEnabled"
+    value: "wikipedia"
+
+  - key: "centauri.endpoint.wikipedia-en.protocol"
+    settingType: STRING
+    writeIf: "wikiEnEnabled"
+    value: "wikipedia"

@@ -93,6 +93,29 @@ public class FeedSourceFactory {
         return null;
     }
 
+    /**
+     * Drop the cached sources of this project so the next {@link #assemble} reads
+     * the settings again.
+     *
+     * <p>Exists because the five-minute TTL is indistinguishable from a
+     * misconfiguration: an operator who has just written
+     * {@code centauri.endpoint.*} and sees an empty source list cannot tell
+     * whether they got the keys wrong or are simply early. A caller that can
+     * force the re-read turns that wait into a button.
+     */
+    public void evict(FeedScope scope) {
+        if (scope == null || StringUtils.isBlank(scope.projectId())) {
+            return;
+        }
+        List<FeedSourceInstance> evicted =
+                cache.asMap().remove(new ScopeKey(scope.tenantId(), scope.projectId()));
+        if (evicted != null) {
+            log.debug("Centauri: evicted {} source instance(s) for '{}/{}' (explicit refresh)",
+                    evicted.size(), scope.tenantId(), scope.projectId());
+            disposeAll(evicted);
+        }
+    }
+
     @EventListener
     public void onProjectStop(ProjectEnginesStopRequested event) {
         if (event == null || StringUtils.isBlank(event.tenantId())

@@ -12,8 +12,19 @@ function qs(params: Record<string, string>): string {
   return u.toString();
 }
 
-export async function listSources(projectId: string): Promise<FeedSourceView[]> {
-  return brainFetch<FeedSourceView[]>('GET', `addon/centauri/sources?${qs({ projectId })}`);
+/**
+ * The configured sources. `refresh` makes the server drop its five-minute cache
+ * first — needed right after somebody wrote the endpoint settings, where a stale
+ * empty list is indistinguishable from a wrong key.
+ */
+export async function listSources(
+  projectId: string,
+  refresh = false,
+): Promise<FeedSourceView[]> {
+  return brainFetch<FeedSourceView[]>(
+    'GET',
+    `addon/centauri/sources?${qs({ projectId, refresh: String(refresh) })}`,
+  );
 }
 
 export async function loadConfig(projectId: string, folder: string): Promise<FeedConfigView> {

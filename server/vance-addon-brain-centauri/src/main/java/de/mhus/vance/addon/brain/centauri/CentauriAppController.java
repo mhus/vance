@@ -78,9 +78,16 @@ public class CentauriAppController {
     @GetMapping("/brain/{tenant}/addon/centauri/sources")
     public List<FeedSourceView> sources(@PathVariable String tenant,
                                         @RequestParam String projectId,
+                                        @RequestParam(defaultValue = "false") boolean refresh,
                                         HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         FeedScope scope = scope(tenant, projectId, request);
+        if (refresh) {
+            // Settings just written are invisible until the factory's TTL expires,
+            // and that wait looks exactly like a wrong key. Let the caller say
+            // "read again" instead of guessing.
+            sourceFactory.evict(scope);
+        }
 
         List<FeedSourceView> out = new ArrayList<>();
         for (FeedSourceInstance instance : sourceFactory.assemble(scope)) {

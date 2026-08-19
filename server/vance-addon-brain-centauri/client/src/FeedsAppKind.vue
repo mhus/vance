@@ -70,6 +70,20 @@ async function reload(): Promise<void> {
   await restart();
 }
 
+/**
+ * Re-read the source list, optionally forcing the server past its cache. The
+ * force path exists because "no sources" and "your settings have not landed
+ * yet" look identical from here.
+ */
+async function reloadSources(force = false): Promise<void> {
+  error.value = null;
+  try {
+    sources.value = await listSources(props.document.projectId, force);
+  } catch (e) {
+    error.value = String(e);
+  }
+}
+
 /** Back to the top of the stream — after a configuration change or a refresh. */
 async function restart(): Promise<void> {
   items.value = [];
@@ -143,10 +157,28 @@ async function persist(): Promise<void> {
 function addStream(): void {
   if (!config.value) return;
   const first = sources.value[0];
+  const sourceId = first?.id ?? '';
   config.value = {
     ...config.value,
-    streams: [...config.value.streams, { source: first?.id ?? '', selector: '' }],
+    // Not '': the empty string is not one of the offered options, so the select
+    // would display the first selector while storing nothing — shown and saved
+    // would be different things.
+    streams: [...config.value.streams, { source: sourceId, selector: firstSelector(sourceId) }],
   };
+}
+
+/** The selector a source should start on — its first, or '' when it has none. */
+function firstSelector(sourceId: string): string {
+  return sources.value.find((s) => s.id === sourceId)?.selectors?.[0]?.value ?? '';
+}
+
+/**
+ * Switching the source invalidates the selector: `m4.5` means nothing to a
+ * wiki. Reset rather than carry it over.
+ */
+function changeSource(stream: { source: string; selector?: string }, sourceId: string): void {
+  stream.source = sourceId;
+  stream.selector = firstSelector(sourceId);
 }
 
 function removeStream(index: number): void {
@@ -306,11 +338,14 @@ function slug(title: string): string {
       <div v-if="config" class="flex flex-col gap-4">
         <VCard>
           <h3 class="mb-2 font-semibold">Streams</h3>
-          <VEmptyState
-            v-if="sources.length === 0"
-            headline="No sources configured"
-            body="Set centauri.endpoint.&lt;id&gt;.protocol and .baseUrl in the settings first."
-          />
+          <div v-if="sources.length === 0" class="flex flex-col items-center gap-2">
+            <VEmptyState
+              headline="No sources configured"
+              body="Set centauri.endpoint.&lt;id&gt;.protocol and .baseUrl in the settings first.
+                    Already done? Sources are cached for five minutes — reload them."
+            />
+            <VButton variant="ghost" @click="reloadSources(true)">Reload sources</VButton>
+          </div>
           <div v-else class="flex flex-col gap-2">
             <div
               v-for="(stream, index) in config.streams"
@@ -320,7 +355,7 @@ function slug(title: string): string {
               <VSelect
                 :model-value="stream.source"
                 :options="sources.map((s) => ({ value: s.id, label: s.displayName }))"
-                @update:model-value="(v: string | null) => (stream.source = v ?? '')"
+                @update:model-value="(v: string | null) => changeSource(stream, v ?? '')"
               />
               <VInput
                 v-if="isFreeform(stream.source)"

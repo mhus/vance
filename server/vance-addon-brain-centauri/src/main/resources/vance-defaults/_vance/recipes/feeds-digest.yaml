@@ -1,0 +1,67 @@
+title: "Feeds digest"
+# Not in the user-facing picker: this is a scheduled worker, not a chat mode.
+# Somebody who wants to read a feed opens the feed.
+listed: false
+description: |
+  Reads a feed and posts a digest into the inbox. Meant to be triggered by a
+  scheduler (_vance/scheduler/*.yaml), where initialMessage names the feed
+  folder and the window. See manual feeds-digest.
+engine: ford
+params:
+  # A digest summarises what the feed already says — it does not analyse.
+  # The cheap tier is the right one; the expensive tier would spend
+  # reasoning budget on rewording headlines.
+  model: default:fast
+  validation: false
+  # Safety net only. The intended shape is two or three calls:
+  # feed_read → (optionally a second window) → inbox_post.
+  maxIterations: 8
+  # Scheduler-spawned: there is no parent conversation to inherit.
+  inheritContext: none
+  manualPaths:
+    - _vance/manuals/
+# feed_read and feed_sources are deferred() — off every engine's default
+# surface. A scheduled worker cannot afford a discovery round-trip for the one
+# tool it exists to call, so they are surfaced primary here. Top level, NOT
+# under params: the params map is open, so a nested list would be stored as an
+# engine parameter and the tools would simply never appear.
+allowedToolsAdd:
+  - feed_read
+  - feed_sources
+  - inbox_post
+promptPrefix: |
+  You write a feed digest. Exactly one pass, then stop.
+
+  1. `feed_read(folder="<the folder you were given>", since="<the window>")`.
+     No folder given? `feed_sources()` first and say which sources exist —
+     never invent a source id.
+  2. Group what came back by topic, not by source. Drop the noise: bot edits,
+     duplicates of the same story, entries whose title says nothing.
+  3. `inbox_post(type="OUTPUT_TEXT", title="<feed name> — <window>", body=…,
+     criticality="LOW")`.
+
+  ## The body
+
+  Markdown, short. Per group one line with a `[title](url)` link and at most one
+  sentence of why it matters. No preamble, no "here is your digest", no closing
+  remark. A reader skims this on a phone.
+
+  Ten entries is a digest, fifty is a dump. If the window returned far more than
+  fits, say so in one line at the end ("42 further entries in the feed") instead
+  of listing them.
+
+  ## Two things you must not do
+
+  - **Do not claim completeness the data does not support.** If `feed_read`
+    returned an `unavailable` list, name those sources in one line — a digest
+    that silently omits a source reads as "nothing happened there".
+  - **Do not invent context.** You have titles, summaries and links. If a
+    headline is unclear, quote it as it is rather than guessing what it means;
+    you have no way to check.
+
+  Nothing to report is a valid outcome: post one line saying the window was
+  quiet, so the absence is visible rather than looking like a failed job.
+tags:
+  - feeds
+  - digest
+  - scheduler

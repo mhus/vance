@@ -10,7 +10,11 @@ recurring stream — rather than get one answer:
   configured in this project — **never invent one.** `feed_sources()` lists the
   ids and their selectors; call it before naming a source.
 - Read a feed with `feed_read(folder=…)` or `feed_read(streams=[…], since="-24h")`
-  — for digests and "what happened since…", not for searching.
+  — for digests and "what happened since…", not for searching. An empty result is
+  not proof that nothing happened, and `unavailable` streams belong in your answer.
+- Asked for a recurring digest ("jeden Morgen", "täglich"): that is the
+  `feeds-digest` recipe plus a scheduler document —
+  `manual_read('feeds-digest')` before you build it by hand.
 - You cannot *configure* a source. Asked how to add one, run
   `manual_read('feeds-sources')` and quote the keys from there.
 - A feed does not archive. Entries stay at the source until somebody clips one.

@@ -170,21 +170,47 @@ public class UrsaEventLoader {
 
         Set<String> methods = parseMethods(spec.get("methods"));
 
-        String tokenLiteral = null;
-        String tokenSettingKey = null;
+        // Auth is mandatory, and an open event must say so. Omitting the
+        // block used to mean "public", which made the unsafe case the
+        // silent one; now it is a load error naming the one-line fix.
         Object rawAuth = spec.get("auth");
-        if (rawAuth != null) {
-            if (!(rawAuth instanceof Map<?, ?> am)) {
-                throw new IllegalStateException("'auth' must be a map");
-            }
-            Map<String, Object> auth = (Map<String, Object>) am;
-            tokenLiteral = stringOrNull(auth.get("token"));
-            tokenSettingKey = stringOrNull(auth.get("tokenSetting"));
-            if (tokenLiteral != null && tokenSettingKey != null) {
-                throw new IllegalStateException(
-                        "'auth.token' and 'auth.tokenSetting' are mutually exclusive — set at most one");
-            }
+        if (rawAuth == null) {
+            throw new IllegalStateException(
+                    "missing 'auth' block — set 'auth.tokenSetting', 'auth.token', "
+                            + "or 'auth.public: true' to declare the event deliberately open");
         }
+        if (!(rawAuth instanceof Map<?, ?> am)) {
+            throw new IllegalStateException("'auth' must be a map");
+        }
+        Map<String, Object> auth = (Map<String, Object>) am;
+        String tokenLiteral = stringOrNull(auth.get("token"));
+        String tokenSettingKey = stringOrNull(auth.get("tokenSetting"));
+        boolean authPublic = auth.get("public") instanceof Boolean pub && pub;
+        int authCount = (tokenLiteral != null ? 1 : 0)
+                + (tokenSettingKey != null ? 1 : 0)
+                + (authPublic ? 1 : 0);
+        if (authCount > 1) {
+            throw new IllegalStateException(
+                    "'auth.token', 'auth.tokenSetting' and 'auth.public' are mutually "
+                            + "exclusive — set exactly one");
+        }
+        if (authCount == 0) {
+            throw new IllegalStateException(
+                    "'auth' block carries none of 'tokenSetting', 'token', 'public: true' "
+                            + "— set exactly one");
+        }
+
+        Boolean async = booleanOrNull(spec.get("async"), "async");
+        if (Boolean.FALSE.equals(async) && script == null) {
+            // Waiting for a spawn is unbounded: a think-process is
+            // lane-serialised and may block on user input, so there is no
+            // result to return and no error either. Rejecting here beats
+            // a request that hangs until some proxy gives up.
+            throw new IllegalStateException(
+                    "'async: false' is only supported for 'script:' events — a recipe or "
+                            + "workflow spawn is open-ended; poll its id instead");
+        }
+        Boolean outputToAgents = booleanOrNull(spec.get("outputToAgents"), "outputToAgents");
 
         Map<String, Object> params = new LinkedHashMap<>();
         Object rawParams = spec.get("params");
@@ -222,8 +248,11 @@ public class UrsaEventLoader {
                 Set.copyOf(methods),
                 tokenLiteral,
                 tokenSettingKey,
+                authPublic,
                 Map.copyOf(params),
                 runAs,
+                async,
+                outputToAgents,
                 tags);
     }
 
@@ -326,6 +355,16 @@ public class UrsaEventLoader {
 
     private static @Nullable String stringOrNull(@Nullable Object raw) {
         return raw instanceof String s && !s.isBlank() ? s : null;
+    }
+
+    /**
+     * Tri-state boolean: absent stays {@code null} so the caller can tell
+     * "not stated" from "stated false" and apply its own default.
+     */
+    private static @Nullable Boolean booleanOrNull(@Nullable Object raw, String fieldName) {
+        if (raw == null) return null;
+        if (raw instanceof Boolean b) return b;
+        throw new IllegalStateException("'" + fieldName + "' must be a boolean");
     }
 
     @SuppressWarnings("unchecked")

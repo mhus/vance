@@ -13,10 +13,14 @@ import de.mhus.vance.shared.ursaevents.ResolvedUrsaEvent;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.settings.SettingService;
+import jakarta.annotation.PreDestroy;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -63,6 +67,24 @@ public class UrsaEventService {
     private final UrsaEventLogService eventLogService;
 
     /**
+     * Runs {@code async: true} script events off the request thread.
+     *
+     * <p>Virtual threads: these tasks are dominated by whatever the script
+     * waits on (an LLM call, a document write), so a pool size would cap
+     * concurrency without saving anything. The script's own
+     * {@code timeoutSeconds} bounds each task.
+     */
+    private final ExecutorService asyncScriptExecutor = Executors.newThreadPerTaskExecutor(
+            Thread.ofVirtual().name("event-async-", 0).factory());
+
+    /**
+     * Cap on the output rendered into the per-trigger log document.
+     * A script may return arbitrarily much; the log is a diagnostic, not
+     * a data sink.
+     */
+    private static final int LOG_OUTPUT_MAX_CHARS = 2000;
+
+    /**
      * Outcome of a successful event trigger. For backwards-compat the
      * field names carry the workflow nomenclature but apply to any
      * trigger variant: {@code workflowName} is the workflow/recipe name
@@ -74,10 +96,19 @@ public class UrsaEventService {
      * matching {@link UrsaEventLogService} document. Callers (tools,
      * controller) can echo it back so the model / UI can read the
      * per-trigger log without listing the folder.
+     *
+     * <p>{@code output} carries what the action produced when it ran to
+     * completion — today that is a script's return value, mapped by
+     * {@code ScriptOutcomeMapper}. It is {@code null} for spawns and for
+     * {@code async: true} runs, where by definition nothing has been
+     * produced yet. Exactly one of {@code workflowRunId} and
+     * {@code output} is meaningful per trigger, mirroring
+     * {@code ActionResult.scheduled} vs {@code ActionResult.success}.
      */
     public record UrsaEventTriggerResult(
             String workflowName,
             @Nullable String workflowRunId,
+            @Nullable Map<String, Object> output,
             String correlationId,
             Instant firedAt) {}
 
@@ -111,6 +142,7 @@ public class UrsaEventService {
         String runAs = null;
         String targetName = null;
         String spawnedId = null;
+        String outputSummary = null;
         String errorMessage = null;
         boolean skipLog = false;
 
@@ -174,13 +206,22 @@ public class UrsaEventService {
                 }
             }
 
+            LogIdentity logIdentity = new LogIdentity(
+                    UrsaEventLogService.TriggerSource.PUBLIC, httpMethod, /*triggeredBy*/ null);
+            // An async script dispatch writes its own log when it finishes,
+            // with this same correlationId — writing here too would race it.
+            skipLog = asyncDispatch(event);
+
             UrsaEventTriggerResult result;
             try {
-                result = executeAction(tenantId, projectId, eventName, event, payload, correlationId, firedAt);
+                result = executeAction(tenantId, projectId, eventName, event, payload,
+                        correlationId, firedAt, logIdentity);
             } catch (ResponseStatusException ex) {
                 // executeAction already tagged the metric outcome; copy
                 // it into our log tracking so the document mirrors the
-                // metric vocab.
+                // metric vocab. The failure happened before dispatch, so
+                // this side owns the log again.
+                skipLog = false;
                 outcome = mapResponseStatusToOutcome(ex);
                 errorMessage = ex.getReason();
                 throw ex;
@@ -193,6 +234,7 @@ public class UrsaEventService {
             outcome = "success";
             targetName = result.workflowName();
             spawnedId = result.workflowRunId();
+            outputSummary = summariseOutput(result.output(), event.outputVisibleToAgents());
             return result;
         } finally {
             if (!skipLog) {
@@ -206,7 +248,7 @@ public class UrsaEventService {
                                 targetName, spawnedId, runAs,
                                 /*payloadContentType*/ null,
                                 /*payloadSizeBytes*/ -1,
-                                errorMessage));
+                                outputSummary, errorMessage));
             }
         }
     }
@@ -220,7 +262,7 @@ public class UrsaEventService {
     private UrsaEventTriggerResult executeAction(
             String tenantId, String projectId, String eventName,
             ResolvedUrsaEvent event, @Nullable Object payload,
-            String correlationId, Instant firedAt) {
+            String correlationId, Instant firedAt, LogIdentity logIdentity) {
 
         Map<String, Object> mergedParams = new LinkedHashMap<>(event.params());
         if (payload != null) {
@@ -277,6 +319,15 @@ public class UrsaEventService {
                     /*parentProcessId*/ null);
         }
 
+        if (asyncDispatch(event)) {
+            dispatchAsync(tenantId, projectId, eventName, action, context,
+                    correlationId, firedAt, logIdentity, event.effectiveRunAs(),
+                    event.outputVisibleToAgents());
+            return new UrsaEventTriggerResult(
+                    targetNameOf(action, eventName), /*spawnedId*/ null,
+                    /*output*/ null, correlationId, firedAt);
+        }
+
         ActionResult result;
         try {
             result = actionExecutorRegistry.execute(action, context, TriggerKind.EVENT);
@@ -297,18 +348,90 @@ public class UrsaEventService {
                             + (result.errorMessage() == null ? result.outcome().name() : result.errorMessage()));
         }
 
-        String targetName;
-        if (action instanceof TriggerAction.Recipe r) {
-            targetName = r.recipe();
-        } else if (action instanceof TriggerAction.Workflow w) {
-            targetName = w.workflow();
-        } else if (action instanceof TriggerAction.Script s) {
-            targetName = "script:" + s.path();
-        } else {
-            targetName = eventName;
-        }
-        return new UrsaEventTriggerResult(targetName, result.spawnedId(), correlationId, firedAt);
+        String targetName = targetNameOf(action, eventName);
+        return new UrsaEventTriggerResult(
+                targetName, result.spawnedId(), result.output(), correlationId, firedAt);
     }
+
+    private static String targetNameOf(TriggerAction action, String eventName) {
+        if (action instanceof TriggerAction.Recipe r) return r.recipe();
+        if (action instanceof TriggerAction.Workflow w) return w.workflow();
+        if (action instanceof TriggerAction.Script s) return "script:" + s.path();
+        return eventName;
+    }
+
+    /**
+     * {@code true} when this event is dispatched off-thread and therefore
+     * owns its own log write.
+     *
+     * <p>Only scripts qualify: a recipe or workflow spawn already returns
+     * immediately and its log is written by the caller's {@code finally}
+     * as before. Nothing about those changes.
+     */
+    static boolean asyncDispatch(ResolvedUrsaEvent event) {
+        return event.script() != null && event.resolvedAsync();
+    }
+
+    /**
+     * Runs a script event off-thread and writes the log when it finishes.
+     *
+     * <p>The caller returns immediately without an output and skips its own
+     * log write, so the single log document is written once, by this task,
+     * with the same correlationId — the {@code logPath} the caller was
+     * handed stays correct, it just materialises a moment later.
+     *
+     * <p>Safe to move off the request thread because everything the
+     * executor needs travels in its arguments: identity is in the
+     * {@link TriggerContext}, not in a thread-bound holder.
+     */
+    private void dispatchAsync(String tenantId, String projectId, String eventName,
+            TriggerAction action, TriggerContext context, String correlationId,
+            Instant firedAt, LogIdentity logIdentity, @Nullable String runAs,
+            boolean outputVisible) {
+
+        long startNanos = System.nanoTime();
+        asyncScriptExecutor.submit(() -> {
+            String outcome;
+            String errorMessage = null;
+            Map<String, Object> output = null;
+            try {
+                ActionResult result =
+                        actionExecutorRegistry.execute(action, context, TriggerKind.EVENT);
+                if (result.outcome().isFailure()) {
+                    outcome = "spawn_failed";
+                    errorMessage = result.errorMessage() == null
+                            ? result.outcome().name() : result.errorMessage();
+                } else {
+                    outcome = "success";
+                    output = result.output();
+                }
+            } catch (RuntimeException ex) {
+                outcome = "spawn_failed";
+                errorMessage = ex.toString();
+                log.warn("Async event '{}/{}/{}' failed: {}",
+                        tenantId, projectId, eventName, ex.toString());
+            }
+            // Deliberately no metric here: the dispatch was already counted
+            // as a success by the caller, and counting again would make the
+            // per-event totals mean two different things at once.
+            long durationMs = Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
+            eventLogService.record(correlationId,
+                    new UrsaEventLogService.TriggerOutcome(
+                            tenantId, projectId, eventName,
+                            logIdentity.source(), logIdentity.httpMethod(),
+                            logIdentity.triggeredBy(),
+                            firedAt, durationMs, outcome,
+                            targetNameOf(action, eventName), /*spawnedId*/ null, runAs,
+                            /*payloadContentType*/ null, /*payloadSizeBytes*/ -1,
+                            summariseOutput(output, outputVisible), errorMessage));
+        });
+    }
+
+    /** Which trigger surface a log entry belongs to. */
+    private record LogIdentity(
+            UrsaEventLogService.TriggerSource source,
+            @Nullable String httpMethod,
+            @Nullable String triggeredBy) {}
 
     /**
      * Admin/UI variant of {@link #trigger}: skips the bearer-token and
@@ -337,6 +460,7 @@ public class UrsaEventService {
         String runAs = null;
         String targetName = null;
         String spawnedId = null;
+        String outputSummary = null;
         String errorMessage = null;
         boolean skipLog = false;
 
@@ -360,11 +484,17 @@ public class UrsaEventService {
                         "Event '" + eventName + "' is disabled — flip enabled: true to trigger");
             }
 
+            LogIdentity logIdentity = new LogIdentity(
+                    UrsaEventLogService.TriggerSource.ADMIN, /*httpMethod*/ null, triggeredBy);
+            skipLog = asyncDispatch(event);
+
             UrsaEventTriggerResult result;
             try {
-                result = executeAction(tenantId, projectId, eventName, event, payload, correlationId, firedAt);
+                result = executeAction(tenantId, projectId, eventName, event, payload,
+                        correlationId, firedAt, logIdentity);
             } catch (ResponseStatusException ex) {
                 // Re-tag the metric outcome under the admin source.
+                skipLog = false;
                 countOutcomeAdmin(eventName, mapResponseStatusToOutcome(ex));
                 outcome = mapResponseStatusToOutcome(ex);
                 errorMessage = ex.getReason();
@@ -379,6 +509,15 @@ public class UrsaEventService {
             outcome = "success";
             targetName = result.workflowName();
             spawnedId = result.workflowRunId();
+            outputSummary = summariseOutput(result.output(), event.outputVisibleToAgents());
+            if (!event.outputVisibleToAgents()) {
+                // This is the surface that skips the bearer check — the
+                // caller never proved anything. Withholding happens here
+                // rather than in the tool so the admin REST test-fire is
+                // covered by the same rule.
+                return new UrsaEventTriggerResult(result.workflowName(), result.workflowRunId(),
+                        /*output*/ null, result.correlationId(), result.firedAt());
+            }
             return result;
         } finally {
             if (!skipLog) {
@@ -392,8 +531,48 @@ public class UrsaEventService {
                                 targetName, spawnedId, runAs,
                                 /*payloadContentType*/ null,
                                 /*payloadSizeBytes*/ -1,
-                                errorMessage));
+                                outputSummary, errorMessage));
             }
+        }
+    }
+
+    /**
+     * Renders an action's output for the log document, truncated.
+     *
+     * <p>Truncation is marked rather than silent — a log entry that looks
+     * complete but is not is worse than one that says where it stopped.
+     */
+    static @Nullable String summariseOutput(@Nullable Map<String, Object> output, boolean visible) {
+        if (output == null || output.isEmpty()) {
+            return null;
+        }
+        if (!visible) {
+            // The log document lives in the project's document layer, so
+            // its audience is every agent that can read documents there —
+            // not the caller who triggered it. Writing the output here
+            // while withholding it from event_fire would make that control
+            // decorative: the same agent would just read the log instead.
+            // Record that something was produced, not what.
+            return "[withheld — outputToAgents: false]";
+        }
+        String rendered = String.valueOf(output);
+        if (rendered.length() <= LOG_OUTPUT_MAX_CHARS) {
+            return rendered;
+        }
+        return rendered.substring(0, LOG_OUTPUT_MAX_CHARS)
+                + "… [truncated, " + rendered.length() + " chars total]";
+    }
+
+    @PreDestroy
+    void shutdown() {
+        asyncScriptExecutor.shutdown();
+        try {
+            if (!asyncScriptExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
+                asyncScriptExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            asyncScriptExecutor.shutdownNow();
         }
     }
 

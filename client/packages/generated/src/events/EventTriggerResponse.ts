@@ -7,4 +7,5 @@ export interface EventTriggerResponse {
   event: string;
   workflowName: string;
   workflowRunId: string;
+  output: Record<string, any>;
 }

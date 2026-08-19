@@ -42,6 +42,11 @@ import org.springframework.web.server.ResponseStatusException;
 @RequiredArgsConstructor
 public class UrsaEventFireTool implements Tool {
 
+    /**
+     * Cap on the output handed back to the model. See {@link #capOutput}.
+     */
+    private static final int OUTPUT_MAX_CHARS = 4000;
+
     private static final Map<String, Object> SCHEMA;
     static {
         Map<String, Object> props = new LinkedHashMap<>();
@@ -68,7 +73,12 @@ public class UrsaEventFireTool implements Tool {
                 + "bypassing the webhook bearer-token check. Returns "
                 + "correlationId + logPath so the run can be inspected via "
                 + "doc_read on the resulting _vance/logs/events/... "
-                + "document, plus targetName + spawnedId on success.";
+                + "document, plus targetName + spawnedId on success. "
+                + "A 'script:' event that is not configured async returns its "
+                + "result under 'output' — those events are usable as ordinary "
+                + "function calls. Spawns (recipe/workflow), async events, and "
+                + "events that set outputToAgents:false return no 'output'; "
+                + "do not retry waiting for one, read the log instead.";
     }
 
     @Override public boolean primary() { return false; }
@@ -102,12 +112,39 @@ public class UrsaEventFireTool implements Tool {
         // log writer used, so pathFor() lands on the same document
         // the service just wrote — no folder-listing round-trip needed.
         String logPath = UrsaEventLogService.pathFor(name, result.firedAt(), result.correlationId());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("correlationId", result.correlationId());
+        out.put("targetName", result.workflowName());
+        out.put("spawnedId", result.workflowRunId() == null ? "" : result.workflowRunId());
+        out.put("logPath", logPath);
+        if (result.output() != null && !result.output().isEmpty()) {
+            out.put("output", capOutput(result.output()));
+            out.put("note", "Event ran to completion; 'output' is its result.");
+        } else {
+            out.put("note", "Event fired without a result — it is a spawn, is configured "
+                    + "async: true, or withholds its output from agents. Read '" + logPath
+                    + "' via doc_read for the per-trigger log.");
+        }
+        return out;
+    }
+
+    /**
+     * Bounds what a script's return value may add to the model's context.
+     *
+     * <p>A script may return arbitrarily much and the result lands
+     * verbatim in the conversation. Truncation is marked so the model can
+     * tell a complete answer from a clipped one instead of reasoning over
+     * a silently halved string.
+     */
+    private static Map<String, Object> capOutput(Map<String, Object> output) {
+        String rendered = String.valueOf(output);
+        if (rendered.length() <= OUTPUT_MAX_CHARS) {
+            return output;
+        }
         return Map.of(
-                "correlationId", result.correlationId(),
-                "targetName", result.workflowName(),
-                "spawnedId", result.workflowRunId() == null ? "" : result.workflowRunId(),
-                "logPath", logPath,
-                "note", "Event fired. Read '" + logPath + "' via doc_read for the per-trigger log.");
+                "truncated", true,
+                "totalChars", rendered.length(),
+                "value", rendered.substring(0, OUTPUT_MAX_CHARS));
     }
 
     private static String stringOrThrow(Map<String, Object> params, String key) {

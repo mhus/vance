@@ -110,7 +110,11 @@ public class UrsaEventAdminController {
 
         UrsaEventService.UrsaEventTriggerResult result = eventService.triggerAdmin(
                 tenant, project, norm, payload, triggeredBy);
-        return new EventTriggerResponse(norm, result.workflowName(), result.workflowRunId());
+        // `result.output()` is already withheld by triggerAdmin when the
+        // event sets outputToAgents:false — this surface skips the bearer
+        // check too, so it falls under the same rule.
+        return new EventTriggerResponse(
+                norm, result.workflowName(), result.workflowRunId(), result.output());
     }
 
     /**

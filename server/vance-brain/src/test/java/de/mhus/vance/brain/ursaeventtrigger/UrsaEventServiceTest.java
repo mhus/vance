@@ -49,6 +49,7 @@ class UrsaEventServiceTest {
     private final ObjectProvider<MagratheaWorkflowService> workflowProvider = mock(ObjectProvider.class);
     private de.mhus.vance.brain.action.ActionExecutorRegistry actionExecutorRegistry;
     private de.mhus.vance.brain.ursascheduler.SystemSessionResolver systemSessionResolver;
+    private UrsaEventLogService eventLogService;
     private UrsaEventService service;
 
     @BeforeEach
@@ -80,10 +81,130 @@ class UrsaEventServiceTest {
         // UrsaEventLogService is a thin diagnostics writer — mock it
         // so the existing assertions stay focussed on trigger
         // semantics and don't depend on a real DocumentService wiring.
-        UrsaEventLogService eventLogService = mock(UrsaEventLogService.class);
+        eventLogService = mock(UrsaEventLogService.class);
         service = new UrsaEventService(
                 eventLoader, settingService, metricService, workflowProvider,
                 actionExecutorRegistry, systemSessionResolver, eventLogService);
+    }
+
+    // ─── synchronous output ─────────────────────────────────────────────
+
+    /** Makes every script action return {@code value}. */
+    private void scriptReturns(Object value) {
+        when(actionExecutorRegistry.execute(any(), any(), any())).thenAnswer(inv -> {
+            de.mhus.vance.api.action.TriggerAction action = inv.getArgument(0);
+            if (action instanceof de.mhus.vance.api.action.TriggerAction.Script) {
+                return de.mhus.vance.brain.action.ActionResult.success(Map.of("value", value));
+            }
+            return de.mhus.vance.brain.action.ActionResult.scheduled("run-x");
+        });
+    }
+
+    @Test
+    void script_event_returns_its_result_to_the_caller() {
+        // The value was always computed and mapped into ActionResult.output
+        // — it just never left the service.
+        when(eventLoader.load(TENANT, PROJECT, EVENT))
+                .thenReturn(Optional.of(event(b -> b.script("_vance/scripts/x.js"))));
+        scriptReturns("Der Rat hat zugestimmt.");
+
+        UrsaEventService.UrsaEventTriggerResult r = service.trigger(
+                TENANT, PROJECT, EVENT, "POST", null, null);
+
+        assertThat(r.output()).containsEntry("value", "Der Rat hat zugestimmt.");
+        assertThat(r.workflowRunId()).isNull();
+        assertThat(r.workflowName()).isEqualTo("script:_vance/scripts/x.js");
+    }
+
+    @Test
+    void spawn_event_still_returns_an_id_and_no_output() {
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(event(b -> {})));
+        when(workflowService.start(any(), any(), any(), any(), any())).thenReturn("run-123");
+
+        UrsaEventService.UrsaEventTriggerResult r = service.trigger(
+                TENANT, PROJECT, EVENT, "POST", null, null);
+
+        assertThat(r.workflowRunId()).isEqualTo("run-123");
+        assertThat(r.output()).isNull();
+    }
+
+    @Test
+    void async_script_event_returns_immediately_without_output() {
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(
+                event(b -> b.script("_vance/scripts/slow.js").async(true))));
+        scriptReturns("done");
+
+        UrsaEventService.UrsaEventTriggerResult r = service.trigger(
+                TENANT, PROJECT, EVENT, "POST", null, null);
+
+        assertThat(r.output()).isNull();
+        // The async task owns the single log write — same correlationId,
+        // so the logPath the caller was handed still resolves.
+        verify(eventLogService, org.mockito.Mockito.timeout(5000))
+                .record(eq(r.correlationId()), any());
+    }
+
+    // ─── output visibility on the bypass surface ────────────────────────
+
+    @Test
+    void agent_trigger_withholds_output_when_the_event_crosses_identity() {
+        // runAs set, outputToAgents unstated: event_fire skipped the bearer
+        // check, so it does not get the result of privileged work.
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(
+                event(b -> b.script("_vance/scripts/x.js").runAs("ci-bot"))));
+        scriptReturns("secret");
+
+        UrsaEventService.UrsaEventTriggerResult r =
+                service.triggerAdmin(TENANT, PROJECT, EVENT, null, "agent:marvin");
+
+        assertThat(r.output()).isNull();
+    }
+
+    @Test
+    void agent_trigger_gets_output_when_the_event_opts_in() {
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(
+                event(b -> b.script("_vance/scripts/x.js").runAs("ci-bot").outputToAgents(true))));
+        scriptReturns("shared");
+
+        UrsaEventService.UrsaEventTriggerResult r =
+                service.triggerAdmin(TENANT, PROJECT, EVENT, null, "agent:marvin");
+
+        assertThat(r.output()).containsEntry("value", "shared");
+    }
+
+    @Test
+    void authenticated_webhook_gets_output_even_when_agents_may_not() {
+        // The token holder proved authorisation; the restriction is about
+        // the surface that skips that check, not about runAs as such.
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(
+                event(b -> b.script("_vance/scripts/x.js").runAs("ci-bot")
+                        .tokenLiteral("s3cret"))));
+        scriptReturns("payload");
+
+        UrsaEventService.UrsaEventTriggerResult r = service.trigger(
+                TENANT, PROJECT, EVENT, "POST", "s3cret", null);
+
+        assertThat(r.output()).containsEntry("value", "payload");
+    }
+
+    @Test
+    void withheld_output_is_not_leaked_through_the_log_document() {
+        // The log lives in the project's document layer, so an agent could
+        // read it. Recording the value there would make the control
+        // decorative.
+        assertThat(UrsaEventService.summariseOutput(Map.of("value", "secret"), false))
+                .isEqualTo("[withheld — outputToAgents: false]");
+        assertThat(UrsaEventService.summariseOutput(Map.of("value", "secret"), true))
+                .contains("secret");
+    }
+
+    @Test
+    void logged_output_is_truncated_and_says_so() {
+        String big = "x".repeat(5000);
+
+        String summary = UrsaEventService.summariseOutput(Map.of("value", big), true);
+
+        assertThat(summary).contains("truncated").hasSizeLessThan(3000);
     }
 
     // ─── happy path ─────────────────────────────────────────────────────
@@ -282,24 +403,40 @@ class UrsaEventServiceTest {
         Set<String> methods = Set.of();
         String tokenLiteral = null;
         String tokenSettingKey = null;
+        boolean authPublic = true;
         Map<String, Object> params = new LinkedHashMap<>();
         String runAs = "ci-bot";
+        Boolean async = null;
+        Boolean outputToAgents = null;
         List<String> tags = List.of();
+        de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler.ScriptSpec script = null;
+
+        /** Switches the event from a workflow spawn to a script run. */
+        EventBuilder script(String path) {
+            this.script = new de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler.ScriptSpec(
+                    de.mhus.vance.api.action.ScriptSource.DOCUMENT, null, path, null);
+            this.workflow = null;
+            return this;
+        }
+
+        EventBuilder async(Boolean v) { this.async = v; return this; }
 
         EventBuilder enabled(boolean v) { this.enabled = v; return this; }
         EventBuilder methods(Set<String> v) { this.methods = v; return this; }
-        EventBuilder tokenLiteral(String v) { this.tokenLiteral = v; return this; }
-        EventBuilder tokenSettingKey(String v) { this.tokenSettingKey = v; return this; }
+        EventBuilder tokenLiteral(String v) { this.tokenLiteral = v; this.authPublic = false; return this; }
+        EventBuilder tokenSettingKey(String v) { this.tokenSettingKey = v; this.authPublic = false; return this; }
         EventBuilder params(Map<String, Object> v) { this.params = new LinkedHashMap<>(v); return this; }
         EventBuilder runAs(String v) { this.runAs = v; return this; }
         EventBuilder createdBy(String v) { this.createdBy = v; return this; }
+        EventBuilder outputToAgents(Boolean v) { this.outputToAgents = v; return this; }
 
         ResolvedUrsaEvent build() {
             return new ResolvedUrsaEvent(name, yaml, source, documentId, createdBy,
                     description,
-                    /*recipe*/ null, workflow, /*script*/ null, /*initialMessage*/ null,
+                    /*recipe*/ null, workflow, script, /*initialMessage*/ null,
                     enabled, methods,
-                    tokenLiteral, tokenSettingKey, params, runAs, tags);
+                    tokenLiteral, tokenSettingKey, authPublic,
+                    params, runAs, async, outputToAgents, tags);
         }
     }
 }

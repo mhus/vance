@@ -128,6 +128,8 @@ public class UrsaEventLogService {
      * @param payloadContentType  request {@code Content-Type} (public source);
      *                            {@code null} for admin or when missing
      * @param payloadSizeBytes    payload byte length when known; {@code -1} when not measured
+     * @param output              rendered action output, already truncated by the caller;
+     *                            {@code null} for spawns, which produce none
      * @param errorMessage        human-readable failure message; {@code null} on success
      */
     public record TriggerOutcome(
@@ -145,6 +147,7 @@ public class UrsaEventLogService {
             @Nullable String runAs,
             @Nullable String payloadContentType,
             long payloadSizeBytes,
+            @Nullable String output,
             @Nullable String errorMessage) {
 
         /**
@@ -271,6 +274,10 @@ public class UrsaEventLogService {
             sb.append("- **Payload:** ").append(out.payloadSizeBytes()).append(" bytes");
             if (out.payloadContentType() != null) sb.append(" (").append(out.payloadContentType()).append(')');
             sb.append('\n');
+        }
+
+        if (out.output() != null) {
+            sb.append("\n## Output\n\n```\n").append(out.output()).append("\n```\n");
         }
 
         if (out.errorMessage() != null) {

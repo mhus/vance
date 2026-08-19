@@ -54,7 +54,8 @@ public class UrsaEventController {
         UrsaEventService.UrsaEventTriggerResult result = eventService.trigger(
                 tenant, project, event,
                 "GET", bearer, /*payload*/ null);
-        return new EventTriggerResponse(event, result.workflowName(), result.workflowRunId());
+        return new EventTriggerResponse(
+                event, result.workflowName(), result.workflowRunId(), result.output());
     }
 
     @PostMapping("/brain/{tenant}/event/{project}/{event}")
@@ -68,7 +69,8 @@ public class UrsaEventController {
         UrsaEventService.UrsaEventTriggerResult result = eventService.trigger(
                 tenant, project, event,
                 "POST", bearer, payload);
-        return new EventTriggerResponse(event, result.workflowName(), result.workflowRunId());
+        return new EventTriggerResponse(
+                event, result.workflowName(), result.workflowRunId(), result.output());
     }
 
     /**

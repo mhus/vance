@@ -181,10 +181,16 @@ public class SearchProviderFactory {
             }
 
             try {
+                // Scope goes along because this cache is keyed on it anyway. A
+                // protocol that has to call out before any request arrives —
+                // one fetching a remote capability declaration — has nowhere
+                // else to learn where it lives. Project scope only, for the
+                // same reason the settings above are read that way.
                 ProviderInstanceConfig cfg = new ProviderInstanceConfig(
                         endpointId, protocolId,
                         baseUrl == null ? "" : baseUrl,
-                        credentialKey, extras);
+                        credentialKey, extras,
+                        scope.tenantId(), scope.projectId());
                 SearchProviderInstance instance = protocol.instantiate(cfg);
                 result.add(instance);
             } catch (RuntimeException e) {

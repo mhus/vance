@@ -314,6 +314,99 @@ fields:
     bindsTo:
       key: "research.endpoint.hn-algolia.baseUrl"
 
+  # ─── Ode — eine eigene Anwendung als Suchquelle ──────────────────
+
+  # Anders als die sieben oben ist der Default hier `false`, und das ist
+  # bewusst: eine Ode-Quelle hat keine sinnvolle Standard-URL. Ein
+  # aktivierter Endpoint ohne Base-URL wird von der Factory bei jedem
+  # Assemble abgelehnt und produziert eine Warn-Zeile, die nach einem
+  # Fehler aussieht statt nach "nicht konfiguriert".
+  #
+  # Nur ein Endpoint im Formular. Weitere Ode-Quellen laufen ueber
+  # Raw-Settings (research.endpoint.<eigene-id>.protocol = ode) — die
+  # Anzahl kann ein Formular mit festen Keys nicht abbilden.
+
+  - name: odeEnabled
+    type: boolean
+    defaultValue: "false"
+    label:
+      de: "Eigene Suchquelle (Ode) aktivieren"
+      en: "Enable own search source (Ode)"
+    help:
+      de: "Bindet eine Fremdanwendung als Such-Provider ein, die
+           `vance-ode-zarniwoop` einbettet — Firmen-Archiv, News-Index,
+           Fach-Katalog. **Was dort gesucht werden kann, deklariert der
+           Dienst selbst** (Modalitaeten, Domains, Tiers) und nicht diese
+           Einstellung; Vancetope fragt das beim Endpoint ab. Voraussetzung
+           ist eine erreichbare Base-URL — ohne sie ist der Endpoint nutzlos."
+      en: "Registers a foreign application that embeds `vance-ode-zarniwoop`
+           as a search provider — a company archive, a news index, a domain
+           catalogue. **What can be searched there is declared by that
+           service** (modalities, domains, tiers), not by this setting;
+           Vancetope reads it from the endpoint. A reachable base URL is
+           required — without one the endpoint is useless."
+    bindsTo:
+      key: "research.endpoint.ode-search.enabled"
+
+  - name: odeBaseUrl
+    type: string
+    label:
+      de: "Ode Base-URL"
+      en: "Ode base URL"
+    help:
+      de: "Vollstaendige URL des Such-Endpoints der Fremdanwendung, also
+           inklusive Pfad — z.B. `https://news.example.com/ode/search`.
+           Standardpfad des Moduls ist `/ode/search`; wenn die Anwendung
+           `vance.ode.zarniwoop.path` geaendert hat, muss hier der
+           geaenderte Pfad stehen. Vancetope haengt `/capabilities` bzw.
+           `/search` selbst an."
+      en: "Full URL of the foreign application's search endpoint, path
+           included — e.g. `https://news.example.com/ode/search`. The
+           module's default path is `/ode/search`; if the application
+           changed `vance.ode.zarniwoop.path`, put the changed path here.
+           Vancetope appends `/capabilities` and `/search` itself."
+    showIf:  "odeEnabled"
+    writeIf: "odeEnabled"
+    bindsTo:
+      key: "research.endpoint.ode-search.baseUrl"
+
+  - name: odeApiKey
+    type: password
+    label:
+      de: "Ode Shared Secret (optional)"
+      en: "Ode shared secret (optional)"
+    help:
+      de: "Wird als `Authorization: Bearer <key>` gesendet und muss dem
+           `vance.ode.zarniwoop.api-key` der Fremdanwendung entsprechen.
+           Leer lassen, wenn der Endpoint offen ist oder bereits durch etwas
+           davor geschuetzt wird. Leer lassen behaelt auch einen bereits
+           gespeicherten Key."
+      en: "Sent as `Authorization: Bearer <key>` and has to match the foreign
+           application's `vance.ode.zarniwoop.api-key`. Leave empty if the
+           endpoint is open or already guarded by something in front of it.
+           Leaving it empty also keeps an already stored key."
+    showIf:  "odeEnabled"
+    writeIf: "odeEnabled"
+    bindsTo:
+      key: "research.endpoint.ode-search.apiKey"
+
+  - name: odeCapsTtlSeconds
+    type: string
+    label:
+      de: "Ode Capabilities-Cache in Sekunden (optional)"
+      en: "Ode capabilities cache in seconds (optional)"
+    help:
+      de: "Leer = 1800 (30 Minuten). `0` liest die Deklaration bei jedem
+           Zugriff neu — sinnvoll beim Einrichten, weil ein Cache sonst nicht
+           von einer Fehlkonfiguration zu unterscheiden ist."
+      en: "Empty = 1800 (30 minutes). `0` re-reads the declaration on every
+           access — useful while setting an endpoint up, where a cache is
+           otherwise indistinguishable from a misconfiguration."
+    showIf:  "odeEnabled"
+    writeIf: "odeEnabled"
+    bindsTo:
+      key: "research.endpoint.ode-search.capsTtlSeconds"
+
 settings:
 
   # Protocol pinning per endpoint. Without `.protocol` the
@@ -357,3 +450,8 @@ settings:
     settingType: STRING
     writeIf: "hnEnabled"
     value: "hackernews"
+
+  - key: "research.endpoint.ode-search.protocol"
+    settingType: STRING
+    writeIf: "odeEnabled"
+    value: "ode"

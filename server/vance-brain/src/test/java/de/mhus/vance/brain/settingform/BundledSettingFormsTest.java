@@ -156,7 +156,11 @@ class BundledSettingFormsTest {
                         "arxivEnabled", "arxivBaseUrl",
                         "pubmedEnabled", "pubmedContactEmail", "pubmedApiKey", "pubmedBaseUrl",
                         "openlibEnabled", "openlibBaseUrl",
-                        "hnEnabled", "hnBaseUrl");
+                        "hnEnabled", "hnBaseUrl",
+                        // The one endpoint whose default is `false`: an Ode
+                        // source has no sensible default URL, and enabling it
+                        // without one only produces a warn line per assemble.
+                        "odeEnabled", "odeBaseUrl", "odeApiKey", "odeCapsTtlSeconds");
 
         // Each enabled-gated endpoint pins its protocol via writeIf.
         // Without the protocol setting SearchProviderFactory skips the
@@ -170,7 +174,8 @@ class BundledSettingFormsTest {
                         "research.endpoint.arxiv.protocol",
                         "research.endpoint.pubmed.protocol",
                         "research.endpoint.openlib.protocol",
-                        "research.endpoint.hn-algolia.protocol");
+                        "research.endpoint.hn-algolia.protocol",
+                        "research.endpoint.ode-search.protocol");
 
         // Tenant-wide form must remain visible in every project context —
         // including system projects (_tenant, _user_*) — so the operator

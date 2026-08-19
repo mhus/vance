@@ -219,6 +219,14 @@ Operators can override defaults / fallbacks in any project via
 `research.default.<modality>` and `research.fallback.<modality>`
 settings. Use `research_providers` to list the inventory live.
 
+**The list is not fixed.** A user's own system — a company archive, an
+internal news index, a domain catalogue — can be registered as a
+provider under the `ode` protocol, and then it answers `research_search`
+like anything above. Before saying that something cannot be searched, or
+that a modality has no provider: `manual_read('ode-search-source')`. It
+covers what the operator has to configure and why you cannot do it
+yourself.
+
 ## Decision shortcut
 
 | User signal | Tool |

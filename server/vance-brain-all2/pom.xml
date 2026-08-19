@@ -102,6 +102,12 @@
         </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-addon-brain-centauri</artifactId>
+            <version>${project.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-brain-finance</artifactId>
             <version>${project.version}</version>
             <scope>runtime</scope>

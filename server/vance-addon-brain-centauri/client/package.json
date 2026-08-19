@@ -1,0 +1,37 @@
+{
+  "name": "@vance-addon/centauri",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Client surface of the Feeds addon. Registers the application:feeds app kind — an endless scroll over mixed foreign streams plus the configuration form that says which streams and which filter.",
+  "license": "SEE LICENSE IN ../../../../client/LICENSE.txt",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "files": ["src", "dist"],
+  "scripts": {
+    "build": "vue-tsc -b && vite build",
+    "dev": "vite",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@vance/components": "workspace:*",
+    "@vance/kind-registry": "workspace:*",
+    "@vance/shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@module-federation/vite": "^1.20.5",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "vite": "^8.2.1",
+    "vue": "^3.5.41",
+    "vue-tsc": "^3.3.9"
+  }
+}

@@ -37,7 +37,7 @@ section. Everything below is what it writes, for anyone configuring it by hand:
 |---|---|---|
 | `research.endpoint.<id>.protocol` | yes | literally `ode` |
 | `research.endpoint.<id>.baseUrl` | yes | full URL including path, e.g. `https://news.example.com/ode/search` |
-| `research.endpoint.<id>.apiKey` | no | shared secret, sent as `Authorization: Bearer <key>`; must match the application's `vance.ode.zarniwoop.api-key` |
+| `research.endpoint.<id>.apiKey` | no | bearer token, sent as `Authorization: Bearer <key>`. What it has to match is the far end's business: either its static `vance.ode.zarniwoop.api-key`, or a token its own `OdeAuthService` issued |
 | `research.endpoint.<id>.enabled` | no | absent counts as enabled |
 | `research.endpoint.<id>.capsTtlSeconds` | no | how long the declaration is cached; default 1800, `0` while setting up |
 

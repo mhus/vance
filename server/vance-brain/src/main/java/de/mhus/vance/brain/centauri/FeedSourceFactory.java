@@ -150,10 +150,17 @@ public class FeedSourceFactory {
             }
 
             try {
+                String credentialKey = CentauriSettings.endpointApiKey(endpointId);
                 FeedInstanceConfig cfg = new FeedInstanceConfig(
                         endpointId, protocolId,
                         baseUrl == null ? "" : baseUrl,
-                        CentauriSettings.endpointApiKey(endpointId), extras);
+                        credentialKey,
+                        // Closes over this project's scope — the instance is cached
+                        // per (tenant, project) anyway — and reads on every call, so
+                        // a rotated key takes effect without waiting for the TTL.
+                        () -> settings.getDecryptedPasswordCascade(
+                                scope.tenantId(), scope.projectId(), null, credentialKey),
+                        extras);
                 result.add(protocol.instantiate(cfg));
             } catch (RuntimeException e) {
                 log.warn("Centauri: protocol '{}' refused to instantiate endpoint '{}': {}",

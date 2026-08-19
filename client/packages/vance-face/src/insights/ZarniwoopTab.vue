@@ -17,8 +17,9 @@ watch(
   { immediate: true },
 );
 
+/** Forces the server past its provider cache — see useZarniwoopInsights.load. */
 function reload(): void {
-  if (props.projectId) state.load(props.projectId);
+  if (props.projectId) state.load(props.projectId, true);
 }
 
 async function toggleInstance(inst: ZarniwoopInsightsDto): Promise<void> {
@@ -107,7 +108,7 @@ const now = Date.now();
     <template v-else-if="state.instances.value.length === 0">
       <VEmptyState
         headline="No search providers configured"
-        body="This project has no research.endpoint.* entries. Add one in the settings editor — e.g. research.endpoint.serper-main.protocol = serper."
+        body="This project has no research.endpoint.* entries. Add one in the settings editor — e.g. research.endpoint.serper-main.protocol = serper. Just added one? Providers are cached for five minutes; Reload reads them again."
       >
         <template #action>
           <VButton variant="secondary" size="sm" @click="reload" :disabled="state.loading.value">

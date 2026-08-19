@@ -691,9 +691,13 @@ public class InsightsAdminController {
     public List<ZarniwoopInsightsDto> listZarniwoopInstances(
             @PathVariable("tenant") String tenant,
             @PathVariable("project") String project,
+            @RequestParam(name = "refresh", defaultValue = "false") boolean refresh,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
-        return zarniwoopInsightsService.listInstances(tenant, project);
+        // Without this the tab's Reload button re-issues the same request into
+        // the same five-minute factory cache — the operator sees no change and
+        // suspects their settings.
+        return zarniwoopInsightsService.listInstances(tenant, project, refresh);
     }
 
     /**

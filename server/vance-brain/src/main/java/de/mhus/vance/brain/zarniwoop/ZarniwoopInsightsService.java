@@ -40,6 +40,24 @@ public class ZarniwoopInsightsService {
     private final ZarniwoopGateService gate;
 
     public List<ZarniwoopInsightsDto> listInstances(String tenantId, String projectId) {
+        return listInstances(tenantId, projectId, /* refresh */ false);
+    }
+
+    /**
+     * The provider instances of a project. With {@code refresh} the factory
+     * cache is dropped first, which is what an operator needs right after
+     * writing {@code research.endpoint.*} — until then the list is up to five
+     * minutes stale and looks exactly like a wrong setting key.
+     */
+    public List<ZarniwoopInsightsDto> listInstances(
+            String tenantId, String projectId, boolean refresh) {
+        if (refresh) {
+            factory.evict(new SearchScope(tenantId, projectId, null, null));
+        }
+        return assembleInstances(tenantId, projectId);
+    }
+
+    private List<ZarniwoopInsightsDto> assembleInstances(String tenantId, String projectId) {
         SearchScope scope = new SearchScope(tenantId, projectId, null, null);
         List<SearchProviderInstance> instances;
         try {

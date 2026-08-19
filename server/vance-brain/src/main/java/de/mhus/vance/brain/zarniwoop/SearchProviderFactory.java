@@ -85,6 +85,30 @@ public class SearchProviderFactory {
         return cache.get(key, k -> build(scope));
     }
 
+    /**
+     * Drop the cached instances of this project so the next {@link #assemble}
+     * reads the {@code research.endpoint.*} settings again.
+     *
+     * <p>Exists because the five-minute TTL is indistinguishable from a
+     * misconfiguration: an operator who has just written an endpoint and sees an
+     * empty provider list cannot tell whether they got a key wrong or are
+     * simply early. The insights tab already offered a "Reload" button that
+     * re-issued the same request into the same cache — a button that promises a
+     * re-read and cannot deliver one is worse than none.
+     */
+    public void evict(SearchScope scope) {
+        if (scope == null || StringUtils.isBlank(scope.projectId())) {
+            return;
+        }
+        List<SearchProviderInstance> evicted =
+                cache.asMap().remove(new ScopeKey(scope.tenantId(), scope.projectId()));
+        if (evicted != null) {
+            log.debug("Zarniwoop: evicted {} provider instance(s) for '{}/{}' (explicit refresh)",
+                    evicted.size(), scope.tenantId(), scope.projectId());
+            disposeAll(evicted);
+        }
+    }
+
     /** Evict the instances for the suspended project and dispose them. */
     @EventListener
     public void onProjectStop(ProjectEnginesStopRequested event) {

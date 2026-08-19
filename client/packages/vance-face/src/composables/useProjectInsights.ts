@@ -95,7 +95,7 @@ export interface UseZarniwoopInsights {
   instances: Ref<ZarniwoopInsightsDto[]>;
   loading: Ref<boolean>;
   error: Ref<string | null>;
-  load: (projectId: string) => Promise<void>;
+  load: (projectId: string, refresh?: boolean) => Promise<void>;
   clear: () => void;
   setOverride: (projectId: string, instanceId: string, enabled: boolean) => Promise<void>;
   clearOverride: (projectId: string, instanceId: string) => Promise<void>;
@@ -106,13 +106,20 @@ export function useZarniwoopInsights(): UseZarniwoopInsights {
   const loading = ref(false);
   const error = ref<string | null>(null);
 
-  async function load(projectId: string): Promise<void> {
+  /**
+   * `refresh` makes the server drop its provider cache before assembling. The
+   * plain load must not do that — opening a tab should not tear down every
+   * provider's HTTP client — but the Reload button has to, or it re-reads the
+   * same five-minute-old list and looks broken.
+   */
+  async function load(projectId: string, refresh = false): Promise<void> {
     loading.value = true;
     error.value = null;
     try {
       instances.value = await brainFetch<ZarniwoopInsightsDto[]>(
         'GET',
-        `admin/projects/${encodeURIComponent(projectId)}/insights/zarniwoop`,
+        `admin/projects/${encodeURIComponent(projectId)}/insights/zarniwoop`
+          + `?refresh=${refresh ? 'true' : 'false'}`,
       );
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load search providers.';

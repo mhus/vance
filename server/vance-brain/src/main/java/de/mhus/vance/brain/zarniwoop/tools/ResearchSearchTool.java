@@ -1,6 +1,5 @@
 package de.mhus.vance.brain.zarniwoop.tools;
 
-import de.mhus.vance.brain.prompt.UntrustedContent;
 import de.mhus.vance.brain.zarniwoop.ZarniwoopException;
 import de.mhus.vance.brain.zarniwoop.ZarniwoopService;
 import de.mhus.vance.toolpack.Tool;
@@ -71,7 +70,13 @@ public class ResearchSearchTool implements Tool {
     public String description() {
         return "Search the web (and other configured sources) for "
                 + "information about a topic. Returns ranked hits with "
-                + "title, URL and snippet. Default modality is 'web' — "
+                + "title, URL and snippet; where the source ships its own "
+                + "text (paper abstract, encyclopedia extract) the hit also "
+                + "carries 'body', shortened to about "
+                + SearchHitRows.MAX_BODY_CHARS + " characters and ending in "
+                + "'" + SearchHitRows.ELLIPSIS + "' when it was cut — read "
+                + "the URL rather than quoting a truncated body as complete. "
+                + "Default modality is 'web' — "
                 + "set 'modality' to image / video / pdf / news / "
                 + "academic / book / encyclopedia / internal_doc when "
                 + "you specifically want that kind of result. For "
@@ -179,31 +184,10 @@ public class ResearchSearchTool implements Tool {
 
         List<Map<String, Object>> hits = new ArrayList<>(result.hits().size());
         for (SearchHit hit : result.hits()) {
-            hits.add(shapeHit(hit));
+            hits.add(SearchHitRows.shape(hit));
         }
         out.put("results", hits);
         return out;
-    }
-
-    private static Map<String, Object> shapeHit(SearchHit hit) {
-        Map<String, Object> row = new LinkedHashMap<>();
-        // Title/snippet/source are untrusted external content — collapse
-        // newlines so they cannot inject structure when an engine renders
-        // the hit into a templated prompt (code-review F3).
-        row.put("title", UntrustedContent.collapseWhitespace(hit.title()));
-        row.put("url", hit.url());
-        if (!StringUtils.isBlank(hit.snippet())) {
-            row.put("snippet", UntrustedContent.collapseWhitespace(hit.snippet()));
-        }
-        if (!StringUtils.isBlank(hit.source())) {
-            row.put("source", UntrustedContent.collapseWhitespace(hit.source()));
-        }
-        if (hit.extras() != null && !hit.extras().isEmpty()) {
-            // Inline well-known extras directly; never wrap them in a sub-map
-            // so the LLM sees them as first-class fields per modality.
-            row.putAll(hit.extras());
-        }
-        return row;
     }
 
     private static List<String> buildModalityEnum() {

@@ -91,7 +91,9 @@ public class ResearchSearchExpertTool implements Tool {
                 + "domain affinity. The 'instance' parameter overrides "
                 + "the normal default/fallback cascade. Other filters "
                 + "are forwarded to the protocol — protocols that "
-                + "don't understand a filter ignore it silently.";
+                + "don't understand a filter ignore it silently. Hits "
+                + "carry the same fields as research_search, including a "
+                + "shortened 'body' where the source ships its own text.";
     }
 
     @Override
@@ -189,13 +191,7 @@ public class ResearchSearchExpertTool implements Tool {
 
         List<Map<String, Object>> rows = new ArrayList<>();
         for (SearchHit hit : result.hits()) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("title", hit.title());
-            row.put("url", hit.url());
-            if (!StringUtils.isBlank(hit.snippet())) row.put("snippet", hit.snippet());
-            if (!StringUtils.isBlank(hit.source())) row.put("source", hit.source());
-            if (hit.extras() != null) row.putAll(hit.extras());
-            rows.add(row);
+            rows.add(SearchHitRows.shape(hit));
         }
         out.put("results", rows);
         return out;

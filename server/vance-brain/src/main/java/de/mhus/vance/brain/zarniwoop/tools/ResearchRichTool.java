@@ -163,13 +163,7 @@ public class ResearchRichTool implements Tool {
         }
         List<Map<String, Object>> rows = new ArrayList<>();
         for (SearchHit hit : result.hits()) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("title", hit.title());
-            row.put("url", hit.url());
-            if (!StringUtils.isBlank(hit.snippet())) row.put("snippet", hit.snippet());
-            if (!StringUtils.isBlank(hit.source())) row.put("source", hit.source());
-            if (hit.extras() != null) row.putAll(hit.extras());
-            rows.add(row);
+            rows.add(SearchHitRows.shape(hit));
         }
         b.put("modality", result.modality().name().toLowerCase(Locale.ROOT));
         b.put("providerInstanceId", result.providerInstanceId());

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
-  VAlert, VButton, VCard, VEmptyState, VInput, VModal, VSelect, VTextarea,
+  VAlert, VButton, VCard, VCheckbox, VEmptyState, VInput, VModal, VSelect, VTextarea,
 } from '@vance/components';
 import { RestError, safeUrl } from '@vance/shared';
 import {
@@ -186,69 +186,182 @@ const offeredFacets = computed(() => {
   return out;
 });
 
-/** Selectable values per facet, filled once when the sources are known. */
+/**
+ * Selectable values, keyed by source, facet and parent level.
+ *
+ * Two shapes end up here. A facet that shipped its values with the
+ * declaration is sliced locally by `parentId`; one that declared
+ * `lazyChildren` is fetched a level at a time. The cache key carries the
+ * parent, so both look the same to the picker.
+ */
 const facetValues = ref<Record<string, FeedFacetValueView[]>>({});
 
-function facetKeyOf(sourceId: string, key: string): string {
-  return `${sourceId}\u0000${key}`;
-}
-
-function valuesFor(sourceId: string, key: string): FeedFacetValueView[] {
-  return facetValues.value[facetKeyOf(sourceId, key)] ?? [];
+function facetKeyOf(sourceId: string, key: string, parent?: string | null): string {
+  return `${sourceId}\u0000${key}\u0000${parent ?? ''}`;
 }
 
 /**
- * Load what every offered facet can be set to.
+ * Labels for ids we have seen, so a stored selection can be shown as words.
  *
- * Eagerly, right after the sources are known — not on focus. A `focus` handler
- * on a component that does not forward the event never fires, and the failure
- * looks exactly like a source with no values: a dropdown whose only entry is
- * „Any". A declaration that lists 279 places deserves better than a silent
- * empty list.
- *
- * A non-lazy facet already shipped everything with its declaration; only a
- * `lazyChildren` one costs a request, and only for its top level.
+ * A selection survives in the manifest; the tree it came from does not.
+ * Without this, reopening a feed shows `medtop:15000000` where it once said
+ * „sport" — the id is the truth on the wire and the wrong thing to read.
  */
-async function loadAllFacetValues(): Promise<void> {
-  const next: Record<string, FeedFacetValueView[]> = {};
-  for (const entry of offeredFacets.value) {
-    const cacheKey = facetKeyOf(entry.sourceId, entry.facet.key);
-    if (!entry.facet.lazyChildren) {
-      next[cacheKey] = entry.facet.values;
-      continue;
-    }
+const facetLabels = ref<Record<string, string>>({});
+
+function labelOf(id: string): string {
+  return facetLabels.value[id] ?? id;
+}
+
+/**
+ * One level of a facet's tree, cached.
+ *
+ * Loaded eagerly for the top level of every offered facet, so a control never
+ * opens on an empty list — „nothing here" and „not asked yet" look identical
+ * to a reader, and only one of them is true.
+ */
+async function levelOf(
+  sourceId: string,
+  facet: FeedFacetView,
+  parent: string | null,
+): Promise<FeedFacetValueView[]> {
+  const cacheKey = facetKeyOf(sourceId, facet.key, parent);
+  const cached = facetValues.value[cacheKey];
+  if (cached) return cached;
+
+  let values: FeedFacetValueView[];
+  if (!facet.lazyChildren) {
+    // Everything travelled with the declaration; a level is a filter on it.
+    values = facet.values.filter((v) => (v.parentId ?? null) === parent);
+  } else {
     try {
-      next[cacheKey] = await loadFacetValues(
-        props.document.projectId, entry.sourceId, entry.facet.key);
+      values = await loadFacetValues(
+        props.document.projectId, sourceId, facet.key, parent ?? undefined);
     } catch (e) {
       error.value = String(e);
-      next[cacheKey] = entry.facet.values;
+      values = [];
     }
   }
-  facetValues.value = next;
+  facetValues.value = { ...facetValues.value, [cacheKey]: values };
+  const labels = { ...facetLabels.value };
+  for (const v of values) labels[v.id] = v.label;
+  facetLabels.value = labels;
+  return values;
 }
 
-function selectedFacetValue(key: string): string {
-  return config.value?.filter?.facets?.[key]?.[0] ?? '';
+async function loadAllFacetValues(): Promise<void> {
+  facetValues.value = {};
+  for (const entry of offeredFacets.value) {
+    await levelOf(entry.sourceId, entry.facet, null);
+  }
+}
+
+// ── the picker ───────────────────────────────────────────────────────
+
+/**
+ * The open facet picker: which facet, where in its tree, what is listed.
+ *
+ * One dialog for two jobs, because they are the same gesture on two targets:
+ * a row's chevron goes deeper, its checkbox selects. A value at any depth is
+ * a legitimate choice — „Asia" filters as well as „Singapore" — so nothing
+ * here insists on leaves.
+ */
+const picker = ref<{
+  sourceId: string;
+  sourceName: string;
+  facet: FeedFacetView;
+  /** Ancestors of the level on screen, outermost first. */
+  path: FeedFacetValueView[];
+  level: FeedFacetValueView[];
+  loading: boolean;
+} | null>(null);
+
+const pickerOpen = computed({
+  get: () => picker.value !== null,
+  set: (open: boolean) => {
+    if (!open) picker.value = null;
+  },
+});
+
+/**
+ * Counts navigations inside the picker, so a slow level cannot overwrite a
+ * faster one that came after it.
+ *
+ * A counter rather than comparing the path we set: `ref` is deeply reactive,
+ * so reading `picker.value.path` hands back a *proxy* of the array. An
+ * identity check against the raw array is then never true, and the dialog sits
+ * at „Loading…" forever with the data already in hand.
+ */
+let pickerNavigation = 0;
+
+async function showLevel(parent: FeedFacetValueView | null, path: FeedFacetValueView[]) {
+  const open = picker.value;
+  if (!open) return;
+  const navigation = ++pickerNavigation;
+  picker.value = { ...open, path, level: [], loading: true };
+  const level = await levelOf(open.sourceId, open.facet, parent?.id ?? null);
+  if (picker.value && navigation === pickerNavigation) {
+    picker.value = { ...picker.value, level, loading: false };
+  }
+}
+
+async function openPicker(entry: {
+  sourceId: string; sourceName: string; facet: FeedFacetView;
+}): Promise<void> {
+  picker.value = { ...entry, path: [], level: [], loading: true };
+  await showLevel(null, []);
+}
+
+async function drillInto(value: FeedFacetValueView): Promise<void> {
+  const open = picker.value;
+  if (!open) return;
+  await showLevel(value, [...open.path, value]);
+}
+
+/** Back to an ancestor; index -1 is the root. */
+async function breadcrumbTo(index: number): Promise<void> {
+  const open = picker.value;
+  if (!open) return;
+  const path = open.path.slice(0, index + 1);
+  await showLevel(path.length === 0 ? null : path[path.length - 1], path);
+}
+
+function selectedFacetValues(key: string): string[] {
+  return config.value?.filter?.facets?.[key] ?? [];
 }
 
 /**
- * One value per key. The wire carries a list — several values of one key are
- * an „or" — but a single select is what these taxonomies call for, and a
- * multi-select without a tree widget would be worse than one clear choice.
+ * Add or remove one value.
  *
- * Writes into the stored filter like every other field in this form: a facet
- * is a filter, and splitting one concept across a „browse" control and a
- * „configure" control made the configuration tab look like it had four filters
- * when it has five.
+ * Several values of one key are an „or" on the wire, which is what a list of
+ * places or topics means to a reader: „Asia or Europe", not both at once.
+ * Across keys it stays an „and".
  */
-function selectFacet(key: string, value: string | null): void {
+function toggleFacetValue(key: string, id: string): void {
   if (!config.value) return;
+  const current = selectedFacetValues(key);
+  const next = current.includes(id)
+    ? current.filter((v) => v !== id)
+    : [...current, id];
   const facets = { ...(config.value.filter?.facets ?? {}) };
-  if (value) facets[key] = [value];
+  if (next.length > 0) facets[key] = next;
   else delete facets[key];
   config.value = { ...config.value, filter: { ...config.value.filter, facets } };
 }
+
+function clearFacet(key: string): void {
+  if (!config.value) return;
+  const facets = { ...(config.value.filter?.facets ?? {}) };
+  delete facets[key];
+  config.value = { ...config.value, filter: { ...config.value.filter, facets } };
+}
+
+/** What the closed control shows: the chosen labels, or „Any". */
+function facetSummary(key: string): string {
+  const chosen = selectedFacetValues(key);
+  return chosen.length === 0 ? 'Any' : chosen.map(labelOf).join(', ');
+}
+
 
 onMounted(async () => {
   await reload();
@@ -816,25 +929,32 @@ function slug(title: string): string {
               @update:model-value="(v: string) => (config!.filter.since = v)"
             />
             <!--
-              Facets, one select per dimension a configured source declares.
-              Per source and not merged: the same key can carry different value
-              systems at two sources, and offering a value only one of them
-              answers would silence the other.
+              Facets. One control per dimension a configured source declares —
+              per source and never merged, because the same key can carry
+              different value systems at two sources, and offering a value only
+              one of them answers would silence the other.
             -->
-            <VSelect
+            <div
               v-for="entry in offeredFacets"
-              :key="facetKeyOf(entry.sourceId, entry.facet.key)"
-              :label="`${entry.facet.label} · ${entry.sourceName}`"
-              :model-value="selectedFacetValue(entry.facet.key)"
-              :options="[
-                { value: '', label: 'Any' },
-                ...valuesFor(entry.sourceId, entry.facet.key).map((v) => ({
-                  value: v.id,
-                  label: v.label,
-                })),
-              ]"
-              @update:model-value="(v: string | null) => selectFacet(entry.facet.key, v)"
-            />
+              :key="entry.sourceId + '/' + entry.facet.key"
+              class="flex flex-col gap-1"
+            >
+              <span class="text-sm">{{ entry.facet.label }} · {{ entry.sourceName }}</span>
+              <div class="flex items-center gap-2">
+                <span class="min-w-0 flex-1 truncate text-sm opacity-80">
+                  {{ facetSummary(entry.facet.key) }}
+                </span>
+                <VButton size="sm" variant="ghost" @click="openPicker(entry)">Choose…</VButton>
+                <VButton
+                  v-if="selectedFacetValues(entry.facet.key).length > 0"
+                  size="sm"
+                  variant="ghost"
+                  @click="clearFacet(entry.facet.key)"
+                >
+                  Clear
+                </VButton>
+              </div>
+            </div>
           </div>
         </VCard>
 
@@ -844,6 +964,76 @@ function slug(title: string): string {
         </div>
       </div>
     </div>
+    <!-- Facet picker: drill with the chevron, choose with the checkbox -->
+    <VModal
+      v-if="picker"
+      v-model="pickerOpen"
+      :title="`${picker.facet.label} · ${picker.sourceName}`"
+      size="lg"
+    >
+      <div class="flex flex-col gap-3">
+        <!-- Breadcrumb. Present even at the root, so the control looks the
+             same wherever you are in the tree. -->
+        <div v-if="picker.facet.hierarchical" class="flex flex-wrap items-center gap-1 text-sm">
+          <button class="hover:underline" @click="breadcrumbTo(-1)">All</button>
+          <template v-for="(node, i) in picker.path" :key="node.id">
+            <span class="opacity-50">›</span>
+            <button class="hover:underline" @click="breadcrumbTo(i)">{{ node.label }}</button>
+          </template>
+        </div>
+
+        <!-- What is chosen, across every level. Removable here, because the
+             value that needs removing is rarely on the level you are on. -->
+        <div v-if="selectedFacetValues(picker.facet.key).length > 0" class="flex flex-wrap gap-1">
+          <button
+            v-for="id in selectedFacetValues(picker.facet.key)"
+            :key="id"
+            class="rounded bg-base-200 px-2 py-0.5 text-xs hover:line-through"
+            @click="toggleFacetValue(picker.facet.key, id)"
+          >
+            {{ labelOf(id) }} ✕
+          </button>
+        </div>
+
+        <p v-if="picker.loading" class="text-sm opacity-60">Loading…</p>
+        <VEmptyState
+          v-else-if="picker.level.length === 0"
+          headline="Nothing below this"
+          body="This branch has no further values. Pick it above, or go back."
+        />
+
+        <div v-else class="max-h-96 overflow-y-auto">
+          <div
+            v-for="value in picker.level"
+            :key="value.id"
+            class="flex items-center gap-2 border-b border-base-200 py-1 last:border-0"
+          >
+            <VCheckbox
+              :model-value="selectedFacetValues(picker.facet.key).includes(value.id)"
+              :label="value.label"
+              @update:model-value="toggleFacetValue(picker.facet.key, value.id)"
+            />
+            <div class="flex-1"></div>
+            <!-- Any node is selectable, so the chevron is a separate target:
+                 going deeper and choosing are different intentions. -->
+            <VButton
+              v-if="picker.facet.hierarchical"
+              size="sm"
+              variant="ghost"
+              @click="drillInto(value)"
+            >
+              ›
+            </VButton>
+          </div>
+        </div>
+      </div>
+
+      <template #actions>
+        <VButton variant="ghost" @click="clearFacet(picker.facet.key)">Clear all</VButton>
+        <VButton variant="primary" @click="pickerOpen = false">Done</VButton>
+      </template>
+    </VModal>
+
     <VModal v-model="reportOpen" title="Report this entry">
       <div v-if="report" class="flex flex-col gap-3">
         <p class="text-sm opacity-70">{{ report.item.title }}</p>

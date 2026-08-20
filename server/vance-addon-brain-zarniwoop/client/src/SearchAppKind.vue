@@ -7,8 +7,9 @@ import type {
   FacetInsightsDto, FacetValueInsightsDto, ZarniwoopInsightsDto,
 } from '@vance/generated';
 import { investigate, listProviders, loadConfig, saveConfig, search, loadContentBlob } from './api';
+import HitPicture from './HitPicture.vue';
 import SearchHitDetail from './SearchHitDetail.vue';
-import { link, metaLine, thumbnail } from './hitView';
+import { link, metaLine } from './hitView';
 import type { InvestigateResultView } from './generated/search/InvestigateResultView';
 import type { SearchConfigView } from './generated/search/SearchConfigView';
 import type { SearchHitView } from './generated/search/SearchHitView';
@@ -701,16 +702,9 @@ function message(e: unknown): string {
           >
             <div class="flex flex-col gap-1">
               <div class="flex gap-3">
-                <!-- The thumbnail rides alongside the headline while the card is
-                     closed; opening it shows the picture at its own size. -->
-                <img
-                  v-if="!isOpen(hit, i) && thumbnail(hit)"
-                  :src="thumbnail(hit)!"
-                  alt=""
-                  loading="lazy"
-                  referrerpolicy="no-referrer"
-                  class="h-20 w-28 flex-none rounded object-cover"
-                />
+                <!-- Rides alongside the headline while the card is closed;
+                     opening it shows the picture at its own size. -->
+                <HitPicture v-if="!isOpen(hit, i)" :hit="hit" />
                 <div class="flex min-w-0 flex-1 flex-col gap-1">
                   <!-- Through link(): the URL comes from a foreign provider, and
                        a `javascript:` value would run on this origin. -->

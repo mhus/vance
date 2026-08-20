@@ -97,6 +97,7 @@ class SerperInstance implements SearchProviderInstance {
     public Set<SearchModality> modalities() {
         return Set.of(
                 SearchModality.WEB,
+                SearchModality.NEWS,
                 SearchModality.IMAGE,
                 SearchModality.VIDEO,
                 SearchModality.PDF);
@@ -166,6 +167,7 @@ class SerperInstance implements SearchProviderInstance {
         }
         return switch (req.modality()) {
             case WEB -> doWebSearch(req, scope, apiKey);
+            case NEWS -> doNewsSearch(req, scope, apiKey);
             case IMAGE -> doImageSearch(req, scope, apiKey);
             case VIDEO -> doVideoSearch(req, scope, apiKey);
             case PDF -> doPdfSearch(req, scope, apiKey);
@@ -182,6 +184,30 @@ class SerperInstance implements SearchProviderInstance {
                 apiKey);
         List<SearchHit> hits = parseHits(response.body(), SearchModality.WEB);
         return successResult(req, hits, 0, response.headers(), null);
+    }
+
+    // ── NEWS ──────────────────────────────────────────────────────────
+
+    /**
+     * Serper's own news index, not {@code /search} with a date filter.
+     *
+     * <p>It carries the three things a news row needs and an organic web row
+     * does not: the outlet, the publication date, and the article's lead
+     * image — the only preview picture in this modality that costs no extra
+     * fetch of the page behind the link.
+     *
+     * <p>That image travels as {@code thumbnailUrl} and deliberately not as
+     * {@code imageUrl}. The two keys mean different things: {@code imageUrl}
+     * says <em>the result is this file</em>, which is true for an IMAGE hit
+     * and false for an article. Reusing it here would put an "open image
+     * file" link under a news story and offer the lead photo as though it
+     * were the thing found.
+     */
+    private SearchResult doNewsSearch(SearchRequest req, SearchScope scope, String apiKey) {
+        SerperResponse response = postSerper("/news",
+                Map.of("q", req.query(), "num", clampNum(req.maxResults())),
+                apiKey);
+        return successResult(req, parseNews(response.body()), 0, response.headers(), null);
     }
 
     // ── IMAGE ─────────────────────────────────────────────────────────
@@ -356,6 +382,42 @@ class SerperInstance implements SearchProviderInstance {
     }
 
     // ── parsing ───────────────────────────────────────────────────────
+
+    List<SearchHit> parseNews(String json) {
+        try {
+            JsonNode root = objectMapper.readTree(json);
+            JsonNode arr = root.path("news");
+            List<SearchHit> rows = new ArrayList<>();
+            if (!arr.isArray()) return rows;
+            for (JsonNode item : arr) {
+                String title = item.path("title").asText("");
+                String link = item.path("link").asText("");
+                if (StringUtils.isBlank(title) || StringUtils.isBlank(link)) continue;
+                Map<String, Object> extras = new LinkedHashMap<>();
+                String image = item.path("imageUrl").asText("");
+                if (!StringUtils.isBlank(image)) extras.put("thumbnailUrl", image);
+                String date = item.path("date").asText("");
+                if (!StringUtils.isBlank(date)) extras.put("date", date);
+                if (item.has("position")) {
+                    extras.put("position", item.path("position").asInt());
+                }
+                String snippet = item.path("snippet").asText("");
+                String source = item.path("source").asText("");
+                rows.add(new SearchHit(
+                        title,
+                        link,
+                        StringUtils.isBlank(snippet) ? null : snippet,
+                        StringUtils.isBlank(source) ? null : source,
+                        SearchModality.NEWS,
+                        null,
+                        extras));
+            }
+            return rows;
+        } catch (Exception e) {
+            log.warn("Serper '{}': parseNews failed: {}", cfg.instanceId(), e.toString());
+            return List.of();
+        }
+    }
 
     private List<RawImage> parseImages(String json) {
         try {

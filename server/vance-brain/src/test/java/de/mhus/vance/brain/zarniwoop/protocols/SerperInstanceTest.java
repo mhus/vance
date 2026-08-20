@@ -13,6 +13,7 @@ import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.toolpack.research.ProviderAvailability;
 import de.mhus.vance.toolpack.research.ProviderInstanceConfig;
 import de.mhus.vance.toolpack.research.QuotaStatus;
+import de.mhus.vance.toolpack.research.SearchHit;
 import de.mhus.vance.toolpack.research.SearchModality;
 import de.mhus.vance.toolpack.research.SearchRequest;
 import de.mhus.vance.toolpack.research.SearchResult;
@@ -142,6 +143,97 @@ class SerperInstanceTest {
         assertThat(bodyCap.getValue()).contains("\"q\":\"Lissabon\"");
         // num was clamped from 25 down to MAX_NUM (10).
         assertThat(bodyCap.getValue()).contains("\"num\":10");
+    }
+
+    // ── NEWS ──────────────────────────────────────────────────────────
+
+    @Test
+    void newsSearch_hitsTheNewsIndexAndCarriesOutletDateAndLeadImage() throws Exception {
+        SettingService settings = mock(SettingService.class);
+        when(settings.getDecryptedPasswordCascade(eq(TENANT), eq(PROJECT), any(), any()))
+                .thenReturn("KEY");
+        SerperHttpClient http = mock(SerperHttpClient.class);
+        String body = """
+                {
+                  "news": [
+                    {"title": "Quake hits Amatrice", "link": "https://bbc/1",
+                     "snippet": "At least 159 dead", "date": "2 hours ago",
+                     "source": "BBC", "imageUrl": "https://bbc/lead.jpg",
+                     "position": 1}
+                  ]
+                }
+                """;
+        when(http.post(any(URI.class), eq("KEY"), any(String.class), any(Duration.class)))
+                .thenReturn(new SerperResponse(200, body, Map.of()));
+
+        SerperInstance instance = newInstance(settings, http);
+        SearchResult result = instance.search(
+                SearchRequest.normal("amatrice", SearchModality.NEWS, 5), SCOPE);
+
+        ArgumentCaptor<URI> urlCap = ArgumentCaptor.forClass(URI.class);
+        org.mockito.Mockito.verify(http).post(urlCap.capture(), eq("KEY"),
+                any(String.class), any(Duration.class));
+        assertThat(urlCap.getValue().toString()).isEqualTo("https://google.serper.dev/news");
+
+        assertThat(result.hits()).hasSize(1);
+        SearchHit hit = result.hits().getFirst();
+        assertThat(hit.modality()).isEqualTo(SearchModality.NEWS);
+        assertThat(hit.source()).isEqualTo("BBC");
+        assertThat(hit.extras()).containsEntry("date", "2 hours ago");
+    }
+
+    /**
+     * The lead image is a preview, not the thing found. Under
+     * {@code imageUrl} a reader would be offered "open image file" for an
+     * article — see {@code doNewsSearch}.
+     */
+    @Test
+    void newsLeadImageTravelsAsThumbnailNotAsTheResultItself() throws Exception {
+        SettingService settings = mock(SettingService.class);
+        when(settings.getDecryptedPasswordCascade(eq(TENANT), eq(PROJECT), any(), any()))
+                .thenReturn("KEY");
+        SerperHttpClient http = mock(SerperHttpClient.class);
+        when(http.post(any(URI.class), eq("KEY"), any(String.class), any(Duration.class)))
+                .thenReturn(new SerperResponse(200, """
+                        {"news": [{"title": "T", "link": "https://x/",
+                                   "imageUrl": "https://x/lead.jpg"}]}
+                        """, Map.of()));
+
+        SerperInstance instance = newInstance(settings, http);
+        SearchResult result = instance.search(
+                SearchRequest.normal("q", SearchModality.NEWS, 5), SCOPE);
+
+        assertThat(result.hits().getFirst().extras())
+                .containsEntry("thumbnailUrl", "https://x/lead.jpg")
+                .doesNotContainKey("imageUrl");
+    }
+
+    @Test
+    void newsRowWithoutALinkIsSkippedRatherThanRenderedAsDeadText() throws Exception {
+        SettingService settings = mock(SettingService.class);
+        when(settings.getDecryptedPasswordCascade(eq(TENANT), eq(PROJECT), any(), any()))
+                .thenReturn("KEY");
+        SerperHttpClient http = mock(SerperHttpClient.class);
+        when(http.post(any(URI.class), eq("KEY"), any(String.class), any(Duration.class)))
+                .thenReturn(new SerperResponse(200, """
+                        {"news": [{"title": "No link here"},
+                                  {"title": "Fine", "link": "https://ok/"}]}
+                        """, Map.of()));
+
+        SerperInstance instance = newInstance(settings, http);
+        SearchResult result = instance.search(
+                SearchRequest.normal("q", SearchModality.NEWS, 5), SCOPE);
+
+        assertThat(result.hits()).hasSize(1);
+        assertThat(result.hits().getFirst().title()).isEqualTo("Fine");
+    }
+
+    @Test
+    void newsIsDeclaredSoTheDispatcherRoutesTheModalityHere() {
+        SerperInstance instance = newInstance(
+                mock(SettingService.class), mock(SerperHttpClient.class));
+
+        assertThat(instance.modalities()).contains(SearchModality.NEWS);
     }
 
     @Test

@@ -58,6 +58,7 @@ export function metaLine(hit: SearchHitView): string {
   push('duration');
   push('points', '▲ ');
   push('comments', '💬 ');
+  push('date');
   push('publisher');
   push('firstPublishYear');
   if (hit.source) bits.unshift(hit.source);

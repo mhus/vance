@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { VButton } from '@vance/components';
 import type { SearchHitView } from './generated/search/SearchHitView';
+import HitPicture from './HitPicture.vue';
 import { extraLink, imageFile, link } from './hitView';
 
 /**
  * What an opened hit shows beyond its headline.
  *
- * It lives in its own component because the list opens it inside the card and
- * the grid opens it below the tiles — one place to change means the two
- * layouts cannot start disagreeing about a result.
+ * It lives in its own component so the picture, the full-text ladder and the
+ * link row stay one thing — the card above it only decides *whether* to show
+ * a detail, never what a detail is.
  *
  * Clicks are stopped here: the surrounding card is itself a toggle, and a
  * reader following a link or pressing "Load full text" is not asking to close
@@ -26,13 +27,7 @@ defineEmits<{ (e: 'load'): void }>();
 
 <template>
   <div class="flex flex-col gap-1" @click.stop>
-    <img
-      v-if="imageFile(hit)"
-      :src="imageFile(hit)!"
-      alt=""
-      referrerpolicy="no-referrer"
-      class="max-h-64 w-full rounded object-contain"
-    />
+    <HitPicture :hit="hit" full />
 
     <!-- The ladder: the text is here, it is fetchable, or it is neither — and
          the third rung says so instead of showing a button that cannot work. -->

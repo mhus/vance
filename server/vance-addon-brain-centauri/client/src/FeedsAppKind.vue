@@ -251,9 +251,16 @@ async function levelOf(
 
 async function loadAllFacetValues(): Promise<void> {
   facetValues.value = {};
+  const labels = { ...facetLabels.value };
   for (const entry of offeredFacets.value) {
+    // A facet that ships its values inline knows every label already, at any
+    // depth. Remembering only the level we happened to load left a stored
+    // selection reading „iso:PL" — an id the source had spelled out for us in
+    // the same response.
+    for (const value of entry.facet.values) labels[value.id] = value.label;
     await levelOf(entry.sourceId, entry.facet, null);
   }
+  facetLabels.value = labels;
 }
 
 // ── the picker ───────────────────────────────────────────────────────
@@ -692,7 +699,10 @@ function slug(title: string): string {
         body="The configured streams returned no entries for this filter."
       />
 
-      <div class="flex flex-col gap-3">
+      <!-- Same bound as the configuration: at full window width a summary runs
+           to ~250 characters a line, about three times what reads comfortably,
+           and the marked entry's full text is worse. -->
+      <div class="flex max-w-3xl flex-col gap-3">
         <VCard
           v-for="item in items"
           :key="entryKey(item)"
@@ -771,9 +781,12 @@ function slug(title: string): string {
                   </span>
                 </div>
 
+                <!-- No inner scroll box: a scroll area inside a scrolling
+                     stream fights the wheel, and the card was opened on
+                     purpose — letting it grow is the answer it deserves. -->
                 <p
                   v-if="shown(item).body"
-                  class="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap text-sm"
+                  class="mt-2 whitespace-pre-wrap text-sm"
                 >
                   {{ shown(item).body }}
                 </p>

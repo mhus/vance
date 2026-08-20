@@ -1,0 +1,71 @@
+package de.mhus.vance.addon.brain.zarniwoop;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import de.mhus.vance.brain.applications.VanceApplication.PromptInjectContext;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
+import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
+import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.document.DocumentService;
+import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+/**
+ * The app-context block for an open search surface.
+ *
+ * <p>The hit the reader opened rides along per turn, and it rides as a URL:
+ * a search is stateless, so unlike a feed entry there is no id on this side to
+ * fetch it back by. Saying so in the block is what keeps the model from
+ * looking for a tool that cannot exist.
+ */
+class SearchApplicationPromptInjectTest {
+
+    private static final String MANIFEST = """
+            $meta:
+              kind: application
+              app: search
+            title: Research
+            search:
+              defaultModality: WEB
+            """;
+
+    private final DocumentService documentService = mock(DocumentService.class);
+    private SearchApplication application;
+
+    @BeforeEach
+    void setUp() {
+        application = new SearchApplication(
+                documentService, mock(DocumentLinkBuilder.class),
+                mock(SecurityContextFactory.class));
+        DocumentDocument doc = new DocumentDocument();
+        doc.setMimeType("application/yaml");
+        when(documentService.findByPath(anyString(), anyString(), anyString()))
+                .thenReturn(Optional.of(doc));
+        when(documentService.readContent(any())).thenReturn(MANIFEST);
+    }
+
+    @Test
+    void promptInject_namesTheOpenHitAndHowToReadIt() {
+        String block = application.promptInject(new PromptInjectContext(
+                "acme", "research", "apps/search1", null, null,
+                "A decade after earthquake — https://reuters.com/world/amatrice"));
+
+        assertThat(block).contains("https://reuters.com/world/amatrice");
+        assertThat(block).contains("web_fetch");
+    }
+
+    @Test
+    void promptInject_withoutAnOpenHit_saysNothingAboutOne() {
+        String block = application.promptInject(new PromptInjectContext(
+                "acme", "research", "apps/search1", null, null, null));
+
+        assertThat(block).contains("Open search surface");
+        assertThat(block).doesNotContain("web_fetch");
+        assertThat(block).doesNotContain("open:");
+    }
+}

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, onMounted } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { VAlert, VButton, VCard, VEmptyState, VInput, VSelect } from '@vance/components';
 import type {
   FacetInsightsDto, FacetValueInsightsDto, ZarniwoopInsightsDto,
@@ -280,6 +280,35 @@ function open(hit: SearchHitView): void {
   clearSelection();
   selected.value = hit;
 }
+
+/**
+ * The opened hit, told to the chat as this app tab's selection.
+ *
+ * <p>Same channel the feed uses (`ProcessSteerRequest.activeApp.selection`) and
+ * for the same reason: a client tool would block the brain's sampling loop on
+ * this browser and cost a slot in the per-call tool budget, for something that
+ * belongs in every turn anyway.
+ *
+ * <p>What travels is the title and the <b>URL</b>, and the URL is the point.
+ * A search is stateless — a hit has no id on our side to fetch it back by, the
+ * way a feed entry has. Its address is the address, and the model already has
+ * `web_fetch` for those.
+ */
+const reportAppSelection = inject<
+  ((sel: { appDocId: string; selection: string } | null) => void) | null
+>('vance:report-app-selection', null);
+
+watch(selected, (hit) => {
+  if (!reportAppSelection) return;
+  const appId = props.document.id;
+  if (!appId || !hit) {
+    reportAppSelection(null);
+    return;
+  }
+  reportAppSelection({ appDocId: appId, selection: `${hit.title} — ${hit.url}` });
+});
+
+onBeforeUnmount(() => reportAppSelection?.(null));
 
 /**
  * Fetch the body of the selected hit. Only reachable when the hit said

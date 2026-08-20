@@ -167,6 +167,20 @@ public class SearchApplication implements VanceApplication {
                         .append(")\n");
             }
         }
+        // What the reader has open, when they opened a hit. "Summarise the
+        // one I have open" is a sentence the model can only act on if the
+        // turn already said which — and asking the browser would block the
+        // sampling loop on a tab that may be asleep.
+        //
+        // The URL is deliberately the payload. A search is stateless: a hit
+        // has no handle on this side to fetch it back by, the way a feed
+        // entry has an id in an archive. Its address is what it is.
+        String selected = ctx.selection();
+        if (selected != null && !selected.isBlank()) {
+            sb.append("The reader has this hit open: ").append(selected.trim()).append('\n')
+                    .append("Read it with web_fetch on the URL — a search result is a "
+                            + "pointer, not a document we hold.\n");
+        }
         return sb.toString();
     }
 

@@ -33,6 +33,26 @@ import org.springframework.stereotype.Component;
  * instance — no fallback. Other filters land in
  * {@link SearchRequest#expertParams()}; protocols ignore the ones
  * they don't understand.
+ *
+ * <h2>Why there is a generic {@code params} object</h2>
+ *
+ * <p>The five named filters below are the ones every protocol might
+ * plausibly share. A source, however, <b>declares its own</b> in
+ * {@code capabilities.expertParams}, and {@code research_providers}
+ * shows that list to the model — an Ode endpoint saying it understands
+ * {@code originPlace} is the intended way to offer a source-specific
+ * filter.
+ *
+ * <p>Without a generic channel that declaration is a dead letter: the
+ * model is told the filter exists, sends it, and this tool drops it
+ * because the copy list is closed. Announcing a parameter and then
+ * discarding it is worse than not announcing it, because the failure is
+ * silent — the search simply comes back unfiltered.
+ *
+ * <p>Keys travel unchanged. Which ones mean something is the source's
+ * business; protocols are asked to ignore rather than refuse what they
+ * do not know, and the named filters are written last so a stray
+ * {@code params.site} cannot shadow the documented spelling.
  */
 @Component
 @RequiredArgsConstructor
@@ -41,39 +61,45 @@ public class ResearchSearchExpertTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "query", Map.of(
+            "properties", Map.ofEntries(
+                    Map.entry("query", Map.of(
                             "type", "string",
-                            "description", "Natural-language search query."),
-                    "modality", Map.of(
+                            "description", "Natural-language search query.")),
+                    Map.entry("modality", Map.of(
                             "type", "string",
                             "description", "Result kind — web / image / video / pdf / news / "
-                                    + "academic / book / encyclopedia / internal_doc."),
-                    "instance", Map.of(
+                                    + "academic / book / encyclopedia / internal_doc.")),
+                    Map.entry("instance", Map.of(
                             "type", "string",
                             "description", "Pin a specific endpoint id (e.g. 'wiki-de', "
-                                    + "'serper-eu'). Run research_providers to discover ids."),
-                    "domain", Map.of(
+                                    + "'serper-eu'). Run research_providers to discover ids.")),
+                    Map.entry("domain", Map.of(
                             "type", "string",
-                            "description", "Subject area hint (academic / news / encyclopedia / …)."),
-                    "locale", Map.of(
+                            "description", "Subject area hint (academic / news / encyclopedia / …).")),
+                    Map.entry("locale", Map.of(
                             "type", "string",
-                            "description", "BCP-47 language tag (de, en, fr-CA …)."),
-                    "dateFrom", Map.of(
+                            "description", "BCP-47 language tag (de, en, fr-CA …).")),
+                    Map.entry("dateFrom", Map.of(
                             "type", "string",
-                            "description", "Restrict to results dated on or after (ISO yyyy-MM-dd)."),
-                    "dateTo", Map.of(
+                            "description", "Restrict to results dated on or after (ISO yyyy-MM-dd).")),
+                    Map.entry("dateTo", Map.of(
                             "type", "string",
-                            "description", "Restrict to results dated on or before (ISO yyyy-MM-dd)."),
-                    "site", Map.of(
+                            "description", "Restrict to results dated on or before (ISO yyyy-MM-dd).")),
+                    Map.entry("site", Map.of(
                             "type", "string",
-                            "description", "Restrict to a host (e.g. 'arxiv.org')."),
-                    "filetype", Map.of(
+                            "description", "Restrict to a host (e.g. 'arxiv.org').")),
+                    Map.entry("filetype", Map.of(
                             "type", "string",
-                            "description", "Restrict to a file type (e.g. 'pdf', 'csv')."),
-                    "num", Map.of(
+                            "description", "Restrict to a file type (e.g. 'pdf', 'csv').")),
+                    Map.entry("num", Map.of(
                             "type", "integer",
                             "description", "Maximum results (1–10).")),
+                    Map.entry("params", Map.of(
+                            "type", "object",
+                            "description", "Endpoint-specific filters, by the exact names the "
+                                    + "endpoint declares. Run research_providers first — an "
+                                    + "endpoint lists the expert filters it understands, and "
+                                    + "only those do anything. Values must be scalars."))),
             "required", List.of("query", "modality"));
 
     private final ZarniwoopService zarniwoopService;
@@ -91,7 +117,9 @@ public class ResearchSearchExpertTool implements Tool {
                 + "domain affinity. The 'instance' parameter overrides "
                 + "the normal default/fallback cascade. Other filters "
                 + "are forwarded to the protocol — protocols that "
-                + "don't understand a filter ignore it silently. Hits "
+                + "don't understand a filter ignore it silently. Use "
+                + "'params' for endpoint-specific filters an endpoint "
+                + "declares in research_providers. Hits "
                 + "carry the same fields as research_search, including a "
                 + "shortened 'body' where the source ships its own text.";
     }
@@ -151,6 +179,7 @@ public class ResearchSearchExpertTool implements Tool {
                 : null;
 
         Map<String, Object> expertParams = new LinkedHashMap<>();
+        copyDeclaredParams(params.get("params"), expertParams);
         copyIfString(params, "domain", expertParams);
         copyIfString(params, "site", expertParams);
         copyIfString(params, "filetype", expertParams);
@@ -202,6 +231,38 @@ public class ResearchSearchExpertTool implements Tool {
         Object v = from.get(key);
         if (v instanceof String s && !StringUtils.isBlank(s)) {
             to.put(key, s.trim());
+        }
+    }
+
+    /**
+     * Copy the endpoint-specific {@code params} object into the expert
+     * parameters.
+     *
+     * <p>Scalars only. A nested object or array would have to be serialised
+     * into a query the far end never agreed on, and no declared filter needs
+     * one — the shape a source asks for is a value, not a document. Anything
+     * else is skipped with a warning rather than refused: a malformed filter
+     * should cost the filter, not the search.
+     */
+    private static void copyDeclaredParams(@org.jspecify.annotations.Nullable Object raw,
+                                           Map<String, Object> to) {
+        if (!(raw instanceof Map<?, ?> map)) {
+            return;
+        }
+        for (Map.Entry<?, ?> e : map.entrySet()) {
+            if (!(e.getKey() instanceof String key) || StringUtils.isBlank(key)) {
+                continue;
+            }
+            Object value = e.getValue();
+            switch (value) {
+                case String s when !StringUtils.isBlank(s) -> to.put(key.trim(), s.trim());
+                case Number n -> to.put(key.trim(), n);
+                case Boolean b -> to.put(key.trim(), b);
+                case null -> { }
+                default -> log.warn(
+                        "research_search_expert: dropping non-scalar expert parameter '{}' ({})",
+                        key, value.getClass().getSimpleName());
+            }
         }
     }
 }

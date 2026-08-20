@@ -14,6 +14,8 @@ export interface FeedItemView {
   imageUrl?: string;
   controlUrl?: string;
   tags: string[];
+  body?: string;
+  extras: Record<string, any>;
   sourceId: string;
   sourceDisplayName: string;
   selector: string;

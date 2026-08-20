@@ -7,6 +7,7 @@ import de.mhus.vance.toolpack.feed.FeedActor;
 import de.mhus.vance.toolpack.feed.FeedCapabilities;
 import de.mhus.vance.toolpack.feed.FeedFetch;
 import de.mhus.vance.toolpack.feed.FeedFilter;
+import de.mhus.vance.toolpack.feed.FeedItem;
 import de.mhus.vance.toolpack.feed.FeedPage;
 import de.mhus.vance.toolpack.feed.FeedScope;
 import de.mhus.vance.toolpack.feed.FeedSignalOutcome;
@@ -15,6 +16,7 @@ import de.mhus.vance.toolpack.feed.FeedSourceInstance;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -181,6 +183,43 @@ public class CentauriService {
         log.info("Centauri: signal {} on '{}' item '{}' → {}",
                 request.signal(), sourceId, request.itemId(), outcome);
         return outcome;
+    }
+
+    /**
+     * One entry in full — the same record the page carries, with whatever the
+     * listing left out.
+     *
+     * <p>Empty rather than an error for an id the source does not know: an
+     * entry can age out between the page and the click, and that is the
+     * source's business, not a failure.
+     *
+     * <p>Gated and reported like a fetch — an endpoint that is off, cooling
+     * down or broken must not be reachable through a second door.
+     */
+    public Optional<FeedItem> loadItem(String sourceId, String itemId, FeedScope scope) {
+        if (scope == null || StringUtils.isBlank(scope.projectId())) {
+            throw new CentauriException("feeds require a project scope");
+        }
+        FeedSourceInstance instance = factory.find(scope, sourceId);
+        if (instance == null) {
+            throw new CentauriException("unknown feed source '" + sourceId + "'");
+        }
+        if (gate.check(scope, sourceId).isPresent()) {
+            throw new CentauriException("feed source '" + sourceId + "' is not available");
+        }
+        try {
+            Optional<FeedItem> item = instance.loadItem(
+                    itemId, actorResolver.resolve(scope, sourceId));
+            metrics.counter("vance.centauri.item", "source", sourceId,
+                    "outcome", item.isPresent() ? "found" : "unknown").increment();
+            return item;
+        } catch (RuntimeException e) {
+            reportFailure(instance, scope, e);
+            metrics.counter("vance.centauri.item", "source", sourceId,
+                    "outcome", "failed").increment();
+            throw new CentauriException(
+                    "source '" + sourceId + "' could not serve the entry: " + e.getMessage(), e);
+        }
     }
 
     // ── internals ────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ import de.mhus.vance.toolpack.feed.FeedException;
 import de.mhus.vance.toolpack.feed.FeedFetch;
 import de.mhus.vance.toolpack.feed.FeedFilter;
 import de.mhus.vance.toolpack.feed.FeedInstanceConfig;
+import de.mhus.vance.toolpack.feed.FeedItem;
 import de.mhus.vance.toolpack.feed.FeedPage;
 import de.mhus.vance.toolpack.feed.FeedReportReason;
 import de.mhus.vance.toolpack.feed.FeedSelectorMode;
@@ -239,21 +240,30 @@ class OdeFeedInstanceTest {
         assertThat(instance().fetch(fetch()).items().get(0).controlUrl()).isNull();
     }
 
-    // ── body ─────────────────────────────────────────────────────────
+    // ── one entry in full ────────────────────────────────────────────
 
     @Test
-    void loadBody_servesTheFullText() {
-        http.reply("/item/i1", 200, "{\"body\":\"the whole article\"}");
+    void loadItem_parsesTheWholeEntry_notJustItsText() {
+        http.reply("/item/i1", 200, """
+                {"id":"i1","publishedAt":"2026-08-19T10:00:00Z","title":"Headline",
+                 "url":"https://x.test/1","summary":"teaser","body":"the whole article",
+                 "language":"en","tags":["a"],"extras":{"originPlace":"Germany"}}""");
 
-        assertThat(instance().loadBody("i1", null)).contains("the whole article");
+        FeedItem item = instance().loadItem("i1", null).orElseThrow();
+
+        // The same record a page carries — the detail is not a second shape.
+        assertThat(item.body()).isEqualTo("the whole article");
+        assertThat(item.title()).isEqualTo("Headline");
+        assertThat(item.language()).isEqualTo("en");
+        assertThat(item.extras()).containsEntry("originPlace", "Germany");
     }
 
     @Test
-    void loadBody_unknownEntry_isEmptyNotAFailure() {
+    void loadItem_unknownEntry_isEmptyNotAFailure() {
         http.reply("/item/gone", 404, "");
 
         // An entry may have aged out between the page and the click.
-        assertThat(instance().loadBody("gone", null)).isEmpty();
+        assertThat(instance().loadItem("gone", null)).isEmpty();
     }
 
     // ── signal ───────────────────────────────────────────────────────

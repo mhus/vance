@@ -1,8 +1,9 @@
-import { brainFetch } from '@vance/shared';
+import { brainFetch, RestError } from '@vance/shared';
 import type { ClipRequest } from './generated/centauri/ClipRequest';
 import type { ClipResponse } from './generated/centauri/ClipResponse';
 import type { FeedConfigView } from './generated/centauri/FeedConfigView';
 import type { FeedFacetValueView } from './generated/centauri/FeedFacetValueView';
+import type { FeedItemView } from './generated/centauri/FeedItemView';
 import type { FeedPageRequest } from './generated/centauri/FeedPageRequest';
 import type { FeedPageView } from './generated/centauri/FeedPageView';
 import type { FeedSourceView } from './generated/centauri/FeedSourceView';
@@ -73,6 +74,28 @@ export async function loadFacetValues(
   const params: Record<string, string> = { projectId, sourceId, key };
   if (parent) params.parent = parent;
   return brainFetch<FeedFacetValueView[]>('GET', `addon/centauri/facet-values?${qs(params)}`);
+}
+
+/**
+ * One entry in full — body plus whatever the source adds for a single lookup.
+ *
+ * <p>Null for an entry the source no longer knows (404): an entry can age out
+ * between the page and the click, which is an answer rather than a failure.
+ */
+export async function loadItem(
+  projectId: string,
+  sourceId: string,
+  itemId: string,
+): Promise<FeedItemView | null> {
+  try {
+    return await brainFetch<FeedItemView>(
+      'GET',
+      `addon/centauri/item?${qs({ projectId, sourceId, itemId })}`,
+    );
+  } catch (e) {
+    if (e instanceof RestError && e.status === 404) return null;
+    throw e;
+  }
 }
 
 export async function clipItem(projectId: string, request: ClipRequest): Promise<ClipResponse> {

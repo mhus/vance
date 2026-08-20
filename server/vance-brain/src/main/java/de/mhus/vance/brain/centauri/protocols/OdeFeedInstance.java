@@ -235,7 +235,7 @@ class OdeFeedInstance implements FeedSourceInstance {
     }
 
     @Override
-    public Optional<String> loadBody(String itemId, @Nullable FeedActor actor) {
+    public Optional<FeedItem> loadItem(String itemId, @Nullable FeedActor actor) {
         URI url = URI.create(feedBase + "/item/" + urlPathSegment(itemId));
         CentauriHttpClient.Response response = call(() -> http.get(url, headers(actor), TIMEOUT), url);
         if (response.statusCode() == 404) {
@@ -244,7 +244,10 @@ class OdeFeedInstance implements FeedSourceInstance {
             return Optional.empty();
         }
         requireSuccess(response, url);
-        return Optional.ofNullable(blankToNull(text(parse(response.body(), url), "body")));
+        // Parsed by the same mapper as a page entry, because it is the same
+        // shape: a detail that needed its own parser would be a second
+        // contract wearing the first one's name.
+        return Optional.ofNullable(toItem(parse(response.body(), url)));
     }
 
     @Override
@@ -371,7 +374,32 @@ class OdeFeedInstance implements FeedSourceInstance {
                 blankToNull(text(node, "imageUrl")),
                 controlUrl(text(node, "controlUrl")),
                 strings(node.path("tags")),
-                Map.of());
+                extras(node.path("extras")));
+    }
+
+    /**
+     * The source's own fields, as it wrote them.
+     *
+     * <p>This used to be {@code Map.of()} — the far end filled it, the wire
+     * carried it, and the parser dropped it, which made the whole channel
+     * unusable without anything failing. What travels here is per-source and
+     * untyped by design (a place name, a word count, which feeds delivered a
+     * deduplicated article); it is for display, never for filtering, because
+     * a filter over keys nobody declared means something different at every
+     * source.
+     */
+    private Map<String, Object> extras(JsonNode node) {
+        if (!node.isObject() || node.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        node.properties().forEach(e -> {
+            Object value = mapper.convertValue(e.getValue(), Object.class);
+            if (value != null) {
+                out.put(e.getKey(), value);
+            }
+        });
+        return Map.copyOf(out);
     }
 
     /**

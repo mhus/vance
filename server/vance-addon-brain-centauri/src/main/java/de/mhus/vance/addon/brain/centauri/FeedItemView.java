@@ -2,6 +2,7 @@ package de.mhus.vance.addon.brain.centauri;
 
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -23,6 +24,19 @@ public record FeedItemView(
         @Nullable String imageUrl,
         @Nullable String controlUrl,
         List<String> tags,
+        /**
+         * The full text, when this entry came from a single-entry lookup.
+         * Null in a page: that is the teaser, and the body is what makes a
+         * detail worth fetching.
+         */
+        @Nullable String body,
+        /**
+         * The source's own fields, as it wrote them — a place name, a word
+         * count, which feeds delivered a deduplicated article. Untyped by
+         * design and for display only: a filter over keys nobody declared
+         * means something different at every source.
+         */
+        Map<String, Object> extras,
         String sourceId,
         String sourceDisplayName,
         String selector) {}

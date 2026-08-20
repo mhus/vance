@@ -5,7 +5,7 @@ import {
 } from '@vance/components';
 import { RestError, safeUrl } from '@vance/shared';
 import {
-  clipItem, listSources, loadConfig, loadFacetValues, loadPage, saveConfig, sendSignal,
+  clipItem, listSources, loadConfig, loadFacetValues, loadItem, loadPage, saveConfig, sendSignal,
 } from './api';
 import type { FeedConfigView } from './generated/centauri/FeedConfigView';
 import type { FeedFacetValueView } from './generated/centauri/FeedFacetValueView';
@@ -57,6 +57,85 @@ const signalled = ref<Record<string, string>>({});
 /** The identity of one entry on this screen. Same expression as the card key. */
 function entryKey(item: FeedItemView): string {
   return item.sourceId + '\u0000' + item.id;
+}
+
+/**
+ * The marked entry, or none.
+ *
+ * <p>One at a time: the mark is „what I am looking at", and a set of them
+ * would need a second gesture to say which one the detail belongs to. A
+ * second click on the same card clears it.
+ */
+const marked = ref<string | null>(null);
+
+/**
+ * The full entry per card, once fetched.
+ *
+ * <p>A page entry is a teaser — what is cheap to produce twenty times. The
+ * detail is one lookup and carries the body plus whatever the source puts in
+ * `extras`. Cached per entry: marking, unmarking and marking again is a
+ * gesture, not a reason to ask the source twice.
+ */
+const details = ref<Record<string, FeedItemView>>({});
+const detailLoading = ref<string | null>(null);
+
+function isMarked(item: FeedItemView): boolean {
+  return marked.value === entryKey(item);
+}
+
+/** What to render for a card: the detail when we have it, the teaser until then. */
+function shown(item: FeedItemView): FeedItemView {
+  return details.value[entryKey(item)] ?? item;
+}
+
+async function toggleMark(item: FeedItemView): Promise<void> {
+  const key = entryKey(item);
+  if (marked.value === key) {
+    marked.value = null;
+    return;
+  }
+  marked.value = key;
+  if (details.value[key] || detailLoading.value === key) return;
+  detailLoading.value = key;
+  try {
+    const full = await loadItem(props.document.projectId, item.sourceId, item.id);
+    // Null means the source no longer knows this entry — it aged out between
+    // the page and the click. The teaser stays on screen; it is still true.
+    if (full) details.value = { ...details.value, [key]: full };
+  } catch (e) {
+    error.value = String(e);
+  } finally {
+    detailLoading.value = null;
+  }
+}
+
+/**
+ * The extras worth putting in front of a person, in a fixed order.
+ *
+ * <p>Not every key: `extras` is per-source and untyped, and rendering all of
+ * it would put an id path next to a word count and call both „info". These
+ * are the ones that read as provenance.
+ */
+const SHOWN_EXTRAS: { key: string; label: string }[] = [
+  { key: 'originPlace', label: 'Origin' },
+  { key: 'sources', label: 'Feeds' },
+  { key: 'categories', label: 'Categories' },
+  { key: 'originalTitle', label: 'Original title' },
+  { key: 'originalLanguage', label: 'Original language' },
+  { key: 'translationModel', label: 'Translated by' },
+  { key: 'wordCount', label: 'Words' },
+  { key: 'collectedAt', label: 'Collected' },
+];
+
+function extraRows(item: FeedItemView): { label: string; value: string }[] {
+  const extras = shown(item).extras ?? {};
+  const out: { label: string; value: string }[] = [];
+  for (const { key, label } of SHOWN_EXTRAS) {
+    const raw = extras[key];
+    if (raw === undefined || raw === null || raw === '') continue;
+    out.push({ label, value: Array.isArray(raw) ? raw.join(', ') : String(raw) });
+  }
+  return out;
 }
 
 /**
@@ -507,14 +586,25 @@ function slug(title: string): string {
       />
 
       <div class="flex flex-col gap-3">
-        <VCard v-for="item in items" :key="entryKey(item)">
+        <VCard
+          v-for="item in items"
+          :key="entryKey(item)"
+          :class="[
+            'cursor-pointer transition-all',
+            isMarked(item) ? 'ring-2 ring-primary shadow-lg' : 'hover:ring-1 hover:ring-base-300',
+          ]"
+          @click="toggleMark(item)"
+        >
           <div class="flex gap-3">
             <img
-              v-if="link(item.imageUrl)"
-              :src="link(item.imageUrl)!"
+              v-if="link(shown(item).imageUrl)"
+              :src="link(shown(item).imageUrl)!"
               alt=""
               referrerpolicy="no-referrer"
-              class="h-24 w-32 flex-none rounded object-cover"
+              :class="[
+                'flex-none rounded object-cover transition-all',
+                isMarked(item) ? 'h-40 w-56' : 'h-24 w-32',
+              ]"
             />
             <div class="flex min-w-0 flex-1 flex-col gap-1">
               <div class="flex items-center gap-2 text-xs opacity-70">
@@ -522,6 +612,10 @@ function slug(title: string): string {
                 <span v-if="item.selector">· {{ item.selector }}</span>
                 <span>· {{ when(item.publishedAt) }}</span>
                 <span v-if="item.language">· {{ item.language }}</span>
+                <span v-if="shown(item).extras?.originPlace">
+                  · {{ shown(item).extras.originPlace }}
+                </span>
+                <span v-if="item.author">· {{ item.author }}</span>
               </div>
               <!-- Through link(): `url` is written by the feed source, and a
                    `javascript:` value would run on this origin the moment the
@@ -536,10 +630,56 @@ function slug(title: string): string {
                 {{ item.title }}
               </a>
               <span v-else class="truncate font-semibold">{{ item.title }}</span>
-              <p v-if="item.summary" class="line-clamp-3 text-sm opacity-80">
-                {{ item.summary }}
+              <p
+                v-if="shown(item).summary"
+                :class="isMarked(item) ? 'text-sm opacity-80' : 'line-clamp-3 text-sm opacity-80'"
+              >
+                {{ shown(item).summary }}
               </p>
-              <div class="mt-1 flex items-center gap-2">
+
+              <!-- Marked: what a single lookup could add that a page of twenty
+                   cannot afford. -->
+              <template v-if="isMarked(item)">
+                <p v-if="detailLoading === entryKey(item)" class="text-xs opacity-60">
+                  Loading the full entry…
+                </p>
+
+                <dl
+                  v-if="extraRows(item).length > 0"
+                  class="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs opacity-70"
+                >
+                  <template v-for="row in extraRows(item)" :key="row.label">
+                    <dt class="font-medium">{{ row.label }}</dt>
+                    <dd class="min-w-0 break-words">{{ row.value }}</dd>
+                  </template>
+                </dl>
+
+                <div v-if="shown(item).tags?.length" class="mt-1 flex flex-wrap gap-1">
+                  <span
+                    v-for="tag in shown(item).tags"
+                    :key="tag"
+                    class="rounded bg-base-200 px-1.5 py-0.5 text-xs opacity-70"
+                  >
+                    {{ tag }}
+                  </span>
+                </div>
+
+                <p
+                  v-if="shown(item).body"
+                  class="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap text-sm"
+                >
+                  {{ shown(item).body }}
+                </p>
+                <p
+                  v-else-if="detailLoading !== entryKey(item) && details[entryKey(item)]"
+                  class="mt-1 text-xs opacity-60"
+                >
+                  No full text for this entry yet — the source fetches bodies on its
+                  own schedule.
+                </p>
+              </template>
+              <!-- The card itself toggles the mark; the controls must not. -->
+              <div class="mt-1 flex items-center gap-2" @click.stop>
                 <VButton
                   size="sm"
                   variant="ghost"

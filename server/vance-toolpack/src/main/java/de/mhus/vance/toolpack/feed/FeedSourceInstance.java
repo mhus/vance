@@ -111,11 +111,20 @@ public interface FeedSourceInstance {
     }
 
     /**
-     * Load the full body of an entry whose list representation was only a
-     * teaser. Sources that set {@link FeedCapabilities#carriesFullBody()}
-     * never need this.
+     * One entry in full — the same record a page carries, with whatever the
+     * listing left out: the body, richer {@code extras}, a longer summary.
+     *
+     * <p>Deliberately not „load the body". A page entry is a teaser, which is
+     * what makes twenty of them cheap; what a reader wants when it opens one
+     * is the entry, and a source that has more to say than text would
+     * otherwise have nowhere to say it. One type for both means the caller
+     * replaces what it holds instead of merging two shapes.
+     *
+     * <p>Empty for an id the source does not know — normal for an entry that
+     * aged out between the page and the click.
      */
-    default Optional<String> loadBody(String itemId, @org.jspecify.annotations.Nullable FeedActor actor) {
+    default Optional<FeedItem> loadItem(
+            String itemId, @org.jspecify.annotations.Nullable FeedActor actor) {
         return Optional.empty();
     }
 

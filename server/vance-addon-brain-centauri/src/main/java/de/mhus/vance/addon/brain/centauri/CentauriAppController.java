@@ -157,6 +157,32 @@ public class CentauriAppController {
         return out;
     }
 
+    /**
+     * One entry in full.
+     *
+     * <p>The page carries teasers — twenty of them per request, which is what
+     * keeps a page cheap. This is one entry with everything the source can add
+     * for a single lookup: the body, and whatever it puts in {@code extras}.
+     *
+     * <p>404 for an id the source no longer knows. An entry can age out
+     * between the page and the click, and that is the source's answer rather
+     * than a failure of ours.
+     */
+    @GetMapping("/brain/{tenant}/addon/centauri/item")
+    public ResponseEntity<FeedItemView> item(@PathVariable String tenant,
+                                             @RequestParam String projectId,
+                                             @RequestParam String sourceId,
+                                             @RequestParam String itemId,
+                                             HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
+        FeedScope scope = scope(tenant, projectId, request);
+        FeedSourceInstance instance = sourceFactory.find(scope, sourceId);
+        String displayName = instance == null ? sourceId : instance.displayName();
+        return centauriService.loadItem(sourceId, itemId, scope)
+                .map(item -> ResponseEntity.ok(toView(item, sourceId, displayName, "")))
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
     @GetMapping("/brain/{tenant}/addon/centauri/config")
     public FeedConfigView config(@PathVariable String tenant,
                                  @RequestParam String projectId,
@@ -341,6 +367,15 @@ public class CentauriAppController {
                 signals, caps.carriesControlUrl(), facetViews(caps.facets()));
     }
 
+    private static FeedItemView toView(FeedItem item, String sourceId,
+                                       String sourceName, String selector) {
+        return new FeedItemView(
+                item.id(), item.publishedAt().toString(), item.title(), item.url(),
+                item.summary(), item.author(), item.language(), item.imageUrl(),
+                item.controlUrl(), item.tags(), item.body(), item.extras(),
+                sourceId, sourceName, selector);
+    }
+
     private static List<FeedFacetView> facetViews(List<Facet> facets) {
         List<FeedFacetView> out = new ArrayList<>(facets.size());
         for (Facet facet : facets) {
@@ -358,11 +393,8 @@ public class CentauriAppController {
         List<FeedItemView> items = new ArrayList<>(page.items().size());
         for (CentauriItem entry : page.items()) {
             FeedItem item = entry.item();
-            items.add(new FeedItemView(
-                    item.id(), item.publishedAt().toString(), item.title(), item.url(),
-                    item.summary(), item.author(), item.language(), item.imageUrl(),
-                    item.controlUrl(), item.tags(),
-                    entry.sourceId(), entry.sourceDisplayName(), entry.selector()));
+            items.add(toView(item, entry.sourceId(), entry.sourceDisplayName(),
+                    entry.selector()));
         }
         List<FeedNoteView> notes = new ArrayList<>(page.notes().size());
         for (CentauriNote note : page.notes()) {

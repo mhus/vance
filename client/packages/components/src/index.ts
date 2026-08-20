@@ -22,6 +22,7 @@ export { default as VCard } from './VCard.vue';
 export { default as VDropdown } from './VDropdown.vue';
 export { default as VRange } from './VRange.vue';
 export { default as VCheckbox } from './VCheckbox.vue';
+export { default as VToggle } from './VToggle.vue';
 export { default as VColorPicker } from './VColorPicker.vue';
 export { default as VDataList } from './VDataList.vue';
 export { default as VEmojiPicker } from './VEmojiPicker.vue';

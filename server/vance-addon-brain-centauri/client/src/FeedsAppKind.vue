@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
-  VAlert, VButton, VCard, VCheckbox, VEmptyState, VInput, VModal, VSelect, VTextarea,
+  VAlert, VButton, VCard, VCheckbox, VEmptyState, VInput, VModal, VSelect, VTextarea, VToggle,
 } from '@vance/components';
 import { RestError, safeUrl } from '@vance/shared';
 import {
@@ -825,10 +825,10 @@ function slug(title: string): string {
       <div class="flex-1"></div>
       <!-- Only on the stream: an interval that reloads a form nobody is
            looking at would throw away what is being typed into it. -->
-      <VCheckbox
+      <VToggle
         v-if="tab === 'stream'"
         :model-value="autoRefresh"
-        :label="`Auto-refresh (${AUTO_REFRESH_INTERVAL_MS / 1000}s)`"
+        :title="`Auto-refresh every ${AUTO_REFRESH_INTERVAL_MS / 1000}s`"
         @update:model-value="(v: boolean) => (autoRefresh = v)"
       />
       <VButton variant="ghost" :disabled="loading || refreshing" @click="refreshNow()">

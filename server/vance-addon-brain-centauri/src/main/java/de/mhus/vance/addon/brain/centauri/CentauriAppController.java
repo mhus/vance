@@ -1,6 +1,8 @@
 package de.mhus.vance.addon.brain.centauri;
 
 import de.mhus.vance.brain.centauri.CentauriItem;
+import de.mhus.vance.toolpack.facet.Facet;
+import de.mhus.vance.toolpack.facet.FacetValue;
 import de.mhus.vance.brain.centauri.CentauriNote;
 import de.mhus.vance.brain.centauri.CentauriPage;
 import de.mhus.vance.brain.centauri.CentauriPageRequest;
@@ -125,6 +127,36 @@ public class CentauriAppController {
         return out;
     }
 
+    /**
+     * One level of a facet's value tree, for a facet whose taxonomy was too
+     * large to travel with the declaration.
+     *
+     * <p>Per source, because a facet key is only as shared as its value
+     * system: two sources may both declare {@code subject-topic} and mean
+     * different vocabularies, and merging their trees would offer a value
+     * that only one of them answers.
+     */
+    @GetMapping("/brain/{tenant}/addon/centauri/facet-values")
+    public List<FeedFacetValueView> facetValues(@PathVariable String tenant,
+                                                @RequestParam String projectId,
+                                                @RequestParam String sourceId,
+                                                @RequestParam String key,
+                                                @RequestParam(required = false)
+                                                @Nullable String parent,
+                                                HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
+        FeedSourceInstance instance =
+                sourceFactory.find(scope(tenant, projectId, request), sourceId);
+        if (instance == null) {
+            return List.of();
+        }
+        List<FeedFacetValueView> out = new ArrayList<>();
+        for (FacetValue value : instance.listFacetValues(key, parent)) {
+            out.add(new FeedFacetValueView(value.id(), value.label(), value.parentId()));
+        }
+        return out;
+    }
+
     @GetMapping("/brain/{tenant}/addon/centauri/config")
     public FeedConfigView config(@PathVariable String tenant,
                                  @RequestParam String projectId,
@@ -173,7 +205,12 @@ public class CentauriAppController {
         } else {
             FeedsConfig stored = application.readConfig(tenant, projectId, requireFolder(body));
             streams = stored.streams();
-            filter = stored.toFilter(Instant.now());
+            // The stored filter is the base; facets from the body are the
+            // reader's current selection on top of it. Without the overlay the
+            // facet bar would have to resend the configured streams with every
+            // click just to set one checkbox — and a preview and a selection
+            // are not the same act.
+            filter = overlayFacets(stored.toFilter(Instant.now()), body.filter());
             pageSize = body.pageSize() > 0 ? body.pageSize() : stored.pageSize();
         }
 
@@ -300,7 +337,20 @@ public class CentauriAppController {
                 caps.selectorMode().name(), kinds,
                 caps.pushdownTextSearch(), caps.pushdownLanguage(), caps.pushdownSince(),
                 caps.supportsNewerDirection(), caps.carriesFullBody(), caps.maxPageSize(),
-                signals, caps.carriesControlUrl());
+                signals, caps.carriesControlUrl(), facetViews(caps.facets()));
+    }
+
+    private static List<FeedFacetView> facetViews(List<Facet> facets) {
+        List<FeedFacetView> out = new ArrayList<>(facets.size());
+        for (Facet facet : facets) {
+            List<FeedFacetValueView> values = new ArrayList<>(facet.values().size());
+            for (FacetValue value : facet.values()) {
+                values.add(new FeedFacetValueView(value.id(), value.label(), value.parentId()));
+            }
+            out.add(new FeedFacetView(facet.key(), facet.label(),
+                    facet.hierarchical(), facet.lazyChildren(), values));
+        }
+        return out;
     }
 
     private static FeedPageView toView(CentauriPage page) {
@@ -329,7 +379,7 @@ public class CentauriAppController {
         }
         return new FeedConfigView(folder, title, streams,
                 new FeedFilterView(cfg.text(), new ArrayList<>(cfg.languages()),
-                        cfg.include(), cfg.exclude(), cfg.since()),
+                        cfg.include(), cfg.exclude(), cfg.since(), cfg.facets()),
                 cfg.pageSize());
     }
 
@@ -344,7 +394,27 @@ public class CentauriAppController {
         }
         FeedsConfig filter = fromView(view.filter());
         return new FeedsConfig(streams, filter.text(), filter.languages(),
-                filter.include(), filter.exclude(), filter.since(), view.pageSize());
+                filter.include(), filter.exclude(), filter.since(), filter.facets(),
+                view.pageSize());
+    }
+
+    /**
+     * The stored filter with the request's facet selection laid over it.
+     *
+     * <p>Only facets: the other fields are configuration, and letting a page
+     * request silently change the stored text or language filter would make
+     * two different things look like one. A body without facets leaves the
+     * stored ones alone; an explicitly empty map clears them for this request,
+     * which is what „no filter" has to mean when the reader unticks the last
+     * box.
+     */
+    private static FeedFilter overlayFacets(
+            FeedFilter stored, @Nullable FeedFilterView body) {
+        if (body == null || body.facets() == null) {
+            return stored;
+        }
+        return new FeedFilter(stored.text(), stored.languages(), stored.include(),
+                stored.exclude(), stored.since(), body.facets());
     }
 
     /** A filter-only config, so both call sites share the null handling. */
@@ -357,7 +427,7 @@ public class CentauriAppController {
         return new FeedsConfig(List.of(), view.text(), languages,
                 view.include() == null ? List.of() : view.include(),
                 view.exclude() == null ? List.of() : view.exclude(),
-                view.since(), 0);
+                view.since(), view.facets(), 0);
     }
 
     // ── internals ────────────────────────────────────────────────────

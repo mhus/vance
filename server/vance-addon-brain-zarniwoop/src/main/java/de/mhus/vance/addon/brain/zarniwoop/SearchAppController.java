@@ -161,7 +161,8 @@ public class SearchAppController {
                 // where the reason can be written down.
                 tier == SearchTier.EXPERT ? blankToNull(body.instance()) : null,
                 tier == SearchTier.EXPERT && body.expertParams() != null
-                        ? body.expertParams() : Map.of());
+                        ? body.expertParams() : Map.of(),
+                body.facets() == null ? Map.of() : body.facets());
 
         SearchResult result = zarniwoopService.search(req, scope, toolContext(scope));
         return toView(result);

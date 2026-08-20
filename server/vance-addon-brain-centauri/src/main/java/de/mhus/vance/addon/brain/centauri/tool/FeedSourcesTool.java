@@ -43,6 +43,17 @@ public class FeedSourcesTool implements Tool {
     private final EddieContext eddieContext;
     private final FeedSourceFactory sourceFactory;
 
+    /**
+     * Values of one facet shown per source.
+     *
+     * <p>Enough to recognise the vocabulary — that places are {@code m49:}
+     * and {@code iso:}, that topics are {@code medtop:} — and not enough to
+     * pour a taxonomy into the context. The full tree is a picker's job, and
+     * a model that needs a specific value can read one off an entry it
+     * already has.
+     */
+    private static final int FACET_VALUE_SAMPLE = 12;
+
     public FeedSourcesTool(EddieContext eddieContext, FeedSourceFactory sourceFactory) {
         this.eddieContext = eddieContext;
         this.sourceFactory = sourceFactory;
@@ -99,6 +110,31 @@ public class FeedSourcesTool implements Tool {
                         selectors.add(selector.value());
                     }
                     entry.put("selectors", selectors);
+                }
+                if (!caps.facets().isEmpty()) {
+                    // What this source can be filtered by, with a bounded
+                    // sample of each value list: a model needs the key and
+                    // enough values to recognise the vocabulary, not the whole
+                    // taxonomy — some run to a thousand entries.
+                    List<Map<String, Object>> facets = new ArrayList<>();
+                    for (de.mhus.vance.toolpack.facet.Facet facet : caps.facets()) {
+                        Map<String, Object> f = new LinkedHashMap<>();
+                        f.put("key", facet.key());
+                        f.put("label", facet.label());
+                        List<String> sample = new ArrayList<>();
+                        for (var value : facet.values()) {
+                            if (sample.size() >= FACET_VALUE_SAMPLE) {
+                                break;
+                            }
+                            sample.add(value.id() + " (" + value.label() + ")");
+                        }
+                        f.put("values", sample);
+                        if (facet.values().size() > sample.size() || facet.lazyChildren()) {
+                            f.put("valuesTruncated", true);
+                        }
+                        facets.add(f);
+                    }
+                    entry.put("facets", facets);
                 }
             } catch (RuntimeException e) {
                 // Reported, not omitted: a source missing from the list looks like

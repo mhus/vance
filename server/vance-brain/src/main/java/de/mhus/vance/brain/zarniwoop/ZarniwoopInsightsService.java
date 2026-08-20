@@ -1,9 +1,13 @@
 package de.mhus.vance.brain.zarniwoop;
 
+import de.mhus.vance.api.insights.FacetInsightsDto;
+import de.mhus.vance.api.insights.FacetValueInsightsDto;
 import de.mhus.vance.api.insights.ZarniwoopInsightsDto;
 import de.mhus.vance.api.toolhealth.ToolHealthScope;
 import de.mhus.vance.shared.toolhealth.ToolHealthCooldown;
 import de.mhus.vance.shared.toolhealth.ToolHealthService;
+import de.mhus.vance.toolpack.facet.Facet;
+import de.mhus.vance.toolpack.facet.FacetValue;
 import de.mhus.vance.toolpack.research.ProviderAvailability;
 import de.mhus.vance.toolpack.research.SearchModality;
 import de.mhus.vance.toolpack.research.SearchProviderInstance;
@@ -118,6 +122,7 @@ public class ZarniwoopInsightsService {
                 .modalities(sortedNames(inst.modalities()))
                 .domains(sortedNames(inst.domains()))
                 .tiers(sortedNames(inst.tiers()))
+                .facets(facetDtos(inst.facets()))
                 .availability(avail.name())
                 .statusText(statusText)
                 .callCount(snap.total())
@@ -169,6 +174,33 @@ public class ZarniwoopInsightsService {
         int paren = name.indexOf('(');
         if (paren > 0) return name.substring(0, paren).trim().toLowerCase();
         return name.toLowerCase();
+    }
+
+    /**
+     * The declared facets with their values — what a picker needs. Ids alone
+     * would leave the reader with {@code m49:142} and no table to resolve it.
+     */
+    private static List<FacetInsightsDto> facetDtos(List<Facet> facets) {
+        List<FacetInsightsDto> out = new ArrayList<>(facets.size());
+        for (Facet facet : facets) {
+            List<FacetValueInsightsDto> values =
+                    new ArrayList<>(facet.values().size());
+            for (FacetValue value : facet.values()) {
+                values.add(FacetValueInsightsDto.builder()
+                        .id(value.id())
+                        .label(value.label())
+                        .parentId(value.parentId())
+                        .build());
+            }
+            out.add(FacetInsightsDto.builder()
+                    .key(facet.key())
+                    .label(facet.label())
+                    .hierarchical(facet.hierarchical())
+                    .lazyChildren(facet.lazyChildren())
+                    .values(values)
+                    .build());
+        }
+        return out;
     }
 
     private static List<String> sortedNames(java.util.Set<? extends Enum<?>> values) {

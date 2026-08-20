@@ -23,4 +23,5 @@ public record FeedCapabilitiesView(
         boolean carriesFullBody,
         int maxPageSize,
         List<String> signalsAccepted,
-        boolean carriesControlUrl) {}
+        boolean carriesControlUrl,
+        List<FeedFacetView> facets) {}

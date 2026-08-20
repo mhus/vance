@@ -3,6 +3,8 @@
  Source: de.mhus.vance.addon.brain.centauri.FeedCapabilitiesView
 */
 
+import { FeedFacetView } from './FeedFacetView';
+
 export interface FeedCapabilitiesView {
   selectorMode: string;
   selectorKinds: string[];
@@ -14,4 +16,5 @@ export interface FeedCapabilitiesView {
   maxPageSize: number;
   signalsAccepted: string[];
   carriesControlUrl: boolean;
+  facets: FeedFacetView[];
 }

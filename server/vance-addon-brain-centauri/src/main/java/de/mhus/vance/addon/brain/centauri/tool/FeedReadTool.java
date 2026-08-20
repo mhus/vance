@@ -73,6 +73,12 @@ public class FeedReadTool implements Tool {
                         "description", "Restrict to these language codes, e.g. ['de','en']. "
                                 + "Entries whose source declares no language always pass.",
                         "items", Map.of("type", "string")));
+                put("facets", Map.of("type", "object",
+                        "description", "Filter by a source's declared dimensions, e.g. "
+                                + "{\"origin-place\": [\"m49:142\"]} for Asian publishers. "
+                                + "Keys and values come from feed_sources — a source that "
+                                + "does not declare a selected key is left out of the page "
+                                + "and reported under 'unavailable', so never guess one."));
                 put("limit", Map.of("type", "integer",
                         "description", "Entries to return, default " + DEFAULT_LIMIT
                                 + ", max " + MAX_LIMIT + "."));
@@ -136,7 +142,7 @@ public class FeedReadTool implements Tool {
         if (!explicit.isEmpty()) {
             streams = explicit;
             filter = new FeedFilter(null, languages(params), List.of(), List.of(),
-                    resolveSince(asString(params.get("since")), now));
+                    resolveSince(asString(params.get("since")), now), facets(params));
         } else {
             FeedsConfig stored = application.readConfig(ctx.tenantId(), project.getName(), folder);
             if (stored.streams().isEmpty()) {
@@ -218,12 +224,49 @@ public class FeedReadTool implements Tool {
     private static FeedFilter merge(FeedsConfig stored, Map<String, Object> params, Instant now) {
         Set<String> languages = languages(params);
         Instant since = resolveSince(asString(params.get("since")), now);
+        Map<String, List<String>> facets = facets(params);
         return new FeedFilter(
                 stored.text(),
                 languages.isEmpty() ? stored.languages() : languages,
                 stored.include(),
                 stored.exclude(),
-                since != null ? since : stored.resolveSince(now));
+                since != null ? since : stored.resolveSince(now),
+                facets.isEmpty() ? stored.facets() : facets);
+    }
+
+    /**
+     * The {@code facets} argument, {@code key -> values}.
+     *
+     * <p>A single string is accepted where a list is meant — the one-value
+     * case is the common one and a model that writes it as a scalar is not
+     * wrong about the filter, only about the JSON.
+     */
+    private static Map<String, List<String>> facets(Map<String, Object> params) {
+        if (!(params.get("facets") instanceof Map<?, ?> raw)) {
+            return Map.of();
+        }
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : raw.entrySet()) {
+            if (!(e.getKey() instanceof String key) || key.isBlank()) {
+                continue;
+            }
+            List<String> values = new ArrayList<>();
+            switch (e.getValue()) {
+                case String single -> values.add(single);
+                case List<?> list -> {
+                    for (Object v : list) {
+                        if (v instanceof String s && !s.isBlank()) {
+                            values.add(s);
+                        }
+                    }
+                }
+                default -> { }
+            }
+            if (!values.isEmpty()) {
+                out.put(key.trim(), List.copyOf(values));
+            }
+        }
+        return de.mhus.vance.toolpack.facet.FacetSelection.normalize(out);
     }
 
     /** Understands {@code -7d}/{@code -12h}/{@code -30m} and an ISO instant. */

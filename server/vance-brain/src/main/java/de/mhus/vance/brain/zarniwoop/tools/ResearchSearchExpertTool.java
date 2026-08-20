@@ -94,6 +94,14 @@ public class ResearchSearchExpertTool implements Tool {
                     Map.entry("num", Map.of(
                             "type", "integer",
                             "description", "Maximum results (1–10).")),
+                    Map.entry("facets", Map.of(
+                            "type", "object",
+                            "description", "Structured filter by an endpoint's declared "
+                                    + "dimensions, e.g. {\"origin-place\": [\"m49:142\"]}. "
+                                    + "Distinct from 'params': an endpoint that does not "
+                                    + "declare a selected key is skipped rather than "
+                                    + "ignoring it. Keys and values come from "
+                                    + "research_providers.")),
                     Map.entry("params", Map.of(
                             "type", "object",
                             "description", "Endpoint-specific filters, by the exact names the "
@@ -200,7 +208,7 @@ public class ResearchSearchExpertTool implements Tool {
 
         SearchRequest req = new SearchRequest(
                 query, modality, SearchTier.EXPERT, num,
-                locale, pinnedInstance, expertParams);
+                locale, pinnedInstance, expertParams, ResearchSearchTool.facets(params));
 
         SearchResult result;
         try {

@@ -11,4 +11,5 @@ export interface SearchRequestView {
   locale?: string;
   instance?: string;
   expertParams?: Record<string, any>;
+  facets?: Record<string, string[]>;
 }

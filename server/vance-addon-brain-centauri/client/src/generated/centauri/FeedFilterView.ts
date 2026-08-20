@@ -9,4 +9,5 @@ export interface FeedFilterView {
   include: string[];
   exclude: string[];
   since?: string;
+  facets: Record<string, string[]>;
 }

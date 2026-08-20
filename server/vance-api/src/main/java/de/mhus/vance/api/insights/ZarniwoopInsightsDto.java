@@ -48,6 +48,16 @@ public class ZarniwoopInsightsDto {
     private List<String> tiers;
 
     /**
+     * Dimensions this instance can be filtered by, with the values needed to
+     * draw a picker. Empty for every provider that offers none.
+     *
+     * <p>Here rather than in a view of its own for the same reason the search
+     * app returns this DTO directly: a parallel type carrying the same fields
+     * only drifts.
+     */
+    private List<FacetInsightsDto> facets;
+
+    /**
      * Current availability: READY / NO_CREDENTIALS / QUOTA_EXHAUSTED /
      * COOLDOWN / DISABLED. Includes COOLDOWN even when
      * {@code availability()} reports READY, because the dispatcher

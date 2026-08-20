@@ -2,6 +2,7 @@ import { brainFetch } from '@vance/shared';
 import type { ClipRequest } from './generated/centauri/ClipRequest';
 import type { ClipResponse } from './generated/centauri/ClipResponse';
 import type { FeedConfigView } from './generated/centauri/FeedConfigView';
+import type { FeedFacetValueView } from './generated/centauri/FeedFacetValueView';
 import type { FeedPageRequest } from './generated/centauri/FeedPageRequest';
 import type { FeedPageView } from './generated/centauri/FeedPageView';
 import type { FeedSourceView } from './generated/centauri/FeedSourceView';
@@ -54,6 +55,24 @@ export async function loadPage(
   return brainFetch<FeedPageView>('POST', `addon/centauri/page?${qs({ projectId })}`, {
     body: request,
   });
+}
+
+/**
+ * One level of a facet's value tree, for a facet whose taxonomy was too large
+ * to travel with the declaration. `parent` absent is the top level.
+ *
+ * <p>Per source: a facet key is only as shared as its value system, and two
+ * sources declaring the same key may mean different vocabularies.
+ */
+export async function loadFacetValues(
+  projectId: string,
+  sourceId: string,
+  key: string,
+  parent?: string,
+): Promise<FeedFacetValueView[]> {
+  const params: Record<string, string> = { projectId, sourceId, key };
+  if (parent) params.parent = parent;
+  return brainFetch<FeedFacetValueView[]>('GET', `addon/centauri/facet-values?${qs(params)}`);
 }
 
 export async function clipItem(projectId: string, request: ClipRequest): Promise<ClipResponse> {

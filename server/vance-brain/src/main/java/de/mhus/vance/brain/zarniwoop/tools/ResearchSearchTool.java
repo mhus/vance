@@ -5,6 +5,7 @@ import de.mhus.vance.brain.zarniwoop.ZarniwoopService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.facet.FacetSelection;
 import de.mhus.vance.toolpack.research.SearchHit;
 import de.mhus.vance.toolpack.research.SearchModality;
 import de.mhus.vance.toolpack.research.SearchRequest;
@@ -20,6 +21,7 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -56,10 +58,54 @@ public class ResearchSearchTool implements Tool {
                             "type", "integer",
                             "description",
                                     "Maximum results to return (1–" + MAX_NUM
-                                            + ", default " + DEFAULT_NUM + ").")),
+                                            + ", default " + DEFAULT_NUM + ")."),
+                    "facets", Map.of(
+                            "type", "object",
+                            "description", "Restrict to a provider's declared dimensions, "
+                                    + "e.g. {\"origin-place\": [\"m49:142\"]} for Asian "
+                                    + "publishers. Keys and values come from "
+                                    + "research_providers. A provider that does not declare "
+                                    + "a selected key is skipped for this search, so never "
+                                    + "guess one — an invented key can leave no provider at "
+                                    + "all.")),
             "required", List.of("query"));
 
     private final ZarniwoopService zarniwoopService;
+
+    /**
+     * The {@code facets} argument, {@code key -> values}.
+     *
+     * <p>A scalar is accepted where a list is meant: the one-value case is the
+     * common one, and a model writing it as a string is wrong about the JSON,
+     * not about the filter.
+     */
+    static Map<String, List<String>> facets(@Nullable Map<String, Object> params) {
+        if (params == null || !(params.get("facets") instanceof Map<?, ?> raw)) {
+            return Map.of();
+        }
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : raw.entrySet()) {
+            if (!(e.getKey() instanceof String key) || StringUtils.isBlank(key)) {
+                continue;
+            }
+            List<String> values = new ArrayList<>();
+            switch (e.getValue()) {
+                case String single -> values.add(single);
+                case List<?> list -> {
+                    for (Object v : list) {
+                        if (v instanceof String s && !StringUtils.isBlank(s)) {
+                            values.add(s);
+                        }
+                    }
+                }
+                default -> { }
+            }
+            if (!values.isEmpty()) {
+                out.put(key.trim(), List.copyOf(values));
+            }
+        }
+        return FacetSelection.normalize(out);
+    }
 
     @Override
     public String name() {
@@ -132,7 +178,7 @@ public class ResearchSearchTool implements Tool {
 
         SearchRequest req = new SearchRequest(
                 query, modality, SearchTier.NORMAL, num,
-                null, null, Map.of());
+                null, null, Map.of(), facets(params));
 
         SearchResult result;
         try {

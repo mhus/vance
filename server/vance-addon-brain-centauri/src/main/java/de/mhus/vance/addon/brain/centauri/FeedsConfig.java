@@ -3,6 +3,7 @@ package de.mhus.vance.addon.brain.centauri;
 import de.mhus.vance.brain.centauri.CentauriPageRequest;
 import de.mhus.vance.brain.centauri.FeedStream;
 import de.mhus.vance.shared.document.kind.ApplicationDocument;
+import de.mhus.vance.toolpack.facet.FacetSelection;
 import de.mhus.vance.toolpack.feed.FeedFilter;
 import java.time.Duration;
 import java.time.Instant;
@@ -35,15 +36,29 @@ public record FeedsConfig(
         List<String> include,
         List<String> exclude,
         @Nullable String since,
+        Map<String, List<String>> facets,
         int pageSize) {
 
     public static final String APP_NAME = "feeds";
+
+    /** The same configuration without facets. */
+    public FeedsConfig(
+            List<FeedStream> streams,
+            @Nullable String text,
+            Set<String> languages,
+            List<String> include,
+            List<String> exclude,
+            @Nullable String since,
+            int pageSize) {
+        this(streams, text, languages, include, exclude, since, Map.of(), pageSize);
+    }
 
     public FeedsConfig {
         streams = streams == null ? List.of() : List.copyOf(streams);
         languages = languages == null ? Set.of() : Set.copyOf(languages);
         include = include == null ? List.of() : List.copyOf(include);
         exclude = exclude == null ? List.of() : List.copyOf(exclude);
+        facets = FacetSelection.normalize(facets);
         if (pageSize <= 0) {
             pageSize = CentauriPageRequest.DEFAULT_PAGE_SIZE;
         }
@@ -51,7 +66,7 @@ public record FeedsConfig(
 
     public static FeedsConfig empty() {
         return new FeedsConfig(List.of(), null, Set.of(), List.of(), List.of(), null,
-                CentauriPageRequest.DEFAULT_PAGE_SIZE);
+                Map.of(), CentauriPageRequest.DEFAULT_PAGE_SIZE);
     }
 
     /** Parse the {@code feeds} block out of an application manifest. */
@@ -76,12 +91,14 @@ public record FeedsConfig(
         List<String> include = List.of();
         List<String> exclude = List.of();
         String since = null;
+        Map<String, List<String>> facets = Map.of();
         if (block.get("filter") instanceof Map<?, ?> filter) {
             text = asString(filter.get("text"));
             languages = asStringSet(filter.get("languages"));
             include = asStringList(filter.get("include"));
             exclude = asStringList(filter.get("exclude"));
             since = asString(filter.get("since"));
+            facets = asFacets(filter.get("facets"));
         }
 
         int pageSize = CentauriPageRequest.DEFAULT_PAGE_SIZE;
@@ -89,12 +106,13 @@ public record FeedsConfig(
             pageSize = n.intValue();
         }
 
-        return new FeedsConfig(streams, text, languages, include, exclude, since, pageSize);
+        return new FeedsConfig(
+                streams, text, languages, include, exclude, since, facets, pageSize);
     }
 
     /** The filter as of {@code now} — see the note on relative {@code since}. */
     public FeedFilter toFilter(Instant now) {
-        return new FeedFilter(text, languages, include, exclude, resolveSince(now));
+        return new FeedFilter(text, languages, include, exclude, resolveSince(now), facets);
     }
 
     /** Serialise back into the {@code config.feeds} shape. */
@@ -114,6 +132,11 @@ public record FeedsConfig(
         }
         if (since != null) {
             filter.put("since", since);
+        }
+        if (!facets.isEmpty()) {
+            Map<String, Object> block = new java.util.LinkedHashMap<>();
+            facets.forEach((key, values) -> block.put(key, new ArrayList<>(values)));
+            filter.put("facets", block);
         }
 
         List<Map<String, Object>> streamList = new ArrayList<>(streams.size());
@@ -220,6 +243,24 @@ public record FeedsConfig(
             }
         }
         return List.copyOf(out);
+    }
+
+    /**
+     * The {@code facets} block: a map of key to values, each value list read
+     * with the same „YAML list or comma-separated string" tolerance as the
+     * keyword lists above.
+     */
+    private static Map<String, List<String>> asFacets(@Nullable Object raw) {
+        if (!(raw instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        Map<String, List<String>> out = new java.util.LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : map.entrySet()) {
+            if (e.getKey() instanceof String key && !key.isBlank()) {
+                out.put(key.trim(), asStringList(e.getValue()));
+            }
+        }
+        return FacetSelection.normalize(out);
     }
 
     private static Set<String> asStringSet(@Nullable Object v) {

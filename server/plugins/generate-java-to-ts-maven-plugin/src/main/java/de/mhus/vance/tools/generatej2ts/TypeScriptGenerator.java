@@ -294,7 +294,19 @@ public class TypeScriptGenerator {
         if (f.getTsTypeOverride() != null && !f.getTsTypeOverride().isBlank()) {
             return f.getTsTypeOverride();
         }
-        String raw = Objects.toString(f.getJavaType(), "");
+        return resolveTsType(Objects.toString(f.getJavaType(), ""));
+    }
+
+    /**
+     * Map one Java type name to TypeScript.
+     *
+     * <p>Recursive, and it has to be: a type argument can itself be generic.
+     * {@code Map<String, List<String>>} used to reach the simple-name mapper
+     * with {@code List<String>}, which produced the bare word {@code List} —
+     * a TypeScript type that does not exist, in a file nobody compiles until
+     * much later.
+     */
+    private String resolveTsType(String raw) {
         if (raw.isBlank()) return "any";
 
         // Normalisieren (ohne Whitespaces)
@@ -303,7 +315,7 @@ public class TypeScriptGenerator {
         // Arrays: X[] → X[] (Type extrahieren)
         if (s.endsWith("[]")) {
             String base = s.substring(0, s.length() - 2).trim();
-            return mapSimple(base) + "[]";
+            return resolveTsType(base) + "[]";
         }
 
         // Generics behandeln: z.B. List<Foo>, Set<Bar>, Optional<T>, Map<K,V>
@@ -319,18 +331,18 @@ public class TypeScriptGenerator {
 
             if (rtLow.endsWith("list") || rtLow.endsWith("set") || rtLow.endsWith("collection")) {
                 String elem = parts.length > 0 ? parts[0].trim() : "any";
-                return mapSimple(elem) + "[]";
+                return resolveTsType(elem) + "[]";
             }
             if (rtLow.endsWith("optional")) {
                 String elem = parts.length > 0 ? parts[0].trim() : "any";
                 // optionales Feld ist bereits durch f.isOptional() modelliert;
                 // in TS-Typ bleibt nur der Elementtyp
-                return mapSimple(elem);
+                return resolveTsType(elem);
             }
             if (rtLow.endsWith("map")) {
                 // Map<K,V> → Record<string, V>
                 String v = parts.length > 1 ? parts[1].trim() : "any";
-                return "Record<string, " + mapSimple(v) + ">";
+                return "Record<string, " + resolveTsType(v) + ">";
             }
             // Default: generics entfernen und Simple‑Typ mappen
             String main = rawType.trim();

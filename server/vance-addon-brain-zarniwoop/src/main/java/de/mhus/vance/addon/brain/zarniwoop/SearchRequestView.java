@@ -1,6 +1,7 @@
 package de.mhus.vance.addon.brain.zarniwoop;
 
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
@@ -27,4 +28,24 @@ public record SearchRequestView(
         @Nullable Integer num,
         @Nullable String locale,
         @Nullable String instance,
-        @Nullable Map<String, Object> expertParams) {}
+        @Nullable Map<String, Object> expertParams,
+        /**
+         * Facet selection, {@code key -> values}. Unlike {@code expertParams}
+         * this is not tier-gated: a facet is structured and declared, so it
+         * means the same thing at every tier — and a provider that has not
+         * declared a selected key is skipped rather than ignoring it.
+         */
+        @Nullable Map<String, List<String>> facets) {
+
+    /** The same request without facets. */
+    public SearchRequestView(
+            String query,
+            @Nullable String modality,
+            @Nullable String tier,
+            @Nullable Integer num,
+            @Nullable String locale,
+            @Nullable String instance,
+            @Nullable Map<String, Object> expertParams) {
+        this(query, modality, tier, num, locale, instance, expertParams, null);
+    }
+}

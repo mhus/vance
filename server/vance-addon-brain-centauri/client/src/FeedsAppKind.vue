@@ -4,8 +4,12 @@ import {
   VAlert, VButton, VCard, VEmptyState, VInput, VModal, VSelect, VTextarea,
 } from '@vance/components';
 import { safeUrl } from '@vance/shared';
-import { clipItem, listSources, loadConfig, loadPage, saveConfig, sendSignal } from './api';
+import {
+  clipItem, listSources, loadConfig, loadFacetValues, loadPage, saveConfig, sendSignal,
+} from './api';
 import type { FeedConfigView } from './generated/centauri/FeedConfigView';
+import type { FeedFacetValueView } from './generated/centauri/FeedFacetValueView';
+import type { FeedFacetView } from './generated/centauri/FeedFacetView';
 import type { FeedItemView } from './generated/centauri/FeedItemView';
 import type { FeedNoteView } from './generated/centauri/FeedNoteView';
 import type { FeedSourceView } from './generated/centauri/FeedSourceView';
@@ -81,6 +85,78 @@ const sentinel = ref<HTMLElement | null>(null);
 let observer: IntersectionObserver | null = null;
 
 const configuredStreams = computed(() => config.value?.streams ?? []);
+
+/**
+ * The reader's current facet selection — transient, and deliberately not the
+ * stored one until „Save as filter" says so. Browsing is not configuring.
+ */
+const facetSelection = ref<Record<string, string[]>>({});
+
+/**
+ * Facets offered above the stream: those a configured source declares.
+ *
+ * Keyed per source, because a facet key is only as shared as its value system.
+ * Two sources may both declare `subject-topic` and mean different vocabularies,
+ * so their values are never merged into one list.
+ */
+const offeredFacets = computed(() => {
+  const configured = new Set(configuredStreams.value.map((s) => s.source));
+  const out: { sourceId: string; sourceName: string; facet: FeedFacetView }[] = [];
+  for (const source of sources.value) {
+    if (!configured.has(source.id)) continue;
+    for (const facet of source.capabilities?.facets ?? []) {
+      out.push({ sourceId: source.id, sourceName: source.displayName, facet });
+    }
+  }
+  return out;
+});
+
+/** Values of one facet, including lazily fetched levels. */
+const facetValues = ref<Record<string, FeedFacetValueView[]>>({});
+
+function facetKeyOf(sourceId: string, key: string): string {
+  return `${sourceId}\u0000${key}`;
+}
+
+async function ensureFacetValues(sourceId: string, facet: FeedFacetView): Promise<void> {
+  const cacheKey = facetKeyOf(sourceId, facet.key);
+  if (facetValues.value[cacheKey]) return;
+  // A non-lazy facet already shipped everything with its declaration.
+  if (!facet.lazyChildren) {
+    facetValues.value = { ...facetValues.value, [cacheKey]: facet.values };
+    return;
+  }
+  try {
+    const values = await loadFacetValues(props.document.projectId, sourceId, facet.key);
+    facetValues.value = { ...facetValues.value, [cacheKey]: values };
+  } catch (e) {
+    error.value = String(e);
+  }
+}
+
+function selectedFacetValue(key: string): string {
+  return facetSelection.value[key]?.[0] ?? '';
+}
+
+/**
+ * One value per key for now. The wire carries a list — several values of one
+ * key are an „or" — but a select is what the taxonomy shapes here call for,
+ * and a multi-select without a tree widget would be worse than one clear
+ * choice.
+ */
+async function selectFacet(key: string, value: string | null): Promise<void> {
+  const next = { ...facetSelection.value };
+  if (value) next[key] = [value];
+  else delete next[key];
+  facetSelection.value = next;
+  await restart();
+}
+
+async function saveFacetsAsFilter(): Promise<void> {
+  if (!config.value) return;
+  config.value = { ...config.value, filter: { ...config.value.filter, facets: facetSelection.value } };
+  await persist();
+}
 
 onMounted(async () => {
   await reload();
@@ -158,7 +234,17 @@ async function nextPage(emptyRounds = 0): Promise<void> {
     const page = await loadPage(props.document.projectId, {
       folder: folder.value,
       streams: [],
-      filter: undefined,
+      // Facets only: the stored text/language filter is configuration, and a
+      // page request must not quietly rewrite it. The server lays this over
+      // what is stored.
+      filter: {
+        text: undefined,
+        languages: [],
+        include: [],
+        exclude: [],
+        since: undefined,
+        facets: facetSelection.value,
+      },
       pageSize: config.value?.pageSize ?? 20,
       cursor: cursor.value ?? undefined,
       direction: 'older',
@@ -333,6 +419,13 @@ function noteText(note: FeedNoteView): string {
       return `${what}: paused after an earlier failure`;
     case 'TIMED_OUT':
       return `${what}: did not answer in time`;
+    case 'MISSING_FACET':
+      // Not a failure: the source was never asked, because it does not offer
+      // the dimension that was selected. Saying so beats a quietly shorter
+      // timeline.
+      return `${what}: not part of this selection${
+        note.detail ? ` — offers no ${note.detail}` : ''
+      }`;
     default:
       return `${what}: failed${note.detail ? ` — ${note.detail}` : ''}`;
   }
@@ -377,6 +470,32 @@ function slug(title: string): string {
     <VAlert v-for="note in notes" :key="note.sourceId + note.selector" variant="warning">
       {{ noteText(note) }}
     </VAlert>
+
+    <!-- Facet bar: only what a configured source declares -->
+    <div v-if="tab === 'stream' && offeredFacets.length > 0" class="flex flex-wrap items-end gap-2">
+      <div v-for="entry in offeredFacets" :key="facetKeyOf(entry.sourceId, entry.facet.key)">
+        <VSelect
+          :label="`${entry.facet.label} · ${entry.sourceName}`"
+          :model-value="selectedFacetValue(entry.facet.key)"
+          :options="[
+            { value: '', label: 'Any' },
+            ...(facetValues[facetKeyOf(entry.sourceId, entry.facet.key)] ?? []).map((v) => ({
+              value: v.id,
+              label: v.label,
+            })),
+          ]"
+          @focus="ensureFacetValues(entry.sourceId, entry.facet)"
+          @update:model-value="(v: string | null) => selectFacet(entry.facet.key, v)"
+        />
+      </div>
+      <VButton
+        v-if="Object.keys(facetSelection).length > 0"
+        variant="ghost"
+        @click="saveFacetsAsFilter()"
+      >
+        Save as filter
+      </VButton>
+    </div>
 
     <!-- Stream -->
     <div v-if="tab === 'stream'" class="flex-1 overflow-y-auto">

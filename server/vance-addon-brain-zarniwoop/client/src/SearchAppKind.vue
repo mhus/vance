@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, onMounted } from 'vue';
 import { VAlert, VButton, VCard, VEmptyState, VInput, VSelect } from '@vance/components';
-import type { ZarniwoopInsightsDto } from '@vance/generated';
+import type {
+  FacetInsightsDto, FacetValueInsightsDto, ZarniwoopInsightsDto,
+} from '@vance/generated';
 import { safeUrl } from '@vance/shared';
 import { investigate, listProviders, loadConfig, saveConfig, search, loadContentBlob } from './api';
 import type { InvestigateResultView } from './generated/search/InvestigateResultView';
@@ -141,6 +143,49 @@ const providerLines = computed(() =>
   })),
 );
 
+/**
+ * The reader's facet selection, transient like the query.
+ *
+ * <p>Not stored in the manifest: a saved search is a query, and a filter that
+ * outlives the session it was set in produces empty result lists whose cause
+ * is two visits ago.
+ */
+const facetSelection = ref<Record<string, string[]>>({});
+
+/**
+ * Facets offered for the current modality: those declared by a READY endpoint
+ * that can serve it.
+ *
+ * <p>Per endpoint, because a facet key is only as shared as its value system —
+ * two endpoints may both declare `subject-topic` over different vocabularies,
+ * and merging their values would offer one that only one of them answers. And
+ * capability-gated like the modality tabs above: selecting a facet no endpoint
+ * declares would leave the search with no provider at all.
+ */
+const offeredFacets = computed(() => {
+  const out: { instanceId: string; instanceName: string; facet: FacetInsightsDto }[] = [];
+  for (const p of providers.value) {
+    if (p.availability !== 'READY') continue;
+    if (!(p.modalities ?? []).some((m) => m.toLowerCase() === modality.value)) continue;
+    for (const facet of p.facets ?? []) {
+      out.push({ instanceId: p.id, instanceName: p.displayName ?? p.id, facet });
+    }
+  }
+  return out;
+});
+
+function selectedFacet(key: string): string {
+  return facetSelection.value[key]?.[0] ?? '';
+}
+
+/** Setting a facet does not search — spending is an explicit act here. */
+function selectFacet(key: string, value: string | null): void {
+  const next = { ...facetSelection.value };
+  if (value) next[key] = [value];
+  else delete next[key];
+  facetSelection.value = next;
+}
+
 const gridLayout = computed(() => GRID_MODALITIES.has(modality.value));
 
 onMounted(async () => {
@@ -191,6 +236,7 @@ async function submit(): Promise<void> {
       tier: tier.value,
       num: num.value,
       instance: tier.value === 'expert' && pinned.value ? pinned.value : undefined,
+      facets: facetSelection.value,
     });
   } catch (e) {
     error.value = message(e);
@@ -480,6 +526,31 @@ function message(e: unknown): string {
         :options="[{ value: '', label: 'Any endpoint' }, ...pinnable]"
         @update:model-value="(v: string | null) => (pinned = v ?? '')"
       />
+    </div>
+
+    <!-- Facets: only what a ready endpoint for this modality declares -->
+    <div
+      v-if="!configTab && offeredFacets.length > 0"
+      class="flex flex-wrap items-end gap-2"
+    >
+      <VSelect
+        v-for="entry in offeredFacets"
+        :key="entry.instanceId + '/' + entry.facet.key"
+        :label="`${entry.facet.label} · ${entry.instanceName}`"
+        :model-value="selectedFacet(entry.facet.key)"
+        :options="[
+          { value: '', label: 'Any' },
+          ...(entry.facet.values ?? []).map((v: FacetValueInsightsDto) => ({
+            value: v.id,
+            label: v.label,
+          })),
+        ]"
+        @update:model-value="(v: string | null) => selectFacet(entry.facet.key, v)"
+      />
+      <span class="pb-2 text-xs opacity-60">
+        Applies to the next search — an endpoint that does not offer a selected
+        filter is skipped.
+      </span>
     </div>
 
     <VEmptyState

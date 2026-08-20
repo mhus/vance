@@ -3,6 +3,8 @@
  Source: de.mhus.vance.api.insights.ZarniwoopInsightsDto
 */
 
+import { FacetInsightsDto } from './FacetInsightsDto';
+
 export interface ZarniwoopInsightsDto {
   id: string;
   displayName: string;
@@ -10,6 +12,7 @@ export interface ZarniwoopInsightsDto {
   modalities: string[];
   domains: string[];
   tiers: string[];
+  facets: FacetInsightsDto[];
   availability: string;
   statusText?: string;
   callCount: number;

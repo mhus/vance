@@ -190,6 +190,8 @@ export * from './insights/UsageBucketDto';
 export * from './insights/UsageReportDto';
 export * from './insights/ToolUsageEntryInsightsDto';
 export * from './insights/ToolUsageRoleInsightsDto';
+export * from './insights/FacetInsightsDto';
+export * from './insights/FacetValueInsightsDto';
 export * from './insights/ZarniwoopInsightsDto';
 
 export * from './progress/MetricsPayload';

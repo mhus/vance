@@ -32,6 +32,12 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ResearchProvidersTool implements Tool {
 
+    /**
+     * Values of one facet shown per instance — enough to recognise the
+     * vocabulary, not enough to pour a taxonomy into the context.
+     */
+    private static final int FACET_VALUE_SAMPLE = 12;
+
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
             "properties", Map.of(),
@@ -117,6 +123,30 @@ public class ResearchProvidersTool implements Tool {
         row.put("modalities", sortedNames(inst.modalities()));
         row.put("domains", sortedNames(inst.domains()));
         row.put("tiers", sortedNames(inst.tiers()));
+        if (!inst.facets().isEmpty()) {
+            // What this instance can be filtered by, with a bounded sample of
+            // each value list: enough to recognise the vocabulary, not enough
+            // to pour a taxonomy into the context.
+            List<Map<String, Object>> facets = new ArrayList<>();
+            for (de.mhus.vance.toolpack.facet.Facet facet : inst.facets()) {
+                Map<String, Object> f = new LinkedHashMap<>();
+                f.put("key", facet.key());
+                f.put("label", facet.label());
+                List<String> sample = new ArrayList<>();
+                for (var value : facet.values()) {
+                    if (sample.size() >= FACET_VALUE_SAMPLE) {
+                        break;
+                    }
+                    sample.add(value.id() + " (" + value.label() + ")");
+                }
+                f.put("values", sample);
+                if (facet.values().size() > sample.size() || facet.lazyChildren()) {
+                    f.put("valuesTruncated", true);
+                }
+                facets.add(f);
+            }
+            row.put("facets", facets);
+        }
 
         ProviderAvailability availability;
         try {

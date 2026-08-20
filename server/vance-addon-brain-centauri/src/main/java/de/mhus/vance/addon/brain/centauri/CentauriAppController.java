@@ -19,6 +19,7 @@ import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.toolpack.feed.FeedCapabilities;
 import de.mhus.vance.toolpack.feed.FeedDirection;
+import de.mhus.vance.toolpack.feed.FeedExtraField;
 import de.mhus.vance.toolpack.feed.FeedFilter;
 import de.mhus.vance.toolpack.feed.FeedItem;
 import de.mhus.vance.toolpack.feed.FeedScope;
@@ -364,7 +365,8 @@ public class CentauriAppController {
                 caps.selectorMode().name(), kinds,
                 caps.pushdownTextSearch(), caps.pushdownLanguage(), caps.pushdownSince(),
                 caps.supportsNewerDirection(), caps.carriesFullBody(), caps.maxPageSize(),
-                signals, caps.carriesControlUrl(), facetViews(caps.facets()));
+                signals, caps.carriesControlUrl(), facetViews(caps.facets()),
+                extraFieldViews(caps.extraFields()));
     }
 
     private static FeedItemView toView(FeedItem item, String sourceId,
@@ -374,6 +376,14 @@ public class CentauriAppController {
                 item.summary(), item.author(), item.language(), item.imageUrl(),
                 item.controlUrl(), item.tags(), item.body(), item.extras(),
                 sourceId, sourceName, selector);
+    }
+
+    private static List<FeedExtraFieldView> extraFieldViews(List<FeedExtraField> fields) {
+        List<FeedExtraFieldView> out = new ArrayList<>(fields.size());
+        for (FeedExtraField field : fields) {
+            out.add(new FeedExtraFieldView(field.key(), field.label()));
+        }
+        return out;
     }
 
     private static List<FeedFacetView> facetViews(List<Facet> facets) {

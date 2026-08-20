@@ -24,4 +24,5 @@ public record FeedCapabilitiesView(
         int maxPageSize,
         List<String> signalsAccepted,
         boolean carriesControlUrl,
-        List<FeedFacetView> facets) {}
+        List<FeedFacetView> facets,
+        List<FeedExtraFieldView> extraFields) {}

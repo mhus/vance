@@ -3,6 +3,7 @@
  Source: de.mhus.vance.addon.brain.centauri.FeedCapabilitiesView
 */
 
+import { FeedExtraFieldView } from './FeedExtraFieldView';
 import { FeedFacetView } from './FeedFacetView';
 
 export interface FeedCapabilitiesView {
@@ -17,4 +18,5 @@ export interface FeedCapabilitiesView {
   signalsAccepted: string[];
   carriesControlUrl: boolean;
   facets: FeedFacetView[];
+  extraFields: FeedExtraFieldView[];
 }

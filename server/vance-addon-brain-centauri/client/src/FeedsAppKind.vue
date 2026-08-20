@@ -110,30 +110,24 @@ async function toggleMark(item: FeedItemView): Promise<void> {
 }
 
 /**
- * The extras worth putting in front of a person, in a fixed order.
+ * The extras worth putting in front of a person — declared by the source that
+ * wrote them, in the order it named them.
  *
- * <p>Not every key: `extras` is per-source and untyped, and rendering all of
- * it would put an id path next to a word count and call both „info". These
- * are the ones that read as provenance.
+ * <p>This list used to live here, and it did not survive the second source:
+ * `originPlace` and `translationModel` are one archive's vocabulary, and a
+ * Mastodon instance would have shown nothing while its own fields went
+ * unrendered. A source that declares none shows none, which is the same rule
+ * the signal buttons follow — empty means „do not offer it", not „guess".
  */
-const SHOWN_EXTRAS: { key: string; label: string }[] = [
-  { key: 'originPlace', label: 'Origin' },
-  { key: 'sources', label: 'Feeds' },
-  { key: 'categories', label: 'Categories' },
-  { key: 'originalTitle', label: 'Original title' },
-  { key: 'originalLanguage', label: 'Original language' },
-  { key: 'translationModel', label: 'Translated by' },
-  { key: 'wordCount', label: 'Words' },
-  { key: 'collectedAt', label: 'Collected' },
-];
-
 function extraRows(item: FeedItemView): { label: string; value: string }[] {
+  const declared = sources.value
+    .find((s) => s.id === item.sourceId)?.capabilities?.extraFields ?? [];
   const extras = shown(item).extras ?? {};
   const out: { label: string; value: string }[] = [];
-  for (const { key, label } of SHOWN_EXTRAS) {
-    const raw = extras[key];
+  for (const field of declared) {
+    const raw = extras[field.key];
     if (raw === undefined || raw === null || raw === '') continue;
-    out.push({ label, value: Array.isArray(raw) ? raw.join(', ') : String(raw) });
+    out.push({ label: field.label, value: Array.isArray(raw) ? raw.join(', ') : String(raw) });
   }
   return out;
 }

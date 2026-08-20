@@ -42,7 +42,12 @@ public record FeedCapabilities(
          * is why it is a list of declarations rather than a boolean —
          * the reader needs the values and their labels to draw a picker.
          */
-        List<Facet> facets) {
+        List<Facet> facets,
+        /**
+         * Which {@link FeedItem#extras()} keys a reader should show, in the
+         * order it should show them — see {@link FeedExtraField}.
+         */
+        List<FeedExtraField> extraFields) {
 
     /** Fallback TTL when a source does not state one. */
     public static final Duration DEFAULT_TTL = Duration.ofMinutes(30);
@@ -68,7 +73,26 @@ public record FeedCapabilities(
             Duration capabilitiesTtl) {
         this(selectorMode, selectorKinds, pushdownTextSearch, pushdownLanguage,
                 pushdownSince, supportsNewerDirection, carriesFullBody, maxPageSize,
-                signalsAccepted, carriesControlUrl, capabilitiesTtl, List.of());
+                signalsAccepted, carriesControlUrl, capabilitiesTtl, List.of(), List.of());
+    }
+
+    /** Capabilities with facets but no declared display extras. */
+    public FeedCapabilities(
+            FeedSelectorMode selectorMode,
+            Set<FeedSelectorKind> selectorKinds,
+            boolean pushdownTextSearch,
+            boolean pushdownLanguage,
+            boolean pushdownSince,
+            boolean supportsNewerDirection,
+            boolean carriesFullBody,
+            int maxPageSize,
+            Set<FeedSignal> signalsAccepted,
+            boolean carriesControlUrl,
+            Duration capabilitiesTtl,
+            List<Facet> facets) {
+        this(selectorMode, selectorKinds, pushdownTextSearch, pushdownLanguage,
+                pushdownSince, supportsNewerDirection, carriesFullBody, maxPageSize,
+                signalsAccepted, carriesControlUrl, capabilitiesTtl, facets, List.of());
     }
 
     public FeedCapabilities {
@@ -78,6 +102,7 @@ public record FeedCapabilities(
         selectorKinds = selectorKinds == null ? Set.of() : Set.copyOf(selectorKinds);
         signalsAccepted = signalsAccepted == null ? Set.of() : Set.copyOf(signalsAccepted);
         facets = facets == null ? List.of() : List.copyOf(facets);
+        extraFields = extraFields == null ? List.of() : List.copyOf(extraFields);
         if (maxPageSize <= 0) {
             maxPageSize = DEFAULT_MAX_PAGE_SIZE;
         }

@@ -4,6 +4,7 @@ import de.mhus.vance.toolpack.feed.FeedActor;
 import de.mhus.vance.toolpack.facet.Facet;
 import de.mhus.vance.toolpack.facet.FacetValue;
 import de.mhus.vance.toolpack.feed.FeedCapabilities;
+import de.mhus.vance.toolpack.feed.FeedExtraField;
 import de.mhus.vance.toolpack.feed.FeedDirection;
 import de.mhus.vance.toolpack.feed.FeedException;
 import de.mhus.vance.toolpack.feed.FeedFetch;
@@ -103,7 +104,8 @@ class OdeFeedInstance implements FeedSourceInstance {
                 enumSet(node.path("signalsAccepted"), FeedSignal.class),
                 node.path("carriesControlUrl").asBoolean(false),
                 duration(text(node, "capabilitiesTtl")),
-                facets(node.path("facets")));
+                facets(node.path("facets")),
+                extraFields(node.path("extraFields")));
     }
 
     /**
@@ -131,6 +133,26 @@ class OdeFeedInstance implements FeedSourceInstance {
             } catch (IllegalArgumentException e) {
                 log.warn("Ode feed endpoint declares unusable facet '{}': {}", key, e.getMessage());
             }
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * Which extras this source says are worth showing, in its order. A malformed
+     * entry is skipped: losing one label is recoverable, losing the source is not.
+     */
+    private static List<FeedExtraField> extraFields(JsonNode array) {
+        if (!array.isArray()) {
+            return List.of();
+        }
+        List<FeedExtraField> out = new ArrayList<>(array.size());
+        for (JsonNode entry : array) {
+            String key = text(entry, "key");
+            if (StringUtils.isBlank(key)) {
+                continue;
+            }
+            out.add(new FeedExtraField(
+                    key, StringUtils.defaultIfBlank(text(entry, "label"), key)));
         }
         return List.copyOf(out);
     }

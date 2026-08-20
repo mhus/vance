@@ -380,7 +380,10 @@ onMounted(async () => {
   if (sentinel.value) observer.observe(sentinel.value);
 });
 
-onBeforeUnmount(() => observer?.disconnect());
+onBeforeUnmount(() => {
+  observer?.disconnect();
+  if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+});
 
 watch(sentinel, (el) => {
   if (el && observer) observer.observe(el);
@@ -420,6 +423,107 @@ async function restart(): Promise<void> {
   cursor.value = null;
   hasMore.value = true;
   await nextPage();
+}
+
+// ── refreshing ───────────────────────────────────────────────────────
+
+/**
+ * How often the stream reloads itself when the switch is on.
+ *
+ * <p>Thirty seconds is a compromise between a timeline that feels live and
+ * one that costs a page fetch per source every few breaths. Each tick is a
+ * real request to every configured source, and some of them meter it.
+ */
+const AUTO_REFRESH_INTERVAL_MS = 30_000;
+
+/** How far the stream has to be dragged past its top before it reloads. */
+const PULL_THRESHOLD_PX = 80;
+
+const autoRefresh = ref(false);
+const pullDistance = ref(0);
+const refreshing = ref(false);
+const scroller = ref<HTMLElement | null>(null);
+
+let autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let pullStartY: number | null = null;
+
+async function refreshNow(): Promise<void> {
+  if (refreshing.value || loading.value) return;
+  refreshing.value = true;
+  try {
+    await restart();
+  } finally {
+    refreshing.value = false;
+    pullDistance.value = 0;
+  }
+}
+
+/**
+ * One automatic reload, or a good reason not to.
+ *
+ * <p>Two things are skipped rather than done: a hidden tab, because nobody is
+ * reading it and every source still gets asked; and a stream scrolled away
+ * from the top, because a reload jumps back to the newest entry and moving the
+ * page under someone who is reading is worse than being a little stale.
+ */
+async function autoRefreshTick(): Promise<void> {
+  if (document.hidden) return;
+  if ((scroller.value?.scrollTop ?? 0) > 0) return;
+  await refreshNow();
+}
+
+watch(autoRefresh, (on) => {
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
+  if (on) autoRefreshTimer = setInterval(() => void autoRefreshTick(), AUTO_REFRESH_INTERVAL_MS);
+});
+
+/**
+ * Pull-to-refresh, from a wheel as well as a finger.
+ *
+ * <p>The wheel path is the one that matters on a desktop: a trackpad at the
+ * top of a list keeps sending scroll events that the browser has nowhere to
+ * apply, and that over-scroll is exactly the gesture. Waiting for a „release"
+ * would mean waiting for an event a wheel never sends, so the wheel fires at
+ * the threshold and the finger on lift.
+ */
+function onWheel(event: WheelEvent): void {
+  if (refreshing.value || (scroller.value?.scrollTop ?? 0) > 0) {
+    pullDistance.value = 0;
+    return;
+  }
+  if (event.deltaY >= 0) {
+    pullDistance.value = 0;
+    return;
+  }
+  pullDistance.value = Math.min(pullDistance.value - event.deltaY, PULL_THRESHOLD_PX * 1.5);
+  if (pullDistance.value >= PULL_THRESHOLD_PX) void refreshNow();
+}
+
+/** Any real scrolling ends a pull — the gesture only exists at the top. */
+function onScroll(): void {
+  if (pullDistance.value !== 0 && (scroller.value?.scrollTop ?? 0) > 0) {
+    pullDistance.value = 0;
+  }
+}
+
+function onTouchStart(event: TouchEvent): void {
+  pullStartY = (scroller.value?.scrollTop ?? 0) <= 0 ? event.touches[0].clientY : null;
+}
+
+function onTouchMove(event: TouchEvent): void {
+  if (pullStartY === null || refreshing.value) return;
+  const delta = event.touches[0].clientY - pullStartY;
+  // Halved: a pull that follows the finger exactly feels like a broken scroll.
+  pullDistance.value = Math.max(0, Math.min(delta / 2, PULL_THRESHOLD_PX * 1.5));
+}
+
+function onTouchEnd(): void {
+  pullStartY = null;
+  if (pullDistance.value >= PULL_THRESHOLD_PX) void refreshNow();
+  else pullDistance.value = 0;
 }
 
 /**
@@ -677,7 +781,17 @@ function slug(title: string): string {
         Configuration
       </VButton>
       <div class="flex-1"></div>
-      <VButton variant="ghost" :disabled="loading" @click="restart()">Refresh</VButton>
+      <!-- Only on the stream: an interval that reloads a form nobody is
+           looking at would throw away what is being typed into it. -->
+      <VCheckbox
+        v-if="tab === 'stream'"
+        :model-value="autoRefresh"
+        :label="`Auto-refresh (${AUTO_REFRESH_INTERVAL_MS / 1000}s)`"
+        @update:model-value="(v: boolean) => (autoRefresh = v)"
+      />
+      <VButton variant="ghost" :disabled="loading || refreshing" @click="refreshNow()">
+        Refresh
+      </VButton>
     </div>
 
     <VAlert v-if="error" variant="error">{{ error }}</VAlert>
@@ -687,7 +801,35 @@ function slug(title: string): string {
     </VAlert>
 
     <!-- Stream -->
-    <div v-if="tab === 'stream'" class="flex-1 overflow-y-auto">
+    <div
+      v-if="tab === 'stream'"
+      ref="scroller"
+      class="flex-1 overflow-y-auto"
+      @scroll="onScroll"
+      @wheel="onWheel"
+      @touchstart="onTouchStart"
+      @touchmove="onTouchMove"
+      @touchend="onTouchEnd"
+    >
+      <!-- Grows with the pull and holds the spinner while it reloads. Height
+           rather than opacity, so the gesture has something to push against. -->
+      <div
+        class="flex items-center justify-center overflow-hidden text-sm opacity-70"
+        :style="{ height: `${refreshing ? PULL_THRESHOLD_PX : pullDistance}px` }"
+      >
+        <span v-if="refreshing" class="flex items-center gap-2">
+          <span
+            class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current
+                   border-t-transparent"
+          ></span>
+          Refreshing…
+        </span>
+        <span v-else-if="pullDistance >= PULL_THRESHOLD_PX">Release to refresh</span>
+        <!-- Only once there is room for a line of text. Below that the label
+             is clipped by the very box that is supposed to be growing, which
+             reads as a rendering fault rather than as a gesture. -->
+        <span v-else-if="pullDistance >= 24">Pull to refresh</span>
+      </div>
       <VEmptyState
         v-if="configuredStreams.length === 0"
         headline="No streams yet"

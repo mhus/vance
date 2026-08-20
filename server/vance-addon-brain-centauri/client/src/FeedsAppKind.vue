@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   VAlert, VButton, VCard, VCheckbox, VEmptyState, VInput, VModal, VSelect, VTextarea, VToggle,
 } from '@vance/components';
@@ -67,6 +67,47 @@ function entryKey(item: FeedItemView): string {
  * second click on the same card clears it.
  */
 const marked = ref<string | null>(null);
+
+/**
+ * The marked entry, told to the chat as this app tab's selection.
+ *
+ * <p>Not a client tool, and the difference matters. A tool would block the
+ * brain's sampling loop until this browser answers — up to its timeout if the
+ * tab is asleep — and would cost a slot in the per-call tool budget for
+ * something that belongs in every turn anyway. The same reasoning already
+ * moved the text selection off the client-tool channel; this rides the same
+ * per-turn hint (`ProcessSteerRequest.activeApp.selection`), which the app's
+ * own `promptInject` phrases.
+ *
+ * <p>What travels is the identity, not the entry: source and id, so the model
+ * can name what the reader is looking at and fetch the rest with `feed_item`
+ * when it actually needs the text.
+ */
+const reportAppSelection = inject<
+  ((sel: { appDocId: string; selection: string } | null) => void) | null
+>('vance:report-app-selection', null);
+
+watch(marked, (key) => {
+  if (!reportAppSelection) return;
+  const appId = props.document.id;
+  if (!appId || !key) {
+    reportAppSelection(null);
+    return;
+  }
+  const item = items.value.find((i) => entryKey(i) === key);
+  if (!item) {
+    reportAppSelection(null);
+    return;
+  }
+  // Title included: the id alone would make the prompt line unreadable, and
+  // the model would have to spend a tool call to learn what it is looking at.
+  reportAppSelection({
+    appDocId: appId,
+    selection: `${item.sourceId}/${item.id} — ${item.title}`,
+  });
+});
+
+onBeforeUnmount(() => reportAppSelection?.(null));
 
 /**
  * The full entry per card, once fetched.

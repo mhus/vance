@@ -173,6 +173,16 @@ public class FeedsApplication implements VanceApplication {
         if (!config.exclude().isEmpty()) {
             sb.append("Excluded: ").append(String.join(", ", config.exclude())).append('\n');
         }
+        // What the reader has open, when they marked something. This is the
+        // whole point of the per-turn hint: "look at the selected entry" is a
+        // sentence the model can only act on if it knows which one — and
+        // asking would cost a round trip into a browser that may be asleep.
+        String selected = ctx.selection();
+        if (selected != null && !selected.isBlank()) {
+            sb.append("The reader has this entry marked: ").append(selected.trim()).append('\n')
+                    .append("Read it in full with feed_item(sourceId, itemId) — the part "
+                            + "before the slash is the source, the part after it the id.\n");
+        }
         return sb.toString();
     }
 

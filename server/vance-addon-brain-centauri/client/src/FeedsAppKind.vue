@@ -850,9 +850,14 @@ function slug(title: string): string {
 
     <!-- Configuration -->
     <div v-else class="flex-1 overflow-y-auto">
-      <div v-if="config" class="flex flex-col gap-4">
+      <!-- Bounded: at full window width a label sits at one edge and its
+           control at the other, and nothing reads as belonging together. -->
+      <div v-if="config" class="flex max-w-3xl flex-col gap-4">
         <VCard>
-          <h3 class="mb-2 font-semibold">Streams</h3>
+          <h3 class="mb-1 border-b border-base-300 pb-1 text-base font-bold">Streams</h3>
+          <p class="mb-3 text-xs opacity-60">
+            Which source, and which of its streams. One row per stream.
+          </p>
           <div v-if="sources.length === 0" class="flex flex-col items-center gap-2">
             <VEmptyState
               headline="No sources configured"
@@ -865,7 +870,7 @@ function slug(title: string): string {
             <div
               v-for="(stream, index) in config.streams"
               :key="index"
-              class="flex items-center gap-2"
+              class="flex items-end gap-2 rounded border border-base-300 p-2"
             >
               <VSelect
                 :model-value="stream.source"
@@ -891,7 +896,10 @@ function slug(title: string): string {
         </VCard>
 
         <VCard>
-          <h3 class="mb-2 font-semibold">Filter</h3>
+          <h3 class="mb-1 border-b border-base-300 pb-1 text-base font-bold">Filter</h3>
+          <p class="mb-3 text-xs opacity-60">
+            Applies to every stream above, and is stored with the feed.
+          </p>
           <div class="flex flex-col gap-2">
             <VInput
               :model-value="config.filter.text ?? ''"
@@ -937,11 +945,17 @@ function slug(title: string): string {
             <div
               v-for="entry in offeredFacets"
               :key="entry.sourceId + '/' + entry.facet.key"
-              class="flex flex-col gap-1"
+              class="flex flex-col gap-1 rounded border border-base-300 p-2"
             >
-              <span class="text-sm">{{ entry.facet.label }} · {{ entry.sourceName }}</span>
-              <div class="flex items-center gap-2">
-                <span class="min-w-0 flex-1 truncate text-sm opacity-80">
+              <span class="text-sm font-medium">
+                {{ entry.facet.label }}
+                <span class="font-normal opacity-60">· {{ entry.sourceName }}</span>
+              </span>
+              <!-- Value and controls adjacent, not spread to the edges: the
+                   button belongs to the value, and a gap the width of the
+                   window says otherwise. -->
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="max-w-md truncate text-sm opacity-80">
                   {{ facetSummary(entry.facet.key) }}
                 </span>
                 <VButton size="sm" variant="ghost" @click="openPicker(entry)">Choose…</VButton>

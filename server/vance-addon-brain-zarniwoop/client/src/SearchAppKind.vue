@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
-  VAlert, VButton, VCard, VEmptyState, VInput, VSelect, VToggle,
+  VAlert, VBadge, VButton, VCard, VEmptyState, VInput, VSelect, VToggle,
 } from '@vance/components';
 import type {
   FacetInsightsDto, FacetValueInsightsDto, ZarniwoopInsightsDto,
@@ -197,6 +197,31 @@ function selectFacet(key: string, value: string | null): void {
   if (value) next[key] = [value];
   else delete next[key];
   facetSelection.value = next;
+}
+
+/**
+ * Folded away by default.
+ *
+ * <p>A single source can declare several facets — a news archive offers
+ * place, topic and its own curation decision — and unfolded they cost four
+ * rows above every result list, for a narrowing most searches never ask
+ * for. Whether they are offered at all is the endpoint's business; whether
+ * they are in the way is the reader's.
+ */
+const facetsOpen = ref(false);
+
+/**
+ * How many filters are set. This is the reason the fold is safe: a
+ * selected facet takes every endpoint that does not offer it out of the
+ * search, and hidden behind a collapsed block that would read as a
+ * provider having gone missing.
+ */
+const activeFacetCount = computed(
+  () => Object.values(facetSelection.value).filter((v) => v.length > 0).length,
+);
+
+function clearFacets(): void {
+  facetSelection.value = {};
 }
 
 onMounted(async () => {
@@ -538,6 +563,24 @@ function message(e: unknown): string {
         a row of its own to say so. The endpoint pin only appears once the mode
         is on — it means nothing without it.
       -->
+      <!--
+        Beside Expert, and for the same reason: both are modes you switch on,
+        and both would otherwise cost a row of their own above every result
+        list. The count travels with the lever because a folded-away filter
+        still narrows — an endpoint that does not offer a selected facet drops
+        out of the search, which reads as a provider having gone missing.
+      -->
+      <VBadge v-if="offeredFacets.length > 0 && activeFacetCount > 0"
+              variant="primary" size="sm">
+        {{ activeFacetCount }}
+      </VBadge>
+      <VToggle
+        v-if="offeredFacets.length > 0"
+        :model-value="facetsOpen"
+        title="Filters declared by the endpoints serving this modality"
+        label="Filters"
+        @update:model-value="(v: boolean) => (facetsOpen = v)"
+      />
       <VToggle
         v-if="expertPossible"
         :model-value="tier === 'expert'"
@@ -553,25 +596,41 @@ function message(e: unknown): string {
       />
     </div>
 
-    <!-- Facets: only what a ready endpoint for this modality declares -->
+    <!-- Facets: only what a ready endpoint for this modality declares, and
+         only while the Filters lever in the tab row is on -->
     <div
-      v-if="!configTab && offeredFacets.length > 0"
+      v-if="!configTab && facetsOpen && offeredFacets.length > 0"
       class="flex flex-wrap items-end gap-2"
     >
-      <VSelect
+      <!-- Bounded width on a wrapper, not on the field: VSelect is w-full by
+           design, so three of them in a wrap container would be three rows. -->
+      <div
         v-for="entry in offeredFacets"
         :key="entry.instanceId + '/' + entry.facet.key"
-        :label="`${entry.facet.label} · ${entry.instanceName}`"
-        :model-value="selectedFacet(entry.facet.key)"
-        :options="[
-          { value: '', label: 'Any' },
-          ...(entry.facet.values ?? []).map((v: FacetValueInsightsDto) => ({
-            value: v.id,
-            label: v.label,
-          })),
-        ]"
-        @update:model-value="(v: string | null) => selectFacet(entry.facet.key, v)"
-      />
+        class="w-64 max-w-full"
+      >
+        <VSelect
+          :label="`${entry.facet.label} · ${entry.instanceName}`"
+          :model-value="selectedFacet(entry.facet.key)"
+          :options="[
+            { value: '', label: 'Any' },
+            ...(entry.facet.values ?? []).map((v: FacetValueInsightsDto) => ({
+              value: v.id,
+              label: v.label,
+            })),
+          ]"
+          @update:model-value="(v: string | null) => selectFacet(entry.facet.key, v)"
+        />
+      </div>
+      <VButton
+        v-if="activeFacetCount > 0"
+        class="mb-1"
+        size="sm"
+        variant="ghost"
+        @click="clearFacets()"
+      >
+        Clear
+      </VButton>
       <span class="pb-2 text-xs opacity-60">
         Applies to the next search — an endpoint that does not offer a selected
         filter is skipped.

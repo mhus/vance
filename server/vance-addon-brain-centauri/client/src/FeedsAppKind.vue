@@ -90,14 +90,16 @@ const configuredStreams = computed(() => config.value?.streams ?? []);
  * The reader's current facet selection — transient, and deliberately not the
  * stored one until „Save as filter" says so. Browsing is not configuring.
  */
-const facetSelection = ref<Record<string, string[]>>({});
-
 /**
- * Facets offered above the stream: those a configured source declares.
+ * Facets offered by the configured sources.
  *
  * Keyed per source, because a facet key is only as shared as its value system.
  * Two sources may both declare `subject-topic` and mean different vocabularies,
  * so their values are never merged into one list.
+ *
+ * Reactive to the *edited* stream list, not the saved one: adding a source in
+ * the form should offer its dimensions before anything is stored, or the
+ * configuration reads as if the source had none.
  */
 const offeredFacets = computed(() => {
   const configured = new Set(configuredStreams.value.map((s) => s.source));
@@ -111,51 +113,68 @@ const offeredFacets = computed(() => {
   return out;
 });
 
-/** Values of one facet, including lazily fetched levels. */
+/** Selectable values per facet, filled once when the sources are known. */
 const facetValues = ref<Record<string, FeedFacetValueView[]>>({});
 
 function facetKeyOf(sourceId: string, key: string): string {
   return `${sourceId}\u0000${key}`;
 }
 
-async function ensureFacetValues(sourceId: string, facet: FeedFacetView): Promise<void> {
-  const cacheKey = facetKeyOf(sourceId, facet.key);
-  if (facetValues.value[cacheKey]) return;
-  // A non-lazy facet already shipped everything with its declaration.
-  if (!facet.lazyChildren) {
-    facetValues.value = { ...facetValues.value, [cacheKey]: facet.values };
-    return;
-  }
-  try {
-    const values = await loadFacetValues(props.document.projectId, sourceId, facet.key);
-    facetValues.value = { ...facetValues.value, [cacheKey]: values };
-  } catch (e) {
-    error.value = String(e);
-  }
-}
-
-function selectedFacetValue(key: string): string {
-  return facetSelection.value[key]?.[0] ?? '';
+function valuesFor(sourceId: string, key: string): FeedFacetValueView[] {
+  return facetValues.value[facetKeyOf(sourceId, key)] ?? [];
 }
 
 /**
- * One value per key for now. The wire carries a list — several values of one
- * key are an „or" — but a select is what the taxonomy shapes here call for,
- * and a multi-select without a tree widget would be worse than one clear
- * choice.
+ * Load what every offered facet can be set to.
+ *
+ * Eagerly, right after the sources are known — not on focus. A `focus` handler
+ * on a component that does not forward the event never fires, and the failure
+ * looks exactly like a source with no values: a dropdown whose only entry is
+ * „Any". A declaration that lists 279 places deserves better than a silent
+ * empty list.
+ *
+ * A non-lazy facet already shipped everything with its declaration; only a
+ * `lazyChildren` one costs a request, and only for its top level.
  */
-async function selectFacet(key: string, value: string | null): Promise<void> {
-  const next = { ...facetSelection.value };
-  if (value) next[key] = [value];
-  else delete next[key];
-  facetSelection.value = next;
-  await restart();
+async function loadAllFacetValues(): Promise<void> {
+  const next: Record<string, FeedFacetValueView[]> = {};
+  for (const entry of offeredFacets.value) {
+    const cacheKey = facetKeyOf(entry.sourceId, entry.facet.key);
+    if (!entry.facet.lazyChildren) {
+      next[cacheKey] = entry.facet.values;
+      continue;
+    }
+    try {
+      next[cacheKey] = await loadFacetValues(
+        props.document.projectId, entry.sourceId, entry.facet.key);
+    } catch (e) {
+      error.value = String(e);
+      next[cacheKey] = entry.facet.values;
+    }
+  }
+  facetValues.value = next;
 }
 
-async function saveFacetsAsFilter(): Promise<void> {
+function selectedFacetValue(key: string): string {
+  return config.value?.filter?.facets?.[key]?.[0] ?? '';
+}
+
+/**
+ * One value per key. The wire carries a list — several values of one key are
+ * an „or" — but a single select is what these taxonomies call for, and a
+ * multi-select without a tree widget would be worse than one clear choice.
+ *
+ * Writes into the stored filter like every other field in this form: a facet
+ * is a filter, and splitting one concept across a „browse" control and a
+ * „configure" control made the configuration tab look like it had four filters
+ * when it has five.
+ */
+function selectFacet(key: string, value: string | null): void {
   if (!config.value) return;
-  config.value = { ...config.value, filter: { ...config.value.filter, facets: facetSelection.value } };
-  await persist();
+  const facets = { ...(config.value.filter?.facets ?? {}) };
+  if (value) facets[key] = [value];
+  else delete facets[key];
+  config.value = { ...config.value, filter: { ...config.value.filter, facets } };
 }
 
 onMounted(async () => {
@@ -183,6 +202,7 @@ async function reload(): Promise<void> {
     error.value = String(e);
     return;
   }
+  await loadAllFacetValues();
   await restart();
 }
 
@@ -234,17 +254,9 @@ async function nextPage(emptyRounds = 0): Promise<void> {
     const page = await loadPage(props.document.projectId, {
       folder: folder.value,
       streams: [],
-      // Facets only: the stored text/language filter is configuration, and a
-      // page request must not quietly rewrite it. The server lays this over
-      // what is stored.
-      filter: {
-        text: undefined,
-        languages: [],
-        include: [],
-        exclude: [],
-        since: undefined,
-        facets: facetSelection.value,
-      },
+      // No filter in the body: everything the reader set lives in the stored
+      // configuration, and the server reads it from there.
+      filter: undefined,
       pageSize: config.value?.pageSize ?? 20,
       cursor: cursor.value ?? undefined,
       direction: 'older',
@@ -471,32 +483,6 @@ function slug(title: string): string {
       {{ noteText(note) }}
     </VAlert>
 
-    <!-- Facet bar: only what a configured source declares -->
-    <div v-if="tab === 'stream' && offeredFacets.length > 0" class="flex flex-wrap items-end gap-2">
-      <div v-for="entry in offeredFacets" :key="facetKeyOf(entry.sourceId, entry.facet.key)">
-        <VSelect
-          :label="`${entry.facet.label} · ${entry.sourceName}`"
-          :model-value="selectedFacetValue(entry.facet.key)"
-          :options="[
-            { value: '', label: 'Any' },
-            ...(facetValues[facetKeyOf(entry.sourceId, entry.facet.key)] ?? []).map((v) => ({
-              value: v.id,
-              label: v.label,
-            })),
-          ]"
-          @focus="ensureFacetValues(entry.sourceId, entry.facet)"
-          @update:model-value="(v: string | null) => selectFacet(entry.facet.key, v)"
-        />
-      </div>
-      <VButton
-        v-if="Object.keys(facetSelection).length > 0"
-        variant="ghost"
-        @click="saveFacetsAsFilter()"
-      >
-        Save as filter
-      </VButton>
-    </div>
-
     <!-- Stream -->
     <div v-if="tab === 'stream'" class="flex-1 overflow-y-auto">
       <VEmptyState
@@ -684,6 +670,26 @@ function slug(title: string): string {
               label="Since"
               placeholder="-7d"
               @update:model-value="(v: string) => (config!.filter.since = v)"
+            />
+            <!--
+              Facets, one select per dimension a configured source declares.
+              Per source and not merged: the same key can carry different value
+              systems at two sources, and offering a value only one of them
+              answers would silence the other.
+            -->
+            <VSelect
+              v-for="entry in offeredFacets"
+              :key="facetKeyOf(entry.sourceId, entry.facet.key)"
+              :label="`${entry.facet.label} · ${entry.sourceName}`"
+              :model-value="selectedFacetValue(entry.facet.key)"
+              :options="[
+                { value: '', label: 'Any' },
+                ...valuesFor(entry.sourceId, entry.facet.key).map((v) => ({
+                  value: v.id,
+                  label: v.label,
+                })),
+              ]"
+              @update:model-value="(v: string | null) => selectFacet(entry.facet.key, v)"
             />
           </div>
         </VCard>

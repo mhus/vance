@@ -205,12 +205,7 @@ public class CentauriAppController {
         } else {
             FeedsConfig stored = application.readConfig(tenant, projectId, requireFolder(body));
             streams = stored.streams();
-            // The stored filter is the base; facets from the body are the
-            // reader's current selection on top of it. Without the overlay the
-            // facet bar would have to resend the configured streams with every
-            // click just to set one checkbox — and a preview and a selection
-            // are not the same act.
-            filter = overlayFacets(stored.toFilter(Instant.now()), body.filter());
+            filter = stored.toFilter(Instant.now());
             pageSize = body.pageSize() > 0 ? body.pageSize() : stored.pageSize();
         }
 
@@ -396,25 +391,6 @@ public class CentauriAppController {
         return new FeedsConfig(streams, filter.text(), filter.languages(),
                 filter.include(), filter.exclude(), filter.since(), filter.facets(),
                 view.pageSize());
-    }
-
-    /**
-     * The stored filter with the request's facet selection laid over it.
-     *
-     * <p>Only facets: the other fields are configuration, and letting a page
-     * request silently change the stored text or language filter would make
-     * two different things look like one. A body without facets leaves the
-     * stored ones alone; an explicitly empty map clears them for this request,
-     * which is what „no filter" has to mean when the reader unticks the last
-     * box.
-     */
-    private static FeedFilter overlayFacets(
-            FeedFilter stored, @Nullable FeedFilterView body) {
-        if (body == null || body.facets() == null) {
-            return stored;
-        }
-        return new FeedFilter(stored.text(), stored.languages(), stored.include(),
-                stored.exclude(), stored.since(), body.facets());
     }
 
     /** A filter-only config, so both call sites share the null handling. */

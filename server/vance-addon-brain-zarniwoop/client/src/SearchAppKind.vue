@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { VAlert, VButton, VCard, VEmptyState, VInput, VSelect } from '@vance/components';
+import {
+  VAlert, VButton, VCard, VEmptyState, VInput, VSelect, VToggle,
+} from '@vance/components';
 import type {
   FacetInsightsDto, FacetValueInsightsDto, ZarniwoopInsightsDto,
 } from '@vance/generated';
-import { safeUrl } from '@vance/shared';
 import { investigate, listProviders, loadConfig, saveConfig, search, loadContentBlob } from './api';
+import SearchHitDetail from './SearchHitDetail.vue';
+import { link, metaLine, thumbnail } from './hitView';
 import type { InvestigateResultView } from './generated/search/InvestigateResultView';
 import type { SearchConfigView } from './generated/search/SearchConfigView';
 import type { SearchHitView } from './generated/search/SearchHitView';
@@ -80,9 +83,21 @@ const tier = ref<'normal' | 'expert'>('normal');
 const pinned = ref<string>('');
 const num = ref(10);
 
+/**
+ * The last result per modality.
+ *
+ * <p>A tab switch used to throw the results away, and that is expensive in a
+ * surface where every query costs provider quota and an `investigate` costs
+ * tokens on top. Looking at what the news tab found and then glancing at the
+ * papers tab should not mean paying for the news again.
+ */
+const resultsByModality = ref<Record<string, SearchResultView | null>>({});
 const result = ref<SearchResultView | null>(null);
 const curated = ref<InvestigateResultView | null>(null);
+/** Which query the curated block belongs to — it outlives the search box now. */
+const curatedQuery = ref<string>('');
 const selected = ref<SearchHitView | null>(null);
+const selectedKey = ref<string | null>(null);
 const fullText = ref<string | null>(null);
 const fullTextUrl = ref<string | null>(null);
 
@@ -227,10 +242,9 @@ async function submit(): Promise<void> {
   if (!query.value.trim() || loading.value) return;
   loading.value = true;
   error.value = null;
-  curated.value = null;
   clearSelection();
   try {
-    result.value = await search(props.document.projectId, folder.value, {
+    const answer = await search(props.document.projectId, folder.value, {
       query: query.value.trim(),
       modality: modality.value,
       tier: tier.value,
@@ -238,6 +252,8 @@ async function submit(): Promise<void> {
       instance: tier.value === 'expert' && pinned.value ? pinned.value : undefined,
       facets: facetSelection.value,
     });
+    result.value = answer;
+    resultsByModality.value = { ...resultsByModality.value, [modality.value]: answer };
   } catch (e) {
     error.value = message(e);
     result.value = null;
@@ -254,9 +270,11 @@ async function runInvestigate(): Promise<void> {
   if (!query.value.trim() || loading.value) return;
   loading.value = true;
   error.value = null;
-  result.value = null;
   clearSelection();
   try {
+    // The plain results stay: an investigate is the expensive one, and losing
+    // the cheap list to it helps nobody.
+    curatedQuery.value = query.value.trim();
     curated.value = await investigate(props.document.projectId, query.value.trim());
   } catch (e) {
     error.value = message(e);
@@ -270,14 +288,40 @@ function selectModality(m: string): void {
   modality.value = m;
   pinned.value = '';
   if (!expertPossible.value) tier.value = 'normal';
-  // Deliberately no automatic re-search: switching a tab would otherwise spend
-  // quota on a query the person may be about to change.
-  result.value = null;
+  // Still no automatic re-search — switching a tab would spend quota on a
+  // query the person may be about to change. But what this tab found before
+  // comes back instead of being dropped: paying twice for the same answer is
+  // the worse of the two.
+  result.value = resultsByModality.value[m] ?? null;
   clearSelection();
 }
 
-function open(hit: SearchHitView): void {
-  clearSelection();
+/** The identity of one hit on this screen — a search has no ids, so the URL is it. */
+function hitKey(hit: SearchHitView, index: number): string {
+  return `${hit.url}\u0000${index}`;
+}
+
+function isOpen(hit: SearchHitView, index: number): boolean {
+  return selectedKey.value === hitKey(hit, index);
+}
+
+/**
+ * Open a hit in place, or close it again.
+ *
+ * <p>In the card rather than in a panel at the side: a detail beside the list
+ * puts what you are reading and what you were reading in two different places,
+ * and on a narrow window the panel takes the list with it. The feed answers
+ * the same question the same way, and two surfaces that behave alike are one
+ * thing to learn.
+ */
+function toggleOpen(hit: SearchHitView, index: number): void {
+  const key = hitKey(hit, index);
+  if (selectedKey.value === key) {
+    clearSelection();
+    return;
+  }
+  releaseBody();
+  selectedKey.value = key;
   selected.value = hit;
 }
 
@@ -358,6 +402,7 @@ async function loadBody(): Promise<void> {
 function clearSelection(): void {
   releaseBody();
   selected.value = null;
+  selectedKey.value = null;
 }
 
 /** An object URL is a live handle; leaving it behind leaks the whole blob. */
@@ -436,64 +481,6 @@ function runSaved(saved: { query: string; modality: string; tier: string; instan
   void submit();
 }
 
-// ── per-modality bits ──────────────────────────────────────────────
-
-function thumbnail(hit: SearchHitView): string | null {
-  const extras = hit.extras ?? {};
-  const thumb = extras.thumbnailUrl ?? extras.coverThumbnailUrl ?? extras.imageUrl;
-  return typeof thumb === 'string' ? safeUrl(thumb) : null;
-}
-
-/** The file for an image hit; `url` is the page it sits on, which is not the same. */
-function imageFile(hit: SearchHitView): string | null {
-  const raw = (hit.extras ?? {}).imageUrl;
-  return typeof raw === 'string' ? safeUrl(raw) : null;
-}
-
-/**
- * A remote URL as an `href`, or null when it must not become one.
- *
- * Every link on this surface goes through here. `url` and every `extras` entry
- * are written by the searched service, so a `javascript:` value would run on
- * this origin the moment somebody clicks a headline — and hiding the link is
- * better than a link that attacks the reader.
- */
-function link(raw: string | null | undefined): string | null {
-  return safeUrl(raw);
-}
-
-/** The `extras` value at `key` if it is a linkable URL. */
-function extraLink(hit: SearchHitView, key: string): string | null {
-  return safeUrl(extraText(hit, key));
-}
-
-function extraText(hit: SearchHitView, key: string): string | null {
-  const raw = (hit.extras ?? {})[key];
-  return raw === undefined || raw === null ? null : String(raw);
-}
-
-/** Metadata worth a line under the title, per modality. */
-function metaLine(hit: SearchHitView): string {
-  const bits: string[] = [];
-  const push = (key: string, prefix = '') => {
-    const v = extraText(hit, key);
-    if (v) bits.push(prefix + v);
-  };
-  push('authors');
-  push('author');
-  push('venue');
-  push('publicationYear');
-  push('citedByCount', 'cited ');
-  push('channel');
-  push('duration');
-  push('points', '▲ ');
-  push('comments', '💬 ');
-  push('publisher');
-  push('firstPublishYear');
-  if (hit.source) bits.unshift(hit.source);
-  return bits.join(' · ');
-}
-
 function message(e: unknown): string {
   if (e && typeof e === 'object' && 'message' in e) return String((e as Error).message);
   return String(e);
@@ -521,6 +508,15 @@ function message(e: unknown): string {
       >
         Investigate
       </VButton>
+      <VButton
+        v-if="!configTab && query.trim()"
+        variant="ghost"
+        :disabled="loading"
+        title="Keep this query, modality and tier under Settings"
+        @click="saveCurrent()"
+      >
+        Save search
+      </VButton>
       <VButton variant="ghost" @click="configTab = !configTab">
         {{ configTab ? 'Back' : 'Settings' }}
       </VButton>
@@ -540,14 +536,18 @@ function message(e: unknown): string {
         {{ MODALITY_LABEL[m] ?? m }}
       </VButton>
       <div class="flex-1"></div>
-      <VSelect
+      <!--
+        A lever, not a dropdown of two. „Normal / Expert" as a select reads as
+        a setting with a value to pick; it is a mode you switch on, and it cost
+        a row of its own to say so. The endpoint pin only appears once the mode
+        is on — it means nothing without it.
+      -->
+      <VToggle
         v-if="expertPossible"
-        :model-value="tier"
-        :options="[
-          { value: 'normal', label: 'Normal' },
-          { value: 'expert', label: 'Expert' },
-        ]"
-        @update:model-value="(v: string | null) => (tier = v === 'expert' ? 'expert' : 'normal')"
+        :model-value="tier === 'expert'"
+        title="Expert tier — pin an endpoint and pass filters"
+        label="Expert"
+        @update:model-value="(v: boolean) => (tier = v ? 'expert' : 'normal')"
       />
       <VSelect
         v-if="tier === 'expert' && pinnable.length > 0"
@@ -661,226 +661,160 @@ function message(e: unknown): string {
       </div>
     </div>
 
-    <!-- Results + detail -->
-    <div v-else class="flex min-h-0 flex-1 gap-3">
-      <div class="min-w-0 flex-1 overflow-y-auto">
-        <p v-if="loading" class="p-2 text-sm opacity-70">Searching…</p>
+    <!-- Results. A hit opens in place — the detail belongs to the result, not
+         to a panel beside it. -->
+    <div v-else class="min-h-0 flex-1 overflow-y-auto">
+      <p v-if="loading" class="p-2 text-sm opacity-70">Searching…</p>
 
-        <!-- A dispatcher-level refusal is about this tab, not the app -->
-        <VAlert v-if="result?.error" variant="warning">{{ result.error }}</VAlert>
-        <VAlert v-else-if="result?.note" variant="info">{{ result.note }}</VAlert>
+      <!-- A dispatcher-level refusal is about this tab, not the app -->
+      <VAlert v-if="result?.error" variant="warning">{{ result.error }}</VAlert>
+      <VAlert v-else-if="result?.note" variant="info">{{ result.note }}</VAlert>
 
-        <VEmptyState
-          v-if="!loading && !result && !curated"
-          headline="Nothing searched yet"
-          body="Type a query and press Search."
-        />
-        <VEmptyState
-          v-else-if="result && result.hits.length === 0 && !result.error"
-          headline="Nothing found"
-          :body="
-            result.droppedCount > 0
-              ? `${result.droppedCount} result(s) were withheld by the source.`
-              : 'The provider returned no results for this query.'
-          "
-        />
+      <VEmptyState
+        v-if="!loading && !result && !curated"
+        headline="Nothing searched yet"
+        body="Type a query and press Search."
+      />
+      <VEmptyState
+        v-else-if="result && result.hits.length === 0 && !result.error"
+        headline="Nothing found"
+        :body="
+          result.droppedCount > 0
+            ? `${result.droppedCount} result(s) were withheld by the source.`
+            : 'The provider returned no results for this query.'
+        "
+      />
 
-        <!-- Grid: images, videos, books -->
-        <div v-if="result && gridLayout" class="grid grid-cols-2 gap-2 md:grid-cols-3">
-          <button
-            v-for="(hit, i) in result.hits"
-            :key="hit.url + i"
-            class="flex flex-col gap-1 rounded p-1 text-left hover:bg-base-200"
-            @click="open(hit)"
-          >
-            <img
-              v-if="thumbnail(hit)"
-              :src="thumbnail(hit)!"
-              alt=""
-              loading="lazy"
-              referrerpolicy="no-referrer"
-              class="h-32 w-full rounded object-cover"
-            />
-            <div v-else class="h-32 w-full rounded bg-base-200"></div>
-            <span class="line-clamp-2 text-xs">{{ hit.title }}</span>
-            <span v-if="metaLine(hit)" class="truncate text-xs opacity-60">
-              {{ metaLine(hit) }}
-            </span>
-          </button>
-        </div>
-
-        <!-- List: everything else -->
-        <div v-else-if="result" class="flex flex-col gap-2">
-          <VCard v-for="(hit, i) in result.hits" :key="hit.url + i">
-            <div class="flex flex-col gap-1">
-              <a
-                v-if="link(hit.url)"
-                :href="link(hit.url)!"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="font-semibold hover:underline"
-              >
-                {{ hit.title }}
-              </a>
-              <span v-else class="font-semibold">{{ hit.title }}</span>
-              <span v-if="metaLine(hit)" class="text-xs opacity-60">{{ metaLine(hit) }}</span>
-              <p v-if="hit.snippet" class="line-clamp-3 text-sm opacity-80">{{ hit.snippet }}</p>
-              <div class="flex items-center gap-2">
-                <VButton size="sm" variant="ghost" @click="open(hit)">Details</VButton>
-                <span v-if="hit.contentState === 'embedded'" class="text-xs opacity-50">
-                  full text included
-                </span>
-                <span v-else-if="hit.contentState === 'on-demand'" class="text-xs opacity-50">
-                  full text on request
-                </span>
-              </div>
-            </div>
-          </VCard>
-        </div>
-
-        <!-- Curated results -->
-        <div v-if="curated" class="flex flex-col gap-2">
-          <VAlert v-if="curated.gaps.length > 0" variant="info">
-            <!-- What it could NOT answer is the useful part, and a summary
-                 would swallow it. -->
-            <span class="font-semibold">Gaps:</span> {{ curated.gaps.join(' · ') }}
-          </VAlert>
-          <p class="text-xs opacity-60">
-            {{ curated.hits.length }} kept, {{ curated.droppedCount }} rejected · sources:
-            {{ curated.instancesUsed.join(', ') }}
-          </p>
-          <VCard v-for="(hit, i) in curated.hits" :key="hit.url + i">
-            <div class="flex flex-col gap-1">
-              <a
-                v-if="link(hit.url)"
-                :href="link(hit.url)!"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="font-semibold hover:underline"
-              >
-                {{ hit.title }}
-              </a>
-              <span v-else class="font-semibold">{{ hit.title }}</span>
-              <span class="text-xs opacity-60">
-                {{ hit.providerInstanceId }} · score {{ hit.finalScore.toFixed(2) }}
-              </span>
-              <p v-if="hit.relevanceNote" class="text-sm opacity-80">{{ hit.relevanceNote }}</p>
-              <p v-else-if="hit.snippet" class="line-clamp-3 text-sm opacity-80">
-                {{ hit.snippet }}
-              </p>
-            </div>
-          </VCard>
-        </div>
+      <!-- Grid: images, videos, books -->
+      <div v-if="result && gridLayout" class="grid grid-cols-2 gap-2 md:grid-cols-3">
+        <button
+          v-for="(hit, i) in result.hits"
+          :key="hitKey(hit, i)"
+          :class="[
+            'flex flex-col gap-1 rounded p-1 text-left hover:bg-base-200',
+            isOpen(hit, i) ? 'ring-2 ring-primary' : '',
+          ]"
+          @click="toggleOpen(hit, i)"
+        >
+          <img
+            v-if="thumbnail(hit)"
+            :src="thumbnail(hit)!"
+            alt=""
+            loading="lazy"
+            referrerpolicy="no-referrer"
+            class="h-32 w-full rounded object-cover"
+          />
+          <div v-else class="h-32 w-full rounded bg-base-200"></div>
+          <span class="line-clamp-2 text-xs">{{ hit.title }}</span>
+          <span v-if="metaLine(hit)" class="truncate text-xs opacity-60">
+            {{ metaLine(hit) }}
+          </span>
+        </button>
       </div>
 
-      <!-- Detail panel -->
-      <div v-if="selected" class="flex w-96 flex-none flex-col gap-2 overflow-y-auto border-l pl-3">
-        <div class="flex items-start gap-2">
-          <h3 class="flex-1 font-semibold">{{ selected.title }}</h3>
-          <VButton size="sm" variant="ghost" @click="clearSelection()">Close</VButton>
+      <!-- A tile cannot grow without reflowing the grid, so the opened one
+           is ringed above and speaks here. -->
+      <VCard v-if="gridLayout && selected" class="mt-2 ring-2 ring-primary">
+        <div class="flex flex-col gap-1">
+          <span class="font-semibold">{{ selected.title }}</span>
+          <span v-if="metaLine(selected)" class="text-xs opacity-60">
+            {{ metaLine(selected) }}
+          </span>
+          <p v-if="selected.snippet" class="text-sm opacity-80">{{ selected.snippet }}</p>
+          <SearchHitDetail
+            :hit="selected"
+            :full-text="fullText"
+            :full-text-url="fullTextUrl"
+            :loading-body="loadingBody"
+            @load="loadBody()"
+          />
         </div>
-        <span v-if="metaLine(selected)" class="text-xs opacity-60">
-          {{ metaLine(selected) }}
-        </span>
+      </VCard>
 
-        <img
-          v-if="imageFile(selected)"
-          :src="imageFile(selected)!"
-          alt=""
-          referrerpolicy="no-referrer"
-          class="max-h-64 w-full rounded object-contain"
-        />
-
-        <p v-if="selected.snippet" class="text-sm opacity-80">{{ selected.snippet }}</p>
-
-        <!-- The ladder: here, fetchable, or neither -->
-        <p v-if="selected.body" class="whitespace-pre-wrap text-sm">{{ selected.body }}</p>
-        <template v-else-if="selected.contentState === 'on-demand'">
-          <VButton
-            v-if="!fullText && !fullTextUrl"
-            size="sm"
-            variant="ghost"
-            :disabled="loadingBody"
-            @click="loadBody()"
-          >
-            {{ loadingBody ? 'Loading…' : 'Load full text' }}
-            <span v-if="selected.sizeBytes" class="opacity-60">
-              ({{ Math.round(selected.sizeBytes / 1024) }} kB)
-            </span>
-          </VButton>
-          <p v-if="fullText" class="whitespace-pre-wrap text-sm">{{ fullText }}</p>
-          <!-- sandbox with nothing enabled: the bytes are foreign and a blob URL
-               inherits this origin, so the frame gets no script, no forms and no
-               same-origin access. A PDF or an image needs none of them. -->
-          <iframe
-            v-if="fullTextUrl"
-            :src="fullTextUrl"
-            sandbox=""
-            referrerpolicy="no-referrer"
-            class="h-96 w-full rounded border"
-          ></iframe>
-        </template>
-
-        <div class="mt-2 flex flex-col gap-1 text-sm">
-          <a
-            v-if="link(selected.url)"
-            :href="link(selected.url)!"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="hover:underline"
-          >
-            Open source page ↗
-          </a>
-          <!-- Two different links for an image, on purpose: the page carries the
-               context and the attribution, the file is just the pixels. -->
-          <a
-            v-if="imageFile(selected) && imageFile(selected) !== selected.url"
-            :href="imageFile(selected)!"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="hover:underline"
-          >
-            Open image file ↗
-          </a>
-          <a
-            v-if="extraLink(selected, 'videoUrl')"
-            :href="extraLink(selected, 'videoUrl')!"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="hover:underline"
-          >
-            Watch video ↗
-          </a>
-          <a
-            v-if="extraLink(selected, 'pdfUrl')"
-            :href="extraLink(selected, 'pdfUrl')!"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="hover:underline"
-          >
-            Open PDF ↗
-          </a>
-          <a
-            v-if="extraLink(selected, 'hnDiscussion')"
-            :href="extraLink(selected, 'hnDiscussion')!"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="hover:underline"
-          >
-            Open discussion ↗
-          </a>
-        </div>
-
-        <VButton
-          v-if="query.trim()"
-          class="mt-2"
-          size="sm"
-          variant="ghost"
-          :disabled="loading"
-          @click="saveCurrent()"
+      <!-- List: everything else. Compact until opened, then it grows and
+           carries its own detail — see toggleOpen. -->
+      <div v-else-if="result" class="flex flex-col gap-2">
+        <VCard
+          v-for="(hit, i) in result.hits"
+          :key="hitKey(hit, i)"
+          :class="[
+            'cursor-pointer transition-all',
+            isOpen(hit, i)
+              ? 'ring-2 ring-primary shadow-lg'
+              : 'hover:ring-1 hover:ring-base-300',
+          ]"
+          @click="toggleOpen(hit, i)"
         >
-          Save search
-        </VButton>
+          <div class="flex flex-col gap-1">
+            <!-- Through link(): the URL comes from a foreign provider, and a
+                 `javascript:` value would run on this origin. -->
+            <a
+              v-if="link(hit.url)"
+              :href="link(hit.url)!"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="font-semibold hover:underline"
+              @click.stop
+            >
+              {{ hit.title }}
+            </a>
+            <span v-else class="font-semibold">{{ hit.title }}</span>
+            <span v-if="metaLine(hit)" class="text-xs opacity-60">{{ metaLine(hit) }}</span>
+            <p
+              v-if="hit.snippet"
+              :class="isOpen(hit, i) ? 'text-sm opacity-80' : 'line-clamp-2 text-sm opacity-80'"
+            >
+              {{ hit.snippet }}
+            </p>
+            <span v-if="!isOpen(hit, i) && hit.contentState === 'embedded'"
+                  class="text-xs opacity-50">full text included</span>
+            <span v-else-if="!isOpen(hit, i) && hit.contentState === 'on-demand'"
+                  class="text-xs opacity-50">full text on request</span>
+
+            <SearchHitDetail
+              v-if="isOpen(hit, i)"
+              :hit="hit"
+              :full-text="fullText"
+              :full-text-url="fullTextUrl"
+              :loading-body="loadingBody"
+              @load="loadBody()"
+            />
+          </div>
+        </VCard>
+      </div>
+
+      <!-- Curated results -->
+      <div v-if="curated" class="flex flex-col gap-2">
+        <VAlert v-if="curated.gaps.length > 0" variant="info">
+          <!-- What it could NOT answer is the useful part, and a summary
+               would swallow it. -->
+          <span class="font-semibold">Gaps:</span> {{ curated.gaps.join(' · ') }}
+        </VAlert>
+        <p class="text-xs opacity-60">
+          {{ curated.hits.length }} kept, {{ curated.droppedCount }} rejected · sources:
+          {{ curated.instancesUsed.join(', ') }}
+        </p>
+        <VCard v-for="(hit, i) in curated.hits" :key="hit.url + i">
+          <div class="flex flex-col gap-1">
+            <a
+              v-if="link(hit.url)"
+              :href="link(hit.url)!"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="font-semibold hover:underline"
+            >
+              {{ hit.title }}
+            </a>
+            <span v-else class="font-semibold">{{ hit.title }}</span>
+            <span class="text-xs opacity-60">
+              {{ hit.providerInstanceId }} · score {{ hit.finalScore.toFixed(2) }}
+            </span>
+            <p v-if="hit.relevanceNote" class="text-sm opacity-80">{{ hit.relevanceNote }}</p>
+            <p v-else-if="hit.snippet" class="line-clamp-3 text-sm opacity-80">
+              {{ hit.snippet }}
+            </p>
+          </div>
+        </VCard>
       </div>
     </div>
   </div>

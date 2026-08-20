@@ -2,7 +2,7 @@
   "name": "@vance-addon/zarniwoop",
   "version": "1.0.0",
   "private": true,
-  "description": "Client surface of the Search addon. Registers the application:search app kind — a search surface for people over the brain's existing Zarniwoop providers, with per-modality rendering and a detail panel that only offers a full text where one exists.",
+  "description": "Client surface of the Search addon. Registers the application:search app kind — a search surface for people over the brain's existing Zarniwoop providers, with per-modality rendering; a hit opens in place and only offers a full text where one exists.",
   "license": "SEE LICENSE IN ../../../../client/LICENSE.txt",
   "type": "module",
   "main": "./src/index.ts",

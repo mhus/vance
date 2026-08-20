@@ -98,7 +98,7 @@ public class ZarniwoopInsightsService {
                 scope.tenantId(), scope.projectId(), inst.id());
 
         // Look up cooldowns per modality and pick the first that's active.
-        Optional<ToolHealthCooldown> activeCooldown = findActiveCooldown(scope, inst);
+        Optional<ActiveCooldown> activeCooldown = findActiveCooldown(scope, inst);
         if (activeCooldown.isPresent()) {
             // Effective availability widens — the dispatcher would skip
             // this instance, so surface it even when availability()
@@ -132,10 +132,13 @@ public class ZarniwoopInsightsService {
                 .lastErrorAt(isoOrNull(snap.lastErrorAt()))
                 .lastErrorMessage(snap.lastErrorMessage())
                 .activeCooldownSignature(activeCooldown
-                        .map(ToolHealthCooldown::getErrorSignature)
+                        .map(c -> c.cooldown().getErrorSignature())
+                        .orElse(null))
+                .activeCooldownSubject(activeCooldown
+                        .map(ActiveCooldown::subject)
                         .orElse(null))
                 .activeCooldownUntil(activeCooldown
-                        .map(c -> isoOrNull(c.getNextSpawnAllowedAt()))
+                        .map(c -> isoOrNull(c.cooldown().getNextSpawnAllowedAt()))
                         .orElse(null))
                 .defaultEnabled(gateDecision.defaultEnabled())
                 .manualOverride(gateDecision.override()
@@ -144,19 +147,29 @@ public class ZarniwoopInsightsService {
                 .build();
     }
 
-    private Optional<ToolHealthCooldown> findActiveCooldown(
+    /**
+     * A cooldown plus the subject it was found under. The subject is
+     * per-modality, so the caller cannot reconstruct it from the
+     * instance id — and the UI needs it to clear the cooldown.
+     */
+    private record ActiveCooldown(String subject, ToolHealthCooldown cooldown) {}
+
+    private Optional<ActiveCooldown> findActiveCooldown(
             SearchScope scope, SearchProviderInstance inst) {
         Instant now = Instant.now();
         for (SearchModality m : inst.modalities()) {
+            String subject = ZarniwoopSettings.cooldownSubject(inst.id(), m);
             Optional<ToolHealthCooldown> cd = healthService.lookupActiveCooldown(
                     scope.tenantId(),
                     ToolHealthScope.PROJECT,
                     scope.projectId(),
-                    ZarniwoopSettings.cooldownSubject(inst.id(), m),
+                    subject,
                     /* errorSignature */ null,
                     /* userId */ null,
                     now);
-            if (cd.isPresent()) return cd;
+            if (cd.isPresent()) {
+                return Optional.of(new ActiveCooldown(subject, cd.get()));
+            }
         }
         return Optional.empty();
     }

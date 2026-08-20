@@ -1,5 +1,7 @@
 import { ref, type Ref } from 'vue';
 import { brainFetch } from '@vance/shared';
+// Value import — ToolHealthScope is a runtime enum, not just a type.
+import { ToolHealthScope } from '@vance/generated';
 import type {
   EffectiveRecipeDto,
   EffectiveToolDto,
@@ -220,17 +222,26 @@ export function useToolUsageInsights(): UseToolUsageInsights {
   return { roles, loading, error, load, clear };
 }
 
+/**
+ * Tool-health records for one {@code (scope, scopeId)} tuple.
+ *
+ * `scope` defaults to `PROJECT` because that is what every provider
+ * gate writes (Centauri, Zarniwoop) and what the per-tool Health column
+ * shows. The Health tab additionally offers `TENANT`, where `scopeId`
+ * is the tenant id itself.
+ */
 export interface UseToolHealth {
   entries: Ref<ToolHealthEntryDto[]>;
   loading: Ref<boolean>;
   error: Ref<string | null>;
-  load: (projectId: string) => Promise<void>;
+  load: (scopeId: string, scope?: ToolHealthScope) => Promise<void>;
   clear: () => void;
   clearCooldown: (
-    projectId: string,
+    scopeId: string,
     toolName: string,
     errorSignature: string,
     userId: string | null,
+    scope?: ToolHealthScope,
   ) => Promise<void>;
 }
 
@@ -239,11 +250,14 @@ export function useToolHealth(): UseToolHealth {
   const loading = ref(false);
   const error = ref<string | null>(null);
 
-  async function load(projectId: string): Promise<void> {
+  async function load(
+    scopeId: string,
+    scope: ToolHealthScope = ToolHealthScope.PROJECT,
+  ): Promise<void> {
     loading.value = true;
     error.value = null;
     try {
-      const params = new URLSearchParams({ scope: 'PROJECT', scopeId: projectId });
+      const params = new URLSearchParams({ scope, scopeId });
       entries.value = await brainFetch<ToolHealthEntryDto[]>(
         'GET',
         `admin/tool-health?${params.toString()}`,
@@ -262,10 +276,11 @@ export function useToolHealth(): UseToolHealth {
   }
 
   async function clearCooldown(
-    projectId: string,
+    scopeId: string,
     toolName: string,
     errorSignature: string,
     userId: string | null,
+    scope: ToolHealthScope = ToolHealthScope.PROJECT,
   ): Promise<void> {
     try {
       await brainFetch<{ cleared: boolean }>(
@@ -273,15 +288,15 @@ export function useToolHealth(): UseToolHealth {
         'admin/tool-health/clear-cooldown',
         {
           body: {
-            scope: 'PROJECT',
-            scopeId: projectId,
+            scope,
+            scopeId,
             toolName,
             errorSignature,
             userId,
           },
         },
       );
-      await load(projectId);
+      await load(scopeId, scope);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to clear cooldown.';
     }

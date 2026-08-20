@@ -22,6 +22,7 @@ export const INSIGHTS_TOP_TABS = [
   'sessions',
   'recipes',
   'tools',
+  'health',
   'workspace',
   'executions',
   'workflows',

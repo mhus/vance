@@ -2,11 +2,16 @@
 import { computed, watch } from 'vue';
 import type { ZarniwoopInsightsDto } from '@vance/generated';
 import { VAlert, VButton, VEmptyState } from '@/components';
-import { useZarniwoopInsights } from '@/composables/useProjectInsights';
+import { useToolHealth, useZarniwoopInsights } from '@/composables/useProjectInsights';
 
 const props = defineProps<{ projectId: string | null }>();
 
 const state = useZarniwoopInsights();
+// Only used for its clearCooldown writer — the cooldown shown per
+// instance lives in a tool-health record, and clearing it is the one
+// action this tab could previously only describe. The full Health tab
+// is the place to browse those records.
+const health = useToolHealth();
 
 watch(
   () => props.projectId,
@@ -32,6 +37,26 @@ async function toggleInstance(inst: ZarniwoopInsightsDto): Promise<void> {
 async function resetOverride(inst: ZarniwoopInsightsDto): Promise<void> {
   if (!props.projectId) return;
   await state.clearOverride(props.projectId, inst.id);
+}
+
+/**
+ * Lift the cooldown gating this instance. Needs the subject the record
+ * sits on (`research:<id>:<MODALITY>`) plus the signature — cooldowns
+ * are kept per error kind, so a 404 and a timeout are two records under
+ * the same subject and only the named one is cleared.
+ */
+async function clearCooldown(inst: ZarniwoopInsightsDto): Promise<void> {
+  if (!props.projectId) return;
+  if (!inst.activeCooldownSubject || !inst.activeCooldownSignature) return;
+  await health.clearCooldown(
+    props.projectId,
+    inst.activeCooldownSubject,
+    inst.activeCooldownSignature,
+    null,
+  );
+  // The instance row derives its availability from the cooldown lookup,
+  // so it has to be re-assembled. No provider-cache drop needed.
+  await state.load(props.projectId);
 }
 
 function availabilityClass(availability: string): string {
@@ -93,6 +118,12 @@ const now = Date.now();
 
 <template>
   <div class="flex flex-col gap-3 p-4">
+    <!-- Stands outside the load-state chain below: a failed cooldown
+         clear must not hide the table it was triggered from. -->
+    <VAlert v-if="health.error.value" variant="error">
+      {{ health.error.value }}
+    </VAlert>
+
     <div v-if="!projectId" class="opacity-60 text-sm">
       Pick a project in the sidebar to see its search providers.
     </div>
@@ -205,6 +236,21 @@ const now = Date.now();
               >
                 cooldown until {{ formatTimestamp(inst.activeCooldownUntil) }}
                 {{ formatDuration(now, inst.activeCooldownUntil) }}
+                <div v-if="inst.activeCooldownSubject" class="font-mono opacity-70">
+                  {{ inst.activeCooldownSubject }} · {{ inst.activeCooldownSignature }}
+                </div>
+                <VButton
+                  v-if="inst.activeCooldownSubject && inst.activeCooldownSignature"
+                  variant="neutral"
+                  size="xs"
+                  :outline="true"
+                  class="mt-1"
+                  :disabled="state.loading.value"
+                  title="Clear this cooldown — the provider can be queried again immediately"
+                  @click="clearCooldown(inst)"
+                >
+                  clear cooldown
+                </VButton>
               </div>
             </td>
             <td class="text-xs opacity-80">

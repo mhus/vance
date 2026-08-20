@@ -95,6 +95,15 @@ public class ZarniwoopInsightsDto {
     /** Active cooldown signature from {@code ToolHealthService}, if any. */
     private @Nullable String activeCooldownSignature;
 
+    /**
+     * The tool-health subject the active cooldown sits on — i.e.
+     * {@code research:<instance>:<MODALITY>}. An instance serves
+     * several modalities and each carries its own cooldown record, so
+     * the subject cannot be derived from {@link #id} alone. Without it
+     * the UI can show the cooldown but not clear it.
+     */
+    private @Nullable String activeCooldownSubject;
+
     /** ISO-8601 timestamp at which the active cooldown lifts. */
     private @Nullable String activeCooldownUntil;
 

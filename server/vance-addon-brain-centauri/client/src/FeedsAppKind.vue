@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   VAlert, VButton, VCard, VEmptyState, VInput, VModal, VSelect, VTextarea,
 } from '@vance/components';
-import { safeUrl } from '@vance/shared';
+import { RestError, safeUrl } from '@vance/shared';
 import {
   clipItem, listSources, loadConfig, loadFacetValues, loadPage, saveConfig, sendSignal,
 } from './api';
@@ -296,8 +296,16 @@ async function clip(item: FeedItemView): Promise<void> {
       language: item.language,
       sourceId: item.sourceId,
     });
-    clipped.value = { ...clipped.value, [item.id]: result.path };
+    clipped.value = { ...clipped.value, [entryKey(item)]: result.path };
   } catch (e) {
+    // 409 means this entry is already in the folder — an outcome, not a
+    // failure. The server answers it with the path that is in the way, so the
+    // honest reaction is to mark the card clipped rather than to show the
+    // reader a raw error body for something that already worked.
+    if (e instanceof RestError && e.status === 409) {
+      clipped.value = { ...clipped.value, [entryKey(item)]: target };
+      return;
+    }
     error.value = String(e);
   }
 }
@@ -325,7 +333,9 @@ async function submitReport(): Promise<void> {
       requestKind: undefined,
     });
     // "reported", never "fixed": what the source does with it is its business.
-    signalled.value = { ...signalled.value, [pending.item.id]: outcomeText(result.outcome) };
+    signalled.value = {
+      ...signalled.value, [entryKey(pending.item)]: outcomeText(result.outcome),
+    };
     reportOpen.value = false;
   } catch (e) {
     error.value = String(e);
@@ -342,7 +352,7 @@ async function requestKind(item: FeedItemView, kind: string): Promise<void> {
       reason: undefined,
       note: undefined,
     });
-    signalled.value = { ...signalled.value, [item.id]: outcomeText(result.outcome) };
+    signalled.value = { ...signalled.value, [entryKey(item)]: outcomeText(result.outcome) };
   } catch (e) {
     error.value = String(e);
   }

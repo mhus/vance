@@ -239,8 +239,14 @@ public class CentauriAppController {
         String path = normalisePath(body.targetPath());
         authority.enforce(request, new Resource.Document(tenant, projectId, path),
                 Action.CREATE);
-        if (documentService.findByPath(tenant, projectId, path).isPresent()) {
-            return ResponseEntity.status(409).body(new ClipResponse(path, null));
+        var existing = documentService.findByPath(tenant, projectId, path);
+        if (existing.isPresent()) {
+            // Conflict with a link, not just a path: the entry was already
+            // clipped, and the useful answer is where it went. A 409 whose
+            // link is null leaves the caller with the one thing it cannot act
+            // on — the knowledge that something is in the way.
+            return ResponseEntity.status(409).body(new ClipResponse(
+                    path, linkBuilder.linkFor(existing.get(), projectId)));
         }
 
         String markdown = renderClip(body);

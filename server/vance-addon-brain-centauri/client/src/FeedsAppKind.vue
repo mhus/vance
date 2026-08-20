@@ -702,7 +702,7 @@ function slug(title: string): string {
       <!-- Same bound as the configuration: at full window width a summary runs
            to ~250 characters a line, about three times what reads comfortably,
            and the marked entry's full text is worse. -->
-      <div class="flex max-w-3xl flex-col gap-3">
+      <div class="mx-auto flex w-full max-w-3xl flex-col gap-3">
         <VCard
           v-for="item in items"
           :key="entryKey(item)"
@@ -865,7 +865,7 @@ function slug(title: string): string {
     <div v-else class="flex-1 overflow-y-auto">
       <!-- Bounded: at full window width a label sits at one edge and its
            control at the other, and nothing reads as belonging together. -->
-      <div v-if="config" class="flex max-w-3xl flex-col gap-4">
+      <div v-if="config" class="mx-auto flex w-full max-w-3xl flex-col gap-4">
         <VCard>
           <h3 class="mb-1 border-b border-base-300 pb-1 text-base font-bold">Streams</h3>
           <p class="mb-3 text-xs opacity-60">

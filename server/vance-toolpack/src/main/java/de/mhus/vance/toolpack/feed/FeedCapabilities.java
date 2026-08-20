@@ -1,6 +1,9 @@
 package de.mhus.vance.toolpack.feed;
 
+import de.mhus.vance.toolpack.facet.Facet;
+import de.mhus.vance.toolpack.facet.FacetSelection;
 import java.time.Duration;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -29,7 +32,17 @@ public record FeedCapabilities(
         int maxPageSize,
         Set<FeedSignal> signalsAccepted,
         boolean carriesControlUrl,
-        Duration capabilitiesTtl) {
+        Duration capabilitiesTtl,
+        /**
+         * Dimensions this source can be filtered by — see {@link Facet}.
+         *
+         * <p>Unlike the {@code pushdown*} flags above there is no
+         * post-filter fallback: a declared facet is applied by the source,
+         * and an undeclared one takes the source out of the request. That
+         * is why it is a list of declarations rather than a boolean —
+         * the reader needs the values and their labels to draw a picker.
+         */
+        List<Facet> facets) {
 
     /** Fallback TTL when a source does not state one. */
     public static final Duration DEFAULT_TTL = Duration.ofMinutes(30);
@@ -37,12 +50,34 @@ public record FeedCapabilities(
     /** Page size assumed when a source declares nothing sensible. */
     public static final int DEFAULT_MAX_PAGE_SIZE = 40;
 
+    /**
+     * The same declaration without facets — the shape every source had before
+     * facets existed, and still the common one.
+     */
+    public FeedCapabilities(
+            FeedSelectorMode selectorMode,
+            Set<FeedSelectorKind> selectorKinds,
+            boolean pushdownTextSearch,
+            boolean pushdownLanguage,
+            boolean pushdownSince,
+            boolean supportsNewerDirection,
+            boolean carriesFullBody,
+            int maxPageSize,
+            Set<FeedSignal> signalsAccepted,
+            boolean carriesControlUrl,
+            Duration capabilitiesTtl) {
+        this(selectorMode, selectorKinds, pushdownTextSearch, pushdownLanguage,
+                pushdownSince, supportsNewerDirection, carriesFullBody, maxPageSize,
+                signalsAccepted, carriesControlUrl, capabilitiesTtl, List.of());
+    }
+
     public FeedCapabilities {
         if (selectorMode == null) {
             throw new IllegalArgumentException("selectorMode is required");
         }
         selectorKinds = selectorKinds == null ? Set.of() : Set.copyOf(selectorKinds);
         signalsAccepted = signalsAccepted == null ? Set.of() : Set.copyOf(signalsAccepted);
+        facets = facets == null ? List.of() : List.copyOf(facets);
         if (maxPageSize <= 0) {
             maxPageSize = DEFAULT_MAX_PAGE_SIZE;
         }
@@ -69,6 +104,11 @@ public record FeedCapabilities(
 
     public boolean acceptsSignals() {
         return !signalsAccepted.isEmpty();
+    }
+
+    /** The facet keys this source declared. */
+    public Set<String> facetKeys() {
+        return FacetSelection.keysOf(facets);
     }
 
     public boolean accepts(FeedSignal signal) {

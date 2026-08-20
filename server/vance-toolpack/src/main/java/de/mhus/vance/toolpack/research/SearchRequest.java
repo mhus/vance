@@ -1,5 +1,7 @@
 package de.mhus.vance.toolpack.research;
 
+import de.mhus.vance.toolpack.facet.FacetSelection;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -16,6 +18,14 @@ import org.jspecify.annotations.Nullable;
  * {@code domain} …). Protocols pick the ones they support; unknown
  * keys are ignored silently — schema validation at the tool boundary
  * is the gate for typos.
+ *
+ * <p>{@code facets} is the structured counterpart and behaves the
+ * opposite way: a provider that has not declared a selected key does
+ * not ignore it, it is skipped for this request. Unlike
+ * {@code expertParams} the reader knows what a facet means — it drew
+ * the picker from the provider's declared values — so silently
+ * answering a question that was not asked would be the wrong kind of
+ * tolerance. See {@link de.mhus.vance.toolpack.facet.FacetSelection}.
  */
 public record SearchRequest(
         String query,
@@ -24,7 +34,21 @@ public record SearchRequest(
         int maxResults,
         @Nullable Locale locale,
         @Nullable String pinnedProviderId,
-        Map<String, Object> expertParams) {
+        Map<String, Object> expertParams,
+        Map<String, List<String>> facets) {
+
+    /** The same request without facets. */
+    public SearchRequest(
+            String query,
+            SearchModality modality,
+            SearchTier tier,
+            int maxResults,
+            @Nullable Locale locale,
+            @Nullable String pinnedProviderId,
+            Map<String, Object> expertParams) {
+        this(query, modality, tier, maxResults, locale, pinnedProviderId, expertParams,
+                FacetSelection.none());
+    }
 
     public SearchRequest {
         if (query == null || query.isBlank()) {
@@ -40,6 +64,7 @@ public record SearchRequest(
             throw new IllegalArgumentException("maxResults must be > 0");
         }
         expertParams = expertParams == null ? Map.of() : Map.copyOf(expertParams);
+        facets = FacetSelection.normalize(facets);
     }
 
     /** Convenience for NORMAL tier without expert filters. */

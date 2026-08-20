@@ -1,9 +1,11 @@
 package de.mhus.vance.toolpack.feed;
 
+import de.mhus.vance.toolpack.facet.FacetSelection;
 import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -20,6 +22,13 @@ import org.jspecify.annotations.Nullable;
  *   <li>{@link #matches(FeedItem, FeedFilter)} applies the rest after the
  *       fetch.
  * </ul>
+ *
+ * <p>{@link #facets()} sits outside that split: it is pushdown-only. Either
+ * the source declared the facet, then it filtered on it, or it did not, then
+ * {@link #undeclaredFacets(FeedCapabilities)} says so and the source is left
+ * out of the request. There is no third state, because an entry carries no
+ * facet values to check against — that half of the design was considered and
+ * dropped ({@code planning/centauri-facets.md} §3.3).
  *
  * <h2>Why the post-filter does not simply re-apply everything</h2>
  *
@@ -54,22 +63,46 @@ public record FeedFilter(
         Set<String> languages,
         List<String> include,
         List<String> exclude,
-        @Nullable Instant since) {
+        @Nullable Instant since,
+        /**
+         * Facet selection, {@code key → values} — conjunction across keys,
+         * disjunction within one. See
+         * {@link de.mhus.vance.toolpack.facet.FacetSelection}.
+         *
+         * <p>The odd one out among these fields: it is never post-filtered.
+         * A source either declared the facet, then it applied it, or it did
+         * not, then it was left out of the request altogether. There is
+         * nothing on the entry to check it against, deliberately — see
+         * {@code planning/centauri-facets.md} §3.3.
+         */
+        Map<String, List<String>> facets) {
 
     public FeedFilter {
         text = blankToNull(text);
         languages = languages == null ? Set.of() : normalize(languages);
         include = include == null ? List.of() : List.copyOf(include);
         exclude = exclude == null ? List.of() : List.copyOf(exclude);
+        facets = FacetSelection.normalize(facets);
+    }
+
+    /** The same filter without facets — the shape that predates them. */
+    public FeedFilter(
+            @Nullable String text,
+            Set<String> languages,
+            List<String> include,
+            List<String> exclude,
+            @Nullable Instant since) {
+        this(text, languages, include, exclude, since, FacetSelection.none());
     }
 
     public static FeedFilter none() {
-        return new FeedFilter(null, Set.of(), List.of(), List.of(), null);
+        return new FeedFilter(null, Set.of(), List.of(), List.of(), null,
+                FacetSelection.none());
     }
 
     public boolean isEmpty() {
         return text == null && languages.isEmpty() && include.isEmpty()
-                && exclude.isEmpty() && since == null;
+                && exclude.isEmpty() && since == null && facets.isEmpty();
     }
 
     /**
@@ -86,7 +119,23 @@ public record FeedFilter(
                 caps.pushdownLanguage() ? languages : Set.of(),
                 List.of(),
                 List.of(),
-                caps.pushdownSince() ? since : null);
+                caps.pushdownSince() ? since : null,
+                FacetSelection.restrictTo(facets, caps.facetKeys()));
+    }
+
+    /**
+     * Selected facet keys this source did not declare. Non-empty means the
+     * source cannot answer the question that was asked and is left out of the
+     * request — not silently: the dispatcher turns this into a visible note.
+     *
+     * <p>The opposite of the {@code languages} rule one method below, and for
+     * a reason: a language is a property every entry has and may merely fail
+     * to state, while a place or a topic is a claim that either holds or does
+     * not. Letting a source that never heard of places through a „show me
+     * Asia" filter would make the filter look broken rather than strict.
+     */
+    public List<String> undeclaredFacets(FeedCapabilities caps) {
+        return FacetSelection.undeclaredKeys(facets, caps.facetKeys());
     }
 
     /**

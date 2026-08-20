@@ -1,5 +1,6 @@
 package de.mhus.vance.toolpack.research;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -37,6 +38,22 @@ public interface SearchProviderInstance {
 
     /** Tiers this configured endpoint can serve. */
     Set<SearchTier> tiers();
+
+    /**
+     * Dimensions this endpoint can be filtered by — see
+     * {@link de.mhus.vance.toolpack.facet.Facet}. Empty for every provider
+     * that offers none, which is all of the built-in ones.
+     *
+     * <p>Declaring one means being able to apply it. There is no local
+     * fallback here and could not be: a search answers with a ranking and
+     * no cursor, so a locally dropped hit is one that cannot be replaced —
+     * a page of twenty would shrink to three with no way to fetch more.
+     * A provider that does not declare a selected facet is skipped for that
+     * request instead.
+     */
+    default List<de.mhus.vance.toolpack.facet.Facet> facets() {
+        return List.of();
+    }
 
     /** Snapshot of usability in the given scope. */
     ProviderAvailability availability(SearchScope scope);

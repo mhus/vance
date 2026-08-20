@@ -50,6 +50,20 @@ public interface FeedSourceInstance {
     List<FeedSelector> listSelectors();
 
     /**
+     * One level of a facet's value tree, for a source whose taxonomy is too
+     * large to ship inline (see {@link de.mhus.vance.toolpack.facet.Facet}).
+     *
+     * <p>{@code parentId} null means the top level. The default returns
+     * nothing, which is right for every source that declares its values
+     * inline — and the dispatcher only asks a facet that said
+     * {@code lazyChildren}.
+     */
+    default List<de.mhus.vance.toolpack.facet.FacetValue> listFacetValues(
+            String key, @org.jspecify.annotations.Nullable String parentId) {
+        return List.of();
+    }
+
+    /**
      * Validate a free-text selector, returning a human-readable complaint or
      * {@link Optional#empty()} when it is usable.
      *

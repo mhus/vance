@@ -2,6 +2,7 @@ package de.mhus.vance.toolpack.feed;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.mhus.vance.toolpack.facet.Facet;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -130,12 +131,46 @@ class FeedFilterTest {
         assertThat(recent.matches(at("2026-08-19T08:00:00Z"), pushed)).isFalse();
     }
 
+    @Test
+    void projectTo_passesDeclaredFacetsAndDropsTheRest() {
+        FeedFilter filter = new FeedFilter(null, Set.of(), List.of(), List.of(), null,
+                Map.of("origin-place", List.of("m49:142"), "origin-topic", List.of("gaming")));
+
+        FeedFilter pushed = filter.projectTo(
+                caps(false, false, false, List.of(Facet.flat("origin-place", "Origin", List.of()))));
+
+        assertThat(pushed.facets()).containsOnlyKeys("origin-place");
+    }
+
+    @Test
+    void undeclaredFacets_namesWhatTheSourceCannotAnswer() {
+        FeedFilter filter = new FeedFilter(null, Set.of(), List.of(), List.of(), null,
+                Map.of("origin-place", List.of("m49:142"), "origin-topic", List.of("gaming")));
+
+        assertThat(filter.undeclaredFacets(
+                caps(false, false, false, List.of(Facet.flat("origin-place", "Origin", List.of())))))
+                .containsExactly("origin-topic");
+    }
+
+    @Test
+    void matches_ignoresFacets_becauseAnEntryCarriesNone() {
+        FeedFilter filter = new FeedFilter(null, Set.of(), List.of(), List.of(), null,
+                Map.of("origin-place", List.of("m49:142")));
+
+        assertThat(filter.matches(item("anything", "en"))).isTrue();
+    }
+
     // ── helpers ──────────────────────────────────────────────────────
 
     private static FeedCapabilities caps(boolean text, boolean language, boolean since) {
+        return caps(text, language, since, List.of());
+    }
+
+    private static FeedCapabilities caps(boolean text, boolean language, boolean since,
+                                         List<Facet> facets) {
         return new FeedCapabilities(
                 FeedSelectorMode.NONE, Set.of(), text, language, since,
-                false, true, 40, Set.of(), false, Duration.ofMinutes(5));
+                false, true, 40, Set.of(), false, Duration.ofMinutes(5), facets);
     }
 
     private static FeedItem item(String title, String language) {

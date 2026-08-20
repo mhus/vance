@@ -2031,4 +2031,20 @@ export default {
         '{count} instance(s) skipped:',
     },
   },
+  share: {
+    title: 'Share “{name}”',
+    loading: 'Loading ways to share…',
+    noHandlers: 'No way to share configured.',
+    viaLabel: 'Via {handler}',
+    submit: 'Share',
+    cancel: 'Cancel',
+    back: 'Back',
+    close: 'Close',
+    errorGeneric: 'Sharing failed.',
+    menuLabel: 'Share…',
+    inbox: {
+      openInCortex: 'Open in Cortex',
+      documentLabel: 'Shared document',
+    },
+  },
 };

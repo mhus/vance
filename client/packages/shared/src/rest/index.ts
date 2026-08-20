@@ -3,6 +3,7 @@ export * from './linkPreview';
 export * from './recipes';
 export * from './restClient';
 export * from './session-groups';
+export * from './share';
 export * from './sessions';
 export * from './settingForms';
 export * from './wizards';

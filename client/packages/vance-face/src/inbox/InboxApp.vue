@@ -459,6 +459,44 @@ function decisionOptions(item: InboxItemDto): string[] {
   return [];
 }
 
+/**
+ * The document an item points at, from the {@code payload.documentRef}
+ * convention that {@code inbox_post} and the Milliways {@code inbox}
+ * share-handler both write. Read by shape, not by item type: an
+ * {@code OUTPUT_DOCUMENT} share and an {@code APPROVAL} that happens to
+ * reference a document deserve the same link.
+ */
+interface SharedDocumentRef {
+  documentId: string;
+  projectId: string;
+  path: string;
+  title?: string;
+}
+
+const sharedDocument = computed<SharedDocumentRef | null>(() => {
+  const raw = inbox.selected.value?.payload?.documentRef;
+  if (!raw || typeof raw !== 'object') return null;
+  const ref = raw as Record<string, unknown>;
+  const documentId = typeof ref.documentId === 'string' ? ref.documentId : '';
+  const projectId = typeof ref.projectId === 'string' ? ref.projectId : '';
+  const path = typeof ref.path === 'string' ? ref.path : '';
+  // Without an id there is nothing to open — a half-written ref must not
+  // render a link that lands on an empty Cortex.
+  if (!documentId || !projectId) return null;
+  return {
+    documentId,
+    projectId,
+    path,
+    title: typeof ref.title === 'string' ? ref.title : undefined,
+  };
+});
+
+/** Cortex deep-link: a lone {@code doc} id opens as a single tab. */
+function cortexLink(ref: SharedDocumentRef): string {
+  return `/cortex.html?project=${encodeURIComponent(ref.projectId)}`
+    + `&doc=${encodeURIComponent(ref.documentId)}`;
+}
+
 const breadcrumbs = computed<string[]>(() => {
   // Breadcrumbs carry the path *within* the editor — the editor name
   // itself is in the topbar title and would otherwise read twice.
@@ -692,6 +730,29 @@ const breadcrumbs = computed<string[]>(() => {
             :source="inbox.selected.value.body"
           />
           <div v-else class="opacity-60 italic">{{ $t('inbox.detail.noBody') }}</div>
+
+          <!-- The document this item points at. A share carries a
+               pointer, never the content — so the link out is the whole
+               point of the item, not an extra. -->
+          <div
+            v-if="sharedDocument"
+            class="mt-3 p-3 rounded border border-base-300 flex items-center justify-between gap-3"
+          >
+            <div class="min-w-0">
+              <div class="text-xs opacity-60">{{ $t('share.inbox.documentLabel') }}</div>
+              <div class="font-medium truncate">
+                {{ sharedDocument.title || sharedDocument.path }}
+              </div>
+              <div class="text-xs opacity-60 font-mono truncate">
+                {{ sharedDocument.projectId }}/{{ sharedDocument.path }}
+              </div>
+            </div>
+            <VButton
+              variant="primary"
+              size="sm"
+              :href="cortexLink(sharedDocument)"
+            >{{ $t('share.inbox.openInCortex') }}</VButton>
+          </div>
 
           <div
             v-if="inbox.selected.value.payload && Object.keys(inbox.selected.value.payload).length > 0"

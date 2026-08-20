@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { VButton, VCheckbox, VInput, VSelect, VTextarea } from '@vance/components';
+import { pickLocalized } from '@vance/shared';
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { FormChoiceDto, FormFieldDto } from '@vance/generated';
@@ -53,14 +54,7 @@ const { locale } = useI18n();
 const activeLang = computed(() => props.preferredLang ?? locale.value);
 
 function resolveLocalized(map: Record<string, string> | undefined): string {
-  if (!map) return '';
-  const preferred = activeLang.value;
-  if (map[preferred] && map[preferred].trim()) return map[preferred];
-  if (map.en && map.en.trim()) return map.en;
-  for (const v of Object.values(map)) {
-    if (v && v.trim()) return v;
-  }
-  return '';
+  return pickLocalized(map, activeLang.value);
 }
 
 function labelOf(field: FormFieldDto): string {

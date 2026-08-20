@@ -2,6 +2,7 @@ export * from './auth/index';
 export * from './damogran';
 export * from './documentHeaderCodec';
 export * from './facelift/index';
+export * from './localized';
 export * from './rest/index';
 export * from './platform/index';
 export * from './safeUrl';

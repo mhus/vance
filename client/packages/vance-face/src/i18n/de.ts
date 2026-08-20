@@ -2058,4 +2058,20 @@ export default {
       refresh: 'Neu laden',
     },
   },
+  share: {
+    title: '„{name}“ teilen',
+    loading: 'Wege zum Teilen werden geladen…',
+    noHandlers: 'Kein Weg zum Teilen konfiguriert.',
+    viaLabel: 'Über {handler}',
+    submit: 'Teilen',
+    cancel: 'Abbrechen',
+    back: 'Zurück',
+    close: 'Schließen',
+    errorGeneric: 'Teilen fehlgeschlagen.',
+    menuLabel: 'Teilen…',
+    inbox: {
+      openInCortex: 'Im Cortex öffnen',
+      documentLabel: 'Geteiltes Dokument',
+    },
+  },
 };

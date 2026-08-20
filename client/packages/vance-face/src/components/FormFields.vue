@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { VButton, VCheckbox, VInput, VSelect, VTextarea } from '@vance/components';
 import { pickLocalized } from '@vance/shared';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { FormChoiceDto, FormFieldDto } from '@vance/generated';
 
@@ -50,7 +50,7 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: Record<string, FormValue>): void;
 }>();
 
-const { locale } = useI18n();
+const { t, locale } = useI18n();
 const activeLang = computed(() => props.preferredLang ?? locale.value);
 
 function resolveLocalized(map: Record<string, string> | undefined): string {
@@ -116,6 +116,41 @@ function toggleMultiSelect(field: FormFieldDto, value: string, checked: boolean)
     if (set.has(c.value)) ordered.push(c.value);
   }
   setField(field.name, ordered);
+}
+
+function clearMultiSelect(field: FormFieldDto): void {
+  setField(field.name, []);
+}
+
+function selectedCount(name: string): number {
+  return multiSelectedSet(name).size;
+}
+
+/**
+ * Above this many options a checkbox column gets a filter box and a
+ * bounded height. The number lives here rather than in the schema: how
+ * many rows fit is a property of the renderer, not of the form's meaning,
+ * and a form author cannot know how many options a dynamic
+ * {@code choices} list will carry at render time.
+ */
+const LONG_CHOICE_LIST = 8;
+
+/** Per-field filter text, keyed by field name. */
+const choiceFilters = ref<Record<string, string>>({});
+
+function isLongChoiceList(field: FormFieldDto): boolean {
+  return (field.choices ?? []).length > LONG_CHOICE_LIST;
+}
+
+function visibleChoices(field: FormFieldDto): FormChoiceDto[] {
+  const all = field.choices ?? [];
+  const needle = (choiceFilters.value[field.name] ?? '').trim().toLowerCase();
+  if (!needle) return all;
+  return all.filter((c) => {
+    const label = resolveLocalized(c.label) || c.value;
+    return label.toLowerCase().includes(needle)
+      || c.value.toLowerCase().includes(needle);
+  });
 }
 
 function selectOptionsOf(field: FormFieldDto): { value: string; label: string }[] {
@@ -275,15 +310,49 @@ function canRemove(field: FormFieldDto): boolean {
         class="flex flex-col gap-1"
       >
         <label class="text-sm">{{ labelOf(field) }}</label>
-        <div class="flex flex-col gap-1 pl-1">
+        <!-- Above the threshold a flat checkbox column stops being a
+             list and becomes a wall: it pushes the rest of the form
+             (and the submit button) off-screen. Same control, given a
+             filter and a bounded height. -->
+        <VInput
+          v-if="isLongChoiceList(field)"
+          :model-value="choiceFilters[field.name] ?? ''"
+          :placeholder="t('form.filterPlaceholder')"
+          :disabled="disabled"
+          @update:model-value="(v: string) => (choiceFilters[field.name] = v)"
+        />
+        <div
+          class="flex flex-col gap-1 pl-1"
+          :class="isLongChoiceList(field) ? 'max-h-52 overflow-y-auto' : ''"
+        >
           <VCheckbox
-            v-for="choice in (field.choices ?? [])"
+            v-for="choice in visibleChoices(field)"
             :key="choice.value"
             :model-value="multiSelectIsChecked(field.name, choice.value)"
             :label="resolveLocalized(choice.label) || choice.value"
             :disabled="disabled"
             @update:model-value="(v: boolean) => toggleMultiSelect(field, choice.value, v)"
           />
+          <span
+            v-if="visibleChoices(field).length === 0"
+            class="text-xs opacity-60 italic"
+          >{{ t('form.noMatches') }}</span>
+        </div>
+        <!-- The filter hides rows but never a selection — so say how many
+             are picked, or a filtered-away choice would look unselected. -->
+        <div
+          v-if="isLongChoiceList(field) && selectedCount(field.name) > 0"
+          class="flex items-center gap-2 text-xs"
+        >
+          <span class="opacity-70">
+            {{ t('form.selectedCount', { count: selectedCount(field.name) }) }}
+          </span>
+          <button
+            type="button"
+            class="underline opacity-70 hover:opacity-100 disabled:no-underline"
+            :disabled="disabled"
+            @click="clearMultiSelect(field)"
+          >{{ t('form.clearSelection') }}</button>
         </div>
         <span v-if="errorOf(field)" class="text-xs text-error">
           {{ errorOf(field) }}

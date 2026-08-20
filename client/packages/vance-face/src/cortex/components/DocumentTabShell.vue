@@ -24,7 +24,7 @@
  */
 import { computed, inject, onBeforeUnmount, ref, shallowRef, toRef, watch } from 'vue';
 import type { Ref } from 'vue';
-import { CodeEditor, ShareModal, VLockBadge, accentColorDotClass } from '@/components';
+import { CodeEditor, VLockBadge, accentColorDotClass } from '@/components';
 import { brainFetch, brainFetchBlob } from '@vance/shared';
 import type { DocumentDto, FollowUpRequestDto, FollowUpResponseDto } from '@vance/generated';
 import { WriterRole } from '@vance/generated';
@@ -602,9 +602,6 @@ onBeforeUnmount(() => {
 
 const showValidate = ref(false);
 const showSlart = ref(false);
-// Milliways — "show this to someone". The modal asks the server which
-// ways exist for this document; the toolbar only opens it.
-const showShare = ref(false);
 /** Mode the script-generate dialog opens in. {@code 'CREATE'} blanks
  *  the editor context; {@code 'UPDATE'} includes the current body
  *  and (optionally) the prior run-failure reason from the run panel. */
@@ -800,17 +797,6 @@ function fmtDuration(ms: number | null): string {
         @click="onDownload"
       >
         <span :class="downloading ? 'animate-pulse' : ''">⬇</span>
-      </button>
-      <button
-        v-if="store.projectId"
-        type="button"
-        class="opacity-60 hover:opacity-100 hover:bg-base-200 rounded px-1.5 py-0.5 text-xs"
-        :class="{ 'bg-base-300 opacity-100': showShare }"
-        :title="$t('share.title', { name: document.name })"
-        @click="showShare = true"
-      >
-        <span class="hidden sm:inline">{{ $t('share.menuLabel') }}</span>
-        <span class="sm:hidden">📤</span>
       </button>
       <button
         type="button"
@@ -1057,12 +1043,6 @@ function fmtDuration(ms: number | null): string {
       />
     </div>
 
-    <ShareModal
-      v-if="store.projectId"
-      v-model="showShare"
-      :project-id="store.projectId"
-      :path="document.path"
-    />
     <CortexValidateDialog
       v-if="showValidate"
       :document="document"

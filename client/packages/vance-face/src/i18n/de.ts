@@ -2074,4 +2074,10 @@ export default {
       documentLabel: 'Geteiltes Dokument',
     },
   },
+  form: {
+    filterPlaceholder: 'Filtern…',
+    noMatches: 'Kein Treffer für den Filter.',
+    selectedCount: '{count} ausgewählt',
+    clearSelection: 'Zurücksetzen',
+  },
 };

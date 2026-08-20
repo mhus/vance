@@ -2047,4 +2047,10 @@ export default {
       documentLabel: 'Shared document',
     },
   },
+  form: {
+    filterPlaceholder: 'Filter…',
+    noMatches: 'Nothing matches the filter.',
+    selectedCount: '{count} selected',
+    clearSelection: 'Clear',
+  },
 };

@@ -27,6 +27,7 @@ import {
   VButton,
   VDropdown,
   VEmptyState,
+  ShareModal,
 } from '@/components';
 import { brainFetch } from '@vance/shared';
 import type { SessionSummaryRichDto } from '@vance/generated';
@@ -537,6 +538,11 @@ function onPopState(): void {
 }
 
 const activeTab = computed(() => store.activeTab);
+
+// Milliways — "show this to someone". Lives in the Actions menu rather
+// than the document toolbar: that strip is already full, and sharing is
+// a document-level action like Save, not a view toggle.
+const showShare = ref(false);
 
 /**
  * Help for the active document's kind, but only when there is no chat
@@ -1373,6 +1379,15 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
             </li>
         </VDropdown>
 
+        <VDropdown v-if="projectId" menu-class="mt-1 w-56">
+          <template #trigger>Actions</template>
+            <li :class="{ disabled: !activeTab }">
+              <a @click="closeMenus(); showShare = true">
+                <span class="flex-1">{{ $t('share.menuLabel') }}</span>
+              </a>
+            </li>
+        </VDropdown>
+
         <VDropdown v-if="hasSession" menu-class="mt-1 w-72">
           <template #trigger>Chat</template>
             <li>
@@ -1490,6 +1505,13 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
     v-model:open="showNewFolder"
     :initial-path="newFolderInitial"
     @confirm="onNewFolderConfirm"
+  />
+
+  <ShareModal
+    v-if="projectId && activeTab"
+    v-model="showShare"
+    :project-id="projectId"
+    :path="activeTab.path"
   />
 </template>
 

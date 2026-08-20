@@ -82,9 +82,13 @@ public class MilliwaysController {
     }
 
     /**
-     * Maps the three refusal kinds. {@code PermissionDeniedException} is
-     * not among them — {@code PermissionExceptionAdvice} already turns it
-     * into 403 for every controller.
+     * Maps the refusal kinds. {@code PermissionDeniedException} is not
+     * among them — {@code PermissionExceptionAdvice} already turns it into
+     * 403 for every controller.
+     *
+     * <p>{@link ShareTransportException} is 502 and deliberately not a
+     * {@link ShareException}: "the relay refused" is not something the user
+     * can fix by editing the form.
      */
     private static <T> T call(Supplier<T> body) {
         try {
@@ -95,6 +99,8 @@ public class MilliwaysController {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         } catch (ShareException e) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, e.getMessage());
+        } catch (ShareTransportException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, e.getMessage());
         }
     }
 

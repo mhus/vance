@@ -1,9 +1,11 @@
 package de.mhus.vance.toolpack.mail;
 
+import jakarta.activation.DataHandler;
 import jakarta.mail.Address;
 import jakarta.mail.Authenticator;
 import jakarta.mail.Message;
 import jakarta.mail.MessagingException;
+import jakarta.mail.Part;
 import jakarta.mail.PasswordAuthentication;
 import jakarta.mail.Session;
 import jakarta.mail.Transport;
@@ -12,6 +14,7 @@ import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMessage;
 import jakarta.mail.internet.MimeMultipart;
+import jakarta.mail.util.ByteArrayDataSource;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -31,6 +34,10 @@ import org.jspecify.annotations.Nullable;
  * Multipart path: pass {@code html != null} to send a multipart/
  * alternative with both plain and HTML versions (the canonical "rich
  * email with plain fallback" recipe).
+ *
+ * <p>With {@code attachments} the message becomes a multipart/mixed
+ * whose first part is that body — plain or the alternative pair, nested
+ * rather than flattened, so the plain/HTML choice survives.
  */
 @Slf4j
 public final class SmtpSender {
@@ -39,6 +46,15 @@ public final class SmtpSender {
 
     public SmtpSender(SmtpConfig config) {
         this.config = config;
+    }
+
+    /**
+     * One file to attach. {@code bytes} is held as-is, not copied —
+     * callers must not mutate the array afterwards, and a record with an
+     * array component has no meaningful {@code equals}; neither matters
+     * for a single-shot send payload.
+     */
+    public record Attachment(String filename, String mimeType, byte[] bytes) {
     }
 
     /** Payload for one outgoing message. */
@@ -50,7 +66,21 @@ public final class SmtpSender {
             String body,
             @Nullable String html,
             @Nullable String from,
-            @Nullable String replyTo) {
+            @Nullable String replyTo,
+            @Nullable List<Attachment> attachments) {
+
+        /** Attachment-free form — keeps the pre-attachment call sites intact. */
+        public SendRequest(
+                List<String> to,
+                @Nullable List<String> cc,
+                @Nullable List<String> bcc,
+                String subject,
+                String body,
+                @Nullable String html,
+                @Nullable String from,
+                @Nullable String replyTo) {
+            this(to, cc, bcc, subject, body, html, from, replyTo, null);
+        }
     }
 
     /**
@@ -101,18 +131,28 @@ public final class SmtpSender {
             }
             msg.setSubject(req.subject(), "UTF-8");
 
-            if (req.html() != null && !req.html().isBlank()) {
-                // multipart/alternative — plain first, HTML second is the
-                // canonical layout. Some clients pick the LAST part, hence
-                // HTML last so it wins for rich-capable clients.
-                MimeMultipart mp = new MimeMultipart("alternative");
-                MimeBodyPart text = new MimeBodyPart();
-                text.setText(req.body(), "UTF-8");
-                mp.addBodyPart(text);
-                MimeBodyPart html = new MimeBodyPart();
-                html.setContent(req.html(), "text/html; charset=UTF-8");
-                mp.addBodyPart(html);
-                msg.setContent(mp);
+            List<Attachment> attachments = req.attachments() == null
+                    ? List.of()
+                    : req.attachments();
+            if (!attachments.isEmpty()) {
+                // multipart/mixed with the whole body (plain, or the
+                // alternative pair) as the first part — nesting the
+                // alternative inside the mixed keeps the plain/HTML choice
+                // intact instead of flattening it next to the files.
+                MimeMultipart mixed = new MimeMultipart("mixed");
+                MimeBodyPart bodyPart = new MimeBodyPart();
+                if (req.html() != null && !req.html().isBlank()) {
+                    bodyPart.setContent(alternativeBody(req));
+                } else {
+                    bodyPart.setText(req.body(), "UTF-8");
+                }
+                mixed.addBodyPart(bodyPart);
+                for (Attachment a : attachments) {
+                    mixed.addBodyPart(attachmentPart(a));
+                }
+                msg.setContent(mixed);
+            } else if (req.html() != null && !req.html().isBlank()) {
+                msg.setContent(alternativeBody(req));
             } else {
                 msg.setText(req.body(), "UTF-8");
             }
@@ -127,6 +167,9 @@ public final class SmtpSender {
             if (req.cc() != null) out.put("cc", req.cc());
             if (req.bcc() != null) out.put("bcc", req.bcc());
             out.put("subject", req.subject());
+            if (!attachments.isEmpty()) {
+                out.put("attachments", attachments.stream().map(Attachment::filename).toList());
+            }
             return out;
         } catch (MessagingException e) {
             throw new SmtpException(
@@ -136,6 +179,40 @@ public final class SmtpSender {
     }
 
     // ──────────────────── Internals ────────────────────
+
+    /**
+     * multipart/alternative — plain first, HTML second is the canonical
+     * layout. Some clients pick the LAST part, hence HTML last so it wins
+     * for rich-capable clients.
+     */
+    private static MimeMultipart alternativeBody(SendRequest req) throws MessagingException {
+        MimeMultipart mp = new MimeMultipart("alternative");
+        MimeBodyPart text = new MimeBodyPart();
+        text.setText(req.body(), "UTF-8");
+        mp.addBodyPart(text);
+        MimeBodyPart html = new MimeBodyPart();
+        html.setContent(req.html(), "text/html; charset=UTF-8");
+        mp.addBodyPart(html);
+        return mp;
+    }
+
+    private static MimeBodyPart attachmentPart(Attachment a) throws MessagingException {
+        if (a.filename() == null || a.filename().isBlank()) {
+            throw new IllegalArgumentException("attachment: 'filename' is required");
+        }
+        if (a.bytes() == null) {
+            throw new IllegalArgumentException(
+                    "attachment '" + a.filename() + "': 'bytes' is required");
+        }
+        String mimeType = a.mimeType() == null || a.mimeType().isBlank()
+                ? "application/octet-stream"
+                : a.mimeType();
+        MimeBodyPart part = new MimeBodyPart();
+        part.setDataHandler(new DataHandler(new ByteArrayDataSource(a.bytes(), mimeType)));
+        part.setFileName(a.filename());
+        part.setDisposition(Part.ATTACHMENT);
+        return part;
+    }
 
     private Address[] toAddresses(Collection<String> raw) throws AddressException {
         List<Address> out = new ArrayList<>(raw.size());

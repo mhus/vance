@@ -24,6 +24,17 @@ interface Props {
   toolService?: CortexClientToolService | null;
   activeDocument: CortexDocument | null;
   boundDocumentId?: string | null;
+  /**
+   * An app-owned structured selection, on its way from {@code EditorApp} to
+   * {@code CortexChatPanel} — see there for what it becomes.
+   *
+   * <p>Declared and forwarded explicitly. An undeclared prop does not reach a
+   * grandchild: Vue turns it into a fallthrough attribute on this component's
+   * root element, where it lands on a `div` and is never seen again. That is
+   * how the app selection went missing between a canvas board (and later a
+   * feed) and the chat, with every end of the chain working on its own.
+   */
+  appSelection?: { appDocId: string; selection: string } | null;
 }
 
 const props = defineProps<Props>();
@@ -67,6 +78,7 @@ const helpPath = computed<string | null>(() => resolveHelpPath(props.activeDocum
           :project-id="projectId"
           :tool-service="toolService ?? null"
           :bound-document-id="boundDocumentId ?? null"
+          :app-selection="appSelection ?? null"
         />
       </div>
       <div v-show="activeTab === 'help'" class="h-full">

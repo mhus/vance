@@ -436,8 +436,26 @@ async function restart(): Promise<void> {
  */
 const AUTO_REFRESH_INTERVAL_MS = 30_000;
 
-/** How far the stream has to be dragged past its top before it reloads. */
-const PULL_THRESHOLD_PX = 80;
+/**
+ * How far the stream has to be dragged past its top before it reloads.
+ *
+ * <p>Generous on purpose: the cost of overshooting is a refresh nobody asked
+ * for, which throws away the reader's position in a list they were reading.
+ */
+const PULL_THRESHOLD_PX = 140;
+
+/**
+ * How much a wheel over-scroll counts towards the pull.
+ *
+ * <p>A trackpad reports far more travel than a finger for the same movement,
+ * and its momentum keeps reporting after the list has stopped. Damped like
+ * the touch path, or a normal flick to the top of the list arrives at the
+ * threshold on its own.
+ */
+const WHEEL_DAMPING = 3;
+
+/** A gap this long between wheel events starts a new gesture. */
+const GESTURE_GAP_MS = 250;
 
 const autoRefresh = ref(false);
 const pullDistance = ref(0);
@@ -446,6 +464,16 @@ const scroller = ref<HTMLElement | null>(null);
 
 let autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let pullStartY: number | null = null;
+let lastWheelAt = 0;
+/**
+ * Whether the gesture in progress began with the list already at the top.
+ *
+ * <p>This is the whole difference between a pull and an ordinary scroll. A
+ * flick from halfway down ends at the top and then keeps delivering momentum
+ * the browser cannot apply — indistinguishable from a deliberate pull unless
+ * you remember where the gesture started.
+ */
+let gestureStartedAtTop = false;
 
 async function refreshNow(): Promise<void> {
   if (refreshing.value || loading.value) return;
@@ -490,16 +518,30 @@ watch(autoRefresh, (on) => {
  * the threshold and the finger on lift.
  */
 function onWheel(event: WheelEvent): void {
-  if (refreshing.value || (scroller.value?.scrollTop ?? 0) > 0) {
+  const now = Date.now();
+  const atTop = (scroller.value?.scrollTop ?? 0) <= 0;
+  if (now - lastWheelAt > GESTURE_GAP_MS) {
+    gestureStartedAtTop = atTop;
     pullDistance.value = 0;
+  }
+  lastWheelAt = now;
+
+  // Not a pull: still scrolling, scrolling down, mid-refresh, or riding the
+  // momentum of a gesture that began further down the list.
+  if (refreshing.value || !atTop || !gestureStartedAtTop || event.deltaY >= 0) {
+    if (pullDistance.value !== 0 && event.deltaY >= 0) pullDistance.value = 0;
     return;
   }
-  if (event.deltaY >= 0) {
-    pullDistance.value = 0;
-    return;
+
+  pullDistance.value = Math.min(
+    pullDistance.value - event.deltaY / WHEEL_DAMPING,
+    PULL_THRESHOLD_PX * 1.5);
+  if (pullDistance.value >= PULL_THRESHOLD_PX) {
+    // The gesture is spent: without this its remaining momentum triggers the
+    // next refresh the moment this one finishes.
+    gestureStartedAtTop = false;
+    void refreshNow();
   }
-  pullDistance.value = Math.min(pullDistance.value - event.deltaY, PULL_THRESHOLD_PX * 1.5);
-  if (pullDistance.value >= PULL_THRESHOLD_PX) void refreshNow();
 }
 
 /** Any real scrolling ends a pull — the gesture only exists at the top. */

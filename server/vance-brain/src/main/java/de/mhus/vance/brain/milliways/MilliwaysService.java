@@ -119,7 +119,15 @@ public class MilliwaysService {
                     Map.of("reason", "document_read_denied"));
             throw e;
         }
-        requireAvailable(handler, scope);
+        try {
+            requireAvailable(handler, scope);
+        } catch (ShareUnavailableException e) {
+            // Counted, not audited: nothing left the building and nobody was
+            // refused on security grounds — but a spike here means clients
+            // are acting on a stale handler list, which is worth seeing.
+            count(handlerId, "unavailable");
+            throw e;
+        }
 
         ShareResult result;
         try {

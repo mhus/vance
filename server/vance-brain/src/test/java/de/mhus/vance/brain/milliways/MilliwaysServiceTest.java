@@ -239,7 +239,7 @@ class MilliwaysServiceTest {
     }
 
     @Test
-    void share_unavailableHandler_neverRuns() {
+    void share_unavailableHandler_neverRuns_isCountedButNotAudited() {
         StubHandler handler = new StubHandler("smtp", ShareAvailability.unavailable("No SMTP pack"));
         MilliwaysService service = serviceWith(handler);
 
@@ -247,7 +247,11 @@ class MilliwaysServiceTest {
                 .isInstanceOf(ShareUnavailableException.class);
 
         assertThat(handler.seen).isNull();
+        // Nothing left the building and nobody was refused on security
+        // grounds — but the attempt is visible, because a spike means
+        // clients are acting on a stale handler list.
         verify(auditService, never()).record(any(AuditEventDto.class));
+        assertThat(shareCount("smtp", "unavailable")).isEqualTo(1.0);
     }
 
     // ── Wiring ─────────────────────────────────────────────────────
@@ -278,6 +282,14 @@ class MilliwaysServiceTest {
                 MARA, new Resource.Document(TENANT, PROJECT, PATH), Action.READ))
                 .when(permissionService)
                 .enforce(any(SecurityContext.class), any(Resource.class), eq(Action.READ));
+    }
+
+    private double shareCount(String handlerId, String outcome) {
+        return metricService.getRegistry()
+                .get(MilliwaysService.METRIC_SHARES)
+                .tags("handler", handlerId, "outcome", outcome)
+                .counter()
+                .count();
     }
 
     private String auditOutcome() {

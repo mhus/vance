@@ -87,9 +87,14 @@ async function pick(handler: ShareHandlerDto): Promise<void> {
   } catch (e) {
     // A 409 means the list we showed was stale — go back and re-read it
     // rather than leaving the user on a form that cannot be submitted.
+    //
+    // The message goes up after the reload, not before: openFresh() clears
+    // `error` on its way in, so setting it first wiped the one sentence that
+    // explains why the dialog just jumped back to the handler list.
     if (e instanceof RestError && e.status === 409) {
-      error.value = e.message;
+      const stale = e.message;
       await openFresh();
+      error.value = stale;
       return;
     }
     error.value = messageOf(e);

@@ -103,6 +103,32 @@ class FeedItemToolTest {
                 .hasMessageContaining("itemId");
     }
 
+    @Test
+    void invoke_collapsesEveryForeignFieldNotJustTheTitle() {
+        // extras, body, author and tags all come verbatim from the far end via
+        // OdeFeedInstance, and this map goes into a prompt. Hardening the title
+        // and leaving the rest is a hole in the wall the title stands behind:
+        // a source could inject headings and line breaks through an extras
+        // value. Same rule as SearchHitRows on the research side.
+        when(centauriService.loadItem(any(), any(), any())).thenReturn(
+                Optional.of(new FeedItem("i1", null, Instant.parse("2026-08-19T10:00:00Z"),
+                        "Headline", "https://x.test/1", "teaser",
+                        "body\n\n## Injected heading", "A.\nAuthor", "en",
+                        null, null, List.of("one\ntag"),
+                        Map.of("originPlace", "Germany\n\n## Also injected", "score", 3))));
+
+        Map<String, Object> out = tool.invoke(
+                Map.of("sourceId", "hrafnagud", "itemId", "i1"), CTX);
+
+        assertThat(out).containsEntry("body", "body ## Injected heading");
+        assertThat(out).containsEntry("author", "A. Author");
+        assertThat(out).containsEntry("tags", List.of("one tag"));
+        assertThat(out.get("extras")).isEqualTo(Map.of(
+                "originPlace", "Germany ## Also injected",
+                // Numbers carry no structure a template could be broken with.
+                "score", 3));
+    }
+
     private static FeedItem item(String body, Map<String, Object> extras) {
         return new FeedItem("i1", null, Instant.parse("2026-08-19T10:00:00Z"),
                 "Headline", "https://x.test/1", "teaser", body, "A. Author", "en",

@@ -245,6 +245,23 @@ class SmtpShareHandlerTest {
                 .resolve(any(), any(ToolInvocationContext.class));
     }
 
+    // ── A pack that cannot be built ────────────────────────────────
+
+    @Test
+    void share_packWithoutHost_isRefusedNotFailed() {
+        // availability() only checks that a pack exists, so a half-filled one
+        // reports READY and the user gets as far as submitting. Building the
+        // config threw outside the try, and the IllegalArgumentException
+        // escaped to MilliwaysService as outcome=failed / HTTP 500 — instead
+        // of the 422 carrying the sentence that says which field is missing.
+        givenPacks(pack("relay", true, Map.of("from", "me@example.com")));
+
+        assertThatThrownBy(() -> handler.share(request(Map.of("to", "ford@example.com"))))
+                .isInstanceOf(ShareException.class)
+                .isNotInstanceOf(ShareTransportException.class)
+                .hasMessageContaining("host");
+    }
+
     // ── helpers ────────────────────────────────────────────────────
 
     private void givenPacks(ServerToolConfig... packs) {

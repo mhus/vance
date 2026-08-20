@@ -62,7 +62,12 @@ public class InboxShareHandler implements ShareHandler {
 
     @Override
     public ShareAvailability availability(ShareScope scope) {
-        if (recipients(scope).isEmpty()) {
+        // A bounded probe, not the list. This runs on every
+        // GET /share/handlers — merely opening a menu — and the question here
+        // is "is there anybody", which the first hit answers. Building the
+        // whole list meant a full user scan plus one authorization check per
+        // user before the menu could be drawn, for an answer that is a boolean.
+        if (recipients(scope, 1).isEmpty()) {
             return ShareAvailability.unavailable("Nobody else in this tenant to share with");
         }
         return ShareAvailability.ready();
@@ -71,7 +76,7 @@ public class InboxShareHandler implements ShareHandler {
     @Override
     public List<FormFieldDto> form(ShareScope scope) {
         List<FormChoiceDto> choices = new ArrayList<>();
-        for (UserDocument user : recipients(scope)) {
+        for (UserDocument user : recipients(scope, Integer.MAX_VALUE)) {
             choices.add(FormChoiceDto.builder()
                     .value(user.getName())
                     .label(Map.of("en", displayName(user)))
@@ -112,7 +117,7 @@ public class InboxShareHandler implements ShareHandler {
         }
 
         Map<String, UserDocument> allowed = new LinkedHashMap<>();
-        for (UserDocument user : recipients(scope)) {
+        for (UserDocument user : recipients(scope, Integer.MAX_VALUE)) {
             allowed.put(user.getName(), user);
         }
         List<String> rejected = new ArrayList<>();
@@ -181,10 +186,15 @@ public class InboxShareHandler implements ShareHandler {
      * tenant, minus the sharer, minus anyone the permission provider says
      * is off-limits. Service accounts are out because Milliways is a
      * human-to-human act.
+     *
+     * <p>{@code limit} stops the walk early. The permission check is per user,
+     * so a caller that only needs to know whether the list is empty should not
+     * pay for all of them — see {@link #availability(ShareScope)}.
      */
-    private List<UserDocument> recipients(ShareScope scope) {
+    private List<UserDocument> recipients(ShareScope scope, int limit) {
         List<UserDocument> out = new ArrayList<>();
         for (UserDocument user : userService.all(scope.tenantId())) {
+            if (out.size() >= limit) break;
             if (user.isServiceAccount()) continue;
             if (user.getStatus() != UserStatus.ACTIVE) continue;
             if (user.getName().equals(scope.sharer())) continue;

@@ -174,19 +174,35 @@ const totalCooldowns = computed(() =>
 // ─── Expand / act ──────────────────────────────────────────────────────
 // Records with an active cooldown start expanded — that is the row the
 // operator came for, and hiding its Clear button behind a click is one
-// step too many.
+// step too many. Everything else starts collapsed and opens on click.
+//
+// Two sets, not one: deriving "expanded" from the cooldown count made the
+// chevron a no-op for every OK and DEGRADED row, because toggling one only
+// ever removed it from `collapsed`, which it was never in. Those rows have a
+// detail block — expectedRecoveryAt, "No active cooldowns" — that could not
+// be reached at all. `expanded` records the clicks that open, `collapsed` the
+// clicks that close, and the cooldown count only decides the starting state.
 const collapsed = ref<Set<string>>(new Set());
+const expanded = ref<Set<string>>(new Set());
 
 function isExpanded(entry: ToolHealthEntryDto): boolean {
   if (collapsed.value.has(entry.toolName)) return false;
+  if (expanded.value.has(entry.toolName)) return true;
   return cooldownCount(entry) > 0;
 }
 
 function toggleExpand(entry: ToolHealthEntryDto): void {
-  const next = new Set(collapsed.value);
-  if (isExpanded(entry)) next.add(entry.toolName);
-  else next.delete(entry.toolName);
-  collapsed.value = next;
+  const nextCollapsed = new Set(collapsed.value);
+  const nextExpanded = new Set(expanded.value);
+  if (isExpanded(entry)) {
+    nextCollapsed.add(entry.toolName);
+    nextExpanded.delete(entry.toolName);
+  } else {
+    nextExpanded.add(entry.toolName);
+    nextCollapsed.delete(entry.toolName);
+  }
+  collapsed.value = nextCollapsed;
+  expanded.value = nextExpanded;
 }
 
 async function onClearCooldown(

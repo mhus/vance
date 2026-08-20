@@ -162,11 +162,18 @@ public class SmtpShareHandler implements ShareHandler {
         String body = request.stringOr(FIELD_TEXT, "");
 
         SmtpSender.Attachment attachment = attachmentOf(scope);
-        SmtpSender sender = new SmtpSender(SmtpConfig.fromParameters(
-                resolveSecrets(pack.parameters(), scope)));
 
         Map<String, Object> sendResult;
         try {
+            // Inside the try, deliberately. SmtpConfig.fromParameters throws
+            // IllegalArgumentException for a pack with no host or a non-numeric
+            // port, and availability() only checks that the pack exists — so a
+            // half-filled smtp_sender reports READY, and building the sender
+            // outside meant that refusal escaped as a raw runtime exception:
+            // HTTP 500 and outcome=failed, instead of the 422 carrying the one
+            // sentence the operator can act on.
+            SmtpSender sender = new SmtpSender(SmtpConfig.fromParameters(
+                    resolveSecrets(pack.parameters(), scope)));
             sendResult = sender.send(new SmtpSender.SendRequest(
                     recipients,
                     /*cc*/ null,

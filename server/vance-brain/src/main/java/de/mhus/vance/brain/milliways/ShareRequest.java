@@ -1,6 +1,8 @@
 package de.mhus.vance.brain.milliways;
 
 import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -17,7 +19,16 @@ import org.jspecify.annotations.Nullable;
 public record ShareRequest(ShareScope scope, Map<String, Object> values) {
 
     public ShareRequest {
-        values = Map.copyOf(values);
+        // Not Map.copyOf: it throws NullPointerException on a null value, and
+        // `values` is raw JSON — {"values":{"text":null}} is a well-formed body
+        // that would have produced a 500 for what is at most a 422. A key with
+        // no value says the same thing as an absent key, so it is dropped; the
+        // accessors above already treat both as "not given".
+        Map<String, Object> copy = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : values.entrySet()) {
+            if (e.getKey() != null && e.getValue() != null) copy.put(e.getKey(), e.getValue());
+        }
+        values = Collections.unmodifiableMap(copy);
     }
 
     /** Trimmed non-blank string for {@code key}, or {@code null}. */

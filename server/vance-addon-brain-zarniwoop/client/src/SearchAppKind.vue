@@ -224,6 +224,28 @@ function clearFacets(): void {
   facetSelection.value = {};
 }
 
+/**
+ * Drop selections the new modality does not offer.
+ *
+ * <p>The selection is sent with every search and the dispatcher skips any
+ * provider that has not declared a selected key — so an `origin-place` carried
+ * from the news tab into Images, where no endpoint declares it, takes every
+ * provider out and the search comes back empty. That state was also
+ * unreachable: with nothing offered, both the fold and the count badge are
+ * hidden, so the filter could be neither seen nor cleared.
+ *
+ * <p>Pruned rather than cleared, because a facet both modalities offer is one
+ * the reader still means.
+ */
+function pruneFacetsToModality(): void {
+  const offered = new Set(offeredFacets.value.map((e) => e.facet.key));
+  const next: Record<string, string[]> = {};
+  for (const [key, values] of Object.entries(facetSelection.value)) {
+    if (offered.has(key)) next[key] = values;
+  }
+  facetSelection.value = next;
+}
+
 onMounted(async () => {
   try {
     const [loadedProviders, loadedConfig] = await Promise.all([
@@ -309,6 +331,7 @@ function selectModality(m: string): void {
   modality.value = m;
   pinned.value = '';
   if (!expertPossible.value) tier.value = 'normal';
+  pruneFacetsToModality();
   // Still no automatic re-search — switching a tab would spend quota on a
   // query the person may be about to change. But what this tab found before
   // comes back instead of being dropped: paying twice for the same answer is

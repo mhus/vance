@@ -292,16 +292,22 @@ async function levelOf(
 
 async function loadAllFacetValues(): Promise<void> {
   facetValues.value = {};
-  const labels = { ...facetLabels.value };
   for (const entry of offeredFacets.value) {
     // A facet that ships its values inline knows every label already, at any
     // depth. Remembering only the level we happened to load left a stored
     // selection reading „iso:PL" — an id the source had spelled out for us in
     // the same response.
-    for (const value of entry.facet.values) labels[value.id] = value.label;
+    //
+    // Merged into the live ref one facet at a time, never through a snapshot
+    // taken before the loop: levelOf() writes the labels it fetched into the
+    // same ref, and assigning a pre-loop copy afterwards threw exactly those
+    // away — so a lazyChildren facet, whose values are empty here and only
+    // arrive through levelOf, lost every label it had just been given.
+    const inline: Record<string, string> = {};
+    for (const value of entry.facet.values) inline[value.id] = value.label;
+    facetLabels.value = { ...facetLabels.value, ...inline };
     await levelOf(entry.sourceId, entry.facet, null);
   }
-  facetLabels.value = labels;
 }
 
 // ── the picker ───────────────────────────────────────────────────────

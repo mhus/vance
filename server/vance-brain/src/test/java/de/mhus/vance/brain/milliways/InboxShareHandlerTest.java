@@ -91,6 +91,24 @@ class InboxShareHandlerTest {
         assertThat(handler.availability(scope()).available()).isTrue();
     }
 
+    @Test
+    void availability_stopsAtTheFirstReachableUser() {
+        // This runs on every GET /share/handlers — merely opening the menu —
+        // and the question is a boolean, which the first hit answers. Checking
+        // every user meant one authorization call per member of the tenant
+        // before the menu could be drawn.
+        when(userService.all(TENANT)).thenReturn(List.of(
+                user("mara", "Mara Toon"),
+                user("ford", "Ford Prefect"),
+                user("zaphod", "Zaphod"),
+                user("trillian", "Trillian")));
+
+        assertThat(handler.availability(scope()).available()).isTrue();
+
+        verify(permissionService, times(1))
+                .check(any(SecurityContext.class), any(Resource.class), any());
+    }
+
     // ── Form ───────────────────────────────────────────────────────
 
     @Test
@@ -245,6 +263,22 @@ class InboxShareHandlerTest {
         ArgumentCaptor<InboxItemDocument> captor = forClass(InboxItemDocument.class);
         verify(inboxItemService).create(captor.capture());
         return captor.getValue();
+    }
+
+    @Test
+    void request_nullValueInTheSubmission_isDroppedNotThrown() {
+        // `values` is raw JSON — the class doc says nothing here is trusted —
+        // and Map.copyOf threw NullPointerException on a null value, so
+        // {"text":null} produced a 500 for what is at most a 422. A key with
+        // no value says the same as an absent key.
+        Map<String, Object> raw = new java.util.HashMap<>();
+        raw.put("text", null);
+        raw.put("recipients", List.of("ford"));
+
+        ShareRequest request = new ShareRequest(scope(), raw);
+
+        assertThat(request.string("text")).isNull();
+        assertThat(request.strings("recipients")).containsExactly("ford");
     }
 
     private ShareRequest request(Map<String, Object> values) {

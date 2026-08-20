@@ -11,6 +11,7 @@ import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.feed.FeedItem;
 import de.mhus.vance.toolpack.feed.FeedScope;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -126,17 +127,55 @@ public class FeedItemTool implements Tool {
         if (!StringUtils.isBlank(item.summary())) {
             out.put("summary", UntrustedContent.collapseWhitespace(item.summary()));
         }
-        if (!StringUtils.isBlank(item.body())) out.put("body", item.body());
-        if (!StringUtils.isBlank(item.author())) out.put("author", item.author());
-        if (!StringUtils.isBlank(item.language())) out.put("language", item.language());
-        if (!item.tags().isEmpty()) out.put("tags", item.tags());
-        if (!item.extras().isEmpty()) out.put("extras", item.extras());
+        // Everything below is text a stranger wrote, on its way into a prompt.
+        // Same rule and same reason as SearchHitRows on the research side: the
+        // two surfaces must not differ in how much they trust a source. Extras
+        // are as foreign as the title beside them — they arrive verbatim from
+        // the far end via OdeFeedInstance.extras() — and leaving one
+        // unsanitised is a hole in exactly the wall the sibling fields stand
+        // behind.
+        if (!StringUtils.isBlank(item.body())) {
+            out.put("body", UntrustedContent.collapseWhitespace(item.body()));
+        }
+        if (!StringUtils.isBlank(item.author())) {
+            out.put("author", UntrustedContent.collapseWhitespace(item.author()));
+        }
+        if (!StringUtils.isBlank(item.language())) {
+            out.put("language", UntrustedContent.collapseWhitespace(item.language()));
+        }
+        if (!item.tags().isEmpty()) out.put("tags", safeTags(item.tags()));
+        if (!item.extras().isEmpty()) out.put("extras", safeExtras(item.extras()));
         if (StringUtils.isBlank(item.body())) {
             out.put("bodyHint", "This entry has no full text yet — the source fetches "
                     + "bodies on its own schedule. The summary and the URL are what exists.");
         }
         log.debug("FeedItemTool source='{}' item='{}' body={}",
                 sourceId, itemId, item.body() == null ? 0 : item.body().length());
+        return out;
+    }
+
+    /** Foreign tag strings, collapsed like every other remote string. */
+    private static List<String> safeTags(List<String> tags) {
+        List<String> out = new ArrayList<>(tags.size());
+        for (String tag : tags) {
+            out.add(UntrustedContent.collapseWhitespace(tag));
+        }
+        return out;
+    }
+
+    /**
+     * Foreign key/value pairs, collapsed. Numbers and booleans pass through —
+     * they carry no structure a template could be broken with.
+     */
+    private static Map<String, Object> safeExtras(Map<String, Object> extras) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : extras.entrySet()) {
+            Object value = e.getValue();
+            out.put(UntrustedContent.collapseWhitespace(e.getKey()),
+                    value == null || value instanceof Number || value instanceof Boolean
+                            ? value
+                            : UntrustedContent.collapseWhitespace(String.valueOf(value)));
+        }
         return out;
     }
 

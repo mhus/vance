@@ -27,6 +27,16 @@ public record CentauriNote(String sourceId, String selector, Kind kind, @Nullabl
         FAILED,
 
         /** Did not answer within the per-stream budget. */
-        TIMED_OUT
+        TIMED_OUT,
+
+        /**
+         * Left out because the reader selected a facet this source does not
+         * declare — {@code detail} names the keys.
+         *
+         * <p>Not a failure and not a filter result: the source was never
+         * asked. Shown because „source X is not part of this selection" is
+         * information, and a silently shorter timeline is not.
+         */
+        MISSING_FACET
     }
 }

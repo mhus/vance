@@ -18,7 +18,9 @@ import de.mhus.vance.toolpack.feed.FeedPage;
 import de.mhus.vance.toolpack.feed.FeedScope;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -184,6 +186,52 @@ class CentauriServiceTest {
                 CentauriPageRequest.of(List.of(ALPHA)), new FeedScope("acme", "", null, null)))
                 .isInstanceOf(CentauriException.class)
                 .hasMessageContaining("project scope");
+    }
+
+    @Test
+    void fetchPage_sourceWithoutTheSelectedFacet_isANoteAndIsNotAsked() {
+        source("alpha", page(item("a1", "2026-08-19T10:00:00Z", "https://a.test/1")));
+        when(factory.find(any(), eq("beta"))).thenReturn(
+                new FakeFeedSource("beta")
+                        .declaringFacet("origin-place")
+                        .serving(page(item("b1", "2026-08-19T09:00:00Z", "https://b.test/1"))));
+
+        CentauriPage result = service.fetchPage(new CentauriPageRequest(
+                List.of(ALPHA, BETA),
+                new FeedFilter(null, Set.of(), List.of(), List.of(), null,
+                        Map.of("origin-place", List.of("m49:142"))),
+                10, FeedDirection.OLDER, null), SCOPE);
+
+        // Beta answers the question and contributes; alpha never declared the
+        // dimension, so it is left out rather than let through unfiltered.
+        assertThat(result.items()).extracting(i -> i.item().id()).containsExactly("b1");
+        assertThat(result.notes()).singleElement()
+                .satisfies(n -> {
+                    assertThat(n.sourceId()).isEqualTo("alpha");
+                    assertThat(n.kind()).isEqualTo(CentauriNote.Kind.MISSING_FACET);
+                    assertThat(n.detail()).isEqualTo("origin-place");
+                });
+        FakeFeedSource alpha = (FakeFeedSource) factory.find(SCOPE, "alpha");
+        assertThat(alpha.received()).isEmpty();
+    }
+
+    @Test
+    void fetchPage_declaredFacet_travelsToTheSource() {
+        when(factory.find(any(), eq("alpha"))).thenReturn(
+                new FakeFeedSource("alpha")
+                        .declaringFacet("origin-place")
+                        .serving(page(item("a1", "2026-08-19T10:00:00Z", "https://a.test/1"))));
+
+        service.fetchPage(new CentauriPageRequest(
+                List.of(ALPHA),
+                new FeedFilter(null, Set.of(), List.of(), List.of(), null,
+                        Map.of("origin-place", List.of("m49:142"))),
+                10, FeedDirection.OLDER, null), SCOPE);
+
+        FakeFeedSource alpha = (FakeFeedSource) factory.find(SCOPE, "alpha");
+        assertThat(alpha.received()).singleElement()
+                .satisfies(f -> assertThat(f.pushdown().facets())
+                        .containsEntry("origin-place", List.of("m49:142")));
     }
 
     // ── helpers ──────────────────────────────────────────────────────

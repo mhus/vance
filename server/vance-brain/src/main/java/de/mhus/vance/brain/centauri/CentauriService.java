@@ -213,6 +213,15 @@ public class CentauriService {
                     }
                     Fetched fetched = futures.get(i)
                             .get(remainingNanos, TimeUnit.NANOSECONDS);
+                    if (fetched.page() == null) {
+                        notes.add(new CentauriNote(p.stream().sourceId(), p.stream().selector(),
+                                CentauriNote.Kind.MISSING_FACET,
+                                String.join(", ", fetched.missingFacets())));
+                        metrics.counter("vance.centauri.fetch",
+                                "source", p.instance().id(), "outcome", "missing_facet")
+                                .increment();
+                        continue;
+                    }
                     out.add(new FeedMerger.StreamFetch(
                             p.stream(), p.instance(), fetched.page(), fetched.pushdown()));
                     metrics.counter("vance.centauri.fetch",
@@ -243,6 +252,13 @@ public class CentauriService {
             Planned p, CentauriPageRequest request, FeedScope scope, CentauriCursor incoming) {
         FeedFilter filter = request.filter();
         FeedCapabilities caps = capabilities.get(scope, p.instance());
+        List<String> missing = filter.undeclaredFacets(caps);
+        if (!missing.isEmpty()) {
+            // Not filtered locally and not silently ignored: an entry carries
+            // no facet values to check, and letting the stream through would
+            // make the filter look broken rather than strict.
+            return Fetched.skipped(missing);
+        }
         int limit = FeedMerger.fetchLimit(
                 request.pageSize(), filter.needsPostFilter(caps), caps.maxPageSize());
         @Nullable FeedActor actor = actorResolver.resolve(scope, p.instance().id());
@@ -257,7 +273,7 @@ public class CentauriService {
         // The pushdown travels back out: the merge has to know what this source
         // already answered, or it re-checks a text match against text the
         // source never delivered and drops hits it found correctly.
-        return new Fetched(p.instance().fetch(fetch), pushdown);
+        return Fetched.of(p.instance().fetch(fetch), pushdown);
     }
 
     /**
@@ -295,8 +311,26 @@ public class CentauriService {
             FeedStream stream,
             FeedSourceInstance instance) { }
 
-    /** What one fetch task produced, plus what it had delegated to the source. */
+    /**
+     * What one fetch task produced, plus what it had delegated to the source.
+     *
+     * <p>{@code missingFacets} non-empty means nothing was fetched at all:
+     * the reader selected a dimension this source never declared, so it was
+     * left out instead of being asked a question it cannot answer. Carried
+     * back as a value rather than thrown, because it is not a failure of the
+     * source and must not reach the failure tracker or a cooldown.
+     */
     private record Fetched(
-            FeedPage page,
-            FeedFilter pushdown) { }
+            @Nullable FeedPage page,
+            FeedFilter pushdown,
+            List<String> missingFacets) {
+
+        static Fetched of(FeedPage page, FeedFilter pushdown) {
+            return new Fetched(page, pushdown, List.of());
+        }
+
+        static Fetched skipped(List<String> missingFacets) {
+            return new Fetched(null, FeedFilter.none(), missingFacets);
+        }
+    }
 }

@@ -6,6 +6,7 @@ import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.toolhealth.ToolHealthCooldown;
 import de.mhus.vance.shared.toolhealth.ToolHealthService;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.facet.FacetSelection;
 import de.mhus.vance.toolpack.research.ProviderAvailability;
 import de.mhus.vance.toolpack.research.QuotaStatus;
 import de.mhus.vance.toolpack.research.SearchModality;
@@ -136,6 +137,7 @@ public class ZarniwoopService {
                     .filter(p -> p.id().equals(req.pinnedProviderId()))
                     .filter(p -> p.modalities().contains(req.modality()))
                     .filter(p -> p.tiers().contains(req.tier()))
+                    .filter(p -> answersSelectedFacets(p, req))
                     .filter(p -> isUsable(p, scope, req.modality()))
                     .toList();
         }
@@ -164,8 +166,33 @@ public class ZarniwoopService {
         return ordered.stream()
                 .filter(p -> p.modalities().contains(req.modality()))
                 .filter(p -> p.tiers().contains(req.tier()))
+                .filter(p -> answersSelectedFacets(p, req))
                 .filter(p -> isUsable(p, scope, req.modality()))
                 .toList();
+    }
+
+    /**
+     * Whether this instance declared every facet the request selected.
+     *
+     * <p>A provider that did not is dropped from the candidate list rather
+     * than asked and filtered afterwards. There is nothing to filter with: a
+     * hit carries no facet values, and a search has no cursor to replace the
+     * dropped ones from — a page of twenty would come back as three with no
+     * way to fetch more. Silently answering the unrestricted question instead
+     * would be worse still.
+     */
+    private boolean answersSelectedFacets(SearchProviderInstance instance, SearchRequest req) {
+        if (req.facets().isEmpty()) {
+            return true;
+        }
+        List<String> missing = FacetSelection.undeclaredKeys(
+                req.facets(), FacetSelection.keysOf(instance.facets()));
+        if (missing.isEmpty()) {
+            return true;
+        }
+        log.debug("Skipping search instance '{}' — it does not declare facet(s) {}",
+                instance.id(), missing);
+        return false;
     }
 
     private boolean isUsable(SearchProviderInstance instance,

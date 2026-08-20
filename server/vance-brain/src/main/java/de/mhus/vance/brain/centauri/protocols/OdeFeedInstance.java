@@ -1,6 +1,8 @@
 package de.mhus.vance.brain.centauri.protocols;
 
 import de.mhus.vance.toolpack.feed.FeedActor;
+import de.mhus.vance.toolpack.facet.Facet;
+import de.mhus.vance.toolpack.facet.FacetValue;
 import de.mhus.vance.toolpack.feed.FeedCapabilities;
 import de.mhus.vance.toolpack.feed.FeedDirection;
 import de.mhus.vance.toolpack.feed.FeedException;
@@ -100,7 +102,64 @@ class OdeFeedInstance implements FeedSourceInstance {
                 node.path("maxPageSize").asInt(FeedCapabilities.DEFAULT_MAX_PAGE_SIZE),
                 enumSet(node.path("signalsAccepted"), FeedSignal.class),
                 node.path("carriesControlUrl").asBoolean(false),
-                duration(text(node, "capabilitiesTtl")));
+                duration(text(node, "capabilitiesTtl")),
+                facets(node.path("facets")));
+    }
+
+    /**
+     * The declared facets. A malformed entry is skipped rather than failing
+     * the whole declaration — losing one filter is recoverable, losing the
+     * source is not.
+     */
+    private static List<Facet> facets(JsonNode array) {
+        if (!array.isArray()) {
+            return List.of();
+        }
+        List<Facet> out = new ArrayList<>(array.size());
+        for (JsonNode entry : array) {
+            String key = text(entry, "key");
+            if (StringUtils.isBlank(key)) {
+                continue;
+            }
+            try {
+                out.add(new Facet(
+                        key,
+                        StringUtils.defaultIfBlank(text(entry, "label"), key),
+                        entry.path("hierarchical").asBoolean(false),
+                        facetValues(entry.path("values")),
+                        entry.path("lazyChildren").asBoolean(false)));
+            } catch (IllegalArgumentException e) {
+                log.warn("Ode feed endpoint declares unusable facet '{}': {}", key, e.getMessage());
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private static List<FacetValue> facetValues(JsonNode array) {
+        if (!array.isArray()) {
+            return List.of();
+        }
+        List<FacetValue> out = new ArrayList<>(array.size());
+        for (JsonNode entry : array) {
+            String id = text(entry, "id");
+            if (StringUtils.isBlank(id)) {
+                continue;
+            }
+            out.add(new FacetValue(
+                    id,
+                    StringUtils.defaultIfBlank(text(entry, "label"), id),
+                    blankToNull(text(entry, "parentId"))));
+        }
+        return List.copyOf(out);
+    }
+
+    @Override
+    public List<FacetValue> listFacetValues(String key, @Nullable String parentId) {
+        Map<String, String> params = CentauriHttpClient.params();
+        params.put("key", key);
+        params.put("parent", parentId);
+        return facetValues(getJson(
+                CentauriHttpClient.withQuery(feedBase + "/facets", params), /* actor */ null));
     }
 
     @Override
@@ -139,8 +198,10 @@ class OdeFeedInstance implements FeedSourceInstance {
             params.put("since", request.pushdown().since().toString());
         }
 
-        JsonNode node = getJson(
-                CentauriHttpClient.withQuery(feedBase + "/items", params), request.actor());
+        URI url = CentauriHttpClient.withRepeated(
+                CentauriHttpClient.withQuery(feedBase + "/items", params),
+                "facet", facetParams(request.pushdown().facets()));
+        JsonNode node = getJson(url, request.actor());
 
         List<FeedItem> items = new ArrayList<>();
         for (JsonNode entry : node.path("items")) {
@@ -153,6 +214,24 @@ class OdeFeedInstance implements FeedSourceInstance {
                 items,
                 blankToNull(text(node, "nextCursor")),
                 node.path("hasMore").asBoolean(false));
+    }
+
+    /**
+     * The selection as repeated {@code key:value} parameters. Split at the
+     * first colon on the far end, which is why the value keeps its own —
+     * {@code origin-place:m49:142} is one key and one value, not three.
+     */
+    private static List<String> facetParams(Map<String, List<String>> facets) {
+        if (facets.isEmpty()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (Map.Entry<String, List<String>> e : facets.entrySet()) {
+            for (String value : e.getValue()) {
+                out.add(e.getKey() + ':' + value);
+            }
+        }
+        return List.copyOf(out);
     }
 
     @Override

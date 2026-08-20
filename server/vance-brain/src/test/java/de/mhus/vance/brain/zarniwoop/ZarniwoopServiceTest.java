@@ -238,6 +238,25 @@ class ZarniwoopServiceTest {
         }
     }
 
+    @Test
+    void search_skips_an_instance_that_does_not_declare_the_selected_facet() {
+        FakeInstance withFacet = new FakeInstance("ode-news", Behavior.success("ode"));
+        withFacet.facets = List.of(
+                de.mhus.vance.toolpack.facet.Facet.flat("origin-place", "Origin", List.of()));
+        FakeInstance without = new FakeInstance("serper", Behavior.success("serper"));
+        when(factory.assemble(eq(SCOPE))).thenReturn(List.of(without, withFacet));
+
+        SearchRequest req = new SearchRequest(
+                "q", SearchModality.WEB, SearchTier.NORMAL, 5, null, null, Map.of(),
+                Map.of("origin-place", List.of("m49:142")));
+        SearchResult result = service.search(req, SCOPE, CTX);
+
+        // The one that cannot answer the question is not asked it — there is
+        // no cursor to replace locally dropped hits from.
+        assertThat(result.providerInstanceId()).isEqualTo("ode-news");
+        assertThat(without.calls).isZero();
+    }
+
     private static final class FakeInstance implements SearchProviderInstance {
 
         private final String id;
@@ -245,6 +264,7 @@ class ZarniwoopServiceTest {
         int calls;
         ProviderAvailability availability = ProviderAvailability.READY;
         Set<SearchTier> tiers = Set.of(SearchTier.NORMAL);
+        List<de.mhus.vance.toolpack.facet.Facet> facets = List.of();
 
         FakeInstance(String id, Behavior behavior) {
             this.id = id;
@@ -260,6 +280,7 @@ class ZarniwoopServiceTest {
         @Override public Set<SearchModality> modalities() { return Set.of(SearchModality.WEB); }
         @Override public Set<SearchDomain> domains() { return Set.of(SearchDomain.GENERAL); }
         @Override public Set<SearchTier> tiers() { return tiers; }
+        @Override public List<de.mhus.vance.toolpack.facet.Facet> facets() { return facets; }
         @Override public ProviderAvailability availability(SearchScope scope) {
             return availability;
         }

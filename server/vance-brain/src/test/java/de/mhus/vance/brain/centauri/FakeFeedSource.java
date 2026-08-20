@@ -47,6 +47,15 @@ final class FakeFeedSource implements FeedSourceInstance {
         return this;
     }
 
+    FakeFeedSource declaringFacet(String key) {
+        this.capabilities = new FeedCapabilities(
+                FeedSelectorMode.ENUMERABLE, Set.of(FeedSelectorKind.CATEGORY),
+                false, false, false, false, true,
+                40, Set.of(), false, Duration.ofMinutes(30),
+                List.of(de.mhus.vance.toolpack.facet.Facet.flat(key, key, List.of())));
+        return this;
+    }
+
     FakeFeedSource withCapabilities(FeedCapabilities caps) {
         this.capabilities = caps;
         return this;

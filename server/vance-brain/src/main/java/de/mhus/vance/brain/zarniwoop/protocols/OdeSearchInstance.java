@@ -2,6 +2,8 @@ package de.mhus.vance.brain.zarniwoop.protocols;
 
 import de.mhus.vance.brain.zarniwoop.ZarniwoopContentStore;
 import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.toolpack.facet.Facet;
+import de.mhus.vance.toolpack.facet.FacetValue;
 import de.mhus.vance.toolpack.research.ContentInline;
 import de.mhus.vance.toolpack.research.ContentReference;
 import de.mhus.vance.toolpack.research.LoadedContent;
@@ -261,6 +263,12 @@ final class OdeSearchInstance implements SearchProviderInstance {
      * because we produced the sentence.
      */
     @Override
+    public List<Facet> facets() {
+        Caps c = capsOrNull();
+        return c == null ? List.of() : c.facets();
+    }
+
+    @Override
     public String promptHint() {
         Caps c = capsOrNull();
         if (c == null) {
@@ -471,7 +479,57 @@ final class OdeSearchInstance implements SearchProviderInstance {
                 // said PT1M was still held for half an hour. Unparseable or
                 // non-positive is treated as "not stated" rather than as an
                 // error — a bad duration must not take the declaration down.
-                duration(root.path("cacheTtl").asString(null)));
+                duration(root.path("cacheTtl").asString(null)),
+                facets(root.path("facets")));
+    }
+
+    /**
+     * The declared facets. A malformed entry is skipped rather than failing
+     * the whole declaration — losing one filter is recoverable, losing the
+     * endpoint is not.
+     */
+    private static List<Facet> facets(JsonNode array) {
+        if (!array.isArray()) {
+            return List.of();
+        }
+        List<Facet> out = new ArrayList<>(array.size());
+        for (JsonNode entry : array) {
+            String key = entry.path("key").asString("");
+            if (StringUtils.isBlank(key)) {
+                continue;
+            }
+            try {
+                out.add(new Facet(
+                        key,
+                        StringUtils.defaultIfBlank(entry.path("label").asString(""), key),
+                        entry.path("hierarchical").asBoolean(false),
+                        facetValues(entry.path("values")),
+                        entry.path("lazyChildren").asBoolean(false)));
+            } catch (IllegalArgumentException e) {
+                log.warn("An Ode endpoint declares unusable facet '{}': {}",
+                        key, e.getMessage());
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private static List<FacetValue> facetValues(JsonNode array) {
+        if (!array.isArray()) {
+            return List.of();
+        }
+        List<FacetValue> out = new ArrayList<>(array.size());
+        for (JsonNode entry : array) {
+            String id = entry.path("id").asString("");
+            if (StringUtils.isBlank(id)) {
+                continue;
+            }
+            String parent = entry.path("parentId").asString("");
+            out.add(new FacetValue(
+                    id,
+                    StringUtils.defaultIfBlank(entry.path("label").asString(""), id),
+                    StringUtils.isBlank(parent) ? null : parent));
+        }
+        return List.copyOf(out);
     }
 
     /** ISO-8601 duration, or null when absent or unusable. */
@@ -537,6 +595,13 @@ final class OdeSearchInstance implements SearchProviderInstance {
         // we cannot know its schema.
         if (tier == SearchTier.EXPERT && !req.expertParams().isEmpty()) {
             body.put("expertParams", req.expertParams());
+        }
+        // Narrowed to what this endpoint declared. Unlike expertParams above,
+        // an undeclared key here is not sent and ignored — the dispatcher has
+        // already decided not to use an endpoint that cannot answer it, so
+        // whatever reaches this point is answerable.
+        if (!req.facets().isEmpty()) {
+            body.put("facets", req.facets());
         }
         return objectMapper.writeValueAsString(body);
     }
@@ -764,5 +829,6 @@ final class OdeSearchInstance implements SearchProviderInstance {
             int maxResults,
             List<String> expertParams,
             boolean servesContent,
-            @Nullable Duration cacheTtl) { }
+            @Nullable Duration cacheTtl,
+            List<Facet> facets) { }
 }

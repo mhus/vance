@@ -7,6 +7,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -101,6 +102,31 @@ public interface CentauriHttpClient {
             sb.append(first ? '?' : '&');
             first = false;
             sb.append(encode(e.getKey())).append('=').append(encode(e.getValue()));
+        }
+        return URI.create(sb.toString());
+    }
+
+    /**
+     * Append repeated occurrences of one parameter — {@code facet=a:b&facet=c:d}.
+     *
+     * <p>Separate from {@link #withQuery} because a map cannot hold a key
+     * twice, and a facet selection routinely needs it: several values of one
+     * key are a disjunction, and joining them into one comma-separated value
+     * would invent a separator the far end never agreed on.
+     */
+    static URI withRepeated(URI base, String name, List<String> values) {
+        if (values.isEmpty()) {
+            return base;
+        }
+        StringBuilder sb = new StringBuilder(base.toString());
+        boolean first = sb.indexOf("?") < 0;
+        for (String value : values) {
+            if (value == null || value.isEmpty()) {
+                continue;
+            }
+            sb.append(first ? '?' : '&');
+            first = false;
+            sb.append(encode(name)).append('=').append(encode(value));
         }
         return URI.create(sb.toString());
     }

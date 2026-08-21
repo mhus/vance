@@ -26,7 +26,7 @@
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/share": "^6.0.3",
     "@capacitor/splash-screen": "^8.0.2",
-    "@capacitor/status-bar": "^6.0.2",
+    "@capacitor/status-bar": "^8.0.3",
     "@capawesome/capacitor-file-picker": "^6.2.0",
     "@vance/facelift-account-webview": "workspace:*",
     "pinia": "^4.0.2",

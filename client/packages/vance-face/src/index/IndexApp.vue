@@ -21,7 +21,17 @@ import {
   type WebUiLevel,
 } from '@/platform';
 import { setUiLocale } from '@/i18n';
-import { EditorShell, VAlert, VanceLogo, VButton, VCard, VCheckbox, VInput } from '@/components';
+import {
+  EditorShell,
+  StarredTile,
+  VAlert,
+  VanceLogo,
+  VButton,
+  VCard,
+  VCheckbox,
+  VInput,
+} from '@/components';
+import { useStarredStore } from '@/starred/starredStore';
 import PanicEasterEgg from './PanicEasterEgg.vue';
 
 const { t } = useI18n();
@@ -105,6 +115,24 @@ const visibleAddonTiles = computed(() =>
 
 function normLevel(v: string | undefined): WebUiLevel {
   return v === 'expert' || v === 'admin' ? v : 'standard';
+}
+
+// Starred documents — the user's own tiles, above the fixed editor rows. Not
+// gated by UI level: this is their curation, not a power-user surface.
+//
+// Fetched WITHOUT `all`, so hidden entries never reach this page. The filtering
+// is the server's; a `v-if` here would mean the data travelled to a surface
+// that only hides it again.
+const starred = useStarredStore();
+const starredTiles = computed(() => starred.items);
+
+async function loadStarred(): Promise<void> {
+  await starred.load(/* all */ false, /* force */ true);
+}
+
+async function onRemoveStarred(project: string, path: string): Promise<void> {
+  // The store refetches in the scope it was loaded with, so no second load here.
+  await starred.unstar(project, path);
 }
 
 async function loadAddonTiles(): Promise<void> {
@@ -242,6 +270,7 @@ function redirectAfterLogin(): void {
   // user lands on the editor list rather than bouncing through a
   // separate URL.
   void loadAddonTiles();
+  void loadStarred();
   mode.value = 'landing';
 }
 
@@ -364,6 +393,26 @@ function readNextParam(): string | null {
   </div>
 
   <EditorShell v-else :title="$t('common.home')">
+    <!-- Starred tiles sit above the fixed editor rows and share their
+         container width: a wider box here would put the two blocks on
+         different left edges, which reads as a misalignment rather than a
+         design. Four tiles across is ~175px each — enough for a truncated
+         label, which is all a tile carries.
+         Responsive rather than a hard four-per-row: four columns are
+         unreadable on a phone and inside the Facelift WebView. -->
+    <div v-if="starredTiles.length" class="container mx-auto px-4 pt-8 max-w-3xl">
+      <h2 class="text-lg font-semibold mb-4">{{ $t('starred.sectionTitle') }}</h2>
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <StarredTile
+          v-for="tile in starredTiles"
+          :key="`${tile.project} ${tile.path}`"
+          :item="tile"
+          :broken="starred.isBroken(tile.project, tile.path)"
+          @remove="onRemoveStarred(tile.project, tile.path)"
+        />
+      </div>
+    </div>
+
     <div class="container mx-auto px-4 py-8 max-w-3xl">
       <h2 class="text-lg font-semibold mb-4">{{ $t('index.sectionTitle') }}</h2>
       <ul class="flex flex-col gap-2">

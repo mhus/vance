@@ -398,3 +398,7 @@ export * from './milliways/ShareHandlerDto';
 export * from './milliways/ShareFormDto';
 export * from './milliways/ShareSubmitRequest';
 export * from './milliways/ShareResultDto';
+export * from './starred/StarredItemDto';
+export * from './starred/StarredRequest';
+export * from './starred/StarredReconcileEntryDto';
+export * from './starred/StarredReconcileDto';

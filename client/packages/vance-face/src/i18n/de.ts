@@ -2058,6 +2058,18 @@ export default {
       refresh: 'Neu laden',
     },
   },
+  starred: {
+    menuToggle: 'Angesternt',
+    menuOnStartPage: 'Auf der Startseite zeigen',
+    star: 'Ansternen',
+    unstar: 'Stern entfernen',
+    sectionTitle: 'Angesternt',
+    broken: 'Ziel nicht erreichbar',
+    reconcile: 'Angesterntes prüfen',
+    reconcileOk: 'Alles aktuell ({count} geprüft).',
+    reconcileChanged: '{count} geprüft, {broken} nicht erreichbar.',
+    remove: 'Stern entfernen',
+  },
   share: {
     title: '„{name}“ teilen',
     loading: 'Wege zum Teilen werden geladen…',

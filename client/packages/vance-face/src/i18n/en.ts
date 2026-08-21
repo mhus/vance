@@ -2031,6 +2031,18 @@ export default {
         '{count} instance(s) skipped:',
     },
   },
+  starred: {
+    menuToggle: 'Starred',
+    menuOnStartPage: 'Show on the start page',
+    star: 'Star',
+    unstar: 'Remove star',
+    sectionTitle: 'Starred',
+    broken: 'Target unreachable',
+    reconcile: 'Check starred',
+    reconcileOk: 'Everything up to date ({count} checked).',
+    reconcileChanged: '{count} checked, {broken} unreachable.',
+    remove: 'Remove star',
+  },
   share: {
     title: 'Share “{name}”',
     loading: 'Loading ways to share…',

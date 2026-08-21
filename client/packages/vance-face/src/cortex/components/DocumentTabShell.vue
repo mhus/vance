@@ -39,6 +39,7 @@ import { useViewEditMode } from '../useViewEditMode';
 import { resolveRunAdapter } from '../runners/runnerRegistry';
 import type { RunHandle } from '../runners/types';
 import { useDocumentNotes } from '../composables/useDocumentNotes';
+import { useStarredStore } from '@/starred/starredStore';
 import CortexValidateDialog from './CortexValidateDialog.vue';
 import CortexHactarDialog from './CortexHactarDialog.vue';
 import DocumentPropertiesPanel from './DocumentPropertiesPanel.vue';
@@ -68,6 +69,20 @@ const binding = computed(() => resolveBinding(props.document));
 const isAppKindBinding = computed<boolean>(() =>
   binding.value.id.startsWith('kind-registry:application:'),
 );
+
+// Star for the App-view slim header. The list is already loaded by the editor
+// on boot, so this is a local lookup — no request per tab.
+const starred = useStarredStore();
+
+const isStarred = computed<boolean>(() =>
+  !!store.projectId && starred.isStarred(store.projectId, props.document.path),
+);
+
+async function toggleStar(): Promise<void> {
+  if (!store.projectId) return;
+  if (isStarred.value) await starred.unstar(store.projectId, props.document.path);
+  else await starred.star({ project: store.projectId, path: props.document.path });
+}
 
 // In immersive App view, Properties + Notes side-panels stay
 // suppressed even if the user previously had them pinned open on a
@@ -659,6 +674,17 @@ function fmtDuration(ms: number | null): string {
       class="flex items-center gap-2 px-3 py-1.5 border-b border-base-300 bg-base-100 text-sm"
     >
       <span class="font-mono opacity-60 truncate flex-1 hidden md:inline">{{ document.path }}</span>
+      <!-- The Actions menu (and with it the star) is hidden in App view, which
+           is exactly the state an app is most likely to be starred from — so
+           the star lives here too. As an icon next to the title it reads better
+           than a menu entry anyway. -->
+      <button
+        type="button"
+        class="px-1 text-base leading-none opacity-70 hover:opacity-100"
+        :title="isStarred ? $t('starred.unstar') : $t('starred.star')"
+        :aria-pressed="isStarred"
+        @click="toggleStar()"
+      >{{ isStarred ? '★' : '☆' }}</button>
       <div
         class="flex border border-base-300 rounded overflow-hidden text-xs"
         role="group"

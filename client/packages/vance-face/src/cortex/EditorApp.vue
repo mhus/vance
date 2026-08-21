@@ -43,6 +43,7 @@ import VanceEmbedView from '@/components/VanceEmbedView.vue';
 import VanceFormView from '@/components/VanceFormView.vue';
 import ComposeOutput from '@/cortex/components/ComposeOutput.vue';
 import { useDocumentRefStore } from '@/kindViews/documentRefStore';
+import { useStarredStore } from '@/starred/starredStore';
 import { isBinaryMime } from './stores/cortexStore';
 import { useCortexStore } from './stores/cortexStore';
 import { cortexHref, readCortexView, writeCortexView, type CortexView } from './cortexUrl';
@@ -262,6 +263,10 @@ const newFolderInitial = ref('');
 const restoring = ref(false);
 
 onMounted(async () => {
+  // One request for the whole session: the star state of every tab is a local
+  // lookup afterwards. `all` because a hidden entry is still starred.
+  void starred.load(true);
+
   const params = new URLSearchParams(window.location.search);
   const pid = params.get('project') ?? params.get('projectId');
   if (sessionId.value) {
@@ -274,6 +279,8 @@ onMounted(async () => {
     if (params.get('create') === '1') {
       createPrefill.value = { path: createPath ?? '' };
       showCreate.value = true;
+    } else if (createPath) {
+      openPathHandoff(createPath);
     }
     // Open the tabs the URL declares (create/path are dropped in the process).
     await restoreView();
@@ -342,6 +349,35 @@ async function resolveProject(pid: string): Promise<void> {
 // replace: switching the active document is navigable history (pushState);
 // pure open-set or preference edits update the current entry (replaceState).
 let lastActiveDoc: string | null = null;
+
+/**
+ * Resolve a `?path=` deep-link into the URL's open-tab set.
+ *
+ * Cortex addresses tabs by document id, but a link from outside only knows the
+ * path: a starred tile stores `(project, path)` because that is the stable
+ * business key, and a run's definition link does the same. Resolving here rather
+ * than at the sender keeps Mongo ids out of stored data and out of the address
+ * bar — and it is the only place that already has the project's document list
+ * loaded.
+ *
+ * Rewrites the URL *before* {@link restoreView} runs, so the resolved tab travels
+ * through the normal open/doc contract instead of needing a second opening path.
+ * A path that does not resolve is a dead end for the whole navigation, so it
+ * surfaces as a boot error rather than an empty editor.
+ */
+function openPathHandoff(rawPath: string): void {
+  const wanted = rawPath.replace(/^\/+/, '');
+  if (!wanted) return;
+  const match = store.files.find((f) => f.path === wanted);
+  if (!match) {
+    bootError.value = `No document '${wanted}' in project '${projectId.value}'.`;
+    return;
+  }
+  const view = readCortexView();
+  const open = view.open.includes(match.id) ? view.open : [...view.open, match.id];
+  const qs = writeCortexView(window.location.search, { ...view, open, doc: match.id });
+  window.history.replaceState({ cortex: true }, '', `/cortex.html${qs ? `?${qs}` : ''}`);
+}
 
 /** Snapshot the current view from the store + preference refs. */
 function currentView(): CortexView {
@@ -543,6 +579,54 @@ const activeTab = computed(() => store.activeTab);
 // than the document toolbar: that strip is already full, and sharing is
 // a document-level action like Save, not a view toggle.
 const showShare = ref(false);
+
+// ──────────────── Starred (★) ────────────────
+// One star cannot serve three states, so there are two controls: the star
+// toggles *registration* (the service knows this document), the checkbox
+// next to it toggles whether it also gets a tile on the start page. That
+// keeps "registered but out of the way" reachable from the UI instead of
+// only by hand-editing the control file.
+//
+// The list is loaded once per boot; the state of a tab is a local lookup.
+const starred = useStarredStore();
+
+const activeIsStarred = computed<boolean>(() => {
+  const tab = activeTab.value;
+  if (!tab || !projectId.value) return false;
+  return starred.isStarred(projectId.value, tab.path);
+});
+
+const activeOnStartPage = computed<boolean>(() => {
+  const tab = activeTab.value;
+  if (!tab || !projectId.value) return false;
+  return starred.isOnStartPage(projectId.value, tab.path);
+});
+
+async function toggleStar(): Promise<void> {
+  const tab = activeTab.value;
+  if (!tab || !projectId.value) return;
+  try {
+    if (activeIsStarred.value) {
+      await starred.unstar(projectId.value, tab.path);
+    } else {
+      await starred.star({ project: projectId.value, path: tab.path });
+    }
+  } catch (e) {
+    // Non-fatal: a star is a bookmark, not the user's work. Surface it
+    // where boot problems go rather than swallowing it.
+    bootError.value = e instanceof Error ? e.message : 'Failed to update the starred list.';
+  }
+}
+
+async function toggleOnStartPage(): Promise<void> {
+  const tab = activeTab.value;
+  if (!tab || !projectId.value || !activeIsStarred.value) return;
+  try {
+    await starred.setOnStartPage(projectId.value, tab.path, !activeOnStartPage.value);
+  } catch (e) {
+    bootError.value = e instanceof Error ? e.message : 'Failed to update the starred list.';
+  }
+}
 
 /**
  * Help for the active document's kind, but only when there is no chat
@@ -1379,11 +1463,27 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
             </li>
         </VDropdown>
 
-        <VDropdown v-if="projectId" menu-class="mt-1 w-56">
+        <VDropdown v-if="projectId" menu-class="mt-1 w-64">
           <template #trigger>Actions</template>
             <li :class="{ disabled: !activeTab }">
               <a @click="closeMenus(); showShare = true">
                 <span class="flex-1">{{ $t('share.menuLabel') }}</span>
+              </a>
+            </li>
+            <li><div class="divider my-0" /></li>
+            <!-- Two controls, three states: the star registers the document
+                 with the service, the checkbox decides whether it also gets a
+                 tile. A hidden entry keeps a filled star on purpose. -->
+            <li :class="{ disabled: !activeTab }">
+              <a @click="closeMenus(); toggleStar()">
+                <span class="w-4 text-center">{{ activeIsStarred ? '★' : '☆' }}</span>
+                <span class="flex-1">{{ $t('starred.menuToggle') }}</span>
+              </a>
+            </li>
+            <li :class="{ disabled: !activeTab || !activeIsStarred }">
+              <a @click="closeMenus(); toggleOnStartPage()">
+                <span class="w-4 text-center">{{ activeOnStartPage ? '✓' : '' }}</span>
+                <span class="flex-1">{{ $t('starred.menuOnStartPage') }}</span>
               </a>
             </li>
         </VDropdown>

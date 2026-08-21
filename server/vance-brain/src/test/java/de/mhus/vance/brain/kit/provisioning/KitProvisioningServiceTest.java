@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.kit.KitImportRequestDto;
 import de.mhus.vance.api.kit.KitInstalledRecordDto;
+import de.mhus.vance.api.kit.KitOriginDto;
 import de.mhus.vance.api.kit.KitProvisioningAuthority;
 import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import de.mhus.vance.brain.kit.KitRecordStore;
@@ -104,16 +105,86 @@ class KitProvisioningServiceTest {
         verify(kitService, never()).install(any(), any(), any(), any());
     }
 
+    /** A record whose stamp was written for {@code revision} and the entry's params. */
+    private static KitInstalledRecordDto recordStamped(String revision) {
+        return KitInstalledRecordDto.builder()
+                .id("k1")
+                .origin(KitOriginDto.builder()
+                        .url(URL)
+                        .path("acme-crm")
+                        .provisioningStamp(
+                                KitProvisioningStamp.of(revision, Map.of("lang", "de")))
+                        .build())
+                .build();
+    }
+
     @Test
-    void provision_alreadyInstalled_isLeftAlone() {
+    void provision_installedAndUnchanged_isLeftAlone() {
+        declare(KitProvisioningAuthority.MANAGE, desired(KitProvisioningAuthority.MANAGE));
+        when(recordStore.findByOrigin(TENANT, PROJECT, URL, "acme-crm"))
+                .thenReturn(recordStamped("abc123"));
+
+        KitProvisioningService.Outcome outcome = service.provision(TENANT, PROJECT);
+        assertThat(outcome.alreadyPresent()).containsExactly("acme-crm");
+        assertThat(outcome.updated()).isEmpty();
+        verify(kitService, never()).install(any(), any(), any(), any());
+        verify(kitService, never()).update(any(), any(), any(), any());
+    }
+
+    @Test
+    void provision_changedSourceWithUpdateAuthority_refreshesIt() {
+        declare(KitProvisioningAuthority.UPDATE, desired(KitProvisioningAuthority.UPDATE));
+        when(recordStore.findByOrigin(TENANT, PROJECT, URL, "acme-crm"))
+                .thenReturn(recordStamped("older"));
+
+        KitProvisioningService.Outcome outcome = service.provision(TENANT, PROJECT);
+        assertThat(outcome.updated()).containsExactly("acme-crm");
+        // update, not install: the request carries the params and the new stamp,
+        // which updateInstalled would rebuild from the record and lose.
+        verify(kitService).update(any(), any(), any(), any());
+        verify(kitService, never()).install(any(), any(), any(), any());
+    }
+
+    @Test
+    void provision_changedSourceAtNotify_isLeftForTheCheck() {
+        declare(KitProvisioningAuthority.NOTIFY, desired(KitProvisioningAuthority.NOTIFY));
+        when(recordStore.findByOrigin(TENANT, PROJECT, URL, "acme-crm"))
+                .thenReturn(recordStamped("older"));
+
+        KitProvisioningService.Outcome outcome = service.provision(TENANT, PROJECT);
+        assertThat(outcome.updated()).isEmpty();
+        assertThat(outcome.alreadyPresent()).containsExactly("acme-crm");
+        verify(kitService, never()).update(any(), any(), any(), any());
+    }
+
+    @Test
+    void provision_recordWithoutStamp_isNotRefreshed() {
         declare(KitProvisioningAuthority.MANAGE, desired(KitProvisioningAuthority.MANAGE));
         when(recordStore.findByOrigin(TENANT, PROJECT, URL, "acme-crm"))
                 .thenReturn(KitInstalledRecordDto.builder().id("k1").build());
 
-        // Whether it is *current* is the check's question, not this path's.
-        KitProvisioningService.Outcome outcome = service.provision(TENANT, PROJECT);
-        assertThat(outcome.alreadyPresent()).containsExactly("acme-crm");
-        verify(kitService, never()).install(any(), any(), any(), any());
+        // Nothing is known, so nothing is done — the same answer the check
+        // gives, which is the point of sharing the rule.
+        assertThat(service.provision(TENANT, PROJECT).updated()).isEmpty();
+        verify(kitService, never()).update(any(), any(), any(), any());
+    }
+
+    @Test
+    void provision_updateCarriesTokenParamsAndTheNewStamp() {
+        declare(KitProvisioningAuthority.UPDATE, desired(KitProvisioningAuthority.UPDATE));
+        when(recordStore.findByOrigin(TENANT, PROJECT, URL, "acme-crm"))
+                .thenReturn(recordStamped("older"));
+
+        service.provision(TENANT, PROJECT);
+
+        ArgumentCaptor<KitImportRequestDto> request =
+                ArgumentCaptor.forClass(KitImportRequestDto.class);
+        verify(kitService).update(eq(TENANT), request.capture(),
+                eq(KitProvisioningService.ACTOR), eq(SettingWriteOrigin.USER));
+        assertThat(request.getValue().getToken()).isEqualTo("s3cr3t");
+        assertThat(request.getValue().getParams()).containsEntry("lang", "de");
+        assertThat(request.getValue().getProvisioningStamp())
+                .isEqualTo(KitProvisioningStamp.of("abc123", Map.of("lang", "de")));
     }
 
     @Test

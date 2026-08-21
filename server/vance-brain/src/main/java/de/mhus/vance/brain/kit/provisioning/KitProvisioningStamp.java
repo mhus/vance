@@ -43,6 +43,29 @@ final class KitProvisioningStamp {
     }
 
     /**
+     * Whether what a source would hand over now differs from what the
+     * record remembers.
+     *
+     * <p><b>Unanswerable counts as „no".</b> Either side may be null — a
+     * source that states no revision, or a kit installed by hand or before
+     * the stamp existed. Treating that as a difference would report every
+     * such kit on every tick; treating it as equality is the quiet answer
+     * and the honest one, because nothing is actually known.
+     *
+     * <p>One method so the periodic check and the unattended update path
+     * cannot drift on this: they must agree exactly, or a kit gets reported
+     * and refreshed for different reasons.
+     */
+    static boolean differs(
+            @Nullable String installedStamp,
+            @Nullable String revision,
+            Map<String, Object> params) {
+        if (installedStamp == null || installedStamp.isBlank()) return false;
+        String now = of(revision, params);
+        return now != null && !now.equals(installedStamp);
+    }
+
+    /**
      * Append a value in a form that depends on content and not on map
      * ordering — YAML hands us whatever order the file had, and two
      * identical configurations written differently must not read as a

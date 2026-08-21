@@ -120,21 +120,14 @@ public class KitProvisioningCheck {
             // question for a person — the update path deals with it.
             return null;
         }
-        String now = KitProvisioningStamp.of(kit.revision(), kit.params());
-        if (now == null) {
-            // The source cannot state a revision. Nothing is checked rather
-            // than guessed: guessing would refetch every tick or never.
-            return null;
-        }
-        String installed = record.getOrigin() == null
-                ? null : record.getOrigin().getProvisioningStamp();
-        if (installed == null) {
-            // Installed before the stamp existed, or by hand. Not a divergence:
-            // announcing one for every such kit on the first tick after an
-            // upgrade would be noise nobody asked for.
-            return null;
-        }
-        return now.equals(installed) ? null : Divergence.CHANGED;
+        // The same rule the unattended update path uses, so a kit is never
+        // reported for one reason and refreshed for another. Unanswerable —
+        // no revision from the source, or a record from before the stamp
+        // existed — counts as unchanged rather than as noise on every tick.
+        return KitProvisioningStamp.differs(
+                record.getOrigin() == null ? null : record.getOrigin().getProvisioningStamp(),
+                kit.revision(), kit.params())
+                ? Divergence.CHANGED : null;
     }
 
     /**

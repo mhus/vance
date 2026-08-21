@@ -626,6 +626,23 @@ public class KitInstaller {
                     log.debug("Skipping encrypted setting '{}' due to --keep-passwords", key);
                     continue;
                 }
+                if (existed) {
+                    // A credential that is already here is never replaced by an
+                    // install, whatever the policy says. `overwrite` is about
+                    // documents: a run that resets a key somebody rotated is an
+                    // outage, not an update — and the policy cannot tell the two
+                    // apart, because an encrypted value has no comparable hash
+                    // to notice a local change with.
+                    //
+                    // Set once when nothing is there, then left alone. Forcing a
+                    // new value is deliberately not expressible here; that is
+                    // uninstall, or a hand edit. See
+                    // planning/kit-ode-provisioning.md §1.3 c.
+                    log.debug("KitInstaller: keeping the existing credential in '{}/{}/{}'",
+                            tenantId, projectId, key);
+                    keepOwnership(known.get(key), artefacts);
+                    continue;
+                }
                 if (vaultPassword == null || vaultPassword.isBlank()) {
                     if (!haveWarnedAboutMissingVault && kitDeclaresEncrypted) {
                         result.warnings(addWarning(result.build().getWarnings(),

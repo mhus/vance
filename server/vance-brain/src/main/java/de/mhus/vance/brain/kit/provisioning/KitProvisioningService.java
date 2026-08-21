@@ -75,6 +75,8 @@ public class KitProvisioningService {
      * say something about it.
      *
      * @param installed kits newly installed by this run
+     * @param updated kits refreshed by this run because their source moved
+     *        on and the entry permitted it unattended
      * @param alreadyPresent desired kits that already had a record
      * @param withheld desired kits that are missing but whose entry does
      *        not permit installing them unattended
@@ -82,12 +84,17 @@ public class KitProvisioningService {
      */
     public record Outcome(
             List<String> installed,
+            List<String> updated,
             List<String> alreadyPresent,
             List<String> withheld,
             List<String> failures) {
 
+        static Outcome nothing() {
+            return new Outcome(List.of(), List.of(), List.of(), List.of(), List.of());
+        }
+
         boolean isEmpty() {
-            return installed.isEmpty() && alreadyPresent.isEmpty()
+            return installed.isEmpty() && updated.isEmpty() && alreadyPresent.isEmpty()
                     && withheld.isEmpty() && failures.isEmpty();
         }
     }
@@ -129,6 +136,7 @@ public class KitProvisioningService {
      */
     public Outcome provision(String tenantId, String projectId) {
         List<String> installed = new ArrayList<>();
+        List<String> updated = new ArrayList<>();
         List<String> present = new ArrayList<>();
         List<String> withheld = new ArrayList<>();
         List<String> failures = new ArrayList<>();
@@ -140,10 +148,11 @@ public class KitProvisioningService {
             // A malformed document is the writer's mistake and has to be
             // visible, but it must not take a project start with it.
             log.warn("Provisioning of {}/{} skipped — {}", tenantId, projectId, e.toString());
-            return new Outcome(List.of(), List.of(), List.of(), List.of(e.toString()));
+            return new Outcome(
+                    List.of(), List.of(), List.of(), List.of(), List.of(e.toString()));
         }
         if (entries.isEmpty()) {
-            return new Outcome(List.of(), List.of(), List.of(), List.of());
+            return Outcome.nothing();
         }
 
         for (KitProvisioningEntry entry : entries) {
@@ -160,7 +169,8 @@ public class KitProvisioningService {
             }
             for (DesiredKit kit : desired) {
                 try {
-                    apply(tenantId, projectId, entry, kit, installed, present, withheld);
+                    apply(tenantId, projectId, entry, kit,
+                            installed, updated, present, withheld);
                 } catch (RuntimeException e) {
                     log.warn("Provisioning of {}/{}: kit '{}' from {} failed — {}",
                             tenantId, projectId, kit.path(), kit.sourceUrl(), e.toString());
@@ -170,11 +180,12 @@ public class KitProvisioningService {
         }
 
         Outcome outcome = new Outcome(
-                List.copyOf(installed), List.copyOf(present),
+                List.copyOf(installed), List.copyOf(updated), List.copyOf(present),
                 List.copyOf(withheld), List.copyOf(failures));
         if (!outcome.isEmpty()) {
-            log.info("Provisioning of {}/{}: installed={} present={} withheld={} failures={}",
-                    tenantId, projectId, installed, present, withheld, failures);
+            log.info("Provisioning of {}/{}: installed={} updated={} present={} withheld={}"
+                            + " failures={}",
+                    tenantId, projectId, installed, updated, present, withheld, failures);
         }
         return outcome;
     }
@@ -185,14 +196,24 @@ public class KitProvisioningService {
             KitProvisioningEntry entry,
             DesiredKit kit,
             List<String> installed,
+            List<String> updated,
             List<String> present,
             List<String> withheld) {
 
         @Nullable KitInstalledRecordDto record =
                 recordStore.findByOrigin(tenantId, projectId, kit.sourceUrl(), kit.path());
         if (record != null) {
-            // Already here. Whether it is *current* is the check's question,
-            // and answering it needs the revision comparison — not this path.
+            if (kit.authority().mayUpdateInstalled() && stampDiffers(record, kit)) {
+                // The entry granted unattended refresh and the source moved on.
+                // Not routed through updateInstalled: that rebuilds the request
+                // from the record and would lose the params and the new stamp.
+                kitService.update(tenantId, requestFor(projectId, entry, kit), ACTOR,
+                        SettingWriteOrigin.USER);
+                updated.add(kit.path());
+                return;
+            }
+            // Here and either current or not ours to refresh. Whether a person
+            // should hear about it is the check's question (§9).
             present.add(kit.path());
             return;
         }
@@ -204,20 +225,31 @@ public class KitProvisioningService {
             return;
         }
 
-        KitInheritDto source = KitInheritDto.builder()
-                .url(kit.sourceUrl())
-                .path(kit.path())
-                .build();
-        KitImportRequestDto request = KitImportRequestDto.builder()
+        kitService.install(tenantId, requestFor(projectId, entry, kit), ACTOR,
+                SettingWriteOrigin.USER);
+        installed.add(kit.path());
+    }
+
+    /** The same request either way — only the mode differs, and the caller picks it. */
+    private static KitImportRequestDto requestFor(
+            String projectId, KitProvisioningEntry entry, DesiredKit kit) {
+        return KitImportRequestDto.builder()
                 .projectId(projectId)
-                .source(source)
+                .source(KitInheritDto.builder()
+                        .url(kit.sourceUrl())
+                        .path(kit.path())
+                        .build())
                 .token(entry.token())
                 .params(kit.params())
                 // Remembered on the record so a later check is one comparison.
                 .provisioningStamp(KitProvisioningStamp.of(kit.revision(), kit.params()))
                 .build();
-        kitService.install(tenantId, request, ACTOR, SettingWriteOrigin.USER);
-        installed.add(kit.path());
+    }
+
+    private static boolean stampDiffers(KitInstalledRecordDto record, DesiredKit kit) {
+        return KitProvisioningStamp.differs(
+                record.getOrigin() == null ? null : record.getOrigin().getProvisioningStamp(),
+                kit.revision(), kit.params());
     }
 
 }

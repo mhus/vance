@@ -94,9 +94,13 @@ function labelOf(handler: ShareHandlerDto): string {
   return pickLocalized(handler.label, locale.value) || handler.id;
 }
 
+// `immediate` matters: the host sets the subject and opens the modal in the
+// same tick, so this component mounts with `modelValue` already true and a
+// plain watch would never fire — the dialog would show an empty handler list
+// and never ask the server. Same trap VModal documents for showModal().
 watch(() => props.modelValue, (open) => {
   if (open) void openFresh();
-});
+}, { immediate: true });
 
 /** Every open starts from scratch — availability may have changed since. */
 async function openFresh(): Promise<void> {

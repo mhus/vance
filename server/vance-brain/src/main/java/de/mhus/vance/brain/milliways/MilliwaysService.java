@@ -134,6 +134,16 @@ public class MilliwaysService {
             audit(handlerId, target, "denied", AuditSeverity.WARN,
                     Map.of("reason", "document_read_denied"));
             throw e;
+        } catch (ShareException e) {
+            // Also counted and audited: a subject refused while being defanged
+            // (bad link scheme) or a document that is gone is a refused share
+            // attempt, not a non-event. Catching only PermissionDeniedException
+            // here let those pass through invisibly — no counter, no audit
+            // entry, and `denied` stopped meaning "an attempt was refused".
+            count(handlerId, "denied");
+            audit(handlerId, target, "denied", AuditSeverity.INFO,
+                    Map.of("reason", String.valueOf(e.getMessage())));
+            throw e;
         }
         try {
             requireAvailable(handler, scope);

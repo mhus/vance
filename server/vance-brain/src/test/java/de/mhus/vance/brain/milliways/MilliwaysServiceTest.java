@@ -295,6 +295,21 @@ class MilliwaysServiceTest {
     }
 
     @Test
+    void resolve_unsafeLink_isCountedAndAudited() {
+        MilliwaysService service = serviceWith(new StubHandler("inbox", ShareAvailability.ready()));
+        ShareTarget target = target(new ShareSubject(null, "javascript:alert(1)", null, null));
+
+        assertThatThrownBy(() -> service.share("inbox", target, Map.of()))
+                .isInstanceOf(ShareException.class);
+
+        // A subject refused while being defanged is a refused *attempt*, not a
+        // non-event. Catching only PermissionDeniedException around resolve()
+        // let these pass invisibly.
+        assertThat(shareCount("inbox", "denied")).isEqualTo(1.0);
+        assertThat(auditOutcome()).isEqualTo("denied");
+    }
+
+    @Test
     void resolve_relativeLink_isRefused() {
         MilliwaysService service = serviceWith(new StubHandler("inbox", ShareAvailability.ready()));
         ShareTarget target = target(new ShareSubject(null, "/local/page", null, null));

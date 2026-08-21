@@ -19,12 +19,14 @@ import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
- * Shares <em>access</em>: an inbox item carrying a pointer to the document
- * plus the reason. The content is deliberately not copied into the message —
- * the recipient opens the original, or does not, if they may not read it.
+ * Projects the subject into an inbox item: a <em>pointer</em> to whatever was
+ * shared — document reference, link, snippet — plus the sharer's reason. A
+ * referenced document's content is deliberately not copied in; the recipient
+ * opens the original, or does not, if they may not read it.
  *
  * <p>This is the pull side of Milliways. The item is
  * {@code requiresAction = false} and {@code NORMAL}: it waits to be looked
@@ -148,25 +150,40 @@ public class InboxShareHandler implements ShareHandler {
     // ──────────────────── internals ────────────────────
 
     private InboxItemDocument item(ShareScope scope, String recipient, String text) {
-        DocumentDocument doc = scope.document();
-        Map<String, Object> documentRef = new LinkedHashMap<>();
-        documentRef.put("documentId", doc.getId());
-        documentRef.put("projectId", doc.getProjectId());
-        documentRef.put("path", doc.getPath());
-        if (doc.getTitle() != null) documentRef.put("title", doc.getTitle());
-        if (doc.getMimeType() != null) documentRef.put("mimeType", doc.getMimeType());
-        // Same payload shape inbox_post writes, so one renderer serves both.
+        ShareSubject subject = scope.subject();
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("documentRef", documentRef);
+        @Nullable DocumentDocument doc = scope.document();
+        if (doc != null) {
+            // Same payload shape inbox_post writes, so one renderer serves both.
+            Map<String, Object> documentRef = new LinkedHashMap<>();
+            documentRef.put("documentId", doc.getId());
+            documentRef.put("projectId", doc.getProjectId());
+            documentRef.put("path", doc.getPath());
+            if (doc.getTitle() != null) documentRef.put("title", doc.getTitle());
+            if (doc.getMimeType() != null) documentRef.put("mimeType", doc.getMimeType());
+            payload.put("documentRef", documentRef);
+        }
+        if (subject.link() != null) {
+            Map<String, Object> link = new LinkedHashMap<>();
+            link.put("url", subject.link());
+            link.put("title", scope.displayTitle());
+            payload.put("link", link);
+        }
+        // Its own key, never folded into the body: the body is the sharer's
+        // sentence and renders as Markdown, while a snippet is foreign text
+        // that must stay a quote.
+        if (subject.snippet() != null) payload.put("snippet", subject.snippet());
 
         return InboxItemDocument.builder()
                 .tenantId(scope.tenantId())
                 .originatorUserId(scope.sharer())
                 .assignedToUserId(recipient)
-                .type(InboxItemType.OUTPUT_DOCUMENT)
+                // The discriminator follows the payload. An OUTPUT_DOCUMENT
+                // without a document would be a lie in the type.
+                .type(doc == null ? InboxItemType.OUTPUT_TEXT : InboxItemType.OUTPUT_DOCUMENT)
                 .criticality(Criticality.NORMAL)
                 .tags(new ArrayList<>(List.of("share")))
-                .title(sharerLabel(scope) + " shared: " + scope.fileName())
+                .title(sharerLabel(scope) + " shared: " + scope.displayTitle())
                 .body(text)
                 .payload(payload)
                 .requiresAction(false)

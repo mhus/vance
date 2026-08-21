@@ -17,6 +17,7 @@ import de.mhus.vance.api.milliways.ShareResultDto;
 import de.mhus.vance.shared.audit.AuditEventDto;
 import de.mhus.vance.shared.audit.AuditService;
 import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.document.DocumentRef;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.permission.Action;
@@ -254,6 +255,100 @@ class MilliwaysServiceTest {
         assertThat(shareCount("smtp", "unavailable")).isEqualTo(1.0);
     }
 
+    // ── Subject ────────────────────────────────────────────────────
+
+    @Test
+    void subject_withNothingToShow_isRefused() {
+        // `title` is the label of the thing, not the thing. Without this rule
+        // Milliways would be a note sender.
+        assertThatThrownBy(() -> new ShareSubject("just a headline", null, null, null))
+                .isInstanceOf(ShareException.class);
+    }
+
+    @Test
+    void resolve_subjectWithoutDocument_authorizesNothingAndResolvesNothing() {
+        StubHandler handler = new StubHandler("inbox", ShareAvailability.ready());
+        MilliwaysService service = serviceWith(handler);
+
+        service.share("inbox", target(linkSubject()), Map.of());
+
+        assertThat(handler.seen).isNotNull();
+        assertThat(handler.seen.scope().document()).isNull();
+        // Nothing to check: the link and the snippet came from the sharer.
+        verify(permissionService, never())
+                .enforce(any(SecurityContext.class), any(Resource.class), any());
+        verify(documentService, never()).findByPath(any(), any(), any());
+    }
+
+    @Test
+    void resolve_unsafeLinkScheme_isRefused() {
+        MilliwaysService service = serviceWith(new StubHandler("inbox", ShareAvailability.ready()));
+        ShareTarget target = target(
+                new ShareSubject(null, "javascript:alert(1)", null, null));
+
+        // The client's safeUrl never runs on the mail path, so the refusal has
+        // to happen here or a javascript: URL becomes a clickable link in
+        // somebody's mail client.
+        assertThatThrownBy(() -> service.share("inbox", target, Map.of()))
+                .isInstanceOf(ShareException.class)
+                .hasMessageContaining("http");
+    }
+
+    @Test
+    void resolve_relativeLink_isRefused() {
+        MilliwaysService service = serviceWith(new StubHandler("inbox", ShareAvailability.ready()));
+        ShareTarget target = target(new ShareSubject(null, "/local/page", null, null));
+
+        assertThatThrownBy(() -> service.share("inbox", target, Map.of()))
+                .isInstanceOf(ShareException.class);
+    }
+
+    @Test
+    void resolve_snippet_isCollapsedAndCapped() {
+        StubHandler handler = new StubHandler("inbox", ShareAvailability.ready());
+        MilliwaysService service = new MilliwaysService(
+                List.of(handler), documentService, permissionService,
+                auditService, metricService, /*maxSnippetChars*/ 40);
+
+        service.share("inbox", target(new ShareSubject(
+                null, null, "word ".repeat(40) + "\n\n   tail", null)), Map.of());
+
+        String snippet = handler.seen.scope().subject().snippet();
+        assertThat(snippet).hasSizeLessThanOrEqualTo(41);   // 40 + the ellipsis
+        assertThat(snippet).endsWith("…");
+        assertThat(snippet).doesNotContain("\n");
+    }
+
+    @Test
+    void resolve_blankSnippetAndTitle_becomeAbsent() {
+        StubHandler handler = new StubHandler("inbox", ShareAvailability.ready());
+        MilliwaysService service = serviceWith(handler);
+
+        service.share("inbox", target(new ShareSubject(
+                "   ", "https://example.com/hit", "  \n ", null)), Map.of());
+
+        ShareSubject seen = handler.seen.scope().subject();
+        assertThat(seen.title()).isNull();
+        assertThat(seen.snippet()).isNull();
+        assertThat(seen.parts()).containsExactly("link");
+    }
+
+    @Test
+    void share_documentlessSubject_isAuditedWithPartsAndLinkHost() {
+        MilliwaysService service = serviceWith(new StubHandler("inbox", ShareAvailability.ready()));
+
+        service.share("inbox", target(linkSubject()), Map.of());
+
+        ArgumentCaptor<AuditEventDto> captor = forClass(AuditEventDto.class);
+        verify(auditService).record(captor.capture());
+        AuditEventDto event = captor.getValue();
+        // Without these two a document-less share leaves no trace of what went
+        // out: `target` carries a path only when there is one.
+        assertThat(event.getDetails()).containsEntry("subject", List.of("link", "snippet"));
+        assertThat(event.getDetails()).containsEntry("linkHost", "example.com");
+        assertThat(event.getTarget()).isEqualTo(PROJECT);
+    }
+
     // ── Wiring ─────────────────────────────────────────────────────
 
     @Test
@@ -270,11 +365,20 @@ class MilliwaysServiceTest {
     private MilliwaysService serviceWith(ShareHandler... handlers) {
         return new MilliwaysService(
                 List.of(handlers), documentService, permissionService,
-                auditService, metricService);
+                auditService, metricService, 2000);
     }
 
     private ShareTarget target() {
-        return new ShareTarget(MARA, TENANT, PROJECT, PATH);
+        return target(ShareSubject.ofDocument(DocumentRef.of(PROJECT, PATH)));
+    }
+
+    private ShareTarget target(ShareSubject subject) {
+        return new ShareTarget(MARA, TENANT, PROJECT, subject);
+    }
+
+    private static ShareSubject linkSubject() {
+        return new ShareSubject(
+                "Canyon test results", "https://example.com/hit", "…the test is done…", null);
     }
 
     private void denyDocumentRead() {

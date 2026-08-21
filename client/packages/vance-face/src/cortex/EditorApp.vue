@@ -30,7 +30,7 @@ import {
   ShareModal,
 } from '@/components';
 import { brainFetch } from '@vance/shared';
-import type { SessionSummaryRichDto } from '@vance/generated';
+import type { SessionSummaryRichDto, ShareSubjectDto } from '@vance/generated';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import DocumentPresenceStrip from '@/ws/DocumentPresenceStrip.vue';
 import { brainFetchText } from '@vance/shared';
@@ -578,7 +578,23 @@ const activeTab = computed(() => store.activeTab);
 // Milliways — "show this to someone". Lives in the Actions menu rather
 // than the document toolbar: that strip is already full, and sharing is
 // a document-level action like Save, not a view toggle.
+//
+// The subject is a ref rather than derived from the active tab, because the
+// menu is not the only way in: an app running inside a tab (the search app,
+// say) shares a hit that is no document at all. Both paths funnel through
+// openShare, so there is one modal and one code path.
 const showShare = ref(false);
+const shareSubject = ref<ShareSubjectDto | null>(null);
+
+function openShare(subject: ShareSubjectDto): void {
+  shareSubject.value = subject;
+  showShare.value = true;
+}
+
+// Federation bridge, same string-keyed pattern as 'vance:embed-component':
+// a remote injects 'vance:share' and calls it with a subject, without
+// importing vance-face.
+provide('vance:share', openShare);
 
 // ──────────────── Starred (★) ────────────────
 // One star cannot serve three states, so there are two controls: the star
@@ -1466,7 +1482,7 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
         <VDropdown v-if="projectId" menu-class="mt-1 w-64">
           <template #trigger>Actions</template>
             <li :class="{ disabled: !activeTab }">
-              <a @click="closeMenus(); showShare = true">
+              <a @click="closeMenus(); activeTab && openShare({ documentPath: activeTab.path })">
                 <span class="flex-1">{{ $t('share.menuLabel') }}</span>
               </a>
             </li>
@@ -1608,10 +1624,10 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
   />
 
   <ShareModal
-    v-if="projectId && activeTab"
+    v-if="projectId && shareSubject"
     v-model="showShare"
     :project-id="projectId"
-    :path="activeTab.path"
+    :subject="shareSubject"
   />
 </template>
 

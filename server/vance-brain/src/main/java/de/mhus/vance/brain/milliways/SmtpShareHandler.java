@@ -26,9 +26,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * Shares <em>content</em>: the document leaves the building as a mail
- * attachment. That is the point of a mail — a link into a brain the
- * recipient has no account on would be useless.
+ * Projects the subject into a mail: the sharer's sentence as the body, the
+ * snippet quoted, the link on its own line, and a referenced document as an
+ * <b>attachment</b>. Attaching is the point of a mail — a link into a brain
+ * the recipient has no account on would be useless — but a subject without a
+ * document simply travels in the body.
  *
  * <p>Named after the transport, not the medium. A second way to send mail
  * (a provider API, an outbound queue) has its own configuration, failure
@@ -132,15 +134,19 @@ public class SmtpShareHandler implements ShareHandler {
                 .type("string")
                 .label(Map.of("en", "Subject", "de", "Betreff"))
                 .required(true)
-                .defaultValue(defaultSubject(scope))
+                .defaultValue(scope.displayTitle())
                 .build());
         fields.add(FormFieldDto.builder()
                 .name(FIELD_TEXT)
                 .type("textarea")
                 .label(Map.of("en", "Message", "de", "Nachricht"))
-                .help(Map.of(
-                        "en", "The document goes along as an attachment.",
-                        "de", "Das Dokument geht als Anhang mit."))
+                .help(scope.hasDocument()
+                        ? Map.of(
+                                "en", "The document goes along as an attachment.",
+                                "de", "Das Dokument geht als Anhang mit.")
+                        : Map.of(
+                                "en", "Link and quote go into the message.",
+                                "de", "Link und Zitat gehen in die Nachricht."))
                 .rows(4)
                 .build());
         return List.copyOf(fields);
@@ -154,14 +160,14 @@ public class SmtpShareHandler implements ShareHandler {
         if (recipients.isEmpty()) {
             throw new ShareException("Name at least one mail address");
         }
-        String subject = request.stringOr(FIELD_SUBJECT, defaultSubject(scope));
-        // The body is what the sharer wrote, verbatim. No provenance footer
-        // is appended: the From address already says who sent it, and a
-        // project name added by the server would leave the tenant without
-        // anyone having chosen to send it.
-        String body = request.stringOr(FIELD_TEXT, "");
+        String subject = request.stringOr(FIELD_SUBJECT, scope.displayTitle());
+        String body = bodyOf(scope, request.stringOr(FIELD_TEXT, ""));
 
-        SmtpSender.Attachment attachment = attachmentOf(scope);
+        // Attaches only when there is a document. A link-only subject travels
+        // in the body — nothing to attach, and nothing lost.
+        List<SmtpSender.Attachment> attachments = scope.hasDocument()
+                ? List.of(attachmentOf(scope))
+                : List.of();
 
         Map<String, Object> sendResult;
         try {
@@ -183,7 +189,7 @@ public class SmtpShareHandler implements ShareHandler {
                     /*html*/ null,
                     /*from*/ null,
                     /*replyTo*/ null,
-                    List.of(attachment)));
+                    attachments));
         } catch (IllegalArgumentException e) {
             // The pack's own guards (allowedFrom / allowedRecipientDomains)
             // and the missing-From case land here: a refusal the user can
@@ -200,13 +206,16 @@ public class SmtpShareHandler implements ShareHandler {
         // person correspond with".
         details.put("recipientDomains", domainsOf(recipients));
         details.put("recipientCount", recipients.size());
-        details.put("attachment", attachment.filename());
-        details.put("attachmentBytes", attachment.bytes().length);
+        if (!attachments.isEmpty()) {
+            SmtpSender.Attachment attachment = attachments.get(0);
+            details.put("attachment", attachment.filename());
+            details.put("attachmentBytes", attachment.bytes().length);
+        }
         Object messageId = sendResult.get("messageId");
         if (messageId != null) details.put("messageId", messageId);
 
-        log.info("Milliways smtp share: {} recipient(s) via pack '{}', attachment '{}' ({} bytes)",
-                recipients.size(), pack.name(), attachment.filename(), attachment.bytes().length);
+        log.info("Milliways smtp share: {} recipient(s) via pack '{}', subject={}",
+                recipients.size(), pack.name(), scope.subject().parts());
         String message = recipients.size() == 1
                 ? "Sent to " + recipients.get(0)
                 : "Sent to " + recipients.size() + " recipients";
@@ -267,6 +276,10 @@ public class SmtpShareHandler implements ShareHandler {
      */
     private SmtpSender.Attachment attachmentOf(ShareScope scope) {
         DocumentDocument doc = scope.document();
+        if (doc == null) {
+            throw new IllegalStateException("attachmentOf called without a document");
+        }
+        String fileName = scope.fileName();
         // Checked before reading: a named refusal beats a relay timeout
         // forty seconds later. `size` is metadata, so the byte count is
         // checked again below.
@@ -286,7 +299,8 @@ public class SmtpShareHandler implements ShareHandler {
         String mimeType = doc.getMimeType() == null || doc.getMimeType().isBlank()
                 ? "text/markdown"
                 : doc.getMimeType();
-        return new SmtpSender.Attachment(scope.fileName(), mimeType, bytes);
+        return new SmtpSender.Attachment(
+                fileName == null ? "document" : fileName, mimeType, bytes);
     }
 
     private String tooLarge(long actual) {
@@ -294,9 +308,35 @@ public class SmtpShareHandler implements ShareHandler {
                 + " KiB, limit is " + (maxAttachmentBytes / 1024) + " KiB";
     }
 
-    private static String defaultSubject(ShareScope scope) {
-        String title = scope.document().getTitle();
-        return title == null || title.isBlank() ? scope.fileName() : title;
+    /**
+     * The sharer's sentence, then the quoted snippet, then the bare link.
+     *
+     * <p>No provenance footer: the From address already says who sent it, and
+     * a project name added by the server would leave the tenant without anyone
+     * having chosen to send it.
+     *
+     * <p>Plain text throughout — no HTML body — so foreign text stays inert.
+     * The snippet is quote-marked the conventional way; the link goes on its
+     * own line as a bare URL, which every mail client makes clickable without
+     * us handing it any markup.
+     */
+    private static String bodyOf(ShareScope scope, String reason) {
+        StringBuilder out = new StringBuilder(reason.strip());
+        String snippet = scope.subject().snippet();
+        if (snippet != null) {
+            if (out.length() > 0) out.append("\n\n");
+            for (String line : snippet.split("\n", -1)) {
+                out.append("> ").append(line).append('\n');
+            }
+            // Drop the trailing newline the loop leaves behind.
+            out.setLength(out.length() - 1);
+        }
+        String link = scope.subject().link();
+        if (link != null) {
+            if (out.length() > 0) out.append("\n\n");
+            out.append(link);
+        }
+        return out.toString();
     }
 
     private static String packLabel(ServerToolConfig pack) {

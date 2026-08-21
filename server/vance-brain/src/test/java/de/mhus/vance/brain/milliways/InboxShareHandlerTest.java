@@ -14,6 +14,7 @@ import de.mhus.vance.api.form.FormChoiceDto;
 import de.mhus.vance.api.form.FormFieldDto;
 import de.mhus.vance.api.inbox.InboxItemType;
 import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.document.DocumentRef;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
 import de.mhus.vance.shared.inbox.InboxItemService;
 import de.mhus.vance.shared.permission.Action;
@@ -171,7 +172,9 @@ class InboxShareHandlerTest {
         assertThat(item.isRequiresAction()).isFalse();
         assertThat(item.getAssignedToUserId()).isEqualTo("ford");
         assertThat(item.getOriginatorUserId()).isEqualTo("mara");
-        assertThat(item.getTitle()).isEqualTo("Mara Toon shared: results.md");
+        // displayTitle(), not the file name: the document has a title and
+        // that is the more readable label. The path is in the documentRef.
+        assertThat(item.getTitle()).isEqualTo("Mara Toon shared: Results");
         assertThat(item.getBody()).isEqualTo("test is done");
         assertThat(item.getTags()).containsExactly("share");
         @SuppressWarnings("unchecked")
@@ -245,7 +248,70 @@ class InboxShareHandlerTest {
 
         handler.share(request(Map.of("recipients", List.of("ford"), "text", "look")));
 
-        assertThat(captureItem().getTitle()).isEqualTo("mara shared: results.md");
+        assertThat(captureItem().getTitle()).isEqualTo("mara shared: Results");
+    }
+
+    // ── Subject projection ─────────────────────────────────────────
+
+    @Test
+    void share_linkAndSnippetOnly_writesOutputTextWithBothInThePayload() {
+        givenReachable("ford");
+
+        handler.share(new ShareRequest(
+                linkScope(), Map.of("recipients", List.of("ford"), "text", "have a look")));
+
+        InboxItemDocument item = captureItem();
+        // The discriminator follows the payload — an OUTPUT_DOCUMENT without a
+        // document would be a lie in the type.
+        assertThat(item.getType()).isEqualTo(InboxItemType.OUTPUT_TEXT);
+        assertThat(item.getPayload()).doesNotContainKey("documentRef");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> link = (Map<String, Object>) item.getPayload().get("link");
+        assertThat(link).containsEntry("url", "https://example.com/hit");
+        assertThat(link).containsEntry("title", "Canyon test results");
+        assertThat(item.getPayload()).containsEntry("snippet", "…the test is done…");
+        // The reason stays the body; the snippet never merges into it, because
+        // the body renders as Markdown and foreign text must stay a quote.
+        assertThat(item.getBody()).isEqualTo("have a look");
+        assertThat(item.getTitle()).isEqualTo("Mara Toon shared: Canyon test results");
+    }
+
+    @Test
+    void share_documentAndSnippet_carriesBoth() {
+        givenReachable("ford");
+        ShareScope scope = new ShareScope(
+                MARA, TENANT, PROJECT,
+                new ShareSubject(null, null, "…the passage…",
+                        DocumentRef.of(PROJECT, PATH)),
+                DocumentDocument.builder()
+                        .id("doc-1").tenantId(TENANT).projectId(PROJECT)
+                        .path(PATH).title("Results").build());
+
+        handler.share(new ShareRequest(
+                scope, Map.of("recipients", List.of("ford"), "text", "this bit")));
+
+        InboxItemDocument item = captureItem();
+        assertThat(item.getType()).isEqualTo(InboxItemType.OUTPUT_DOCUMENT);
+        assertThat(item.getPayload()).containsKey("documentRef");
+        assertThat(item.getPayload()).containsEntry("snippet", "…the passage…");
+    }
+
+    @Test
+    void share_subjectTitle_winsOverDocumentTitle() {
+        givenReachable("ford");
+        ShareScope scope = new ShareScope(
+                MARA, TENANT, PROJECT,
+                new ShareSubject("What the sharer called it", null, null,
+                        DocumentRef.of(PROJECT, PATH)),
+                DocumentDocument.builder()
+                        .id("doc-1").tenantId(TENANT).projectId(PROJECT)
+                        .path(PATH).title("Results").build());
+
+        handler.share(new ShareRequest(
+                scope, Map.of("recipients", List.of("ford"), "text", "look")));
+
+        assertThat(captureItem().getTitle())
+                .isEqualTo("Mara Toon shared: What the sharer called it");
     }
 
     // ── helpers ────────────────────────────────────────────────────
@@ -286,13 +352,25 @@ class InboxShareHandlerTest {
     }
 
     private static ShareScope scope() {
-        return new ShareScope(MARA, TENANT, PROJECT, PATH, DocumentDocument.builder()
-                .id("doc-1")
-                .tenantId(TENANT)
-                .projectId(PROJECT)
-                .path(PATH)
-                .title("Results")
-                .build());
+        return new ShareScope(
+                MARA, TENANT, PROJECT,
+                ShareSubject.ofDocument(DocumentRef.of(PROJECT, PATH)),
+                DocumentDocument.builder()
+                        .id("doc-1")
+                        .tenantId(TENANT)
+                        .projectId(PROJECT)
+                        .path(PATH)
+                        .title("Results")
+                        .build());
+    }
+
+    /** A subject with no document at all — a search hit, say. */
+    private static ShareScope linkScope() {
+        return new ShareScope(
+                MARA, TENANT, PROJECT,
+                new ShareSubject("Canyon test results", "https://example.com/hit",
+                        "…the test is done…", null),
+                null);
     }
 
     private static UserDocument user(String name, String title) {

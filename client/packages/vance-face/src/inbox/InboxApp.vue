@@ -17,7 +17,7 @@ import {
 } from '@/components';
 import { useInbox, type AssignedToFilter, type InboxFilter } from '@/composables/useInbox';
 import { useTeams } from '@/composables/useTeams';
-import { getUsername } from '@vance/shared';
+import { getUsername, safeUrl } from '@vance/shared';
 import { VBadge } from '@/components';
 import { setDocumentDraft } from '@/platform';
 import {
@@ -491,6 +491,30 @@ const sharedDocument = computed<SharedDocumentRef | null>(() => {
   };
 });
 
+/**
+ * A link a Milliways share carried. Read by shape like the document ref, and
+ * only rendered when {@code safeUrl} would also render it — a `javascript:`
+ * URL in an inbox item runs on our own origin as soon as somebody clicks it.
+ */
+const sharedLink = computed<{ href: string; title: string } | null>(() => {
+  const raw = inbox.selected.value?.payload?.link;
+  if (!raw || typeof raw !== 'object') return null;
+  const ref = raw as Record<string, unknown>;
+  const href = safeUrl(typeof ref.url === 'string' ? ref.url : null);
+  if (!href) return null;
+  return { href, title: typeof ref.title === 'string' && ref.title ? ref.title : href };
+});
+
+/**
+ * Quoted foreign text. Rendered as a plain-text quote, never through
+ * {@code MarkdownView}: a search hit containing `[click](evil)` would
+ * otherwise become a link that looks like a colleague wrote it.
+ */
+const sharedSnippet = computed<string | null>(() => {
+  const raw = inbox.selected.value?.payload?.snippet;
+  return typeof raw === 'string' && raw.trim() ? raw : null;
+});
+
 /** Cortex deep-link: a lone {@code doc} id opens as a single tab. */
 function cortexLink(ref: SharedDocumentRef): string {
   return `/cortex.html?project=${encodeURIComponent(ref.projectId)}`
@@ -753,6 +777,27 @@ const breadcrumbs = computed<string[]>(() => {
               :href="cortexLink(sharedDocument)"
             >{{ $t('share.inbox.openInCortex') }}</VButton>
           </div>
+
+          <!-- A shared link. Same shape-driven reading as the document card:
+               a share can carry a link, a snippet, a document, or several. -->
+          <div
+            v-if="sharedLink"
+            class="mt-3 p-3 rounded border border-base-300"
+          >
+            <div class="text-xs opacity-60">{{ $t('share.inbox.linkLabel') }}</div>
+            <a
+              :href="sharedLink.href"
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              class="font-medium underline break-all"
+            >{{ sharedLink.title }}</a>
+          </div>
+
+          <!-- Foreign text: a quote, never Markdown. -->
+          <blockquote
+            v-if="sharedSnippet"
+            class="mt-3 border-l-2 border-base-300 pl-3 text-sm opacity-80 whitespace-pre-wrap"
+          >{{ sharedSnippet }}</blockquote>
 
           <div
             v-if="inbox.selected.value.payload && Object.keys(inbox.selected.value.payload).length > 0"

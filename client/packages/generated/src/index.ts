@@ -395,6 +395,8 @@ export * from './template/TemplateListResponseDto';
 export * from './template/TemplateApplyRequestDto';
 export * from './template/TemplateApplyResponseDto';
 export * from './milliways/ShareHandlerDto';
+export * from './milliways/ShareSubjectDto';
+export * from './milliways/ShareContextRequest';
 export * from './milliways/ShareFormDto';
 export * from './milliways/ShareSubmitRequest';
 export * from './milliways/ShareResultDto';

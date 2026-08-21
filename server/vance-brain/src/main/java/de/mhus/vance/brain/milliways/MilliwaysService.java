@@ -3,12 +3,14 @@ package de.mhus.vance.brain.milliways;
 import de.mhus.vance.api.milliways.ShareFormDto;
 import de.mhus.vance.api.milliways.ShareHandlerDto;
 import de.mhus.vance.api.milliways.ShareResultDto;
+import de.mhus.vance.brain.prompt.UntrustedContent;
 import de.mhus.vance.shared.audit.AuditEventDto;
 import de.mhus.vance.shared.audit.AuditService;
 import de.mhus.vance.shared.audit.AuditSeverity;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.metric.MetricService;
+import de.mhus.vance.shared.net.SafeLink;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionDeniedException;
 import de.mhus.vance.shared.permission.PermissionService;
@@ -22,20 +24,28 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
- * Milliways — the one entry point for "show this document to a human".
+ * Milliways — the one entry point for "show this to a human".
  *
- * <p>The façade does exactly three things itself: resolve the document,
- * enforce {@code Document READ} for the sharer, and record the act. Which
- * ways exist, what they need to know and how they deliver belongs to the
- * {@link ShareHandler}s — and so does any authorization beyond the read
- * check, the same split {@code RunSource} uses.
+ * <p>The façade does exactly three things itself: sanitise and resolve the
+ * subject, enforce {@code Document READ} when the subject names a document,
+ * and record the act. Which ways exist, what they need to know and how they
+ * deliver belongs to the {@link ShareHandler}s — and so does any authorization
+ * beyond that read check, the same split {@code RunSource} uses.
  *
- * <p>Sharing changes no permission: it is a pointer plus a reason, or a
- * copy leaving the building. It never grants access. See
- * {@code planning/milliways-sharing.md}.
+ * <p><b>The façade checks only what the subject asserts.</b> A link and a
+ * snippet come from the sharer, so there is nothing to authorize against them;
+ * an outbound brake belongs to the handler that sends outward, not here.
+ * Milliways does not know whether a way leads inside or outside the house, and
+ * therefore cannot scale its checks by that.
+ *
+ * <p>Sharing changes no permission — it never grants access. See
+ * {@code specification/public/milliways-system.md} and
+ * {@code planning/milliways-subject.md}.
  */
 @Service
 @Slf4j
@@ -44,23 +54,29 @@ public class MilliwaysService {
     static final String METRIC_SHARES = "vance.milliways.shares";
     static final String AUDIT_ACTION = "milliways.share";
 
+    /** A title lands in a mail Subject header and an inbox item title. */
+    static final int MAX_TITLE_CHARS = 300;
+
     private final Map<String, ShareHandler> handlers;
     private final DocumentService documentService;
     private final PermissionService permissionService;
     private final AuditService auditService;
     private final MetricService metricService;
+    private final int maxSnippetChars;
 
     public MilliwaysService(
             List<ShareHandler> handlers,
             DocumentService documentService,
             PermissionService permissionService,
             AuditService auditService,
-            MetricService metricService) {
+            MetricService metricService,
+            @Value("${vance.milliways.snippet.max-chars:2000}") int maxSnippetChars) {
         this.handlers = index(handlers);
         this.documentService = documentService;
         this.permissionService = permissionService;
         this.auditService = auditService;
         this.metricService = metricService;
+        this.maxSnippetChars = maxSnippetChars > 0 ? maxSnippetChars : 2000;
         log.info("Milliways ready with {} share handler(s): {}",
                 this.handlers.size(), this.handlers.keySet());
     }
@@ -146,8 +162,8 @@ public class MilliwaysService {
 
         count(handlerId, "success");
         audit(handlerId, target, "success", AuditSeverity.INFO, result.details());
-        log.info("Shared tenantId='{}' projectId='{}' path='{}' via '{}' by '{}'",
-                target.tenantId(), target.projectId(), target.path(),
+        log.info("Shared tenantId='{}' projectId='{}' subject={} via '{}' by '{}'",
+                target.tenantId(), target.projectId(), target.subject().parts(),
                 handlerId, target.ctx().subjectId());
         return ShareResultDto.builder()
                 .handlerId(handler.id())
@@ -159,20 +175,69 @@ public class MilliwaysService {
     // ──────────────────── internals ────────────────────
 
     /**
-     * Resolves the document and enforces {@code READ} on it. Also the gate
-     * for listing: which ways out exist for a document is not something a
-     * user who cannot read it needs to learn.
+     * Sanitises the subject, resolves a referenced document and enforces
+     * {@code READ} on it. Also the gate for listing: which ways out exist for
+     * a document is not something a user who cannot read it needs to learn.
+     *
+     * <p>A subject without a document has nothing to authorize against — its
+     * link and snippet came from the sharer. That is not a hole the façade
+     * should paper over with an invented resource; the brake for sending
+     * outward sits in the handler that does it.
      */
     private ShareScope resolve(ShareTarget target) {
+        ShareSubject subject = sanitise(target.subject());
+        if (!subject.hasDocument()) {
+            return ShareScope.of(target, subject, null);
+        }
+        String path = subject.documentPath();
         permissionService.enforce(
                 target.ctx(),
-                new Resource.Document(target.tenantId(), target.projectId(), target.path()),
+                new Resource.Document(target.tenantId(), target.projectId(), path),
                 Action.READ);
         DocumentDocument doc = documentService
-                .findByPath(target.tenantId(), target.projectId(), target.path())
+                .findByPath(target.tenantId(), target.projectId(), path)
                 .orElseThrow(() -> new ShareNotFoundException(
-                        "Document '" + target.projectId() + "/" + target.path() + "' not found"));
-        return ShareScope.of(target, doc);
+                        "Document '" + target.projectId() + "/" + path + "' not found"));
+        return ShareScope.of(target, subject, doc);
+    }
+
+    /**
+     * Defangs what came from outside, once, so no handler can forget it.
+     *
+     * <p>The link is checked against the scheme allow-list — it becomes a
+     * clickable link in a mail client, where the browser's own guard never
+     * runs. The snippet and the title are foreign text: whitespace collapsed
+     * (the helper Zarniwoop pushes its hit rows through) and length-capped,
+     * because both end up in a mail body and an inbox item and a "snippet" of
+     * two megabytes is a payload, not a quote.
+     */
+    private ShareSubject sanitise(ShareSubject raw) {
+        String link;
+        try {
+            link = raw.link() == null ? null : SafeLink.require(raw.link());
+        } catch (SafeLink.UnsafeLinkException e) {
+            throw new ShareException(e.getMessage(), e);
+        }
+        return new ShareSubject(
+                cap(collapse(raw.title()), MAX_TITLE_CHARS),
+                link,
+                cap(collapse(raw.snippet()), maxSnippetChars),
+                raw.document());
+    }
+
+    private static @Nullable String collapse(@Nullable String text) {
+        if (text == null) return null;
+        String collapsed = UntrustedContent.collapseWhitespace(text).trim();
+        return collapsed.isEmpty() ? null : collapsed;
+    }
+
+    /** Cuts at the last word boundary and marks the cut, like the hit rows do. */
+    private static @Nullable String cap(@Nullable String text, int max) {
+        if (text == null || text.length() <= max) return text;
+        String head = text.substring(0, max);
+        int lastSpace = head.lastIndexOf(' ');
+        if (lastSpace > max / 2) head = head.substring(0, lastSpace);
+        return head + "…";
     }
 
     private ShareHandler handler(String handlerId) {
@@ -218,9 +283,19 @@ public class MilliwaysService {
             String outcome,
             AuditSeverity severity,
             Map<String, Object> details) {
+        ShareSubject subject = target.subject();
         Map<String, Object> merged = new LinkedHashMap<>();
         merged.put("handler", handlerId);
+        // Which parts were shared, and the link's host. Without this a
+        // document-less share leaves no trace of what went out: `target`
+        // carries the path when there is one and nothing when there is not.
+        // The host, not the full URL — same reason the mail handler records
+        // recipient domains rather than addresses.
+        merged.put("subject", subject.parts());
+        String linkHost = SafeLink.hostOf(subject.link());
+        if (linkHost != null) merged.put("linkHost", linkHost);
         merged.putAll(details);
+        String path = subject.documentPath();
         auditService.record(AuditEventDto.builder()
                 .action(AUDIT_ACTION)
                 .severity(severity)
@@ -228,7 +303,9 @@ public class MilliwaysService {
                 .actor(target.ctx().subjectId())
                 .tenantId(target.tenantId())
                 .projectId(target.projectId())
-                .target(target.projectId() + "/" + target.path())
+                .target(path == null
+                        ? target.projectId()
+                        : target.projectId() + "/" + path)
                 .details(merged)
                 .build());
     }

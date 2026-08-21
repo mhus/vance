@@ -2081,8 +2081,13 @@ export default {
     close: 'Schließen',
     errorGeneric: 'Teilen fehlgeschlagen.',
     menuLabel: 'Teilen…',
+    untitledSubject: 'das',
+    subject: {
+      titleLabel: 'Titel',
+    },
     inbox: {
       openInCortex: 'Im Cortex öffnen',
+      linkLabel: 'Geteilter Link',
       documentLabel: 'Geteiltes Dokument',
     },
   },

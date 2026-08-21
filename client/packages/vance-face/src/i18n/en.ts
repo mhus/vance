@@ -2054,8 +2054,13 @@ export default {
     close: 'Close',
     errorGeneric: 'Sharing failed.',
     menuLabel: 'Share…',
+    untitledSubject: 'this',
+    subject: {
+      titleLabel: 'Title',
+    },
     inbox: {
       openInCortex: 'Open in Cortex',
+      linkLabel: 'Shared link',
       documentLabel: 'Shared document',
     },
   },

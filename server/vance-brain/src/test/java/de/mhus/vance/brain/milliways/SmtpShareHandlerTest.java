@@ -13,6 +13,7 @@ import de.mhus.vance.brain.servertool.ServerToolService;
 import de.mhus.vance.brain.tools.mail.SmtpSenderToolFactory;
 import de.mhus.vance.brain.tools.rest.SettingsSecretResolver;
 import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.document.DocumentRef;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.servertool.ServerToolConfig;
@@ -222,6 +223,38 @@ class SmtpShareHandlerTest {
                 .isInstanceOf(ShareTransportException.class);
     }
 
+    // ── Subject projection ─────────────────────────────────────────
+
+    @Test
+    void form_documentlessSubject_defaultSubjectComesFromTheTitle() {
+        givenPacks(pack("relay", true, Map.of("host", "a")));
+
+        List<FormFieldDto> fields = handler.form(linkScope());
+
+        FormFieldDto subject = fields.get(1);
+        assertThat(subject.getName()).isEqualTo(SmtpShareHandler.FIELD_SUBJECT);
+        assertThat(subject.getDefaultValue()).isEqualTo("Canyon test results");
+        // The help line must not promise an attachment there is none of.
+        assertThat(fields.get(2).getHelp().values())
+                .noneMatch(h -> h.toLowerCase(java.util.Locale.ROOT).contains("attach"));
+    }
+
+    @Test
+    void share_documentlessSubject_sendsWithoutAttachment() {
+        givenPacks(pack("relay", true, Map.of(
+                "host", "127.0.0.1", "port", 1, "from", "me@example.com",
+                "starttls", false, "tls", false, "timeoutSeconds", 1)));
+
+        // Dies at the dead relay — the point is that it got that far without a
+        // document, and never asked the document service for content.
+        assertThatThrownBy(() -> handler.share(new ShareRequest(
+                linkScope(), Map.of("to", "ford@example.com", "text", "look"))))
+                .isInstanceOf(ShareTransportException.class);
+
+        verify(documentService, org.mockito.Mockito.never())
+                .loadContent(any(DocumentDocument.class));
+    }
+
     // ── Secrets ────────────────────────────────────────────────────
 
     @Test
@@ -289,7 +322,19 @@ class SmtpShareHandlerTest {
     }
 
     private static ShareScope scopeOf(DocumentDocument document) {
-        return new ShareScope(MARA, TENANT, PROJECT, PATH, document);
+        return new ShareScope(
+                MARA, TENANT, PROJECT,
+                ShareSubject.ofDocument(DocumentRef.of(PROJECT, PATH)),
+                document);
+    }
+
+    /** A subject with no document — nothing to attach. */
+    private static ShareScope linkScope() {
+        return new ShareScope(
+                MARA, TENANT, PROJECT,
+                new ShareSubject("Canyon test results", "https://example.com/hit",
+                        "…the test is done…", null),
+                null);
     }
 
     private static DocumentDocument doc(String title, long size) {

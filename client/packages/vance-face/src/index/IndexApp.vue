@@ -135,6 +135,28 @@ async function onRemoveStarred(project: string, path: string): Promise<void> {
   await starred.unstar(project, path);
 }
 
+// Result of the last check, shown next to the heading. Without this trigger the
+// broken-tile state would be unreachable for a human: the list deliberately does
+// not resolve its entries on read, so nothing else on this page can discover a
+// dead target.
+const reconcileNotice = ref<string | null>(null);
+
+async function onReconcile(): Promise<void> {
+  reconcileNotice.value = null;
+  try {
+    const report = await starred.reconcile();
+    const broken = (report.entries ?? []).filter(
+      (e) => e.outcome === 'missing' || e.outcome === 'forbidden',
+    ).length;
+    const count = (report.entries ?? []).length;
+    reconcileNotice.value = broken
+      ? t('starred.reconcileChanged', { count, broken })
+      : t('starred.reconcileOk', { count });
+  } catch (e) {
+    reconcileNotice.value = e instanceof Error ? e.message : 'Check failed.';
+  }
+}
+
 async function loadAddonTiles(): Promise<void> {
   try {
     const res = await fetch('/face/addons', { headers: { Accept: 'application/json' } });
@@ -401,7 +423,16 @@ function readNextParam(): string | null {
          Responsive rather than a hard four-per-row: four columns are
          unreadable on a phone and inside the Facelift WebView. -->
     <div v-if="starredTiles.length" class="container mx-auto px-4 pt-8 max-w-3xl">
-      <h2 class="text-lg font-semibold mb-4">{{ $t('starred.sectionTitle') }}</h2>
+      <div class="mb-4 flex items-baseline gap-3">
+        <h2 class="text-lg font-semibold">{{ $t('starred.sectionTitle') }}</h2>
+        <button
+          type="button"
+          class="text-xs opacity-60 underline-offset-2 hover:underline hover:opacity-100"
+          :disabled="starred.busy"
+          @click="onReconcile()"
+        >{{ $t('starred.reconcile') }}</button>
+        <span v-if="reconcileNotice" class="text-xs opacity-70">{{ reconcileNotice }}</span>
+      </div>
       <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <StarredTile
           v-for="tile in starredTiles"

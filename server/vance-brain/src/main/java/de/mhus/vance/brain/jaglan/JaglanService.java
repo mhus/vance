@@ -95,6 +95,27 @@ public class JaglanService implements JaglanPort {
     }
 
     @Override
+    public List<MountedStat> search(
+            String tenantId, String projectId, String mount, String query, int limit) {
+        JaglanInstance instance = require(tenantId, projectId, mount);
+        JaglanCapabilities caps = capabilities.warm(tenantId, projectId, instance);
+        if (caps == null || !caps.canSearch()) {
+            // Checked before asking so an empty result never has to be read as
+            // "found nothing" — and so a source that cannot search is not
+            // called at all.
+            return List.of();
+        }
+        try {
+            List<MountedStat> hits = instance.search(query, limit);
+            metrics.counter("vance.jaglan.search", "outcome", "success").increment();
+            return hits;
+        } catch (RuntimeException e) {
+            metrics.counter("vance.jaglan.search", "outcome", "failed").increment();
+            throw translate(mount, "search", e);
+        }
+    }
+
+    @Override
     public InputStream open(
             String tenantId, String projectId, String mount, String pathInMount) {
         JaglanInstance instance = require(tenantId, projectId, mount);

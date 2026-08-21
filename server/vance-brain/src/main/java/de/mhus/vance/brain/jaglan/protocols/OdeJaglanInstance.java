@@ -272,7 +272,8 @@ public class OdeJaglanInstance implements JaglanInstance {
                 // side declares access once, for the whole source. Left UNKNOWN
                 // so the shell row takes the mount-level answer instead of a
                 // guess made here.
-                MountAccess.UNKNOWN);
+                MountAccess.UNKNOWN,
+                node.path("title").asString(null));
     }
 
     private static Duration duration(@Nullable String iso) {

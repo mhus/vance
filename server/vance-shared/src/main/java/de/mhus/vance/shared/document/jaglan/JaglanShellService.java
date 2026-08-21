@@ -266,6 +266,46 @@ public class JaglanShellService {
         return subfolders;
     }
 
+    /**
+     * Ask the mounts of a project to search their own catalogues, and upsert
+     * shell rows for what comes back.
+     *
+     * <p>The rows are written rather than only returned so a hit is
+     * immediately readable: without them the first {@code doc_read} on a result
+     * would pay another stat against the source for a file it just described.
+     *
+     * @param mount only this mount, or {@code null} for every configured one
+     *              whose declaration says it can search
+     */
+    public List<DocumentDocument> search(
+            String tenantId, String projectId, @Nullable String mount, String query, int limit) {
+        JaglanPort port = portProvider.getIfAvailable();
+        if (port == null || query == null || query.isBlank()) return List.of();
+        Instant now = Instant.now();
+        List<DocumentDocument> out = new ArrayList<>();
+        for (MountedSource source : mounts(tenantId, projectId)) {
+            if (mount != null && !mount.equals(source.name())) continue;
+            if (isInOutage(tenantId, projectId, source.name(), now)) continue;
+            List<MountedStat> hits;
+            try {
+                hits = port.search(tenantId, projectId, source.name(), query, limit);
+            } catch (RuntimeException e) {
+                // One failing mount must not fail the search — the others
+                // still have something to say.
+                rememberOutage(tenantId, projectId, source.name(), now, e);
+                continue;
+            }
+            Duration ttl = ttlFor(tenantId, projectId, source.name());
+            for (MountedStat hit : hits) {
+                if (out.size() >= limit) break;
+                out.add(decorate(
+                        upsertShell(tenantId, projectId, source.name(), hit, ttl, now),
+                        tenantId, projectId, source.name()));
+            }
+        }
+        return out;
+    }
+
     /** {@code true} when this folder has been listed at least once. */
     public boolean isFolderKnown(
             String tenantId, String projectId, String mount, String folderInMount) {
@@ -313,6 +353,11 @@ public class JaglanShellService {
                 .set("projectId", projectId)
                 .set("path", path)
                 .set("name", nameOf(path))
+                // The source's preferred display name, when it has one. Set
+                // rather than setOnInsert: a library that corrects a book's
+                // title should see the correction, and nothing on our side
+                // edits this field for a mounted row.
+                .set("title", stat.title())
                 .set("mimeType", stat.mimeType())
                 .set("size", stat.size())
                 .set("status", DocumentStatus.ACTIVE)

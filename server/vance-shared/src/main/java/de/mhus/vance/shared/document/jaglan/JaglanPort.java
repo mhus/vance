@@ -69,6 +69,24 @@ public interface JaglanPort {
     List<MountedStat> list(String tenantId, String projectId, String mount, String pathInMount);
 
     /**
+     * Ask a mount to search its own catalogue.
+     *
+     * <p>Delegated on purpose. Brain-side RAG does not apply to mounted
+     * content — indexing a foreign library into our own vector store is not
+     * something we want — but the library itself usually can search, and
+     * asking it beats walking its tree. A mount that declared it cannot search
+     * returns empty <b>without a remote call</b>; the caller checks the
+     * declaration first, so an empty list here never has to be read as "found
+     * nothing".
+     *
+     * @param limit already clamped by the caller
+     */
+    default List<MountedStat> search(
+            String tenantId, String projectId, String mount, String query, int limit) {
+        return List.of();
+    }
+
+    /**
      * Open the content for reading. The caller closes the stream.
      *
      * <p>Streamed through, never copied into {@code StorageService} — that

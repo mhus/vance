@@ -331,6 +331,24 @@ public class DocumentService {
     }
 
     /**
+     * Ask the mounted sources of a project to search their own catalogues.
+     *
+     * <p>Deliberately separate from {@link #searchProjectDocuments}: that one
+     * queries Mongo, this one delegates to foreign systems, and the two have
+     * different costs, different failure modes and different completeness.
+     * Folding them together would make an ordinary document search reach out
+     * over the network.
+     *
+     * @param mount only this mount, or {@code null} for every searchable one
+     */
+    public List<DocumentDocument> searchMounted(
+            String tenantId, String projectId, @Nullable String mount, String query, int limit) {
+        return shellService == null
+                ? List.of()
+                : shellService.search(tenantId, projectId, mount, query, Math.max(1, limit));
+    }
+
+    /**
      * The synthetic mount folders of a project: {@code _ext} and one
      * {@code _ext/<mount>} per configured mount.
      *

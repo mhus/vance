@@ -31,6 +31,10 @@ import org.jspecify.annotations.Nullable;
  * @param modifiedAtMs epoch millis of the last change at the source
  * @param access      what the source allows for this entry — may differ per
  *                    entry inside one mount (a read-only subtree)
+ * @param title       display name the source prefers over the file name — a
+ *                    library that knows a book's title puts it here.
+ *                    {@code null} means "use the file name", which is the
+ *                    common case.
  */
 public record MountedStat(
         String path,
@@ -39,7 +43,20 @@ public record MountedStat(
         @Nullable String mimeType,
         @Nullable String etag,
         @Nullable Long modifiedAtMs,
-        MountAccess access) {
+        MountAccess access,
+        @Nullable String title) {
+
+    /** Without a title — the shape most protocols produce. */
+    public MountedStat(
+            String path,
+            boolean directory,
+            long size,
+            @Nullable String mimeType,
+            @Nullable String etag,
+            @Nullable Long modifiedAtMs,
+            MountAccess access) {
+        this(path, directory, size, mimeType, etag, modifiedAtMs, access, null);
+    }
 
     public MountedStat {
         if (path == null) {
@@ -62,6 +79,7 @@ public record MountedStat(
             mimeType = null;
         }
         if (access == null) access = MountAccess.UNKNOWN;
+        if (title != null && title.isBlank()) title = null;
     }
 
     /** A directory entry with unknown access — the common listing case. */

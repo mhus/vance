@@ -266,30 +266,50 @@ const mountEmptyReason = computed(() => {
   const name = mount.displayName || mount.name;
   const outcome = docsState.mountSearch.value;
   if (outcome === MountSearchOutcome.UNSUPPORTED) {
+    // Not retryable: the source will still not be searchable next time.
     return {
       headline: t('documents.empty.searchUnsupportedHeadline'),
       body: t('documents.empty.searchUnsupportedBody', { mount: name }),
+      retryable: false,
     };
   }
   if (outcome === MountSearchOutcome.UNAVAILABLE) {
     return {
       headline: t('documents.empty.searchUnavailableHeadline'),
       body: t('documents.empty.searchUnavailableBody', { mount: name }),
+      retryable: true,
     };
   }
   if (mount.statusText) {
     return {
       headline: t('documents.empty.mountUnreachableHeadline'),
       body: t('documents.empty.mountUnreachableBody', { mount: name, status: mount.statusText }),
+      retryable: true,
     };
   }
   // Reachable and genuinely empty — still worth naming the source, so it is
-  // clear the emptiness is theirs and not ours.
+  // clear the emptiness is theirs and not ours. Nothing to retry.
   return {
     headline: t('documents.empty.folderHeadline'),
     body: t('documents.empty.mountEmptyBody', { mount: name }),
+    retryable: false,
   };
 });
+
+/**
+ * Drop the server-side mount caches and load this folder again.
+ *
+ * The instance cache holds for five minutes, so a just-corrected setting or a
+ * source that has come back would otherwise stay invisible for that long —
+ * indistinguishable, from here, from a configuration that is simply wrong.
+ */
+async function retryMount(): Promise<void> {
+  if (!selectedProjectId.value) return;
+  await docsState.loadMounts(selectedProjectId.value, /* refresh */ true);
+  await docsState.loadPage(
+    selectedProjectId.value, 0, docsState.pathPrefix.value, undefined, search.value.trim(),
+  );
+}
 
 const totalPages = computed(() =>
   Math.max(1, Math.ceil(docsState.totalCount.value / docsState.pageSize.value)),
@@ -1038,7 +1058,17 @@ function confirmNewFolder(): void {
               : $t('documents.empty.folderHeadline')"
             :body="mountEmptyReason ? mountEmptyReason.body
               : $t('documents.empty.folderBody')"
-          />
+          >
+            <!-- Offered only where retrying can help: an unreachable source or
+                 a search that could not be handed over. The instance cache
+                 holds for five minutes, so without this the only way out of a
+                 just-fixed misconfiguration is waiting. -->
+            <template v-if="mountEmptyReason?.retryable" #action>
+              <VButton size="sm" variant="ghost" @click="retryMount">
+                {{ $t('documents.empty.mountRetry') }}
+              </VButton>
+            </template>
+          </VEmptyState>
         </div>
         <table v-else class="w-full text-sm">
           <thead class="text-xs uppercase opacity-60 sticky top-0 bg-base-100 z-[1]">

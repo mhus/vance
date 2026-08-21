@@ -91,7 +91,7 @@ export function useDocuments(pageSize = 20): {
     search?: string,
   ) => Promise<void>;
   loadFolders: (projectId: string) => Promise<void>;
-  loadMounts: (projectId: string) => Promise<void>;
+  loadMounts: (projectId: string, refresh?: boolean) => Promise<void>;
   loadKinds: (projectId: string) => Promise<void>;
   loadOne: (id: string) => Promise<void>;
   clearSelection: () => void;
@@ -225,9 +225,13 @@ export function useDocuments(pageSize = 20): {
    * Failure is silent on purpose — this only ever adds an explanation, and an
    * error here would mask the document load it accompanies.
    */
-  async function loadMounts(projectId: string): Promise<void> {
+  async function loadMounts(projectId: string, refresh = false): Promise<void> {
     try {
       const params = new URLSearchParams({ projectId });
+      // Drops the five-minute instance cache server-side. Passed on the
+      // explicit reload, never on the automatic load — otherwise every folder
+      // walk would re-read the settings and re-ask every source.
+      if (refresh) params.set('refresh', 'true');
       const data = await brainFetch<MountListResponse>('GET', `mounts?${params}`);
       mounts.value = data.mounts ?? [];
     } catch (e) {

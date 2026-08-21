@@ -547,6 +547,7 @@ export default {
       mountUnreachableBody:
         'The mount “{mount}” is configured but currently unreachable: {status}',
       mountEmptyBody: 'The external source “{mount}” reports no entries for this folder.',
+      mountRetry: 'Try again',
       searchUnsupportedHeadline: 'Nothing was searched here',
       searchUnsupportedBody:
         'The source “{mount}” cannot be searched. Browse the folders instead of concluding from '

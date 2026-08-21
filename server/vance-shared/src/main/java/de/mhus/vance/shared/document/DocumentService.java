@@ -346,7 +346,20 @@ public class DocumentService {
     /** The mounts configured for a project — empty without Jaglan. */
     public List<de.mhus.vance.api.mount.MountedSource> listMounts(
             String tenantId, String projectId) {
-        return shellService == null ? List.of() : shellService.mounts(tenantId, projectId);
+        return listMounts(tenantId, projectId, false);
+    }
+
+    /**
+     * @param refresh drop the resolved mounts and their cached declarations
+     *        first. The way out of the five-minute TTL, which is otherwise
+     *        indistinguishable from a misconfiguration for whoever just wrote
+     *        the settings.
+     */
+    public List<de.mhus.vance.api.mount.MountedSource> listMounts(
+            String tenantId, String projectId, boolean refresh) {
+        if (shellService == null) return List.of();
+        if (refresh) shellService.refreshMounts(tenantId, projectId);
+        return shellService.mounts(tenantId, projectId);
     }
 
     /**
@@ -2099,11 +2112,48 @@ public class DocumentService {
 
     private String readAsString(DocumentDocument doc) {
         try (InputStream in = loadContent(doc)) {
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            String text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            backfillMountedKind(doc, text);
+            return text;
         } catch (IOException e) {
             log.warn("Failed to read document id='{}' path='{}': {}",
                     doc.getId(), doc.getPath(), e.toString());
             return "";
+        }
+    }
+
+    /**
+     * Learn a mounted document's {@code kind} the first time its body is read.
+     *
+     * <p>Kind comes from the front matter, so it needs the content — and a
+     * mounted document's metadata is produced by a {@code stat}, which
+     * deliberately does not fetch bytes: doing so would turn one folder
+     * listing into a download per file. So the row starts without a kind, and
+     * the first read is the moment the content is present anyway.
+     *
+     * <p>Guarded to stay a one-off: only for a mounted row, only when the kind
+     * is still unknown, and only for a textual mime type. Best-effort — a
+     * failed write must never break the read it rode along with, and the worst
+     * case is that the next read tries again.
+     */
+    private void backfillMountedKind(DocumentDocument doc, String text) {
+        if (!isMounted(doc.getPath()) || doc.getId() == null) return;
+        if (doc.getKind() != null || !isTextual(doc.getMimeType())) return;
+        try {
+            Optional<DocumentHeader> parsed = headerParser.parse(doc.getMimeType(), text);
+            if (parsed.isEmpty() || parsed.get().getKind() == null) return;
+            DocumentHeader header = parsed.get();
+            doc.setKind(header.getKind());
+            doc.setHeaders(new LinkedHashMap<>(header.getValues()));
+            mongoTemplate.updateFirst(
+                    Query.query(Criteria.where("_id").is(doc.getId())),
+                    new Update().set("kind", header.getKind())
+                            .set("headers", header.getValues()),
+                    DocumentDocument.class);
+            log.debug("Backfilled kind='{}' for mounted document '{}'",
+                    header.getKind(), doc.getPath());
+        } catch (RuntimeException e) {
+            log.debug("Could not backfill kind for '{}': {}", doc.getPath(), e.toString());
         }
     }
 

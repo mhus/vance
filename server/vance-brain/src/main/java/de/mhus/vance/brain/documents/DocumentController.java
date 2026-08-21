@@ -156,15 +156,23 @@ public class DocumentController {
      *
      * <p>{@code Project} READ, like the folder view — it names the configured
      * sources of a project and reveals nothing from inside them.
+     *
+     * <p>{@code refresh=true} drops the resolved mounts and their cached
+     * declarations first. Same shape as Zarniwoop's and Centauri's provider
+     * listings, and for the same reason: a five-minute TTL is
+     * indistinguishable from a misconfiguration for whoever has just written
+     * the settings, so the wait needs to be turnable into a button. Still
+     * READ — it clears caches, it changes nothing.
      */
     @GetMapping("/brain/{tenant}/mounts")
     public MountListResponse mounts(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,
+            @RequestParam(value = "refresh", defaultValue = "false") boolean refresh,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
         return MountListResponse.builder()
-                .mounts(documentService.listMounts(tenant, projectId).stream()
+                .mounts(documentService.listMounts(tenant, projectId, refresh).stream()
                         .map(m -> MountDto.builder()
                                 .name(m.name())
                                 .displayName(m.displayName())

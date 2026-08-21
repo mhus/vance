@@ -171,8 +171,20 @@ public class JaglanService implements JaglanPort {
     public void refresh(String tenantId, String projectId, @Nullable String mount) {
         if (mount != null) {
             capabilities.evict(tenantId, projectId, mount);
+        } else {
+            // Whole project: every configured mount's declaration goes too,
+            // otherwise a re-read of the settings would still describe the
+            // mounts with what the old instances had reported.
+            for (JaglanInstance instance : factory.assemble(tenantId, projectId)) {
+                capabilities.evict(tenantId, projectId, instance.mount());
+            }
         }
         factory.evict(tenantId, projectId);
+    }
+
+    @Override
+    public void refresh(String tenantId, String projectId) {
+        refresh(tenantId, projectId, null);
     }
 
     // ── internals ────────────────────────────────────────────────────

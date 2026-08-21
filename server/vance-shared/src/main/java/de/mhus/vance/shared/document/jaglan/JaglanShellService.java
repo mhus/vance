@@ -95,6 +95,24 @@ public class JaglanShellService {
         }
     }
 
+    /**
+     * Drop the resolved mounts and their declarations for this project.
+     *
+     * <p>Only the caches — the shell rows stay, because they are content
+     * knowledge and a configuration re-read says nothing about them. Dropping
+     * them here would turn a "did I type the setting right" click into a
+     * re-stat of everything the project had ever browsed.
+     */
+    public void refreshMounts(String tenantId, String projectId) {
+        JaglanPort port = portProvider.getIfAvailable();
+        if (port == null) return;
+        try {
+            port.refresh(tenantId, projectId);
+        } catch (RuntimeException e) {
+            log.warn("Failed to refresh mounts for {}/{}: {}", tenantId, projectId, e.toString());
+        }
+    }
+
     /** The configured mount by name, or empty when unknown. */
     public Optional<MountedSource> findMount(String tenantId, String projectId, String mount) {
         return mounts(tenantId, projectId).stream()

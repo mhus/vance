@@ -53,6 +53,22 @@ public interface JaglanPort {
     List<MountedSource> mounts(String tenantId, String projectId);
 
     /**
+     * Forget a project's resolved mounts and their cached declarations, so the
+     * next {@link #mounts} reads the settings again.
+     *
+     * <p>Exists because a five-minute TTL is indistinguishable from a
+     * misconfiguration: an operator who has just written
+     * {@code jaglan.mount.*} and sees no {@code _ext} folder cannot tell
+     * whether the keys are wrong or they are simply early. The same reasoning
+     * — and the same {@code ?refresh=true} shape — as Zarniwoop and Centauri.
+     *
+     * <p>Cheap and idempotent: it drops cache entries, it does not fetch.
+     */
+    default void refresh(String tenantId, String projectId) {
+        // Nothing cached in a port that has no cache.
+    }
+
+    /**
      * Metadata for one entry, or empty when the mount does not have it.
      *
      * <p>The lazy-stat behind {@code findByPath}: one remote call on a cache

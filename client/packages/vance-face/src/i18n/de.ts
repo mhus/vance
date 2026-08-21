@@ -543,6 +543,7 @@ export default {
       mountUnreachableBody:
         'Der Mount „{mount}" ist konfiguriert, aber gerade nicht erreichbar: {status}',
       mountEmptyBody: 'Die externe Quelle „{mount}" liefert für diesen Ordner keine Einträge.',
+      mountRetry: 'Erneut versuchen',
       searchUnsupportedHeadline: 'Hier wurde nicht gesucht',
       searchUnsupportedBody:
         'Die Quelle „{mount}" kann nicht durchsucht werden. Blättere durch die Ordner, statt aus '

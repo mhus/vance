@@ -115,6 +115,9 @@ public class OdeKitSourceLoader implements KitSourceLoader {
      * @param project which project the kit is for, or null outside an
      *        install
      * @param accessUrl the url this request was sent to
+     * @param installId which existing installation this refreshes, or null
+     *        on first contact — the host can tell the two apart, and that
+     *        is the only thing this field is for
      * @param params what the operator asked this source for. Free-form
      *        and open-ended, unlike the fields above: those say who and
      *        where and are a closed set, this one says <i>what</i> and
@@ -127,6 +130,7 @@ public class OdeKitSourceLoader implements KitSourceLoader {
             String tenant,
             @Nullable String project,
             String accessUrl,
+            @Nullable String installId,
             Map<String, Object> params) {}
 
     @Override
@@ -161,6 +165,7 @@ public class OdeKitSourceLoader implements KitSourceLoader {
                 access.tenantId(),
                 access.projectId(),
                 accessUrl,
+                access.installId(),
                 access.params()),
                 config);
 

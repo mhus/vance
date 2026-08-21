@@ -72,7 +72,8 @@ public class KitService {
                 tenantId, request.getProjectId(), actor,
                 request.getSource() == null ? null : request.getSource().getUrl(),
                 request.getToken())
-                .withParams(request.getParams());
+                .withParams(request.getParams())
+                .withInstallId(previousInstallId(tenantId, request));
 
         KitResolver.ResolvedKit resolved = null;
         try {
@@ -136,6 +137,28 @@ public class KitService {
                     + " and cannot serve as this project's kit source. Install it without"
                     + " the authoring manifest.");
         }
+    }
+
+    /**
+     * Id of the record a fetch would refresh, or null when this kit has
+     * never been installed here.
+     *
+     * <p>Resolved centrally rather than per caller so every path — install,
+     * update, provisioning — tells a source the same thing. Only a
+     * <em>previous</em> installation can be named: a new record's id is
+     * derived from the kit name in the descriptor, which is what is about to
+     * be downloaded.
+     *
+     * <p>The installer looks the same record up again a moment later. Two
+     * scans of a short list beats threading a record through five
+     * signatures for a value only the fetch needs.
+     */
+    private @Nullable String previousInstallId(String tenantId, KitImportRequestDto request) {
+        KitInheritDto source = request.getSource();
+        if (source == null || request.getProjectId() == null) return null;
+        KitInstalledRecordDto previous = recordStore.findByOrigin(
+                tenantId, request.getProjectId(), source.getUrl(), source.getPath());
+        return previous == null ? null : previous.getId();
     }
 
     /** Convenience wrapper: forces {@link KitImportMode#INSTALL}. */

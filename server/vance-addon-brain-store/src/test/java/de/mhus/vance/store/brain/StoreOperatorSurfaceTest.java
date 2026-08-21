@@ -65,7 +65,7 @@ class StoreOperatorSurfaceTest {
         when(sources.configuredSources(TENANT)).thenReturn(List.of(
                 library("devstore"), library("other-store")));
         when(credentials.resolve(any(), any(), any(), any(), any()))
-                .thenReturn(new KitAccess(TENANT, null, TOKEN, "acc_1", java.util.Map.of()));
+                .thenReturn(new KitAccess(TENANT, null, TOKEN, "acc_1", java.util.Map.of(), null));
     }
 
     @Test
@@ -105,7 +105,7 @@ class StoreOperatorSurfaceTest {
     void surfaces_withoutASignIn_asksNobody() {
         // No link, no question to ask — and no error either.
         when(credentials.resolve(any(), any(), any(), any(), any()))
-                .thenReturn(new KitAccess(TENANT, null, null, null, java.util.Map.of()));
+                .thenReturn(new KitAccess(TENANT, null, null, null, java.util.Map.of(), null));
 
         StoreAddonController.Surfaces surfaces = controller.surfaces(TENANT, PROJECT, request);
         assertThat(surfaces.operatorSources()).isEmpty();

@@ -33,7 +33,7 @@ public class KitProvisioningLifecycleListener {
     @EventListener
     public void onStart(ProjectEnginesStartRequested event) {
         try {
-            provisioningService.provision(event.tenantId(), event.projectName());
+            provisioningService.provisionCoalesced(event.tenantId(), event.projectName());
         } catch (RuntimeException ex) {
             // The service already absorbs per-entry and per-kit failures, so
             // reaching this means something more basic went wrong. Still not

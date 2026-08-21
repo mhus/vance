@@ -159,6 +159,52 @@ class KitProvisioningServiceTest {
     }
 
     @Test
+    void provisionCoalesced_runsOnce() {
+        when(loader.load(TENANT, PROJECT)).thenReturn(List.of());
+
+        service.provisionCoalesced(TENANT, PROJECT);
+
+        verify(loader).load(TENANT, PROJECT);
+    }
+
+    @Test
+    void provisionCoalesced_requestDuringARun_causesExactlyOneRerun() {
+        // A request that arrives while a run is going must not be dropped: the
+        // running one may have read the document before the edit, and then the
+        // edit would only take effect at the next tick.
+        java.util.concurrent.atomic.AtomicInteger calls =
+                new java.util.concurrent.atomic.AtomicInteger();
+        when(loader.load(TENANT, PROJECT)).thenAnswer(i -> {
+            if (calls.incrementAndGet() == 1) {
+                service.provisionCoalesced(TENANT, PROJECT);
+            }
+            return List.of();
+        });
+
+        service.provisionCoalesced(TENANT, PROJECT);
+
+        assertThat(calls.get()).isEqualTo(2);
+    }
+
+    @Test
+    void provisionCoalesced_twoRequestsDuringARun_collapseIntoOneRerun() {
+        java.util.concurrent.atomic.AtomicInteger calls =
+                new java.util.concurrent.atomic.AtomicInteger();
+        when(loader.load(TENANT, PROJECT)).thenAnswer(i -> {
+            if (calls.incrementAndGet() == 1) {
+                // Both fold into the same pending rerun rather than queueing.
+                service.provisionCoalesced(TENANT, PROJECT);
+                service.provisionCoalesced(TENANT, PROJECT);
+            }
+            return List.of();
+        });
+
+        service.provisionCoalesced(TENANT, PROJECT);
+
+        assertThat(calls.get()).isEqualTo(2);
+    }
+
+    @Test
     void provision_neverUninstalls() {
         // Additive only: a line removed from the document leaves what it
         // installed in place. Uninstall is a verb somebody types on purpose.

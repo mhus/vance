@@ -8,6 +8,8 @@ import de.mhus.vance.brain.kit.KitRecordStore;
 import de.mhus.vance.brain.kit.KitService;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -49,6 +51,20 @@ public class KitProvisioningService {
     /** Recorded as the actor on documents this path writes. */
     public static final String ACTOR = "_provisioning";
 
+    /**
+     * Projects with a run in flight; the flag says whether another was
+     * asked for while it ran.
+     *
+     * <p>Two triggers can fire close together — an edit to the document
+     * lands while the project-start run is still installing — and kit
+     * install is not something to do twice at once in one project. Dropping
+     * the second request outright would be worse than it looks: the first
+     * run may have read the document <em>before</em> the edit, so the edit
+     * would silently take effect only at the next tick. Hence coalescing
+     * rather than a plain lock.
+     */
+    private final ConcurrentMap<String, Boolean> inFlight = new ConcurrentHashMap<>();
+
     private final KitProvisioningLoader loader;
     private final KitProvisioningHandlers handlers;
     private final KitRecordStore recordStore;
@@ -73,6 +89,34 @@ public class KitProvisioningService {
         boolean isEmpty() {
             return installed.isEmpty() && alreadyPresent.isEmpty()
                     && withheld.isEmpty() && failures.isEmpty();
+        }
+    }
+
+    /**
+     * Run, or fold into a run that is already going for this project.
+     *
+     * <p>What every trigger should call. Returns nothing, because the caller
+     * that gets folded in has no outcome to be given — and no trigger reads
+     * one anyway.
+     */
+    public void provisionCoalesced(String tenantId, String projectId) {
+        String key = tenantId + '/' + projectId;
+        if (inFlight.putIfAbsent(key, Boolean.FALSE) != null) {
+            inFlight.put(key, Boolean.TRUE);
+            log.debug("Provisioning of {} already running — folded in", key);
+            return;
+        }
+        try {
+            while (true) {
+                provision(tenantId, projectId);
+                // Re-read rather than remove-then-check: a request arriving
+                // between the two would otherwise be lost, which is the whole
+                // failure this method exists to avoid.
+                Boolean again = inFlight.replace(key, Boolean.FALSE);
+                if (!Boolean.TRUE.equals(again)) return;
+            }
+        } finally {
+            inFlight.remove(key);
         }
     }
 

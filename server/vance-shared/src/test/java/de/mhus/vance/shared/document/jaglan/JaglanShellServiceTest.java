@@ -58,7 +58,7 @@ class JaglanShellServiceTest {
 
     private static MountedSource source(MountAccess access) {
         return new MountedSource(
-                MOUNT, "Book Library", "ode", access, null, null, Duration.ofMinutes(5));
+                MOUNT, "Book Library", "ode", access, null, null, Duration.ofMinutes(5), true);
     }
 
     private static MountedStat stat() {

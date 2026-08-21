@@ -76,6 +76,7 @@ export * from './documents/DocumentTrashChunkResponse';
 export * from './documents/DocumentUnpackResponse';
 export * from './documents/DocumentUpdateRequest';
 export * from './documents/MountAccess';
+export * from './documents/MountSearchOutcome';
 export * from './documents/WriterRole';
 
 export * from './oauth/OAuthProviderAdminDto';

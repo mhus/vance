@@ -4,6 +4,7 @@ import java.io.InputStream;
 import java.util.List;
 import java.util.Optional;
 
+import de.mhus.vance.api.documents.MountSearchOutcome;
 import de.mhus.vance.api.mount.MountedSource;
 import de.mhus.vance.api.mount.MountedStat;
 
@@ -74,17 +75,32 @@ public interface JaglanPort {
      * <p>Delegated on purpose. Brain-side RAG does not apply to mounted
      * content — indexing a foreign library into our own vector store is not
      * something we want — but the library itself usually can search, and
-     * asking it beats walking its tree. A mount that declared it cannot search
-     * returns empty <b>without a remote call</b>; the caller checks the
-     * declaration first, so an empty list here never has to be read as "found
-     * nothing".
+     * asking it beats walking its tree.
+     *
+     * <p>A mount that declares it cannot search is <b>not asked</b>, and says
+     * so through {@link MountSearchResult#outcome()} rather than through an
+     * empty list — an empty list is what "found nothing" looks like, and the
+     * two must not be the same answer.
      *
      * @param limit already clamped by the caller
      */
-    default List<MountedStat> search(
+    default MountSearchResult search(
             String tenantId, String projectId, String mount, String query, int limit) {
-        return List.of();
+        return new MountSearchResult(List.of(), MountSearchOutcome.UNSUPPORTED);
     }
+
+    /**
+     * Hits plus why — the outcome cannot be inferred from an empty list.
+     *
+     * <p>It is decided <b>here</b>, in the dispatcher, because that is where
+     * the capabilities live. Unlike the folder listing, which reads them
+     * cache-only to stay off the network, a search is one explicit action
+     * against one named mount: the same trade-off {@code stat} and
+     * {@code list} already make, so the declaration is fetched if it is not
+     * cached. Deciding it from a cold cache instead produced the worst
+     * possible answer — "this source cannot search" about a source that can.
+     */
+    record MountSearchResult(List<MountedStat> hits, MountSearchOutcome outcome) {}
 
     /**
      * Open the content for reading. The caller closes the stream.

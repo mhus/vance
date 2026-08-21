@@ -45,4 +45,16 @@ public class DocumentFolderListResponse {
     private int pageSize;
 
     private long totalCount;
+
+    /**
+     * Only set when a search term was given inside a mounted folder
+     * ({@code _ext/<mount>/…}) — see {@link MountSearchOutcome}.
+     *
+     * <p>{@code DELEGATED} means the hits came from the external source and
+     * span the <b>whole mount</b>, not the folder being browsed, and that
+     * {@link #folders} is empty because a hit list is not a folder view.
+     * {@code UNSUPPORTED} and {@code UNAVAILABLE} mean the question was not
+     * answered at all — a client must not present those as "nothing found".
+     */
+    private MountSearchOutcome mountSearch;
 }

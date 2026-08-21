@@ -3,6 +3,7 @@
  Source: de.mhus.vance.api.documents.DocumentFolderListResponse
 */
 
+import { MountSearchOutcome } from './MountSearchOutcome';
 import { DocumentSummary } from './DocumentSummary';
 
 export interface DocumentFolderListResponse {
@@ -11,4 +12,5 @@ export interface DocumentFolderListResponse {
   page: number;
   pageSize: number;
   totalCount: number;
+  mountSearch: MountSearchOutcome;
 }

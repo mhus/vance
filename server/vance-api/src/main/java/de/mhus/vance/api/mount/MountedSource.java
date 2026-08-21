@@ -47,7 +47,19 @@ public record MountedSource(
         MountAccess access,
         @Nullable Long itemCount,
         @Nullable String statusText,
-        Duration metadataTtl) {
+        Duration metadataTtl,
+        /**
+         * Whether the source can answer a search over its own catalogue.
+         *
+         * <p>Travels with the mount list rather than being discovered by
+         * asking, because both callers need it <em>before</em> they act: a
+         * folder listing has to know whether a search term can be delegated
+         * or the result would be silently incomplete, and a client has to know
+         * whether to offer the search at all. {@code false} on a cold
+         * capabilities cache — the pessimistic reading, which costs a browse
+         * rather than a wrong answer.
+         */
+        boolean canSearch) {
 
     /** Applied when a caller builds a source without stating a TTL. */
     public static final Duration DEFAULT_TTL = Duration.ofMinutes(5);

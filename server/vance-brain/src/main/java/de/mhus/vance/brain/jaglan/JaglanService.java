@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 
 import de.mhus.vance.api.documents.MountAccess;
+import de.mhus.vance.api.documents.MountSearchOutcome;
 import de.mhus.vance.api.mount.MountedSource;
 import de.mhus.vance.api.mount.MountedStat;
 import de.mhus.vance.shared.document.jaglan.JaglanAccessException;
@@ -95,20 +96,28 @@ public class JaglanService implements JaglanPort {
     }
 
     @Override
-    public List<MountedStat> search(
+    public MountSearchResult search(
             String tenantId, String projectId, String mount, String query, int limit) {
         JaglanInstance instance = require(tenantId, projectId, mount);
+        // Warmed, not peeked. A search is one explicit action against one named
+        // mount, so it can afford the capabilities call that a folder listing
+        // cannot — and deciding this from a cold cache answered "this source
+        // cannot search" about a source that can.
         JaglanCapabilities caps = capabilities.warm(tenantId, projectId, instance);
-        if (caps == null || !caps.canSearch()) {
-            // Checked before asking so an empty result never has to be read as
-            // "found nothing" — and so a source that cannot search is not
-            // called at all.
-            return List.of();
+        if (caps == null) {
+            // Asked and could not find out: unreachable, not incapable.
+            metrics.counter("vance.jaglan.search", "outcome", "unavailable").increment();
+            return new MountSearchResult(List.of(), MountSearchOutcome.UNAVAILABLE);
+        }
+        if (!caps.canSearch()) {
+            // Not asked at all, and the caller must be able to tell.
+            metrics.counter("vance.jaglan.search", "outcome", "unsupported").increment();
+            return new MountSearchResult(List.of(), MountSearchOutcome.UNSUPPORTED);
         }
         try {
             List<MountedStat> hits = instance.search(query, limit);
             metrics.counter("vance.jaglan.search", "outcome", "success").increment();
-            return hits;
+            return new MountSearchResult(hits, MountSearchOutcome.DELEGATED);
         } catch (RuntimeException e) {
             metrics.counter("vance.jaglan.search", "outcome", "failed").increment();
             throw translate(mount, "search", e);
@@ -210,10 +219,11 @@ public class JaglanService implements JaglanPort {
             // now" are different facts, and only the first justifies absence
             // from the tree.
             return new MountedSource(instance.mount(), null, instance.protocolId(),
-                    MountAccess.UNKNOWN, null, "capabilities not loaded yet", null);
+                    MountAccess.UNKNOWN, null, "capabilities not loaded yet", null,
+                    /* canSearch */ false);
         }
         return new MountedSource(
                 instance.mount(), caps.displayName(), instance.protocolId(),
-                caps.access(), caps.itemCount(), null, caps.metadataTtl());
+                caps.access(), caps.itemCount(), null, caps.metadataTtl(), caps.canSearch());
     }
 }

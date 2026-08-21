@@ -3,7 +3,10 @@ package de.mhus.vance.toolpack.jaglan;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
+
 import de.mhus.vance.api.documents.MountAccess;
+import de.mhus.vance.api.mount.MountedSource;
 import de.mhus.vance.api.mount.MountedStat;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -82,24 +85,23 @@ class MountedStatTest {
         assertThat(dir.path()).isEqualTo("books");
     }
 
+    private static MountedSource source(
+            @Nullable String displayName, @Nullable Long itemCount,
+            @Nullable Duration ttl, boolean canSearch) {
+        return new MountedSource(
+                "library", displayName, "ode", MountAccess.RO, itemCount, null, ttl, canSearch);
+    }
+
     @Test
     void source_labelFallsBackToTheMountName() {
-        de.mhus.vance.api.mount.MountedSource unnamed = new de.mhus.vance.api.mount.MountedSource(
-                "library", null, "ode", MountAccess.RO, null, null, null);
-        de.mhus.vance.api.mount.MountedSource named = new de.mhus.vance.api.mount.MountedSource(
-                "library", "Book Library", "ode", MountAccess.RO, 42L, null, null);
-
-        assertThat(unnamed.label()).isEqualTo("library");
-        assertThat(named.label()).isEqualTo("Book Library");
-        assertThat(named.itemCount()).isEqualTo(42L);
+        assertThat(source(null, null, null, false).label()).isEqualTo("library");
+        assertThat(source("Book Library", 42L, null, false).label()).isEqualTo("Book Library");
+        assertThat(source("Book Library", 42L, null, false).itemCount()).isEqualTo(42L);
     }
 
     @Test
     void source_negativeItemCountBecomesUnknownNotZero() {
-        de.mhus.vance.api.mount.MountedSource source = new de.mhus.vance.api.mount.MountedSource(
-                "library", null, "ode", MountAccess.RO, -3L, null, null);
-
-        assertThat(source.itemCount()).isNull();
+        assertThat(source(null, -3L, null, false).itemCount()).isNull();
     }
 
     @Test
@@ -107,20 +109,24 @@ class MountedStatTest {
         // A zero TTL here would produce a shell row that expires the instant
         // it is written; JaglanCapabilities has already clamped a genuine
         // "do not cache" to its floor before it ever reaches this record.
-        assertThat(new de.mhus.vance.api.mount.MountedSource(
-                "library", null, "ode", MountAccess.RO, null, null, null).metadataTtl())
-                .isEqualTo(de.mhus.vance.api.mount.MountedSource.DEFAULT_TTL);
-        assertThat(new de.mhus.vance.api.mount.MountedSource(
-                "library", null, "ode", MountAccess.RO, null, null, java.time.Duration.ZERO)
-                .metadataTtl())
-                .isEqualTo(de.mhus.vance.api.mount.MountedSource.DEFAULT_TTL);
+        assertThat(source(null, null, null, false).metadataTtl())
+                .isEqualTo(MountedSource.DEFAULT_TTL);
+        assertThat(source(null, null, Duration.ZERO, false).metadataTtl())
+                .isEqualTo(MountedSource.DEFAULT_TTL);
     }
 
     @Test
     void source_statedTtlIsKept() {
-        assertThat(new de.mhus.vance.api.mount.MountedSource(
-                "library", null, "ode", MountAccess.RO, null, null,
-                java.time.Duration.ofMinutes(7)).metadataTtl())
-                .isEqualTo(java.time.Duration.ofMinutes(7));
+        assertThat(source(null, null, Duration.ofMinutes(7), false).metadataTtl())
+                .isEqualTo(Duration.ofMinutes(7));
+    }
+
+    @Test
+    void source_canSearchIsCarried() {
+        // Both callers need it before they act: a folder listing to know
+        // whether a search term can be delegated, a client to know whether to
+        // offer the search at all.
+        assertThat(source(null, null, null, true).canSearch()).isTrue();
+        assertThat(source(null, null, null, false).canSearch()).isFalse();
     }
 }

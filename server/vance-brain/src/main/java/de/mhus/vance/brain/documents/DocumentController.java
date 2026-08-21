@@ -139,6 +139,7 @@ public class DocumentController {
                 .page(listing.page())
                 .pageSize(listing.pageSize())
                 .totalCount(listing.totalFiles())
+                .mountSearch(listing.mountSearch())
                 .build();
     }
 

@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.document;
 
 import de.mhus.vance.api.common.AccentColor;
+import de.mhus.vance.api.documents.MountSearchOutcome;
 import de.mhus.vance.api.mount.MountedStat;
 import de.mhus.vance.shared.document.jaglan.JaglanAccessException;
 import de.mhus.vance.shared.document.jaglan.JaglanPaths;
@@ -629,6 +630,15 @@ public class DocumentService {
         String prefix = normalizeFolderPrefix(path);
         String needle = (search == null || search.isBlank()) ? null : search.trim();
 
+        // A search inside a mount cannot be answered from Mongo: the rows there
+        // are only what somebody happened to browse to, so the query that is
+        // complete everywhere else is systematically incomplete here — it used
+        // to answer "0 results" for a source holding tens of thousands of
+        // matches. Delegate, and say so in the result.
+        if (needle != null && JaglanPaths.isMounted(prefix) && shellService != null) {
+            return delegatedMountSearch(tenantId, projectId, prefix, needle, safePage, safeSize);
+        }
+
         // Browsing into a mount has to reach the source: the query below reads
         // Mongo, and a folder nobody has listed yet has no rows there. Without
         // this the namespace opens and then shows nothing — the one thing the
@@ -725,7 +735,49 @@ public class DocumentService {
         injectMountFolderNames(tenantId, projectId, prefix, needle, folders);
         folders.sort(Comparator.naturalOrder());
 
-        return new FolderListing(folders, files, safePage, safeSize, totalFiles);
+        return new FolderListing(folders, files, safePage, safeSize, totalFiles, null);
+    }
+
+    /**
+     * A search issued inside a mount, handed to the source.
+     *
+     * <p>The hits span the <b>whole mount</b>, not the folder that was being
+     * browsed: the contract cannot scope a search to a subtree, and narrowing
+     * afterwards would turn a useful answer into an empty one — a file seven
+     * levels down is what somebody searches for rather than browses to. The
+     * {@link MountSearchOutcome} on the result says which question was
+     * answered, so the caller can present it as mount-wide.
+     *
+     * <p>No folders are returned: a hit list is not a folder view, and mixing
+     * the subfolders of the browsed directory into mount-wide results would
+     * suggest the hits are from there.
+     *
+     * <p>Not paged — the contract has no cursor. The first page carries what
+     * the source returned; later pages are empty rather than pretending.
+     */
+    private FolderListing delegatedMountSearch(
+            String tenantId, String projectId, String prefix, String needle,
+            int page, int size) {
+
+        String folderPath = prefix.endsWith("/")
+                ? prefix.substring(0, prefix.length() - 1)
+                : prefix;
+        String mount;
+        try {
+            mount = JaglanPaths.mountNameOf(folderPath);
+        } catch (IllegalArgumentException e) {
+            // Searching in `_ext/` itself names no mount. Nothing to delegate
+            // to, and nothing there but the synthetic folders.
+            return new FolderListing(List.of(), List.of(), page, size, 0, null);
+        }
+        if (page > 0) {
+            return new FolderListing(List.of(), List.of(), page, size, 0,
+                    MountSearchOutcome.DELEGATED);
+        }
+        JaglanShellService.MountSearch result =
+                shellService.searchInMount(tenantId, projectId, mount, needle, size);
+        return new FolderListing(List.of(), result.hits(), page, size,
+                result.hits().size(), result.outcome());
     }
 
     /**
@@ -794,12 +846,20 @@ public class DocumentService {
     }
 
     /** Return shape for {@link #listByFolder}. */
+    /**
+     * @param mountSearch what happened to a search inside a mounted folder,
+     *                    {@code null} on an ordinary listing. Present so a
+     *                    caller can tell "the source found nothing" from "the
+     *                    source was never asked" — inside a mount those are
+     *                    the two common cases, and they used to look alike.
+     */
     public record FolderListing(
             List<String> folders,
             List<DocumentDocument> files,
             int page,
             int pageSize,
-            long totalFiles) {}
+            long totalFiles,
+            @Nullable MountSearchOutcome mountSearch) {}
 
     /**
      * Project-scoped image listing — every active document whose

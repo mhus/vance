@@ -50,7 +50,13 @@ class JaglanShellSearchTest {
 
     private static MountedSource source(String name) {
         return new MountedSource(
-                name, null, "ode", MountAccess.RO, null, null, Duration.ofMinutes(5));
+                name, null, "ode", MountAccess.RO, null, null, Duration.ofMinutes(5), true);
+    }
+
+    /** What the dispatcher now returns: hits plus the outcome. */
+    private static JaglanPort.MountSearchResult delegated(MountedStat... hits) {
+        return new JaglanPort.MountSearchResult(
+                List.of(hits), de.mhus.vance.api.documents.MountSearchOutcome.DELEGATED);
     }
 
     private static MountedStat hit(String path) {
@@ -80,7 +86,7 @@ class JaglanShellSearchTest {
         mounts("library");
         mongoReadsBack();
         when(port.search(TENANT, PROJECT, "library", "dune", 20))
-                .thenReturn(List.of(hit("books/dune.pdf")));
+                .thenReturn(delegated(hit("books/dune.pdf")));
 
         List<DocumentDocument> results = service.search(TENANT, PROJECT, null, "dune", 20);
 
@@ -96,7 +102,7 @@ class JaglanShellSearchTest {
         mounts("library");
         mongoReadsBack();
         when(port.search(anyString(), anyString(), anyString(), anyString(), anyInt()))
-                .thenReturn(List.of(hit("books/dune.pdf")));
+                .thenReturn(delegated(hit("books/dune.pdf")));
 
         service.search(TENANT, PROJECT, null, "dune", 20);
 
@@ -114,7 +120,7 @@ class JaglanShellSearchTest {
         mounts("library", "archive");
         mongoReadsBack();
         when(port.search(anyString(), anyString(), anyString(), anyString(), anyInt()))
-                .thenReturn(List.of());
+                .thenReturn(delegated());
 
         service.search(TENANT, PROJECT, null, "dune", 20);
 
@@ -127,7 +133,7 @@ class JaglanShellSearchTest {
         mounts("library", "archive");
         mongoReadsBack();
         when(port.search(anyString(), anyString(), anyString(), anyString(), anyInt()))
-                .thenReturn(List.of());
+                .thenReturn(delegated());
 
         service.search(TENANT, PROJECT, "archive", "dune", 20);
 
@@ -142,7 +148,7 @@ class JaglanShellSearchTest {
         when(port.search(anyString(), anyString(), eq("broken"), anyString(), anyInt()))
                 .thenThrow(new JaglanUnavailableException("broken", "connect timeout"));
         when(port.search(anyString(), anyString(), eq("library"), anyString(), anyInt()))
-                .thenReturn(List.of(hit("books/dune.pdf")));
+                .thenReturn(delegated(hit("books/dune.pdf")));
 
         List<DocumentDocument> results = service.search(TENANT, PROJECT, null, "dune", 20);
 
@@ -166,7 +172,7 @@ class JaglanShellSearchTest {
         mounts("a", "b");
         mongoReadsBack();
         when(port.search(anyString(), anyString(), anyString(), anyString(), anyInt()))
-                .thenReturn(List.of(hit("1.pdf"), hit("2.pdf")));
+                .thenReturn(delegated(hit("1.pdf"), hit("2.pdf")));
 
         assertThat(service.search(TENANT, PROJECT, null, "dune", 3)).hasSize(3);
     }

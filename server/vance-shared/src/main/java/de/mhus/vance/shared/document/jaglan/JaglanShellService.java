@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import de.mhus.vance.api.documents.MountAccess;
+import de.mhus.vance.api.documents.MountSearchOutcome;
 import de.mhus.vance.api.documents.WriterRole;
 import de.mhus.vance.api.mount.MountedSource;
 import de.mhus.vance.api.mount.MountedStat;
@@ -302,32 +303,63 @@ public class JaglanShellService {
      */
     public List<DocumentDocument> search(
             String tenantId, String projectId, @Nullable String mount, String query, int limit) {
-        JaglanPort port = portProvider.getIfAvailable();
-        if (port == null || query == null || query.isBlank()) return List.of();
-        Instant now = Instant.now();
         List<DocumentDocument> out = new ArrayList<>();
         for (MountedSource source : mounts(tenantId, projectId)) {
             if (mount != null && !mount.equals(source.name())) continue;
-            if (isInOutage(tenantId, projectId, source.name(), now)) continue;
-            List<MountedStat> hits;
-            try {
-                hits = port.search(tenantId, projectId, source.name(), query, limit);
-            } catch (RuntimeException e) {
-                // One failing mount must not fail the search — the others
-                // still have something to say.
-                rememberOutage(tenantId, projectId, source.name(), now, e);
-                continue;
-            }
-            Duration ttl = ttlFor(tenantId, projectId, source.name());
-            for (MountedStat hit : hits) {
-                if (out.size() >= limit) break;
-                out.add(decorate(
-                        upsertShell(tenantId, projectId, source.name(), hit, ttl, now),
-                        tenantId, projectId, source.name()));
-            }
+            if (out.size() >= limit) break;
+            out.addAll(searchInMount(
+                    tenantId, projectId, source.name(), query, limit - out.size()).hits());
         }
         return out;
     }
+
+    /**
+     * Ask one mount, and say what came of it.
+     *
+     * <p>The outcome is the point: a caller that only gets a list cannot tell
+     * an empty answer from an unasked question, and inside a mount those are
+     * the two common cases. See {@code MountSearchOutcome}.
+     */
+    public MountSearch searchInMount(
+            String tenantId, String projectId, String mount, String query, int limit) {
+        JaglanPort port = portProvider.getIfAvailable();
+        if (port == null) {
+            return new MountSearch(List.of(), MountSearchOutcome.UNAVAILABLE);
+        }
+        if (query == null || query.isBlank()) {
+            return new MountSearch(List.of(), MountSearchOutcome.UNSUPPORTED);
+        }
+        Instant now = Instant.now();
+        if (isInOutage(tenantId, projectId, mount, now)) {
+            return new MountSearch(List.of(), MountSearchOutcome.UNAVAILABLE);
+        }
+        // Whether the mount can search is the dispatcher's answer, not ours:
+        // it holds the capabilities and may fetch them. Reading the cache-only
+        // mount list here reported "cannot search" for a cold cache.
+        JaglanPort.MountSearchResult result;
+        try {
+            result = port.search(tenantId, projectId, mount, query, limit);
+        } catch (RuntimeException e) {
+            // One failing mount must not fail a multi-mount search, and must
+            // not look like an answer in a single-mount one.
+            rememberOutage(tenantId, projectId, mount, now, e);
+            return new MountSearch(List.of(), MountSearchOutcome.UNAVAILABLE);
+        }
+        if (result.outcome() != MountSearchOutcome.DELEGATED) {
+            return new MountSearch(List.of(), result.outcome());
+        }
+        Duration ttl = ttlFor(tenantId, projectId, mount);
+        List<DocumentDocument> rows = new ArrayList<>(result.hits().size());
+        for (MountedStat hit : result.hits()) {
+            if (rows.size() >= limit) break;
+            rows.add(decorate(upsertShell(tenantId, projectId, mount, hit, ttl, now),
+                    tenantId, projectId, mount));
+        }
+        return new MountSearch(rows, MountSearchOutcome.DELEGATED);
+    }
+
+    /** Hits plus what actually happened. */
+    public record MountSearch(List<DocumentDocument> hits, MountSearchOutcome outcome) {}
 
     /** {@code true} when this folder has been listed at least once. */
     public boolean isFolderKnown(

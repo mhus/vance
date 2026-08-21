@@ -807,6 +807,12 @@ async function submitKitDialog(): Promise<void> {
         prune: kitForm.prune,
         keepPasswords: kitForm.keepPasswords,
         writeManifest: kitForm.writeManifest,
+        // Empty by definition here: params carries what a provisioning entry
+        // asks its source for, and this dialog is the hand-typed install —
+        // there is no provisioning entry behind it. Server-side the field
+        // already defaults to an empty map; it is required in the generated
+        // type only because the generator cannot see @Builder.Default.
+        params: {},
       };
       // trackInstall=false ⇒ the user wants a one-off splat, which is
       // exactly what `apply` does server-side: no record, no diff, no

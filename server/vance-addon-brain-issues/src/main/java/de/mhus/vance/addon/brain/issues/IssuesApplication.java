@@ -39,6 +39,7 @@ public class IssuesApplication implements VanceApplication {
     private final IssuesRenderer renderer;
     private final DocumentService documentService;
     private final DocumentLinkBuilder linkBuilder;
+    private final IssuesService issuesService;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     public IssuesApplication(IssuesFolderReader folderReader,
@@ -46,12 +47,14 @@ public class IssuesApplication implements VanceApplication {
                              IssuesRenderer renderer,
                              DocumentService documentService,
                              DocumentLinkBuilder linkBuilder,
+                             IssuesService issuesService,
                              de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.folderReader = folderReader;
         this.statsBuilder = statsBuilder;
         this.renderer = renderer;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
+        this.issuesService = issuesService;
         this.contextFactory = contextFactory;
     }
 
@@ -119,6 +122,34 @@ public class IssuesApplication implements VanceApplication {
         return new CreateResult(APP_NAME, folder, stored.getPath(),
                 linkBuilder.linkFor(stored, ctx.projectName()),
                 List.of(), refresh.artefacts(), nextStep, stats);
+    }
+
+    /**
+     * A bug report starts as a link and a quote just as often as it starts as a
+     * sentence, so nothing is refused here.
+     */
+    @Override
+    public boolean acceptsShare(ShareIntake intake) {
+        return true;
+    }
+
+    /**
+     * Open a new issue in the backlog. No labels, no assignee, no priority —
+     * triage is the tracker's own step; a share only gets it into the list.
+     */
+    @Override
+    public ShareIntakeResult acceptShare(ShareIntakeContext ctx) {
+        String folder = IssuesFolderReader.normaliseFolder(ctx.folder());
+        String title = ctx.intake().title();
+        if (title == null || title.isBlank()) title = "Shared item";
+        issuesService.createIssue(ctx.tenantId(), ctx.projectName(), folder, title,
+                null, null, null, ctx.body(), ctx.userId());
+
+        IssuesFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), ctx.projectName(), folder);
+        String label = scan.config().title();
+        if (label == null || label.isBlank()) label = leafFolderName(folder);
+        // Always created: an issue gets its own number, nothing is merged.
+        return new ShareIntakeResult(true, label);
     }
 
     @Override

@@ -132,7 +132,100 @@ public interface VanceApplication {
         return Optional.empty();
     }
 
+    /**
+     * Can this app take something a person wants to hand over — a link, a
+     * quote, a document reference — as a new entry of its own?
+     *
+     * <p>This is the capability behind Milliways' {@code app} handler. "Send
+     * this to my todos" is not an app, it is a capability that Kanban, GTD and
+     * Issues share, so the declaration belongs to the app rather than to a
+     * handler per app type. The {@link ShareIntake} is passed in so an app can
+     * refuse what it cannot use — a link list has nothing to do with a subject
+     * that carries no URL.
+     *
+     * <p>Type-level, not instance-level: whether one particular folder is
+     * broken shows up when writing, not when offering the choice.
+     *
+     * <p>Default is {@code false} — apps opt in by overriding.
+     */
+    default boolean acceptsShare(ShareIntake intake) {
+        return false;
+    }
+
+    /**
+     * Take it. The app decides <em>where</em> — its own intake: the lead group
+     * of a link list, the {@code inbox/} of a GTD folder, the backlog of an
+     * issue tracker. A share is a hand-off, not an edit; refining happens in
+     * the app, which is also where the sorting lives.
+     *
+     * <p>Authorization has already happened: the caller enforced
+     * {@code Project WRITE} on the target project. The app writes through its
+     * own service layer, as it does for every other write.
+     *
+     * @return {@link ShareIntakeResult#created} {@code false} when the thing
+     *         was already there — that is a normal outcome, not a failure
+     * @throws UnsupportedOperationException by default; only called for apps
+     *         whose {@link #acceptsShare} said yes
+     */
+    default ShareIntakeResult acceptShare(ShareIntakeContext ctx) {
+        throw new UnsupportedOperationException(appName() + " does not accept shares");
+    }
+
     // ── Records ───────────────────────────────────────────────────
+
+    /**
+     * What a share offers an app: a label, a URL, a quote, and whether a
+     * document is behind it.
+     *
+     * <p>Deliberately <em>not</em> Milliways' own subject type. The app SPI
+     * must not hang off the sharing subsystem — an app has to stay thinkable
+     * without it — so the handler maps and the app stays unaware.
+     */
+    record ShareIntake(
+            @Nullable String title,
+            @Nullable String link,
+            @Nullable String snippet,
+            boolean hasDocument) {
+    }
+
+    /** Plumbing for {@link #acceptShare} — where it lands and who asked. */
+    record ShareIntakeContext(
+            String tenantId,
+            String projectName,
+            /** Folder of the target app instance, without the manifest name. */
+            String folder,
+            ShareIntake intake,
+            /** The sharer's own remark, or {@code null}. */
+            @Nullable String note,
+            @Nullable String userId) {
+
+        /**
+         * The parts that do not fit into a title, as markdown: the sharer's
+         * remark, the link, the snippet — in that order, whichever are there.
+         *
+         * <p>Here rather than in each app so three apps do not invent three
+         * shapes for the same hand-off. The remark leads because it is the one
+         * sentence a person wrote; the snippet is quoted because it describes
+         * the page and is not the sharer speaking.
+         */
+        public String body() {
+            StringBuilder out = new StringBuilder();
+            if (note != null && !note.isBlank()) out.append(note.trim()).append("\n\n");
+            if (intake.link() != null) out.append(intake.link()).append("\n\n");
+            String snippet = intake.snippet();
+            if (snippet != null && !snippet.isBlank()) {
+                out.append("> ").append(snippet.trim().replace("\n", "\n> ")).append('\n');
+            }
+            return out.toString().stripTrailing();
+        }
+    }
+
+    /**
+     * @param created {@code false} when the entry was already there
+     * @param label   what to call the app in the message the user reads
+     */
+    record ShareIntakeResult(boolean created, String label) {
+    }
 
     /**
      * Plumbing for {@link #refresh} — what tenant, what project,

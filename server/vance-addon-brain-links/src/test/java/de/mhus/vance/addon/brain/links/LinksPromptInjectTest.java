@@ -36,7 +36,8 @@ class LinksPromptInjectTest {
     @BeforeEach
     void setUp() {
         store = mock(LinksStore.class);
-        application = new LinksApplication(store, mock(DocumentLinkBuilder.class));
+        application = new LinksApplication(store, mock(DocumentLinkBuilder.class),
+                mock(LinksManifestOps.class));
     }
 
     @Test

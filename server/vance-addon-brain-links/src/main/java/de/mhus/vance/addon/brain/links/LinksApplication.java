@@ -39,10 +39,13 @@ public class LinksApplication implements VanceApplication {
 
     private final LinksStore store;
     private final DocumentLinkBuilder linkBuilder;
+    private final LinksManifestOps manifestOps;
 
-    public LinksApplication(LinksStore store, DocumentLinkBuilder linkBuilder) {
+    public LinksApplication(LinksStore store, DocumentLinkBuilder linkBuilder,
+                            LinksManifestOps manifestOps) {
         this.store = store;
         this.linkBuilder = linkBuilder;
+        this.manifestOps = manifestOps;
     }
 
     @Override
@@ -145,6 +148,44 @@ public class LinksApplication implements VanceApplication {
         int count = config.entries().size();
         String headline = count == 1 ? "1 link" : count + " links";
         return Optional.of(new AppStatus(headline, StatusSeverity.OK, metrics, items, null));
+    }
+
+    /** Only a link is worth a card — a document reference is what the Binder is for. */
+    @Override
+    public boolean acceptsShare(ShareIntake intake) {
+        return intake.link() != null;
+    }
+
+    /**
+     * Add the shared URL as an entry, at the end of the lead ("ungrouped")
+     * section — the one the app renders first, so the newcomer is visible
+     * without opening anything.
+     *
+     * <p>{@code teaser} and {@code image} stay empty on purpose: an empty
+     * teaser means "whatever the page says today", resolved live from the
+     * link-preview proxy, and a copy of that in the manifest would go stale
+     * where nobody refreshes it. The shared snippet describes the page and is
+     * therefore exactly what must <em>not</em> be stored there; the sharer's
+     * own remark goes into {@code note}.
+     */
+    @Override
+    public ShareIntakeResult acceptShare(ShareIntakeContext ctx) {
+        String url = ctx.intake().link();
+        if (url == null) throw new ToolException("Nothing to add: this share has no link");
+        String folder = LinksStore.normaliseFolder(ctx.folder());
+        // Read before writing, so the message can name the app the way the
+        // chooser did — the manifest title, not the folder. A user who picks
+        // "Links" and reads "Already in links1" has to work out that those are
+        // the same thing.
+        LinksStore.Loaded loaded = store.load(ctx.tenantId(), ctx.projectName(), folder);
+        boolean added = manifestOps.addEntry(ctx.tenantId(), ctx.projectName(), folder, url,
+                new LinksManifestOps.LinkFields(ctx.intake().title(), null, null, null, null,
+                        ctx.note()),
+                ctx.userId());
+
+        String label = loaded.manifestDoc().title();
+        if (label == null || label.isBlank()) label = leafFolderName(folder);
+        return new ShareIntakeResult(added, label);
     }
 
     @Override

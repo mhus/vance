@@ -139,6 +139,36 @@ public class GtdApplication implements VanceApplication {
                 List.of(), refresh.artefacts(), nextStep, stats);
     }
 
+    /**
+     * Anything can become a next action — a link, a quote, a document. GTD's
+     * inbox exists precisely for things that arrive without a shape yet.
+     */
+    @Override
+    public boolean acceptsShare(ShareIntake intake) {
+        return true;
+    }
+
+    /**
+     * Capture into {@code inbox/} — the fast unprocessed path, which is what a
+     * hand-off is. Deciding whether this is a next action, a project or
+     * reference material is the app's own processing step, not the sharer's.
+     */
+    @Override
+    public ShareIntakeResult acceptShare(ShareIntakeContext ctx) {
+        String folder = GtdFolderReader.normaliseFolder(ctx.folder());
+        GtdFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), ctx.projectName(), folder);
+        String title = ctx.intake().title();
+        if (title == null || title.isBlank()) title = "Shared item";
+        gtdService.capture(ctx.tenantId(), ctx.projectName(), folder, scan.config(),
+                title, ctx.body(), ctx.userId());
+
+        String label = scan.config().title();
+        if (label == null || label.isBlank()) label = leafFolderName(folder);
+        // Always created: capture makes the path unique rather than merging, so
+        // there is no "already there" for an inbox.
+        return new ShareIntakeResult(true, label);
+    }
+
     @Override
     public RefreshResult refresh(RefreshContext ctx) {
         String folder = GtdFolderReader.normaliseFolder(ctx.folder());

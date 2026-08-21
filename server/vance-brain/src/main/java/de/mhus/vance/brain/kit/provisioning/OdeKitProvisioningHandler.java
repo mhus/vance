@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.kit.provisioning;
 
+import de.mhus.vance.api.kit.KitSourceType;
+import de.mhus.vance.brain.kit.KitSourceRegistry;
 import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.net.SafeLink;
 import java.io.IOException;
@@ -52,6 +54,7 @@ public class OdeKitProvisioningHandler implements KitProvisioningHandler {
     static final Duration TIMEOUT = Duration.ofSeconds(20);
 
     private final ObjectMapper objectMapper;
+    private final KitSourceRegistry sources;
 
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -72,6 +75,8 @@ public class OdeKitProvisioningHandler implements KitProvisioningHandler {
             throw new KitException("provisioning entry " + entry
                     + " has a url that is not usable as an endpoint: " + e.getMessage(), e);
         }
+        requireOdeSource(context.tenantId(), entry, base);
+
         URI uri = URI.create(base + CAPABILITIES_PATH);
 
         HttpRequest.Builder request = HttpRequest.newBuilder(uri)
@@ -87,12 +92,13 @@ public class OdeKitProvisioningHandler implements KitProvisioningHandler {
             response = http.send(request.build(), HttpResponse.BodyHandlers.ofString());
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            throw new KitException("ode host at " + base + " is not reachable: "
-                    + e.getMessage(), e);
+            // toString, not getMessage: several IOException types carry no
+            // message, and "is not reachable: null" is the one thing this catch
+            // block exists to avoid saying.
+            throw new KitException("ode host at " + base + " is not reachable: " + e, e);
         }
         if (response.statusCode() != 200) {
-            throw new KitException("ode host at " + base + " answered HTTP "
-                    + response.statusCode() + " when asked what it offers");
+            throw new KitException(describeFailure(response.statusCode(), base));
         }
 
         JsonNode root;
@@ -139,9 +145,65 @@ public class OdeKitProvisioningHandler implements KitProvisioningHandler {
         return desired;
     }
 
+    /**
+     * Name the likely cause, not just the number.
+     *
+     * <p>A 404 here almost always means the far end has the module on its
+     * classpath but publishes no kit source — the endpoint is conditional on
+     * that bean, so it simply does not exist. „HTTP 404" alone sends whoever
+     * reads it looking for a wrong url instead.
+     */
+    private static String describeFailure(int status, String base) {
+        return switch (status) {
+            case 401, 403 -> "ode host at " + base + " rejected the credential when asked"
+                    + " what it offers — check the token in the provisioning entry against"
+                    + " the host's api key";
+            case 404 -> "ode host at " + base + " serves no kit endpoint (HTTP 404 on "
+                    + CAPABILITIES_PATH + ") — the host answers, so this is usually a kit"
+                    + " endpoint that is switched off or publishes no kit source, not a"
+                    + " wrong url";
+            default -> "ode host at " + base + " answered HTTP " + status
+                    + " when asked what it offers";
+        };
+    }
+
     private static @org.jspecify.annotations.Nullable String text(JsonNode node, String field) {
         JsonNode value = node.get(field);
         return value == null || value.isNull() ? null : value.asString();
+    }
+
+    /**
+     * Refuse early when the url this mechanism provisions from is not
+     * configured as an {@code ODE} kit source.
+     *
+     * <p>Without this the run gets further than it should: asking the host
+     * works — that is this handler's own http call — and then the <em>fetch</em>
+     * resolves the same url through {@code kit-sources.yaml}, finds nothing,
+     * guesses {@code GIT} and hands an http endpoint to JGit. What the operator
+     * sees is a clone stacktrace, which says nothing about the missing line.
+     *
+     * <p>This is the one place that knows both axes: it produces kit references
+     * that somebody else has to fetch. The check is deliberately narrow — only
+     * that <em>this</em> mechanism needs {@code ODE} sources. A future
+     * mechanism that lists kits out of a git repo would legitimately produce
+     * {@code GIT} ones.
+     */
+    private void requireOdeSource(String tenantId, KitProvisioningEntry entry, String base) {
+        KitSourceType type;
+        try {
+            type = sources.resolve(tenantId, base).getType();
+        } catch (RuntimeException e) {
+            // Resolution is somebody else's logic; failing the whole entry over
+            // a diagnostic lookup would be the wrong trade.
+            log.debug("Could not resolve a kit source for {}: {}", base, e.toString());
+            return;
+        }
+        if (type != KitSourceType.ODE) {
+            throw new KitException("provisioning entry " + entry + " would fetch from a source"
+                    + " of type " + type + " — add it to _vance/config/kit-sources.yaml in the"
+                    + " _tenant project with 'type: ode' and this exact url, otherwise the"
+                    + " fetch treats " + base + " as a git repository");
+        }
     }
 
     private static String trimTrailingSlash(String url) {

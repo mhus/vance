@@ -188,8 +188,10 @@ public class OdeKitSourceLoader implements KitSourceLoader {
             response = http.send(request.build(), HttpResponse.BodyHandlers.ofInputStream());
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            throw new KitException("ode host '" + config.getId() + "' is not reachable: "
-                    + e.getMessage(), e);
+            // toString, not getMessage: several IOException types carry no
+            // message, and "is not reachable: null" is the one thing this catch
+            // block exists to avoid saying.
+            throw new KitException("ode host '" + config.getId() + "' is not reachable: " + e, e);
         }
 
         if (response.statusCode() != 200) {

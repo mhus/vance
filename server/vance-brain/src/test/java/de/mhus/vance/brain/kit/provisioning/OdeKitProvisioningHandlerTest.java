@@ -5,7 +5,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import de.mhus.vance.api.kit.KitProvisioningAuthority;
+import de.mhus.vance.api.kit.KitSourceDto;
+import de.mhus.vance.api.kit.KitSourceType;
+import de.mhus.vance.brain.kit.KitSourceRegistry;
 import de.mhus.vance.shared.kit.KitException;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -31,6 +38,7 @@ class OdeKitProvisioningHandlerTest {
 
     private HttpServer server;
     private OdeKitProvisioningHandler handler;
+    private KitSourceRegistry sources;
 
     private final List<String> authHeaders = new ArrayList<>();
     /** Query strings the stub saw, so it can be asserted that none carried params. */
@@ -45,7 +53,10 @@ class OdeKitProvisioningHandlerTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext(OdeKitProvisioningHandler.CAPABILITIES_PATH, this::handle);
         server.start();
-        handler = new OdeKitProvisioningHandler(new ObjectMapper());
+        sources = mock(KitSourceRegistry.class);
+        when(sources.resolve(any(), any())).thenReturn(
+                KitSourceDto.builder().id("acme").type(KitSourceType.ODE).build());
+        handler = new OdeKitProvisioningHandler(new ObjectMapper(), sources);
     }
 
     @AfterEach
@@ -164,6 +175,49 @@ class OdeKitProvisioningHandlerTest {
         assertThatThrownBy(() -> handler.discover(context(KitProvisioningAuthority.NOTIFY, null)))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("answered HTTP 503");
+    }
+
+    @Test
+    void discover_sourceNotConfiguredAsOde_saysWhichLineIsMissing() {
+        // Without this the run gets further than it should: asking the host works,
+        // and then the fetch resolves the same url, guesses GIT and hands an http
+        // endpoint to JGit. What the operator saw was a clone stacktrace.
+        when(sources.resolve(any(), any())).thenReturn(
+                KitSourceDto.builder().id("guessed").type(KitSourceType.GIT).build());
+
+        assertThatThrownBy(() -> handler.discover(context(KitProvisioningAuthority.NOTIFY, null)))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("type: ode")
+                .hasMessageContaining("kit-sources.yaml");
+        assertThat(authHeaders).isEmpty();
+    }
+
+    @Test
+    void discover_unresolvableSource_doesNotBlockTheRun() {
+        // Resolution is somebody else's logic; failing the entry over a
+        // diagnostic lookup would be the wrong trade.
+        when(sources.resolve(any(), any())).thenThrow(new IllegalStateException("nope"));
+
+        assertThat(handler.discover(context(KitProvisioningAuthority.NOTIFY, null))).hasSize(1);
+    }
+
+    @Test
+    void discover_notFound_namesTheLikelyCause() {
+        status.set(404);
+
+        assertThatThrownBy(() -> handler.discover(context(KitProvisioningAuthority.NOTIFY, null)))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("serves no kit endpoint")
+                .hasMessageContaining("switched off");
+    }
+
+    @Test
+    void discover_rejectedCredential_pointsAtTheToken() {
+        status.set(403);
+
+        assertThatThrownBy(() -> handler.discover(context(KitProvisioningAuthority.NOTIFY, null)))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("rejected the credential");
     }
 
     @Test

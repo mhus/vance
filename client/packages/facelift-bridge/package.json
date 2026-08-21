@@ -29,7 +29,7 @@
     "@capacitor/status-bar": "^6.0.2",
     "@capawesome/capacitor-file-picker": "^6.2.0",
     "@vance/facelift-account-webview": "workspace:*",
-    "pinia": "^4.0.2",
+    "pinia": "^4.0.3",
     "vue": "^3.5.41",
     "vue-router": "^5.2.0"
   },
@@ -41,7 +41,7 @@
     "sharp": "^0.35.3",
     "tailwindcss": "^4.3.3",
     "vite": "^8.2.1",
-    "vue-tsc": "^3.3.9",
+    "vue-tsc": "^3.3.10",
     "@tailwindcss/postcss": "^4.3.3"
   }
 }

@@ -3,6 +3,7 @@ package de.mhus.vance.brain.kit;
 import de.mhus.vance.api.kit.KitPolicyAction;
 import de.mhus.vance.api.kit.KitPolicyDto;
 import de.mhus.vance.api.kit.KitPolicyRuleDto;
+import de.mhus.vance.api.kit.KitSourceType;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -37,18 +38,35 @@ public final class KitPolicy {
         MERGE
     }
 
-    private final KitPolicyAction defaultAction;
+    /**
+     * Two defaults, because documents and settings are different kinds of
+     * thing. A document in a kit is <em>delivered material</em> — the author
+     * ships a newer one and means it. A setting is a <em>configured value</em>,
+     * and the person who configured it is usually right about their own
+     * installation.
+     *
+     * <p>They are only ever different when nobody wrote a policy: an explicit
+     * {@code default:} from the user or the kit author applies to both, because
+     * somebody who writes one has thought about this kit.
+     */
+    private final KitPolicyAction documentDefault;
+    private final KitPolicyAction settingDefault;
     private final List<KitPolicyRuleDto> rules;
 
-    private KitPolicy(KitPolicyAction defaultAction, List<KitPolicyRuleDto> rules) {
-        this.defaultAction = defaultAction;
+    private KitPolicy(
+            KitPolicyAction documentDefault,
+            KitPolicyAction settingDefault,
+            List<KitPolicyRuleDto> rules) {
+        this.documentDefault = documentDefault;
+        this.settingDefault = settingDefault;
         this.rules = rules;
     }
 
     public static KitPolicy of(@Nullable KitPolicyDto dto) {
-        if (dto == null) return new KitPolicy(KitPolicyAction.KEEP, List.of());
-        return new KitPolicy(
-                dto.getDefaultAction() == null ? KitPolicyAction.KEEP : dto.getDefaultAction(),
+        if (dto == null) return defaults();
+        KitPolicyAction written =
+                dto.getDefaultAction() == null ? KitPolicyAction.KEEP : dto.getDefaultAction();
+        return new KitPolicy(written, written,
                 dto.getRules() == null ? List.of() : List.copyOf(dto.getRules()));
     }
 
@@ -63,12 +81,48 @@ public final class KitPolicy {
      */
     public static KitPolicy of(
             @Nullable KitPolicyDto userConfigured, @Nullable KitPolicyDto kitSuggested) {
-        return of(userConfigured != null ? userConfigured : kitSuggested);
+        return of(userConfigured, kitSuggested, null);
+    }
+
+    /**
+     * Same cascade, with the fetch mechanism as the floor: user config, else
+     * the kit author's suggestion, else what that kind of source implies
+     * ({@link #defaultsFor}).
+     */
+    public static KitPolicy of(
+            @Nullable KitPolicyDto userConfigured,
+            @Nullable KitPolicyDto kitSuggested,
+            @Nullable KitSourceType sourceType) {
+        KitPolicyDto written = userConfigured != null ? userConfigured : kitSuggested;
+        return written != null ? of(written) : defaultsFor(sourceType);
     }
 
     /** The policy in force when a kit has no config document — the common case. */
     public static KitPolicy defaults() {
-        return new KitPolicy(KitPolicyAction.KEEP, List.of());
+        return new KitPolicy(KitPolicyAction.KEEP, KitPolicyAction.KEEP, List.of());
+    }
+
+    /**
+     * What applies when nobody wrote a policy, given how the kit was fetched.
+     *
+     * <p>{@code ODE} sources get {@code overwrite} for <b>documents</b>: the
+     * host assembles the bundle and publishing a new revision is how it says
+     * something changed. Leaving those at {@code keep} would mean fetching a
+     * change and then discarding it — the mechanism would look like it works
+     * and quietly do nothing.
+     *
+     * <p>Their <b>settings</b> stay {@code keep}, and that is not timidity. A
+     * setting is what somebody configured for their installation; the first
+     * live run of this feature skipped
+     * {@code centauri.endpoint.<id>.baseUrl} for exactly that reason and was
+     * right to. Credentials are protected one step further still — see
+     * {@code KitInstaller}, which never replaces an existing one whatever the
+     * policy says.
+     */
+    public static KitPolicy defaultsFor(@Nullable KitSourceType type) {
+        return type == KitSourceType.ODE
+                ? new KitPolicy(KitPolicyAction.OVERWRITE, KitPolicyAction.KEEP, List.of())
+                : defaults();
     }
 
     /**
@@ -76,7 +130,7 @@ public final class KitPolicy {
      * reads top-down from general to specific.
      */
     public KitPolicyAction forDocument(String path) {
-        KitPolicyAction action = defaultAction;
+        KitPolicyAction action = documentDefault;
         for (KitPolicyRuleDto rule : rules) {
             if (rule.getDocument() == null) continue;
             if (KitGlob.matchesPath(rule.getDocument(), path)) action = rule.getAction();
@@ -86,7 +140,7 @@ public final class KitPolicy {
 
     /** Action for a project setting key. Last matching rule wins. */
     public KitPolicyAction forSetting(String key) {
-        KitPolicyAction action = defaultAction;
+        KitPolicyAction action = settingDefault;
         for (KitPolicyRuleDto rule : rules) {
             if (rule.getSetting() == null) continue;
             if (KitGlob.matchesKey(rule.getSetting(), key)) action = rule.getAction();

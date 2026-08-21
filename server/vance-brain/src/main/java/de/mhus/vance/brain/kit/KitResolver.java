@@ -3,6 +3,7 @@ package de.mhus.vance.brain.kit;
 import de.mhus.vance.api.kit.KitDescriptorDto;
 import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.KitSignatureStatus;
+import de.mhus.vance.api.kit.KitSourceType;
 import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.kit.KitTree;
 import java.io.IOException;
@@ -75,7 +76,14 @@ public class KitResolver {
             List<Path> temporaryPaths,
             List<String> warnings,
             KitSignatureStatus topLayerSignature,
-            String topLayerSourceId) {
+            String topLayerSourceId,
+            /**
+             * How the top layer was fetched. Decides the policy default when
+             * neither the user nor the kit author wrote one — a bundle that a
+             * host assembles per request has different expectations than a
+             * checkout somebody edits.
+             */
+            KitSourceType topLayerSourceType) {
 
         public void cleanup(KitWorkspace ws) {
             for (Path p : temporaryPaths) ws.remove(p);
@@ -141,7 +149,8 @@ public class KitResolver {
                 tmp,
                 warnings,
                 topResult.signature(),
-                topResult.config().getId());
+                topResult.config().getId(),
+                topResult.config().getType());
     }
 
     // ──────────────────── ownership ────────────────────

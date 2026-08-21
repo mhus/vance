@@ -140,8 +140,8 @@ public class KitInstaller {
         // long as the user has not overridden it.
         KitPolicy policy = tracked
                 ? KitPolicy.of(recordStore.loadConfig(tenantId, projectId, recordId)
-                        .getPolicy(), top.getPolicy())
-                : KitPolicy.defaults();
+                        .getPolicy(), top.getPolicy(), resolved.topLayerSourceType())
+                : KitPolicy.defaultsFor(resolved.topLayerSourceType());
 
         BuildTreeScan scan = scanBuildTree(resolved.buildRoot());
         Ownership ownership = Ownership.from(resolved, top.getName());

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import de.mhus.vance.api.kit.KitPolicyAction;
 import de.mhus.vance.api.kit.KitPolicyDto;
+import de.mhus.vance.api.kit.KitSourceType;
 import de.mhus.vance.api.kit.KitPolicyRuleDto;
 import de.mhus.vance.shared.kit.KitHash;
 import java.util.List;
@@ -263,5 +264,57 @@ class KitPolicyTest {
 
     private static KitPolicyRuleDto settingRule(String glob, KitPolicyAction action) {
         return KitPolicyRuleDto.builder().setting(glob).action(action).build();
+    }
+
+    // ──────────────────── defaults by fetch mechanism ────────────────────
+
+    @Test
+    void odeSource_overwritesDocuments() {
+        // The host assembles the bundle; publishing a new revision is how it
+        // says something changed. keep would fetch the change and discard it.
+        assertThat(KitPolicy.defaultsFor(KitSourceType.ODE).forDocument("recipes/x.yaml"))
+                .isEqualTo(KitPolicyAction.OVERWRITE);
+    }
+
+    @Test
+    void odeSource_keepsSettings() {
+        // A setting is what somebody configured for their installation. The
+        // first live run skipped centauri.endpoint.<id>.baseUrl for exactly
+        // this reason and was right to.
+        assertThat(KitPolicy.defaultsFor(KitSourceType.ODE).forSetting("centauri.x.baseUrl"))
+                .isEqualTo(KitPolicyAction.KEEP);
+    }
+
+    @Test
+    void gitSource_keepsBoth() {
+        KitPolicy policy = KitPolicy.defaultsFor(KitSourceType.GIT);
+        assertThat(policy.forDocument("recipes/x.yaml")).isEqualTo(KitPolicyAction.KEEP);
+        assertThat(policy.forSetting("a.b")).isEqualTo(KitPolicyAction.KEEP);
+    }
+
+    @Test
+    void unknownSource_keepsBoth() {
+        KitPolicy policy = KitPolicy.defaultsFor(null);
+        assertThat(policy.forDocument("recipes/x.yaml")).isEqualTo(KitPolicyAction.KEEP);
+        assertThat(policy.forSetting("a.b")).isEqualTo(KitPolicyAction.KEEP);
+    }
+
+    @Test
+    void writtenPolicy_appliesToBothClasses() {
+        // Somebody who writes a default: has thought about this kit — the
+        // split exists only for the case where nobody did.
+        KitPolicy policy = KitPolicy.of(
+                KitPolicyDto.builder().defaultAction(KitPolicyAction.OVERWRITE).build(),
+                null, KitSourceType.ODE);
+        assertThat(policy.forDocument("x.md")).isEqualTo(KitPolicyAction.OVERWRITE);
+        assertThat(policy.forSetting("a.b")).isEqualTo(KitPolicyAction.OVERWRITE);
+    }
+
+    @Test
+    void writtenKeep_beatsTheOdeDocumentDefault() {
+        KitPolicy policy = KitPolicy.of(
+                KitPolicyDto.builder().defaultAction(KitPolicyAction.KEEP).build(),
+                null, KitSourceType.ODE);
+        assertThat(policy.forDocument("x.md")).isEqualTo(KitPolicyAction.KEEP);
     }
 }

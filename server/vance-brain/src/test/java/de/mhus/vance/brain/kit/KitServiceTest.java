@@ -345,7 +345,8 @@ class KitServiceTest {
                 new ArrayList<>(),
                 new ArrayList<>(),
                 de.mhus.vance.api.kit.KitSignatureStatus.UNSIGNED,
-                "test-source");
+                "test-source",
+                de.mhus.vance.api.kit.KitSourceType.GIT);
         when(resolver.resolve(any(), any())).thenReturn(resolved);
     }
 }

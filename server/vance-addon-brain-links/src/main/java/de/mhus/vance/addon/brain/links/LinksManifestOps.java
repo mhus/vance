@@ -56,6 +56,17 @@ public class LinksManifestOps {
     }
 
     /**
+     * Where a new entry lands <em>within its group</em>.
+     *
+     * <p>Group-relative on purpose: the app renders the ungrouped entries
+     * first and then the groups in the order {@code config.groups} declares
+     * them, keeping each section's entry order. Where a group's block sits in
+     * the flat entry list therefore does not show anywhere — only the position
+     * inside the group does.
+     */
+    public enum Position { TOP, BOTTOM }
+
+    /**
      * Add a link. Idempotent on the URL: adding one that is already in the
      * list changes nothing (and says so in the log) rather than producing a
      * second card for the same page.
@@ -68,6 +79,18 @@ public class LinksManifestOps {
      */
     public boolean addEntry(String tenantId, String projectId, String folder,
                             String url, LinkFields fields, @Nullable String userId) {
+        return addEntry(tenantId, projectId, folder, url, fields, Position.BOTTOM, userId);
+    }
+
+    /**
+     * Same, with a say in where the entry lands inside its group. See
+     * {@link Position}; {@link #addEntry(String, String, String, String,
+     * LinkFields, String)} is this with {@link Position#BOTTOM}, which is what
+     * adding has always done.
+     */
+    public boolean addEntry(String tenantId, String projectId, String folder,
+                            String url, LinkFields fields, Position position,
+                            @Nullable String userId) {
         LinksStore.Loaded loaded = store.load(tenantId, projectId, folder);
         String id = LinkUrls.identity(url);
         if (find(loaded.config().entries(), id) != null) {
@@ -85,10 +108,10 @@ public class LinksManifestOps {
                 fields.tags() == null ? List.of() : cleanTags(fields.tags()),
                 blankToNull(fields.note()), Instant.now());
 
-        List<LinkEntry> entries = insertGrouped(loaded.config().entries(), entry);
+        List<LinkEntry> entries = insertGrouped(loaded.config().entries(), entry, position);
         store.saveConfig(loaded, withEntries(loaded.config(), entries, group), userId);
-        log.info("LinksManifestOps.addEntry tenant='{}' folder='{}' url='{}' group='{}'",
-                tenantId, folder, id, group == null ? "" : group);
+        log.info("LinksManifestOps.addEntry tenant='{}' folder='{}' url='{}' group='{}' at={}",
+                tenantId, folder, id, group == null ? "" : group, position);
         return true;
     }
 
@@ -144,7 +167,7 @@ public class LinksManifestOps {
                 entries.add(e);
             }
         }
-        if (groupChanged) entries = insertGrouped(entries, next);
+        if (groupChanged) entries = insertGrouped(entries, next, Position.BOTTOM);
 
         store.saveConfig(loaded, withEntries(loaded.config(), entries, next.group()), userId);
         log.info("LinksManifestOps.updateEntry tenant='{}' folder='{}' url='{}'",
@@ -265,8 +288,21 @@ public class LinksManifestOps {
     }
 
     /** Put the entry after the last one sharing its group, else at the end. */
-    private static List<LinkEntry> insertGrouped(List<LinkEntry> entries, LinkEntry entry) {
+    private static List<LinkEntry> insertGrouped(
+            List<LinkEntry> entries, LinkEntry entry, Position position) {
         List<LinkEntry> out = new ArrayList<>(entries);
+        if (position == Position.TOP) {
+            for (int i = 0; i < out.size(); i++) {
+                if (equalGroup(out.get(i).group(), entry.group())) {
+                    out.add(i, entry);
+                    return out;
+                }
+            }
+            // The group has no entries yet, so "top of it" says nothing —
+            // appending is what creates the block.
+            out.add(entry);
+            return out;
+        }
         int insertAt = -1;
         for (int i = 0; i < out.size(); i++) {
             if (equalGroup(out.get(i).group(), entry.group())) insertAt = i + 1;

@@ -122,6 +122,48 @@ class LinksManifestOpsTest {
     }
 
     @Test
+    void addEntry_atTheTop_landsBeforeItsGroupNotBeforeTheList() {
+        loaded(config(List.of("A", "B"), List.of(
+                entry("https://a1.example/", "a1", "A"),
+                entry("https://b1.example/", "b1", "B"))));
+
+        ops.addEntry(TENANT, PROJECT, FOLDER, "https://b0.example/",
+                new LinksManifestOps.LinkFields(null, null, null, "B", null, null),
+                LinksManifestOps.Position.TOP, "u1");
+
+        // Top of group B, not top of the list: the flat list stays
+        // group-contiguous, and only the order inside a group is rendered.
+        assertThat(saved().entries()).extracting(LinkEntry::url)
+                .containsExactly("https://a1.example/", "https://b0.example/",
+                        "https://b1.example/");
+    }
+
+    @Test
+    void addEntry_atTheTopOfAGroupThatHasNoEntriesYet_isAppended() {
+        loaded(config(List.of("A"), List.of(entry("https://a1.example/", "a1", "A"))));
+
+        ops.addEntry(TENANT, PROJECT, FOLDER, "https://c1.example/",
+                new LinksManifestOps.LinkFields(null, null, null, "C", null, null),
+                LinksManifestOps.Position.TOP, "u1");
+
+        // "Top of C" says nothing while C is empty — appending is what creates
+        // the block, and the block's place in the flat list is not rendered.
+        assertThat(saved().entries()).extracting(LinkEntry::url)
+                .containsExactly("https://a1.example/", "https://c1.example/");
+    }
+
+    @Test
+    void addEntry_withoutAPosition_stillAppends() {
+        loaded(config(List.of(), List.of(entry("https://a1.example/", "a1"))));
+
+        ops.addEntry(TENANT, PROJECT, FOLDER, "https://a2.example/",
+                LinksManifestOps.LinkFields.none(), "u1");
+
+        assertThat(saved().entries()).extracting(LinkEntry::url)
+                .containsExactly("https://a1.example/", "https://a2.example/");
+    }
+
+    @Test
     void updateEntry_movingGroupsKeepsTheTeaserSomebodyWrote() {
         loaded(config(List.of("A", "B"), List.of(
                 new LinkEntry("https://a.example/", "T", "my teaser", null, "A",

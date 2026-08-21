@@ -579,6 +579,7 @@ public class ScriptCortexController {
                 .lastDeepReviewWarningsJson(doc.getLastDeepReviewWarningsJson())
                 .lastDeepReviewedAtMs(toMillis(doc.getLastDeepReviewedAt()))
                 .expiresAtMs(toMillis(doc.getExpiresAt()))
+                .mountAccess(doc.getMountAccess())
                 .build();
     }
 

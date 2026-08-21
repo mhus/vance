@@ -150,4 +150,16 @@ public class DocumentDto {
      */
     @Builder.Default
     private Set<WriterRole> lockedFor = EnumSet.noneOf(WriterRole.class);
+
+    /**
+     * For a mounted document (path under {@code _ext/}): what its backing
+     * source allows. {@code null} for every ordinary Vance document, which is
+     * how a client tells the two apart without parsing the path.
+     *
+     * <p>Client ergonomics, not authorisation — see {@link MountAccess}. An
+     * editor seeing {@code RO} renders read-only instead of offering a save
+     * that the source is going to refuse; {@code RW} is not permission to
+     * write, and {@code lockedFor} and the permission layer still apply.
+     */
+    private @Nullable MountAccess mountAccess;
 }

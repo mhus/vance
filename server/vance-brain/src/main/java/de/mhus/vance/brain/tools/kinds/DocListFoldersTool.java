@@ -55,8 +55,11 @@ public class DocListFoldersTool implements Tool {
             r.put("path", f.path());
             r.put("name", f.name());
             if (f.parentPath() != null) r.put("parentPath", f.parentPath());
-            r.put("documentCount", f.documentCount());
-            r.put("subfolderCount", f.subfolderCount());
+            // Omitted rather than reported as null for a mounted folder whose
+            // size is unknown: an absent key reads as "no number available",
+            // while a zero would read as "empty folder".
+            if (f.documentCount() != null) r.put("documentCount", f.documentCount());
+            if (f.subfolderCount() != null) r.put("subfolderCount", f.subfolderCount());
             rows.add(r);
         }
         Map<String, Object> out = new LinkedHashMap<>();

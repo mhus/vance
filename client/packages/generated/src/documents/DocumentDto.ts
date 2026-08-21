@@ -5,6 +5,7 @@
 
 import { WriterRole } from './WriterRole';
 import { AccentColor } from '../common/AccentColor';
+import { MountAccess } from './MountAccess';
 import { DocumentNoteDto } from './DocumentNoteDto';
 
 export interface DocumentDto {
@@ -34,4 +35,5 @@ export interface DocumentDto {
   expiresAtMs?: number;
   notes: Record<string, DocumentNoteDto>;
   lockedFor: WriterRole[];
+  mountAccess?: MountAccess;
 }

@@ -1685,6 +1685,7 @@ public class DocumentController {
                 .lockedFor(doc.getLockedFor() == null || doc.getLockedFor().isEmpty()
                         ? java.util.EnumSet.noneOf(de.mhus.vance.api.documents.WriterRole.class)
                         : java.util.EnumSet.copyOf(doc.getLockedFor()))
+                .mountAccess(doc.getMountAccess())
                 .build();
     }
 

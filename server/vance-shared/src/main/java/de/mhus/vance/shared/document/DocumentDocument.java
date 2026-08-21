@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.document;
 
 import de.mhus.vance.api.common.AccentColor;
+import de.mhus.vance.api.documents.MountAccess;
 import de.mhus.vance.api.documents.WriterRole;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -286,4 +287,23 @@ public class DocumentDocument {
      * {@code planning/permission-system-concept.md} §4.3a.
      */
     private boolean privileged;
+
+    /**
+     * For a mounted document ({@code _ext/...}): what its backing source
+     * allows. {@code null} for every ordinary Vance document.
+     *
+     * <p><b>{@code @Transient} on purpose.</b> The value belongs to the
+     * source, not to us — a mount that goes read-only, or that is briefly
+     * unreachable, must not be described by a number frozen into a Mongo row
+     * weeks ago. It is filled in when the document is resolved and travels to
+     * the client through {@code DocumentDto.mountAccess}; it is never
+     * persisted and never read back.
+     *
+     * <p>Consequence worth knowing: a document loaded straight from the
+     * repository carries {@code null} here even when its path is mounted.
+     * "Is this mounted" is answered by {@link DocumentService#isMounted}
+     * against the path, never by this field being non-null.
+     */
+    @org.springframework.data.annotation.Transient
+    private @Nullable MountAccess mountAccess;
 }

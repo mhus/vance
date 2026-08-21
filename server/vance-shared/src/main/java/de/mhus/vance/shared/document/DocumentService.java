@@ -1,6 +1,13 @@
 package de.mhus.vance.shared.document;
 
 import de.mhus.vance.api.common.AccentColor;
+import de.mhus.vance.api.mount.MountedStat;
+import de.mhus.vance.shared.document.jaglan.JaglanAccessException;
+import de.mhus.vance.shared.document.jaglan.JaglanPaths;
+import de.mhus.vance.shared.document.jaglan.JaglanShellService.MountFolderView;
+import de.mhus.vance.shared.document.jaglan.JaglanUnavailableException;
+import de.mhus.vance.shared.document.jaglan.JaglanPort;
+import de.mhus.vance.shared.document.jaglan.JaglanShellService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.storage.StorageService;
 import jakarta.annotation.PreDestroy;
@@ -31,6 +38,7 @@ import java.util.zip.GZIPOutputStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
@@ -100,6 +108,105 @@ public class DocumentService {
     private @Nullable ApplicationEventPublisher eventPublisher;
 
     /**
+     * Jaglan seam for paths under {@code _ext/} — see
+     * {@link JaglanPort}. Field-injected for the same reason as
+     * {@code eventPublisher}: the seven handwritten test constructors in
+     * {@code DocumentService*Test} would otherwise all need a new argument.
+     *
+     * <p>Absent is the normal state, not an edge case — anus loads
+     * {@code vance-shared} too, and any process without the Jaglan addon has
+     * no implementation. Mounted paths then fail with
+     * {@link JaglanUnavailableException} instead of an NPE from inside the
+     * document layer.
+     */
+    @Autowired(required = false)
+    private @Nullable ObjectProvider<JaglanPort> jaglanPortProvider;
+
+    /**
+     * Shell-row lifecycle for mounted paths — stat-on-demand, TTL, folder
+     * markers. Field-injected for the same reason as the port above.
+     *
+     * <p>{@code null} in the unit tests that build this service by hand and
+     * in any process without Mongo-backed mount support; mounted lookups then
+     * simply find nothing, which is the correct answer when no mount can be
+     * resolved in the first place.
+     */
+    @Autowired(required = false)
+    private @Nullable JaglanShellService shellService;
+
+    /**
+     * Resolve the mount port, or refuse with a named error.
+     *
+     * @throws JaglanUnavailableException when no Jaglan implementation exists
+     */
+    private JaglanPort requireJaglanPort(String path) {
+        JaglanPort port =
+                jaglanPortProvider == null ? null : jaglanPortProvider.getIfAvailable();
+        if (port == null) {
+            throw new JaglanUnavailableException(null,
+                    "no mount support in this process — cannot serve '" + path + "'");
+        }
+        return port;
+    }
+
+    /** Stream a mounted document's content straight from its source. */
+    private InputStream openMountedContent(DocumentDocument doc) {
+        String path = doc.getPath();
+        JaglanPort port = requireJaglanPort(path);
+        return port.open(doc.getTenantId(), doc.getProjectId(),
+                JaglanPaths.mountNameOf(path), JaglanPaths.pathInMount(path));
+    }
+
+    /**
+     * Write a mounted document's content back to its source.
+     *
+     * <p>Returns a {@link ContentWriteResult} with a {@code null} storageId —
+     * nothing was written to {@link StorageService}, which is the point.
+     *
+     * @throws JaglanAccessException if the source refuses the write
+     */
+    private ContentWriteResult writeMountedContent(
+            String tenantId, String projectId, String path, InputStream content) {
+        JaglanPort port = requireJaglanPort(path);
+        AtomicLong written = new AtomicLong();
+        InputStream counting = new FilterInputStream(content) {
+            @Override
+            public int read() throws IOException {
+                int b = super.read();
+                if (b != -1) written.incrementAndGet();
+                return b;
+            }
+
+            @Override
+            public int read(byte[] b, int off, int len) throws IOException {
+                int n = super.read(b, off, len);
+                if (n > 0) written.addAndGet(n);
+                return n;
+            }
+        };
+        MountedStat stat = port.write(tenantId, projectId,
+                JaglanPaths.mountNameOf(path), JaglanPaths.pathInMount(path), counting);
+        // The source is authoritative about what it now holds — it may have
+        // normalised or transformed the payload. But a source that reports 0
+        // has told us nothing, so fall back to what we actually sent rather
+        // than persisting a size of zero for a non-empty document.
+        long size = stat.size() > 0 ? stat.size() : written.get();
+        return new ContentWriteResult(null, false, size);
+    }
+
+    /**
+     * Delete a mounted document at its source.
+     *
+     * @throws JaglanAccessException if the source is read-only
+     */
+    private void deleteMountedContent(DocumentDocument doc) {
+        String path = doc.getPath();
+        JaglanPort port = requireJaglanPort(path);
+        port.delete(doc.getTenantId(), doc.getProjectId(),
+                JaglanPaths.mountNameOf(path), JaglanPaths.pathInMount(path));
+    }
+
+    /**
      * Master switch for gzip-compressing document blobs on write. When
      * {@code false} all writes bypass the compression branch even if their
      * size would exceed the threshold. Reads always honour the per-document
@@ -142,7 +249,14 @@ public class DocumentService {
      * the data we need to mirror onto the {@link DocumentDocument}: storage id,
      * gzip flag, and original (uncompressed) byte count.
      */
-    public record ContentWriteResult(String storageId, boolean compressed, long originalSize) {}
+    /**
+     * @param storageId {@code null} for a mounted document — the bytes went
+     *                  to the source, not to {@link StorageService}, and the
+     *                  absence of a storage handle is exactly what marks the
+     *                  content as living elsewhere.
+     */
+    public record ContentWriteResult(
+            @Nullable String storageId, boolean compressed, long originalSize) {}
 
     /**
      * Operator-level kill-switch for document versioning. When {@code false},
@@ -175,7 +289,95 @@ public class DocumentService {
     }
 
     public Optional<DocumentDocument> findByPath(String tenantId, String projectId, String path) {
-        return repository.findByTenantIdAndProjectIdAndPath(tenantId, projectId, normalizePath(path));
+        String normalized = normalizePath(path);
+        // Lazy-stat for the mount namespace. The prefix check costs the other
+        // 370-odd call sites nothing, and only a mounted path — and only on a
+        // cache miss — reaches the source. Afterwards the shell row answers
+        // from Mongo until its TTL runs out.
+        if (JaglanPaths.isMounted(normalized) && shellService != null) {
+            try {
+                return shellService.resolve(tenantId, projectId, normalized);
+            } catch (IllegalArgumentException e) {
+                // Malformed mount path (no mount name, traversal) — not found
+                // rather than an exception out of a lookup method.
+                log.debug("Rejected mounted path '{}': {}", normalized, e.toString());
+                return Optional.empty();
+            }
+        }
+        return repository.findByTenantIdAndProjectIdAndPath(tenantId, projectId, normalized);
+    }
+
+    /**
+     * Direct children of a mount folder, refreshing the shell rows from the
+     * source when the folder marker is stale.
+     *
+     * <p>Separate from {@link #listByFolder} because the mount case needs the
+     * {@code force} gesture and a mount-relative folder; the synthetic
+     * {@code _ext} injection into the ordinary listing surfaces is a later
+     * step (see {@code planning/jaglan-mounted-docs.md} §6a).
+     */
+    public List<DocumentDocument> listMountedFolder(
+            String tenantId, String projectId, String folderPath, boolean force) {
+        if (shellService == null || !JaglanPaths.isMounted(folderPath)) return List.of();
+        return shellService.listFolder(tenantId, projectId,
+                JaglanPaths.mountNameOf(folderPath),
+                JaglanPaths.pathInMount(folderPath), force);
+    }
+
+    /** The mounts configured for a project — empty without Jaglan. */
+    public List<de.mhus.vance.api.mount.MountedSource> listMounts(
+            String tenantId, String projectId) {
+        return shellService == null ? List.of() : shellService.mounts(tenantId, projectId);
+    }
+
+    /**
+     * The synthetic mount folders of a project: {@code _ext} and one
+     * {@code _ext/<mount>} per configured mount.
+     *
+     * <p><b>Why they have to be synthesised.</b> Every folder surface derives
+     * its folders from the {@code path} field of existing rows, and shell rows
+     * only appear once someone has listed a mount folder — but nobody can list
+     * a folder that is not shown. Without this injection the namespace has no
+     * entrance.
+     *
+     * <p><b>Exactly two levels, never deeper.</b> Anything below
+     * {@code _ext/<mount>} appears once it has actually been listed, and is
+     * then an ordinary derived folder like any other. Synthesising deeper would
+     * mean walking every mount on every folder listing.
+     *
+     * <p>Nothing here touches a source: the mount list comes from
+     * configuration plus the capabilities cache. No configured mount means an
+     * empty result and therefore no {@code _ext} folder at all — mounts are
+     * project-scoped, most projects have none, and an empty system folder in
+     * every project is noise.
+     */
+    private List<FolderInfo> syntheticMountFolders(String tenantId, String projectId) {
+        if (shellService == null) return List.of();
+        List<MountFolderView> mountFolders = shellService.mountFolders(tenantId, projectId);
+        if (mountFolders.isEmpty()) return List.of();
+
+        List<FolderInfo> out = new ArrayList<>(mountFolders.size() + 1);
+        // The namespace root: its subfolder count is exactly the number of
+        // mounts and always true; its document count aggregates sources that
+        // may not know their own size, so it stays unknown rather than
+        // becoming a sum with a hole in it.
+        out.add(new FolderInfo(JaglanPaths.ROOT, JaglanPaths.ROOT, null,
+                null, mountFolders.size()));
+        for (MountFolderView folder : mountFolders) {
+            out.add(new FolderInfo(
+                    JaglanPaths.mountRootPath(folder.mount()),
+                    folder.mount(),
+                    JaglanPaths.ROOT,
+                    folder.documentCount(),
+                    folder.subfolderCount()));
+        }
+        return out;
+    }
+
+    /** {@code true} when {@code folder} is at or below {@code parent}. */
+    private static boolean isAtOrBelow(String folder, @Nullable String parent) {
+        if (parent == null) return true;
+        return folder.equals(parent) || folder.startsWith(parent + "/");
     }
 
     /**
@@ -433,8 +635,50 @@ public class DocumentService {
             Object id = doc.get("_id");
             if (id instanceof String s && !s.isBlank()) folders.add(s);
         }
+        injectMountFolderNames(tenantId, projectId, prefix, needle, folders);
+        folders.sort(Comparator.naturalOrder());
 
         return new FolderListing(folders, files, safePage, safeSize, totalFiles);
+    }
+
+    /**
+     * Add the synthetic mount folders to a {@link #listByFolder} result.
+     *
+     * <p>This surface reports folder <b>names</b> (one path segment), not
+     * paths, so the injection differs from the other two: at the project root
+     * the name is {@code _ext}, and inside {@code _ext/} the names are the
+     * mounts. Below that there is nothing to add — those folders are ordinary
+     * derived ones once the mount has been listed.
+     *
+     * <p>The search needle is applied to the synthetic names too. The
+     * aggregation above filters derived folder names by it, and a synthetic
+     * entry that ignored the filter would be the one folder that shows up in
+     * every search.
+     */
+    private void injectMountFolderNames(
+            String tenantId, String projectId, String prefix,
+            @Nullable String needle, List<String> folders) {
+
+        List<String> candidates;
+        if (prefix.isEmpty()) {
+            candidates = shellService == null || shellService.mounts(tenantId, projectId).isEmpty()
+                    ? List.of()
+                    : List.of(JaglanPaths.ROOT);
+        } else if (prefix.equals(JaglanPaths.PREFIX)) {
+            candidates = new ArrayList<>();
+            for (MountFolderView folder : shellService == null
+                    ? List.<MountFolderView>of()
+                    : shellService.mountFolders(tenantId, projectId)) {
+                candidates.add(folder.mount());
+            }
+        } else {
+            return;
+        }
+        for (String candidate : candidates) {
+            if (folders.contains(candidate)) continue;
+            if (needle != null && !candidate.toLowerCase().contains(needle.toLowerCase())) continue;
+            folders.add(candidate);
+        }
     }
 
     private static String normalizeFolderPrefix(@Nullable String raw) {
@@ -774,6 +1018,12 @@ public class DocumentService {
                 folders.add(f);
             }
         }
+        // Same injection as extractFolders — a caller that only wants the
+        // paths must not get a different set of folders than one that wants
+        // the counts too.
+        for (FolderInfo synthetic : syntheticMountFolders(tenantId, projectId)) {
+            folders.add(synthetic.path());
+        }
         return new ArrayList<>(folders);
     }
 
@@ -827,8 +1077,22 @@ public class DocumentService {
      * it after this method returns (or after the consuming storage call has
      * drained it, in the streaming-piped case the storage layer takes care
      * of that on its end).
+     *
+     * <p>A path under {@code _ext/} short-circuits into the mount port
+     * instead: no probe, no compression, no blob. This is the single write
+     * funnel — every {@code create} / {@code update} / {@code replace*}
+     * overload passes through here — so branching once at the top is what
+     * makes the redirect two methods rather than nine.
+     *
+     * @param projectId needed for the mount branch, which addresses a source
+     *                  per project; storage itself is tenant-scoped and
+     *                  ignores it
      */
-    ContentWriteResult streamingStoreContent(String tenantId, String path, InputStream content) {
+    ContentWriteResult streamingStoreContent(
+            String tenantId, String projectId, String path, InputStream content) {
+        if (JaglanPaths.isMounted(path)) {
+            return writeMountedContent(tenantId, projectId, path, content);
+        }
         int probeLimit = Math.max(compressionThreshold + 1, 1);
         byte[] initialBuffer = new byte[probeLimit];
         int bytesRead;
@@ -980,7 +1244,8 @@ public class DocumentService {
                             + tenantId + "/" + projectId);
         }
 
-        ContentWriteResult write = streamingStoreContent(tenantId, normalizedPath, content);
+        ContentWriteResult write =
+                streamingStoreContent(tenantId, projectId, normalizedPath, content);
 
         boolean autoSummary = autoSummaryOverride != null
                 ? autoSummaryOverride
@@ -1263,7 +1528,8 @@ public class DocumentService {
         String oldStorageId = doc.getStorageId();
 
         ContentWriteResult write = streamingStoreContent(
-                doc.getTenantId(), doc.getPath(), new ByteArrayInputStream(newBytes));
+                doc.getTenantId(), doc.getProjectId(), doc.getPath(),
+                new ByteArrayInputStream(newBytes));
         doc.setStorageId(write.storageId());
         doc.setCompressed(write.compressed());
         doc.setSize(write.originalSize());
@@ -1346,7 +1612,7 @@ public class DocumentService {
         ContentWriteResult write;
         try (InputStream in = new ByteArrayInputStream(bytes)) {
             write = streamingStoreContent(
-                    doc.getTenantId(), doc.getPath(), in);
+                    doc.getTenantId(), doc.getProjectId(), doc.getPath(), in);
         } catch (IOException e) {
             throw new IllegalStateException(
                     "Failed to stream replaced binary content for id='"
@@ -1666,6 +1932,12 @@ public class DocumentService {
     }
 
     public InputStream loadContent(DocumentDocument doc) {
+        // Mount branch first: a mounted document has no storageId by
+        // construction, so the null-check below would otherwise hand back an
+        // empty stream and the content would silently read as "".
+        if (JaglanPaths.isMounted(doc.getPath())) {
+            return openMountedContent(doc);
+        }
         String sid = doc.getStorageId();
         if (sid == null) {
             return InputStream.nullInputStream();
@@ -1804,7 +2076,7 @@ public class DocumentService {
             ContentWriteResult write;
             try (InputStream in = new ByteArrayInputStream(bytes)) {
                 write = streamingStoreContent(
-                        doc.getTenantId(), doc.getPath(), in);
+                        doc.getTenantId(), doc.getProjectId(), doc.getPath(), in);
             } catch (IOException e) {
                 throw new IllegalStateException(
                         "Failed to stream updated document content to "
@@ -2331,11 +2603,16 @@ public class DocumentService {
         //    full or no more candidates are available.
         List<DocumentDocument> claimed = new ArrayList<>(batchSize);
         for (int i = 0; i < batchSize; i++) {
+            // Mounted documents are excluded here and not only via their
+            // autoSummary flag: autoSummary is derived from the mime type, so
+            // a mounted markdown or PDF would qualify, and a tool can flip the
+            // flag on any row. The query is the reliable guard.
             Query q = new Query(Criteria.where("tenantId").is(tenantId)
                     .and("projectId").is(projectId)
                     .and("summaryDirty").is(true)
                     .and("autoSummary").is(true)
-                    .and("claimedBy").is(null));
+                    .and("claimedBy").is(null)
+                    .and("path").not().regex(MOUNTED_PATH_REGEX));
             Update u = new Update()
                     .set("claimedBy", podId)
                     .set("claimedAt", Instant.now());
@@ -2428,6 +2705,10 @@ public class DocumentService {
      * See {@code planning/project-rag.md} §4.2.
      */
     public boolean isRagEligible(DocumentDocument doc) {
+        // Checked ahead of the override, not after it: RAG does not apply to
+        // mounted content at all — indexing a foreign library into our own
+        // vector store is not a thing we want reachable by setting a flag.
+        if (isMounted(doc.getPath())) return false;
         Boolean override = doc.getRagEnabled();
         if (override != null) return override;
         if (doc.getPath() == null) return false;
@@ -2462,10 +2743,14 @@ public class DocumentService {
 
         List<DocumentDocument> claimed = new ArrayList<>(batchSize);
         for (int i = 0; i < batchSize; i++) {
+            // Same reasoning as claimForSummary: isRagEligible already keeps
+            // _ext out (it requires the documents/ prefix), but an explicit
+            // ragEnabled=true override on a mounted row would slip past it.
             Query q = new Query(Criteria.where("tenantId").is(tenantId)
                     .and("projectId").is(projectId)
                     .and("ragDirty").is(true)
-                    .and("ragClaimedBy").is(null));
+                    .and("ragClaimedBy").is(null)
+                    .and("path").not().regex(MOUNTED_PATH_REGEX));
             Update u = new Update()
                     .set("ragClaimedBy", podId)
                     .set("ragClaimedAt", Instant.now());
@@ -2638,13 +2923,21 @@ public class DocumentService {
                     de.mhus.vance.shared.permission.Action.DELETE, actor);
             enforcePrivilegedAdmin(doc, actor);
             requireWriteAllowed(doc, identity);
-            String sid = doc.getStorageId();
-            if (sid != null) {
-                try {
-                    storageService.delete(sid);
-                } catch (Exception e) {
-                    log.warn("Failed to delete storage blob for document id='{}' storageId='{}'",
-                            id, sid, e);
+            if (JaglanPaths.isMounted(doc.getPath())) {
+                // Delete at the source, and let a refusal propagate: there is
+                // no blob to drop and no trash to fall back on, so dropping
+                // only the Mongo shell would make the document reappear on the
+                // next stat. Deleting means deleting over there, or not at all.
+                deleteMountedContent(doc);
+            } else {
+                String sid = doc.getStorageId();
+                if (sid != null) {
+                    try {
+                        storageService.delete(sid);
+                    } catch (Exception e) {
+                        log.warn("Failed to delete storage blob for document id='{}' storageId='{}'",
+                                id, sid, e);
+                    }
                 }
             }
             repository.delete(doc);
@@ -2726,6 +3019,16 @@ public class DocumentService {
                 de.mhus.vance.shared.permission.Action.DELETE, actor);
         enforcePrivilegedAdmin(doc, actor);
         requireWriteAllowed(doc, identity);
+        if (JaglanPaths.isMounted(doc.getPath())) {
+            // Trash moves the path to _vance/trash/<uuid>_<name>, which is
+            // outside the mount namespace. For a mounted document that would
+            // break the address it is derived from — the path no longer names
+            // a mount, and the derived id no longer matches. Refuse instead of
+            // producing a row nobody can resolve.
+            throw new JaglanAccessException(JaglanPaths.mountNameOf(doc.getPath()),
+                    "mounted documents cannot be trashed — delete at the source "
+                            + "instead: '" + doc.getPath() + "'");
+        }
         if (isTrash(doc.getPath())) {
             log.debug("Document id='{}' is already in trash at path='{}'", id, doc.getPath());
             return doc;
@@ -2825,6 +3128,24 @@ public class DocumentService {
         return path != null && path.startsWith(DOCUMENTS_FOLDER_PREFIX);
     }
 
+    /**
+     * {@code true} when the path names a mounted document — content lives in
+     * a foreign source, not in {@link StorageService}.
+     *
+     * <p>Delegates to {@link JaglanPaths#isMounted} so the namespace has one
+     * definition; this overload exists because callers already reach for
+     * {@code DocumentService.isTrash} / {@code isInDocuments} and the third
+     * question belongs in the same place.
+     */
+    public static boolean isMounted(@Nullable String path) {
+        return JaglanPaths.isMounted(path);
+    }
+
+    /** Anchored regex form of the mount namespace, for Mongo queries that
+     *  need to exclude mounted rows (the summary and RAG claim loops). */
+    private static final String MOUNTED_PATH_REGEX =
+            "^" + java.util.regex.Pattern.quote(JaglanPaths.PREFIX);
+
     /** Magic value the search / list tools accept on
      *  {@code pathPrefix} to opt out of the default
      *  {@link #DOCUMENTS_FOLDER_PREFIX} scope and search project-wide
@@ -2912,6 +3233,15 @@ public class DocumentService {
                     parent,
                     entry.getValue().documentCount,
                     entry.getValue().subfolderCount));
+        }
+        // Mount folders exist independently of any row, so they are added
+        // rather than derived — see syntheticMountFolders. Filtered by the
+        // same parent constraint, and skipped when a mount already produced
+        // rows of its own (then it is a real derived folder above).
+        for (FolderInfo synthetic : syntheticMountFolders(tenantId, projectId)) {
+            if (!isAtOrBelow(synthetic.path(), normalizedParent)) continue;
+            if (folders.containsKey(synthetic.path())) continue;
+            result.add(synthetic);
         }
         result.sort(Comparator.comparing(FolderInfo::path));
         return result;

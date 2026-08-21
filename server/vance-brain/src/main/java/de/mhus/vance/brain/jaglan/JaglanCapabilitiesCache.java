@@ -1,0 +1,111 @@
+package de.mhus.vance.brain.jaglan;
+
+import java.time.Duration;
+
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import de.mhus.vance.toolpack.jaglan.JaglanCapabilities;
+import de.mhus.vance.toolpack.jaglan.JaglanInstance;
+import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+/**
+ * Caches what each mount says about itself, so a folder listing can describe
+ * a mount without touching it.
+ *
+ * <p><b>Two reads, on purpose.</b> {@link #peek} never fetches and is what
+ * {@code mounts()} uses — that call sits on the hot path of three listing
+ * surfaces, and a project with five mounts of which three are dead would
+ * otherwise pay three timeouts before the folder tree renders. {@link #warm}
+ * fetches and is called from {@code stat} / {@code list}, where a remote call
+ * is happening anyway. A cold cache therefore shows a mount with
+ * {@code UNKNOWN} access and no item count, and the numbers appear on the next
+ * listing.
+ *
+ * <p><b>The TTL here is ours, not the source's.</b> {@code JaglanCapabilities}
+ * carries {@code metadataTtl}, which says how long a <i>directory listing or
+ * file stat</i> stays valid — seconds to minutes. How long we trust a source's
+ * <i>self-description</i> is a different question with a different answer
+ * (minutes to hours), so it is a property here rather than a second field the
+ * source gets to set.
+ */
+@Service
+@Slf4j
+public class JaglanCapabilitiesCache {
+
+    @Value("${vance.jaglan.capabilities-ttl-seconds:1800}")
+    private long ttlSeconds = 1800;
+
+    private final Cache<String, JaglanCapabilities> cache = Caffeine.newBuilder()
+            .maximumSize(512)
+            .expireAfterWrite(Duration.ofMinutes(30))
+            .build();
+
+    /**
+     * Remember a failed fetch briefly so a dead mount does not get probed on
+     * every listing. Separate from the value cache because "we asked and it
+     * broke" is not the same as "we never asked".
+     */
+    private final Cache<String, Boolean> failures = Caffeine.newBuilder()
+            .maximumSize(512)
+            .expireAfterWrite(Duration.ofSeconds(30))
+            .build();
+
+    /** Cached capabilities, or {@code null} — never fetches. */
+    public @Nullable JaglanCapabilities peek(
+            String tenantId, String projectId, String mount) {
+        return cache.getIfPresent(key(tenantId, projectId, mount));
+    }
+
+    /**
+     * Cached capabilities, fetching on a miss.
+     *
+     * @return the capabilities, or {@code null} when the source could not be
+     *         asked — callers treat that as "unknown", not as an error
+     */
+    public @Nullable JaglanCapabilities warm(
+            String tenantId, String projectId, JaglanInstance instance) {
+        String key = key(tenantId, projectId, instance.mount());
+        JaglanCapabilities cached = cache.getIfPresent(key);
+        if (cached != null) return cached;
+        if (Boolean.TRUE.equals(failures.getIfPresent(key))) return null;
+        try {
+            JaglanCapabilities caps = instance.capabilities();
+            if (caps != null) {
+                cache.put(key, caps);
+                return caps;
+            }
+            return null;
+        } catch (RuntimeException e) {
+            failures.put(key, Boolean.TRUE);
+            log.warn("Jaglan: mount '{}' in {}/{} failed to report capabilities: {}",
+                    instance.mount(), tenantId, projectId, e.toString());
+            return null;
+        }
+    }
+
+    /** Forget a mount's declaration — part of the explicit refresh. */
+    public void evict(String tenantId, String projectId, String mount) {
+        String key = key(tenantId, projectId, mount);
+        cache.invalidate(key);
+        failures.invalidate(key);
+    }
+
+    /**
+     * The configured TTL for capabilities, exposed so the service can log it.
+     * Kept as a value rather than baked into the cache builder because the
+     * builder runs before property injection.
+     */
+    public Duration configuredTtl() {
+        return Duration.ofSeconds(ttlSeconds);
+    }
+
+    private static String key(String tenantId, String projectId, String mount) {
+        // Project-scoped like the source factory: the mount name is a local
+        // label ("library", "archive"), so two projects naming a mount after
+        // its job are two different sources under one name.
+        return tenantId + '|' + projectId + '|' + mount;
+    }
+}

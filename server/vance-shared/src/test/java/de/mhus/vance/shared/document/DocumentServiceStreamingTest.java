@@ -65,7 +65,7 @@ class DocumentServiceStreamingTest {
         // 800 bytes — under threshold. Helper must keep it raw.
         String body = "a".repeat(800);
         DocumentService.ContentWriteResult write = service.streamingStoreContent(
-                "t1", "small.txt", new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)));
+                "t1", "p1", "small.txt", new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)));
 
         assertThat(write.compressed()).isFalse();
         assertThat(write.originalSize()).isEqualTo(800);
@@ -81,7 +81,7 @@ class DocumentServiceStreamingTest {
         byte[] sourceBytes = body.getBytes(StandardCharsets.UTF_8);
 
         DocumentService.ContentWriteResult write = service.streamingStoreContent(
-                "t1", "big.txt", new ByteArrayInputStream(sourceBytes));
+                "t1", "p1", "big.txt", new ByteArrayInputStream(sourceBytes));
 
         assertThat(write.compressed()).isTrue();
         assertThat(write.originalSize()).isEqualTo(sourceBytes.length);
@@ -111,7 +111,7 @@ class DocumentServiceStreamingTest {
         InputStream giant = new RepeatingByteStream((byte) 'x', totalBytes);
 
         DocumentService.ContentWriteResult write = service.streamingStoreContent(
-                "t1", "giant.txt", giant);
+                "t1", "p1", "giant.txt", giant);
 
         assertThat(write.compressed()).isTrue();
         assertThat(write.originalSize()).isEqualTo(totalBytes);
@@ -124,7 +124,7 @@ class DocumentServiceStreamingTest {
         byte[] sourceBytes = body.getBytes(StandardCharsets.UTF_8);
 
         DocumentService.ContentWriteResult write = service.streamingStoreContent(
-                "t1", "big-raw.txt", new ByteArrayInputStream(sourceBytes));
+                "t1", "p1", "big-raw.txt", new ByteArrayInputStream(sourceBytes));
 
         assertThat(write.compressed()).isFalse();
         assertThat(write.originalSize()).isEqualTo(sourceBytes.length);
@@ -136,13 +136,13 @@ class DocumentServiceStreamingTest {
         // Exactly at threshold → stays raw.
         byte[] atThreshold = new byte[1000];
         DocumentService.ContentWriteResult atResult = service.streamingStoreContent(
-                "t1", "at.txt", new ByteArrayInputStream(atThreshold));
+                "t1", "p1", "at.txt", new ByteArrayInputStream(atThreshold));
         assertThat(atResult.compressed()).isFalse();
 
         // One byte past → compressed (assuming compression enabled).
         byte[] overThreshold = new byte[1001];
         DocumentService.ContentWriteResult overResult = service.streamingStoreContent(
-                "t1", "over.txt", new ByteArrayInputStream(overThreshold));
+                "t1", "p1", "over.txt", new ByteArrayInputStream(overThreshold));
         assertThat(overResult.compressed()).isTrue();
     }
 

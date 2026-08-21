@@ -120,6 +120,7 @@ export * from './kit/KitMetadataDto';
 export * from './kit/KitOperationResultDto';
 export * from './kit/KitOriginDto';
 export * from './kit/KitPolicyAction';
+export * from './kit/KitProvisioningAuthority';
 export * from './kit/KitPolicyDto';
 export * from './kit/KitPolicyRuleDto';
 export * from './kit/KitSignatureDto';

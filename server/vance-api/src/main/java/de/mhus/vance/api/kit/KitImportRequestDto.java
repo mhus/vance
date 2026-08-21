@@ -89,4 +89,11 @@ public class KitImportRequestDto {
      */
     @Builder.Default
     private Map<String, Object> params = Map.of();
+
+    /**
+     * Opaque token the provisioning path supplies so the install record
+     * can remember what the source said it was handing over. Null for
+     * every hand-typed install, which is then simply never change-checked.
+     */
+    private @Nullable String provisioningStamp;
 }

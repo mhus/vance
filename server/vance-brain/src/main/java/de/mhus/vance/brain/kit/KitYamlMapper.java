@@ -242,6 +242,7 @@ public final class KitYamlMapper {
                 .commit(stringOrNull(originTyped.get("commit")))
                 .installedAt(parseInstant(originTyped.get("installedAt")))
                 .installedBy(stringOrNull(originTyped.get("installedBy")))
+                .provisioningStamp(stringOrNull(originTyped.get("provisioningStamp")))
                 .build();
 
         KitDescriptorDto descriptor = null;
@@ -333,6 +334,9 @@ public final class KitYamlMapper {
         if (o.getCommit() != null) origin.put("commit", o.getCommit());
         if (o.getInstalledAt() != null) origin.put("installedAt", o.getInstalledAt().toString());
         if (o.getInstalledBy() != null) origin.put("installedBy", o.getInstalledBy());
+        if (o.getProvisioningStamp() != null) {
+            origin.put("provisioningStamp", o.getProvisioningStamp());
+        }
         root.put("origin", origin);
 
         if (record.getDescriptor() != null) {

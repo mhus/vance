@@ -44,6 +44,11 @@ import org.jspecify.annotations.Nullable;
  *        of the last one" is the honest field. Its absence therefore
  *        means „never installed here", which is what a host wants to
  *        know.
+ * @param provisioningStamp opaque token describing what the source said
+ *        it would hand over, folded together with the params it was asked
+ *        for — stored on the record so a later check can ask „different
+ *        now?" without downloading. Null on paths that have nothing to
+ *        compare, which is most of them.
  */
 public record KitAccess(
         String tenantId,
@@ -51,7 +56,8 @@ public record KitAccess(
         @Nullable String token,
         @Nullable String storeAccount,
         Map<String, Object> params,
-        @Nullable String installId) {
+        @Nullable String installId,
+        @Nullable String provisioningStamp) {
 
     public KitAccess {
         params = params == null ? Map.of() : Map.copyOf(params);
@@ -59,27 +65,53 @@ public record KitAccess(
 
     /** For paths that never touch a remote source — export, local folders, tests. */
     public static KitAccess of(String tenantId) {
-        return new KitAccess(tenantId, null, null, null, Map.of(), null);
+        return of(tenantId, null);
+    }
+
+    /**
+     * A fetch for one project, with everything optional left out.
+     *
+     * <p>The canonical way to build one: the positional constructor has
+     * grown past the point where a reader can tell the nullable strings
+     * apart, and every new field would otherwise touch every call site.
+     * Add what is needed with the {@code with…} methods.
+     */
+    public static KitAccess of(String tenantId, @Nullable String projectId) {
+        return new KitAccess(tenantId, projectId, null, null, Map.of(), null, null);
     }
 
     /** Same access, different credential — used where a caller supplies its own token. */
     public KitAccess withToken(@Nullable String other) {
-        return new KitAccess(tenantId, projectId, other, storeAccount, params, installId);
+        return new KitAccess(
+                tenantId, projectId, other, storeAccount, params, installId, provisioningStamp);
     }
 
     /** Same access, aimed at a project — for callers that learn it separately. */
     public KitAccess forProject(@Nullable String other) {
-        return new KitAccess(tenantId, other, token, storeAccount, params, installId);
+        return new KitAccess(
+                tenantId, other, token, storeAccount, params, installId, provisioningStamp);
     }
 
     /** Same access, carrying what a provisioning entry asked for. */
     public KitAccess withParams(@Nullable Map<String, Object> other) {
         return new KitAccess(tenantId, projectId, token, storeAccount,
-                other == null ? Map.of() : other, installId);
+                other == null ? Map.of() : other, installId, provisioningStamp);
     }
 
     /** Same access, told which existing installation it refreshes. */
     public KitAccess withInstallId(@Nullable String other) {
-        return new KitAccess(tenantId, projectId, token, storeAccount, params, other);
+        return new KitAccess(
+                tenantId, projectId, token, storeAccount, params, other, provisioningStamp);
+    }
+
+    /** Same access, signed in to a store account. */
+    public KitAccess withStoreAccount(@Nullable String other) {
+        return new KitAccess(tenantId, projectId, token, other, params, installId,
+                provisioningStamp);
+    }
+
+    /** Same access, carrying what the record should remember for the next check. */
+    public KitAccess withProvisioningStamp(@Nullable String other) {
+        return new KitAccess(tenantId, projectId, token, storeAccount, params, installId, other);
     }
 }

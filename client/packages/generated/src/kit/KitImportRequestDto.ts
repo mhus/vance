@@ -16,4 +16,5 @@ export interface KitImportRequestDto {
   keepPasswords: boolean;
   writeManifest: boolean;
   params: Record<string, any>;
+  provisioningStamp?: string;
 }

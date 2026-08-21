@@ -60,9 +60,22 @@ public class KitProvisioningLoader {
         return parse(content, tenantId, projectId);
     }
 
-    /** True when this project declares any provisioning at all — one lookup. */
-    public boolean isDeclared(String tenantId, String projectId) {
-        return documentService.findByPath(tenantId, projectId, PROVISIONING_PATH).isPresent();
+    /**
+     * Who wrote this project's provisioning document, or null when there
+     * is none.
+     *
+     * <p>Used to address a notice. The person who declared a source is the
+     * person who cares that it diverged — and no other candidate is
+     * better: a project has no „owner" field, and telling every tenant
+     * admin would turn one project's configuration into everybody's inbox.
+     *
+     * <p>Looked up lazily, only when there is something to report, so the
+     * common „nothing diverged" tick pays nothing for it.
+     */
+    public @Nullable String declaredBy(String tenantId, String projectId) {
+        return documentService.findByPath(tenantId, projectId, PROVISIONING_PATH)
+                .map(DocumentDocument::getCreatedBy)
+                .orElse(null);
     }
 
     @SuppressWarnings("unchecked")

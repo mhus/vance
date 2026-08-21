@@ -10,4 +10,5 @@ export interface KitOriginDto {
   commit?: string;
   installedAt?: Date;
   installedBy?: string;
+  provisioningStamp?: string;
 }

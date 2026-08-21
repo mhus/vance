@@ -213,6 +213,8 @@ public class KitProvisioningService {
                 .source(source)
                 .token(entry.token())
                 .params(kit.params())
+                // Remembered on the record so a later check is one comparison.
+                .provisioningStamp(KitProvisioningStamp.of(kit.revision(), kit.params()))
                 .build();
         kitService.install(tenantId, request, ACTOR, SettingWriteOrigin.USER);
         installed.add(kit.path());

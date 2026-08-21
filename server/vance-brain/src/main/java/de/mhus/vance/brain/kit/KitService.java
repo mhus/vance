@@ -73,7 +73,8 @@ public class KitService {
                 request.getSource() == null ? null : request.getSource().getUrl(),
                 request.getToken())
                 .withParams(request.getParams())
-                .withInstallId(previousInstallId(tenantId, request));
+                .withInstallId(previousInstallId(tenantId, request))
+                .withProvisioningStamp(request.getProvisioningStamp());
 
         KitResolver.ResolvedKit resolved = null;
         try {

@@ -173,7 +173,7 @@ public class KitInstaller {
 
             if (tracked) {
                 recordStore.save(tenantId, projectId,
-                        buildRecord(recordId, top, source, resolved,
+                        buildRecord(access, recordId, top, source, resolved,
                                 documentArtefacts, settingArtefacts, scan, actor),
                         actor);
             }
@@ -795,6 +795,7 @@ public class KitInstaller {
     // ──────────────────── record ────────────────────
 
     private KitInstalledRecordDto buildRecord(
+            KitAccess access,
             String recordId, KitDescriptorDto top, KitInheritDto source,
             KitResolver.ResolvedKit resolved,
             List<KitArtefactDto> documents, List<KitArtefactDto> settings,
@@ -813,6 +814,9 @@ public class KitInstaller {
                         .commit(resolved.sourceCommit())
                         .installedAt(Instant.now())
                         .installedBy(actor)
+                        // Only provisioning supplies this; a hand-typed install
+                        // leaves it null and is simply never change-checked.
+                        .provisioningStamp(access.provisioningStamp())
                         .build())
                 .descriptor(top)
                 .artefacts(KitArtefactsDto.builder()

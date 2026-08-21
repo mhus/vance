@@ -55,6 +55,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableConfigurationProperties({
         WorkspaceProperties.class,
         de.mhus.vance.shared.instance.InstanceProperties.class,
+        de.mhus.vance.brain.kit.provisioning.KitProvisioningProperties.class,
         de.mhus.vance.shared.audit.AuditServiceProperties.class,
         ExecProperties.class,
         StreamingProperties.class,

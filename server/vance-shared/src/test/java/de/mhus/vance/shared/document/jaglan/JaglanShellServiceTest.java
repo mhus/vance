@@ -78,7 +78,7 @@ class JaglanShellServiceTest {
                 .mimeType("application/pdf").size(1234)
                 .build();
         doc.setId(docId());
-        doc.setExpiresAt(expiresAt);
+        doc.setMountFreshUntil(expiresAt);
         return doc;
     }
 
@@ -96,6 +96,71 @@ class JaglanShellServiceTest {
 
         assertThat(found).isPresent();
         verify(port, never()).stat(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void staleRow_isNotPurgedAndStillAnswers() {
+        // The row is the only mapping from a derived id back to a path, and a
+        // hash cannot be reversed — so a purged row breaks every id-keyed
+        // endpoint with no way to recover. Freshness lives in
+        // mountFreshUntil, which carries no TTL index; expiresAt must stay
+        // untouched so Mongo's TTL monitor never sees these rows.
+        mongoReturns(row(Instant.now().minusSeconds(1)));
+        when(port.stat(TENANT, PROJECT, MOUNT, IN_MOUNT))
+                .thenThrow(new JaglanUnavailableException(MOUNT, "down"));
+
+        Optional<DocumentDocument> found = service.resolve(TENANT, PROJECT, DOC_PATH);
+
+        assertThat(found).isPresent();
+        assertThat(found.get().getExpiresAt()).isNull();
+    }
+
+    @Test
+    void upsertedShell_marksADirectoryExplicitly() {
+        // A mount folder needs its own row (an empty one has no children to be
+        // derived from), so a listing must be able to tell it from a file —
+        // and "no mime, size 0" is also what an empty text file looks like.
+        mongoReturns(null);
+        when(port.stat(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(Optional.of(MountedStat.directory("books")));
+
+        service.resolve(TENANT, PROJECT, "_ext/library/books");
+
+        assertThat(capturedShellUpdate().getUpdateObject()
+                .get("$set", org.bson.Document.class).get("mountDirectory"))
+                .isEqualTo(Boolean.TRUE);
+    }
+
+    @Test
+    void directoryNamesIn_returnsOnlyTheFolderRows() {
+        DocumentDocument folder = row(Instant.now().plusSeconds(60));
+        folder.setPath("_ext/library/books");
+        folder.setMountDirectory(true);
+        DocumentDocument file = row(Instant.now().plusSeconds(60));
+        file.setPath("_ext/library/readme.md");
+        when(mongoTemplate.find(any(Query.class), eq(DocumentDocument.class)))
+                .thenReturn(List.of(folder, file));
+
+        assertThat(service.directoryNamesIn(TENANT, PROJECT, "_ext/library"))
+                .containsExactly("books");
+    }
+
+    @Test
+    void directoryNamesIn_outsideTheNamespace_isEmpty() {
+        assertThat(service.directoryNamesIn(TENANT, PROJECT, "documents/notes")).isEmpty();
+    }
+
+    @Test
+    void upsertedShell_setsFreshnessNotExpiry() {
+        mongoReturns(null);
+        when(port.stat(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(Optional.of(stat()));
+
+        service.resolve(TENANT, PROJECT, DOC_PATH);
+
+        String update = capturedShellUpdate().toString();
+        assertThat(update).contains("mountFreshUntil");
+        assertThat(update).doesNotContain("expiresAt");
     }
 
     @Test

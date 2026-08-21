@@ -259,11 +259,34 @@ public class JaglanShellService {
     private int countKnownRootSubfolders(String tenantId, String projectId, String mount) {
         int subfolders = 0;
         for (DocumentDocument row : readFolderRows(tenantId, projectId, mount, "")) {
-            // A shell row for a directory carries no mime type and no size —
-            // the same shape MountedStat enforces for directories.
-            if (row.getMimeType() == null && row.getSize() == 0) subfolders++;
+            if (row.isMountDirectory()) subfolders++;
         }
         return subfolders;
+    }
+
+    /**
+     * Names of the mount folders directly inside {@code folderPath} — the
+     * folder rows a listing must show as folders rather than as empty files.
+     *
+     * @param folderPath a full {@code _ext/<mount>/…} path
+     */
+    public List<String> directoryNamesIn(String tenantId, String projectId, String folderPath) {
+        if (!JaglanPaths.isMounted(folderPath)) return List.of();
+        List<String> out = new ArrayList<>();
+        try {
+            String mount = JaglanPaths.mountNameOf(folderPath);
+            for (DocumentDocument row
+                    : readFolderRows(tenantId, projectId, mount,
+                            JaglanPaths.pathInMount(folderPath))) {
+                if (!row.isMountDirectory()) continue;
+                String path = row.getPath();
+                int slash = path.lastIndexOf('/');
+                out.add(slash < 0 ? path : path.substring(slash + 1));
+            }
+        } catch (IllegalArgumentException e) {
+            return List.of();
+        }
+        return out;
     }
 
     /**
@@ -361,7 +384,11 @@ public class JaglanShellService {
                 .set("mimeType", stat.mimeType())
                 .set("size", stat.size())
                 .set("status", DocumentStatus.ACTIVE)
-                .set("expiresAt", now.plus(ttl))
+                .set("mountDirectory", stat.directory())
+                // Freshness, not lifetime — see DocumentDocument.mountFreshUntil.
+                // Using expiresAt here would hand the row to Mongo's TTL monitor,
+                // and a purged row cannot be rebuilt from an id.
+                .set("mountFreshUntil", now.plus(ttl))
                 // Never a storageId — the absence of one is what marks the
                 // content as living at the source.
                 .unset("storageId")
@@ -477,6 +504,20 @@ public class JaglanShellService {
      * source, and a mount that went read-only must not be described by a
      * number frozen into a row weeks ago.
      */
+    /**
+     * Fill {@code mountAccess} on a row fetched elsewhere — the by-id lookup,
+     * which has no mount context of its own. Derives the mount from the path.
+     */
+    public void decorateAccess(DocumentDocument row) {
+        try {
+            decorate(row, row.getTenantId(), row.getProjectId(),
+                    JaglanPaths.mountNameOf(row.getPath()));
+        } catch (IllegalArgumentException e) {
+            // Not a mounted path after all — nothing to describe.
+            log.debug("No mount in path '{}': {}", row.getPath(), e.toString());
+        }
+    }
+
     private DocumentDocument decorate(
             DocumentDocument row, String tenantId, String projectId, String mount) {
         row.setMountAccess(findMount(tenantId, projectId, mount)
@@ -486,10 +527,10 @@ public class JaglanShellService {
     }
 
     private boolean isFresh(DocumentDocument row, Instant now) {
-        // The application checks, not Mongo's TTL monitor — that runs about
-        // once a minute, so an expired row can still be readable. Same rule
-        // OAuthStateService applies to its states.
-        return row.getExpiresAt() != null && row.getExpiresAt().isAfter(now);
+        // A stale row still answers — it is the only mapping from a derived id
+        // back to a path. "Not fresh" means "re-stat before trusting the
+        // metadata", never "pretend it is not there".
+        return row.getMountFreshUntil() != null && row.getMountFreshUntil().isAfter(now);
     }
 
     private Duration ttlFor(String tenantId, String projectId, String mount) {

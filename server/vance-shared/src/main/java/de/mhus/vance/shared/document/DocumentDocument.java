@@ -306,4 +306,38 @@ public class DocumentDocument {
      */
     @org.springframework.data.annotation.Transient
     private @Nullable MountAccess mountAccess;
+
+    /**
+     * For a mounted document: until when its metadata may be trusted without
+     * asking the source again. {@code null} for every ordinary document.
+     *
+     * <p><b>Deliberately not {@link #expiresAt}</b>, even though that field
+     * exists and already carries a TTL index. Expiry here means <em>stale</em>,
+     * not <em>gone</em>: the row is the only thing that maps a derived id back
+     * to a path, and a hash cannot be reversed — so once Mongo purges the row,
+     * every id-keyed endpoint (18 of the ~30 document endpoints, and the way
+     * Cortex opens a document) answers 404 with no way to recover. Re-stating
+     * needs a path, and only a path lookup has one.
+     *
+     * <p>So a stale row keeps answering and is refreshed on the next access by
+     * path. Rows are removed when a listing shows the file is gone
+     * ({@code pruneVanished}) or when the mount is evicted — by knowing, not by
+     * timeout.
+     */
+    private @Nullable Instant mountFreshUntil;
+
+    /**
+     * For a mounted document: {@code true} when the entry is a folder in its
+     * source, not a file. Always {@code false} for ordinary documents, which
+     * have no folder rows at all — folders there are derived from the paths of
+     * the documents inside them.
+     *
+     * <p>A mount needs the row: an <em>empty</em> mount folder has no children
+     * to derive it from, and it should still be visible. But then a listing has
+     * to be able to tell the row apart from a file, and the only signal
+     * otherwise available — no mime type and size 0 — is also what an empty
+     * text file looks like. Hence an explicit flag rather than a heuristic; it
+     * replaced one that was already copied to three call sites.
+     */
+    private boolean mountDirectory;
 }

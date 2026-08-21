@@ -284,8 +284,26 @@ public class DocumentService {
     public static final String SETTING_ARCHIVE_MIN_INTERVAL_SECONDS =
             "documents.archive.minVersionIntervalSeconds";
 
+    /**
+     * By id, with the mount's {@code access} filled in for a mounted row.
+     *
+     * <p>The decoration has to happen here too, not only on the path lookup:
+     * the transient field is not persisted, so a row read straight from the
+     * repository carries {@code null} — and clients open documents <b>by id</b>
+     * (that is what lands in the Cortex URL). Without this the same document
+     * describes itself differently depending on which endpoint fetched it.
+     *
+     * <p>Write protection does not depend on it: a read-only source is
+     * expressed through {@code lockedFor}, which is persisted and refuses the
+     * write regardless. This is the hint, not the guard.
+     */
     public Optional<DocumentDocument> findById(String id) {
-        return repository.findById(id);
+        Optional<DocumentDocument> found = repository.findById(id);
+        if (shellService != null) {
+            found.filter(doc -> JaglanPaths.isMounted(doc.getPath()))
+                    .ifPresent(shellService::decorateAccess);
+        }
+        return found;
     }
 
     public Optional<DocumentDocument> findByPath(String tenantId, String projectId, String path) {
@@ -390,6 +408,40 @@ public class DocumentService {
                     folder.subfolderCount()));
         }
         return out;
+    }
+
+    /**
+     * Make sure a mount folder's shell rows exist before a listing reads them.
+     *
+     * <p>Only for a path that names a mount <b>and</b> something inside it:
+     * {@code _ext/} itself is answered by the synthetic injection (the mount
+     * folders), and asking a source to list its root at that point would be a
+     * remote call for a result nobody needs yet.
+     *
+     * <p>Never forced — {@code force=false} means a fresh folder marker short
+     * circuits this, so repeated browsing costs one Mongo read. The explicit
+     * refresh lives on {@link #listMountedFolder}.
+     */
+    private void refreshMountFolderIfNeeded(String tenantId, String projectId, String prefix) {
+        if (shellService == null || !JaglanPaths.isMounted(prefix)) return;
+        // prefix carries a trailing slash by normalizeFolderPrefix.
+        String folderPath = prefix.endsWith("/")
+                ? prefix.substring(0, prefix.length() - 1)
+                : prefix;
+        try {
+            String mount = JaglanPaths.mountNameOf(folderPath);
+            shellService.listFolder(
+                    tenantId, projectId, mount, JaglanPaths.pathInMount(folderPath), false);
+        } catch (IllegalArgumentException e) {
+            // "_ext/" with no mount named — nothing to refresh, and the
+            // synthetic injection already answers that level.
+            log.debug("No mount folder to refresh for prefix '{}': {}", prefix, e.toString());
+        } catch (RuntimeException e) {
+            // A listing must still render: the mount may be down, and the rows
+            // we already have are better than an error page.
+            log.warn("Mount refresh failed for '{}' in {}/{}: {}",
+                    prefix, tenantId, projectId, e.toString());
+        }
     }
 
     /** {@code true} when {@code folder} is at or below {@code parent}. */
@@ -572,6 +624,12 @@ public class DocumentService {
         String prefix = normalizeFolderPrefix(path);
         String needle = (search == null || search.isBlank()) ? null : search.trim();
 
+        // Browsing into a mount has to reach the source: the query below reads
+        // Mongo, and a folder nobody has listed yet has no rows there. Without
+        // this the namespace opens and then shows nothing — the one thing the
+        // synthetic injection was supposed to prevent.
+        refreshMountFolderIfNeeded(tenantId, projectId, prefix);
+
         // ─── Files: paths starting with prefix and containing no further slash.
         // No explicit trash-exclusion needed: the {@code [^/]+$} tail
         // already rejects anything that nests further (including
@@ -582,14 +640,20 @@ public class DocumentService {
         // substring match via {@code andOperator} so the path-shape
         // anchor and the search criteria don't both try to add a
         // top-level {@code path} field on the Query.
+        // A mounted folder has its own row (an empty one has no children to be
+        // derived from), so it has to be excluded here or it shows up as a
+        // 0-byte file next to the folder entry for the same name.
         String filesRegex = "^" + java.util.regex.Pattern.quote(prefix) + "[^/]+$";
+        Criteria notADirectoryRow = Criteria.where("mountDirectory").ne(true);
         Criteria fileCriteria;
         if (needle == null) {
-            fileCriteria = Criteria.where("path").regex(filesRegex);
+            fileCriteria = new Criteria().andOperator(
+                    Criteria.where("path").regex(filesRegex), notADirectoryRow);
         } else {
             String needleRegex = java.util.regex.Pattern.quote(needle);
             fileCriteria = new Criteria().andOperator(
                     Criteria.where("path").regex(filesRegex),
+                    notADirectoryRow,
                     new Criteria().orOperator(
                             Criteria.where("path").regex(needleRegex, "i"),
                             Criteria.where("title").regex(needleRegex, "i")));
@@ -689,6 +753,15 @@ public class DocumentService {
                     : shellService.mountFolders(tenantId, projectId)) {
                 candidates.add(folder.mount());
             }
+        } else if (JaglanPaths.isMounted(prefix)) {
+            // Inside a mount: the folder rows the files query just excluded.
+            // The aggregation above only derives a folder from the paths of
+            // things inside it, so an empty mount folder would otherwise be
+            // invisible — and a non-empty one would appear twice.
+            String folderPath = prefix.substring(0, prefix.length() - 1);
+            candidates = shellService == null
+                    ? List.of()
+                    : shellService.directoryNamesIn(tenantId, projectId, folderPath);
         } else {
             return;
         }

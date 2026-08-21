@@ -118,9 +118,7 @@ public class MountListTool implements Tool {
             r.put("path", doc.getPath());
             r.put("name", doc.getName());
             if (doc.getTitle() != null) r.put("title", doc.getTitle());
-            // A directory shell row carries neither mime nor size, the same
-            // shape MountedStat enforces — so their absence is the marker.
-            boolean folder = doc.getMimeType() == null && doc.getSize() == 0;
+            boolean folder = doc.isMountDirectory();
             r.put("folder", folder);
             if (!folder) {
                 r.put("size", doc.getSize());

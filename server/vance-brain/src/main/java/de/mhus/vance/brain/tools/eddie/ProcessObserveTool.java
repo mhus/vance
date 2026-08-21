@@ -8,6 +8,7 @@ import de.mhus.vance.brain.eddie.connection.EddieWorkerConnectionPool;
 import de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot;
 import de.mhus.vance.shared.jwt.JwtService;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.shared.project.ProjectOwnership;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -143,17 +144,16 @@ public class ProcessObserveTool implements Tool {
                 worker.getTenantId(), worker.getProjectId())
                 .orElseThrow(() -> new ToolException(
                         "Worker project '" + worker.getProjectId() + "' not found"));
-        String homeNode = workerProject.getHomeNode();
-        if (homeNode == null || homeNode.isBlank()) {
-            throw new ToolException(
-                    "Worker project '" + workerProject.getName()
-                            + "' has no claimed home pod yet — cannot observe");
-        }
-        String podAddress = clusterService.resolveLiveEndpoint(homeNode)
+        String holderPodId = ProjectOwnership
+                .liveOwnerPodId(workerProject, Instant.now(), clusterService.leaseTtl())
                 .orElseThrow(() -> new ToolException(
                         "Worker project '" + workerProject.getName()
-                                + "' home cluster '" + homeNode
-                                + "' has no live endpoint in the cluster registry"));
+                                + "' is not held by any live pod — cannot observe"));
+        String podAddress = clusterService.resolveEndpointByPodId(holderPodId)
+                .orElseThrow(() -> new ToolException(
+                        "Worker project '" + workerProject.getName()
+                                + "' is leased by pod '" + workerProject.getHomeNode()
+                                + "' but the cluster registry has no endpoint for it"));
 
         WorkerLinkSnapshot snapshot = WorkerLinkSnapshot.builder()
                 .workerProcessId(worker.getId())

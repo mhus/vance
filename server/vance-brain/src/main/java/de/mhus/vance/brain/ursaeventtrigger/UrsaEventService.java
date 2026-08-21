@@ -11,6 +11,7 @@ import de.mhus.vance.brain.ursascheduler.SystemSessionResolver;
 import de.mhus.vance.shared.ursaevents.UrsaEventLoader;
 import de.mhus.vance.shared.ursaevents.ResolvedUrsaEvent;
 import de.mhus.vance.shared.metric.MetricService;
+import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.settings.SettingService;
 import jakarta.annotation.PreDestroy;
@@ -65,6 +66,15 @@ public class UrsaEventService {
     private final SystemSessionResolver systemSessionResolver;
     /** LLM-facing materialised per-trigger log — see {@link UrsaEventLogService}. */
     private final UrsaEventLogService eventLogService;
+    /**
+     * Lazy — the locator pulls in the lifecycle and cluster services, and an
+     * event trigger must not drag that whole graph into this service's
+     * construction.
+     */
+    private final ObjectProvider<de.mhus.vance.brain.project.ProjectLocator> projectLocatorProvider;
+    private final ObjectProvider<de.mhus.vance.brain.project.ProjectManagerService>
+            projectManagerProvider;
+    private final UrsaEventForwarder forwarder;
 
     /**
      * Runs {@code async: true} script events off the request thread.
@@ -131,6 +141,24 @@ public class UrsaEventService {
             String httpMethod,
             @Nullable String bearerToken,
             @Nullable Object payload) {
+        return trigger(tenantId, projectId, eventName, httpMethod, bearerToken, payload,
+                /*alreadyForwarded*/ false);
+    }
+
+    /**
+     * @param alreadyForwarded set when another pod routed this request here.
+     *        Such a request is executed locally without resolving the owner
+     *        again — one hop, so a lease changing hands mid-flight cannot make
+     *        two pods bounce it back and forth.
+     */
+    public UrsaEventTriggerResult trigger(
+            String tenantId,
+            String projectId,
+            String eventName,
+            String httpMethod,
+            @Nullable String bearerToken,
+            @Nullable Object payload,
+            boolean alreadyForwarded) {
         long startNanos = System.nanoTime();
         Instant firedAt = Instant.now();
         String correlationId = UrsaEventLogService.TriggerOutcome.mintCorrelationId();
@@ -203,6 +231,25 @@ public class UrsaEventService {
                     errorMessage = "bearer token mismatch";
                     throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
                             "Invalid or missing bearer token");
+                }
+            }
+
+            if (!alreadyForwarded) {
+                String owner = bringUpAndFindOwner(tenantId, projectId, eventName);
+                if (owner != null) {
+                    de.mhus.vance.api.ursaevents.EventTriggerResponse remote = forwarder.forward(
+                            owner, tenantId, projectId, eventName,
+                            httpMethod, bearerToken, payload);
+                    countOutcome(eventName, "forwarded");
+                    outcome = "forwarded";
+                    targetName = remote.getWorkflowName();
+                    spawnedId = remote.getWorkflowRunId();
+                    // correlationId and firedAt stay ours: they identify *this*
+                    // request, and the owning pod wrote its own log entry under
+                    // its own id.
+                    return new UrsaEventTriggerResult(
+                            remote.getWorkflowName(), remote.getWorkflowRunId(),
+                            remote.getOutput(), correlationId, firedAt);
                 }
             }
 
@@ -622,6 +669,55 @@ public class UrsaEventService {
      * Length-independent constant-time comparison. Protects against
      * timing attacks on the bearer-token check.
      */
+    /**
+     * Brings the project online before running the event's action.
+     *
+     * <p>Event triggers are <b>reactive</b>, so their project is deliberately
+     * not kept on a pod for them ({@code ProjectOwnerRequirementService}) — a
+     * webhook that fires twice a year would otherwise cost a pod slot all year.
+     * The call itself is what pays for it instead: the first trigger after a
+     * restart takes a cold start, and every following one finds the project
+     * already up.
+     *
+     * <p>Deliberately placed after the event was found, enabled and
+     * authenticated: an unknown name or a bad token must not be able to start
+     * projects, or the endpoint becomes a way to make a stranger's cluster do
+     * work.
+     *
+     * <p>Fail-open. If the bring does not succeed we still run — that is what
+     * happened before this existed, and a half-available project is a better
+     * answer to a webhook than a 500.
+     */
+    private @Nullable String bringUpAndFindOwner(
+            String tenantId, String projectId, String eventName) {
+        if (ProjectService.isPodless(projectId)) return null;
+        de.mhus.vance.brain.project.ProjectLocator locator =
+                projectLocatorProvider.getIfAvailable();
+        if (locator == null) return null;
+        try {
+            // Blocking by contract: locate(autoStart) returns once the project
+            // has been brought online — workspace restored, engines started,
+            // status RUNNING. That wait is the point. Handing the event to a
+            // pod that is still recovering would spawn onto a lane that is not
+            // there yet.
+            de.mhus.vance.brain.project.ProjectLocator.Location location =
+                    locator.locate(tenantId, projectId, /*autoStart*/ true);
+            String endpoint = location.endpoint().orElse(null);
+            if (endpoint == null) return null;
+            de.mhus.vance.brain.project.ProjectManagerService manager =
+                    projectManagerProvider.getIfAvailable();
+            if (manager != null && manager.isLocalPod(endpoint)) return null;
+            return endpoint;
+        } catch (RuntimeException e) {
+            // Fail-open to local execution: this is what happened before events
+            // were routed at all, and answering a webhook badly beats not
+            // answering it.
+            log.warn("Event '{}/{}/{}': could not place the project, running locally: {}",
+                    tenantId, projectId, eventName, e.toString());
+            return null;
+        }
+    }
+
     private static boolean constantTimeEquals(String expected, @Nullable String actual) {
         if (actual == null) return false;
         byte[] e = expected.getBytes(java.nio.charset.StandardCharsets.UTF_8);

@@ -48,5 +48,19 @@ public class ProjectDto {
 
     private @Nullable Instant claimedAt;
 
+    /**
+     * {@code AUTO} / {@code EPHEMERAL} / {@code PERMANENT} / {@code HOMELESS} —
+     * the operator override over {@link #ownerRequired}. {@code AUTO} means
+     * "let the derived flag decide" and is the default for user projects.
+     */
+    private @Nullable String lifecycleType;
+
+    /**
+     * Derived: the project holds background work (schedulers, hooks, event
+     * triggers, kit provisioning) and therefore has to be kept on a live pod.
+     * Read-only — it follows the documents, it is not set by hand.
+     */
+    private boolean ownerRequired;
+
     private @Nullable Instant createdAt;
 }

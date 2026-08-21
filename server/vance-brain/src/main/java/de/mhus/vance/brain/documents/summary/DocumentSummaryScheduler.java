@@ -57,17 +57,14 @@ public class DocumentSummaryScheduler {
             initialDelayString = "${vance.autoSummary.initialDelayMs:60000}")
     public void tick() {
         String podId = locationService.getPodAddress();
-        String selfCluster = clusterService.selfNodeName();
-        // Pod-owned RUNNING projects (regular projects with a Home Pod
-        // = our cluster node name) plus podless projects (system /
-        // per-user) which never reach RUNNING but still hold documents
-        // we want to summarise. The per-document claim in
+        // RUNNING projects this pod holds a lease on, plus podless projects
+        // (system / per-user) which never reach RUNNING but still hold
+        // documents we want to summarise. The per-document claim in
         // {@link DocumentService#claimForSummary} is atomic, so multiple
         // pods racing on a podless project is safe — no document is
         // summarised twice.
-        List<ProjectDocument> projects = selfCluster.isBlank()
-                ? new ArrayList<>()
-                : new ArrayList<>(projectService.findRunningByHomeNode(selfCluster));
+        List<ProjectDocument> projects = new ArrayList<>(
+                projectService.findRunningByHomePodId(clusterService.selfPodId()));
         projects.addAll(projectService.findPodlessActive());
         if (projects.isEmpty()) return;
 

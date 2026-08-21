@@ -28,6 +28,9 @@ class DocumentChangeRouterTest {
     private static final String SELF_NODE = "maya-prosser";
     private static final String OTHER_NODE = "ford-prefect";
     private static final String OTHER_ENDPOINT = "10.0.0.8:8080";
+    private static final String SELF_POD = "pod-self";
+    private static final String OTHER_POD = "pod-other";
+    private static final java.time.Duration LEASE_TTL = java.time.Duration.ofMinutes(5);
 
     private ProjectService projectService;
     private ClusterService clusterService;
@@ -48,6 +51,8 @@ class DocumentChangeRouterTest {
         dummyCounter = mock(Counter.class);
 
         when(clusterService.selfNodeName()).thenReturn(SELF_NODE);
+        when(clusterService.selfPodId()).thenReturn(SELF_POD);
+        when(clusterService.leaseTtl()).thenReturn(LEASE_TTL);
         when(metrics.counter(any(), any(String[].class))).thenReturn(dummyCounter);
         when(metrics.counter(any())).thenReturn(dummyCounter);
 
@@ -83,19 +88,21 @@ class DocumentChangeRouterTest {
     }
 
     @Test
-    void userHubProject_emits_no_event() {
+    void userHubProject_fires_local_only() {
+        // Podless: no remote holder to notify, but Eddie very likely runs on
+        // this pod and its scopes must refresh.
         DocumentChangeRouter.Classification c = router.classify(upserted("_user_mike",
                 "documents/note.md"));
 
-        assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.NONE);
-        assertThat(c.fireSelf()).isFalse();
+        assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.SELF);
+        assertThat(c.fireSelf()).isTrue();
         assertThat(c.remoteEndpoints()).isEmpty();
     }
 
     @Test
-    void regularProject_homeNode_self_fires_local_only() {
+    void regularProject_leaseHeldBySelf_fires_local_only() {
         when(projectService.findByTenantAndName(TENANT, "mail-assistant"))
-                .thenReturn(Optional.of(project("mail-assistant", SELF_NODE)));
+                .thenReturn(Optional.of(leased("mail-assistant", SELF_POD, SELF_NODE)));
 
         DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant",
                 "documents/mail-triage.js"));
@@ -106,60 +113,79 @@ class DocumentChangeRouterTest {
     }
 
     @Test
-    void regularProject_homeNode_remote_live_fires_remote_only() {
+    void regularProject_leaseHeldByRemotePod_fires_local_and_remote() {
         when(projectService.findByTenantAndName(TENANT, "mail-assistant"))
-                .thenReturn(Optional.of(project("mail-assistant", OTHER_NODE)));
-        when(clusterService.resolveLiveEndpoint(OTHER_NODE))
+                .thenReturn(Optional.of(leased("mail-assistant", OTHER_POD, OTHER_NODE)));
+        when(clusterService.resolveEndpointByPodId(OTHER_POD))
                 .thenReturn(Optional.of(OTHER_ENDPOINT));
 
         DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant",
                 "documents/mail-triage.js"));
 
         assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.REMOTE);
-        assertThat(c.fireSelf()).isFalse();
+        assertThat(c.fireSelf())
+                .as("the writing pod always refreshes itself, holder or not")
+                .isTrue();
         assertThat(c.remoteEndpoints()).containsExactly(OTHER_ENDPOINT);
     }
 
     @Test
-    void regularProject_homeNode_unresolvable_emits_no_event() {
+    void regularProject_holderRowGone_fires_local_only() {
         when(projectService.findByTenantAndName(TENANT, "mail-assistant"))
-                .thenReturn(Optional.of(project("mail-assistant", OTHER_NODE)));
-        when(clusterService.resolveLiveEndpoint(OTHER_NODE)).thenReturn(Optional.empty());
+                .thenReturn(Optional.of(leased("mail-assistant", OTHER_POD, OTHER_NODE)));
+        when(clusterService.resolveEndpointByPodId(OTHER_POD)).thenReturn(Optional.empty());
 
         DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant",
                 "documents/mail-triage.js"));
 
-        assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.NONE);
-        assertThat(c.fireSelf()).isFalse();
+        assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.SELF);
+        assertThat(c.fireSelf()).isTrue();
         assertThat(c.remoteEndpoints()).isEmpty();
     }
 
     @Test
-    void regularProject_homeNode_null_emits_no_event() {
+    void regularProject_expiredLease_fires_local_only() {
+        // Nobody owns the project, so there is no remote target — but this pod
+        // may well hold a ServerToolRegistry scope for it, because scopes are
+        // populated by reads, not by ownership. Dropping the event here is the
+        // bug the lease track exists to fix.
         when(projectService.findByTenantAndName(TENANT, "mail-assistant"))
-                .thenReturn(Optional.of(project("mail-assistant", null)));
+                .thenReturn(Optional.of(expiredLease("mail-assistant")));
 
         DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant",
                 "documents/mail-triage.js"));
 
-        assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.NONE);
+        assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.SELF);
+        assertThat(c.fireSelf()).isTrue();
+        assertThat(c.remoteEndpoints()).isEmpty();
     }
 
     @Test
-    void regularProject_unknown_project_emits_no_event() {
+    void regularProject_unleased_fires_local_only() {
+        when(projectService.findByTenantAndName(TENANT, "mail-assistant"))
+                .thenReturn(Optional.of(leased("mail-assistant", null, null)));
+
+        DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant",
+                "documents/mail-triage.js"));
+
+        assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.SELF);
+    }
+
+    @Test
+    void regularProject_unknown_project_fires_local_only() {
         when(projectService.findByTenantAndName(TENANT, "mail-assistant"))
                 .thenReturn(Optional.empty());
 
         DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant",
                 "documents/mail-triage.js"));
 
-        assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.NONE);
+        assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.SELF);
     }
 
     @Test
     void onDocumentChanged_self_target_publishes_routed_event_and_enqueues_nothing() {
         when(projectService.findByTenantAndName(TENANT, "mail-assistant"))
-                .thenReturn(Optional.of(project("mail-assistant", SELF_NODE)));
+                .thenReturn(Optional.of(leased("mail-assistant", SELF_POD, SELF_NODE)));
 
         router.onDocumentChanged(upserted("mail-assistant", "documents/mail-triage.js"));
 
@@ -168,15 +194,15 @@ class DocumentChangeRouterTest {
     }
 
     @Test
-    void onDocumentChanged_remote_target_enqueues_and_does_not_publish_local() {
+    void onDocumentChanged_remote_target_enqueues_and_also_publishes_local() {
         when(projectService.findByTenantAndName(TENANT, "mail-assistant"))
-                .thenReturn(Optional.of(project("mail-assistant", OTHER_NODE)));
-        when(clusterService.resolveLiveEndpoint(OTHER_NODE))
+                .thenReturn(Optional.of(leased("mail-assistant", OTHER_POD, OTHER_NODE)));
+        when(clusterService.resolveEndpointByPodId(OTHER_POD))
                 .thenReturn(Optional.of(OTHER_ENDPOINT));
 
         router.onDocumentChanged(upserted("mail-assistant", "documents/mail-triage.js"));
 
-        verify(eventPublisher, never()).publishEvent(any(RoutedDocumentChangedEvent.class));
+        verify(eventPublisher, times(1)).publishEvent(any(RoutedDocumentChangedEvent.class));
         verify(dispatcher, times(1)).enqueue(eq(OTHER_ENDPOINT), any(DocumentChangedEvent.class));
     }
 
@@ -214,11 +240,20 @@ class DocumentChangeRouterTest {
         return doc;
     }
 
-    private static ProjectDocument project(String name, String homeNode) {
+    private static ProjectDocument leased(String name, String podId, String nodeName) {
         ProjectDocument doc = new ProjectDocument();
         doc.setTenantId(TENANT);
         doc.setName(name);
-        doc.setHomeNode(homeNode);
+        doc.setHomePodId(podId);
+        doc.setHomeNode(nodeName);
+        if (podId != null) doc.setClaimedAt(java.time.Instant.now());
+        return doc;
+    }
+
+    /** A lease whose holder stopped renewing — nobody owns the project. */
+    private static ProjectDocument expiredLease(String name) {
+        ProjectDocument doc = leased(name, OTHER_POD, OTHER_NODE);
+        doc.setClaimedAt(java.time.Instant.now().minus(LEASE_TTL).minusSeconds(1));
         return doc;
     }
 }

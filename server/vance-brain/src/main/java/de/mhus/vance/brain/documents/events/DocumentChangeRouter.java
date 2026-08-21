@@ -6,7 +6,9 @@ import de.mhus.vance.shared.document.DocumentChangedEvent;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.shared.project.ProjectOwnership;
 import de.mhus.vance.shared.project.ProjectService;
+import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -21,26 +23,50 @@ import org.springframework.stereotype.Component;
 /**
  * Routes {@link DocumentChangedEvent}s to the pod(s) whose caches need to
  * refresh. The classification rules live in §4 of
- * {@code planning/document-change-events.md} and map roughly to:
+ * {@code planning/document-change-events.md}.
+ *
+ * <h2>The writing pod always refreshes itself</h2>
+ * Self fires for every routed change; ownership only decides who else hears
+ * about it:
  *
  * <ul>
- *   <li>System projects ({@code _tenant}, {@code _vance}) →
- *       broadcast to every live pod in the cluster (incl. self), because
- *       the cascade affects every project in the tenant.</li>
- *   <li>User-Hub projects ({@code _user_*}) → no event: they are
- *       <em>podless</em>, no other pod caches anything bleibendes.</li>
- *   <li>Regular project whose {@code homeNode} is self → local event only.</li>
- *   <li>Regular project whose {@code homeNode} is a remote live pod →
- *       remote-only event.</li>
- *   <li>Regular project whose {@code homeNode} is {@code null} (unclaimed) or
- *       points to a stale/unknown pod → no event (no live cache holder).</li>
+ *   <li>System projects ({@code _tenant}, {@code _vance}) → self plus every
+ *       live pod in the cluster, because the cascade affects every project in
+ *       the tenant.</li>
+ *   <li>Lease held by a remote pod → self plus that pod.</li>
+ *   <li>Lease held by self, no valid lease at all, podless project, unknown
+ *       project → self only.</li>
  * </ul>
+ *
+ * <p><b>Why self is unconditional.</b> This used to drop the event entirely
+ * when nobody held a lease, reasoning "no owner ⇒ nobody caches". That is
+ * provably false: {@code ServerToolService.lookup/listAll} bootstraps a project
+ * scope on <em>any</em> read on <em>any</em> pod, ownership-independent — so the
+ * pod that just served this write is precisely the one that may hold a stale
+ * one. The drop is also what forced the kit-provisioning listener onto the raw
+ * event; a cache-coherence router that silently loses events for the common
+ * case ({@code EPHEMERAL} project after a restart) invites every subsystem to
+ * build its own channel. See
+ * {@code planning/project-ownership-lease-design.md} §1.3.
+ *
+ * <p><b>What makes that safe.</b> A local event must not conjure runtime
+ * behaviour on a pod that has not activated the project — a scheduler or hook
+ * registration is not a cache. The two listeners that create such state
+ * ({@code UrsaSchedulerDocumentListener}, {@code UrsaHookDocumentListener})
+ * therefore filter on {@code ProjectActivationRegistry}; the pure-cache
+ * listeners need no filter, and {@code ServerToolRegistry.refreshOne} already
+ * no-ops when the scope is not loaded. Keeping that distinction in the
+ * listeners rather than in the router is deliberate: only the listener knows
+ * whether its state is a cache or a running thing.
  *
  * <p>The router itself only re-publishes a local {@link
  * RoutedDocumentChangedEvent} or hands the change to the {@link
  * DocumentChangeDispatcher} for asynchronous remote delivery. Self-targets are
  * fired synchronously so the bug pattern „write, then immediately re-read on
  * the same pod sees fresh state" stays intact.
+ *
+ * <p>Volume is bounded by {@code DocumentService.isEventPublishable}: only
+ * {@code _vance/**} minus logs and trash reaches this bus at all.
  */
 @Component
 @RequiredArgsConstructor
@@ -72,14 +98,10 @@ public class DocumentChangeRouter {
         metrics.counter("vance.document.routing.classified",
                 "target", classification.kind.tag).increment();
 
-        if (classification.kind == Kind.NONE) {
-            log.debug("DocumentChangeRouter: drop '{}/{}/{}' — no cache holder",
-                    event.tenantId(), event.projectId(), event.path());
-            return;
-        }
-
-        // Self-target: fire inline so the publisher's own pod sees the
-        // refresh before its next read on the same thread / request.
+        // Self fires inline: the publisher's own pod must see the refresh
+        // before its next read on the same thread / request, and it is the one
+        // pod that provably may hold a scope for this project (see the class
+        // comment). Every classification sets this today.
         if (classification.fireSelf) {
             publishRouted(event);
         }
@@ -106,45 +128,42 @@ public class DocumentChangeRouter {
         }
 
         // _user_<login> hub projects are podless by design (per memory
-        // user_projects_no_home_pod): Eddie sits on a random WS-pod, no
-        // bleibender cache. No event needed; the next Eddie-spawn does a
-        // lazy bootstrap from Mongo.
+        // user_projects_no_home_pod): Eddie sits on a random WS-pod, so there
+        // is no remote holder to notify — but this pod is very likely the one
+        // Eddie runs on, so the local refresh matters.
         if (projectId != null
                 && projectId.startsWith(HomeBootstrapService.HUB_PROJECT_NAME_PREFIX)) {
-            return Classification.none();
+            return Classification.selfOnly();
         }
 
         Optional<ProjectDocument> projectOpt =
                 projectService.findByTenantAndName(event.tenantId(), projectId);
         if (projectOpt.isEmpty()) {
-            // Unknown project — no live cache holder. Could happen for
-            // tenant-bootstrap writes that race the project document write
-            // itself; the next bootstrap loads from Mongo.
-            return Classification.none();
-        }
-
-        String homeNode = projectOpt.get().getHomeNode();
-        if (homeNode == null || homeNode.isBlank()) {
-            // Unclaimed project — nobody owns it, nobody caches.
-            return Classification.none();
-        }
-
-        String self = clusterService.selfNodeName();
-        if (homeNode.equals(self)) {
+            // Unknown project — happens for tenant-bootstrap writes that race
+            // the project document write itself. Nobody to notify remotely;
+            // our own scopes are keyed by project *name*, so refresh locally.
             return Classification.selfOnly();
         }
 
-        // Remote home pod: resolve endpoint. If the pod is gone or its row
-        // went stale/stopped the resolve returns empty — the cache is rebuilt
-        // on the new owner's next claim.
-        Optional<String> endpoint = clusterService.resolveLiveEndpoint(homeNode);
-        if (endpoint.isEmpty()) {
-            log.warn("DocumentChangeRouter: homeNode '{}' for '{}/{}' has no live endpoint — "
-                            + "drop refresh, next bootstrap on the new owner loads fresh",
-                    homeNode, event.tenantId(), projectId);
-            return Classification.none();
+        Optional<String> holder = ProjectOwnership.liveOwnerPodId(
+                projectOpt.get(), Instant.now(), clusterService.leaseTtl());
+        if (holder.isEmpty() || holder.get().equals(clusterService.selfPodId())) {
+            // No valid lease, or it is ours — either way there is no second
+            // pod that needs telling.
+            return Classification.selfOnly();
         }
-        return Classification.remoteOnly(endpoint.get());
+
+        // Remote holder: resolve endpoint. A missing row (admin purge, cleanup
+        // sweep) means we cannot deliver there — the holder rebuilds on its
+        // next claim; we still refresh locally.
+        Optional<String> endpoint = clusterService.resolveEndpointByPodId(holder.get());
+        if (endpoint.isEmpty()) {
+            log.warn("DocumentChangeRouter: lease holder '{}' for '{}/{}' has no endpoint row — "
+                            + "local refresh only, the holder reloads on its next claim",
+                    projectOpt.get().getHomeNode(), event.tenantId(), projectId);
+            return Classification.selfOnly();
+        }
+        return Classification.selfAndRemote(endpoint.get());
     }
 
     private Classification broadcast(DocumentChangedEvent event) {
@@ -185,8 +204,11 @@ public class DocumentChangeRouter {
 
     // ──────────────────── Result shape ────────────────────
 
+    /**
+     * How far the change fans out. Self is always included, so this names the
+     * remote reach: none, one lease holder, or the whole cluster.
+     */
     enum Kind {
-        NONE("none"),
         SELF("self"),
         REMOTE("remote"),
         BROADCAST("broadcast");
@@ -197,16 +219,18 @@ public class DocumentChangeRouter {
 
     /**
      * Outcome of classifying one event. Visible for tests.
+     *
+     * <p>{@code fireSelf} is kept in the record even though it is always
+     * {@code true} today: it is what the tests assert against, and a future
+     * target that genuinely must not fire locally would set it rather than
+     * grow a second flag.
      */
     record Classification(Kind kind, boolean fireSelf, List<String> remoteEndpoints) {
-        static Classification none() {
-            return new Classification(Kind.NONE, false, List.of());
-        }
         static Classification selfOnly() {
             return new Classification(Kind.SELF, true, List.of());
         }
-        static Classification remoteOnly(String endpoint) {
-            return new Classification(Kind.REMOTE, false, List.of(endpoint));
+        static Classification selfAndRemote(String endpoint) {
+            return new Classification(Kind.REMOTE, true, List.of(endpoint));
         }
     }
 }

@@ -132,6 +132,21 @@ public class ProjectCommands {
         return formatResponse("Resume", tenant, name, response);
     }
 
+    @Command(name = {"project", "lifecycle-type"},
+            description = "Set AUTO (derived) | EPHEMERAL (never auto-start) | PERMANENT (always placed).")
+    public String lifecycleType(
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name,
+            @Option(longName = "value", shortName = 'v', required = true) String value) {
+        // Brain-orchestrated like suspend/resume: the value decides whether the
+        // cluster keeps the project placed, so the Brain has to see the change
+        // rather than find it later in the document.
+        Response response = brainClient.post(
+                tenant, "/brain/" + tenant + "/admin/projects/" + name + "/lifecycle-type",
+                "{\"lifecycleType\":\"" + value.trim().toUpperCase() + "\"}");
+        return formatResponse("Set lifecycle-type", tenant, name, response);
+    }
+
     private static String formatResponse(String op, String tenant, String name, Response response) {
         if (response.isSuccess()) {
             return op + " OK — tenant='" + tenant + "' project='" + name + "'\n"
@@ -159,8 +174,10 @@ public class ProjectCommands {
                 + "  enabled   : " + p.isEnabled() + "\n"
                 + "  group     : " + (p.getProjectGroupId() == null ? "" : p.getProjectGroupId()) + "\n"
                 + "  teams     : " + p.getTeamIds() + "\n"
-                + "  homeNode: " + (p.getHomeNode() == null ? "" : p.getHomeNode()) + "\n"
-                + "  claimedAt : " + (p.getClaimedAt() == null ? "" : p.getClaimedAt()) + "\n"
+                + "  lifecycle : " + p.getLifecycleType()
+                + (p.isOwnerRequired() ? " (ownerRequired)" : "") + "\n"
+                + "  homeNode  : " + (p.getHomeNode() == null ? "" : p.getHomeNode()) + "\n"
+                + "  leaseSeen : " + (p.getClaimedAt() == null ? "" : p.getClaimedAt()) + "\n"
                 + "  created   : " + (p.getCreatedAt() == null ? "" : p.getCreatedAt()) + "\n"
                 + "  id        : " + (p.getId() == null ? "" : p.getId());
     }

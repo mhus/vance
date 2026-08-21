@@ -1,12 +1,12 @@
 package de.mhus.vance.shared.project;
 
 import de.mhus.vance.shared.audit.AuditService;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -52,9 +52,11 @@ public class ProjectService {
     private static final String F_TENANT = "tenantId";
     private static final String F_NAME = "name";
     private static final String F_STATUS = "status";
-    private static final String F_HOME_CLUSTER = "homeNode";
+    private static final String F_HOME_POD = "homePodId";
+    private static final String F_HOME_NODE = "homeNode";
     private static final String F_CLAIMED_AT = "claimedAt";
     private static final String F_LIFECYCLE_TYPE = "lifecycleType";
+    private static final String F_OWNER_REQUIRED = "ownerRequired";
     private static final String F_HOME_RESOURCE_SCORE = "homeResourceScore";
 
     private final ProjectRepository repository;
@@ -163,7 +165,7 @@ public class ProjectService {
         }
         LifecycleType lifecycleType = (kind == ProjectKind.SYSTEM)
                 ? LifecycleType.HOMELESS
-                : LifecycleType.EPHEMERAL;
+                : LifecycleType.AUTO;
         ProjectDocument project = ProjectDocument.builder()
                 .tenantId(tenantId)
                 .name(name)
@@ -183,31 +185,32 @@ public class ProjectService {
     }
 
     /**
-     * Atomically claims {@code (tenantId, name)} for {@code selfCluster}: the
-     * CAS predicate accepts the claim when {@code homeNode} is currently
-     * {@code null}, equal to {@code selfCluster}, or pointing at a cluster
-     * node that is not in {@code liveClusters} (stale-takeover). Refreshes
-     * {@code homeNode} and {@code claimedAt}; lifecycle status is left
-     * untouched.
+     * Atomically takes the ownership lease on {@code (tenantId, name)} for
+     * {@code selfPodId}. The CAS predicate accepts when the lease is
+     * unclaimed, already ours, or <b>expired</b> — a holder that stopped
+     * renewing within {@code leaseTtl} is gone by definition. Refreshes
+     * {@code homePodId}, {@code homeNode} and {@code claimedAt}; lifecycle
+     * status is left untouched.
+     *
+     * <p>The predicate is entirely local to the document: no live-pod
+     * snapshot has to be assembled and passed in, which is what previously
+     * forced every caller to build a {@code liveClusters} set (and to guard
+     * against the empty one wiping every claim in the cluster).
      *
      * <p>Returns {@link Optional#empty()} when the claim was rejected — that
-     * means another live pod holds the project; the caller must redirect.
+     * means another pod holds a valid lease; the caller must redirect.
      * Throws {@link ProjectNotFoundException} when the document does not
      * exist at all, and {@link ProjectClosedException} when it is CLOSED.
-     *
-     * <p>{@code liveClusters} is a snapshot of the {@code nodeName}s of
-     * non-stale pods in the same cluster, as seen by the caller. It must
-     * contain {@code selfCluster}; the caller (which lives in
-     * {@code vance-brain}) builds it from {@code BrainPodService}.
      */
     public Optional<ProjectDocument> claim(
             String tenantId,
             String name,
-            String selfCluster,
-            Set<String> liveClusters) {
+            String selfPodId,
+            String selfNodeName,
+            Duration leaseTtl) {
         if (isPodless(name)) {
             throw new IllegalArgumentException(
-                    "Project '" + name + "' is podless — refusing to set homeNode. "
+                    "Project '" + name + "' is podless — refusing to take a lease. "
                             + "Use ProjectManagerService.claimForLocalPod() which "
                             + "short-circuits on isPodless().");
         }
@@ -218,32 +221,91 @@ public class ProjectService {
             throw new ProjectClosedException(
                     "Project '" + name + "' is CLOSED — cannot claim");
         }
+        Instant now = Instant.now();
         Criteria base = Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name);
         Criteria casPredicate = new Criteria().orOperator(
-                Criteria.where(F_HOME_CLUSTER).is(null),
-                Criteria.where(F_HOME_CLUSTER).is(selfCluster),
-                Criteria.where(F_HOME_CLUSTER).nin(liveClusters));
+                Criteria.where(F_HOME_POD).is(null),
+                Criteria.where(F_HOME_POD).is(selfPodId),
+                expiredLease(now, leaseTtl));
         Query query = new Query(new Criteria().andOperator(base, casPredicate));
         Update update = new Update()
-                .set(F_HOME_CLUSTER, selfCluster)
-                .set(F_CLAIMED_AT, Instant.now());
+                .set(F_HOME_POD, selfPodId)
+                .set(F_HOME_NODE, selfNodeName)
+                .set(F_CLAIMED_AT, now);
         ProjectDocument updated = mongoTemplate.findAndModify(
                 query, update,
                 FindAndModifyOptions.options().returnNew(true),
                 ProjectDocument.class);
         if (updated == null) {
             // The base (tenantId, name) match exists (we just read it above)
-            // — so a null here means the CAS predicate failed. Another live
-            // cluster holds the claim. Caller decides whether to redirect.
-            log.debug("Project '{}/{}' claim rejected: holder='{}', selfCluster='{}'",
-                    tenantId, name, current.getHomeNode(), selfCluster);
+            // — so a null here means the CAS predicate failed. Another pod
+            // holds a live lease. Caller decides whether to redirect.
+            log.debug("Project '{}/{}' claim rejected: holder='{}' ({}), self='{}'",
+                    tenantId, name, current.getHomeNode(), current.getHomePodId(), selfPodId);
             return Optional.empty();
         }
-        if (!Objects.equals(current.getHomeNode(), selfCluster)) {
-            log.info("Project '{}' claimed by cluster '{}' (was '{}', status={})",
-                    name, selfCluster, current.getHomeNode(), current.getStatus());
+        if (!Objects.equals(current.getHomePodId(), selfPodId)) {
+            log.info("Project '{}' leased by pod '{}' (was '{}', status={})",
+                    name, selfNodeName, current.getHomeNode(), current.getStatus());
         }
         return Optional.of(updated);
+    }
+
+    /**
+     * "The lease is not being renewed any more" as a Mongo predicate. A
+     * missing {@code claimedAt} counts as expired for the same reason
+     * {@code ProjectOwnership.isExpired} says so: a holder without a renewal
+     * timestamp cannot be validated, and treating it as valid would strand
+     * the project forever.
+     */
+    private static Criteria expiredLease(Instant now, Duration leaseTtl) {
+        Instant cutoff = now.minus(leaseTtl);
+        return new Criteria().orOperator(
+                Criteria.where(F_CLAIMED_AT).is(null),
+                Criteria.where(F_CLAIMED_AT).lt(cutoff));
+    }
+
+    /**
+     * Renews every lease this pod holds in a single operation, and reports
+     * how many it still holds.
+     *
+     * <p>One {@code updateMulti} per beat, whatever the number of tenants and
+     * projects — that is the whole point of keying ownership on a pod id with
+     * an index behind it. Renewing per project would put the heartbeat cost on
+     * a curve nobody wants to be on in a large installation.
+     *
+     * <p>The return value is the <em>matched</em> count, not the modified one:
+     * the question is "how many do I still hold", and a match answers it
+     * whether or not the timestamp happened to change. Compared against what
+     * the pod thinks it activated, a shortfall means a lease was taken away —
+     * see {@code ProjectLeaseService}.
+     */
+    public long renewLeases(String selfPodId, Instant now) {
+        if (selfPodId == null || selfPodId.isBlank()) return 0;
+        Query query = new Query(Criteria.where(F_HOME_POD).is(selfPodId));
+        Update update = new Update().set(F_CLAIMED_AT, now);
+        return mongoTemplate.updateMulti(query, update, ProjectDocument.class)
+                .getMatchedCount();
+    }
+
+    /**
+     * Drops every lease this pod holds — the clean-shutdown courtesy that
+     * lets the next pod take over immediately instead of waiting out the TTL.
+     *
+     * <p>Best-effort by design: correctness does not depend on it, because an
+     * un-renewed lease expires on its own. That is the difference from the
+     * previous model, where a missed cleanup left a claim that blocked
+     * takeover until some pod happened to boot.
+     */
+    public long releaseLeases(String selfPodId) {
+        if (selfPodId == null || selfPodId.isBlank()) return 0;
+        Query query = new Query(Criteria.where(F_HOME_POD).is(selfPodId));
+        Update update = new Update()
+                .unset(F_HOME_POD)
+                .unset(F_HOME_NODE)
+                .unset(F_CLAIMED_AT);
+        return mongoTemplate.updateMulti(query, update, ProjectDocument.class)
+                .getModifiedCount();
     }
 
     /**
@@ -353,10 +415,18 @@ public class ProjectService {
         return updated;
     }
 
-    /** Lists RUNNING projects owned by {@code homeNode} — for startup reclaim. */
-    public List<ProjectDocument> findRunningByHomeNode(String homeNode) {
+    /**
+     * Lists RUNNING projects leased by {@code selfPodId} — the pod-local
+     * sweeper selector (RAG index, auto-summary, Trillian heartbeat).
+     *
+     * <p>Only ever called with the caller's <em>own</em> pod id, which is why
+     * it needs no lease-expiry check: a pod asking what it holds is asking
+     * about a lease it is renewing itself. Do not repurpose this to look at
+     * another pod's projects — use {@code ProjectOwnership} for that.
+     */
+    public List<ProjectDocument> findRunningByHomePodId(String selfPodId) {
         Query query = new Query(Criteria.where(F_STATUS).is(ProjectStatus.RUNNING)
-                .and(F_HOME_CLUSTER).is(homeNode));
+                .and(F_HOME_POD).is(selfPodId));
         return mongoTemplate.find(query, ProjectDocument.class);
     }
 
@@ -365,7 +435,7 @@ public class ProjectService {
      * terminal state. Podless projects never reach {@code RUNNING}
      * because {@code bringPodless()} leaves the status untouched — so
      * pod-scoped sweepers (auto-summary, indexers) cannot rely on the
-     * regular {@link #findRunningByHomeNode} filter to see them.
+     * regular {@link #findRunningByHomePodId} filter to see them.
      * They live on whichever pod the user's WS lands on; any pod may
      * sweep their documents because per-doc work is gated by an atomic
      * claim.
@@ -377,78 +447,95 @@ public class ProjectService {
     }
 
     /**
-     * Lists every project owned by {@code homeNode}, regardless of
-     * project status. Used by the cluster heartbeat to denormalise
-     * "what does this cluster node own right now" into the brain-pod row.
+     * Lists every project leased by {@code selfPodId}, regardless of project
+     * status. Used by the cluster heartbeat to denormalise "what does this pod
+     * hold right now" into the brain-pod row. Own-pod only, see
+     * {@link #findRunningByHomePodId}.
      */
-    public List<ProjectDocument> findByHomeNode(String homeNode) {
-        Query query = new Query(Criteria.where(F_HOME_CLUSTER).is(homeNode));
+    public List<ProjectDocument> findByHomePodId(String selfPodId) {
+        Query query = new Query(Criteria.where(F_HOME_POD).is(selfPodId));
         return mongoTemplate.find(query, ProjectDocument.class);
     }
 
     /**
-     * Bulk-clears {@code homeNode} on every project whose current
-     * owner is not in {@code liveClusters}. Idempotent — two pods running
-     * the same cleanup converge on the same final state. Returns the
-     * number of documents actually modified. Used by
-     * {@code ProjectStartupReclaimer} at boot.
+     * Lists projects that need an owner pod but hold no valid lease — the
+     * candidate set for the Boot-Self-Pull and the Cluster-Master Distributor
+     * (see {@code specification/cluster-project-management.md} §5).
      *
-     * <p>{@code $nin} also matches documents where the field is missing
-     * or {@code null}; setting {@code null} on an already-{@code null}
-     * field is a no-op in MongoDB and is not counted in
-     * {@code modifiedCount}, so the operation stays accurate.
+     * <p>"Needs an owner" is the operator override where one was set, and the
+     * derived {@code ownerRequired} otherwise:
+     * <ul>
+     *   <li>{@link LifecycleType#PERMANENT} — always.</li>
+     *   <li>{@link LifecycleType#AUTO} — when {@code ownerRequired} is true,
+     *       i.e. the project carries schedulers, hooks, event triggers or a
+     *       provisioning document.</li>
+     *   <li>{@link LifecycleType#EPHEMERAL} — never (explicit opt-out).</li>
+     *   <li>{@link LifecycleType#HOMELESS} — never (no pod affinity at all).</li>
+     * </ul>
      *
-     * <p>A defensive no-op when {@code liveClusters} is empty: that
-     * would otherwise match every document and wipe every claim. The
-     * caller is supposed to always include this pod's own node name,
-     * but we guard here so a misuse can't trigger a cluster-wide reset.
+     * <p>An indexable range scan: both "needs an owner" and "stranded" are
+     * properties of the document, where the predecessor had to {@code $nin} a
+     * live-pod list that grew with the cluster.
+     *
+     * <p>Replaces {@code findPermanentOrphans}, which selected on PERMANENT
+     * alone and therefore matched nothing at all — nothing in the tree ever
+     * assigned that value ({@code planning/project-ownership-lease-design.md}
+     * §1.1).
      */
-    public long clearStaleHomeNodes(Set<String> liveClusters) {
-        if (liveClusters == null || liveClusters.isEmpty()) {
-            log.warn("clearStaleHomeNodes called with empty liveClusters — skipping");
-            return 0;
-        }
-        Query query = new Query(Criteria.where(F_HOME_CLUSTER).nin(liveClusters));
-        Update update = new Update().set(F_HOME_CLUSTER, null);
-        return mongoTemplate.updateMulti(query, update, ProjectDocument.class)
-                .getModifiedCount();
-    }
-
-    /**
-     * Lists PERMANENT projects that have no live owner pod — selector
-     * {@code lifecycleType=PERMANENT AND status non-CLOSED AND
-     * (homeNode IS NULL OR homeNode NOT IN liveClusters)}. Candidates
-     * for the Boot-Self-Pull and the Cluster-Master Distributor (see
-     * {@code specification/cluster-project-management.md} §5).
-     *
-     * <p>Pass {@code liveClusters} to filter out projects whose
-     * {@code homeNode} still points at a stale node-name — pods on boot
-     * have not yet wiped those via {@link #clearStaleHomeNodes}. The
-     * empty set is treated as "homeNode null only" (defensive).
-     */
-    public List<ProjectDocument> findPermanentOrphans(Set<String> liveClusters, int limit) {
-        Criteria typeAndStatus = Criteria.where(F_LIFECYCLE_TYPE).is(LifecycleType.PERMANENT)
-                .and(F_STATUS).ne(ProjectStatus.CLOSED);
-        Criteria orphan = (liveClusters == null || liveClusters.isEmpty())
-                ? Criteria.where(F_HOME_CLUSTER).is(null)
-                : new Criteria().orOperator(
-                        Criteria.where(F_HOME_CLUSTER).is(null),
-                        Criteria.where(F_HOME_CLUSTER).nin(liveClusters));
-        Query query = new Query(new Criteria().andOperator(typeAndStatus, orphan))
+    public List<ProjectDocument> findProjectsNeedingOwner(Duration leaseTtl, int limit) {
+        Criteria needsOwner = new Criteria().orOperator(
+                Criteria.where(F_LIFECYCLE_TYPE).is(LifecycleType.PERMANENT),
+                Criteria.where(F_LIFECYCLE_TYPE).is(LifecycleType.AUTO)
+                        .and(F_OWNER_REQUIRED).is(true));
+        Criteria stranded = new Criteria().orOperator(
+                Criteria.where(F_HOME_POD).is(null),
+                expiredLease(Instant.now(), leaseTtl));
+        Query query = new Query(new Criteria().andOperator(
+                        Criteria.where(F_STATUS).ne(ProjectStatus.CLOSED),
+                        needsOwner,
+                        stranded))
                 .limit(Math.max(1, limit));
         return mongoTemplate.find(query, ProjectDocument.class);
     }
 
     /**
-     * Sum of {@code homeResourceScore} over every non-CLOSED project
-     * currently owned by {@code homeNode}. Used by the pod heartbeat to
-     * refresh {@code BrainPodDocument.resourcesCurrentScore} and by the
-     * Distributor to project pod load while planning a distribution
-     * round.
+     * Every project currently marked as needing an owner pod. Small by
+     * construction and index-backed — it is the re-derivation candidate set,
+     * not a scan.
      */
-    public int sumScoreByHomeNode(String homeNode) {
-        if (homeNode == null || homeNode.isBlank()) return 0;
-        Query query = new Query(Criteria.where(F_HOME_CLUSTER).is(homeNode)
+    public List<ProjectDocument> findOwnerRequired() {
+        return mongoTemplate.find(
+                new Query(Criteria.where(F_OWNER_REQUIRED).is(true)), ProjectDocument.class);
+    }
+
+    /**
+     * Sets the derived {@code ownerRequired} flag, returning whether the value
+     * actually changed. Called by {@code ProjectOwnerRequirementService} after
+     * a document under one of the activation-source prefixes changed.
+     *
+     * <p>Conditional write: the filter includes the negation of the target
+     * value, so a recompute that confirms the status quo costs a matched-zero
+     * update and no disk write. In steady state — which is almost always —
+     * this writes nothing.
+     */
+    public boolean setOwnerRequired(String tenantId, String name, boolean value) {
+        Query query = new Query(Criteria.where(F_TENANT).is(tenantId)
+                .and(F_NAME).is(name)
+                .and(F_OWNER_REQUIRED).ne(value));
+        Update update = new Update().set(F_OWNER_REQUIRED, value);
+        return mongoTemplate.updateFirst(query, update, ProjectDocument.class)
+                .getModifiedCount() > 0;
+    }
+
+    /**
+     * Sum of {@code homeResourceScore} over every non-CLOSED project leased by
+     * {@code selfPodId}. Used by the pod heartbeat to refresh
+     * {@code BrainPodDocument.resourcesCurrentScore} and by the Distributor to
+     * project pod load while planning a distribution round.
+     */
+    public int sumScoreByHomePodId(String selfPodId) {
+        if (selfPodId == null || selfPodId.isBlank()) return 0;
+        Query query = new Query(Criteria.where(F_HOME_POD).is(selfPodId)
                 .and(F_STATUS).ne(ProjectStatus.CLOSED));
         int total = 0;
         for (ProjectDocument p : mongoTemplate.find(query, ProjectDocument.class)) {
@@ -458,10 +545,13 @@ public class ProjectService {
     }
 
     /**
-     * Atomically switches {@code lifecycleType} between
-     * {@link LifecycleType#EPHEMERAL} and {@link LifecycleType#PERMANENT}.
-     * Refuses {@link LifecycleType#HOMELESS} (immutable per SYSTEM-kind)
-     * and refuses to mutate SYSTEM projects.
+     * Atomically switches {@code lifecycleType} between {@link
+     * LifecycleType#AUTO}, {@link LifecycleType#EPHEMERAL} and {@link
+     * LifecycleType#PERMANENT}. Refuses {@link LifecycleType#HOMELESS}
+     * (immutable per SYSTEM-kind) and refuses to mutate SYSTEM projects.
+     *
+     * <p>This is the operator override over the derived
+     * {@code ownerRequired}; {@code AUTO} hands the decision back to it.
      */
     public ProjectDocument setLifecycleType(String tenantId, String name, LifecycleType value) {
         if (value == LifecycleType.HOMELESS) {

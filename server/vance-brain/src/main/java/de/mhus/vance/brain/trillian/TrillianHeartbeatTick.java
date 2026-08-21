@@ -61,10 +61,6 @@ public class TrillianHeartbeatTick {
     @Scheduled(fixedDelayString = "${vance.trillian.heartbeat.intervalMs:60000}",
             initialDelayString = "${vance.trillian.heartbeat.intervalMs:60000}")
     public void tick() {
-        String node = clusterService.selfNodeName();
-        if (node == null || node.isBlank()) {
-            return;
-        }
         Instant now = Instant.now();
         ZoneId zone = ZoneId.systemDefault();
         int loops = 0;
@@ -72,7 +68,8 @@ public class TrillianHeartbeatTick {
         int adopted = 0;
         int quiet = 0;
         int woken = 0;
-        List<ProjectDocument> projects = projectService.findRunningByHomeNode(node);
+        List<ProjectDocument> projects =
+                projectService.findRunningByHomePodId(clusterService.selfPodId());
         for (ProjectDocument project : projects) {
             for (ThinkProcessDocument loop : wakeupService.loopsOf(
                     project.getTenantId(), project.getName(), MAX_LOOPS_PER_PROJECT)) {
@@ -125,7 +122,7 @@ public class TrillianHeartbeatTick {
         // tell a working heartbeat from a dead one.
         log.trace("Trillian heartbeat node='{}' projects={} loops={} adopted={} due={} "
                         + "quiet={} woken={}",
-                node, projects.size(), loops, adopted, due, quiet, woken);
+                clusterService.selfNodeName(), projects.size(), loops, adopted, due, quiet, woken);
     }
 
     /**

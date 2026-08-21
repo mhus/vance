@@ -82,9 +82,20 @@ class UrsaEventServiceTest {
         // so the existing assertions stay focussed on trigger
         // semantics and don't depend on a real DocumentService wiring.
         eventLogService = mock(UrsaEventLogService.class);
+        // No locator and no project manager: these tests drive the trigger
+        // semantics, and an absent locator means "run here", which is what the
+        // podless and single-pod paths do anyway.
+        @SuppressWarnings("unchecked")
+        org.springframework.beans.factory.ObjectProvider<de.mhus.vance.brain.project.ProjectLocator>
+                locatorProvider = mock(org.springframework.beans.factory.ObjectProvider.class);
+        @SuppressWarnings("unchecked")
+        org.springframework.beans.factory.ObjectProvider<
+                de.mhus.vance.brain.project.ProjectManagerService> managerProvider =
+                mock(org.springframework.beans.factory.ObjectProvider.class);
         service = new UrsaEventService(
                 eventLoader, settingService, metricService, workflowProvider,
-                actionExecutorRegistry, systemSessionResolver, eventLogService);
+                actionExecutorRegistry, systemSessionResolver, eventLogService,
+                locatorProvider, managerProvider, mock(UrsaEventForwarder.class));
     }
 
     // ─── synchronous output ─────────────────────────────────────────────

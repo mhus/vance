@@ -7,8 +7,10 @@ import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.shared.cluster.BrainPodDocument;
 import de.mhus.vance.shared.project.LifecycleType;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.shared.project.ProjectOwnership;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.project.ProjectStatus;
+import java.time.Instant;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,8 +29,8 @@ import org.springframework.stereotype.Service;
  *   <li>HOMELESS — returns {@link Location#endpoint()} {@code empty}; the
  *       caller knows to handle the project pod-locally (the existing
  *       podless paths).</li>
- *   <li>Live {@code homeNode} — resolves and returns the endpoint.</li>
- *   <li>Stale {@code homeNode} / {@code null} — depending on
+ *   <li>Valid lease — resolves and returns the holder's endpoint.</li>
+ *   <li>Expired or absent lease — depending on
  *       {@code autoStart}: blocking bring (master if available, else
  *       local-direct) or just-tell-me ({@code endpoint=empty}).</li>
  * </ul>
@@ -145,9 +147,9 @@ public class ProjectLocator {
     }
 
     private Optional<String> liveEndpointOf(ProjectDocument project) {
-        String homeNode = project.getHomeNode();
-        if (homeNode == null || homeNode.isBlank()) return Optional.empty();
-        return clusterService.resolveLiveEndpoint(homeNode);
+        return ProjectOwnership
+                .liveOwnerPodId(project, Instant.now(), clusterService.leaseTtl())
+                .flatMap(clusterService::resolveEndpointByPodId);
     }
 
     private boolean haveLocalRoom(ProjectDocument project) {

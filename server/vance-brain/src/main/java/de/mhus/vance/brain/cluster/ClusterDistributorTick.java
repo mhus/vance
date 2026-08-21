@@ -3,9 +3,7 @@ package de.mhus.vance.brain.cluster;
 import de.mhus.vance.shared.cluster.BrainPodDocument;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -13,7 +11,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Periodic re-placement of PERMANENT-orphan projects on healthy pods.
+ * Periodic re-placement of owner-needing projects with no live lease onto
+ * healthy pods.
  * Runs on every pod but no-ops unless the local pod currently holds the
  * Cluster-Master lease — see
  * {@code specification/cluster-project-management.md} §5.2.
@@ -54,9 +53,9 @@ public class ClusterDistributorTick {
     }
 
     void distribute() {
-        Set<String> liveClusters = new HashSet<>(clusterService.liveClusterNodeNames());
         int maxPerTick = Math.max(1, properties.getMaster().getMaxPerTick());
-        List<ProjectDocument> orphans = projectService.findPermanentOrphans(liveClusters, maxPerTick);
+        List<ProjectDocument> orphans =
+                projectService.findProjectsNeedingOwner(clusterService.leaseTtl(), maxPerTick);
         if (orphans.isEmpty()) {
             return;
         }

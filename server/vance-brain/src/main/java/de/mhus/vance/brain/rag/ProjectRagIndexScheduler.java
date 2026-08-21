@@ -55,10 +55,8 @@ public class ProjectRagIndexScheduler {
             initialDelayString = "${vance.rag.indexer.initialDelayMs:60000}")
     public void tick() {
         String podId = locationService.getPodAddress();
-        String selfCluster = clusterService.selfNodeName();
-        List<ProjectDocument> projects = selfCluster.isBlank()
-                ? new ArrayList<>()
-                : new ArrayList<>(projectService.findRunningByHomeNode(selfCluster));
+        List<ProjectDocument> projects = new ArrayList<>(
+                projectService.findRunningByHomePodId(clusterService.selfPodId()));
         projects.addAll(projectService.findPodlessActive());
         if (projects.isEmpty()) return;
 

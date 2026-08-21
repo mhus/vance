@@ -52,6 +52,30 @@ public class ClusterProperties {
     private Master master = new Master();
     private Locator locator = new Locator();
     private Cleanup cleanup = new Cleanup();
+    private Lease lease = new Lease();
+
+    @Data
+    public static class Lease {
+        /**
+         * How long a project ownership lease stays valid without renewal.
+         * Past this, any pod may take the project over — that is the whole
+         * crash recovery mechanism, and the reason nothing has to be cleaned
+         * up when a pod dies.
+         *
+         * <p>Must be comfortably larger than {@link #renewInterval}: the
+         * holder has to survive a GC pause or a Mongo hiccup without losing
+         * projects it is still serving. Same 5× rule of thumb as the
+         * cluster-master lease.
+         *
+         * <p>It is read-side policy, not baked into the stored data — raising
+         * it takes effect immediately instead of waiting for leases to roll
+         * over.
+         */
+        private Duration ttl = Duration.ofMinutes(5);
+
+        /** Spacing of the renewal tick — one {@code updateMulti} per beat. */
+        private Duration renewInterval = Duration.ofMinutes(1);
+    }
 
     @Data
     public static class Resources {

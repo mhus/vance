@@ -7,6 +7,7 @@ import de.mhus.vance.shared.location.LocationService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import jakarta.annotation.PreDestroy;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -173,16 +174,24 @@ public class ClusterService {
     }
 
     /**
-     * Routing-grade resolve: returns the endpoint only when the target
-     * node is backed by a live (non-stale, non-stopped) pod. Empty means
-     * "no live owner" — the caller should adopt the project locally,
-     * rebuild its cache on the next claim, or surface a {@code 409}.
-     * This is the primitive every cross-pod router must call. See
-     * {@link de.mhus.vance.shared.cluster.BrainPodService#resolveLiveEndpoint}.
+     * Resolves the endpoint of a pod by its {@code podId} — the routing
+     * primitive for cross-pod hops.
+     *
+     * <p>No liveness check here, and none needed: the caller arrives with a
+     * pod id taken from a <em>valid ownership lease</em>, and a valid lease
+     * means the holder renewed it moments ago, which means it is alive and its
+     * endpoint row is fresh (the heartbeat republishes the address when the
+     * host's IP changes). Liveness moved into the lease, so routing no longer
+     * joins against {@code brain_pods} to ask whether a name still means
+     * anything — it only asks where the pod is.
+     *
+     * <p>Empty means the row is gone (admin purge, cleanup sweep). Callers
+     * treat that like "no owner": adopt locally, or surface a {@code 409}.
      */
-    public Optional<String> resolveLiveEndpoint(String nodeNameOrEndpoint) {
-        return brainPodService.resolveLiveEndpoint(
-                properties.getId(), nodeNameOrEndpoint, properties.getStaleAfter());
+    public Optional<String> resolveEndpointByPodId(String podId) {
+        return brainPodService.findByPodId(podId)
+                .map(BrainPodDocument::getEndpoint)
+                .filter(endpoint -> !endpoint.isBlank());
     }
 
     /**
@@ -229,9 +238,21 @@ public class ClusterService {
 
     public String selfPodId() { return podId; }
 
-    public String selfNodeName() { return nodeName; }
+    /**
+     * This pod's node name. Resolved on first use rather than returned raw so
+     * callers that log or denormalise it (the lease writes it for display) get
+     * a name even before registration completed.
+     */
+    public String selfNodeName() { return resolveNodeName(); }
 
     public String selfClusterId() { return properties.getId(); }
+
+    /**
+     * How long a project ownership lease stays valid without renewal — the
+     * single place brain code reads this from, so the claim path, the renewal
+     * tick and every {@code ProjectOwnership} caller cannot drift apart.
+     */
+    public Duration leaseTtl() { return properties.getLease().getTtl(); }
 
     public boolean isStale(BrainPodDocument doc, Instant now) {
         return brainPodService.isStale(doc, now, properties.getStaleAfter());
@@ -277,13 +298,15 @@ public class ClusterService {
     /**
      * Builds the denormalised {@code "<tenantId>/<projectName>"} list
      * for {@code activeProjects}. Read directly off
-     * {@code ProjectService.findByHomeNode} (any status) so a
+     * {@code ProjectService.findByHomePodId} (any status) so a
      * heartbeat always reflects the truth at tick time.
+     *
+     * <p>Keyed on {@code podId}, not on the node name: the name is
+     * operator-configurable, so a restarted pod with a pinned name would
+     * otherwise report its dead predecessor's projects as its own.
      */
     private List<String> snapshotActiveProjects() {
-        String node = resolveNodeName();
-        if (node.isBlank()) return List.of();
-        List<ProjectDocument> mine = projectService.findByHomeNode(node);
+        List<ProjectDocument> mine = projectService.findByHomePodId(podId);
         return mine.stream()
                 .map(p -> p.getTenantId() + "/" + p.getName())
                 .sorted()
@@ -291,14 +314,11 @@ public class ClusterService {
     }
 
     /**
-     * Sum of {@code homeResourceScore} over every non-CLOSED project
-     * currently owned by this pod's node-name. Derived per beat so the
-     * Distributor sees the load each pod actually carries — no separate
-     * update path on bring/suspend needed.
+     * Sum of {@code homeResourceScore} over every non-CLOSED project this pod
+     * holds a lease on. Derived per beat so the Distributor sees the load each
+     * pod actually carries — no separate update path on bring/suspend needed.
      */
     private int snapshotCurrentScore() {
-        String node = resolveNodeName();
-        if (node.isBlank()) return 0;
-        return projectService.sumScoreByHomeNode(node);
+        return projectService.sumScoreByHomePodId(podId);
     }
 }

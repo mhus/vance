@@ -11,18 +11,40 @@ import static org.mockito.Mockito.verify;
 
 import de.mhus.vance.api.ursahooks.UrsaHookEventName;
 import de.mhus.vance.brain.documents.events.RoutedDocumentChangedEvent;
+import de.mhus.vance.brain.project.ProjectActivationRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class UrsaHookDocumentListenerTest {
 
     private UrsaHookService hookService;
+    private ProjectActivationRegistry activationRegistry;
     private UrsaHookDocumentListener listener;
 
     @BeforeEach
     void setUp() {
         hookService = mock(UrsaHookService.class);
-        listener = new UrsaHookDocumentListener(hookService);
+        activationRegistry = new ProjectActivationRegistry();
+        // Every case below is about path handling, so the project is active
+        // here unless a test says otherwise.
+        activationRegistry.activate("acme", "_tenant");
+        activationRegistry.activate("acme", "mail-assistant");
+        listener = new UrsaHookDocumentListener(hookService, activationRegistry);
+    }
+
+    @Test
+    void project_not_active_on_this_pod_is_ignored() {
+        // A hook reacts to events and spawns work, so it must only be
+        // registered where the project actually runs — the router refreshes
+        // the writing pod regardless of who holds the lease.
+        UrsaHookEventName sample = UrsaHookEventName.values()[0];
+        String path = UrsaHookLoader.HOOK_PATH_ROOT
+                + sample.wireName() + "/my-hook" + UrsaHookLoader.HOOK_PATH_SUFFIX;
+
+        listener.onRoutedDocumentChanged(new RoutedDocumentChangedEvent.Upserted(
+                "acme", "someone-elses-project", path, "id-1"));
+
+        verify(hookService, never()).refreshOne(any(), any(), any(), any());
     }
 
     @Test

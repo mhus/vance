@@ -54,7 +54,7 @@ class ClusterServiceTest {
 
         when(locationService.getPodAddress()).thenReturn(ENDPOINT);
         when(locationService.refreshPodAddress()).thenReturn(ENDPOINT);
-        when(projectService.findByHomeNode(NODE_NAME)).thenReturn(List.of());
+        when(projectService.findByHomePodId(any())).thenReturn(List.of());
         when(nameGenerator.generate()).thenReturn(NODE_NAME);
 
         service = new ClusterService(
@@ -125,10 +125,10 @@ class ClusterServiceTest {
         service.onApplicationReady();
 
         ProjectDocument p1 = ProjectDocument.builder()
-                .tenantId("acme").name("instant-hole").homeNode(NODE_NAME).build();
+                .tenantId("acme").name("instant-hole").homePodId(service.selfPodId()).build();
         ProjectDocument p2 = ProjectDocument.builder()
-                .tenantId("acme").name("rocket-skates").homeNode(NODE_NAME).build();
-        when(projectService.findByHomeNode(NODE_NAME)).thenReturn(List.of(p1, p2));
+                .tenantId("acme").name("rocket-skates").homePodId(service.selfPodId()).build();
+        when(projectService.findByHomePodId(service.selfPodId())).thenReturn(List.of(p1, p2));
 
         service.heartbeat();
 

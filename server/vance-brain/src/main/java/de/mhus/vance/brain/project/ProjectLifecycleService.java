@@ -56,6 +56,11 @@ public class ProjectLifecycleService {
     private final SessionService sessionService;
     private final ApplicationEventPublisher eventPublisher;
     /**
+     * Pod-local "what have I started" — the only honest source for the
+     * {@link #bring} short-circuit. See the class comment there.
+     */
+    private final ProjectActivationRegistry activationRegistry;
+    /**
      * Lazy provider for the project-RAG service — keeps the lifecycle
      * decoupled from RAG bean wiring (embedding-provider settings might
      * not be configured for every deployment) and lets bring/close
@@ -221,16 +226,29 @@ public class ProjectLifecycleService {
             ThinkProcessDocument chatProcess) {}
 
     /**
-     * Move a project on this pod from any non-CLOSED status to RUNNING:
-     * claim the pod, transition to RECOVERING, restore the workspace
-     * (auto-recovers from snapshots if any), publish
+     * Move a project onto this pod: take the lease, transition to RECOVERING,
+     * restore the workspace (auto-recovers from snapshots if any), publish
      * {@link ProjectEnginesStartRequested}, transition to RUNNING.
-     * Idempotent — repeated calls on a RUNNING project just refresh
-     * the pod claim.
+     *
+     * <p><b>Idempotence keys on this pod's activation registry, not on
+     * {@code status}.</b> The short-circuit needs "already running
+     * <em>here</em>", and {@code status} cannot answer that — it is shared,
+     * and after a crash it still says {@code RUNNING} because the only thing
+     * that ever writes it back is an explicit admin {@link #suspend}. Reading
+     * it as "nothing to do" meant the new lease holder owned the project
+     * without ever starting anything for it: no workspace, no session unbind,
+     * and no {@link ProjectEnginesStartRequested}, so scheduler, hooks, tool
+     * preload and kit provisioning stayed dark until somebody noticed and
+     * added a private trigger. That is the defect this whole track is about
+     * ({@code planning/project-ownership-lease-design.md} §1.2).
+     *
+     * <p>Consequence, intended: a {@code RUNNING} project whose lease expired
+     * is the <em>normal</em> recovery case and runs the full pass, including
+     * the RUNNING → RECOVERING → RUNNING round trip.
      *
      * <p>Podless system projects (see {@link ProjectService#isPodless})
-     * skip the claim and the status transitions: their lifecycle is
-     * tied to the WS connection, not to a pod claim. The local
+     * skip the lease and the status transitions: their lifecycle is
+     * tied to the WS connection, not to ownership. The local
      * workspace is still initialised and engines are still started so
      * Eddie has a usable scratch area on this pod.
      */
@@ -239,19 +257,19 @@ public class ProjectLifecycleService {
             return bringPodless(tenantId, projectName);
         }
         ProjectDocument doc = projectManager.claimForLocalPod(tenantId, projectName);
-        if (doc.getStatus() == ProjectStatus.RUNNING) {
-            log.debug("Project '{}/{}' already RUNNING — claim refreshed", tenantId, projectName);
+        if (doc.getStatus() == ProjectStatus.RUNNING
+                && activationRegistry.isActive(tenantId, projectName)) {
+            // Already up *on this pod*: lease refreshed, nothing to do.
+            log.debug("Project '{}/{}' already active here — lease refreshed",
+                    tenantId, projectName);
             return doc;
         }
-        // Bring = project is coming online on this pod from a non-RUNNING
-        // state. No client can be legitimately bound right now — either
-        // the previous owner pod died (and its WS connections died with
-        // it), or the project was suspended and the workspace was off-disk.
-        // Stale boundConnectionId values would otherwise reject the first
-        // reconnect with 409 Already-Bound. The reclaimer's boot-time pass
-        // only catches projects that were homeNode=self before, so this
-        // covers every other path: self-pull, distributor, locator,
-        // direct-spawn.
+        // Bring = the project is coming online on *this* pod. No client can be
+        // legitimately bound right now — either the previous holder died (and
+        // its WS connections died with it), or the project was suspended and
+        // the workspace was off-disk. Stale boundConnectionId values would
+        // otherwise reject the first reconnect with 409 Already-Bound. This
+        // covers every path: self-pull, distributor, locator, direct-spawn.
         long unbound = sessionService.unbindAllForProjects(List.of(projectName));
         if (unbound > 0) {
             log.info("Project '{}/{}' bring: cleared {} stale session binding(s)",
@@ -268,6 +286,10 @@ public class ProjectLifecycleService {
         }
         ensureProjectRag(tenantId, projectName);
         eventPublisher.publishEvent(new ProjectEnginesStartRequested(tenantId, projectName));
+        // Registered after the start event, so a listener that throws leaves
+        // the project un-activated and the next bring retries the whole pass
+        // rather than short-circuiting on a half-started project.
+        activationRegistry.activate(tenantId, projectName);
         doc = projectService.transitionStatus(
                 tenantId, projectName, ProjectStatus.RECOVERING, ProjectStatus.RUNNING);
         log.info("Project '{}/{}' brought to RUNNING (was {})", tenantId, projectName, from);
@@ -287,7 +309,14 @@ public class ProjectLifecycleService {
             throw e;
         }
         eventPublisher.publishEvent(new ProjectEnginesStartRequested(tenantId, projectName));
-        log.debug("Podless project '{}/{}' brought up locally (no pod claim, status unchanged)",
+        // Podless projects hold no lease, but they *are* activated here — their
+        // schedulers and hooks live on this pod. The activation-gated document
+        // listeners need to know that, otherwise a scheduler edit in
+        // _user_<login> or _vance would be ignored on the very pod running it.
+        // No short-circuit is derived from this: the branch above returns
+        // before bring's registry check, so a repeated bring still re-inits.
+        activationRegistry.activate(tenantId, projectName);
+        log.debug("Podless project '{}/{}' brought up locally (no lease, status unchanged)",
                 tenantId, projectName);
         return doc;
     }
@@ -328,6 +357,9 @@ public class ProjectLifecycleService {
             }
         }
         eventPublisher.publishEvent(new ProjectEnginesStopRequested(tenantId, projectName));
+        // Symmetric to the activate() in bring: this pod no longer has the
+        // project up, so the next bring must run the full pass again.
+        activationRegistry.deactivate(tenantId, projectName);
         try {
             workspaceService.suspendAll(tenantId, projectName);
         } catch (RuntimeException e) {
@@ -361,6 +393,10 @@ public class ProjectLifecycleService {
         }
         workspaceService.dispose(tenantId, projectName);
         disposeProjectRag(tenantId, projectName);
+        // A closed project cannot be brought back, so leaving it in the
+        // registry would make the lease reconciler count a project that can
+        // never hold a lease again.
+        activationRegistry.deactivate(tenantId, projectName);
         ProjectDocument doc = projectService.close(tenantId, projectName, closedGroupId);
         log.info("Project '{}/{}' closed → group '{}'", tenantId, projectName, closedGroupId);
         return doc;

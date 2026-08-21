@@ -2,6 +2,7 @@ package de.mhus.vance.brain.projects;
 
 import de.mhus.vance.api.projects.ProjectCreateRequest;
 import de.mhus.vance.api.projects.ProjectDto;
+import de.mhus.vance.api.projects.ProjectLifecycleTypeRequest;
 import de.mhus.vance.api.projects.ProjectUpdateRequest;
 import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.brain.kit.catalog.ProjectKitInstaller;
@@ -10,6 +11,7 @@ import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.project.LifecycleType;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
@@ -154,6 +156,44 @@ public class ProjectAdminController {
         }
     }
 
+    /**
+     * Sets the lifecycle override: {@code AUTO} (default — the derived
+     * {@code ownerRequired} decides whether the project is kept on a live pod),
+     * {@code EPHEMERAL} (never auto-start) or {@code PERMANENT} (always keep
+     * placed). {@code HOMELESS} is reserved for SYSTEM projects and rejected.
+     *
+     * <p>This endpoint is the reason the whole knob works at all:
+     * {@code ProjectService.setLifecycleType} existed but had no caller
+     * anywhere in the tree, so no project ever left the default and both
+     * cluster recovery paths selected on a value nothing ever wrote
+     * ({@code planning/project-ownership-lease-design.md} §1.1).
+     */
+    @PostMapping("/{name}/lifecycle-type")
+    public ProjectDto setLifecycleType(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("name") String name,
+            @Valid @RequestBody ProjectLifecycleTypeRequest request,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, name), Action.ADMIN);
+        LifecycleType value;
+        try {
+            value = LifecycleType.valueOf(request.getLifecycleType().trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Unknown lifecycleType '" + request.getLifecycleType()
+                            + "' — expected AUTO, EPHEMERAL or PERMANENT");
+        }
+        try {
+            return toDto(projectService.setLifecycleType(tenant, name, value));
+        } catch (ProjectService.ProjectNotFoundException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+        } catch (ProjectService.SystemProjectProtectedException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+
     @PutMapping("/{name}")
     public ProjectDto update(
             @PathVariable("tenant") String tenant,
@@ -204,6 +244,9 @@ public class ProjectAdminController {
                 .status(doc.getStatus() == null ? null : doc.getStatus().name())
                 .homeNode(doc.getHomeNode())
                 .claimedAt(doc.getClaimedAt())
+                .lifecycleType(doc.getLifecycleType() == null
+                        ? null : doc.getLifecycleType().name())
+                .ownerRequired(doc.isOwnerRequired())
                 .createdAt(doc.getCreatedAt())
                 .build();
     }

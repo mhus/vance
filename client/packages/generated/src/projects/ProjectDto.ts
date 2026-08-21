@@ -12,5 +12,7 @@ export interface ProjectDto {
   status: string;
   homeNode?: string;
   claimedAt?: Date;
+  lifecycleType?: string;
+  ownerRequired: boolean;
   createdAt?: Date;
 }

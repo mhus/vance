@@ -4,11 +4,10 @@ import de.mhus.vance.brain.cluster.ClusterProperties;
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.project.ProjectManagerService;
+import de.mhus.vance.brain.project.ProjectOwnerRequirementService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -18,13 +17,19 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Service;
 
 /**
- * Reclaims pod-level state on startup.
+ * Boot-Self-Pull: greedily brings projects that need an owner pod and whose
+ * lease nobody holds onto this pod, up to the configured
+ * {@code resourcesStartupScore}.
  *
- * <p>Wipe stale {@code homeNode} values on every project whose owning
- * cluster node is no longer in the live registry. Every fresh pod boot
- * picks a new node name (see {@code ClusterNodeNameGenerator}), so the
- * previous incarnation's claims will never be inherited — they would
- * otherwise block the current pod from claiming via the CAS predicate.
+ * <p><b>No stale-claim wipe any more.</b> This used to start by nulling
+ * {@code homeNode} on every project whose owning node had dropped out of the
+ * live registry. With ownership expressed as a lease
+ * ({@code planning/project-ownership-lease-design.md} §3) there is nothing to
+ * wipe: an un-renewed lease is expired, an expired lease blocks nobody, and the
+ * claim CAS takes it over on the spot. The old wipe was also the only
+ * reconciliation there was, and it ran <em>only here</em> — so a pod that
+ * crashed and restarted inside the stale window kept its claims forever, and a
+ * long-lived cluster never reconciled at all.
  *
  * <p>Stale {@code boundConnectionId} cleanup is handled in two places
  * instead of here:
@@ -39,15 +44,13 @@ import org.springframework.stereotype.Service;
  *       projects no pod currently owns ({@code _user_*}, archived).</li>
  * </ul>
  *
- * <p>Listens on {@link ApplicationReadyEvent} with low precedence so it
- * runs <em>after</em> {@code ClusterService} has registered this pod's
- * row in {@code brain_pods} — otherwise we'd see our own node-name as
- * "not live" and wipe a claim we just took.
+ * <p>Listens on {@link ApplicationReadyEvent} with low precedence so it runs
+ * <em>after</em> {@code ClusterService} has registered this pod's row in
+ * {@code brain_pods} — the projects we pull here are immediately reported as
+ * ours in the next heartbeat.
  *
- * <p>Project status is left alone. The first session-bind / wakeup-tick
- * after startup refreshes {@code homeNode} + {@code claimedAt}
- * through {@link ProjectManagerService#claimForLocalPod} via the
- * regular lifecycle path.
+ * <p>Project status is left alone. It expresses intent ("should be live"), not
+ * placement, and the lease answers placement.
  */
 @Service
 @RequiredArgsConstructor
@@ -55,76 +58,77 @@ import org.springframework.stereotype.Service;
 public class ProjectStartupReclaimer {
 
     private final ProjectService projectService;
-    private final ProjectManagerService projectManager;
     private final ProjectLifecycleService lifecycleService;
+    private final ProjectOwnerRequirementService ownerRequirementService;
     private final ClusterService clusterService;
     private final ClusterProperties clusterProperties;
 
     @EventListener(ApplicationReadyEvent.class)
     @Order(Ordered.LOWEST_PRECEDENCE)
     void reclaim() {
-        clearStaleClusterClaims();
-        selfPullPermanentProjects();
+        releaseStalePins();
+        selfPullProjectsNeedingOwner();
     }
 
     /**
-     * Idempotent bulk-cleanup of project claims whose owning cluster
-     * node has dropped out of the live registry. Two pods racing here
-     * converge on the same final state: the {@code updateMulti} filter
-     * matches the same set of stale documents (whatever pods are live
-     * is observed from the same Mongo), and the update body is
-     * identical. {@code homeNode=null} is the unowned state.
+     * Re-derives {@code ownerRequired} for the pinned projects before pulling
+     * any of them in, so a project whose last scheduler was deleted while this
+     * brain was down does not get claimed for work that no longer exists.
+     *
+     * <p>Runs first for that reason — the self-pull immediately below reads the
+     * flag this corrects.
      */
-    private void clearStaleClusterClaims() {
-        Set<String> liveClusters = new HashSet<>(clusterService.liveClusterNodeNames());
-        // Belt-and-suspenders: always include this pod's node name even
-        // if the brain_pods registration is still in flight.
-        String selfCluster = clusterService.selfNodeName();
-        if (selfCluster != null && !selfCluster.isBlank()) {
-            liveClusters.add(selfCluster);
-        }
-        long cleared = projectService.clearStaleHomeNodes(liveClusters);
-        if (cleared > 0) {
-            log.info("ProjectStartupReclaimer: cleared {} stale home-cluster claim(s); live={}",
-                    cleared, liveClusters);
-        } else {
-            log.info("ProjectStartupReclaimer: no stale home-cluster claims; live={}",
-                    liveClusters);
+    private void releaseStalePins() {
+        try {
+            int released = ownerRequirementService.releaseNoLongerQualifying();
+            if (released > 0) {
+                log.info("ProjectStartupReclaimer: released {} project(s) that no longer "
+                        + "hold waiting work", released);
+            }
+        } catch (RuntimeException e) {
+            // Worst case we pull in a project that has nothing to do — wasteful,
+            // not wrong. Never a reason to fail the boot.
+            log.warn("ProjectStartupReclaimer: owner-requirement re-derivation failed: {}",
+                    e.toString());
         }
     }
 
     /**
      * Boot-Self-Pull (see {@code specification/cluster-project-management.md}
-     * §5.1). Greedily brings PERMANENT-orphans onto this pod until the
-     * configured {@code resourcesStartupScore} is exhausted. EPHEMERAL
-     * and HOMELESS projects are skipped — those wait for an explicit
-     * locate or live without pod-affinity.
+     * §5.1). Greedily brings projects that need an owner but hold no live lease
+     * onto this pod until the configured {@code resourcesStartupScore} is
+     * exhausted. EPHEMERAL and HOMELESS projects are skipped — those wait for an
+     * explicit locate or live without pod-affinity.
      *
      * <p>A buffer (50% of the startup budget) lets the last candidate
      * tip slightly over the line so projects with above-average score
      * don't get stuck waiting for the distributor. The Master-Distributor
      * picks up everything we don't claim here.
+     *
+     * <p>The candidate set is "needs an owner and holds no live lease" — the
+     * derived {@code ownerRequired} for the default {@code AUTO} projects, plus
+     * anything an operator pinned to {@code PERMANENT}. Its predecessor
+     * selected on {@code PERMANENT} alone and therefore matched nothing at all,
+     * which is why this used to log {@code brought=0 skipped=0} on every boot
+     * ({@code planning/project-ownership-lease-design.md} §1.1).
      */
-    private void selfPullPermanentProjects() {
+    private void selfPullProjectsNeedingOwner() {
         int budget = clusterProperties.getResources().getStartupScore();
         if (budget <= 0) {
             log.info("ProjectStartupReclaimer: self-pull disabled (startupScore={})", budget);
             return;
         }
         int buffer = budget / 2;
-        Set<String> liveClusters = new HashSet<>(clusterService.liveClusterNodeNames());
-        String selfNode = clusterService.selfNodeName();
-        if (selfNode != null && !selfNode.isBlank()) liveClusters.add(selfNode);
 
         int pulled = 0;
         int brought = 0;
         int skipped = 0;
         // batchSize matches the distributor's appetite — small enough to
-        // re-query liveClusters / homeNode between batches without much waste.
+        // re-query between batches without much waste.
         final int batchSize = 20;
         while (pulled < budget) {
-            List<ProjectDocument> candidates =
-                    projectService.findPermanentOrphans(liveClusters, batchSize);
+            List<ProjectDocument> candidates = projectService.findProjectsNeedingOwner(
+                    clusterService.leaseTtl(), batchSize);
             if (candidates.isEmpty()) break;
             boolean anyBrought = false;
             for (ProjectDocument p : candidates) {

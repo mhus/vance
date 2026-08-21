@@ -26,7 +26,16 @@ import org.springframework.data.mongodb.core.mapping.Document;
  */
 @Document(collection = "projects")
 @CompoundIndexes({
-        @CompoundIndex(name = "tenant_name_idx", def = "{ 'tenantId': 1, 'name': 1 }", unique = true)
+        @CompoundIndex(name = "tenant_name_idx", def = "{ 'tenantId': 1, 'name': 1 }", unique = true),
+        // Backs the per-beat lease renewal (one updateMulti over "everything I
+        // hold") and every ownership query. Renewal cost stays independent of
+        // the number of tenants and projects because of this index.
+        @CompoundIndex(name = "home_pod_idx", def = "{ 'homePodId': 1 }"),
+        // Backs the "who needs an owner but has no live lease" scan run by the
+        // boot self-pull and the master distributor. An index range scan, where
+        // the predecessor had to $nin a list that grew with the cluster.
+        @CompoundIndex(name = "owner_required_idx",
+                def = "{ 'ownerRequired': 1, 'lifecycleType': 1, 'status': 1, 'claimedAt': 1 }")
 })
 @Data
 @Builder
@@ -61,31 +70,79 @@ public class ProjectDocument {
     @Builder.Default
     private ProjectKind kind = ProjectKind.NORMAL;
 
-    /** Lifecycle status — {@link ProjectStatus}. Pod-affinity is tracked separately via {@link #homeNode}. */
+    /**
+     * Lifecycle <em>intent</em> — {@link ProjectStatus}. {@code RUNNING}
+     * means "should be live somewhere", not "a pod has it live": which pod
+     * holds it right now is the lease below, and that expires on its own.
+     * Keeping the two apart is what lets a crashed owner be recovered — see
+     * {@code planning/project-ownership-lease.md} §2.
+     */
     @Builder.Default
     private ProjectStatus status = ProjectStatus.INIT;
 
     /**
-     * Cluster node name of the pod currently owning the project, or
-     * {@code null} when unclaimed. References
-     * {@code BrainPodDocument.nodeName} — IP+port is looked up on demand
-     * via {@code ClusterService.resolveEndpoint(homeNode)} so that pod
-     * restarts (which mint a fresh node name) never inherit stale claims.
+     * Owner lease — {@code BrainPodDocument.podId} of the pod holding the
+     * project, or {@code null} when nobody does. Identity, not name: the
+     * node name is operator-configurable ({@code vance.cluster.node-name}),
+     * so a restarted pod would otherwise recognise its own dead
+     * predecessor's claim as its own.
+     *
+     * <p>Together with {@link #claimedAt} this <em>is</em> the ownership
+     * answer — never read either field directly, go through
+     * {@code ProjectOwnership}.
+     */
+    private @Nullable String homePodId;
+
+    /**
+     * Cluster node name of the lease holder, denormalised for display and
+     * logs ({@code BrainPodDocument.nodeName}). No decision depends on this
+     * field; routing resolves the endpoint from {@link #homePodId}.
      */
     private @Nullable String homeNode;
 
-    /** When the current pod last refreshed its claim — used for stale-detection later. */
+    /**
+     * When the lease holder last renewed the lease. Read by
+     * {@code ProjectOwnership} to decide whether the claim still holds: a
+     * value older than the configured lease TTL means the owner stopped
+     * renewing, so the claim is expired and anyone may take over. An
+     * expired lease is <em>inert</em>, not wrong — which is why nothing has
+     * to be cleaned up when a pod dies.
+     *
+     * <p>The claim is its own heartbeat, so there is only one timestamp
+     * here (unlike {@code MagratheaTaskDocument}, which needs to tell
+     * "claimed long ago" from "still beating").
+     */
     private @Nullable Instant claimedAt;
 
     /**
      * Drives cluster-wide spawn behaviour — see
      * {@code specification/cluster-project-management.md} §2. SYSTEM
-     * projects are always {@link LifecycleType#HOMELESS}; NORMAL
-     * projects default to {@link LifecycleType#EPHEMERAL} and may be
-     * switched to {@link LifecycleType#PERMANENT} by the user.
+     * projects are always {@link LifecycleType#HOMELESS}; NORMAL projects
+     * default to {@link LifecycleType#AUTO}, where {@link #ownerRequired}
+     * decides, and can be pinned either way by an operator.
      */
     @Builder.Default
-    private LifecycleType lifecycleType = LifecycleType.EPHEMERAL;
+    private LifecycleType lifecycleType = LifecycleType.AUTO;
+
+    /**
+     * Derived: does this project hold pod-local background work that has to
+     * keep running when nobody is looking? True when it carries scheduler
+     * entries, hooks, event triggers or a kit-provisioning document.
+     *
+     * <p>Maintained by {@code ProjectOwnerRequirementService} from document
+     * change events, written only when the value flips. Never set by hand —
+     * the operator knob is {@link #lifecycleType}.
+     *
+     * <p><b>Derived, not declared, on purpose.</b> Its predecessor
+     * {@code requiresOwnerPod} was set by engine lifecycle <em>listeners</em>,
+     * which made it circular: the flag only existed while the project was
+     * loaded, so a project had to be running to be recognised as needing to
+     * run. Deriving it from the presence of <em>documents</em> has no such
+     * loop — a scheduler document exists whether or not its scheduler is
+     * registered anywhere.
+     */
+    @Builder.Default
+    private boolean ownerRequired = false;
 
     /**
      * Score the project contributes to a pod's {@code resourcesCurrentScore}

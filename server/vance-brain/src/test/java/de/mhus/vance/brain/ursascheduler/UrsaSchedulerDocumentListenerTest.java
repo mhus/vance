@@ -9,18 +9,37 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import de.mhus.vance.brain.documents.events.RoutedDocumentChangedEvent;
+import de.mhus.vance.brain.project.ProjectActivationRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class UrsaSchedulerDocumentListenerTest {
 
     private UrsaSchedulerService schedulerService;
+    private ProjectActivationRegistry activationRegistry;
     private UrsaSchedulerDocumentListener listener;
 
     @BeforeEach
     void setUp() {
         schedulerService = mock(UrsaSchedulerService.class);
-        listener = new UrsaSchedulerDocumentListener(schedulerService);
+        activationRegistry = new ProjectActivationRegistry();
+        // Every case below is about path handling, so the project is active
+        // here unless a test says otherwise.
+        activationRegistry.activate("acme", "_tenant");
+        activationRegistry.activate("acme", "mail-assistant");
+        listener = new UrsaSchedulerDocumentListener(schedulerService, activationRegistry);
+    }
+
+    @Test
+    void project_not_active_on_this_pod_is_ignored() {
+        // The router refreshes the writing pod regardless of who holds the
+        // lease. Registering a scheduler here would arm a second cron for the
+        // same project on a pod that is not running it.
+        listener.onRoutedDocumentChanged(new RoutedDocumentChangedEvent.Upserted(
+                "acme", "someone-elses-project",
+                "_vance/scheduler/nightly-rollup.yaml", "id-1"));
+
+        verify(schedulerService, never()).refreshOne(any(), any(), any());
     }
 
     @Test

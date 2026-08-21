@@ -52,9 +52,9 @@ public class KitProvisioningDocumentListener {
     @Async
     @EventListener
     public void onDocumentChanged(DocumentChangedEvent event) {
-        // Cheapest possible check first: the raw event fires for *every*
-        // document write on this pod, not only the _vance/ ones the router
-        // publishes onwards.
+        // Cheapest possible check first. The raw event fires for every write
+        // under _vance/ (minus logs and trash — see
+        // DocumentService.isEventPublishable), so most fires are not ours.
         if (!KitProvisioningLoader.PROVISIONING_PATH.equals(event.path())) return;
         try {
             log.debug("Provisioning document of {}/{} changed — provisioning",

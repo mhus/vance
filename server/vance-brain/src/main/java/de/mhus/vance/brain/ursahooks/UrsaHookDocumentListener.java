@@ -2,6 +2,7 @@ package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.api.ursahooks.UrsaHookEventName;
 import de.mhus.vance.brain.documents.events.RoutedDocumentChangedEvent;
+import de.mhus.vance.brain.project.ProjectActivationRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
@@ -22,9 +23,12 @@ import org.springframework.stereotype.Component;
  * <em>original</em> path so the listener sees the same {@code _vance/hooks/…}
  * shape regardless of delete flavour.
  *
- * <p>Contract — same five rules as the other {@code RoutedDocumentChangedEvent}
+ * <p>Contract — same rules as the other {@code RoutedDocumentChangedEvent}
  * listeners: idempotent, write-free, swallows own exceptions, path-prefix
- * filter first, no user-scoped mutations.
+ * filter first, no user-scoped mutations — plus <b>activation-gated</b>, for
+ * the reason spelled out in {@code UrsaSchedulerDocumentListener}: a hook is a
+ * running thing, not a cache, and the router now refreshes the writing pod
+ * regardless of who holds the lease.
  */
 @Component
 @RequiredArgsConstructor
@@ -32,11 +36,22 @@ import org.springframework.stereotype.Component;
 public class UrsaHookDocumentListener {
 
     private final UrsaHookService hookService;
+    private final ProjectActivationRegistry activationRegistry;
 
     @EventListener
     public void onRoutedDocumentChanged(RoutedDocumentChangedEvent event) {
         String path = event.path();
         if (path == null || !path.startsWith(UrsaHookLoader.HOOK_PATH_ROOT)) {
+            return;
+        }
+        if (!activationRegistry.isActive(event.tenantId(), event.projectId())) {
+            // Same reasoning as UrsaSchedulerDocumentListener: a hook
+            // registration reacts to events and spawns work, so it must only
+            // exist on the pod that activated the project — the router now
+            // refreshes the writing pod regardless of ownership.
+            log.debug("UrsaHookDocumentListener: '{}/{}' is not active on this pod — "
+                            + "ignoring change to '{}'",
+                    event.tenantId(), event.projectId(), path);
             return;
         }
         UrsaHookLoader.ParsedPath parsed = UrsaHookLoader.parsePath(path);

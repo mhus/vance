@@ -32,10 +32,9 @@ import org.springframework.stereotype.Component;
  * <p>An addon with collections of its own is free to contribute a second
  * source; the service merges them and only requires ids to be unique.
  *
- * <p>The only entry today is the anchor
- * {@link BaselineAnchorMigration}: it does nothing and exists so
- * an existing database is "known" before the first real migration ever
- * ships — see its class comment. The three hand-written
+ * <p>The first entry is the anchor {@link BaselineAnchorMigration}: it does
+ * nothing and exists so an existing database is "known" before the first real
+ * migration ever ships — see its class comment. The three hand-written
  * {@code @PostConstruct} backfills in vance-brain still run the old way
  * ({@code planning/schema-migration.md} §3); moving them over is a separate
  * track.
@@ -47,7 +46,11 @@ import org.springframework.stereotype.Component;
 public class BrainSchemaMigrations implements SchemaMigrationSource {
 
     private static final List<Registered> MIGRATIONS = List.of(
-            new Registered("2026-08-12_001", BaselineAnchorMigration.class));
+            new Registered("2026-08-12_001", BaselineAnchorMigration.class),
+            new Registered("2026-08-21_001", Migrator_2026_08_21_001_ProjectLease.class),
+            new Registered("2026-08-22_001", Migrator_2026_08_22_001_OwnerRequired.class),
+            new Registered("2026-08-22_002",
+                    Migrator_2026_08_22_002_OwnerRequiredWithoutProvisioning.class));
 
     @Override
     public List<Registered> migrations() {

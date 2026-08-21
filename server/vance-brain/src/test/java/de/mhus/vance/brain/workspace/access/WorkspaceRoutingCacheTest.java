@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 class WorkspaceRoutingCacheTest {
 
     private static final String SELF_NODE = "hari-tasha";
+    private static final String SELF_POD = "pod-hari";
 
     private ProjectService projectService;
     private ClusterService clusterService;
@@ -31,40 +32,47 @@ class WorkspaceRoutingCacheTest {
         clusterService = mock(ClusterService.class);
         WorkspaceAccessProperties properties = new WorkspaceAccessProperties();
         lenient().when(clusterService.selfNodeName()).thenReturn(SELF_NODE);
+        lenient().when(clusterService.selfPodId()).thenReturn(SELF_POD);
+        lenient().when(clusterService.leaseTtl()).thenReturn(java.time.Duration.ofMinutes(5));
         cache = new WorkspaceRoutingCache(projectService, clusterService, properties);
     }
 
-    private void projectWithHome(String tenant, String name, String homeNode) {
+    /** A project with a freshly renewed lease held by {@code podId}. */
+    private void projectWithLease(String tenant, String name, String podId) {
         when(projectService.findByTenantAndName(tenant, name))
                 .thenReturn(Optional.of(ProjectDocument.builder()
-                        .tenantId(tenant).name(name).homeNode(homeNode).build()));
+                        .tenantId(tenant).name(name)
+                        .homePodId(podId)
+                        .homeNode(podId == null ? null : "node-of-" + podId)
+                        .claimedAt(podId == null ? null : java.time.Instant.now())
+                        .build()));
     }
 
     @Test
-    void isSelfOwned_homeNodeIsThisPod_true() {
-        projectWithHome("acme", "test1", SELF_NODE);
+    void isSelfOwned_leaseHeldByThisPod_true() {
+        projectWithLease("acme", "test1", SELF_POD);
 
         assertThat(cache.isSelfOwned(new ProjectPodKey("acme", "test1"))).isTrue();
     }
 
     @Test
-    void isSelfOwned_homeNodeIsForeignLivePod_false() {
+    void isSelfOwned_leaseHeldByForeignPod_false() {
         // A foreign owner must still be proxied — only self short-circuits.
-        projectWithHome("acme", "test1", "pelican-mara");
+        projectWithLease("acme", "test1", "pod-pelican");
 
         assertThat(cache.isSelfOwned(new ProjectPodKey("acme", "test1"))).isFalse();
     }
 
     @Test
-    void isSelfOwned_noHomeNode_false() {
-        projectWithHome("acme", "test1", null);
+    void isSelfOwned_noLease_false() {
+        projectWithLease("acme", "test1", null);
 
         assertThat(cache.isSelfOwned(new ProjectPodKey("acme", "test1"))).isFalse();
     }
 
     @Test
     void isSelfOwned_blankHomeNode_false() {
-        projectWithHome("acme", "test1", "  ");
+        projectWithLease("acme", "test1", "  ");
 
         assertThat(cache.isSelfOwned(new ProjectPodKey("acme", "test1"))).isFalse();
     }

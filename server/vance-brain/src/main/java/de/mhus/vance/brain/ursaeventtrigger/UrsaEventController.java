@@ -31,6 +31,12 @@ import org.springframework.web.server.ResponseStatusException;
  * passed to the workflow as {@code params.payload}. Empty body is
  * fine; non-JSON body → 415.
  *
+ * <p>Routing: the trigger runs on the pod that holds the project. If none
+ * does, the project is brought up first and the call waits for that — a cold
+ * start on the first trigger is the price for not keeping every
+ * webhook-carrying project on a pod year-round (see
+ * {@code ProjectOwnerRequirementService}).
+ *
  * <p>Response: 200 sync with a small JSON envelope carrying the
  * spawned {@code workflowRunId}. The workflow itself runs
  * asynchronously on the project lane — the caller doesn't wait for
@@ -53,7 +59,7 @@ public class UrsaEventController {
         String bearer = extractBearer(request);
         UrsaEventService.UrsaEventTriggerResult result = eventService.trigger(
                 tenant, project, event,
-                "GET", bearer, /*payload*/ null);
+                "GET", bearer, /*payload*/ null, isForwarded(request));
         return new EventTriggerResponse(
                 event, result.workflowName(), result.workflowRunId(), result.output());
     }
@@ -68,9 +74,17 @@ public class UrsaEventController {
         Object payload = readJsonBody(request);
         UrsaEventService.UrsaEventTriggerResult result = eventService.trigger(
                 tenant, project, event,
-                "POST", bearer, payload);
+                "POST", bearer, payload, isForwarded(request));
         return new EventTriggerResponse(
                 event, result.workflowName(), result.workflowRunId(), result.output());
+    }
+
+    /**
+     * True when another pod routed this request here. Such a request is run
+     * locally without resolving the owner again — see {@link UrsaEventForwarder}.
+     */
+    private static boolean isForwarded(HttpServletRequest request) {
+        return request.getHeader(UrsaEventForwarder.FORWARDED_HEADER) != null;
     }
 
     /**

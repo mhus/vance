@@ -500,6 +500,52 @@ public class DocumentService {
     }
 
     /**
+     * Whether the project holds at least one {@link DocumentStatus#ACTIVE}
+     * document under any of {@code pathPrefixes}. One {@code exists} query, no
+     * documents loaded — the point is to answer a yes/no question without
+     * paying for the rows.
+     *
+     * <p>Used by {@code ProjectOwnerRequirementService} to decide whether a
+     * project carries background work (schedulers, hooks, event triggers, a
+     * provisioning document) and therefore needs to be kept on a live pod.
+     * An exact path works too: a prefix that names a whole file matches only
+     * that file.
+     *
+     * <p>{@code pathSuffix} narrows the match to files of one kind — pass
+     * {@code ".yaml"} and a folder marker or a {@code README.md} sitting next
+     * to the real configuration cannot answer the question. Silently
+     * over-answering here would pin a project to a pod forever, so the check
+     * matches what the loaders actually read rather than "anything in the
+     * folder". {@code null} matches any name.
+     *
+     * <p>Blank entries are dropped; an empty or all-blank list returns
+     * {@code false} rather than matching everything.
+     */
+    public boolean existsAnyUnderPrefixes(
+            String tenantId, String projectId, List<String> pathPrefixes,
+            @Nullable String pathSuffix) {
+        if (pathPrefixes == null || pathPrefixes.isEmpty()) return false;
+        String suffix = (pathSuffix == null || pathSuffix.isBlank()) ? "" : pathSuffix.trim();
+        List<Criteria> prefixCriteria = new ArrayList<>();
+        for (String raw : pathPrefixes) {
+            if (raw == null) continue;
+            String prefix = raw.trim();
+            while (prefix.startsWith("/")) prefix = prefix.substring(1);
+            if (prefix.isEmpty()) continue;
+            String pattern = "^" + java.util.regex.Pattern.quote(prefix)
+                    + (suffix.isEmpty() ? "" : ".*" + java.util.regex.Pattern.quote(suffix) + "$");
+            prefixCriteria.add(Criteria.where("path").regex(pattern));
+        }
+        if (prefixCriteria.isEmpty()) return false;
+        Query q = new Query()
+                .addCriteria(Criteria.where("tenantId").is(tenantId))
+                .addCriteria(Criteria.where("projectId").is(projectId))
+                .addCriteria(Criteria.where("status").is(DocumentStatus.ACTIVE))
+                .addCriteria(new Criteria().orOperator(prefixCriteria));
+        return mongoTemplate.exists(q, DocumentDocument.class);
+    }
+
+    /**
      * Keyset page of {@link DocumentStatus#ACTIVE} documents under any of the
      * given folder prefixes, path-ordered and strictly after {@code afterPath}.
      * Used by the chunked folder-move loop: the client passes the last path

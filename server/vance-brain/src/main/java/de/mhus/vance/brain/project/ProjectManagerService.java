@@ -5,11 +5,12 @@ import de.mhus.vance.brain.cluster.ClusterMasterService;
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.shared.project.LifecycleType;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.shared.project.ProjectOwnership;
 import de.mhus.vance.shared.project.ProjectService;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -20,19 +21,19 @@ import org.springframework.stereotype.Service;
  * never claim a pod themselves — they go through the manager so the
  * "which pod owns this project" decision lives in one place.
  *
- * <p>The pod-affinity field {@link ProjectDocument#getHomeNode()}
- * stores a cluster node name (e.g. {@code maya-prosser}) — the brain
- * picks a fresh, dictionary-assembled node name on every boot so a
- * pod restart never inherits a stale ownership claim. Callers that
- * need an actual {@code host:port} resolve through
- * {@link ClusterService#resolveEndpoint(String)} against the live
- * {@code brain_pods} registry. See {@code specification/engine-message-routing.md}
- * §2 and {@code planning/project-home-cluster-refactor.md}.
+ * <p>Pod affinity is an <b>ownership lease</b>: {@code homePodId} names the
+ * holding pod and {@code claimedAt} says when it last renewed. Whether a
+ * lease still holds is answered by {@code ProjectOwnership} from the document
+ * alone — no join against {@code brain_pods}, and nothing to clean up when a
+ * pod dies, because an un-renewed lease expires by itself. Callers that need
+ * an actual {@code host:port} resolve the holder's id through
+ * {@link ClusterService#resolveEndpointByPodId(String)}. See
+ * {@code planning/project-ownership-lease-design.md} §3 and
+ * {@code specification/engine-message-routing.md} §2.
  *
- * <p>Claim semantics are CAS: a claim succeeds when the home cluster
- * is currently {@code null}, equal to this pod's node name, or pointing
- * at a cluster node that the live-set says is gone. Two pods racing on
- * a fresh project deterministically pick one winner; the other gets
+ * <p>Claim semantics are CAS: it succeeds when the lease is unclaimed,
+ * already ours, or expired. Two pods racing on a fresh project
+ * deterministically pick one winner; the other gets
  * {@link Optional#empty()} and must redirect rather than steal.
  *
  * <p>Workspace and exec cleanup on archive land here too — the manager
@@ -63,15 +64,15 @@ public class ProjectManagerService {
     private final ObjectProvider<ClusterMasterService> masterServiceProvider;
 
     /**
-     * Ensures the project is owned by this pod. Refreshes
-     * {@code homeNode} + {@code claimedAt} on the document; lifecycle
+     * Ensures this pod holds the project's lease. Refreshes
+     * {@code homePodId} + {@code claimedAt} on the document; lifecycle
      * status is left untouched (transition runs via
      * {@code ProjectLifecycleService}). Throws {@link ClaimRejectedException}
-     * when another live pod holds the claim, and on CLOSED or unknown.
+     * when another pod holds a valid lease, and on CLOSED or unknown.
      *
      * <p>Podless system projects (see {@link ProjectService#isPodless})
      * are returned unchanged — they live on whichever pod the user's
-     * WS lands on and must not be pinned via {@code homeNode}.
+     * WS lands on and never take a lease.
      */
     public ProjectDocument claimForLocalPod(String tenantId, String projectName) {
         if (ProjectService.isPodless(projectName)) {
@@ -80,36 +81,22 @@ public class ProjectManagerService {
                             "Project '" + projectName + "' not found in tenant '"
                                     + tenantId + "'"));
         }
-        String selfCluster = clusterService.selfNodeName();
-        Set<String> liveClusters = liveClustersIncludingSelf(selfCluster);
-        ProjectDocument doc = projectService.claim(tenantId, projectName, selfCluster, liveClusters)
+        ProjectDocument doc = projectService.claim(
+                        tenantId, projectName,
+                        clusterService.selfPodId(), clusterService.selfNodeName(),
+                        clusterService.leaseTtl())
                 .orElseThrow(() -> {
                     String holder = projectService.findByTenantAndName(tenantId, projectName)
                             .map(ProjectDocument::getHomeNode)
                             .orElse("<gone>");
                     return new ClaimRejectedException(
                             "Project '" + tenantId + "/" + projectName
-                                    + "' is owned by live cluster '" + holder
+                                    + "' is leased by pod '" + holder
                                     + "', refusing to steal from this pod ('"
-                                    + selfCluster + "')");
+                                    + clusterService.selfNodeName() + "')");
                 });
-        log.debug("Project '{}/{}' claimed for cluster '{}'", tenantId, projectName, selfCluster);
+        log.debug("Project '{}/{}' leased by this pod", tenantId, projectName);
         return doc;
-    }
-
-    /**
-     * Asserts that {@code project} is owned by the local pod. Used by
-     * call sites that want to surface a clear error before doing
-     * project-scoped work without going through {@link #claimForLocalPod}.
-     */
-    public void requireOwnedByLocalPod(ProjectDocument project) {
-        String selfCluster = clusterService.selfNodeName();
-        if (!Objects.equals(selfCluster, project.getHomeNode())) {
-            throw new ProjectNotOwnedException(
-                    "Project '" + project.getName()
-                            + "' is owned by cluster '" + project.getHomeNode()
-                            + "', not this pod ('" + selfCluster + "')");
-        }
     }
 
     /**
@@ -192,9 +179,9 @@ public class ProjectManagerService {
                 .orElse(true);
     }
 
-    /** All RUNNING projects this pod currently owns — for startup reclaim. */
+    /** All RUNNING projects this pod currently holds a lease on. */
     public List<ProjectDocument> projectsOwnedByLocalPod() {
-        return projectService.findRunningByHomeNode(clusterService.selfNodeName());
+        return projectService.findRunningByHomePodId(clusterService.selfPodId());
     }
 
     /**
@@ -203,22 +190,21 @@ public class ProjectManagerService {
      * where its sessions, processes, and workspace live.
      *
      * <p>Returns {@link Optional#empty()} if the project does not exist,
-     * is podless ({@link ProjectService#isPodless}), has not yet been
-     * claimed, or its {@code homeNode} points at a node that the
-     * cluster registry no longer knows <em>or that has gone stale</em>
-     * (crashed / lost its heartbeat — e.g. after a restart on a new host
-     * IP). Callers that need a present endpoint should treat the empty
-     * case as "lives wherever the WS lands" or "pending bootstrap" and
-     * either retry or surface a {@code 409 Conflict} to the user.
+     * is podless ({@link ProjectService#isPodless}), or holds no valid
+     * ownership lease — never claimed, or claimed by a pod that stopped
+     * renewing (crashed, or restarted on a new host IP). Callers that need a
+     * present endpoint should treat the empty case as "lives wherever the WS
+     * lands" or "pending bootstrap" and either retry or surface a
+     * {@code 409 Conflict} to the user.
      *
-     * <p>The staleness filter is what stops a session from becoming
-     * permanently unreachable after its home pod dies: without it,
-     * {@link ClusterService#resolveEndpoint} happily returns the dead
-     * pod's {@code host:port} (it only checks the row exists, not its
-     * heartbeat), so every {@code session-resume} is tunnelled to a host
-     * that no longer answers (observed 2026-07-01: connect timeout to a
-     * pre-IP-change endpoint). Falling back to empty lets the live pod
-     * that received the WS serve the session locally.
+     * <p>The lease is what stops a session from becoming permanently
+     * unreachable after its home pod dies. Before it, this method had to
+     * filter on pod staleness by hand, because {@link
+     * ClusterService#resolveEndpoint} happily returned the dead pod's
+     * {@code host:port} — it only checked the row exists, not its heartbeat —
+     * so every {@code session-resume} was tunnelled to a host that no longer
+     * answered (observed 2026-07-01). An expired lease now answers that
+     * question before an endpoint is ever looked up.
      *
      * <p>This is the lookup primitive for engine-to-engine routing
      * (Eddie → Arthur via Working WS) and for workspace REST routing.
@@ -229,9 +215,9 @@ public class ProjectManagerService {
             return Optional.empty();
         }
         return projectService.findByTenantAndName(tenantId, projectName)
-                .map(ProjectDocument::getHomeNode)
-                .filter(c -> c != null && !c.isBlank())
-                .flatMap(clusterService::resolveLiveEndpoint);
+                .flatMap(project -> ProjectOwnership.liveOwnerPodId(
+                        project, Instant.now(), clusterService.leaseTtl()))
+                .flatMap(clusterService::resolveEndpointByPodId);
     }
 
     /**
@@ -253,70 +239,49 @@ public class ProjectManagerService {
      *
      * <p>Behaviour:
      * <ul>
-     *   <li>Project has no live home cluster (fresh, never claimed, or
-     *       previous owner's node is gone): the CAS in
-     *       {@link ProjectService#claim} grants the claim to this pod
+     *   <li>Nobody holds a valid lease (fresh, never claimed, or the previous
+     *       holder stopped renewing): the CAS in
+     *       {@link ProjectService#claim} grants the lease to this pod
      *       and we return {@link ClaimResult.Local}.</li>
-     *   <li>Project's home cluster is this pod: the CAS refreshes the
-     *       claim and we return {@link ClaimResult.Local}.</li>
-     *   <li>Project's home cluster is another live pod: the CAS rejects
-     *       (because the predicate {@code homeNode ∉ liveClusters} is
-     *       false). We resolve the owning node's endpoint and return
-     *       {@link ClaimResult.Redirect} so the caller can tunnel or
-     *       reject.</li>
+     *   <li>The lease is already ours: the CAS renews it and we return
+     *       {@link ClaimResult.Local}.</li>
+     *   <li>Another pod holds a valid lease: the CAS rejects. We resolve that
+     *       pod's endpoint and return {@link ClaimResult.Redirect} so the
+     *       caller can tunnel or reject.</li>
      * </ul>
      *
-     * <p>Replaces the previous read-modify-write pattern with a single
-     * atomic CAS. Two pods racing on a fresh project pick one winner,
-     * never both.
+     * <p>One atomic CAS, no live-pod snapshot to assemble first. Two pods
+     * racing on a fresh project pick one winner, never both.
      */
     public ClaimResult claimForLocalPodOrRedirect(String tenantId, String projectName) {
         if (ProjectService.isPodless(projectName)) {
             // Podless system projects (e.g. _user_<login>, _vance) live
-            // wherever the WS lands — never redirect, never pin homeNode.
+            // wherever the WS lands — never redirect, never take a lease.
             return new ClaimResult.Local(claimForLocalPod(tenantId, projectName));
         }
-        String selfCluster = clusterService.selfNodeName();
-        Set<String> liveClusters = liveClustersIncludingSelf(selfCluster);
-        Optional<ProjectDocument> claimed =
-                projectService.claim(tenantId, projectName, selfCluster, liveClusters);
+        Optional<ProjectDocument> claimed = projectService.claim(
+                tenantId, projectName,
+                clusterService.selfPodId(), clusterService.selfNodeName(),
+                clusterService.leaseTtl());
         if (claimed.isPresent()) {
             return new ClaimResult.Local(claimed.get());
         }
-        // CAS rejected — re-read to find the current live holder and resolve to an endpoint.
+        // CAS rejected — re-read to find the holder and resolve to an endpoint.
         ProjectDocument current = projectService.findByTenantAndName(tenantId, projectName)
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
                         "Project '" + projectName + "' vanished between claim and redirect"));
-        String holder = current.getHomeNode();
-        if (holder == null || holder.isBlank()) {
-            // Shouldn't happen — null was an accepting CAS branch. Be defensive.
-            throw new ClaimRejectedException(
-                    "Project '" + tenantId + "/" + projectName
-                            + "' claim rejected but home cluster is empty; concurrent state change");
-        }
-        String endpoint = clusterService.resolveLiveEndpoint(holder)
+        String holder = ProjectOwnership
+                .liveOwnerPodId(current, Instant.now(), clusterService.leaseTtl())
                 .orElseThrow(() -> new ClaimRejectedException(
                         "Project '" + tenantId + "/" + projectName
-                                + "' is owned by cluster '" + holder
-                                + "' but the cluster registry has no live endpoint for it"));
+                                + "' claim rejected but no live lease holder;"
+                                + " concurrent state change"));
+        String endpoint = clusterService.resolveEndpointByPodId(holder)
+                .orElseThrow(() -> new ClaimRejectedException(
+                        "Project '" + tenantId + "/" + projectName
+                                + "' is leased by pod '" + current.getHomeNode()
+                                + "' but the cluster registry has no endpoint for it"));
         return new ClaimResult.Redirect(endpoint);
-    }
-
-    /**
-     * Builds the live-cluster snapshot consumed by the claim CAS. Always
-     * includes {@code selfCluster} — a fresh pod must not race itself out
-     * of its own claim, even if its {@code brain_pods} row hasn't been
-     * registered yet (single-pod boot, registration retry, etc.).
-     */
-    private Set<String> liveClustersIncludingSelf(String selfCluster) {
-        Set<String> live = clusterService.liveClusterNodeNames();
-        if (selfCluster == null || selfCluster.isBlank() || live.contains(selfCluster)) {
-            return live;
-        }
-        // Copy-on-write — clusterService returns an unmodifiable set.
-        java.util.HashSet<String> augmented = new java.util.HashSet<>(live);
-        augmented.add(selfCluster);
-        return java.util.Collections.unmodifiableSet(augmented);
     }
 
     /**
@@ -334,17 +299,9 @@ public class ProjectManagerService {
         record Redirect(String endpoint) implements ClaimResult {}
     }
 
-    public static class ProjectNotOwnedException extends RuntimeException {
-        public ProjectNotOwnedException(String message) {
-            super(message);
-        }
-    }
-
     /**
      * Thrown by {@link #claimForLocalPod} when the CAS rejects the claim
-     * because another live pod holds it. Distinct from
-     * {@link ProjectNotOwnedException} (which is for assertion call sites
-     * that already think they own the project).
+     * because another pod holds a valid lease.
      */
     public static class ClaimRejectedException extends RuntimeException {
         public ClaimRejectedException(String message) {

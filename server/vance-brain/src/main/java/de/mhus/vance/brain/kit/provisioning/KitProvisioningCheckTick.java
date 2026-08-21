@@ -1,12 +1,6 @@
 package de.mhus.vance.brain.kit.provisioning;
 
-import de.mhus.vance.brain.cluster.ClusterMasterService;
-import de.mhus.vance.shared.project.ProjectDocument;
-import de.mhus.vance.shared.project.ProjectService;
-import de.mhus.vance.shared.project.ProjectStatus;
-import de.mhus.vance.shared.tenant.TenantDocument;
-import de.mhus.vance.shared.tenant.TenantService;
-import java.util.List;
+import de.mhus.vance.brain.project.ProjectActivationRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -14,32 +8,35 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Runs the provisioning check across the cluster, on the master pod.
+ * Runs the provisioning check over the projects <em>this pod is running</em>.
  *
- * <p><b>Not an Ursa scheduler entry.</b> A scheduler entry triggers a
- * recipe, a workflow or a script, never a Java service, and adding a
- * fourth trigger kind for one consumer would be the wrong shape.
+ * <p><b>Not an Ursa scheduler entry.</b> A scheduler entry triggers a recipe, a
+ * workflow or a script, never a Java service, and adding a fourth trigger kind
+ * for one consumer would be the wrong shape.
  *
- * <p><b>And not the pod's own projects either — that was the first
- * attempt and it was wrong.</b> Sweeping {@code findByHomeNode(self)}
- * looked elegant: a project is owned by one pod, so „only while it is
- * live" and „exactly once" collapse into one fact. They do — for the
- * projects that <em>have</em> an owner. Most do not. {@code EPHEMERAL} is
- * the default, nothing clears {@code homeNode} on shutdown, and the
- * boot-time self-pull reclaims only {@code PERMANENT} projects; so a
- * project sits pointing at a pod that died weeks ago and no live pod ever
- * sees it in that query. Provisioning does not need pod-local state, so
- * making ownership its precondition made it inert for the common case.
+ * <h2>Why the running projects, after two wrong answers</h2>
+ * The first attempt swept {@code findByHomeNode(self)} and was inert: nothing
+ * cleared {@code homeNode} on shutdown, so most projects pointed at a pod that
+ * had died weeks earlier and no live pod ever saw them. The fix at the time was
+ * to sweep <em>everything</em> from the cluster-master pod — which worked, but
+ * bought reach by asking the wrong question: a kit update for a project that
+ * nobody is running is not news. It costs a check per project per round across
+ * the whole installation, and it produces a notice about something that cannot
+ * act on it.
  *
- * <p>So: sweep everything, from the one pod holding the cluster-master
- * lease. Exactly the shape of {@code ClusterCleanupTick} — runs
- * everywhere, no-ops without the lease. „Exactly once" now comes from the
- * lease rather than from ownership, which is where it was available all
- * along.
+ * <p>Both answers were shaped by ownership being broken. It is not any more
+ * ({@code planning/project-ownership-lease-design.md}), so the honest question
+ * is askable for the first time: <b>what does this pod have up right now?</b>
+ * {@link ProjectActivationRegistry} answers it without a query — it is the
+ * pod's own memory of what it activated — and the answers of all pods partition
+ * the running projects exactly, so "exactly once" needs neither a master lease
+ * nor a claim. Load distributes with the projects instead of piling on one pod.
  *
- * <p>A lease handover can still let two pods sweep once. That is covered
- * by the duplicate guard the notice needs regardless: an open item for the
- * same kit suppresses the second.
+ * <p>Consequence, intended: a dormant project is not checked and produces no
+ * notice. It gets provisioned when it next comes up — that is what
+ * {@link KitProvisioningLifecycleListener} is for — and its
+ * {@code provisioning.yaml} is deliberately <em>not</em> a reason to keep it on
+ * a pod (see {@code ProjectOwnerRequirementService}).
  *
  * <p>Reports only. Installing is the other triggers' business (see
  * {@link KitProvisioningCheck}).
@@ -52,9 +49,7 @@ public class KitProvisioningCheckTick {
 
     private final KitProvisioningProperties properties;
     private final KitProvisioningCheck check;
-    private final ProjectService projectService;
-    private final TenantService tenantService;
-    private final ClusterMasterService masterService;
+    private final ProjectActivationRegistry activationRegistry;
 
     @Scheduled(
             initialDelayString =
@@ -62,30 +57,31 @@ public class KitProvisioningCheckTick {
             fixedDelayString = "${vance.kits.provisioning.check-interval:PT4H}")
     public void tick() {
         if (!properties.isCheckEnabled()) return;
-        if (!masterService.isLocalPodMaster()) return;
 
         int swept = 0;
         int reported = 0;
-        for (TenantDocument tenant : tenantService.all()) {
-            for (ProjectDocument project : projectService.all(tenant.getName())) {
-                if (project.getStatus() == ProjectStatus.CLOSED) continue;
-                swept++;
-                try {
-                    KitProvisioningCheck.Report report =
-                            check.check(project.getTenantId(), project.getName());
-                    reported += report.reported().size();
-                } catch (RuntimeException e) {
-                    // One project's broken configuration must not end the sweep
-                    // over the others.
-                    log.warn("Provisioning check of {}/{} failed: {}",
-                            project.getTenantId(), project.getName(), e.toString());
-                }
+        for (String key : activationRegistry.snapshot()) {
+            int slash = key.indexOf('/');
+            if (slash <= 0) continue;
+            String tenantId = key.substring(0, slash);
+            String projectName = key.substring(slash + 1);
+            swept++;
+            try {
+                KitProvisioningCheck.Report report = check.check(tenantId, projectName);
+                reported += report.reported().size();
+            } catch (RuntimeException e) {
+                // One project's broken configuration must not end the sweep
+                // over the others.
+                log.warn("Provisioning check of {}/{} failed: {}",
+                        tenantId, projectName, e.toString());
             }
         }
         if (reported > 0) {
-            log.info("Provisioning check swept {} project(s), reported {}", swept, reported);
+            log.info("Provisioning check swept {} running project(s), reported {}",
+                    swept, reported);
         } else {
-            log.debug("Provisioning check swept {} project(s), nothing to report", swept);
+            log.debug("Provisioning check swept {} running project(s), nothing to report",
+                    swept);
         }
     }
 }

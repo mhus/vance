@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { VAlert, VButton, VCard, VEmptyState, VInput } from '@vance/components';
+import { VAlert, VButton, VCard, VEmptyState, VInput, VShareButton } from '@vance/components';
 import { safeUrl } from '@vance/shared';
 import LinkPicture from './LinkPicture.vue';
 import LinkEditDialog from './LinkEditDialog.vue';
@@ -86,6 +86,21 @@ onBeforeUnmount(() => reportAppSelection?.(null));
 function toggleSelect(entry: LinkEntryView): void {
   selectedUrl.value = selectedUrl.value === entry.url ? null : entry.url;
   openMenu.value = null;
+}
+
+/**
+ * What sharing an entry hands over: its own title, its URL, and whatever text
+ * describes it — the typed teaser if there is one, else the reader's note.
+ * Often there is neither, and title plus link is a complete subject. The live
+ * preview text is deliberately not pulled in: it belongs to the page, and the
+ * receiving side resolves it the same way.
+ */
+function shareSubject(entry: LinkEntryView) {
+  return {
+    title: entry.title ?? entry.host,
+    link: entry.url,
+    snippet: entry.teaser ?? entry.note ?? undefined,
+  };
 }
 
 function isSelected(entry: LinkEntryView): boolean {
@@ -540,6 +555,13 @@ function message(e: unknown): string {
               </div>
 
               <div class="flex flex-none flex-col items-end gap-1">
+                <!-- Revealed on hover like the ⋯ menu, and kept visible while
+                     the entry is the selected one. -->
+                <VShareButton
+                  :subject="shareSubject(entry)"
+                  size="xs"
+                  :class="isSelected(entry) ? '' : 'opacity-0 group-hover/card:opacity-100'"
+                />
                 <VButton
                   size="xs"
                   variant="ghost"

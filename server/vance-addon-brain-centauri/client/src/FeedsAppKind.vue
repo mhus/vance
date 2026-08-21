@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
-  VAlert, VButton, VCard, VCheckbox, VEmptyState, VInput, VModal, VSelect, VTextarea, VToggle,
+  VAlert, VButton, VCard, VCheckbox, VEmptyState, VInput, VModal, VSelect, VShareButton,
+  VTextarea, VToggle,
 } from '@vance/components';
 import { RestError, safeUrl } from '@vance/shared';
 import {
@@ -127,6 +128,16 @@ function isMarked(item: FeedItemView): boolean {
 /** What to render for a card: the detail when we have it, the teaser until then. */
 function shown(item: FeedItemView): FeedItemView {
   return details.value[entryKey(item)] ?? item;
+}
+
+/**
+ * What sharing an entry hands over. The summary the source shipped, else the
+ * body it shipped instead — whichever exists is the quote; nothing is fetched
+ * for this. Everything after that is Milliways logic.
+ */
+function shareSubject(item: FeedItemView) {
+  const it = shown(item);
+  return { title: it.title, link: it.url, snippet: it.summary ?? it.body ?? undefined };
 }
 
 async function toggleMark(item: FeedItemView): Promise<void> {
@@ -1031,6 +1042,7 @@ function slug(title: string): string {
               </template>
               <!-- The card itself toggles the mark; the controls must not. -->
               <div class="mt-1 flex items-center gap-2" @click.stop>
+                <VShareButton :subject="shareSubject(item)" />
                 <VButton
                   size="sm"
                   variant="ghost"

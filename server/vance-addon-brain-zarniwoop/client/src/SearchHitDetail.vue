@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { inject } from 'vue';
-import { VButton } from '@vance/components';
+import { VButton, VShareButton } from '@vance/components';
 import type { SearchHitView } from './generated/search/SearchHitView';
 import HitPicture from './HitPicture.vue';
 import { extraLink, imageFile, link } from './hitView';
@@ -27,24 +26,14 @@ defineEmits<{ (e: 'load'): void }>();
 
 /**
  * Milliways, if the host offers it. A hit is the case the share subject was
- * generalised for: a title, a URL and a quote, with no document anywhere —
- * so showing one to a colleague no longer requires clipping it first.
+ * generalised for: a title, a URL and a quote, with no document anywhere — so
+ * showing one to a colleague no longer requires clipping it first.
  *
- * Injected rather than imported: this is a federated remote and must not
- * depend on vance-face. Absent host ⇒ no button, no error.
+ * The snippet the provider shipped, else the body it shipped instead —
+ * whichever exists is the quote. Neither is fetched for this.
  */
-type ShareSubject = { title?: string; link?: string; snippet?: string };
-const share = inject<((subject: ShareSubject) => void) | null>('vance:share', null);
-
-function shareHit(hit: SearchHitView): void {
-  if (!share) return;
-  share({
-    title: hit.title,
-    link: hit.url,
-    // The snippet the provider shipped, else the body it shipped instead —
-    // whichever exists is the quote. Neither is fetched for this.
-    snippet: hit.snippet ?? hit.body ?? undefined,
-  });
+function shareSubject(hit: SearchHitView) {
+  return { title: hit.title, link: hit.url, snippet: hit.snippet ?? hit.body ?? undefined };
 }
 </script>
 
@@ -87,14 +76,7 @@ function shareHit(hit: SearchHitView): void {
     </p>
 
     <div class="mt-1 flex flex-wrap gap-3 text-sm">
-      <button
-        v-if="share"
-        type="button"
-        class="hover:underline"
-        @click="shareHit(hit)"
-      >
-        Share ↗
-      </button>
+      <VShareButton :subject="shareSubject(hit)" />
       <a
         v-if="link(hit.url)"
         :href="link(hit.url)!"

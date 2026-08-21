@@ -177,9 +177,23 @@ public class FeedsApplication implements VanceApplication {
         // whole point of the per-turn hint: "look at the selected entry" is a
         // sentence the model can only act on if it knows which one — and
         // asking would cost a round trip into a browser that may be asleep.
+        //
+        // The wording carries a warning it earned. "The reader has this entry
+        // marked" was the first version, and twice in a row the engine answered
+        // "I see no marking (no text selection was sent)" — because to a chat
+        // engine "marked"/"selected" means boundDocSelection, a character range
+        // in a document, and that one really was empty. The reader had to write
+        // "there is a marked entry in the Active-App block" by hand before the
+        // right data was used. So: name the act, say what it is not, and forbid
+        // the hedge. Same fix in the links and search apps.
         String selected = ctx.selection();
         if (selected != null && !selected.isBlank()) {
-            sb.append("The reader has this entry marked: ").append(selected.trim()).append('\n')
+            sb.append("The reader has clicked one entry in this feed. This IS what they mean "
+                            + "by \"this entry\", \"the marked entry\" or \"the selected item\" "
+                            + "— it is the app's own pick, NOT a text selection inside a "
+                            + "document. Never answer that no selection arrived, and never ask "
+                            + "them to mark it again: ")
+                    .append(selected.trim()).append('\n')
                     .append("Read it in full with feed_item(sourceId, itemId) — the part "
                             + "before the slash is the source, the part after it the id.\n");
         }

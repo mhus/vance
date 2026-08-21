@@ -175,9 +175,22 @@ public class SearchApplication implements VanceApplication {
         // The URL is deliberately the payload. A search is stateless: a hit
         // has no handle on this side to fetch it back by, the way a feed
         // entry has an id in an archive. Its address is what it is.
+        //
+        // "open" was chosen over "selected" for a reason that turned out to be
+        // only half enough: to a chat engine "selection" means a character range
+        // in a document, so the word collides. But avoiding it is not sufficient
+        // — the engine still hedged ("I have no context for an open search hit")
+        // because nothing told it that this hint IS the answer to "which one do
+        // I have open". Say what it is not, and forbid the hedge. Same fix in
+        // the links and feeds apps.
         String selected = ctx.selection();
         if (selected != null && !selected.isBlank()) {
-            sb.append("The reader has this hit open: ").append(selected.trim()).append('\n')
+            sb.append("The reader has opened one hit in this list. This IS what they mean by "
+                            + "\"this hit\", \"the open result\" or \"the one I marked\" — it is "
+                            + "the app's own pick, NOT a text selection inside a document. Never "
+                            + "answer that no selection arrived, and never ask them to mark it "
+                            + "again: ")
+                    .append(selected.trim()).append('\n')
                     .append("Read it with web_fetch on the URL — a search result is a "
                             + "pointer, not a document we hold.\n");
         }

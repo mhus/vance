@@ -1,0 +1,23 @@
+title:       { de: "Links",  en: "Links" }
+description: { de: "Eine Link-Sammlung — externe URLs als gruppierte Vorschau-Karten. Titel, Teaser und Bild holt das System von der verlinkten Seite; eigene Texte überschreiben sie.",
+               en: "A link collection — external URLs as grouped preview cards. Title, teaser and picture come from the linked page; your own text overrides them." }
+icon: link
+tags: [app, links]
+
+# Application templates write only the _app.yaml manifest; the folder is
+# chosen by the user. Links and groups are created afterwards in the app
+# (paste field + "New group") or by the chat agent via links_entry_add —
+# so this form stays at the two fields that have no other home.
+name:
+  mode: fixed
+  value: _app.yaml
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel",        en: "Title" }
+  - name: description
+    type: textarea
+    rows: 2
+    label: { de: "Beschreibung", en: "Description" }

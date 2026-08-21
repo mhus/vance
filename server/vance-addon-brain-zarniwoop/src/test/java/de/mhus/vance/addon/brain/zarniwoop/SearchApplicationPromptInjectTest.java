@@ -60,6 +60,21 @@ class SearchApplicationPromptInjectTest {
     }
 
     @Test
+    void promptInject_forbidsTheMissingTextSelectionHedge() {
+        // Saying "open" instead of "selected" dodged the word collision but not
+        // the behaviour: the engine still answered "I have no context for an
+        // open search hit" until the block said outright that this hint IS the
+        // answer and is not a text selection.
+        String block = application.promptInject(new PromptInjectContext(
+                "acme", "research", "apps/search1", null, null,
+                "A decade after earthquake — https://reuters.com/world/amatrice"));
+
+        assertThat(block).contains("NOT a text selection");
+        assertThat(block).contains("Never answer that no selection arrived");
+        assertThat(block).doesNotContain("has this hit open");
+    }
+
+    @Test
     void promptInject_withoutAnOpenHit_saysNothingAboutOne() {
         String block = application.promptInject(new PromptInjectContext(
                 "acme", "research", "apps/search1", null, null, null));

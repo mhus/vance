@@ -38,6 +38,7 @@
         <module>vance-addon-brain-canvas</module>
         <module>vance-addon-brain-finance</module>
         <module>vance-addon-brain-binder</module>
+        <module>vance-addon-brain-links</module>
         <module>vance-addon-brain-centauri</module>
         <module>vance-addon-brain-zarniwoop</module>
         <module>vance-addon-brain-rlang</module>

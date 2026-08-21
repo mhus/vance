@@ -62,6 +62,22 @@ class FeedsApplicationPromptInjectTest {
     }
 
     @Test
+    void promptInject_forbidsTheMissingTextSelectionHedge() {
+        // Earned by a real failure: with "the reader has this entry marked" the
+        // engine answered twice "I see no marking (no text selection was sent)"
+        // — to a chat engine "marked"/"selected" means a character range in a
+        // document, and that one was genuinely empty. The reader had to name the
+        // Active-App block by hand before the right data was used.
+        String block = application.promptInject(new PromptInjectContext(
+                "acme", "news", "apps/feeds", null, null,
+                "hrafnagud/6a86 — Verstappen commits to Red Bull"));
+
+        assertThat(block).contains("NOT a text selection");
+        assertThat(block).contains("Never answer that no selection arrived");
+        assertThat(block).doesNotContain("has this entry marked");
+    }
+
+    @Test
     void promptInject_withoutASelection_saysNothingAboutOne() {
         String block = application.promptInject(new PromptInjectContext(
                 "acme", "news", "apps/feeds", null, null, null));

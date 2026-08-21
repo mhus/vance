@@ -1,0 +1,9 @@
+$meta:
+  kind: application
+  app: links
+title: "{{ title }}"
+{% if description %}description: "{{ description }}"{% endif %}
+links:
+  entries: []
+  index:
+    outputPath: _index.md

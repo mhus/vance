@@ -1,10 +1,12 @@
 package de.mhus.vance.brain.kit.provisioning;
 
 import de.mhus.vance.shared.kit.KitException;
-import java.util.LinkedHashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -20,10 +22,12 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class KitProvisioningHandlers {
 
-    private final Map<String, KitProvisioningHandler> byId;
+    private final SortedMap<String, KitProvisioningHandler> byId;
 
     public KitProvisioningHandlers(List<KitProvisioningHandler> handlers) {
-        Map<String, KitProvisioningHandler> map = new LinkedHashMap<>();
+        // Sorted, not bean-discovery order: that order is not stable between
+        // runs, and it shows up in messages and diagnostics.
+        SortedMap<String, KitProvisioningHandler> map = new TreeMap<>();
         for (KitProvisioningHandler handler : handlers) {
             String id = handler.id();
             if (id == null || id.isBlank()) {
@@ -41,7 +45,7 @@ public class KitProvisioningHandlers {
                         + handler.getClass().getName());
             }
         }
-        this.byId = Map.copyOf(map);
+        this.byId = Collections.unmodifiableSortedMap(map);
         log.info("Kit provisioning mechanisms: {}", byId.keySet());
     }
 

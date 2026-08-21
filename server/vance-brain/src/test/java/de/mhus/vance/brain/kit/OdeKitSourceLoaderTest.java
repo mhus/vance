@@ -105,7 +105,7 @@ class OdeKitSourceLoaderTest {
     void load_deliveredKit_unpacksAndParsesDescriptor(@TempDir Path target) {
         KitRepoLoader.LoadedKit loaded = loader.load(
                 reference(), source(),
-                new KitAccess("acme", "sales", null, null), target);
+                new KitAccess("acme", "sales", null, null, Map.of()), target);
 
         assertThat(loaded.descriptor().getName()).isEqualTo("acme-crm");
         assertThat(loaded.commit()).isEqualTo("ode:1.4.0");
@@ -117,7 +117,7 @@ class OdeKitSourceLoaderTest {
         instance.setName("acme-prod");
 
         loader.load(reference(), source(),
-                new KitAccess("acme", "sales", null, null), target);
+                new KitAccess("acme", "sales", null, null, Map.of()), target);
 
         JsonNode body = MAPPER.readTree(received.getFirst());
         assertThat(body.get("kit").asString()).isEqualTo("acme-crm");
@@ -130,7 +130,7 @@ class OdeKitSourceLoaderTest {
     @Test
     void load_unsetInstanceName_sendsNoStandIn(@TempDir Path target) {
         loader.load(reference(), source(),
-                new KitAccess("acme", "sales", null, null), target);
+                new KitAccess("acme", "sales", null, null, Map.of()), target);
 
         // Null, not "default" and not the pod name: a host reads a missing
         // value as unknown but would log a stand-in as a customer name.
@@ -140,16 +140,42 @@ class OdeKitSourceLoaderTest {
     @Test
     void load_carriesNoUserIdentity(@TempDir Path target) {
         loader.load(reference(), source(),
-                new KitAccess("acme", "sales", null, null), target);
+                new KitAccess("acme", "sales", null, null, Map.of("lang", "de")), target);
 
+        // The identity set is closed: installation, tenant, project — where the
+        // kit is going, and not who asked for it. `params` sits next to it and
+        // is open-ended, because it says *what* is wanted rather than who; that
+        // asymmetry is the point, so both are pinned here.
         assertThat(MAPPER.readTree(received.getFirst()).propertyNames())
-                .containsExactlyInAnyOrder("kit", "instance", "tenant", "project", "accessUrl");
+                .containsExactlyInAnyOrder(
+                        "kit", "instance", "tenant", "project", "accessUrl", "params");
+    }
+
+    @Test
+    void load_sendsTheProvisioningParams(@TempDir Path target) {
+        loader.load(reference(), source(),
+                new KitAccess("acme", "sales", null, null,
+                        Map.of("lang", "de", "modules", List.of("crm"))), target);
+
+        JsonNode params = MAPPER.readTree(received.getFirst()).get("params");
+        assertThat(params.get("lang").asString()).isEqualTo("de");
+        assertThat(params.get("modules").get(0).asString()).isEqualTo("crm");
+    }
+
+    @Test
+    void load_withoutParams_sendsAnEmptyObject(@TempDir Path target) {
+        loader.load(reference(), source(),
+                new KitAccess("acme", "sales", null, null, Map.of()), target);
+
+        // An empty object rather than a missing field or null: a host reading
+        // params should never need a null check for the hand-typed-install case.
+        assertThat(MAPPER.readTree(received.getFirst()).get("params").isEmpty()).isTrue();
     }
 
     @Test
     void load_withToken_sendsBearer(@TempDir Path target) {
         loader.load(reference(), source(),
-                new KitAccess("acme", "sales", "s3cr3t", null), target);
+                new KitAccess("acme", "sales", "s3cr3t", null, Map.of()), target);
 
         assertThat(authHeaders.getFirst()).isEqualTo("Bearer s3cr3t");
     }
@@ -157,7 +183,7 @@ class OdeKitSourceLoaderTest {
     @Test
     void load_withoutToken_sendsNoAuthorizationHeader(@TempDir Path target) {
         loader.load(reference(), source(),
-                new KitAccess("acme", "sales", null, null), target);
+                new KitAccess("acme", "sales", null, null, Map.of()), target);
 
         assertThat(authHeaders.getFirst()).isNull();
     }
@@ -168,7 +194,7 @@ class OdeKitSourceLoaderTest {
         ref.setPath("  ");
 
         assertThatThrownBy(() -> loader.load(ref, source(),
-                new KitAccess("acme", "sales", null, null), target))
+                new KitAccess("acme", "sales", null, null, Map.of()), target))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("needs a path");
         assertThat(received).isEmpty();
@@ -179,7 +205,7 @@ class OdeKitSourceLoaderTest {
         status.set(403);
 
         assertThatThrownBy(() -> loader.load(reference(), source(),
-                new KitAccess("acme", "sales", "wrong", null), target))
+                new KitAccess("acme", "sales", "wrong", null, Map.of()), target))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("rejected the credential");
     }
@@ -189,7 +215,7 @@ class OdeKitSourceLoaderTest {
         status.set(404);
 
         assertThatThrownBy(() -> loader.load(reference(), source(),
-                new KitAccess("acme", "sales", null, null), target))
+                new KitAccess("acme", "sales", null, null, Map.of()), target))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("does not serve a kit 'acme-crm'");
     }
@@ -199,7 +225,7 @@ class OdeKitSourceLoaderTest {
         payload = zip(Map.of("tools/crm.yaml", "name: crm\n"));
 
         assertThatThrownBy(() -> loader.load(reference(), source(),
-                new KitAccess("acme", "sales", null, null), target))
+                new KitAccess("acme", "sales", null, null, Map.of()), target))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("without a kit.yaml");
     }
@@ -209,7 +235,7 @@ class OdeKitSourceLoaderTest {
         payload = zip(Map.of("../escaped.md", "nope\n"));
 
         assertThatThrownBy(() -> loader.load(reference(), source(),
-                new KitAccess("acme", "sales", null, null), target))
+                new KitAccess("acme", "sales", null, null, Map.of()), target))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("failed to unpack");
         assertThat(Files.exists(target.getParent().resolve("escaped.md"))).isFalse();
@@ -221,7 +247,7 @@ class OdeKitSourceLoaderTest {
         withSlash.setUrl(baseUrl() + "/");
 
         loader.load(reference(), withSlash,
-                new KitAccess("acme", "sales", null, null), target);
+                new KitAccess("acme", "sales", null, null, Map.of()), target);
 
         assertThat(MAPPER.readTree(received.getFirst()).get("accessUrl").asString())
                 .isEqualTo(baseUrl());
@@ -240,7 +266,7 @@ class OdeKitSourceLoaderTest {
                 "tools/crm.yaml", "baseUrl: {{ accessUrl }}\n"));
 
         loader.load(reference(), source(),
-                new KitAccess("acme", "sales", null, null), target);
+                new KitAccess("acme", "sales", null, null, Map.of()), target);
 
         assertThat(Files.readString(target.resolve("tools/crm.yaml")))
                 .isEqualTo("baseUrl: " + baseUrl() + "\n");
@@ -254,7 +280,7 @@ class OdeKitSourceLoaderTest {
                 "tools/crm.yaml", "{{ instance }}|{{ tenant }}|{{ project }}\n"));
 
         loader.load(reference(), source(),
-                new KitAccess("acme", "sales", null, null), target);
+                new KitAccess("acme", "sales", null, null, Map.of()), target);
 
         assertThat(Files.readString(target.resolve("tools/crm.yaml")))
                 .isEqualTo("acme-prod|acme|sales\n");
@@ -268,7 +294,7 @@ class OdeKitSourceLoaderTest {
                 "docs/manual.md", "Write {{ accessUrl }} to keep it.\n"));
 
         loader.load(reference(), source(),
-                new KitAccess("acme", "sales", null, null), target);
+                new KitAccess("acme", "sales", null, null, Map.of()), target);
 
         // A kit is full of documents that may legitimately contain braces.
         // Only what the host declared is a template.
@@ -284,7 +310,7 @@ class OdeKitSourceLoaderTest {
                 "---\n{% if project %}project: {{ project }}\n{% endif %}kind: tool\n"));
 
         loader.load(reference(), source(),
-                new KitAccess("acme", "sales", null, null), target);
+                new KitAccess("acme", "sales", null, null, Map.of()), target);
 
         // renderStructured, not the prompt renderer: swallowing the newline
         // after a tag is right for prose and tears a yaml document apart.
@@ -297,7 +323,7 @@ class OdeKitSourceLoaderTest {
         payload = zip(Map.of("kit.yaml", TEMPLATED_DESCRIPTOR));
 
         assertThatThrownBy(() -> loader.load(reference(), source(),
-                new KitAccess("acme", "sales", null, null), target))
+                new KitAccess("acme", "sales", null, null, Map.of()), target))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("did not deliver it");
     }
@@ -309,7 +335,7 @@ class OdeKitSourceLoaderTest {
                         + "  - ../outside.yaml\n"));
 
         assertThatThrownBy(() -> loader.load(reference(), source(),
-                new KitAccess("acme", "sales", null, null), target))
+                new KitAccess("acme", "sales", null, null, Map.of()), target))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("escapes the kit directory");
     }
@@ -324,7 +350,7 @@ class OdeKitSourceLoaderTest {
         // descriptor was already parsed. Refusing beats a placeholder that
         // looks like it works.
         assertThatThrownBy(() -> loader.load(reference(), source(),
-                new KitAccess("acme", "sales", null, null), target))
+                new KitAccess("acme", "sales", null, null, Map.of()), target))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("read before templates are applied");
     }
@@ -335,7 +361,7 @@ class OdeKitSourceLoaderTest {
         bad.setUrl("javascript:alert(1)");
 
         assertThatThrownBy(() -> loader.load(reference(), bad,
-                new KitAccess("acme", "sales", null, null), target))
+                new KitAccess("acme", "sales", null, null, Map.of()), target))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("not usable as an endpoint");
         assertThat(received).isEmpty();

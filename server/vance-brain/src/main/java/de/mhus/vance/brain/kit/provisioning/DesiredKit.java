@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.kit.provisioning;
 
 import de.mhus.vance.api.kit.KitProvisioningAuthority;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -21,14 +22,25 @@ import org.jspecify.annotations.Nullable;
  *        „changed": guessing would either refetch every tick or never.
  * @param authority carried over from the entry, so the decision about
  *        one kit does not have to look the entry up again
+ * @param params what the entry asked the source for, carried along for
+ *        the same reason and needed by the fetch.
+ *
+ *        <p>Load-bearing for the check: {@link #revision} comes from the
+ *        source, which never saw these params (they go to the build call,
+ *        not to the cacheable capabilities call). So a revision that
+ *        stands still while the params changed still means „refetch" —
+ *        and it is the local comparison that has to say so, not the
+ *        source.
  */
 public record DesiredKit(
         String sourceUrl,
         String path,
         @Nullable String revision,
-        KitProvisioningAuthority authority) {
+        KitProvisioningAuthority authority,
+        Map<String, Object> params) {
 
     public DesiredKit {
+        params = params == null ? Map.of() : Map.copyOf(params);
         if (sourceUrl == null || sourceUrl.isBlank()) {
             throw new IllegalArgumentException("a desired kit needs a source url");
         }

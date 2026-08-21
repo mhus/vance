@@ -45,6 +45,16 @@ import tools.jackson.databind.ObjectMapper;
  * display name. Verortung, nicht Identität; see
  * {@code planning/kit-ode-provisioning.md} §7.
  *
+ * <p><b>Plus whatever the operator asked for.</b> A provisioning entry may
+ * carry {@code params:}, and they travel with the build request — that is
+ * how „give me the German variant with the invoicing module" is said.
+ * Free-form on purpose: only the far end knows its own options. Note they
+ * go to {@code build} and <b>not</b> to {@code capabilities}, which has
+ * to stay cacheable and caller-independent; the consequence is that the
+ * revision a host declares does not describe these params, so a change
+ * to them counts as a change on <i>our</i> side and the local check has
+ * to notice it.
+ *
  * <p><b>{@code accessUrl} is the url we reached the host at.</b> A host
  * behind a reverse proxy does not reliably know its own external address,
  * and header-guessing is the worse answer. It is sent so the host can
@@ -105,13 +115,19 @@ public class OdeKitSourceLoader implements KitSourceLoader {
      * @param project which project the kit is for, or null outside an
      *        install
      * @param accessUrl the url this request was sent to
+     * @param params what the operator asked this source for. Free-form
+     *        and open-ended, unlike the fields above: those say who and
+     *        where and are a closed set, this one says <i>what</i> and
+     *        only the far end knows its own options. Empty on a
+     *        hand-typed install.
      */
     record BuildRequest(
             String kit,
             @Nullable String instance,
             String tenant,
             @Nullable String project,
-            String accessUrl) {}
+            String accessUrl,
+            Map<String, Object> params) {}
 
     @Override
     public boolean supports(KitSourceType type) {
@@ -144,7 +160,8 @@ public class OdeKitSourceLoader implements KitSourceLoader {
                 StringUtils.trimToNull(instance.getName()),
                 access.tenantId(),
                 access.projectId(),
-                accessUrl),
+                accessUrl,
+                access.params()),
                 config);
 
         log.debug("OdeKitSourceLoader: building '{}' at {} for {}/{}",

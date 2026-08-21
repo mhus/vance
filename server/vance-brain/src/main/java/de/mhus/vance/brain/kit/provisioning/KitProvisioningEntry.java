@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.kit.provisioning;
 
 import de.mhus.vance.api.kit.KitProvisioningAuthority;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -20,14 +21,27 @@ import org.jspecify.annotations.Nullable;
  * @param url where that mechanism answers
  * @param token resolved credential, or null when the entry named none
  * @param authority what the source may do unattended
+ * @param params what this project wants from the source, passed through
+ *        to it verbatim — „the German variant with the invoicing
+ *        module". Free-form because only the far end knows its own
+ *        options, and open-ended for the same reason: it says <i>what</i>
+ *        is wanted, whereas the identity a request carries (installation,
+ *        tenant, project) says who and where and stays a closed set.
+ *
+ *        <p>Not secret-resolved. A {@code {{secret:…}}} here would be
+ *        handed to a third party by convenience; the credential in
+ *        {@link #token()} is meant for that party, an arbitrary vault
+ *        value is not.
  */
 public record KitProvisioningEntry(
         String type,
         String url,
         @Nullable String token,
-        KitProvisioningAuthority authority) {
+        KitProvisioningAuthority authority,
+        Map<String, Object> params) {
 
     public KitProvisioningEntry {
+        params = params == null ? Map.of() : Map.copyOf(params);
         if (type == null || type.isBlank()) {
             throw new IllegalArgumentException("a provisioning entry needs a type");
         }
@@ -43,6 +57,7 @@ public record KitProvisioningEntry(
     @Override
     public String toString() {
         return "KitProvisioningEntry[type=" + type + ", url=" + url
-                + ", authority=" + authority + ", token=" + (token == null ? "none" : "set") + "]";
+                + ", authority=" + authority + ", token=" + (token == null ? "none" : "set")
+                + ", params=" + params.keySet() + "]";
     }
 }

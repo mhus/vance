@@ -12,6 +12,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +33,8 @@ class OdeKitProvisioningHandlerTest {
     private OdeKitProvisioningHandler handler;
 
     private final List<String> authHeaders = new ArrayList<>();
+    /** Query strings the stub saw, so it can be asserted that none carried params. */
+    private final List<String> queries = new ArrayList<>();
     private final AtomicInteger status = new AtomicInteger(200);
     private String body = """
             {"kits":[{"id":"acme-crm","version":"1.4.0","revision":"abc123",
@@ -52,6 +55,7 @@ class OdeKitProvisioningHandlerTest {
 
     private void handle(HttpExchange exchange) throws IOException {
         authHeaders.add(exchange.getRequestHeaders().getFirst("Authorization"));
+        queries.add(exchange.getRequestURI().getQuery());
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "application/json");
         exchange.sendResponseHeaders(status.get(), bytes.length);
@@ -65,7 +69,7 @@ class OdeKitProvisioningHandlerTest {
 
     private KitProvisioningContext context(KitProvisioningAuthority authority, String token) {
         return new KitProvisioningContext("acme", "sales",
-                new KitProvisioningEntry("ode", baseUrl(), token, authority));
+                new KitProvisioningEntry("ode", baseUrl(), token, authority, Map.of()));
     }
 
     @Test
@@ -166,7 +170,7 @@ class OdeKitProvisioningHandlerTest {
     void discover_unusableUrl_failsWithoutCalling() {
         KitProvisioningContext ctx = new KitProvisioningContext("acme", "sales",
                 new KitProvisioningEntry("ode", "javascript:alert(1)", null,
-                        KitProvisioningAuthority.NOTIFY));
+                        KitProvisioningAuthority.NOTIFY, Map.of()));
 
         assertThatThrownBy(() -> handler.discover(ctx))
                 .isInstanceOf(KitException.class)
@@ -178,15 +182,40 @@ class OdeKitProvisioningHandlerTest {
     void discover_trailingSlashInUrl_stillReachesTheEndpoint() {
         KitProvisioningContext ctx = new KitProvisioningContext("acme", "sales",
                 new KitProvisioningEntry("ode", baseUrl() + "/", null,
-                        KitProvisioningAuthority.NOTIFY));
+                        KitProvisioningAuthority.NOTIFY, Map.of()));
 
         assertThat(handler.discover(ctx)).hasSize(1);
     }
 
     @Test
+    void discover_carriesTheEntryParamsIntoEachDesiredKit() {
+        KitProvisioningContext ctx = new KitProvisioningContext("acme", "sales",
+                new KitProvisioningEntry("ode", baseUrl(), null,
+                        KitProvisioningAuthority.UPDATE, Map.of("lang", "de")));
+
+        // Needed by the fetch, and load-bearing for the check: the revision
+        // comes from a call that never saw these params.
+        assertThat(handler.discover(ctx)).singleElement()
+                .satisfies(kit -> assertThat(kit.params()).containsEntry("lang", "de"));
+    }
+
+    @Test
+    void discover_doesNotSendParamsToCapabilities() {
+        KitProvisioningContext ctx = new KitProvisioningContext("acme", "sales",
+                new KitProvisioningEntry("ode", baseUrl(), null,
+                        KitProvisioningAuthority.UPDATE, Map.of("lang", "de")));
+
+        handler.discover(ctx);
+
+        // This call has to stay cacheable and caller-independent — that is
+        // what makes the periodic check cheap. Params belong to the build.
+        assertThat(queries).containsExactly((String) null);
+    }
+
+    @Test
     void entry_toString_doesNotPrintTheToken() {
         String printed = new KitProvisioningEntry("ode", "https://host", "s3cr3t",
-                KitProvisioningAuthority.MANAGE).toString();
+                KitProvisioningAuthority.MANAGE, Map.of("lang", "de")).toString();
 
         // A record's generated toString would print it into whatever log first
         // mentions the entry.

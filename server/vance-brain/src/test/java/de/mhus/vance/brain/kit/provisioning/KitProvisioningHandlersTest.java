@@ -20,13 +20,13 @@ class KitProvisioningHandlersTest {
 
     private static KitProvisioningEntry entry(String type) {
         return new KitProvisioningEntry(type, "https://host", null,
-                KitProvisioningAuthority.UPDATE);
+                KitProvisioningAuthority.UPDATE, java.util.Map.of());
     }
 
     @Test
     void discover_routesByType() {
         DesiredKit kit = new DesiredKit("https://host", "acme-crm", "r1",
-                KitProvisioningAuthority.UPDATE);
+                KitProvisioningAuthority.UPDATE, java.util.Map.of());
         KitProvisioningHandlers handlers = new KitProvisioningHandlers(List.of(
                 new Fixed("ode", List.of(kit)),
                 new Fixed("git-list", List.of())));
@@ -56,9 +56,9 @@ class KitProvisioningHandlersTest {
     }
 
     @Test
-    void ids_listsWhatThisBuildHas() {
+    void ids_listsWhatThisBuildHasSorted() {
         assertThat(new KitProvisioningHandlers(List.of(
                 new Fixed("ode", List.of()), new Fixed("git-list", List.of()))).ids())
-                .containsExactly("ode", "git-list");
+                .containsExactly("git-list", "ode");
     }
 }

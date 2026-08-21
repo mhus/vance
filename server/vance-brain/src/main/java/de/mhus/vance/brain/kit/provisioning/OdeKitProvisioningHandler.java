@@ -128,7 +128,8 @@ public class OdeKitProvisioningHandler implements KitProvisioningHandler {
                         + " change detection is off for it", base, kitId);
                 revision = null;
             }
-            desired.add(new DesiredKit(entry.url(), kitId, revision, entry.authority()));
+            desired.add(new DesiredKit(
+                    entry.url(), kitId, revision, entry.authority(), entry.params()));
         }
 
         if (desired.isEmpty()) {

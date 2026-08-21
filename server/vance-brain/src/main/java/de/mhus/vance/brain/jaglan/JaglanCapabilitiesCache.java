@@ -60,6 +60,21 @@ public class JaglanCapabilitiesCache {
     }
 
     /**
+     * {@code true} when the last attempt to fetch this mount's declaration
+     * failed and is still remembered.
+     *
+     * <p>Exists so a caller can tell the two reasons for an absent
+     * declaration apart: <b>asked and it broke</b> versus <b>never asked</b>.
+     * They look identical to {@link #peek}, and conflating them makes a
+     * perfectly healthy mount report an outage for the first minutes after a
+     * restart — the same "unknown masquerading as bad" mistake this whole
+     * subsystem keeps having to avoid.
+     */
+    public boolean failedRecently(String tenantId, String projectId, String mount) {
+        return Boolean.TRUE.equals(failures.getIfPresent(key(tenantId, projectId, mount)));
+    }
+
+    /**
      * Cached capabilities, fetching on a miss.
      *
      * @return the capabilities, or {@code null} when the source could not be

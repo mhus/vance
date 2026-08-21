@@ -86,6 +86,7 @@ class JaglanServiceTest {
     void mounts_coldCache_reportsUnknownRatherThanHiding() {
         configured();
         when(capabilities.peek(TENANT, PROJECT, MOUNT)).thenReturn(null);
+        when(capabilities.failedRecently(TENANT, PROJECT, MOUNT)).thenReturn(false);
 
         List<MountedSource> mounts = service.mounts(TENANT, PROJECT);
 
@@ -94,7 +95,22 @@ class JaglanServiceTest {
         assertThat(mounts).hasSize(1);
         assertThat(mounts.get(0).access()).isEqualTo(MountAccess.UNKNOWN);
         assertThat(mounts.get(0).itemCount()).isNull();
-        assertThat(mounts.get(0).statusText()).contains("capabilities not loaded");
+        // No status line: nothing has gone wrong, the declaration just has not
+        // been fetched yet. Calling this an outage made every healthy mount
+        // look broken for the first minutes after a restart.
+        assertThat(mounts.get(0).statusText()).isNull();
+    }
+
+    @Test
+    void mounts_afterAFailedFetch_reportsAStatusLine() {
+        configured();
+        when(capabilities.peek(TENANT, PROJECT, MOUNT)).thenReturn(null);
+        when(capabilities.failedRecently(TENANT, PROJECT, MOUNT)).thenReturn(true);
+
+        // Same absent declaration, different reason — and this one is worth
+        // telling a person about.
+        assertThat(service.mounts(TENANT, PROJECT).get(0).statusText())
+                .isEqualTo("source did not answer");
     }
 
     @Test

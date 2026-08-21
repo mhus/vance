@@ -60,7 +60,8 @@ public class JaglanService implements JaglanPort {
             // peek, never warm: this runs inside folder listings.
             JaglanCapabilities caps =
                     capabilities.peek(tenantId, projectId, instance.mount());
-            out.add(describe(instance, caps));
+            out.add(describe(instance, caps,
+                    capabilities.failedRecently(tenantId, projectId, instance.mount())));
         }
         return List.copyOf(out);
     }
@@ -212,14 +213,23 @@ public class JaglanService implements JaglanPort {
                 "mount '" + mount + "' " + op + " failed: " + e, e);
     }
 
+    /**
+     * @param failedRecently whether the declaration was asked for and the ask
+     *        failed. Separates the two reasons {@code caps} can be null, which
+     *        must not read the same: a mount whose declaration simply has not
+     *        been fetched yet is fine, and calling that an outage makes every
+     *        healthy mount look broken for the first minutes after a restart.
+     */
     private static MountedSource describe(
-            JaglanInstance instance, @Nullable JaglanCapabilities caps) {
+            JaglanInstance instance, @Nullable JaglanCapabilities caps, boolean failedRecently) {
         if (caps == null) {
-            // Reported, not hidden: "not configured" and "not answering right
-            // now" are different facts, and only the first justifies absence
-            // from the tree.
+            // Reported either way, not hidden: "not configured" and "not
+            // answering right now" are different facts, and only the first
+            // justifies absence from the tree. But only a real failure gets a
+            // status line — an absent one means "nothing to report yet".
             return new MountedSource(instance.mount(), null, instance.protocolId(),
-                    MountAccess.UNKNOWN, null, "capabilities not loaded yet", null,
+                    MountAccess.UNKNOWN, null,
+                    failedRecently ? "source did not answer" : null, null,
                     /* canSearch */ false);
         }
         return new MountedSource(

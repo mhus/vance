@@ -133,6 +133,10 @@ public class LinksShareHandler implements ShareHandler {
                 .name(FIELD_POSITION)
                 .type("select")
                 .label(Map.of("en", "Position", "de", "Position"))
+                // Required, so the renderer drops its empty placeholder option:
+                // position always means something, and an empty choice would
+                // offer a decision that does not exist.
+                .required(true)
                 .defaultValue(POSITION_BOTTOM)
                 .choices(List.of(
                         FormChoiceDto.builder().value(POSITION_TOP)

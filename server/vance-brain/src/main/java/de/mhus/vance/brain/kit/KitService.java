@@ -65,10 +65,14 @@ public class KitService {
         // installation is signed in to, and the credential to fetch with.
         // Both the resolve and the install below need it, and asking twice
         // could answer differently if a setting changed in between.
+        // Params ride along on the access object because that is what reaches
+        // the loader; they are not a credential and not identity, but a source
+        // that assembles per request cannot be served without them.
         KitAccess access = storeCredentials.resolve(
                 tenantId, request.getProjectId(), actor,
                 request.getSource() == null ? null : request.getSource().getUrl(),
-                request.getToken());
+                request.getToken())
+                .withParams(request.getParams());
 
         KitResolver.ResolvedKit resolved = null;
         try {

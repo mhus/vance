@@ -15,4 +15,5 @@ export interface KitImportRequestDto {
   prune: boolean;
   keepPasswords: boolean;
   writeManifest: boolean;
+  params: Record<string, any>;
 }

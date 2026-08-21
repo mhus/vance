@@ -2,6 +2,7 @@ package de.mhus.vance.api.kit;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -73,4 +74,19 @@ public class KitImportRequestDto {
      */
     @Builder.Default
     private boolean writeManifest = false;
+
+    /**
+     * What the caller asks the source for, passed through to it verbatim.
+     *
+     * <p>Comes from a provisioning entry's {@code params:} and is empty for
+     * a hand-typed install. Free-form because only the far end knows its
+     * own options, and open-ended for the same reason — unlike the source
+     * coordinates, which are the kit's identity and fixed.
+     *
+     * <p>Not secret-resolved anywhere: a value here is handed to a third
+     * party, and the credential in {@link #token} is the field meant for
+     * that.
+     */
+    @Builder.Default
+    private Map<String, Object> params = Map.of();
 }

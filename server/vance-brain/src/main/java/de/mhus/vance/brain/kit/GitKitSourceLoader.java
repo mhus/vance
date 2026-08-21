@@ -5,7 +5,6 @@ import de.mhus.vance.api.kit.KitSourceDto;
 import de.mhus.vance.api.kit.KitSourceType;
 import java.nio.file.Path;
 import lombok.RequiredArgsConstructor;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -29,7 +28,7 @@ public class GitKitSourceLoader implements KitSourceLoader {
 
     @Override
     public KitRepoLoader.LoadedKit load(
-            KitInheritDto source, KitSourceDto config, @Nullable String token, Path target) {
-        return repoLoader.load(source, token, target);
+            KitInheritDto source, KitSourceDto config, KitAccess access, Path target) {
+        return repoLoader.load(source, access.token(), target);
     }
 }

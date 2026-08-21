@@ -6,5 +6,6 @@
 export enum KitSourceType {
   GIT = 'GIT',
   FOLDER = 'FOLDER',
-  LIBRARY = 'LIBRARY'
+  LIBRARY = 'LIBRARY',
+  ODE = 'ODE'
 }

@@ -60,7 +60,7 @@ public class KitSourceLoaders {
         log.debug("KitSourceLoaders: {} resolves to source '{}' (type={}, signature={})",
                 source.getUrl(), config.getId(), config.getType(), config.getSignature());
         KitRepoLoader.LoadedKit loaded = loaderFor(config.getType()).load(
-                source, config, access.token(), target);
+                source, config, access, target);
         // Right here, and not in the installer: this is the one point where
         // the loaded tree and the source it came from are both in hand. Every
         // inherit passes through again with its own source's policy.

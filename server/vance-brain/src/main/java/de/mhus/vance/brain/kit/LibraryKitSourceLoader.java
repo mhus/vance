@@ -16,10 +16,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import lombok.extern.slf4j.Slf4j;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -52,7 +50,9 @@ public class LibraryKitSourceLoader implements KitSourceLoader {
 
     @Override
     public KitRepoLoader.LoadedKit load(
-            KitInheritDto source, KitSourceDto config, @Nullable String token, Path target) {
+            KitInheritDto source, KitSourceDto config, KitAccess access, Path target) {
+
+        String token = access.token();
 
         String kitId = source.getPath();
         if (kitId == null || kitId.isBlank()) {
@@ -67,7 +67,7 @@ public class LibraryKitSourceLoader implements KitSourceLoader {
                     + " and without a credential there is no tenant");
         }
 
-        URI uri = URI.create(trimTrailingSlash(config.getUrl())
+        URI uri = URI.create(KitArchive.trimTrailingSlash(config.getUrl())
                 + "/library/kits/" + encodePath(kitId) + "/download");
         log.debug("LibraryKitSourceLoader: fetching {}", uri);
 
@@ -90,7 +90,7 @@ public class LibraryKitSourceLoader implements KitSourceLoader {
         }
 
         try (ZipInputStream zip = new ZipInputStream(response.body())) {
-            unpack(zip, target);
+            KitArchive.unpack(zip, target);
         } catch (IOException e) {
             throw new KitException("failed to unpack kit '" + kitId + "' from library '"
                     + config.getId() + "'", e);
@@ -131,30 +131,6 @@ public class LibraryKitSourceLoader implements KitSourceLoader {
     }
 
     /**
-     * Unpack into {@code target}, refusing entries that would land
-     * outside it.
-     *
-     * <p>The archive comes from a remote service. A path traversal check
-     * here is not a comment on that service's trustworthiness — it is
-     * that an install that writes outside its target directory is
-     * unrecoverable, and the check costs one comparison.
-     */
-    private static void unpack(ZipInputStream zip, Path target) throws IOException {
-        Path root = target.toAbsolutePath().normalize();
-        ZipEntry entry;
-        while ((entry = zip.getNextEntry()) != null) {
-            if (entry.isDirectory()) continue;
-            Path destination = root.resolve(entry.getName()).normalize();
-            if (!destination.startsWith(root)) {
-                throw new IOException("archive entry '" + entry.getName()
-                        + "' would be written outside the target directory");
-            }
-            Files.createDirectories(destination.getParent());
-            Files.copy(zip, destination);
-        }
-    }
-
-    /**
      * Percent-encode a path, keeping {@code /} as a separator.
      *
      * <p>The path comes from a kit reference, which comes from a document.
@@ -171,9 +147,4 @@ public class LibraryKitSourceLoader implements KitSourceLoader {
         return out.toString();
     }
 
-    private static String trimTrailingSlash(String url) {
-        String s = url.trim();
-        while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
-        return s;
-    }
 }

@@ -18,6 +18,11 @@ import org.jspecify.annotations.Nullable;
  *
  * @param tenantId whose source configuration applies — a url may be
  *        reachable for one tenant and unconfigured for another
+ * @param projectId which project the kit is being fetched for, or null
+ *        on paths that are not installing into one (export, tests). A
+ *        source that assembles per project needs it, and a source that
+ *        merely serves files can log it; either way it is part of „who
+ *        is fetching" and not of the credential.
  * @param token credential for the fetch: a bearer token for a library, a
  *        personal access token for a private git repository
  * @param storeAccount the linked store account, or null when this
@@ -25,16 +30,22 @@ import org.jspecify.annotations.Nullable;
  */
 public record KitAccess(
         String tenantId,
+        @Nullable String projectId,
         @Nullable String token,
         @Nullable String storeAccount) {
 
     /** For paths that never touch a remote source — export, local folders, tests. */
     public static KitAccess of(String tenantId) {
-        return new KitAccess(tenantId, null, null);
+        return new KitAccess(tenantId, null, null, null);
     }
 
     /** Same access, different credential — used where a caller supplies its own token. */
     public KitAccess withToken(@Nullable String other) {
-        return new KitAccess(tenantId, other, storeAccount);
+        return new KitAccess(tenantId, projectId, other, storeAccount);
+    }
+
+    /** Same access, aimed at a project — for callers that learn it separately. */
+    public KitAccess forProject(@Nullable String other) {
+        return new KitAccess(tenantId, other, token, storeAccount);
     }
 }

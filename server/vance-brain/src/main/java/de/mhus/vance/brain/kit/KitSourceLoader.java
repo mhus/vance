@@ -29,12 +29,14 @@ public interface KitSourceLoader {
      * @param source where the kit is, as referenced by the caller
      * @param config the resolved source configuration — type, signature
      *        policy, key. Carries what a url alone cannot say.
-     * @param token credential for the source, if one was supplied
+     * @param access who is fetching, and with what. Carries the
+     *        credential plus the tenant and project — a source that
+     *        assembles per project cannot be served from the url alone.
      * @param target an empty directory allocated by {@link KitWorkspace}
      */
     KitRepoLoader.LoadedKit load(
             KitInheritDto source,
             KitSourceDto config,
-            @Nullable String token,
+            KitAccess access,
             Path target);
 }

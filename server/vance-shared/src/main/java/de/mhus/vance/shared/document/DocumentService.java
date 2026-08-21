@@ -428,6 +428,11 @@ public class DocumentService {
         String folderPath = prefix.endsWith("/")
                 ? prefix.substring(0, prefix.length() - 1)
                 : prefix;
+        // Browsing `_ext/` itself: the namespace root names no mount, and the
+        // synthetic injection already answers that level. Checked rather than
+        // caught — this is every root-level browse, and an exception is not
+        // control flow.
+        if (!JaglanPaths.isMounted(folderPath)) return;
         try {
             String mount = JaglanPaths.mountNameOf(folderPath);
             shellService.listFolder(

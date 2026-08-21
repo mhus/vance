@@ -27,6 +27,14 @@ import org.springframework.stereotype.Component;
  * write access could otherwise widen its own permissions). Same character as
  * {@code vance.net.ssrf.allowPrivate}.
  *
+ * <p>{@code kit.*} is in the default for the same reason as {@code store.*}:
+ * {@code kit.token.<sourceId>} is the credential a project's kit provisioning
+ * fetches with, so an agent that could write it would decide where that project
+ * gets its tool definitions from. Note it is <b>not</b> in
+ * {@link SecretReferenceKeyPolicy}'s list, and must not be — the provisioning
+ * document resolves exactly this key through a {@code {{secret:…}}} reference.
+ * That asymmetry is why the two lists are separate rather than one.
+ *
  * <p>Grammar: comma-separated, each entry either an exact key or a prefix ending
  * in {@code *}. Deliberately not a full glob — this is security configuration and
  * has to stay readable at a glance.
@@ -38,7 +46,8 @@ public class AgentSettingKeyPolicy {
     private final List<String> denyPatterns;
 
     public AgentSettingKeyPolicy(
-            @Value("${vance.settings.agentWriteDenyKeys:ai.provider.*,vault.*,store.*}") String raw) {
+            @Value("${vance.settings.agentWriteDenyKeys:ai.provider.*,vault.*,store.*,kit.*}")
+            String raw) {
         this.denyPatterns = SettingKeyPatterns.parse(raw);
         log.debug("AgentSettingKeyPolicy: {} deny pattern(s): {}", denyPatterns.size(), denyPatterns);
     }

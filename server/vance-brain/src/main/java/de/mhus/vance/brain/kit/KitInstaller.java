@@ -21,6 +21,7 @@ import de.mhus.vance.shared.kit.KitTree;
 import de.mhus.vance.shared.permission.WriteActor;
 import de.mhus.vance.shared.servertool.ServerToolLoader;
 import de.mhus.vance.shared.settings.AgentSettingKeyPolicy;
+import de.mhus.vance.shared.settings.KitSettingKeyPolicy;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import java.io.IOException;
@@ -86,6 +87,7 @@ public class KitInstaller {
     private final SettingService settingService;
     private final ServerToolRegistry serverToolRegistry;
     private final AgentSettingKeyPolicy agentKeyPolicy;
+    private final KitSettingKeyPolicy kitKeyPolicy;
     private final KitRecordStore recordStore;
     /** Only for {@link KitBaseTree} — re-resolving the previously installed state. */
     private final KitResolver resolver;
@@ -586,6 +588,20 @@ public class KitInstaller {
                 result.warnings(addWarning(result.build().getWarnings(),
                         "setting '" + key + "' is reserved for operator configuration "
                                 + "and was not written"));
+                keepOwnership(known.get(key), artefacts);
+                continue;
+            }
+            // The same concern one origin wider. The check above fires only for
+            // agent-originated installs, and provisioning writes as USER — a kit
+            // pulled in unattended by a company host would have walked straight
+            // past it. A kit is not an agent, but it is not the operator either:
+            // it arrives over the network and installs without anyone watching.
+            if (kitKeyPolicy.isDenied(key)) {
+                log.warn("Kit install: refusing kit-supplied write to reserved setting key "
+                        + "'{}' (tenant='{}' project='{}')", key, tenantId, projectId);
+                result.warnings(addWarning(result.build().getWarnings(),
+                        "setting '" + key + "' is reserved for operator configuration "
+                                + "and cannot be set by a kit"));
                 keepOwnership(known.get(key), artefacts);
                 continue;
             }

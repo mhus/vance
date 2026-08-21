@@ -12,6 +12,9 @@ import type {
   DocumentTrashChunkResponse,
   DocumentUnpackResponse,
   DocumentUpdateRequest,
+  MountDto,
+  MountListResponse,
+  MountSearchOutcome,
 } from '@vance/generated';
 
 export interface MoveChunkArgs {
@@ -74,6 +77,8 @@ export function useDocuments(pageSize = 20): {
   error: Ref<string | null>;
   folders: Ref<string[]>;
   subFolders: Ref<string[]>;
+  mountSearch: Ref<MountSearchOutcome | null>;
+  mounts: Ref<MountDto[]>;
   pathPrefix: Ref<string>;
   kinds: Ref<string[]>;
   kindFilter: Ref<string>;
@@ -86,6 +91,7 @@ export function useDocuments(pageSize = 20): {
     search?: string,
   ) => Promise<void>;
   loadFolders: (projectId: string) => Promise<void>;
+  loadMounts: (projectId: string) => Promise<void>;
   loadKinds: (projectId: string) => Promise<void>;
   loadOne: (id: string) => Promise<void>;
   clearSelection: () => void;
@@ -119,6 +125,12 @@ export function useDocuments(pageSize = 20): {
    *  by every {@link loadPage} call so the UI can render the folder
    *  tree alongside the file list. Alphabetically sorted server-side. */
   const subFolders = ref<string[]>([]);
+  /** Outcome of a search inside a mounted folder — see {@link loadPage}.
+   *  `null` on every ordinary listing. */
+  const mountSearch = ref<MountSearchOutcome | null>(null);
+  /** The project's mounted external sources, so an empty mounted folder can
+   *  be explained rather than just looking empty. */
+  const mounts = ref<MountDto[]>([]);
   const kinds = ref<string[]>([]);
   // Sticky path-filter — owned by the composable so reloads
   // (e.g. after upload, after page-change) keep the active filter.
@@ -174,6 +186,12 @@ export function useDocuments(pageSize = 20): {
       page.value = data.page;
       pageSizeRef.value = data.pageSize;
       totalCount.value = data.totalCount;
+      // Only set inside a mounted folder with a search term. It says which
+      // question the backend actually answered — DELEGATED means the external
+      // source searched itself and the hits span the whole mount, the other
+      // two mean nobody looked. Without it an empty result reads as "not
+      // there", which for a mount is usually wrong.
+      mountSearch.value = data.mountSearch ?? null;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load documents.';
     } finally {
@@ -194,6 +212,27 @@ export function useDocuments(pageSize = 20): {
       // would mask the actual document load. Just clear and log.
       folders.value = [];
       console.warn('Failed to load folders', e);
+    }
+  }
+
+  /**
+   * The project's mounted external sources.
+   *
+   * Loaded so an empty mounted folder can say *why*: an unreachable source and
+   * an actually empty directory are the same zero files in the listing, and a
+   * reader who cannot tell them apart concludes the documents are gone.
+   *
+   * Failure is silent on purpose — this only ever adds an explanation, and an
+   * error here would mask the document load it accompanies.
+   */
+  async function loadMounts(projectId: string): Promise<void> {
+    try {
+      const params = new URLSearchParams({ projectId });
+      const data = await brainFetch<MountListResponse>('GET', `mounts?${params}`);
+      mounts.value = data.mounts ?? [];
+    } catch (e) {
+      mounts.value = [];
+      console.warn('Failed to load mounts', e);
     }
   }
 
@@ -591,12 +630,15 @@ export function useDocuments(pageSize = 20): {
     error,
     folders,
     subFolders,
+    mountSearch,
+    mounts,
     pathPrefix,
     kinds,
     kindFilter,
     search,
     loadPage,
     loadFolders,
+    loadMounts,
     loadKinds,
     loadOne,
     clearSelection,

@@ -536,7 +536,24 @@ export default {
       noProjectBody: 'Wähle links ein Projekt, um dessen Dokumente anzuzeigen.',
       folderHeadline: 'Keine Dokumente',
       folderBody: 'Dieser Ordner ist leer. Ziehe Dateien hierher oder nutze oben „+ Neu".',
+      // Ein gemounteter Ordner kann aus Gründen leer sein, die die Datei-Liste
+      // nicht ausdrücken kann. „Nicht gefunden" und „nicht gesucht" dürfen
+      // nicht gleich aussehen.
+      mountUnreachableHeadline: 'Quelle antwortet nicht',
+      mountUnreachableBody:
+        'Der Mount „{mount}" ist konfiguriert, aber gerade nicht erreichbar: {status}',
+      mountEmptyBody: 'Die externe Quelle „{mount}" liefert für diesen Ordner keine Einträge.',
+      searchUnsupportedHeadline: 'Hier wurde nicht gesucht',
+      searchUnsupportedBody:
+        'Die Quelle „{mount}" kann nicht durchsucht werden. Blättere durch die Ordner, statt aus '
+        + 'dem leeren Ergebnis zu schließen, dass die Datei fehlt.',
+      searchUnavailableHeadline: 'Suche nicht möglich',
+      searchUnavailableBody:
+        'Die Quelle „{mount}" war nicht erreichbar. Ein erneuter Versuch kann klappen.',
     },
+    mountSearchDelegated:
+      'Treffer aus der externen Quelle „{mount}" — sie umspannen den ganzen Mount, nicht nur '
+      + 'diesen Ordner.',
     newDocument: '+ Neues Dokument',
     dropHint: 'Dateien hier ablegen zum Hochladen',
     newFolder: 'Neuer Ordner',

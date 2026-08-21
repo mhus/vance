@@ -17,6 +17,8 @@ import de.mhus.vance.api.documents.DocumentTrashChunkRequest;
 import de.mhus.vance.api.documents.DocumentTrashChunkResponse;
 import de.mhus.vance.api.documents.DocumentUnpackResponse;
 import de.mhus.vance.api.documents.DocumentFolderListResponse;
+import de.mhus.vance.api.documents.MountDto;
+import de.mhus.vance.api.documents.MountListResponse;
 import de.mhus.vance.api.documents.DocumentFoldersResponse;
 import de.mhus.vance.api.documents.DocumentKindsResponse;
 import de.mhus.vance.api.documents.DocumentListResponse;
@@ -140,6 +142,39 @@ public class DocumentController {
                 .pageSize(listing.pageSize())
                 .totalCount(listing.totalFiles())
                 .mountSearch(listing.mountSearch())
+                .build();
+    }
+
+    /**
+     * The mounted external sources of a project.
+     *
+     * <p>Exists so a client can explain an empty mounted folder. The folder
+     * listing cannot: an unreachable source and an actually empty directory
+     * both come back as zero files, and a reader who cannot tell them apart
+     * concludes the documents are gone. This is also what tells a client
+     * whether a search can be handed to the source at all.
+     *
+     * <p>{@code Project} READ, like the folder view — it names the configured
+     * sources of a project and reveals nothing from inside them.
+     */
+    @GetMapping("/brain/{tenant}/mounts")
+    public MountListResponse mounts(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
+        return MountListResponse.builder()
+                .mounts(documentService.listMounts(tenant, projectId).stream()
+                        .map(m -> MountDto.builder()
+                                .name(m.name())
+                                .displayName(m.displayName())
+                                .protocolId(m.protocolId())
+                                .access(m.access())
+                                .itemCount(m.itemCount())
+                                .statusText(m.statusText())
+                                .canSearch(m.canSearch())
+                                .build())
+                        .toList())
                 .build();
     }
 

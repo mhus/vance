@@ -32,7 +32,8 @@ import { useTenantProjects } from '@composables/useTenantProjects';
 import { useDocuments } from '@composables/useDocuments';
 import { useKitAdmin } from '@composables/useKitAdmin';
 import { brainFetch } from '@vance/shared';
-import type { DocumentFoldersResponse, DocumentSummary } from '@vance/generated';
+import type { DocumentFoldersResponse, DocumentSummary, MountDto } from '@vance/generated';
+import { MountSearchOutcome } from '@vance/generated';
 import DocumentIcon from './DocumentIcon.vue';
 
 const { t } = useI18n();
@@ -72,6 +73,9 @@ onMounted(async () => {
     docsState.pathPrefix.value = queryPath ?? DEFAULT_PATH_PREFIX;
     await docsState.loadPage(selectedProjectId.value, 0, docsState.pathPrefix.value);
     void docsState.loadFolders(selectedProjectId.value);
+    // Loaded alongside the listing so an empty mounted folder can explain
+    // itself; failure is silent and only costs the explanation.
+    void docsState.loadMounts(selectedProjectId.value);
     void loadKits();
   }
   window.addEventListener('popstate', onPopstate);
@@ -126,6 +130,7 @@ watch(selectedProjectId, async (next, prev) => {
   search.value = '';
   await docsState.loadPage(next, 0, DEFAULT_PATH_PREFIX);
   void docsState.loadFolders(next);
+  void docsState.loadMounts(next);
   kitState.clear();
   void loadKits();
   syncUrl();
@@ -229,6 +234,62 @@ function fileBasename(path: string): string {
 const isEmpty = computed(() =>
   docsState.subFolders.value.length === 0 && docsState.items.value.length === 0,
 );
+
+/**
+ * The mount the current folder belongs to, or null outside `_ext/`.
+ *
+ * Everything below hangs off this: a mounted folder can be empty for reasons
+ * the file list cannot express — the source is unreachable, or a search was
+ * never handed to it — and "not found" must not look like "not looked for".
+ */
+const currentMount = computed(() => {
+  const path = docsState.pathPrefix.value ?? '';
+  if (!path.startsWith('_ext/')) return null;
+  const name = path.slice('_ext/'.length).split('/')[0];
+  if (!name) return null;
+  return docsState.mounts.value.find((m) => m.name === name) ?? { name } as MountDto;
+});
+
+/** Set when the source was asked and answered — the hits are mount-wide. */
+const mountSearchDelegated = computed(
+  () => docsState.mountSearch.value === MountSearchOutcome.DELEGATED
+    && docsState.items.value.length > 0,
+);
+
+/**
+ * Why this mounted folder is empty, as a headline/body pair — or null when
+ * there is nothing special to say and the generic empty state is right.
+ */
+const mountEmptyReason = computed(() => {
+  const mount = currentMount.value;
+  if (!mount || !isEmpty.value) return null;
+  const name = mount.displayName || mount.name;
+  const outcome = docsState.mountSearch.value;
+  if (outcome === MountSearchOutcome.UNSUPPORTED) {
+    return {
+      headline: t('documents.empty.searchUnsupportedHeadline'),
+      body: t('documents.empty.searchUnsupportedBody', { mount: name }),
+    };
+  }
+  if (outcome === MountSearchOutcome.UNAVAILABLE) {
+    return {
+      headline: t('documents.empty.searchUnavailableHeadline'),
+      body: t('documents.empty.searchUnavailableBody', { mount: name }),
+    };
+  }
+  if (mount.statusText) {
+    return {
+      headline: t('documents.empty.mountUnreachableHeadline'),
+      body: t('documents.empty.mountUnreachableBody', { mount: name, status: mount.statusText }),
+    };
+  }
+  // Reachable and genuinely empty — still worth naming the source, so it is
+  // clear the emptiness is theirs and not ours.
+  return {
+    headline: t('documents.empty.folderHeadline'),
+    body: t('documents.empty.mountEmptyBody', { mount: name }),
+  };
+});
 
 const totalPages = computed(() =>
   Math.max(1, Math.ceil(docsState.totalCount.value / docsState.pageSize.value)),
@@ -958,14 +1019,25 @@ function confirmNewFolder(): void {
         <span>{{ notice }}</span>
       </VAlert>
 
+      <!-- Delegated hits span the whole mount, not the folder in the
+           breadcrumb. Saying so is the difference between a useful result and
+           a confusing one — the paths shown may sit anywhere in the source. -->
+      <VAlert v-if="mountSearchDelegated" variant="info" class="m-4">
+        <span>{{ $t('documents.mountSearchDelegated', {
+          mount: currentMount?.displayName || currentMount?.name,
+        }) }}</span>
+      </VAlert>
+
       <div class="flex-1 min-h-0 overflow-y-auto">
         <div v-if="docsState.loading.value" class="p-6 text-sm opacity-60">
           {{ $t('documents.loading') }}
         </div>
         <div v-else-if="isEmpty" class="p-6">
           <VEmptyState
-            :headline="$t('documents.empty.folderHeadline')"
-            :body="$t('documents.empty.folderBody')"
+            :headline="mountEmptyReason ? mountEmptyReason.headline
+              : $t('documents.empty.folderHeadline')"
+            :body="mountEmptyReason ? mountEmptyReason.body
+              : $t('documents.empty.folderBody')"
           />
         </div>
         <table v-else class="w-full text-sm">

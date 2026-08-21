@@ -541,7 +541,22 @@ export default {
       noProjectBody: 'Pick a project on the left to view its documents.',
       folderHeadline: 'No documents',
       folderBody: 'This folder is empty. Drop files here or use “+ New” above.',
+      // A mounted folder can be empty for reasons the file list cannot
+      // express. "Not found" and "not looked for" must not look alike.
+      mountUnreachableHeadline: 'Source is not answering',
+      mountUnreachableBody:
+        'The mount “{mount}” is configured but currently unreachable: {status}',
+      mountEmptyBody: 'The external source “{mount}” reports no entries for this folder.',
+      searchUnsupportedHeadline: 'Nothing was searched here',
+      searchUnsupportedBody:
+        'The source “{mount}” cannot be searched. Browse the folders instead of concluding from '
+        + 'the empty result that the file is missing.',
+      searchUnavailableHeadline: 'Search unavailable',
+      searchUnavailableBody:
+        'The source “{mount}” could not be reached. Trying again may work.',
     },
+    mountSearchDelegated:
+      'Hits from the external source “{mount}” — they span the whole mount, not just this folder.',
     newDocument: '+ New document',
     dropHint: 'Drop files here to upload',
     newFolder: 'New folder',

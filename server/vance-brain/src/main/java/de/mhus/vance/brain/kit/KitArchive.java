@@ -32,14 +32,28 @@ final class KitArchive {
         ZipEntry entry;
         while ((entry = zip.getNextEntry()) != null) {
             if (entry.isDirectory()) continue;
-            Path destination = root.resolve(entry.getName()).normalize();
-            if (!destination.startsWith(root)) {
-                throw new IOException("archive entry '" + entry.getName()
-                        + "' would be written outside the target directory");
-            }
+            Path destination = resolveInside(root, entry.getName());
             Files.createDirectories(destination.getParent());
             Files.copy(zip, destination);
         }
+    }
+
+    /**
+     * Resolve {@code relative} under {@code root}, refusing anything that
+     * would land outside it.
+     *
+     * <p>Two callers with the same requirement: archive entries, and the
+     * file list a source declares for rendering. Both strings come from
+     * the far end, and both end in a filesystem write.
+     */
+    static Path resolveInside(Path root, String relative) throws IOException {
+        Path base = root.toAbsolutePath().normalize();
+        Path resolved = base.resolve(relative).normalize();
+        if (!resolved.startsWith(base)) {
+            throw new IOException("'" + relative
+                    + "' would be written outside the target directory");
+        }
+        return resolved;
     }
 
     /** Base urls are configured by hand, so a trailing slash is normal input. */

@@ -4,8 +4,10 @@ import de.mhus.vance.api.kit.KitDescriptorDto;
 import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.KitSourceDto;
 import de.mhus.vance.api.kit.KitSourceType;
+import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import de.mhus.vance.shared.instance.InstanceProperties;
 import de.mhus.vance.shared.kit.KitException;
+import de.mhus.vance.shared.net.SafeLink;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -15,6 +17,9 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.zip.ZipInputStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -67,6 +72,9 @@ public class OdeKitSourceLoader implements KitSourceLoader {
      */
     static final String BUILD_PATH = "/kit/build";
 
+    /** Descriptor file name — read before rendering, so never a template. */
+    static final String KIT_DESCRIPTOR = "kit.yaml";
+
     /**
      * Hard stop, not a target. The contract asks for seconds; this is the
      * point at which a slow host fails an install instead of hanging it.
@@ -75,6 +83,7 @@ public class OdeKitSourceLoader implements KitSourceLoader {
 
     private final InstanceProperties instance;
     private final ObjectMapper objectMapper;
+    private final PromptTemplateRenderer renderer;
 
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -119,7 +128,16 @@ public class OdeKitSourceLoader implements KitSourceLoader {
                     + " should build (source " + config.getId() + ")");
         }
 
-        String accessUrl = KitArchive.trimTrailingSlash(config.getUrl());
+        // Checked once, here, because the same string is both the request
+        // target and a value substituted into files that become tool
+        // definitions. A `javascript:` base url is nonsense in either role.
+        String accessUrl;
+        try {
+            accessUrl = SafeLink.require(KitArchive.trimTrailingSlash(config.getUrl()));
+        } catch (SafeLink.UnsafeLinkException e) {
+            throw new KitException("ode source '" + config.getId()
+                    + "' has a url that is not usable as an endpoint: " + e.getMessage(), e);
+        }
         URI uri = URI.create(accessUrl + BUILD_PATH);
         String body = serialise(new BuildRequest(
                 kitId,
@@ -163,10 +181,10 @@ public class OdeKitSourceLoader implements KitSourceLoader {
                     + config.getId() + "'", e);
         }
 
-        Path descriptorFile = target.resolve("kit.yaml");
+        Path descriptorFile = target.resolve(KIT_DESCRIPTOR);
         if (!Files.isRegularFile(descriptorFile)) {
             throw new KitException("ode host '" + config.getId() + "' delivered '" + kitId
-                    + "' without a kit.yaml");
+                    + "' without a " + KIT_DESCRIPTOR);
         }
         KitDescriptorDto descriptor;
         try {
@@ -175,12 +193,81 @@ public class OdeKitSourceLoader implements KitSourceLoader {
             throw new KitException("failed to read the delivered kit.yaml", e);
         }
 
+        renderDeclared(target, descriptor, config, accessUrl, access);
+
         // An ode host has no commits. The version stands in for now; once
         // the provisioning side reads the host's declared tree hash, that
         // is the better stamp and replaces this one.
         String stamp = "ode:" + (descriptor.getVersion() == null
                 ? "unversioned" : descriptor.getVersion());
         return new KitRepoLoader.LoadedKit(target, target, stamp, descriptor, false);
+    }
+
+    /**
+     * Render the files the host declared, in place.
+     *
+     * <p>Runs here and not in the generic apply path on purpose: a git kit
+     * must stay byte-identical to its repository, and a document there may
+     * legitimately contain braces. Which files are templates is the
+     * host's statement, not our guess.
+     *
+     * <p>Every failure mode is loud. A declared file that is missing
+     * throws rather than being skipped — the whole point of the mechanism
+     * is that a placeholder gets a value, and a silent skip would leave a
+     * literal {@code {{ accessUrl }}} in a tool definition to fail much
+     * later, somewhere unrelated.
+     *
+     * <p>One thing is not loud, and it is a considered trade: the renderer
+     * runs with {@code strictVariables=false}, so a misspelt
+     * {@code {{ accessURL }}} renders empty instead of failing. That is
+     * consistent with every other template surface in the tree, and a kit
+     * author sees the empty value in their own file on the first install.
+     */
+    private void renderDeclared(
+            Path target,
+            KitDescriptorDto descriptor,
+            KitSourceDto config,
+            String accessUrl,
+            KitAccess access) {
+
+        List<String> declared = descriptor.getRender();
+        if (declared == null || declared.isEmpty()) return;
+
+        Map<String, Object> context = new LinkedHashMap<>();
+        context.put("accessUrl", accessUrl);
+        context.put("tenant", access.tenantId());
+        context.put("project", access.projectId());
+        context.put("instance", StringUtils.trimToNull(instance.getName()));
+
+        for (String declaredPath : declared) {
+            if (KIT_DESCRIPTOR.equals(declaredPath)) {
+                // The descriptor is parsed before this runs, so rendering it
+                // would change the file on disk and nothing else. Refusing
+                // beats a placeholder that appears to work.
+                throw new KitException("ode host '" + config.getId() + "' declared '"
+                        + KIT_DESCRIPTOR + "' for rendering — the descriptor is read before"
+                        + " templates are applied, so this would have no effect");
+            }
+            Path file;
+            try {
+                file = KitArchive.resolveInside(target, declaredPath);
+            } catch (IOException e) {
+                throw new KitException("ode host '" + config.getId() + "' declared '"
+                        + declaredPath + "' for rendering, which escapes the kit directory", e);
+            }
+            if (!Files.isRegularFile(file)) {
+                throw new KitException("ode host '" + config.getId() + "' declared '"
+                        + declaredPath + "' for rendering but did not deliver it");
+            }
+            try {
+                String rendered = renderer.renderStructured(Files.readString(file), context);
+                Files.writeString(file, rendered == null ? "" : rendered);
+            } catch (IOException e) {
+                throw new KitException("failed to render '" + declaredPath + "' of kit from ode"
+                        + " host '" + config.getId() + "'", e);
+            }
+        }
+        log.debug("OdeKitSourceLoader: rendered {} declared file(s)", declared.size());
     }
 
     private String serialise(BuildRequest payload, KitSourceDto config) {

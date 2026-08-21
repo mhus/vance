@@ -17,6 +17,7 @@ export interface KitDescriptorDto {
   purchaseId?: string;
   licenseExpiresAt?: Date;
   inherits: KitInheritDto[];
+  render: string[];
   hasEncryptedSecrets: boolean;
   artifact: boolean;
   installable: boolean;

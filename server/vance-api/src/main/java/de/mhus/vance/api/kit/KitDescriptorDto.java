@@ -71,6 +71,28 @@ public class KitDescriptorDto {
     private List<KitInheritDto> inherits = new ArrayList<>();
 
     /**
+     * Files in this kit that carry Pebble placeholders and are to be
+     * rendered on arrival — relative paths, no globs.
+     *
+     * <p>Only honoured for {@link KitSourceType#ODE} sources. A host that
+     * assembles a kit for one installation needs a way to say „put the
+     * address you reached me at here", and it declares which files that
+     * concerns rather than having the whole tree scanned: a kit is full
+     * of documents that may legitimately contain braces.
+     *
+     * <p>Deliberately <b>not</b> applied to git or folder kits, so their
+     * bytes stay identical to what the repository says. A non-ODE source
+     * declaring this gets a warning, not silent nothing — see
+     * {@code planning/kit-ode-provisioning.md} §4.
+     *
+     * <p>No globs on purpose: a pattern that matches nothing renders
+     * nothing and says nothing about it, which is the failure mode this
+     * field exists to avoid.
+     */
+    @Builder.Default
+    private List<String> render = new ArrayList<>();
+
+    /**
      * Set to {@code true} when the kit (or any of its inherits) ships
      * PASSWORD-type settings. Importers must prompt for the vault
      * passphrase before installation; installers without a passphrase

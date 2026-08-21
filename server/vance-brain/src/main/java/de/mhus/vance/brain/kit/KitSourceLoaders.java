@@ -61,6 +61,19 @@ public class KitSourceLoaders {
                 source.getUrl(), config.getId(), config.getType(), config.getSignature());
         KitRepoLoader.LoadedKit loaded = loaderFor(config.getType()).load(
                 source, config, access, target);
+        // A `render:` list only means something for a source that assembles
+        // per installation. Saying so beats doing nothing quietly: the same
+        // kit is often both served by a host and checked into git, and from
+        // the checkout the placeholders stay literal.
+        if (config.getType() != KitSourceType.ODE
+                && loaded.descriptor().getRender() != null
+                && !loaded.descriptor().getRender().isEmpty()) {
+            log.warn("Kit '{}' from {} source '{}' declares render: — ignored."
+                            + " Templates are only applied to ODE sources, so these files"
+                            + " keep their placeholders: {}",
+                    loaded.descriptor().getName(), config.getType(), config.getId(),
+                    loaded.descriptor().getRender());
+        }
         // Right here, and not in the installer: this is the one point where
         // the loaded tree and the source it came from are both in hand. Every
         // inherit passes through again with its own source's policy.

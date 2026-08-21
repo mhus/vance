@@ -8,6 +8,7 @@ import com.sun.net.httpserver.HttpServer;
 import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.KitSourceDto;
 import de.mhus.vance.api.kit.KitSourceType;
+import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import de.mhus.vance.shared.instance.InstanceProperties;
 import de.mhus.vance.shared.kit.KitException;
 import java.io.ByteArrayOutputStream;
@@ -59,7 +60,7 @@ class OdeKitSourceLoaderTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext(OdeKitSourceLoader.BUILD_PATH, this::handle);
         server.start();
-        loader = new OdeKitSourceLoader(instance, MAPPER);
+        loader = new OdeKitSourceLoader(instance, MAPPER, new PromptTemplateRenderer());
     }
 
     @AfterEach
@@ -224,6 +225,120 @@ class OdeKitSourceLoaderTest {
 
         assertThat(MAPPER.readTree(received.getFirst()).get("accessUrl").asString())
                 .isEqualTo(baseUrl());
+    }
+
+    // ──────────────────── rendering (phase 2) ────────────────────
+
+    private static final String TEMPLATED_DESCRIPTOR =
+            "name: acme-crm\nversion: 1.4.0\ndescription: CRM tools\nrender:\n"
+                    + "  - tools/crm.yaml\n";
+
+    @Test
+    void load_declaredFile_getsTheAccessUrlSubstituted(@TempDir Path target) throws IOException {
+        payload = zip(Map.of(
+                "kit.yaml", TEMPLATED_DESCRIPTOR,
+                "tools/crm.yaml", "baseUrl: {{ accessUrl }}\n"));
+
+        loader.load(reference(), source(),
+                new KitAccess("acme", "sales", null, null), target);
+
+        assertThat(Files.readString(target.resolve("tools/crm.yaml")))
+                .isEqualTo("baseUrl: " + baseUrl() + "\n");
+    }
+
+    @Test
+    void load_declaredFile_seesTenantProjectAndInstance(@TempDir Path target) throws IOException {
+        instance.setName("acme-prod");
+        payload = zip(Map.of(
+                "kit.yaml", TEMPLATED_DESCRIPTOR,
+                "tools/crm.yaml", "{{ instance }}|{{ tenant }}|{{ project }}\n"));
+
+        loader.load(reference(), source(),
+                new KitAccess("acme", "sales", null, null), target);
+
+        assertThat(Files.readString(target.resolve("tools/crm.yaml")))
+                .isEqualTo("acme-prod|acme|sales\n");
+    }
+
+    @Test
+    void load_undeclaredFile_keepsItsBracesLiteral(@TempDir Path target) throws IOException {
+        payload = zip(Map.of(
+                "kit.yaml", TEMPLATED_DESCRIPTOR,
+                "tools/crm.yaml", "baseUrl: {{ accessUrl }}\n",
+                "docs/manual.md", "Write {{ accessUrl }} to keep it.\n"));
+
+        loader.load(reference(), source(),
+                new KitAccess("acme", "sales", null, null), target);
+
+        // A kit is full of documents that may legitimately contain braces.
+        // Only what the host declared is a template.
+        assertThat(Files.readString(target.resolve("docs/manual.md")))
+                .isEqualTo("Write {{ accessUrl }} to keep it.\n");
+    }
+
+    @Test
+    void load_multilineTemplate_keepsNewlinesAfterTags(@TempDir Path target) throws IOException {
+        payload = zip(Map.of(
+                "kit.yaml", TEMPLATED_DESCRIPTOR,
+                "tools/crm.yaml",
+                "---\n{% if project %}project: {{ project }}\n{% endif %}kind: tool\n"));
+
+        loader.load(reference(), source(),
+                new KitAccess("acme", "sales", null, null), target);
+
+        // renderStructured, not the prompt renderer: swallowing the newline
+        // after a tag is right for prose and tears a yaml document apart.
+        assertThat(Files.readString(target.resolve("tools/crm.yaml")))
+                .isEqualTo("---\nproject: sales\nkind: tool\n");
+    }
+
+    @Test
+    void load_declaredFileNotDelivered_failsLoudly(@TempDir Path target) {
+        payload = zip(Map.of("kit.yaml", TEMPLATED_DESCRIPTOR));
+
+        assertThatThrownBy(() -> loader.load(reference(), source(),
+                new KitAccess("acme", "sales", null, null), target))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("did not deliver it");
+    }
+
+    @Test
+    void load_declaredPathEscapingTheKit_isRefused(@TempDir Path target) {
+        payload = zip(Map.of("kit.yaml",
+                "name: acme-crm\nversion: 1.4.0\ndescription: CRM tools\nrender:\n"
+                        + "  - ../outside.yaml\n"));
+
+        assertThatThrownBy(() -> loader.load(reference(), source(),
+                new KitAccess("acme", "sales", null, null), target))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("escapes the kit directory");
+    }
+
+    @Test
+    void load_declaredDescriptorItself_isRefused(@TempDir Path target) {
+        payload = zip(Map.of("kit.yaml",
+                "name: acme-crm\nversion: 1.4.0\ndescription: CRM tools\nrender:\n"
+                        + "  - kit.yaml\n"));
+
+        // Rendering it would change the file and nothing else — the
+        // descriptor was already parsed. Refusing beats a placeholder that
+        // looks like it works.
+        assertThatThrownBy(() -> loader.load(reference(), source(),
+                new KitAccess("acme", "sales", null, null), target))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("read before templates are applied");
+    }
+
+    @Test
+    void load_unsafeSourceUrl_failsBeforeAnyRequest(@TempDir Path target) {
+        KitSourceDto bad = source();
+        bad.setUrl("javascript:alert(1)");
+
+        assertThatThrownBy(() -> loader.load(reference(), bad,
+                new KitAccess("acme", "sales", null, null), target))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("not usable as an endpoint");
+        assertThat(received).isEmpty();
     }
 
     private static byte[] zip(Map<String, String> entries) {

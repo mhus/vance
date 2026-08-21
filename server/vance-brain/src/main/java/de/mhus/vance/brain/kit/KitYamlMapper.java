@@ -95,11 +95,31 @@ public final class KitYamlMapper {
             throw new KitException(label + " inherits must be a list");
         }
 
+        // Files the source wants rendered on arrival. Only ODE sources act
+        // on it, but the grammar is parsed wherever a descriptor comes from
+        // — a kit checked out of git should not fail to parse just because
+        // it is also served by a host.
+        List<String> render = new ArrayList<>();
+        Object renderRaw = map.get("render");
+        if (renderRaw instanceof List<?> list) {
+            for (int i = 0; i < list.size(); i++) {
+                String path = stringOrNull(list.get(i));
+                if (path == null || path.isBlank()) {
+                    throw new KitException(
+                            label + " render[" + i + "] must be a non-blank path");
+                }
+                render.add(path.trim());
+            }
+        } else if (renderRaw != null) {
+            throw new KitException(label + " render must be a list of paths");
+        }
+
         return KitDescriptorDto.builder()
                 .name(name)
                 .description(description)
                 .version(version)
                 .inherits(inherits)
+                .render(render)
                 .hasEncryptedSecrets(hasEncryptedSecrets)
                 .artifact(artifact)
                 .installable(installable)
@@ -173,6 +193,12 @@ public final class KitYamlMapper {
                 inherits.add(e);
             }
             root.put("inherits", inherits);
+        }
+        // Round-tripped so a descriptor that passes through an install
+        // record comes back out as it went in. Parse and write have to
+        // agree on the field set, or a re-export quietly drops it.
+        if (descriptor.getRender() != null && !descriptor.getRender().isEmpty()) {
+            root.put("render", new ArrayList<>(descriptor.getRender()));
         }
         return root;
     }

@@ -42,6 +42,10 @@ Action types:
   dark mode", "my birthday is 4th April"). Not session intent
   ("refactor X now"), not anything you inferred — only what they
   said.
+  **No destination needed.** The engine owns where per-user
+  memory lives. Never search for a document to put it in, and
+  never ask the user where to store it — a missing document is
+  not a reason to fall back to ASK_USER.
 - `DISCOVER` (`intent`, required) — user mentioned a term you
   don't recognise (Vance jargon, kit-installed feature, invented
   word, ambiguous metaphor). Engine runs a synchronous lookup,
@@ -315,6 +319,11 @@ on the auth subsystem at $employer"). **Don't** LEARN
 session-specific intent ("I want to refactor X now"); that's not
 durable. **Don't** LEARN things you assumed — only what the user
 stated.
+
+**LEARN needs no destination.** The engine owns where per-user
+memory lives. Don't look for an existing document to append to,
+and never ASK_USER where to store it — a missing "team info
+document" is not a reason to fall back to a question.
 
 A post-LEARN consolidation pass runs in the background: it
 resolves contradictions, drops superseded entries, keeps the
@@ -1091,8 +1100,11 @@ fences the client-side stripper skips.
   like "(code block with 12 lines)" or "(table with X rows,
   Y columns)" — the user sees them on screen but doesn't hear
   them read out.
-- **Short bullet lists (≤3 items) are fine** — they're spoken
-  as "First, second, …". Longer → fence.
+- **Short bullet lists (≤3 items) are fine** — but write the
+  enumeration the way it should be heard: the ordinal words of
+  the language you are answering in ("First, … second, … third,
+  …"). A bare "1, 2, 3" is read out as a list of numbers and
+  sounds wooden. Longer → fence.
 - **Inline-code** (single backticks) IS spoken — good for short
   technical terms, bad for paths / URLs.
 - **Numbers, dates and IDs → spoken form**, not raw digit

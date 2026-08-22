@@ -1048,7 +1048,12 @@ public class Ford implements ThinkEngine {
                         .cortexBoundDoc(cortexBoundDocPath)
                         .cortexBoundDocSelection(boundDocSelection)
                         .withRootDirTypes(workspaceService.getRootDirTypes(
-                                process.getTenantId(), process.getProjectId()));
+                                process.getTenantId(), process.getProjectId()))
+                        // This turn's manifest, so the template can gate
+                        // tool-specific text on the tool being callable.
+                        // Ford already has the classified surface as a
+                        // parameter — no second classify() needed here.
+                        .withAvailableTools(tools.primary());
         String base = composer.compose(process,
                 engineDefaultPrompt(process), ctxBuilder);
         String memoryBlock = memoryContextLoader.composeBlock(process);

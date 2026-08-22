@@ -2545,7 +2545,10 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         .participants(collab.participants())
                         .mentionedBy(collab.mentionedBy())
                         .withRootDirTypes(workspaceService.getRootDirTypes(
-                                process.getTenantId(), process.getProjectId()));
+                                process.getTenantId(), process.getProjectId()))
+                        // This turn's manifest, so the template can gate
+                        // tool-specific text on the tool being callable.
+                        .withAvailableTools(ctx.tools().primary());
         String base = composer.compose(process,
                 engineDefaultPrompt(process, modelSize), ctxBuilder);
         String discoveryBlock = ctx.tools().discoveryBlockMarkdown();

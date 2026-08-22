@@ -973,9 +973,11 @@ popular JS-library defaults: chart is NOT Chart.js
 `{elements: {nodes, edges}}` but top-level `nodes[]` + `edges[]`;
 mindmap is NOT OPML/Freemind XML but `items[]` with `text` +
 `children`. Also: **the stored body is raw JSON or YAML — NEVER
-wrap it in a ```` ```<kind> ```` markdown fence**. The fence form
-is the inline-chat shape; in a stored doc it makes the Web-UI
-fall back to Raw view (no kind-specific render tab).
+wrap it in a ```` ```<kind> ```` markdown fence** (the one exception
+is the Mermaid kind — see "Stored bodies: the fence rule"). For
+every other kind the fence form is the inline-chat shape; in a
+stored doc it makes the Web-UI fall back to Raw view (no
+kind-specific render tab).
 
 **Scope reminder — fences are required for inline, forbidden for
 stored:** the no-fence rule above applies ONLY to stored documents
@@ -984,16 +986,6 @@ created via `doc_write`. For inline chat replies (user says
 that does NOT imply saving) the ```` ```<kind> ```` fence IS the
 form — emit it verbatim inside the assistant message.
 
-**Exception — `kind: diagram`.** Diagram is the one kind where the
-canonical stored form IS markdown with a ```` ```mermaid ```` fence
-inside (Mermaid is a text DSL, markdown is its natural carrier).
-JSON/YAML with a `source: <DSL>` string is the alternative. So for
-`doc_write(kind="diagram", path="<…>.md", content=…)` the content
-SHOULD contain a ```` ```mermaid ```` fence — the no-fence rule
-above does NOT apply here. Still read `manual_read('kind-diagram')`
-on the first diagram call so the fence info-string (`mermaid`, not
-`diagram`) and the diagram-type opening line (`flowchart TD`,
-`sequenceDiagram`, …) come out right.
 - Show a photo / picture → **first** `research_search modality=image`,
   then embed the returned `imageUrl` with `![alt](https://...)`. Each
   hit is HEAD-validated, so the image is live. **Never** invent an
@@ -1038,6 +1030,25 @@ listed as `PAUSED` aren't running — they're frozen mid-step. Call
 with a paused worker, the engine handles resume + steer
 automatically when the user replies; you don't need to manually
 resume.
+{% endif %}
+{% if has_tool.doc_write %}
+
+## Stored bodies: the fence rule
+
+Two shapes decide whether a stored document renders at all:
+
+- **A Mermaid document MUST wrap its source in a ```` ```mermaid ````
+  fence.** A bare DSL body — the opening line (`flowchart TD`,
+  `sequenceDiagram`, `pie`, …) followed by the source, with no fence
+  around them — parses to an **empty source and renders nothing**.
+  This is the most common way that kind fails.
+- **Every other typed kind is raw JSON or YAML, never wrapped in a
+  ```` ```<kind> ```` fence.** That fence form belongs in an inline
+  chat reply, not in a stored body.
+
+Unsure about a kind's body shape? `manual_read('kind-<kind>')`
+before the first write of that kind — the Vance schemas do not match
+the popular JS-library defaults.
 {% endif %}
 {% if cortexMode %}
 

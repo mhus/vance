@@ -797,7 +797,10 @@ public class MarvinEngine implements ThinkEngine {
                         .tier(de.mhus.vance.brain.ai.ModelSize.LARGE)
                         .engine(NAME)
                         .withRootDirTypes(workspaceService.getRootDirTypes(
-                                process.getTenantId(), process.getProjectId()));
+                                process.getTenantId(), process.getProjectId()))
+                        // This turn's manifest, so the template can gate
+                        // tool-specific text on the tool being callable.
+                        .withAvailableTools(ctx.tools().primary());
         composer.withAddons(NAME, sysCtxBuilder);
         String renderedSystem = composer.render(systemPrompt, sysCtxBuilder.build());
 

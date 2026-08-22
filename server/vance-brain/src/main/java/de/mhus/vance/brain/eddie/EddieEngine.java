@@ -2595,7 +2595,10 @@ public class EddieEngine extends StructuredActionEngine {
                         .participants(collab.participants())
                         .mentionedBy(collab.mentionedBy())
                         .withRootDirTypes(workspaceService.getRootDirTypes(
-                                process.getTenantId(), process.getProjectId()));
+                                process.getTenantId(), process.getProjectId()))
+                        // This turn's manifest, so the template can gate
+                        // tool-specific text on the tool being callable.
+                        .withAvailableTools(engineCtx.tools().primary());
         // Fall back to the engine's cascade-resolved default prompt
         // (project → _vance → classpath) rather than the short
         // GREETING when the recipe didn't pin a promptOverride. The

@@ -45,6 +45,11 @@ import org.jspecify.annotations.Nullable;
  *       {@code has_python_rootdir}, {@code has_git_rootdir}. Set by
  *       {@link #withRootDirTypes}; unset entries are falsy in lenient
  *       mode. Templates use these to gate type-specific tool hints.</li>
+ *   <li>{@code has_tool} — map of the tool names in this turn's manifest,
+ *       e.g. {@code {% if has_tool.doc_write %}}. Set by
+ *       {@link #withAvailableTools}. Gates tool-specific prompt text on
+ *       the tool being callable, because instructions that don't match
+ *       the available tool set make the model invent calls.</li>
  * </ul>
  *
  * <p>Unset values default to empty strings via the renderer's lenient
@@ -351,6 +356,52 @@ public final class PromptContextBuilder {
     }
 
     private static final Pattern SAFE_TYPE = Pattern.compile("[a-z0-9_]+");
+
+    /**
+     * Exposes the tool names available to the LLM <em>this turn</em> as
+     * {@code has_tool}, so a template can gate tool-specific text on the
+     * tool actually being there:
+     * {@code {% if has_tool.doc_write %} … {% endif %}}.
+     *
+     * <p><b>Why this exists.</b> A prompt paragraph that explains a tool
+     * the current manifest does not contain is worse than wasted tokens —
+     * instructions that do not match the available tool set make the model
+     * invent calls and results, which is exactly what the
+     * {@code anti-hallucination} and {@code phantom-tool-result} benchmark
+     * categories measure. Recipes restrict tools and the tool-surface
+     * budget demotes whole families to deferred, so "the tool is always
+     * there" is not an assumption a shared prompt section may make.
+     *
+     * <p><b>Pass {@code primary()}, not {@code allowed()}.</b> The gate
+     * answers "can the model call this right now": a deferred tool is
+     * discoverable but not in the manifest, and text about it would be the
+     * very mismatch this method exists to prevent.
+     *
+     * <p><b>A map, not a set.</b> Template bodies are untrusted documents
+     * and run under a deny-all {@code MethodAccessValidator} — map lookup
+     * is plain member access and always works, while a collection operator
+     * is the more fragile construct to rely on. A missing key renders as
+     * the empty string in lenient mode, which is falsy in Pebble, so
+     * {@code has_tool.whatever} on an unset tool is a clean "no".
+     *
+     * <p>Names are filtered to {@code [a-z0-9_]} for the same reason
+     * {@link #withRootDirTypes} filters types: a tool name reaching the
+     * context unchecked could otherwise shadow another variable.
+     */
+    public PromptContextBuilder withAvailableTools(@Nullable Set<String> toolNames) {
+        if (toolNames == null || toolNames.isEmpty()) return this;
+        Map<String, Object> flags = new LinkedHashMap<>();
+        for (String raw : toolNames) {
+            if (raw == null || raw.isBlank()) continue;
+            String normalised = raw.toLowerCase(Locale.ROOT);
+            if (!SAFE_TYPE.matcher(normalised).matches()) continue;
+            flags.put(normalised, Boolean.TRUE);
+        }
+        if (!flags.isEmpty()) {
+            map.put("has_tool", flags);
+        }
+        return this;
+    }
 
     public PromptContextBuilder params(@Nullable Map<String, Object> params) {
         if (params != null && !params.isEmpty()) {

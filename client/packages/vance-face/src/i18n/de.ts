@@ -114,9 +114,8 @@ export default {
   },
 
   inboxBadge: {
-    tooltip: '{n} offene(r) Inbox-Eintrag/Einträge — Inbox öffnen',
-    actionableTooltip: '{n} offene(r) Inbox-Eintrag/Einträge, {a} warten auf deine '
-      + 'Antwort — Inbox öffnen',
+    tooltip: '{n} ungelesen — {p} offen insgesamt; Inbox öffnen',
+    actionableTooltip: '{n} ungelesen, {a} warten auf deine Antwort — {p} offen insgesamt; Inbox öffnen',
   },
 
   processCounts: {

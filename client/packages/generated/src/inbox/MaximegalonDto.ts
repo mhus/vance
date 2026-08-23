@@ -5,9 +5,11 @@
 
 import { Criticality } from './Criticality';
 import { AnswerPayload } from './AnswerPayload';
+import { MaximegalonMessageDto } from './MaximegalonMessageDto';
 import { MaximegalonStatus } from './MaximegalonStatus';
 import { ResolvedBy } from './ResolvedBy';
 import { MaximegalonType } from './MaximegalonType';
+import { MaximegalonReactionDto } from './MaximegalonReactionDto';
 
 export interface MaximegalonDto {
   id: string;
@@ -32,4 +34,9 @@ export interface MaximegalonDto {
   createdAt?: Date;
   updatedAt?: Date;
   archivedAt?: Date;
+  teamId?: string;
+  participants: string[];
+  readBy: string[];
+  messages: MaximegalonMessageDto[];
+  reactions: MaximegalonReactionDto[];
 }

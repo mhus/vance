@@ -62,4 +62,36 @@ public class MaximegalonDto {
     private @Nullable Instant createdAt;
     private @Nullable Instant updatedAt;
     private @Nullable Instant archivedAt;
+
+    // ── Thread ──
+
+    /**
+     * Team that may look on without being a participant, or {@code null} when
+     * visibility is derived from the assignee's teams (the historical rule).
+     */
+    private @Nullable String teamId;
+
+    /** Who receives updates and may contribute. */
+    @Builder.Default
+    private List<String> participants = new ArrayList<>();
+
+    /** Who has read title and body — the thread's own read state. */
+    @Builder.Default
+    private List<String> readBy = new ArrayList<>();
+
+    /**
+     * The clarification, flat with {@code parentId} links; the client builds
+     * the tree.
+     *
+     * <p><b>Absent in list responses.</b> A listing needs titles, not
+     * transcripts, and the messages live in the same document — so the list
+     * query projects them out. A client that has an item from the list and
+     * wants the discussion fetches the single item.
+     */
+    @Builder.Default
+    private List<MaximegalonMessageDto> messages = new ArrayList<>();
+
+    /** Reactions on the thread's own title and body. */
+    @Builder.Default
+    private List<MaximegalonReactionDto> reactions = new ArrayList<>();
 }

@@ -5,6 +5,13 @@ import de.mhus.vance.api.inbox.EffectDescription;
 import de.mhus.vance.api.inbox.Criticality;
 import de.mhus.vance.api.inbox.InboxAnswerRequest;
 import de.mhus.vance.api.inbox.InboxCountResponse;
+import de.mhus.vance.api.inbox.InboxMessagePostRequest;
+import de.mhus.vance.api.inbox.InboxReadRequest;
+import de.mhus.vance.api.inbox.InboxInviteRequest;
+import de.mhus.vance.api.inbox.InboxFollowRequest;
+import de.mhus.vance.api.inbox.InboxReactRequest;
+import de.mhus.vance.shared.inbox.MaximegalonRuleException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import de.mhus.vance.api.inbox.InboxDelegateRequest;
 import de.mhus.vance.api.inbox.MaximegalonDto;
 import de.mhus.vance.api.inbox.MaximegalonStatus;
@@ -128,7 +135,15 @@ public class InboxController {
         List<String> targetUsers = resolveTargetUsers(tenant, currentUser, assignedTo);
         MaximegalonService.PendingCounts counts =
                 inboxItemService.countPending(tenant, targetUsers);
+        // The badge counts unread, which is per-person by nature: there is no
+        // such thing as "unread for a team". When a team view is requested the
+        // alarm numbers stay at zero and only the stock is reported.
+        MaximegalonService.BadgeCounts badge = assignedTo == null
+                ? inboxItemService.countBadge(tenant, currentUser)
+                : new MaximegalonService.BadgeCounts(0, 0, counts.total());
         return InboxCountResponse.builder()
+                .unread(badge.unread())
+                .unreadRequiresAction(badge.unreadRequiresAction())
                 .pending(counts.total())
                 .requiresAction(counts.requiresAction())
                 .build();
@@ -141,7 +156,6 @@ public class InboxController {
             @PathVariable("id") String id,
             HttpServletRequest httpRequest) {
         MaximegalonDocument doc = loadVisible(tenant, id, httpRequest);
-        authority.enforce(httpRequest, inboxResource(doc), Action.READ);
         return InboxMapper.toDto(doc);
     }
 
@@ -163,7 +177,6 @@ public class InboxController {
             @PathVariable("id") String id,
             HttpServletRequest httpRequest) {
         MaximegalonDocument doc = loadVisible(tenant, id, httpRequest);
-        authority.enforce(httpRequest, inboxResource(doc), Action.READ);
         return effectRegistry.describe(doc)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.noContent().build());
@@ -278,6 +291,116 @@ public class InboxController {
                         tenant, id, request.getToUserId(), currentUser, request.getNote())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
+    }
+
+    // ────────────────── Thread ──────────────────
+    //
+    // All five gate on maySee, not mayDecide: contributing to a discussion is
+    // not settling it. Being invited into a thread must never confer the right
+    // to answer it — that would also confer the right to fire its effectType,
+    // which grants permissions.
+
+    /** Adds a contribution to the thread's clarification. */
+    @PostMapping("/brain/{tenant}/inbox/{id}/messages")
+    public ResponseEntity<MaximegalonDto> postMessage(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @Valid @RequestBody InboxMessagePostRequest request,
+            HttpServletRequest httpRequest) {
+        String currentUser = currentUser(httpRequest);
+        loadVisible(tenant, id, httpRequest);
+        MaximegalonDocument updated = inboxItemService.postMessage(
+                        tenant, id, currentUser, request.getBody(), request.getParentId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        return ResponseEntity.ok(InboxMapper.toDto(updated));
+    }
+
+    /**
+     * Marks the thread — or named messages within it — read for the caller.
+     *
+     * <p>Never touches {@code status}: looking at a decision is not making it.
+     */
+    @PostMapping("/brain/{tenant}/inbox/{id}/read")
+    public ResponseEntity<MaximegalonDto> markRead(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @RequestBody(required = false) @Nullable InboxReadRequest request,
+            HttpServletRequest httpRequest) {
+        String currentUser = currentUser(httpRequest);
+        loadVisible(tenant, id, httpRequest);
+        List<String> messageIds = request == null ? null : request.getMessageIds();
+        Optional<MaximegalonDocument> updated = messageIds == null || messageIds.isEmpty()
+                ? inboxItemService.markRead(tenant, id, currentUser)
+                : inboxItemService.markMessagesRead(tenant, id, currentUser, messageIds);
+        return ResponseEntity.ok(InboxMapper.toDto(
+                updated.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND))));
+    }
+
+    /**
+     * Pulls someone into the thread.
+     *
+     * <p>Inviting <em>is</em> delivering, so it is checked like a delivery: the
+     * caller needs {@code WRITE} on the <em>invitee's</em> inbox, the same gate
+     * Milliways' inbox handler passes. Without that, anyone who can see a
+     * thread could push it at anyone in the tenant.
+     */
+    @PostMapping("/brain/{tenant}/inbox/{id}/invite")
+    public ResponseEntity<MaximegalonDto> invite(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @Valid @RequestBody InboxInviteRequest request,
+            HttpServletRequest httpRequest) {
+        String currentUser = currentUser(httpRequest);
+        loadVisible(tenant, id, httpRequest);
+        authority.enforce(httpRequest,
+                new Resource.InboxItem(tenant, "", request.getUserId()), Action.WRITE);
+        MaximegalonDocument updated = inboxItemService.invite(
+                        tenant, id, request.getUserId(), currentUser)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        return ResponseEntity.ok(InboxMapper.toDto(updated));
+    }
+
+    /** Subscribes to or unsubscribes from the thread's updates. */
+    @PostMapping("/brain/{tenant}/inbox/{id}/follow")
+    public ResponseEntity<MaximegalonDto> follow(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @Valid @RequestBody InboxFollowRequest request,
+            HttpServletRequest httpRequest) {
+        String currentUser = currentUser(httpRequest);
+        loadVisible(tenant, id, httpRequest);
+        MaximegalonDocument updated = inboxItemService.setFollowing(
+                        tenant, id, currentUser, request.isFollowing())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        return ResponseEntity.ok(InboxMapper.toDto(updated));
+    }
+
+    /** Toggles the caller's emoji reaction on the thread or on one message. */
+    @PostMapping("/brain/{tenant}/inbox/{id}/react")
+    public ResponseEntity<MaximegalonDto> react(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @Valid @RequestBody InboxReactRequest request,
+            HttpServletRequest httpRequest) {
+        String currentUser = currentUser(httpRequest);
+        loadVisible(tenant, id, httpRequest);
+        MaximegalonDocument updated = inboxItemService.react(
+                        tenant, id, request.getMessageId(), request.getKey(), currentUser,
+                        request.isOn())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        return ResponseEntity.ok(InboxMapper.toDto(updated));
+    }
+
+    /**
+     * A thread invariant refused the call — the assignee of an open ask trying
+     * to unsubscribe, a full thread, a reply to a reply. 409 with the reason as
+     * a stable code, so the client can say which rule it hit rather than "an
+     * error occurred".
+     */
+    @ExceptionHandler(MaximegalonRuleException.class)
+    public ResponseEntity<Map<String, String>> onRuleViolation(MaximegalonRuleException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of("reason", e.getReason(), "message", e.getMessage()));
     }
 
     /**
@@ -418,10 +541,20 @@ public class InboxController {
             String tenant, String id, HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
         MaximegalonDocument doc = loadInTenant(tenant, id);
-        if (!inboxAuthz.maySee(tenant, currentUser, doc)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        // The permission provider is asked first and stays the authority — it
+        // is the replaceable part (simple-auth, EE governor, …). Participation
+        // and the declared team are then checked as properties of the document,
+        // which is why Resource.InboxItem needs no new field: an invitation was
+        // authorized when it happened, and membership is the answer afterwards.
+        // Order matters — checking only the provider would make participants
+        // unreachable, checking only the document would bypass the provider.
+        if (authority.check(httpRequest, inboxResource(doc), Action.READ)) {
+            return doc;
         }
-        return doc;
+        if (inboxAuthz.maySee(tenant, currentUser, doc)) {
+            return doc;
+        }
+        throw new ResponseStatusException(HttpStatus.NOT_FOUND);
     }
 
     /**

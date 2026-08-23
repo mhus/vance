@@ -3,9 +3,14 @@ import type { InboxCountResponse } from '@vance/generated';
 import { brainFetch, getTenantId } from '@vance/shared';
 
 /**
- * How many inbox items are still pending for the signed-in user — the
- * number behind the topbar inbox badge, so "do I have new inbox
- * messages?" is answerable without opening the inbox editor.
+ * The numbers behind the topbar inbox badge, so "does anything want me?" is
+ * answerable without opening the inbox editor.
+ *
+ * <p>Two groups, and they are not interchangeable. {@link inboxUnread} is the
+ * alarm — threads with something unopened — and it is what the badge shows. A
+ * decision that was read and deliberately held back does not appear in it: a
+ * badge that cannot reach zero without deciding trains people to dismiss.
+ * {@link inboxPending} is the stock of open matters and lives in the tooltip.
  *
  * <p>REST-pulled, not pushed: web-ui v1 keeps live updates inside the
  * chat editor (see specification/web-ui.md §3-§4), and the brain's
@@ -20,21 +25,31 @@ import { brainFetch, getTenantId } from '@vance/shared';
  * registers Pinia.
  */
 
+const unread: Ref<number> = ref(0);
+const unreadRequiresAction: Ref<number> = ref(0);
 const pending: Ref<number> = ref(0);
-const requiresAction: Ref<number> = ref(0);
 const loaded: Ref<boolean> = ref(false);
 
 /** In-flight refresh, so mount + visibilitychange don't fire twice. */
 let inFlight: Promise<void> | null = null;
 
-/** Pending items assigned to the current user (answers + pure outputs). */
-export const inboxPending: ComputedRef<number> = computed(() => pending.value);
+/** Threads with something unread for the current user — the badge's number. */
+export const inboxUnread: ComputedRef<number> = computed(() => unread.value);
 
 /**
- * Subset of {@link inboxPending} a process actually waits on. Drives the
- * badge's colour — a shared note is worth showing, not worth alarming.
+ * Subset of {@link inboxUnread} that is an open ask assigned to this user.
+ * Drives the badge's colour — a shared note is worth showing, not worth
+ * alarming.
+ *
+ * <p>From the same population as {@link inboxUnread} on purpose: colouring on
+ * all open asks would paint the badge red because something is open somewhere,
+ * even when every unread thread is a harmless output.
  */
-export const inboxRequiresAction: ComputedRef<number> = computed(() => requiresAction.value);
+export const inboxUnreadRequiresAction: ComputedRef<number> =
+  computed(() => unreadRequiresAction.value);
+
+/** Open items assigned to the current user — the stock, shown in the tooltip. */
+export const inboxPending: ComputedRef<number> = computed(() => pending.value);
 
 /**
  * Whether a count has arrived at least once. The badge stays hidden
@@ -57,8 +72,9 @@ export function refreshInboxCount(): Promise<void> {
   if (!getTenantId()) return Promise.resolve();
   inFlight = brainFetch<InboxCountResponse>('GET', 'inbox/count')
     .then((data) => {
+      unread.value = data.unread ?? 0;
+      unreadRequiresAction.value = data.unreadRequiresAction ?? 0;
       pending.value = data.pending ?? 0;
-      requiresAction.value = data.requiresAction ?? 0;
       loaded.value = true;
     })
     .catch(() => {

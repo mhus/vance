@@ -1,9 +1,14 @@
 package de.mhus.vance.brain.inbox;
 
 import de.mhus.vance.api.inbox.MaximegalonDto;
+import de.mhus.vance.api.inbox.MaximegalonMessageDto;
+import de.mhus.vance.api.inbox.MaximegalonReactionDto;
 import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonMessage;
+import de.mhus.vance.shared.inbox.MaximegalonReaction;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Conversion {@link MaximegalonDocument} → {@link MaximegalonDto} for
@@ -42,7 +47,52 @@ public final class InboxMapper {
                 .createdAt(d.getCreatedAt())
                 .updatedAt(d.getUpdatedAt())
                 .archivedAt(d.getArchivedAt())
+                .teamId(d.getTeamId())
+                .participants(copy(d.getParticipants()))
+                .readBy(copy(d.getReadBy()))
+                .reactions(toReactionDtos(d.getReactions()))
+                // Empty on documents that came from the list query, which
+                // projects the messages out — see MaximegalonService#listFiltered.
+                // unreadFor is deliberately not mapped: it is a server-side
+                // index for the badge count, and the client derives the same
+                // thing from readBy when it has the thread open.
+                .messages(toMessageDtos(d.getMessages()))
                 .build();
+    }
+
+    private static List<String> copy(@Nullable List<String> source) {
+        return source == null ? new ArrayList<>() : new ArrayList<>(source);
+    }
+
+    private static List<MaximegalonMessageDto> toMessageDtos(
+            @Nullable List<MaximegalonMessage> messages) {
+        if (messages == null) return new ArrayList<>();
+        List<MaximegalonMessageDto> result = new ArrayList<>(messages.size());
+        for (MaximegalonMessage m : messages) {
+            result.add(MaximegalonMessageDto.builder()
+                    .id(m.getId())
+                    .authorUserId(m.getAuthorUserId())
+                    .body(m.getBody())
+                    .createdAt(m.getCreatedAt())
+                    .parentId(m.getParentId())
+                    .readBy(copy(m.getReadBy()))
+                    .reactions(toReactionDtos(m.getReactions()))
+                    .build());
+        }
+        return result;
+    }
+
+    private static List<MaximegalonReactionDto> toReactionDtos(
+            @Nullable List<MaximegalonReaction> reactions) {
+        if (reactions == null) return new ArrayList<>();
+        List<MaximegalonReactionDto> result = new ArrayList<>(reactions.size());
+        for (MaximegalonReaction r : reactions) {
+            result.add(MaximegalonReactionDto.builder()
+                    .key(r.getKey())
+                    .userIds(copy(r.getUserIds()))
+                    .build());
+        }
+        return result;
     }
 
     public static List<MaximegalonDto> toDtos(List<MaximegalonDocument> docs) {

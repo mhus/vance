@@ -4,8 +4,9 @@ import { useI18n } from 'vue-i18n';
 import { VBadge } from '@vance/components';
 import {
   inboxCountLoaded,
+  inboxUnread,
+  inboxUnreadRequiresAction,
   inboxPending,
-  inboxRequiresAction,
   refreshInboxCount,
 } from '@/inbox/inboxCountStore';
 
@@ -28,18 +29,20 @@ import {
 
 const { t } = useI18n();
 
-const pending = computed<number>(() => inboxPending.value);
-const visible = computed<boolean>(() => inboxCountLoaded.value && pending.value > 0);
-/** Items a process waits on — the one state worth colour. */
-const attention = computed<boolean>(() => inboxRequiresAction.value > 0);
+/** The badge shows unread, not the stock: it is an alarm, not an inventory. */
+const unread = computed<number>(() => inboxUnread.value);
+const visible = computed<boolean>(() => inboxCountLoaded.value && unread.value > 0);
+/** Unread threads that are an open ask for me — the one state worth colour. */
+const attention = computed<boolean>(() => inboxUnreadRequiresAction.value > 0);
 
 const tooltip = computed<string>(() =>
   attention.value
     ? t('inboxBadge.actionableTooltip', {
-        n: pending.value,
-        a: inboxRequiresAction.value,
+        n: unread.value,
+        a: inboxUnreadRequiresAction.value,
+        p: inboxPending.value,
       })
-    : t('inboxBadge.tooltip', { n: pending.value }));
+    : t('inboxBadge.tooltip', { n: unread.value, p: inboxPending.value }));
 
 function onVisibilityChange(): void {
   if (document.visibilityState === 'visible') void refreshInboxCount();
@@ -65,7 +68,7 @@ onUnmounted(() => {
   >
     <VBadge :variant="attention ? 'warning' : 'neutral'" size="sm" :outline="!attention">
       <span class="mr-1" aria-hidden="true">✉</span>
-      {{ pending }}
+      {{ unread }}
     </VBadge>
   </a>
 </template>

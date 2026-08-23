@@ -120,9 +120,8 @@ export default {
   },
 
   inboxBadge: {
-    tooltip: '{n} pending inbox item(s) — open the inbox',
-    actionableTooltip: '{n} pending inbox item(s), {a} waiting for your answer '
-      + '— open the inbox',
+    tooltip: '{n} unread — {p} open in total; open the inbox',
+    actionableTooltip: '{n} unread, {a} waiting for your answer — {p} open in total; open the inbox',
   },
 
   processCounts: {

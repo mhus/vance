@@ -4,6 +4,8 @@
 */
 
 export interface InboxCountResponse {
+  unread: number;
+  unreadRequiresAction: number;
   pending: number;
   requiresAction: number;
 }

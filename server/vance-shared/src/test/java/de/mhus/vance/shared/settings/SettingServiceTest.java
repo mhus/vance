@@ -46,7 +46,7 @@ class SettingServiceTest {
         audit = mock(AuditService.class);
         encryption = new AesEncryptionService("unit-test-master-key");
         service = new SettingService(repository, mongoTemplate, encryption, audit,
-                new AgentSettingKeyPolicy(""));
+                megadodoProvider(), new AgentSettingKeyPolicy(""));
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 
@@ -222,4 +222,17 @@ class SettingServiceTest {
                 TENANT, refType, refId, key))
                 .thenReturn(Optional.ofNullable(doc));
     }
+
+    /** Lazy provider stand-in — SettingService resolves Megadodo on demand. */
+    @SuppressWarnings("unchecked")
+    private static org.springframework.beans.factory.ObjectProvider<
+            de.mhus.vance.shared.megadodo.MegadodoService> megadodoProvider() {
+        org.springframework.beans.factory.ObjectProvider<
+                de.mhus.vance.shared.megadodo.MegadodoService> provider =
+                mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(provider.getObject())
+                .thenReturn(mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
+        return provider;
+    }
+
 }

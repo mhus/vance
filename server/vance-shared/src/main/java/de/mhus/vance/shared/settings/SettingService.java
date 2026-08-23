@@ -37,6 +37,16 @@ public class SettingService {
     private final MongoTemplate mongoTemplate;
     private final AesEncryptionService encryption;
     private final AuditService auditService;
+    /**
+     * Lazy, and it has to be: {@code MegadodoService} resolves its retention
+     * through this very service's settings cascade, so a hard reference here
+     * closes the loop and no context starts. Lazy on <em>this</em> side by
+     * choice — settings are core infrastructure, the activity feed is
+     * diagnostics, and the core must not hold the diagnostic service open.
+     * Same trick {@code ProjectService} uses for the permission layer.
+     */
+    private final org.springframework.beans.factory.ObjectProvider<
+            de.mhus.vance.shared.megadodo.MegadodoService> megadodoServiceProvider;
     private final AgentSettingKeyPolicy agentKeyPolicy;
 
     // ──────────────────── Raw lookup ────────────────────
@@ -148,6 +158,12 @@ public class SettingService {
         }
         SettingDocument saved = repository.save(doc);
         auditService.settingsUpdate(tenantId, referenceType, referenceId, key, type);
+        megadodoServiceProvider.getObject().settingChanged(
+                tenantId,
+                // Only a project-scoped setting belongs to a project feed;
+                // tenant and user settings are tenant-wide by nature.
+                SCOPE_PROJECT.equals(referenceType) ? referenceId : null,
+                referenceType, referenceId, key, type.encrypted(), /*actor*/ null);
         return saved;
     }
 

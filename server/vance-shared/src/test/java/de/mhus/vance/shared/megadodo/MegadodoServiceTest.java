@@ -91,6 +91,32 @@ class MegadodoServiceTest {
         assertThat(message).endsWith("…");
     }
 
+    @Test
+    void settingChange_neverRecordsTheValue() {
+        // A key that looks harmless today holds a token tomorrow, and a feed
+        // row is far easier to read than the settings collection.
+        service.settingChanged(TENANT, PROJECT, "project", PROJECT,
+                "ai.provider.openai.apiKey", /*encrypted*/ true, "marvin");
+
+        MegadodoEventDocument saved = captureInsert();
+        assertThat(saved.getMessage()).contains("ai.provider.openai.apiKey");
+        assertThat(saved.getSeverity()).isEqualTo(MegadodoSeverity.WARN);
+        assertThat(saved.getProjectId()).isEqualTo(PROJECT);
+        assertThat(saved.getActor()).isEqualTo("marvin");
+        // Nothing anywhere on the row may carry a value.
+        assertThat(saved.getDetails()).isEmpty();
+    }
+
+    @Test
+    void settingChange_tenantScoped_hasNoProject() {
+        service.settingChanged(TENANT, /*projectId*/ null, "tenant", TENANT,
+                "chat.language", /*encrypted*/ false, null);
+
+        MegadodoEventDocument saved = captureInsert();
+        assertThat(saved.getProjectId()).isNull();
+        assertThat(saved.getSeverity()).isEqualTo(MegadodoSeverity.INFO);
+    }
+
     // ──── Retention ──────────────────────────────────────────────────
 
     @Test

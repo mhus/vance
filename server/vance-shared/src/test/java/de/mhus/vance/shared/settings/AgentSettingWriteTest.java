@@ -31,7 +31,8 @@ class AgentSettingWriteTest {
 
     private SettingService serviceWith(String denyKeys) {
         SettingService s = new SettingService(repository, mock(MongoTemplate.class),
-                encryption, mock(AuditService.class), new AgentSettingKeyPolicy(denyKeys));
+                encryption, mock(AuditService.class),
+                megadodoProvider(), new AgentSettingKeyPolicy(denyKeys));
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         return s;
     }
@@ -166,4 +167,17 @@ class AgentSettingWriteTest {
         d.setValue(value);
         return d;
     }
+
+    /** Lazy provider stand-in — SettingService resolves Megadodo on demand. */
+    @SuppressWarnings("unchecked")
+    private static org.springframework.beans.factory.ObjectProvider<
+            de.mhus.vance.shared.megadodo.MegadodoService> megadodoProvider() {
+        org.springframework.beans.factory.ObjectProvider<
+                de.mhus.vance.shared.megadodo.MegadodoService> provider =
+                mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(provider.getObject())
+                .thenReturn(mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
+        return provider;
+    }
+
 }

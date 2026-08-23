@@ -153,6 +153,46 @@ public class MegadodoService {
                 .message("User '" + userName + "' deleted"));
     }
 
+    // ─── Settings ──────────────────────────────────────────────
+
+    /**
+     * A setting changed. "Why does it behave differently since yesterday?"
+     * is the most common question asked of a log like this, and the answer
+     * is usually a setting.
+     *
+     * <p>The <b>value is never recorded</b> — not even for plain string
+     * types. A key that looks harmless today holds a token tomorrow, and a
+     * feed row is far easier to read than the settings collection. Who
+     * changed what, and where, is enough to go look.
+     *
+     * @param projectId the project this row belongs to, or {@code null} for
+     *                  a tenant- or user-scoped setting. Resolved by the
+     *                  caller — the scope vocabulary belongs to the settings
+     *                  subsystem, not here
+     * @param scope     {@code tenant} | {@code project} | {@code user} —
+     *                  shown to the reader, not interpreted
+     * @param scopeId   the tenant / project / user it belongs to
+     * @param encrypted whether the value is of a protected type; makes the
+     *                  row a {@link MegadodoSeverity#WARN} because someone
+     *                  changed a credential
+     */
+    public void settingChanged(
+            String tenantId,
+            @Nullable String projectId,
+            String scope,
+            String scopeId,
+            String key,
+            boolean encrypted,
+            @Nullable String actor) {
+        record(builder(tenantId, projectId, "setting.change", scope + ":" + scopeId + ":" + key)
+                .phase(MegadodoPhase.SINGLE)
+                .severity(encrypted ? MegadodoSeverity.WARN : MegadodoSeverity.INFO)
+                .outcome("success")
+                .actor(actor)
+                .message("Setting '" + key + "' changed on " + scope + " '" + scopeId + "'"
+                        + (encrypted ? " (encrypted value)" : "")));
+    }
+
     // ─── Tool health (Agrajag) ─────────────────────────────────
 
     /**

@@ -37,7 +37,7 @@ centauri.endpoint.<id>.baseUrl  = https://…
 
 **Without `.protocol` the source is skipped entirely.** That is also why switching a source off in the setting form removes it from the list rather than leaving it behind as `enabled=false`.
 
-## The three protocols
+## The protocols shipped with this addon
 
 | Protocol | What it is | baseUrl example | Selectors |
 |---|---|---|---|
@@ -47,11 +47,19 @@ centauri.endpoint.<id>.baseUrl  = https://…
 
 **One Wikipedia endpoint per language.** Two of them (`wikipedia-de`, `wikipedia-en`) make a bilingual feed where each entry carries its language — which is what gives the feed's language filter something to work with.
 
+**This table is not the whole list.** A protocol arrives as an addon, so an installation can have
+others — Mastodon, for instance, is its own addon with its own manual (`manual_read('feeds-mastodon')`).
+This manual ships with the feeds addon and only names what ships with it; **`feed_sources()` is the
+authority** on what this installation actually has. Read it before telling anyone a source is
+impossible, and note what it says about a source's `selectorMode`: `ENUMERABLE` means the selectors
+it lists are the whole set, `FREEFORM` means the selector is typed and its grammar belongs to that
+protocol's manual.
+
 ## What to tell the user
 
 Three ways, best first:
 
-1. **Setting form** „Feeds — Quellen" in the settings editor — a switch per source, tenant-wide. Covers the ode source and both examples.
+1. **Setting form** „Feeds — Quellen" in the settings editor — a switch per source, tenant-wide. Covers the ode source and both examples. A protocol from another addon brings its own form; Mastodon's is „Feeds — Mastodon".
 2. **`anus`-CLI:** `setting set -T <tenant> -s tenant -k centauri.endpoint.wikipedia-de.protocol -v wikipedia` (and the same for `.baseUrl`).
 3. **Admin REST:** `PUT /brain/{tenant}/admin/settings/tenant/_vance/<key>`.
 

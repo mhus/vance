@@ -23,7 +23,7 @@ Two failure modes to avoid:
 Two are enough; the endpoint id (`<id>`) is free and only has to be used consistently.
 
 ```
-centauri.endpoint.<id>.protocol = ode | usgs | wikipedia
+centauri.endpoint.<id>.protocol = ode | usgs | wikipedia | …   ← an addon can add more
 centauri.endpoint.<id>.baseUrl  = https://…
 ```
 

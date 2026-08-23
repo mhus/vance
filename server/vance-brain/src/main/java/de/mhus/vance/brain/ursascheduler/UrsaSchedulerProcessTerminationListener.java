@@ -1,13 +1,14 @@
 package de.mhus.vance.brain.ursascheduler;
 
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.api.eventlog.EventType;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
-import de.mhus.vance.shared.eventlog.EventLogDocument;
 import de.mhus.vance.shared.eventlog.EventLogService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessStatusChangedEvent;
+import de.mhus.vance.shared.thinkprocess.TriggerOrigin;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -32,12 +33,15 @@ import org.springframework.stereotype.Component;
  *       remains {@code pending} — the run is technically still alive.</li>
  * </ul>
  *
- * <p>Process identity is recovered through the event log itself: the
- * scheduler emits a {@code STARTED} entry on spawn that carries both
- * {@code processId} and {@code correlationId}. On any handled transition
- * we look that entry up — when it exists, the process was
- * scheduler-spawned and we update with the matching correlation. When it
- * doesn't, the process is unrelated and we stay silent.
+ * <p>Run identity is read off the process itself: the spawn writes a
+ * {@link TriggerOrigin} carrying kind, source and run id. A process whose
+ * origin is not {@link TriggerKind#SCHEDULER} is unrelated and we stay
+ * silent.
+ *
+ * <p>This used to be a lookup in the {@code event_log} for the process's
+ * {@code STARTED} row — one Mongo query on <em>every</em> process
+ * termination in the system, usually returning nothing. See
+ * {@code planning/megadodo.md}.
  */
 @Component
 @RequiredArgsConstructor
@@ -56,29 +60,37 @@ public class UrsaSchedulerProcessTerminationListener {
                 && newStatus != ThinkProcessStatus.BLOCKED) {
             return;
         }
-        Optional<EventLogDocument> startOpt = eventLogService.findStartForProcess(
-                event.tenantId(), event.processId(),
-                UrsaSchedulerSourceKeys.SOURCE_PREFIX);
-        if (startOpt.isEmpty()) {
+        Optional<ThinkProcessDocument> processOpt = thinkProcessService.findById(event.processId());
+        if (processOpt.isEmpty()) {
             return;
         }
-        EventLogDocument start = startOpt.get();
-        if (newStatus == ThinkProcessStatus.BLOCKED) {
-            schedulerLogService.onBlocked(
-                    start.getCorrelationId(),
-                    "process " + event.processId() + " awaiting inbox answer");
-            log.info("Scheduler run blocked source='{}' process='{}' — awaiting inbox answer",
-                    start.getSource(), event.processId());
+        ThinkProcessDocument process = processOpt.get();
+        TriggerOrigin origin = process.getTriggerOrigin();
+        if (origin == null || origin.getKind() != TriggerKind.SCHEDULER) {
+            return;
+        }
+        String source = origin.getSource();
+        String runId = origin.getRunId();
+        if (source == null || source.isBlank() || runId == null || runId.isBlank()) {
+            // A scheduler spawn always carries both. Without them the run
+            // cannot be attributed — say so instead of inventing an id that
+            // would open a second, orphaned run log.
+            log.warn("Scheduler-spawned process '{}' has an incomplete trigger origin "
+                            + "(source='{}' runId='{}') — run not closed",
+                    event.processId(), source, runId);
             return;
         }
 
-        Optional<ThinkProcessDocument> processOpt = thinkProcessService.findById(event.processId());
-        CloseReason closeReason = processOpt
-                .map(ThinkProcessDocument::getCloseReason)
-                .orElse(null);
-        String projectId = processOpt
-                .map(ThinkProcessDocument::getProjectId)
-                .orElse(start.getProjectId());
+        if (newStatus == ThinkProcessStatus.BLOCKED) {
+            schedulerLogService.onBlocked(
+                    runId, "process " + event.processId() + " awaiting inbox answer");
+            log.info("Scheduler run blocked source='{}' process='{}' — awaiting inbox answer",
+                    source, event.processId());
+            return;
+        }
+
+        CloseReason closeReason = process.getCloseReason();
+        String projectId = process.getProjectId();
 
         EventType terminalType = mapTerminalType(closeReason);
         if (terminalType == null) {
@@ -95,19 +107,17 @@ public class UrsaSchedulerProcessTerminationListener {
         eventLogService.append(
                 event.tenantId(),
                 projectId,
-                start.getSource(),
+                source,
                 terminalType,
-                start.getCorrelationId(),
+                runId,
                 event.sessionId(),
                 event.processId(),
-                start.getRunAs(),
+                origin.getRunAs(),
                 payload);
         schedulerLogService.onTerminated(
-                start.getCorrelationId(),
-                terminalType.name().toLowerCase(),
-                java.time.Instant.now());
+                runId, terminalType.name().toLowerCase(), java.time.Instant.now());
         log.info("Scheduler run terminated source='{}' process='{}' closeReason={} → {}",
-                start.getSource(), event.processId(), closeReason, terminalType);
+                source, event.processId(), closeReason, terminalType);
 
         // Wake the queued-tick path if any.
         schedulerService.onProcessTerminated(event.tenantId(), projectId, event.processId());

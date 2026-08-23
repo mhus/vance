@@ -24,7 +24,7 @@ import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionInvocation;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.TriggerContext;
-import de.mhus.vance.brain.action.TriggerKind;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.script.JsValidationService;
 import de.mhus.vance.brain.slartibartfast.SlartibartfastEngine;

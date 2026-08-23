@@ -13,7 +13,7 @@ import de.mhus.vance.brain.action.ActionInvocation;
 import de.mhus.vance.brain.action.ActionOutcome;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.ScriptActionExecutor;
-import de.mhus.vance.brain.action.TriggerKind;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.toolpack.SpawnTool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;

@@ -12,7 +12,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionResult;
-import de.mhus.vance.brain.action.TriggerKind;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.session.SessionDocument;

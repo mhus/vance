@@ -2,7 +2,7 @@ package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.api.ursahooks.UrsaHookEventName;
 import de.mhus.vance.api.thinkprocess.CloseReason;
-import de.mhus.vance.brain.action.TriggerKind;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -50,7 +50,8 @@ public class UrsaHookProcessLifecycleListener {
         // process.completed hook with a recipe action would spawn forever
         // (code-review Phase 2). Scheduler/event/user/tool spawns are not
         // tagged HOOK and fire normally.
-        if (TriggerKind.HOOK.name().equals(doc.getTriggerSource())) {
+        if (doc.getTriggerOrigin() != null
+                && doc.getTriggerOrigin().getKind() == TriggerKind.HOOK) {
             log.debug("Skipping hook lifecycle fire for hook-spawned process id='{}'",
                     doc.getId());
             return;

@@ -4,7 +4,7 @@ import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.TriggerContext;
-import de.mhus.vance.brain.action.TriggerKind;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.brain.trillian.TrillianUserEngine;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;

@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.action;
 
 import de.mhus.vance.api.action.TriggerAction;
+import de.mhus.vance.api.action.TriggerKind;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;

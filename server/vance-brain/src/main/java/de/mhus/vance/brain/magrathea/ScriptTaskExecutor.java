@@ -9,7 +9,7 @@ import de.mhus.vance.brain.action.ActionOutcome;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.ScriptActionExecutor;
 import de.mhus.vance.brain.action.TriggerContext;
-import de.mhus.vance.brain.action.TriggerKind;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.brain.script.ScriptWorkflowRun;
 import de.mhus.vance.shared.magrathea.MagratheaStateSpec;
 import java.util.Locale;

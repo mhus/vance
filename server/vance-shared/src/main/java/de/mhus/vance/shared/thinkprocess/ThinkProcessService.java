@@ -571,14 +571,15 @@ public class ThinkProcessService {
     }
 
     /**
-     * Records the trigger origin of a spawned process (e.g. {@code "HOOK"}),
-     * so a hook-spawned process can be excluded from re-firing
-     * process-lifecycle hooks and the self-triggering chain is broken
-     * (code-review Phase 2).
+     * Records what started a spawned process — the trigger kind (so a
+     * hook-spawned process can be excluded from re-firing process-lifecycle
+     * hooks and the self-triggering chain is broken) plus the run identity
+     * its trigger surface needs on termination. Written once right after
+     * the spawn; never updated afterwards.
      */
-    public boolean setTriggerSource(String id, String triggerSource) {
+    public boolean setTriggerOrigin(String id, TriggerOrigin origin) {
         Query query = new Query(Criteria.where("_id").is(id));
-        Update update = new Update().set("triggerSource", triggerSource);
+        Update update = new Update().set("triggerOrigin", origin);
         UpdateResult result = mongoTemplate.updateFirst(
                 query, update, ThinkProcessDocument.class);
         return result.getModifiedCount() > 0;

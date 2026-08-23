@@ -6,7 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.brain.action.TriggerKind;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.shared.inbox.InboxItemCreatedEvent;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -50,7 +50,10 @@ class UrsaHookInboxLifecycleListenerTest {
         when(item.getOriginSessionId()).thenReturn("s-1");
 
         ThinkProcessDocument hookProc = mock(ThinkProcessDocument.class);
-        when(hookProc.getTriggerSource()).thenReturn(TriggerKind.HOOK.name());
+        when(hookProc.getTriggerOrigin()).thenReturn(
+                de.mhus.vance.shared.thinkprocess.TriggerOrigin.builder()
+                        .kind(TriggerKind.HOOK)
+                        .build());
         when(thinkProcessService.findById("p-hook")).thenReturn(Optional.of(hookProc));
 
         listener.onCreated(new InboxItemCreatedEvent(item));

@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.action;
 
 import de.mhus.vance.api.action.TriggerAction;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.inherit.ParentContextSpawnHelper;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
@@ -13,6 +14,7 @@ import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.shared.thinkprocess.TriggerOrigin;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -185,13 +187,21 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
                     "process_create: " + ex.getMessage(), null);
         }
 
-        // Tag hook-spawned processes so their termination does NOT re-fire
-        // process-lifecycle hooks — breaks the self-triggering
-        // hook → process → hook chain that would otherwise spawn forever
-        // (code-review Phase 2).
-        if (invocation.triggerKind() == TriggerKind.HOOK) {
-            thinkProcessService.setTriggerSource(fresh.getId(), TriggerKind.HOOK.name());
-        }
+        // Record what started this process. Two readers, both of which used
+        // to ask the event_log instead:
+        //   - the hook cycle guards, so a hook-spawned process does NOT
+        //     re-fire process-lifecycle hooks on its own termination and
+        //     the hook → process → hook chain stops (code-review Phase 2);
+        //   - the scheduler's termination listener, which needs the run id
+        //     to close the matching run log.
+        // Written for every trigger kind, not just HOOK: the cost is one
+        // field, and "who started this?" is worth answering for all of them.
+        thinkProcessService.setTriggerOrigin(fresh.getId(), TriggerOrigin.builder()
+                .kind(invocation.triggerKind())
+                .source(ctx.sourceTag())
+                .runId(ctx.correlationId())
+                .runAs(ctx.resolvedRunAs())
+                .build());
 
         // ── Start engine ─────────────────────────────────────────────────
         try {

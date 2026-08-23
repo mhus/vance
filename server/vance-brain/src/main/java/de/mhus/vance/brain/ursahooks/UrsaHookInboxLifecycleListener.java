@@ -1,10 +1,12 @@
 package de.mhus.vance.brain.ursahooks;
 
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.api.ursahooks.UrsaHookEventName;
 import de.mhus.vance.shared.inbox.InboxItemCreatedEvent;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,8 +45,8 @@ public class UrsaHookInboxLifecycleListener {
         String originProcessId = item.getOriginProcessId();
         if (originProcessId != null && !originProcessId.isBlank()) {
             boolean hookSpawned = thinkProcessService.findById(originProcessId)
-                    .map(p -> de.mhus.vance.brain.action.TriggerKind.HOOK.name()
-                            .equals(p.getTriggerSource()))
+                    .map(ThinkProcessDocument::getTriggerOrigin)
+                    .map(origin -> origin.getKind() == TriggerKind.HOOK)
                     .orElse(false);
             if (hookSpawned) {
                 log.debug("Skipping inbox.item.created fire for hook-spawned origin "

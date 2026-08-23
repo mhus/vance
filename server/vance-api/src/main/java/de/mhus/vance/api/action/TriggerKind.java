@@ -1,9 +1,10 @@
-package de.mhus.vance.brain.action;
+package de.mhus.vance.api.action;
 
 /**
- * Where an {@link de.mhus.vance.api.action.TriggerAction} comes from.
- * Executors use this to pick a sandbox scope ({@code TRIGGER_SCOPED}
- * vs. {@code PROCESS_SCOPED}) and to tag event-log entries.
+ * Where a {@link TriggerAction} comes from. Executors use this to pick a
+ * sandbox scope ({@code TRIGGER_SCOPED} vs. {@code PROCESS_SCOPED}), to
+ * tag event-log entries, and — persisted as part of a spawned process's
+ * trigger origin — to answer "who started this?" long after the spawn.
  *
  * <p>See {@code specification/trigger-actions.md} §8.
  */
@@ -27,8 +28,8 @@ public enum TriggerKind {
      * buttons on schedulers / events, future manual ProcessCreate UIs).
      * Distinct from {@link #TOOL} (LLM-driven) and from
      * {@link #SCHEDULER} / {@link #EVENT} (automated triggers).
-     * Authenticated caller's user-id is on
-     * {@link TriggerContext#resolvedRunAs}.
+     * The authenticated caller's user-id travels as the trigger's
+     * resolved run-as identity.
      */
     USER,
 
@@ -36,9 +37,9 @@ public enum TriggerKind {
      * Brain-internal lifecycle event (process completed, inbox item
      * created, …) routed through the {@code HookDispatcher}. Conceptually
      * the same as {@link #SCHEDULER} / {@link #EVENT}: a trigger anlass
-     * that fires a configured {@link de.mhus.vance.api.action.TriggerAction}.
-     * No enclosing Process — the {@code createdByUserId} of the hook
-     * document provides the identity. See {@code specification/ursahooks.md}.
+     * that fires a configured {@link TriggerAction}. No enclosing Process
+     * — the {@code createdByUserId} of the hook document provides the
+     * identity. See {@code specification/ursahooks.md}.
      */
     HOOK;
 

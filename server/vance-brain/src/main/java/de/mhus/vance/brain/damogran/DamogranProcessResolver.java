@@ -5,7 +5,7 @@ import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.TriggerContext;
-import de.mhus.vance.brain.action.TriggerKind;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.brain.eddie.EddieEngine;
 import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.brain.tools.worktarget.BaseEngineTools;

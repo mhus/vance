@@ -8,7 +8,9 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
-import de.mhus.vance.brain.action.TriggerKind;
+import de.mhus.vance.api.action.TriggerKind;
+import de.mhus.vance.shared.thinkprocess.TriggerOrigin;
+import org.jspecify.annotations.Nullable;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessStatusChangedEvent;
@@ -19,7 +21,7 @@ import org.springframework.context.ApplicationEventPublisher;
 
 /**
  * Cycle guard for the self-triggering hook chain (code-review Phase 2): a
- * hook-spawned process (triggerSource=HOOK) must NOT re-fire
+ * hook-spawned process (triggerOrigin.kind=HOOK) must NOT re-fire
  * process-lifecycle hooks on termination, or a process.completed hook with
  * a recipe action would spawn forever. Normal processes fire as before.
  */
@@ -36,12 +38,15 @@ class UrsaHookProcessLifecycleListenerTest {
         listener = new UrsaHookProcessLifecycleListener(publisher, thinkProcessService);
     }
 
-    private ThinkProcessDocument closed(String id, CloseReason reason, String triggerSource) {
+    private ThinkProcessDocument closed(
+            String id, CloseReason reason, @Nullable TriggerKind triggerKind) {
         ThinkProcessDocument doc = ThinkProcessDocument.builder()
                 .tenantId("acme").sessionId("s-1").name(id)
                 .status(ThinkProcessStatus.CLOSED)
                 .closeReason(reason)
-                .triggerSource(triggerSource)
+                .triggerOrigin(triggerKind == null
+                        ? null
+                        : TriggerOrigin.builder().kind(triggerKind).build())
                 .build();
         doc.setId(id);
         return doc;
@@ -56,7 +61,7 @@ class UrsaHookProcessLifecycleListenerTest {
     @Test
     void hookSpawnedProcess_doesNotRefireLifecycleHooks() {
         when(thinkProcessService.findById("p-hook"))
-                .thenReturn(Optional.of(closed("p-hook", CloseReason.DONE, TriggerKind.HOOK.name())));
+                .thenReturn(Optional.of(closed("p-hook", CloseReason.DONE, TriggerKind.HOOK)));
 
         listener.onStatusChanged(closedEvent("p-hook"));
 

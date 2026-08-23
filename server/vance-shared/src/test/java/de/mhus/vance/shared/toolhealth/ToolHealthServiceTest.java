@@ -48,7 +48,7 @@ class ToolHealthServiceTest {
     void setUp() {
         MongoTemplate mongoTemplate = mock(MongoTemplate.class);
         repository = mock(ToolHealthRepository.class);
-        service = new ToolHealthService(mongoTemplate, repository);
+        service = new ToolHealthService(mongoTemplate, repository, mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
     }
 
     // ──────────────── claimSpawnCooldown: atomic single-claim ────────────

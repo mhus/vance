@@ -31,7 +31,7 @@ class SessionServiceEscalateBindTest {
         when(mongo.updateFirst(any(Query.class), any(Update.class), eq(SessionDocument.class)))
                 .thenReturn(result);
 
-        SessionService service = new SessionService(mock(SessionRepository.class), mongo);
+        SessionService service = new SessionService(mock(SessionRepository.class), mongo, mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
 
         boolean escalated = service.tryEscalateBind("sess-1", "ed-leaving", "ed-survivor");
 
@@ -57,7 +57,7 @@ class SessionServiceEscalateBindTest {
         when(mongo.updateFirst(any(Query.class), any(Update.class), eq(SessionDocument.class)))
                 .thenReturn(result);
 
-        SessionService service = new SessionService(mock(SessionRepository.class), mongo);
+        SessionService service = new SessionService(mock(SessionRepository.class), mongo, mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
 
         boolean escalated = service.tryEscalateBind("sess-1", "ed-leaving", "ed-survivor");
 

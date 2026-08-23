@@ -20,6 +20,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
 /** Top-level project tab keys — the axis mirrored to `?tab=`. */
 export const INSIGHTS_TOP_TABS = [
   'sessions',
+  'activity',
   'recipes',
   'tools',
   'health',

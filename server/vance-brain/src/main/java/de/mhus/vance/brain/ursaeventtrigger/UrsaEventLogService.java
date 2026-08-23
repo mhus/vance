@@ -77,14 +77,17 @@ public class UrsaEventLogService {
 
     private final DocumentService documentService;
     private final SettingService settingService;
+    private final de.mhus.vance.shared.megadodo.MegadodoService megadodoService;
     private final int defaultRetentionDays;
 
     public UrsaEventLogService(
             DocumentService documentService,
             SettingService settingService,
+            de.mhus.vance.shared.megadodo.MegadodoService megadodoService,
             @Value("${vance.events.log.retention-days:7}") int defaultRetentionDays) {
         this.documentService = documentService;
         this.settingService = settingService;
+        this.megadodoService = megadodoService;
         // Clamp only the upper bound; 0 = infinite, negative = disabled
         // are valid signals the caller must see.
         this.defaultRetentionDays = Math.min(MAX_RETENTION_DAYS, defaultRetentionDays);
@@ -172,6 +175,16 @@ public class UrsaEventLogService {
      * surface (event-log + metrics) without needing the document.
      */
     public void record(String correlationId, TriggerOutcome out) {
+        // Feed row first, and outside the retention short-circuit below:
+        // this log's retention setting governs the detail documents, not
+        // whether the project owner gets to see that an event arrived.
+        megadodoService.eventTriggered(
+                out.tenantId(), out.projectId(), out.eventName(), correlationId,
+                "success".equals(out.outcome()),
+                out.errorMessage() == null ? out.outcome() : out.errorMessage(),
+                out.triggeredBy(),
+                pathFor(out.eventName(), out.firedAt(), correlationId));
+
         int retentionDays = retentionDaysFor(out.tenantId(), out.projectId());
         if (retentionDays < 0) {
             // Logging disabled for this scope — skip the document

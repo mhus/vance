@@ -37,7 +37,7 @@ class ToolHealthServiceLegacyVersionTest {
     void setUp() {
         repository = mock(ToolHealthRepository.class);
         mongoTemplate = mock(MongoTemplate.class);
-        service = new ToolHealthService(mongoTemplate, repository);
+        service = new ToolHealthService(mongoTemplate, repository, mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 

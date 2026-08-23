@@ -110,6 +110,7 @@ public class SessionService {
 
     private final SessionRepository repository;
     private final MongoTemplate mongoTemplate;
+    private final de.mhus.vance.shared.megadodo.MegadodoService megadodoService;
 
     /**
      * Max age of {@code lastActivityAt} before a bound connection is
@@ -364,6 +365,8 @@ public class SessionService {
         log.info("Created session sessionId='{}' tenant='{}' user='{}' project='{}' system={}",
                 saved.getSessionId(), saved.getTenantId(), saved.getUserId(),
                 saved.getProjectId(), system);
+        megadodoService.sessionCreated(
+                saved.getTenantId(), saved.getProjectId(), saved.getSessionId(), saved.getUserId());
         return saved;
     }
 
@@ -1072,7 +1075,11 @@ public class SessionService {
 
     /** Physically drops the session record. For the hard-delete path. */
     public void delete(String sessionId) {
-        repository.findBySessionId(sessionId).ifPresent(repository::delete);
+        repository.findBySessionId(sessionId).ifPresent(doc -> {
+            repository.delete(doc);
+            megadodoService.sessionDeleted(
+                    doc.getTenantId(), doc.getProjectId(), doc.getSessionId(), doc.getUserId());
+        });
     }
 
     // ---------------------------------------------------------- user metadata

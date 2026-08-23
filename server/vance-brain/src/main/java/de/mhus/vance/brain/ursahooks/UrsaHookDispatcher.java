@@ -55,6 +55,7 @@ public class UrsaHookDispatcher implements DisposableBean {
     private final ActionExecutorRegistry actionRegistry;
     private final EventLogService eventLogService;
     private final SessionService sessionService;
+    private final de.mhus.vance.shared.megadodo.MegadodoService megadodoService;
     private final ExecutorService runnerPool;
     /**
      * Separate (unbounded, cached) pool for the per-hook timeout ceiling. Kept
@@ -69,11 +70,13 @@ public class UrsaHookDispatcher implements DisposableBean {
             UrsaHookRegistry registry,
             ActionExecutorRegistry actionRegistry,
             EventLogService eventLogService,
-            SessionService sessionService) {
+            SessionService sessionService,
+            de.mhus.vance.shared.megadodo.MegadodoService megadodoService) {
         this.registry = registry;
         this.actionRegistry = actionRegistry;
         this.eventLogService = eventLogService;
         this.sessionService = sessionService;
+        this.megadodoService = megadodoService;
         AtomicLong tid = new AtomicLong();
         ThreadFactory tf = r -> {
             Thread t = new Thread(r, "vance-hook-runner-" + tid.incrementAndGet());
@@ -122,6 +125,9 @@ public class UrsaHookDispatcher implements DisposableBean {
                 /*sessionId*/ null, /*processId*/ null,
                 def.createdByUserId(),
                 triggerPayload);
+        megadodoService.hookRunStarted(
+                event.tenantId(), event.projectId(), def.name(), correlationId,
+                def.event().wireName());
 
         // Merge the lifecycle-event payload into the action's params
         // under "event". Subscribers read it via vance.params.event in
@@ -186,6 +192,11 @@ public class UrsaHookDispatcher implements DisposableBean {
                 /*sessionId*/ null, /*processId*/ null,
                 def.createdByUserId(),
                 terminalPayload);
+
+        megadodoService.hookRunFinished(
+                event.tenantId(), event.projectId(), def.name(), correlationId,
+                terminalType != EventType.FAILED,
+                result.errorMessage() == null ? outcome.name().toLowerCase() : result.errorMessage());
 
         if (terminalType == EventType.FAILED) {
             log.info("hook '{}' FAILED outcome={} error={}",

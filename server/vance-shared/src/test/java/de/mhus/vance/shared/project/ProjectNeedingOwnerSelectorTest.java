@@ -31,7 +31,8 @@ class ProjectNeedingOwnerSelectorTest {
     private final ObjectProvider<PermissionService> provider = mock(ObjectProvider.class);
     private final MongoTemplate mongoTemplate = mock(MongoTemplate.class);
     private final ProjectService service = new ProjectService(
-            mock(ProjectRepository.class), mongoTemplate, mock(AuditService.class), provider);
+            mock(ProjectRepository.class), mongoTemplate, mock(AuditService.class),
+            mock(de.mhus.vance.shared.megadodo.MegadodoService.class), provider);
 
     @Test
     void findProjectsNeedingOwner_selectsOnlyTheStatusesThatWantToRun() {

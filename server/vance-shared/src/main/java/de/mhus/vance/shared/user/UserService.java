@@ -80,6 +80,7 @@ public class UserService {
      * Vance (the bundled simple-auth). See {@link #delete}.
      */
     private final ObjectProvider<PermissionBootstrap> permissionBootstrapProvider;
+    private final de.mhus.vance.shared.megadodo.MegadodoService megadodoService;
 
     public Optional<UserDocument> findByTenantAndName(String tenantId, String name) {
         return repository.findByTenantIdAndName(tenantId, name);
@@ -211,6 +212,7 @@ public class UserService {
                 .serviceAccount(serviceAccount)
                 .build();
         UserDocument saved = repository.save(user);
+        megadodoService.userCreated(tenantId, name, serviceAccount);
         log.info("Created user tenantId='{}' name='{}' id='{}' serviceAccount={} loginEnabled={}",
                 saved.getTenantId(), saved.getName(), saved.getId(),
                 saved.isServiceAccount(), saved.isLoginEnabled());
@@ -371,6 +373,7 @@ public class UserService {
                         "User '" + name + "' not found in tenant '" + tenantId + "'"));
         permissionBootstrapProvider.ifAvailable(pb -> pb.revokeAll(tenantId, name));
         repository.delete(user);
+        megadodoService.userDeleted(tenantId, name);
         log.info("Deleted user tenantId='{}' name='{}'", tenantId, name);
     }
 

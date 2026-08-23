@@ -49,6 +49,7 @@ import RagTab from './RagTab.vue';
 import UsageCostTab from './UsageCostTab.vue';
 import ZarniwoopTab from './ZarniwoopTab.vue';
 import ToolUsageTab from './ToolUsageTab.vue';
+import MegadodoTab from './MegadodoTab.vue';
 import {
   ChatRole,
   type MarvinNodeInsightsDto,
@@ -113,6 +114,7 @@ type TopTab = InsightsTopTab;
 // without an extra click.
 const ALL_TABS: ReadonlyArray<{ key: TopTab; label: string }> = [
   { key: 'sessions', label: 'Sessions' },
+  { key: 'activity', label: 'Activity' },
   { key: 'recipes', label: 'Recipes' },
   { key: 'tools', label: 'Tools' },
   { key: 'health', label: 'Health' },
@@ -869,6 +871,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       <RagTab v-else-if="topTab === 'rag'" :project-id="effectiveProjectId" />
       <ZarniwoopTab v-else-if="topTab === 'research'" :project-id="effectiveProjectId" />
       <ToolUsageTab v-else-if="topTab === 'tool-usage'" :project-id="effectiveProjectId" />
+      <MegadodoTab v-else-if="topTab === 'activity'" :project-id="effectiveProjectId" />
       <ClusterTab v-else-if="topTab === 'cluster'" />
       <AddonsTab v-else-if="topTab === 'addons'" />
       <UsageCostTab v-else-if="topTab === 'usage'" />

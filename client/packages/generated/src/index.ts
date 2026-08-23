@@ -409,3 +409,8 @@ export * from './starred/StarredItemDto';
 export * from './starred/StarredRequest';
 export * from './starred/StarredReconcileEntryDto';
 export * from './starred/StarredReconcileDto';
+export * from './megadodo/MegadodoPhase';
+export * from './megadodo/MegadodoSeverity';
+export * from './megadodo/MegadodoRefType';
+export * from './megadodo/MegadodoEventDto';
+export * from './megadodo/MegadodoPageDto';

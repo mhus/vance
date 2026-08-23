@@ -91,6 +91,8 @@ public class UrsaSchedulerService {
     private final UrsaFireClaimService fireClaimService;
     /** Durable "already fired" state for {@code at:} schedulers. */
     private final UrsaOneShotFireService oneShotFireService;
+    /** Coarse activity feed for the project owner — see MegadodoService. */
+    private final de.mhus.vance.shared.megadodo.MegadodoService megadodoService;
     /** For auto-disable notifications — see {@link #autoDisableScheduler}. */
     private final InboxItemService inboxItemService;
 
@@ -586,6 +588,12 @@ public class UrsaSchedulerService {
                 /*sessionId*/ null, /*processId*/ null, runAs, triggeredPayload);
         schedulerLogService.onTriggered(reg.tenantId, reg.projectId, cfg.name(),
                 correlationId, trigger, runAs, firedAt);
+        // Feed START. Emitted on the tick, not after the spawn: the reader
+        // wants to see that something began, and the detail-log path is
+        // only computable here where firedAt lives.
+        megadodoService.schedulerRunStarted(
+                reg.tenantId, reg.projectId, cfg.name(), correlationId, runAs,
+                SchedulerLogService.pathFor(cfg.name(), firedAt, correlationId));
         countFire(cfg.name(), "triggered");
 
         synchronized (reg.lock) {
@@ -632,6 +640,8 @@ public class UrsaSchedulerService {
                         /*sessionId*/ null, /*processId*/ null, runAs,
                         Map.of("reason", "overlap"));
                 schedulerLogService.onSkipped(correlationId, "overlap");
+                megadodoService.schedulerRunSkipped(reg.tenantId, reg.projectId,
+                        reg.config.name(), correlationId, "previous run still active");
                 countFire(reg.config.name(), "skipped_overlap");
                 log.info("Scheduler '{}/{}/{}' tick skipped — prior run still active",
                         reg.tenantId, reg.projectId, reg.config.name());
@@ -644,6 +654,9 @@ public class UrsaSchedulerService {
                         /*sessionId*/ null, /*processId*/ null, runAs,
                         Map.of("reason", "overlap", "queued", Boolean.TRUE));
                 schedulerLogService.onSkipped(correlationId, "overlap_queued");
+                megadodoService.schedulerRunSkipped(reg.tenantId, reg.projectId,
+                        reg.config.name(), correlationId,
+                        "previous run still active, this tick queued");
                 countFire(reg.config.name(), "queued_overlap");
                 log.info("Scheduler '{}/{}/{}' tick queued — prior run still active",
                         reg.tenantId, reg.projectId, reg.config.name());
@@ -700,6 +713,8 @@ public class UrsaSchedulerService {
                     /*sessionId*/ null, /*processId*/ null, runAs,
                     Map.of("phase", "action_build", "error", ex.getMessage()));
             schedulerLogService.onFailed(correlationId, "action_build", ex.getMessage());
+            megadodoService.schedulerRunFinished(reg.tenantId, reg.projectId, cfg.name(),
+                    correlationId, false, "invalid action definition: " + ex.getMessage(), null);
             countFire(cfg.name(), "failed");
             return;
         }
@@ -734,6 +749,8 @@ public class UrsaSchedulerService {
                     parentSessionId, /*processId*/ null, runAs,
                     Map.of("phase", "dispatch", "error", ex.getMessage()));
             schedulerLogService.onFailed(correlationId, "dispatch", ex.getMessage());
+            megadodoService.schedulerRunFinished(reg.tenantId, reg.projectId, cfg.name(),
+                    correlationId, false, ex.getMessage(), null);
             countFire(cfg.name(), "failed");
             return;
         }
@@ -749,6 +766,8 @@ public class UrsaSchedulerService {
                     EventType.FAILED, correlationId,
                     parentSessionId, /*processId*/ null, runAs, failPayload);
             schedulerLogService.onFailed(correlationId, "execute", result.errorMessage());
+            megadodoService.schedulerRunFinished(reg.tenantId, reg.projectId, cfg.name(),
+                    correlationId, false, result.errorMessage(), null);
             countFire(cfg.name(), "failed");
 
             // Recipe-resolution failures (typically a hallucinated or
@@ -822,6 +841,8 @@ public class UrsaSchedulerService {
                     parentSessionId, /*processId*/ null, runAs,
                     donePayload.isEmpty() ? null : donePayload);
             schedulerLogService.onTerminated(correlationId, "completed", Instant.now());
+            megadodoService.schedulerRunFinished(reg.tenantId, reg.projectId, cfg.name(),
+                    correlationId, true, null, null);
             countFire(cfg.name(), "completed");
         }
 

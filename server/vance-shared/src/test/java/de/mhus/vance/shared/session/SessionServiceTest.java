@@ -37,7 +37,7 @@ class SessionServiceTest {
     void setUp() {
         repository = mock(SessionRepository.class);
         mongoTemplate = mock(MongoTemplate.class);
-        service = new SessionService(repository, mongoTemplate);
+        service = new SessionService(repository, mongoTemplate, mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
     }
 
     @Test

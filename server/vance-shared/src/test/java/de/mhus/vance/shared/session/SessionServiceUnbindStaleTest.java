@@ -33,7 +33,7 @@ class SessionServiceUnbindStaleTest {
         when(mongo.updateMulti(any(Query.class), any(Update.class), eq(SessionDocument.class)))
                 .thenReturn(result);
 
-        SessionService service = new SessionService(mock(SessionRepository.class), mongo);
+        SessionService service = new SessionService(mock(SessionRepository.class), mongo, mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
         Instant cutoff = Instant.parse("2026-06-12T06:00:00Z");
 
         long n = service.unbindStaleConnections(cutoff);
@@ -72,7 +72,7 @@ class SessionServiceUnbindStaleTest {
         when(mongo.updateMulti(any(Query.class), any(Update.class), eq(SessionDocument.class)))
                 .thenReturn(result);
 
-        SessionService service = new SessionService(mock(SessionRepository.class), mongo);
+        SessionService service = new SessionService(mock(SessionRepository.class), mongo, mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
 
         long n = service.unbindStaleConnections(Instant.now());
 

@@ -31,7 +31,7 @@ class ToolHealthServiceRetryTest {
     void setUp() {
         repository = mock(ToolHealthRepository.class);
         MongoTemplate mongoTemplate = mock(MongoTemplate.class);
-        service = new ToolHealthService(mongoTemplate, repository);
+        service = new ToolHealthService(mongoTemplate, repository, mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
         // Each read returns a FRESH document — models Mongo re-reads on retry
         // (the failed attempt's in-memory mutations are not persisted).
         when(repository.findByTenantIdAndScopeAndScopeIdAndToolName(

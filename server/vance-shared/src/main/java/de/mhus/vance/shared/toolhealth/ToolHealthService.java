@@ -46,6 +46,7 @@ public class ToolHealthService {
     private static final String F_VERSION = "version";
     private final MongoTemplate mongoTemplate;
     private final ToolHealthRepository repository;
+    private final de.mhus.vance.shared.megadodo.MegadodoService megadodoService;
 
     // ───────────────────────────────── Read paths
 
@@ -223,8 +224,31 @@ public class ToolHealthService {
             log.info("ToolHealth {} {} '{}' {} → {} by={} expectedRecoveryAt={}",
                     scope, nullToEmpty(scopeId), toolName,
                     classification, newStatus, by, expectedRecoveryAt);
-            return repository.save(doc);
+            ToolHealthDocument persisted = repository.save(doc);
+            if (statusChanged) {
+                // Only transitions reach the feed. Repeating "still down"
+                // on every failed call would bury everything else.
+                megadodoService.toolHealthChanged(
+                        tenantId,
+                        scope == ToolHealthScope.PROJECT ? scopeId : null,
+                        toolName,
+                        newStatus != ToolHealthStatus.OK,
+                        feedDetail(classification, note));
+            }
+            return persisted;
         });
+    }
+
+    /**
+     * Short human-readable cause for the activity feed: the classification
+     * plus whatever note the caller left. This is the line a project owner
+     * reads to decide whether they have to do something.
+     */
+    private static @Nullable String feedDetail(
+            ToolHealthClassification classification, @Nullable String note) {
+        String cls = classification == null ? null : classification.name().toLowerCase();
+        if (note == null || note.isBlank()) return cls;
+        return cls == null ? note.trim() : cls + " — " + note.trim();
     }
 
     // ───────────────────────────────── Cooldown writes

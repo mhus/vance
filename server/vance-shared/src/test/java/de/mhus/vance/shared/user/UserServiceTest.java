@@ -58,7 +58,7 @@ class UserServiceTest {
             inv.<Consumer<PermissionBootstrap>>getArgument(0).accept(permissionBootstrap);
             return null;
         }).when(bootstrapProvider).ifAvailable(any());
-        service = new UserService(repo, mongoTemplate, bootstrapProvider);
+        service = new UserService(repo, mongoTemplate, bootstrapProvider, mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
         when(repo.save(any(UserDocument.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 

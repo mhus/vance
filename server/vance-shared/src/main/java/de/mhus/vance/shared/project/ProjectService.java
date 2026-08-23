@@ -86,6 +86,7 @@ public class ProjectService {
     private final ProjectRepository repository;
     private final MongoTemplate mongoTemplate;
     private final AuditService auditService;
+    private final de.mhus.vance.shared.megadodo.MegadodoService megadodoService;
     /** Lazy — ProjectService is a core bean; resolve the permission layer
      *  on demand to keep it out of this service's construction graph. */
     private final org.springframework.beans.factory.ObjectProvider<
@@ -205,6 +206,7 @@ public class ProjectService {
                 saved.getTenantId(), saved.getName(), saved.getKind(),
                 saved.getLifecycleType(), saved.getId());
         auditService.projectCreate(tenantId, name);
+        megadodoService.projectCreated(tenantId, name, /*actor*/ null);
         return saved;
     }
 
@@ -436,6 +438,7 @@ public class ProjectService {
         log.info("Closed project tenantId='{}' name='{}' → group='{}'",
                 tenantId, name, closedGroupId);
         auditService.projectClose(tenantId, name, closedGroupId);
+        megadodoService.projectClosed(tenantId, name, /*actor*/ null);
         return updated;
     }
 

@@ -52,6 +52,7 @@ public class UrsaSchedulerProcessTerminationListener {
     private final ThinkProcessService thinkProcessService;
     private final UrsaSchedulerService schedulerService;
     private final SchedulerLogService schedulerLogService;
+    private final de.mhus.vance.shared.megadodo.MegadodoService megadodoService;
 
     @EventListener
     public void onStatusChanged(ThinkProcessStatusChangedEvent event) {
@@ -116,11 +117,38 @@ public class UrsaSchedulerProcessTerminationListener {
                 payload);
         schedulerLogService.onTerminated(
                 runId, terminalType.name().toLowerCase(), java.time.Instant.now());
+        megadodoService.schedulerRunFinished(
+                event.tenantId(), projectId, schedulerNameOf(source), runId,
+                terminalType == EventType.COMPLETED,
+                terminalType == EventType.COMPLETED ? null : closeReasonText(closeReason),
+                /*logPath*/ null);
         log.info("Scheduler run terminated source='{}' process='{}' closeReason={} → {}",
                 source, event.processId(), closeReason, terminalType);
 
         // Wake the queued-tick path if any.
         schedulerService.onProcessTerminated(event.tenantId(), projectId, event.processId());
+    }
+
+    /** {@code "ursascheduler:nightly"} → {@code "nightly"} for the feed. */
+    private static String schedulerNameOf(String source) {
+        return source.startsWith(UrsaSchedulerSourceKeys.SOURCE_PREFIX)
+                ? source.substring(UrsaSchedulerSourceKeys.SOURCE_PREFIX.length())
+                : source;
+    }
+
+    /** Why the run did not complete, in words a project owner can read. */
+    private static String closeReasonText(@org.jspecify.annotations.Nullable CloseReason reason) {
+        if (reason == null) return "ended without a close reason";
+        return switch (reason) {
+            case INCOMPLETE -> "the agent stopped before finishing";
+            case STALE -> "no progress, gave up";
+            case STOPPED -> "stopped";
+            case AUTO_CLOSE -> "closed automatically";
+            case ARCHIVED -> "archived";
+            case USER_DELETE -> "deleted";
+            case ABANDONED -> "abandoned";
+            case DONE -> "done";
+        };
     }
 
     private static @org.jspecify.annotations.Nullable EventType mapTerminalType(

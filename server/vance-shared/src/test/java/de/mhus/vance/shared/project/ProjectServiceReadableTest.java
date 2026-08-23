@@ -28,7 +28,8 @@ class ProjectServiceReadableTest {
     private final ObjectProvider<PermissionService> provider = mock(ObjectProvider.class);
 
     private final ProjectService service = new ProjectService(
-            repository, mock(MongoTemplate.class), mock(AuditService.class), provider);
+            repository, mock(MongoTemplate.class), mock(AuditService.class),
+            mock(de.mhus.vance.shared.megadodo.MegadodoService.class), provider);
 
     @Test
     void listReadableBy_keeps_only_readable_projects() {

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.zarniwoop.protocols.SimpleHttpClient.Response;
+import de.mhus.vance.toolpack.research.ProviderAvailability;
 import de.mhus.vance.toolpack.research.ProviderInstanceConfig;
 import de.mhus.vance.toolpack.research.SearchHit;
 import de.mhus.vance.toolpack.research.SearchModality;
@@ -175,5 +176,21 @@ class HackerNewsProtocolTest {
                         .search(SearchRequest.normal("q", SearchModality.NEWS, 5), SCOPE))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("HTTP 503");
+    }
+
+    @Test
+    void availabilityIgnoresABlankBaseUrl_becauseTheRequestPathDefaultsIt() {
+        // Regression: availability() checked cfg.baseUrl() for blank and said
+        // DISABLED, while baseUrl() two methods down resolves the same blank
+        // value to the public endpoint. An instance configured with nothing but
+        // `protocol:` was therefore skipped by the dispatcher although every
+        // request it would have made was well-formed. Found on a live system
+        // where five of six sources sat idle for exactly this reason.
+        ProviderInstanceConfig blank = new ProviderInstanceConfig(
+                "hn-no-url", "hackernews", "", "", Map.of());
+
+        assertThat(new HackerNewsProtocol(new ObjectMapper(), mock(SimpleHttpClient.class)).instantiate(blank)
+                        .availability(SearchScope.of("acme", "proj")))
+                .isEqualTo(ProviderAvailability.READY);
     }
 }

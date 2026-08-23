@@ -111,9 +111,16 @@ public class ArxivProtocol implements SearchProtocol {
 
         @Override
         public ProviderAvailability availability(SearchScope scope) {
-            return StringUtils.isBlank(cfg.baseUrl())
-                    ? ProviderAvailability.DISABLED
-                    : ProviderAvailability.READY;
+            // Keyless and with a built-in fallback in baseUrl(), so there is no
+            // state in which this instance cannot be asked. It used to report
+            // DISABLED on a blank cfg.baseUrl() — which contradicted the request
+            // path two methods down, where the very same blank value resolves to
+            // https://export.arxiv.org/api. An endpoint that was never given a URL was
+            // therefore skipped by the dispatcher while being perfectly usable.
+            // Switching a source off is `enabled: false` (the gate's job), and
+            // being unreachable surfaces as a cooldown. Same reasoning as
+            // PubMedProtocol, which had it right.
+            return ProviderAvailability.READY;
         }
 
         @Override public Optional<QuotaStatus> currentQuota(SearchScope scope) {

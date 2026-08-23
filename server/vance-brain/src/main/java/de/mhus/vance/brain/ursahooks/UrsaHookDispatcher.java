@@ -1,14 +1,12 @@
 package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.api.action.TriggerAction;
-import de.mhus.vance.api.eventlog.EventType;
 import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionOutcome;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.TriggerContext;
 import de.mhus.vance.api.action.TriggerKind;
-import de.mhus.vance.shared.eventlog.EventLogService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import java.time.Duration;
@@ -53,7 +51,6 @@ public class UrsaHookDispatcher implements DisposableBean {
 
     private final UrsaHookRegistry registry;
     private final ActionExecutorRegistry actionRegistry;
-    private final EventLogService eventLogService;
     private final SessionService sessionService;
     private final de.mhus.vance.shared.megadodo.MegadodoService megadodoService;
     private final ExecutorService runnerPool;
@@ -69,12 +66,10 @@ public class UrsaHookDispatcher implements DisposableBean {
     public UrsaHookDispatcher(
             UrsaHookRegistry registry,
             ActionExecutorRegistry actionRegistry,
-            EventLogService eventLogService,
             SessionService sessionService,
             de.mhus.vance.shared.megadodo.MegadodoService megadodoService) {
         this.registry = registry;
         this.actionRegistry = actionRegistry;
-        this.eventLogService = eventLogService;
         this.sessionService = sessionService;
         this.megadodoService = megadodoService;
         AtomicLong tid = new AtomicLong();
@@ -113,18 +108,6 @@ public class UrsaHookDispatcher implements DisposableBean {
         String correlationId = "hook_" + UUID.randomUUID();
         Instant firedAt = event.firedAt() == null ? Instant.now() : event.firedAt();
 
-        Map<String, Object> triggerPayload = new LinkedHashMap<>();
-        triggerPayload.put("actionType", def.actionType());
-        if (def.description() != null) {
-            triggerPayload.put("description", def.description());
-        }
-        eventLogService.append(
-                event.tenantId(), event.projectId(),
-                def.sourceKey(),
-                EventType.TRIGGERED, correlationId,
-                /*sessionId*/ null, /*processId*/ null,
-                def.createdByUserId(),
-                triggerPayload);
         megadodoService.hookRunStarted(
                 event.tenantId(), event.projectId(), def.name(), correlationId,
                 def.event().wireName());
@@ -166,44 +149,21 @@ public class UrsaHookDispatcher implements DisposableBean {
         }
         Duration duration = Duration.between(start, Instant.now());
 
-        EventType terminalType;
-        Map<String, Object> terminalPayload = new LinkedHashMap<>();
-        terminalPayload.put("durationMs", duration.toMillis());
         ActionOutcome outcome = result.outcome();
-        if (outcome == ActionOutcome.SCHEDULED || outcome == ActionOutcome.SUCCESS) {
-            terminalType = EventType.COMPLETED;
-            if (result.spawnedId() != null) {
-                terminalPayload.put("spawnedId", result.spawnedId());
-            }
-            if (result.output() != null) {
-                terminalPayload.put("output", result.output());
-            }
-        } else {
-            terminalType = EventType.FAILED;
-            terminalPayload.put("outcome", outcome.name());
-            if (result.errorMessage() != null) {
-                terminalPayload.put("error", result.errorMessage());
-            }
-        }
-        eventLogService.append(
-                event.tenantId(), event.projectId(),
-                def.sourceKey(),
-                terminalType, correlationId,
-                /*sessionId*/ null, /*processId*/ null,
-                def.createdByUserId(),
-                terminalPayload);
+        boolean succeeded =
+                outcome == ActionOutcome.SCHEDULED || outcome == ActionOutcome.SUCCESS;
 
         megadodoService.hookRunFinished(
                 event.tenantId(), event.projectId(), def.name(), correlationId,
-                terminalType != EventType.FAILED,
+                succeeded,
                 result.errorMessage() == null ? outcome.name().toLowerCase() : result.errorMessage());
 
-        if (terminalType == EventType.FAILED) {
+        if (!succeeded) {
             log.info("hook '{}' FAILED outcome={} error={}",
                     def.sourceKey(), outcome, result.errorMessage());
         } else {
             log.debug("hook '{}' {} durationMs={}{}",
-                    def.sourceKey(), terminalType,
+                    def.sourceKey(), outcome,
                     duration.toMillis(),
                     result.spawnedId() == null ? "" : " spawnedId=" + result.spawnedId());
         }

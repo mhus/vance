@@ -9,10 +9,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.action.TriggerKind;
-import de.mhus.vance.api.eventlog.EventType;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
-import de.mhus.vance.shared.eventlog.EventLogService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessStatusChangedEvent;
@@ -40,8 +38,6 @@ class UrsaSchedulerProcessTerminationListenerTest {
     private static final String RUN = "run_7";
 
     @Mock
-    private EventLogService eventLogService;
-    @Mock
     private ThinkProcessService thinkProcessService;
     @Mock
     private UrsaSchedulerService schedulerService;
@@ -59,9 +55,6 @@ class UrsaSchedulerProcessTerminationListenerTest {
 
         listener.onStatusChanged(closedEvent());
 
-        verify(eventLogService).append(
-                eq(TENANT), eq(PROJECT), eq(SOURCE), eq(EventType.COMPLETED),
-                eq(RUN), any(), eq(PROCESS), eq("marvin"), any());
         verify(schedulerLogService).onTerminated(eq(RUN), eq("completed"), any());
         verify(megadodoService).schedulerRunFinished(
                 eq(TENANT), eq(PROJECT), eq("nightly"), eq(RUN), eq(true), any(), any());
@@ -77,7 +70,7 @@ class UrsaSchedulerProcessTerminationListenerTest {
                 ThinkProcessStatus.RUNNING, ThinkProcessStatus.BLOCKED));
 
         verify(schedulerLogService).onBlocked(eq(RUN), anyString());
-        verifyNoInteractions(eventLogService, schedulerService, megadodoService);
+        verifyNoInteractions(schedulerService, megadodoService);
     }
 
     @Test
@@ -89,7 +82,7 @@ class UrsaSchedulerProcessTerminationListenerTest {
 
         listener.onStatusChanged(closedEvent());
 
-        verifyNoInteractions(eventLogService, schedulerLogService, schedulerService, megadodoService);
+        verifyNoInteractions(schedulerLogService, schedulerService, megadodoService);
     }
 
     @Test
@@ -99,7 +92,7 @@ class UrsaSchedulerProcessTerminationListenerTest {
 
         listener.onStatusChanged(closedEvent());
 
-        verifyNoInteractions(eventLogService, schedulerLogService, schedulerService, megadodoService);
+        verifyNoInteractions(schedulerLogService, schedulerService, megadodoService);
     }
 
     @Test
@@ -110,7 +103,7 @@ class UrsaSchedulerProcessTerminationListenerTest {
         listener.onStatusChanged(closedEvent());
 
         verify(schedulerLogService, never()).onTerminated(any(), any(), any());
-        verifyNoInteractions(eventLogService, schedulerService, megadodoService);
+        verifyNoInteractions(schedulerService, megadodoService);
     }
 
     @Test
@@ -119,7 +112,7 @@ class UrsaSchedulerProcessTerminationListenerTest {
 
         listener.onStatusChanged(closedEvent());
 
-        verifyNoInteractions(eventLogService, schedulerLogService, schedulerService, megadodoService);
+        verifyNoInteractions(schedulerLogService, schedulerService, megadodoService);
     }
 
     // ──── helpers ────────────────────────────────────────────────────

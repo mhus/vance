@@ -288,8 +288,6 @@ export * from './notification/NotificationSeverity';
 
 export * from './recipe/RecipeListedDto';
 
-export * from './eventlog/EventLogEntryDto';
-export * from './eventlog/EventType';
 
 export * from './ursahooks/UrsaHookDto';
 export * from './ursahooks/UrsaHookEventName';

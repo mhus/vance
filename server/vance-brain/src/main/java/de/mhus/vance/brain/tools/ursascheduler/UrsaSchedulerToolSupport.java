@@ -1,13 +1,12 @@
 package de.mhus.vance.brain.tools.ursascheduler;
 
-import de.mhus.vance.api.eventlog.EventType;
+import de.mhus.vance.api.megadodo.MegadodoRefType;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.ursascheduler.UrsaSchedulerService;
 import de.mhus.vance.brain.ursascheduler.UrsaSchedulerSourceKeys;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.shared.eventlog.EventLogDocument;
-import de.mhus.vance.shared.eventlog.EventLogService;
+import de.mhus.vance.shared.megadodo.MegadodoService;
 import de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler;
 import de.mhus.vance.shared.ursascheduler.UrsaSchedulerLoader;
 import de.mhus.vance.toolpack.ToolException;
@@ -38,7 +37,7 @@ class UrsaSchedulerToolSupport {
 
     private final DocumentService documentService;
     private final UrsaSchedulerLoader loader;
-    private final EventLogService eventLogService;
+    private final MegadodoService megadodoService;
     private final UrsaSchedulerService schedulerService;
     private final RecipeResolver recipeResolver;
     private final de.mhus.vance.shared.settings.TimezoneResolver timezoneResolver;
@@ -230,17 +229,16 @@ class UrsaSchedulerToolSupport {
         }
         if (!r.tags().isEmpty()) out.put("tags", r.tags());
 
-        EventType[] activityTypes = {
-                EventType.STARTED, EventType.COMPLETED, EventType.FAILED, EventType.SKIPPED};
-        Optional<EventLogDocument> last = eventLogService.findLatest(
-                tenantId,
-                UrsaSchedulerSourceKeys.sourceFor(r.name()),
-                List.of(activityTypes));
-        last.ifPresent(e -> {
+        megadodoService.latestForRef(
+                tenantId, projectId, MegadodoRefType.SCHEDULER, r.name()).ifPresent(e -> {
             Map<String, Object> lastRun = new LinkedHashMap<>();
             lastRun.put("at", e.getTimestamp());
-            lastRun.put("type", e.getType().name());
-            if (e.getCorrelationId() != null) lastRun.put("correlationId", e.getCorrelationId());
+            // Outcome once the run closed; the phase while it is open, so
+            // the model can tell "running" from "finished ok".
+            lastRun.put("outcome",
+                    e.getOutcome() != null ? e.getOutcome() : e.getPhase().name().toLowerCase());
+            if (e.getMessage() != null) lastRun.put("message", e.getMessage());
+            lastRun.put("runId", e.getTraceId());
             out.put("lastRun", lastRun);
         });
         Instant next = schedulerService.nextFireFor(tenantId, projectId, r.name());

@@ -267,17 +267,13 @@ function formatTimestamp(value?: Date | string | null): string {
               class="border border-base-300 rounded p-2 text-xs space-y-0.5"
             >
               <div class="flex items-center justify-between">
-                <span class="font-mono font-semibold">{{ e.type }}</span>
+                <span class="font-mono font-semibold">
+                  {{ e.outcome ?? e.phase.toLowerCase() }}
+                </span>
                 <span class="text-base-content/60">{{ formatTimestamp(e.timestamp) }}</span>
               </div>
-              <div v-if="e.processId" class="text-base-content/60">
-                {{ t('scheduler.process') }}: {{ e.processId }}
-              </div>
-              <div v-if="e.payload?.error" class="text-error">
-                {{ e.payload.error }}
-              </div>
-              <div v-if="e.payload?.reason" class="text-base-content/60">
-                {{ t('scheduler.reason') }}: {{ e.payload.reason }}
+              <div :class="e.outcome === 'failure' ? 'text-error' : 'text-base-content/60'">
+                {{ e.message }}
               </div>
             </li>
           </ul>

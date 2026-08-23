@@ -1,7 +1,7 @@
 import { ref, type Ref } from 'vue';
 import { brainFetch } from '@vance/shared';
 import type {
-  EventLogEntryDto,
+  MegadodoEventDto,
   SchedulerDto,
   SchedulerSaveRequest,
   SchedulerSummary,
@@ -20,7 +20,7 @@ export interface FireResult {
 export function useSchedulers(): {
   schedulers: Ref<SchedulerSummary[]>;
   current: Ref<SchedulerDto | null>;
-  events: Ref<EventLogEntryDto[]>;
+  events: Ref<MegadodoEventDto[]>;
   loading: Ref<boolean>;
   busy: Ref<boolean>;
   error: Ref<string | null>;
@@ -35,7 +35,7 @@ export function useSchedulers(): {
 } {
   const schedulers = ref<SchedulerSummary[]>([]);
   const current = ref<SchedulerDto | null>(null);
-  const events = ref<EventLogEntryDto[]>([]);
+  const events = ref<MegadodoEventDto[]>([]);
   const loading = ref(false);
   const busy = ref(false);
   const error = ref<string | null>(null);
@@ -78,7 +78,7 @@ export function useSchedulers(): {
     limit = 50,
   ): Promise<void> {
     try {
-      events.value = await brainFetch<EventLogEntryDto[]>(
+      events.value = await brainFetch<MegadodoEventDto[]>(
         'GET',
         `project/${encodeURIComponent(projectId)}/scheduler/${encodeURIComponent(name)}/events?limit=${limit}`,
       );

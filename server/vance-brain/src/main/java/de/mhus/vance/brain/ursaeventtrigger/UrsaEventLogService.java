@@ -41,7 +41,13 @@ import org.springframework.stereotype.Service;
 public class UrsaEventLogService {
 
     public static final String LOG_FOLDER_PREFIX = "_vance/logs/events/";
-    public static final String DOCUMENT_KIND = "event-log";
+    /**
+     * Tag on the per-run log documents. Renamed from {@code "event-log"}
+     * when the unrelated {@code event_log} <em>collection</em> was retired:
+     * three different things carried that name, which sent more than one
+     * reading of the code down the wrong path.
+     */
+    public static final String DOCUMENT_KIND = "ursa-event-log";
 
     /**
      * Setting key for the per-tenant retention override (project
@@ -206,7 +212,7 @@ public class UrsaEventLogService {
                     out.projectId(),
                     path,
                     "Event '" + out.eventName() + "' — " + correlationId,
-                    List.of("event-log", out.eventName(), out.outcome()),
+                    List.of(DOCUMENT_KIND, out.eventName(), out.outcome()),
                     body,
                     "ursaeventtrigger",
                     expiresAt,

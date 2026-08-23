@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -362,6 +363,35 @@ public class MegadodoService {
             next = new Cursor(last.getTimestamp(), String.valueOf(last.getId())).encode();
         }
         return new MegadodoPage(List.copyOf(rows), next);
+    }
+
+    /**
+     * Recent rows about one thing, newest first — the run history of a
+     * scheduler, a hook, a tool. Replaces the per-subsystem
+     * {@code event_log} lookups those views used to do.
+     */
+    public List<MegadodoEventDocument> listForRef(
+            String tenantId,
+            @Nullable String projectId,
+            MegadodoRefType refType,
+            String refId,
+            int limit) {
+        return query(new MegadodoQuery(tenantId, projectId, null, null, null, null,
+                refType, refId, null, null, null, limit)).items();
+    }
+
+    /**
+     * Newest row about one thing — the "when did this last run?" lookup.
+     * Empty when nothing was ever recorded, or when the retention window
+     * has moved past it.
+     */
+    public Optional<MegadodoEventDocument> latestForRef(
+            String tenantId,
+            @Nullable String projectId,
+            MegadodoRefType refType,
+            String refId) {
+        List<MegadodoEventDocument> rows = listForRef(tenantId, projectId, refType, refId, 1);
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
 
     /** Every row of one operation, oldest first — the expanded trace view. */

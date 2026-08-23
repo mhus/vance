@@ -3,8 +3,7 @@ package de.mhus.vance.brain.tools.hooks;
 import de.mhus.vance.api.ursahooks.UrsaHookEventName;
 import de.mhus.vance.brain.ursahooks.UrsaHookDef;
 import de.mhus.vance.brain.ursahooks.UrsaHookSourceKeys;
-import de.mhus.vance.shared.eventlog.EventLogDocument;
-import de.mhus.vance.shared.eventlog.EventLogService;
+import de.mhus.vance.shared.megadodo.MegadodoService;
 import de.mhus.vance.toolpack.ToolException;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,7 +24,7 @@ public class HookToolSupport {
     private static final Pattern NAME_PATTERN =
             Pattern.compile("[a-z0-9][a-z0-9_-]{0,63}");
 
-    private final EventLogService eventLogService;
+    private final MegadodoService megadodoService;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
     private final de.mhus.vance.shared.permission.PermissionService permissionService;
 
@@ -74,7 +73,7 @@ public class HookToolSupport {
     }
 
     /** Tool-friendly projection of a hook definition. */
-    public Map<String, Object> shape(String tenantId, UrsaHookDef def) {
+    public Map<String, Object> shape(String tenantId, String projectId, UrsaHookDef def) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("name", def.name());
         m.put("event", def.event().wireName());
@@ -86,16 +85,14 @@ public class HookToolSupport {
         if (def.tags() != null && !def.tags().isEmpty()) {
             m.put("tags", List.copyOf(def.tags()));
         }
-        // Last-run summary from the event log.
-        Optional<EventLogDocument> last = eventLogService.findLatest(
-                tenantId, def.sourceKey(),
-                List.of(de.mhus.vance.api.eventlog.EventType.COMPLETED,
-                        de.mhus.vance.api.eventlog.EventType.FAILED,
-                        de.mhus.vance.api.eventlog.EventType.SKIPPED));
-        if (last.isPresent()) {
-            m.put("lastRunAt", last.get().getTimestamp().toString());
-            m.put("lastRunType", last.get().getType().name());
-        }
+        // Last-run summary from the activity feed.
+        megadodoService.latestForRef(
+                tenantId, projectId, de.mhus.vance.api.megadodo.MegadodoRefType.HOOK, def.name())
+                .ifPresent(last -> {
+                    m.put("lastRunAt", last.getTimestamp().toString());
+                    if (last.getOutcome() != null) m.put("lastRunOutcome", last.getOutcome());
+                    if (last.getMessage() != null) m.put("lastRunMessage", last.getMessage());
+                });
         return m;
     }
 

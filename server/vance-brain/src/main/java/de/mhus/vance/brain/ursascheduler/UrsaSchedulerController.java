@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.ursascheduler;
 
-import de.mhus.vance.api.eventlog.EventLogEntryDto;
-import de.mhus.vance.api.eventlog.EventType;
+import de.mhus.vance.api.megadodo.MegadodoEventDto;
+import de.mhus.vance.api.megadodo.MegadodoRefType;
 import de.mhus.vance.api.ursascheduler.LockMode;
 import de.mhus.vance.api.ursascheduler.OverlapPolicy;
 import de.mhus.vance.api.ursascheduler.SchedulerDto;
@@ -11,8 +11,9 @@ import de.mhus.vance.api.ursascheduler.SchedulerSummary;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.shared.eventlog.EventLogDocument;
-import de.mhus.vance.shared.eventlog.EventLogService;
+import de.mhus.vance.brain.megadodo.MegadodoMapper;
+import de.mhus.vance.shared.megadodo.MegadodoEventDocument;
+import de.mhus.vance.shared.megadodo.MegadodoService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler;
@@ -59,7 +60,7 @@ public class UrsaSchedulerController {
     private final UrsaSchedulerLoader loader;
     private final UrsaSchedulerService schedulerService;
     private final DocumentService documentService;
-    private final EventLogService eventLogService;
+    private final MegadodoService megadodoService;
     private final RequestAuthority authority;
 
     // ─── List ─────────────────────────────────────────────────────────────
@@ -212,7 +213,7 @@ public class UrsaSchedulerController {
     // ─── Events ───────────────────────────────────────────────────────────
 
     @GetMapping("/scheduler/{name}/events")
-    public List<EventLogEntryDto> listEvents(
+    public List<MegadodoEventDto> listEvents(
             @PathVariable("tenant") String tenant,
             @PathVariable("project") String project,
             @PathVariable("name") String name,
@@ -220,23 +221,19 @@ public class UrsaSchedulerController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
         String norm = normalizeName(name);
-        String source = UrsaSchedulerSourceKeys.sourceFor(norm);
-        List<EventLogDocument> rows = eventLogService.listBySource(tenant, source, limit);
-        List<EventLogEntryDto> out = new ArrayList<>(rows.size());
-        for (EventLogDocument e : rows) {
-            out.add(toEventDto(e));
-        }
-        return out;
+        return megadodoService
+                .listForRef(tenant, project, MegadodoRefType.SCHEDULER, norm, limit)
+                .stream()
+                .map(MegadodoMapper::toDto)
+                .toList();
     }
 
     // ─── Mappers ──────────────────────────────────────────────────────────
 
     private SchedulerSummary toSummary(String tenant, String project, ResolvedUrsaScheduler r) {
-        EventType[] activity = {
-                EventType.STARTED, EventType.COMPLETED, EventType.FAILED, EventType.SKIPPED};
-        Instant lastRun = eventLogService.findLatest(
-                tenant, UrsaSchedulerSourceKeys.sourceFor(r.name()), List.of(activity))
-                .map(EventLogDocument::getTimestamp)
+        Instant lastRun = megadodoService
+                .latestForRef(tenant, project, MegadodoRefType.SCHEDULER, r.name())
+                .map(MegadodoEventDocument::getTimestamp)
                 .orElse(null);
         return SchedulerSummary.builder()
                 .name(r.name())
@@ -269,22 +266,6 @@ public class UrsaSchedulerController {
                 .overlap(r.overlap() == null ? OverlapPolicy.SKIP : r.overlap())
                 .lockMode(r.lockMode() == null ? LockMode.FULL : r.lockMode())
                 .tags(r.tags())
-                .build();
-    }
-
-    private static EventLogEntryDto toEventDto(EventLogDocument e) {
-        return EventLogEntryDto.builder()
-                .id(e.getId())
-                .tenantId(e.getTenantId())
-                .projectId(e.getProjectId())
-                .source(e.getSource())
-                .type(e.getType())
-                .timestamp(e.getTimestamp())
-                .correlationId(e.getCorrelationId())
-                .sessionId(e.getSessionId())
-                .processId(e.getProcessId())
-                .runAs(e.getRunAs())
-                .payload(e.getPayload() == null || e.getPayload().isEmpty() ? null : e.getPayload())
                 .build();
     }
 

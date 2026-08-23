@@ -1,11 +1,12 @@
 package de.mhus.vance.brain.ursahooks;
 
-import de.mhus.vance.api.eventlog.EventLogEntryDto;
-import de.mhus.vance.api.eventlog.EventType;
+import de.mhus.vance.api.megadodo.MegadodoEventDto;
+import de.mhus.vance.api.megadodo.MegadodoRefType;
 import de.mhus.vance.api.ursahooks.*;
 import de.mhus.vance.brain.permission.RequestAuthority;
-import de.mhus.vance.shared.eventlog.EventLogDocument;
-import de.mhus.vance.shared.eventlog.EventLogService;
+import de.mhus.vance.brain.megadodo.MegadodoMapper;
+import de.mhus.vance.shared.megadodo.MegadodoEventDocument;
+import de.mhus.vance.shared.megadodo.MegadodoService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import jakarta.servlet.http.HttpServletRequest;
@@ -46,7 +47,7 @@ public class UrsaHookController {
 
     private final UrsaHookService ursaHookService;
     private final UrsaHookYamlParser parser;
-    private final EventLogService eventLogService;
+    private final MegadodoService megadodoService;
     private final RequestAuthority authority;
 
     // ─── List ──────────────────────────────────────────────────────────
@@ -60,7 +61,7 @@ public class UrsaHookController {
         List<UrsaHookDef> defs = ursaHookService.listAll(tenant, project);
         List<UrsaHookSummary> out = new ArrayList<>(defs.size());
         for (UrsaHookDef def : defs) {
-            out.add(toSummary(tenant, def));
+            out.add(toSummary(tenant, project, def));
         }
         out.sort(Comparator
                 .comparing(UrsaHookSummary::getEvent)
@@ -79,7 +80,7 @@ public class UrsaHookController {
         List<UrsaHookDef> defs = ursaHookService.listForEvent(tenant, project, event);
         List<UrsaHookSummary> out = new ArrayList<>(defs.size());
         for (UrsaHookDef def : defs) {
-            out.add(toSummary(tenant, def));
+            out.add(toSummary(tenant, project, def));
         }
         out.sort(Comparator.comparing(UrsaHookSummary::getName));
         return out;
@@ -181,7 +182,7 @@ public class UrsaHookController {
     // ─── Events ────────────────────────────────────────────────────────
 
     @GetMapping("/hooks/{event}/{name}/events")
-    public List<EventLogEntryDto> listEvents(
+    public List<MegadodoEventDto> listEvents(
             @PathVariable("tenant") String tenant,
             @PathVariable("project") String project,
             @PathVariable("event") String eventName,
@@ -189,23 +190,20 @@ public class UrsaHookController {
             @RequestParam(name = "limit", defaultValue = "50") int limit,
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
-        UrsaHookEventName event = parseEvent(eventName);
+        parseEvent(eventName);
         String norm = normalizeName(name);
-        String source = UrsaHookSourceKeys.sourceFor(event.wireName(), norm);
-        List<EventLogDocument> rows = eventLogService.listBySource(tenant, source, limit);
-        List<EventLogEntryDto> out = new ArrayList<>(rows.size());
-        for (EventLogDocument e : rows) {
-            out.add(toEventDto(e));
-        }
-        return out;
+        return megadodoService
+                .listForRef(tenant, project, MegadodoRefType.HOOK, norm, limit)
+                .stream()
+                .map(MegadodoMapper::toDto)
+                .toList();
     }
 
     // ─── Mappers ───────────────────────────────────────────────────────
 
-    private UrsaHookSummary toSummary(String tenantId, UrsaHookDef def) {
-        Optional<EventLogDocument> last = eventLogService.findLatest(
-                tenantId, def.sourceKey(),
-                List.of(EventType.COMPLETED, EventType.FAILED, EventType.SKIPPED));
+    private UrsaHookSummary toSummary(String tenantId, String projectId, UrsaHookDef def) {
+        Optional<MegadodoEventDocument> last = megadodoService.latestForRef(
+                tenantId, projectId, MegadodoRefType.HOOK, def.name());
         return UrsaHookSummary.builder()
                 .name(def.name())
                 .event(def.event().wireName())
@@ -214,8 +212,10 @@ public class UrsaHookController {
                 .enabled(def.enabled())
                 .description(def.description())
                 .tags(def.tags())
-                .lastRunAt(last.map(EventLogDocument::getTimestamp).orElse(null))
-                .lastRunType(last.map(e -> e.getType().name()).orElse(null))
+                .lastRunAt(last.map(MegadodoEventDocument::getTimestamp).orElse(null))
+                // Outcome of the newest row. Null while a run is still open —
+                // a START carries no outcome yet, and that is the honest answer.
+                .lastRunType(last.map(MegadodoEventDocument::getOutcome).orElse(null))
                 .build();
     }
 
@@ -246,23 +246,6 @@ public class UrsaHookController {
                     .build());
         }
         return b.build();
-    }
-
-    private static EventLogEntryDto toEventDto(EventLogDocument e) {
-        return EventLogEntryDto.builder()
-                .id(e.getId())
-                .tenantId(e.getTenantId())
-                .projectId(e.getProjectId())
-                .source(e.getSource())
-                .type(e.getType())
-                .timestamp(e.getTimestamp())
-                .correlationId(e.getCorrelationId())
-                .sessionId(e.getSessionId())
-                .processId(e.getProcessId())
-                .runAs(e.getRunAs())
-                .payload(e.getPayload() == null || e.getPayload().isEmpty()
-                        ? null : e.getPayload())
-                .build();
     }
 
     private static UrsaHookEventName parseEvent(String raw) {

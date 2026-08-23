@@ -63,7 +63,10 @@ public class BrainSchemaMigrations implements SchemaMigrationSource {
                     /*runOnBaseline*/ true),
             new Registered("2026-08-22_002",
                     Migrator_2026_08_22_002_OwnerRequiredWithoutProvisioning.class,
-                    /*runOnBaseline*/ true));
+                    /*runOnBaseline*/ true),
+            // Not runOnBaseline: a genuinely new database has no event_log to
+            // drop, and being stamped without running is exactly right.
+            new Registered("2026-08-23_001", Migrator_2026_08_23_001_DropEventLog.class));
 
     @Override
     public List<Registered> migrations() {

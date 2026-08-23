@@ -1,7 +1,7 @@
 import { ref, type Ref } from 'vue';
 import { brainFetch } from '@vance/shared';
 import type {
-  EventLogEntryDto,
+  MegadodoEventDto,
   UrsaHookDto,
   UrsaHookSaveRequest,
   UrsaHookSummary,
@@ -18,7 +18,7 @@ import type {
 export function useUrsahooks(): {
   hooks: Ref<UrsaHookSummary[]>;
   current: Ref<UrsaHookDto | null>;
-  events: Ref<EventLogEntryDto[]>;
+  events: Ref<MegadodoEventDto[]>;
   loading: Ref<boolean>;
   busy: Ref<boolean>;
   error: Ref<string | null>;
@@ -32,7 +32,7 @@ export function useUrsahooks(): {
 } {
   const hooks = ref<UrsaHookSummary[]>([]);
   const current = ref<UrsaHookDto | null>(null);
-  const events = ref<EventLogEntryDto[]>([]);
+  const events = ref<MegadodoEventDto[]>([]);
   const loading = ref(false);
   const busy = ref(false);
   const error = ref<string | null>(null);
@@ -76,7 +76,7 @@ export function useUrsahooks(): {
     limit = 50,
   ): Promise<void> {
     try {
-      events.value = await brainFetch<EventLogEntryDto[]>(
+      events.value = await brainFetch<MegadodoEventDto[]>(
         'GET',
         `project/${encodeURIComponent(projectId)}/hooks/${encodeURIComponent(event)}/${encodeURIComponent(name)}/events?limit=${limit}`,
       );

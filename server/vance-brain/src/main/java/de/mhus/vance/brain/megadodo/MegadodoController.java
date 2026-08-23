@@ -5,7 +5,6 @@ import de.mhus.vance.api.megadodo.MegadodoPageDto;
 import de.mhus.vance.api.megadodo.MegadodoRefType;
 import de.mhus.vance.api.megadodo.MegadodoSeverity;
 import de.mhus.vance.brain.permission.RequestAuthority;
-import de.mhus.vance.shared.megadodo.MegadodoEventDocument;
 import de.mhus.vance.shared.megadodo.MegadodoQuery;
 import de.mhus.vance.shared.megadodo.MegadodoService;
 import de.mhus.vance.shared.permission.Action;
@@ -78,7 +77,7 @@ public class MegadodoController {
                 limit));
 
         return MegadodoPageDto.builder()
-                .items(page.items().stream().map(MegadodoController::toDto).toList())
+                .items(page.items().stream().map(MegadodoMapper::toDto).toList())
                 .nextCursor(page.nextCursor())
                 .build();
     }
@@ -96,7 +95,7 @@ public class MegadodoController {
 
         enforce(tenant, projectId, request);
         return megadodoService.byTrace(tenant, traceId).stream()
-                .map(MegadodoController::toDto)
+                .map(MegadodoMapper::toDto)
                 .toList();
     }
 
@@ -111,26 +110,6 @@ public class MegadodoController {
         } else {
             authority.enforce(request, new Resource.Tenant(tenant), Action.ADMIN);
         }
-    }
-
-    private static MegadodoEventDto toDto(MegadodoEventDocument doc) {
-        return MegadodoEventDto.builder()
-                .id(doc.getId())
-                .timestamp(doc.getTimestamp())
-                .action(doc.getAction())
-                .phase(doc.getPhase())
-                .severity(doc.getSeverity())
-                .outcome(doc.getOutcome())
-                .traceId(doc.getTraceId())
-                .projectId(doc.getProjectId())
-                .actor(doc.getActor())
-                .refType(doc.getRefType())
-                .refId(doc.getRefId())
-                .message(doc.getMessage())
-                .logPath(doc.getLogPath())
-                .details(doc.getDetails() == null || doc.getDetails().isEmpty()
-                        ? null : doc.getDetails())
-                .build();
     }
 
     /** Unparseable input means "no bound", not a 400 — a stale bookmark still works. */

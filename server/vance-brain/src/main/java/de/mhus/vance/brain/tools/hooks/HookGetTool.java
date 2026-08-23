@@ -61,7 +61,7 @@ public class HookGetTool implements Tool {
             throw new ToolException(
                     "Hook '" + event.wireName() + "/" + name + "' not found in project");
         }
-        Map<String, Object> resp = new LinkedHashMap<>(support.shape(ctx.tenantId(), found.get()));
+        Map<String, Object> resp = new LinkedHashMap<>(support.shape(ctx.tenantId(), ctx.projectId(), found.get()));
         resp.put("yaml", found.get().yamlBody());
         return resp;
     }

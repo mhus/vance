@@ -46,7 +46,7 @@ public class HookListTool implements Tool {
         List<UrsaHookDef> defs = ursaHookService.listAll(ctx.tenantId(), ctx.projectId());
         List<Map<String, Object>> shaped = new ArrayList<>(defs.size());
         for (UrsaHookDef def : defs) {
-            shaped.add(support.shape(ctx.tenantId(), def));
+            shaped.add(support.shape(ctx.tenantId(), ctx.projectId(), def));
         }
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("hooks", shaped);

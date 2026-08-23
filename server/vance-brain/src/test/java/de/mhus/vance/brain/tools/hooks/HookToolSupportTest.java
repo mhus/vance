@@ -7,7 +7,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.shared.eventlog.EventLogService;
+import de.mhus.vance.shared.megadodo.MegadodoService;
 import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionDeniedException;
@@ -30,11 +30,11 @@ import org.junit.jupiter.api.Test;
  */
 class HookToolSupportTest {
 
-    private final EventLogService eventLog = mock(EventLogService.class);
+    private final MegadodoService megadodo = mock(MegadodoService.class);
     private final SecurityContextFactory contextFactory = mock(SecurityContextFactory.class);
     private final PermissionService permissionService = mock(PermissionService.class);
     private final HookToolSupport support =
-            new HookToolSupport(eventLog, contextFactory, permissionService);
+            new HookToolSupport(megadodo, contextFactory, permissionService);
 
     @Test
     void adminSystemActor_projectAdmin_returnsSystemReasonWithRealSubject() {

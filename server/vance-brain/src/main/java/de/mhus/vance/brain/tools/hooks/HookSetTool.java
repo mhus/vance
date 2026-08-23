@@ -87,7 +87,7 @@ public class HookSetTool implements Tool {
         } catch (UrsaHookParseException ex) {
             throw new ToolException("hook YAML rejected: " + ex.getMessage());
         }
-        Map<String, Object> resp = new LinkedHashMap<>(support.shape(ctx.tenantId(), saved));
+        Map<String, Object> resp = new LinkedHashMap<>(support.shape(ctx.tenantId(), ctx.projectId(), saved));
         resp.put("created", !existed);
         return resp;
     }

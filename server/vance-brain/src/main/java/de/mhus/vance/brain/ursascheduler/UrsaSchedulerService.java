@@ -1,7 +1,6 @@
 package de.mhus.vance.brain.ursascheduler;
 
 import de.mhus.vance.api.action.TriggerAction;
-import de.mhus.vance.api.eventlog.EventType;
 import de.mhus.vance.api.inbox.Criticality;
 import de.mhus.vance.api.inbox.InboxItemType;
 import de.mhus.vance.api.ursascheduler.OverlapPolicy;
@@ -15,7 +14,6 @@ import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.shared.eventlog.EventLogService;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
 import de.mhus.vance.shared.inbox.InboxItemService;
 import de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler;
@@ -74,7 +72,6 @@ public class UrsaSchedulerService {
     private final RecipeResolver recipeResolver;
     private final ThinkProcessService thinkProcessService;
     private final LaneScheduler laneScheduler;
-    private final EventLogService eventLogService;
     private final DocumentService documentService;
     private final ActionExecutorRegistry actionExecutorRegistry;
     /**
@@ -580,12 +577,6 @@ public class UrsaSchedulerService {
                     cfg.name());
             return;
         }
-        Map<String, Object> triggeredPayload = "cron".equals(trigger)
-                ? null
-                : Map.of("trigger", trigger);
-        eventLogService.append(reg.tenantId, reg.projectId, source,
-                EventType.TRIGGERED, correlationId,
-                /*sessionId*/ null, /*processId*/ null, runAs, triggeredPayload);
         schedulerLogService.onTriggered(reg.tenantId, reg.projectId, cfg.name(),
                 correlationId, trigger, runAs, firedAt);
         // Feed START. Emitted on the tick, not after the spawn: the reader
@@ -635,10 +626,6 @@ public class UrsaSchedulerService {
                 ? OverlapPolicy.SKIP : reg.config.overlap();
         switch (policy) {
             case SKIP -> {
-                eventLogService.append(reg.tenantId, reg.projectId, source,
-                        EventType.SKIPPED, correlationId,
-                        /*sessionId*/ null, /*processId*/ null, runAs,
-                        Map.of("reason", "overlap"));
                 schedulerLogService.onSkipped(correlationId, "overlap");
                 megadodoService.schedulerRunSkipped(reg.tenantId, reg.projectId,
                         reg.config.name(), correlationId, "previous run still active");
@@ -649,10 +636,6 @@ public class UrsaSchedulerService {
             }
             case QUEUE -> {
                 reg.pendingQueued = true;
-                eventLogService.append(reg.tenantId, reg.projectId, source,
-                        EventType.SKIPPED, correlationId,
-                        /*sessionId*/ null, /*processId*/ null, runAs,
-                        Map.of("reason", "overlap", "queued", Boolean.TRUE));
                 schedulerLogService.onSkipped(correlationId, "overlap_queued");
                 megadodoService.schedulerRunSkipped(reg.tenantId, reg.projectId,
                         reg.config.name(), correlationId,
@@ -691,10 +674,6 @@ public class UrsaSchedulerService {
             log.warn("Scheduler cancelPrevious failed for process '{}': {}",
                     victimId, ex.toString());
         }
-        eventLogService.append(reg.tenantId, reg.projectId, source,
-                EventType.CANCELLED, correlationId,
-                victim.getSessionId(), victimId, runAs,
-                Map.of("reason", "overlap"));
         schedulerLogService.onCancelled(correlationId, victimId);
         reg.currentProcessId = null;
     }
@@ -708,10 +687,6 @@ public class UrsaSchedulerService {
         } catch (RuntimeException ex) {
             log.warn("Scheduler '{}/{}/{}' action build failed: {}",
                     reg.tenantId, reg.projectId, cfg.name(), ex.toString());
-            eventLogService.append(reg.tenantId, reg.projectId, source,
-                    EventType.FAILED, correlationId,
-                    /*sessionId*/ null, /*processId*/ null, runAs,
-                    Map.of("phase", "action_build", "error", ex.getMessage()));
             schedulerLogService.onFailed(correlationId, "action_build", ex.getMessage());
             megadodoService.schedulerRunFinished(reg.tenantId, reg.projectId, cfg.name(),
                     correlationId, false, "invalid action definition: " + ex.getMessage(), null);
@@ -744,10 +719,6 @@ public class UrsaSchedulerService {
         } catch (RuntimeException ex) {
             log.warn("Scheduler '{}/{}/{}' executor dispatch failed: {}",
                     reg.tenantId, reg.projectId, cfg.name(), ex.toString());
-            eventLogService.append(reg.tenantId, reg.projectId, source,
-                    EventType.FAILED, correlationId,
-                    parentSessionId, /*processId*/ null, runAs,
-                    Map.of("phase", "dispatch", "error", ex.getMessage()));
             schedulerLogService.onFailed(correlationId, "dispatch", ex.getMessage());
             megadodoService.schedulerRunFinished(reg.tenantId, reg.projectId, cfg.name(),
                     correlationId, false, ex.getMessage(), null);
@@ -756,15 +727,6 @@ public class UrsaSchedulerService {
         }
 
         if (result.outcome().isFailure()) {
-            Map<String, Object> failPayload = new LinkedHashMap<>();
-            failPayload.put("phase", "execute");
-            failPayload.put("outcome", result.outcome().name());
-            if (result.errorMessage() != null) {
-                failPayload.put("error", result.errorMessage());
-            }
-            eventLogService.append(reg.tenantId, reg.projectId, source,
-                    EventType.FAILED, correlationId,
-                    parentSessionId, /*processId*/ null, runAs, failPayload);
             schedulerLogService.onFailed(correlationId, "execute", result.errorMessage());
             megadodoService.schedulerRunFinished(reg.tenantId, reg.projectId, cfg.name(),
                     correlationId, false, result.errorMessage(), null);
@@ -803,10 +765,6 @@ public class UrsaSchedulerService {
                 startedPayload.put("scriptDirName", s.dirName());
             }
         }
-        eventLogService.append(reg.tenantId, reg.projectId, source,
-                EventType.STARTED, correlationId,
-                parentSessionId, spawnedProcessId, runAs,
-                startedPayload.isEmpty() ? null : startedPayload);
         // One-shot anchor. Written here — after a successful spawn, before
         // trashAfterFire() at the end of this method — so a crash in the
         // window between the two self-heals on the next bootstrap instead
@@ -832,14 +790,6 @@ public class UrsaSchedulerService {
         // operators see the lifecycle end without waiting for an
         // external listener (there is none for scripts).
         if (action instanceof TriggerAction.Script && result.outcome() == ActionOutcome.SUCCESS) {
-            Map<String, Object> donePayload = new LinkedHashMap<>();
-            if (result.output() != null) {
-                donePayload.put("scriptOutput", result.output());
-            }
-            eventLogService.append(reg.tenantId, reg.projectId, source,
-                    EventType.COMPLETED, correlationId,
-                    parentSessionId, /*processId*/ null, runAs,
-                    donePayload.isEmpty() ? null : donePayload);
             schedulerLogService.onTerminated(correlationId, "completed", Instant.now());
             megadodoService.schedulerRunFinished(reg.tenantId, reg.projectId, cfg.name(),
                     correlationId, true, null, null);

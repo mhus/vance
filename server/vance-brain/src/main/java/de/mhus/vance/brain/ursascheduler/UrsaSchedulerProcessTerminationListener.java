@@ -1,16 +1,12 @@
 package de.mhus.vance.brain.ursascheduler;
 
 import de.mhus.vance.api.action.TriggerKind;
-import de.mhus.vance.api.eventlog.EventType;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
-import de.mhus.vance.shared.eventlog.EventLogService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessStatusChangedEvent;
 import de.mhus.vance.shared.thinkprocess.TriggerOrigin;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,9 +18,8 @@ import org.springframework.stereotype.Component;
  * processes — two duties:
  *
  * <ul>
- *   <li>Terminal transitions ({@code CLOSED}) write the closing event-log
- *       entry (COMPLETED / FAILED / CANCELLED), update the scheduler-log
- *       document with the final outcome, and notify
+ *   <li>Terminal transitions ({@code CLOSED}) close the run in the
+ *       scheduler-log document and in the activity feed, and notify
  *       {@link UrsaSchedulerService} so the overlap-{@code QUEUE} re-fire
  *       can proceed.</li>
  *   <li>Non-terminal pauses ({@code BLOCKED}) append a timeline entry to
@@ -40,15 +35,14 @@ import org.springframework.stereotype.Component;
  *
  * <p>This used to be a lookup in the {@code event_log} for the process's
  * {@code STARTED} row — one Mongo query on <em>every</em> process
- * termination in the system, usually returning nothing. See
- * {@code planning/megadodo.md}.
+ * termination in the system, usually returning nothing. That collection
+ * is gone; see {@code planning/megadodo.md}.
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class UrsaSchedulerProcessTerminationListener {
 
-    private final EventLogService eventLogService;
     private final ThinkProcessService thinkProcessService;
     private final UrsaSchedulerService schedulerService;
     private final SchedulerLogService schedulerLogService;
@@ -93,37 +87,16 @@ public class UrsaSchedulerProcessTerminationListener {
         CloseReason closeReason = process.getCloseReason();
         String projectId = process.getProjectId();
 
-        EventType terminalType = mapTerminalType(closeReason);
-        if (terminalType == null) {
-            // CloseReason is CANCELLED-equivalent (stopped by scheduler itself)
-            // — the cancelPrevious path already wrote the CANCELLED event,
-            // so we don't duplicate.
-            return;
-        }
-
-        Map<String, Object> payload = new LinkedHashMap<>();
-        if (closeReason != null) {
-            payload.put("closeReason", closeReason.name());
-        }
-        eventLogService.append(
-                event.tenantId(),
-                projectId,
-                source,
-                terminalType,
-                runId,
-                event.sessionId(),
-                event.processId(),
-                origin.getRunAs(),
-                payload);
+        boolean completed = closeReason == CloseReason.DONE;
         schedulerLogService.onTerminated(
-                runId, terminalType.name().toLowerCase(), java.time.Instant.now());
+                runId, completed ? "completed" : "failed", java.time.Instant.now());
         megadodoService.schedulerRunFinished(
                 event.tenantId(), projectId, schedulerNameOf(source), runId,
-                terminalType == EventType.COMPLETED,
-                terminalType == EventType.COMPLETED ? null : closeReasonText(closeReason),
+                completed,
+                completed ? null : closeReasonText(closeReason),
                 /*logPath*/ null);
-        log.info("Scheduler run terminated source='{}' process='{}' closeReason={} → {}",
-                source, event.processId(), closeReason, terminalType);
+        log.info("Scheduler run terminated source='{}' process='{}' closeReason={} completed={}",
+                source, event.processId(), closeReason, completed);
 
         // Wake the queued-tick path if any.
         schedulerService.onProcessTerminated(event.tenantId(), projectId, event.processId());
@@ -151,26 +124,4 @@ public class UrsaSchedulerProcessTerminationListener {
         };
     }
 
-    private static @org.jspecify.annotations.Nullable EventType mapTerminalType(
-            @org.jspecify.annotations.Nullable CloseReason reason) {
-        if (reason == null) {
-            // Should not happen for CLOSED, but if it does — treat as STOPPED
-            // and surface as FAILED so the run doesn't silently vanish from
-            // the log.
-            return EventType.FAILED;
-        }
-        return switch (reason) {
-            case DONE -> EventType.COMPLETED;
-            case STALE, INCOMPLETE -> EventType.FAILED;
-            // STOPPED is ambiguous: it covers both scheduler-cancel
-            // (already logged) and external/admin stops. Return null
-            // when scheduler cancelled (we suppress duplicate CANCELLED
-            // entry) — but since we can't tell apart cleanly without
-            // an extra signal, surface as CANCELLED. Listener writes
-            // CANCELLED, the cancelPrevious path also wrote CANCELLED;
-            // dedup at read-time is cheaper than perfect attribution.
-            case STOPPED, AUTO_CLOSE -> EventType.CANCELLED;
-            case ARCHIVED, USER_DELETE, ABANDONED -> EventType.CANCELLED;
-        };
-    }
 }

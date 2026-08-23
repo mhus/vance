@@ -1,0 +1,32 @@
+title:       { de: "Feed-Quelle: Ode",  en: "Feed source: ode" }
+description: { de: "Eine Fremdanwendung, die den Ode-Feed-Vertrag bereitstellt (z.B. Hrafnagud über vance-ode-centauri).",
+               en: "A foreign application serving the ode feed contract (e.g. Hrafnagud via vance-ode-centauri)." }
+icon: newspaper
+tags: [feeds, source]
+
+# The loader reads exactly this folder, so the template pins it — a source
+# document anywhere else is a file nobody reads.
+folder: _vance/config/feeds
+
+name:
+  mode: free
+  default: "ode-main"
+
+fields:
+  - name: baseUrl
+    type: string
+    required: true
+    label: { de: "Base-URL", en: "Base URL" }
+    help:  { de: "Wurzel der Anwendung, z.B. https://hrafnagud.example — ohne sie wird die Quelle übersprungen.",
+             en: "Root of the application, e.g. https://hrafnagud.example — without it the source is skipped." }
+  - name: apiKey
+    type: string
+    label: { de: "API-Key (optional)", en: "API key (optional)" }
+    help:  { de: "Geht als 'Authorization: Bearer …' raus. Entweder eine Referenz ({{secret:vault:…}}) oder ein erklärtes Literal ({noop}…). Leer lassen, wenn die Quelle den Pfad selbst absichert.",
+             en: "Sent as 'Authorization: Bearer …'. Either a reference ({{secret:vault:…}}) or a declared literal ({noop}…). Leave empty when the source guards the path itself." }
+  - name: feedPath
+    type: string
+    defaultValue: "/ode/feed"
+    label: { de: "Feed-Pfad", en: "Feed path" }
+    help:  { de: "Nur ändern, wenn die Anwendung ihren Feed-Endpunkt verschoben hat.",
+             en: "Change only when the application moved its feed endpoint." }

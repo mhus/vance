@@ -31,8 +31,7 @@ class ShippedDenyKeysTest {
             "ai.provider.*",     // redirect the project's model traffic
             "vault.*",           // redirect its secret lookups
             "store.*",           // rewrite the purchase identity (kit-store.md §3 S3)
-            "kit.*",             // decide where the project gets its tool definitions
-            "jaglan.mount.*");   // point a document namespace at the pod's file system
+            "kit.*");            // decide where the project gets its tool definitions
 
     /** What a {@code {{secret:…}}} reference may never resolve. */
     private static final List<String> SECRET_REFERENCE = List.of(
@@ -42,7 +41,7 @@ class ShippedDenyKeysTest {
 
     /** What a <em>kit</em> may never write into a project. */
     private static final List<String> KIT_WRITE = List.of(
-            "ai.provider.*", "vault.*", "store.*", "kit.*", "jaglan.mount.*");
+            "ai.provider.*", "vault.*", "store.*", "kit.*");
 
     @Test
     void agentWriteDenyKeys_shipsEveryPatternTheDefaultPromises() {

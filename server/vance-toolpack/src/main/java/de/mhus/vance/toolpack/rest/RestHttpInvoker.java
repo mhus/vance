@@ -57,7 +57,7 @@ public final class RestHttpInvoker {
         this.httpClient = Objects.requireNonNull(httpClient);
         this.config = Objects.requireNonNull(config);
         this.baseUrl = baseUrl == null ? "" : stripTrailingSlash(baseUrl);
-        this.secretResolver = secretResolver == null ? SecretResolver.NOOP : secretResolver;
+        this.secretResolver = secretResolver == null ? SecretResolver.PASSTHROUGH : secretResolver;
     }
 
     /**

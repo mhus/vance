@@ -18,10 +18,11 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>Configuration per endpoint:
  * <pre>
- * centauri.endpoint.hrafnagud-main.protocol = ode
- * centauri.endpoint.hrafnagud-main.baseUrl  = https://hrafnagud.example
- * centauri.endpoint.hrafnagud-main.apiKey   = (PASSWORD, optional)
- * centauri.endpoint.hrafnagud-main.feedPath = /ode/feed   (optional)
+ * # _vance/config/feeds/hrafnagud-main.yaml
+ * protocol: ode
+ * baseUrl:  https://hrafnagud.example
+ * apiKey:   "{{secret:vault:hrafnagud}}"   (optional)
+ * feedPath: /ode/feed                      (optional)
  * </pre>
  * {@code feedPath} exists because the serving side can move the path
  * ({@code vance.ode.centauri.path}); a source that does so has to say where.

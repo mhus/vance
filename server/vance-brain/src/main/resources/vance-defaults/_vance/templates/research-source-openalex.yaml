@@ -1,0 +1,13 @@
+title:       { de: "Suchquelle: OpenAlex",  en: "Search source: OpenAlex" }
+description: { de: "Wissenschaftlicher Index. Kein Key; eine Kontaktadresse bringt den schnelleren Pool.",
+               en: "Academic index. No key; a contact address gets you the faster pool." }
+icon: magnifying-glass
+tags: [research, source]
+folder: _vance/config/research
+name: { mode: free, default: "openalex" }
+fields:
+  - name: contactEmail
+    type: string
+    label: { de: "Kontakt-E-Mail (optional)", en: "Contact e-mail (optional)" }
+    help:  { de: "OpenAlex bittet darum und bedient Anfragen mit Adresse zuverlässiger.",
+             en: "OpenAlex asks for one and serves requests carrying it more reliably." }

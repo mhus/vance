@@ -143,49 +143,6 @@ class BundledSettingFormsTest {
     }
 
     @Test
-    void research_parses_cleanly_and_pins_protocols() throws IOException {
-        ResolvedSettingForm f = loadBundled("research");
-
-        // Per-endpoint boolean toggles in declaration order.
-        assertThat(f.fields())
-                .extracting(field -> field.getName())
-                .containsExactly(
-                        "serperEnabled", "serperApiKey", "serperBaseUrl",
-                        "wikiEnabled", "wikiBaseUrl",
-                        "openalexEnabled", "openalexContactEmail", "openalexBaseUrl",
-                        "arxivEnabled", "arxivBaseUrl",
-                        "pubmedEnabled", "pubmedContactEmail", "pubmedApiKey", "pubmedBaseUrl",
-                        "openlibEnabled", "openlibBaseUrl",
-                        "hnEnabled", "hnBaseUrl",
-                        // The one endpoint whose default is `false`: an Ode
-                        // source has no sensible default URL, and enabling it
-                        // without one only produces a warn line per assemble.
-                        "odeEnabled", "odeBaseUrl", "odeApiKey", "odeCapsTtlSeconds");
-
-        // Each enabled-gated endpoint pins its protocol via writeIf.
-        // Without the protocol setting SearchProviderFactory skips the
-        // endpoint — so this is the actual on/off switch.
-        assertThat(f.computedSettings())
-                .extracting(ResolvedComputedSetting::key)
-                .containsExactly(
-                        "research.endpoint.serper-main.protocol",
-                        "research.endpoint.wiki-de.protocol",
-                        "research.endpoint.openalex.protocol",
-                        "research.endpoint.arxiv.protocol",
-                        "research.endpoint.pubmed.protocol",
-                        "research.endpoint.openlib.protocol",
-                        "research.endpoint.hn-algolia.protocol",
-                        "research.endpoint.ode-search.protocol");
-
-        // Tenant-wide form must remain visible in every project context —
-        // including system projects (_tenant, _user_*) — so the operator
-        // can reach it from anywhere.
-        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "_tenant")).isTrue();
-        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "_user_alice")).isTrue();
-        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "research-2026")).isTrue();
-    }
-
-    @Test
     void vault_conditionalFieldsAreNotRequired() throws IOException {
         ResolvedSettingForm f = loadBundled("vault");
 

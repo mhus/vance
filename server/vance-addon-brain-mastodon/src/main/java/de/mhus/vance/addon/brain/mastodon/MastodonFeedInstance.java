@@ -376,8 +376,8 @@ class MastodonFeedInstance implements FeedSourceInstance {
         if (status == 401 || status == 403 || status == 422) {
             return "HTTP " + status + " from " + url
                     + " — this server does not serve that timeline without a token."
-                    + " Set centauri.endpoint." + cfg.instanceId()
-                    + ".apiKey to an app token, or use a hashtag: selector,"
+                    + " Set apiKey in _vance/config/feeds/" + cfg.instanceId()
+                    + ".yaml to an app token, or use a hashtag: selector,"
                     + " which many servers keep open. Response: "
                     + StringUtils.abbreviate(response.body(), 200);
         }

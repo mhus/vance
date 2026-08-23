@@ -168,7 +168,7 @@ public class LocalFileJaglanInstance implements JaglanInstance {
         if (!writable) {
             throw new JaglanProtocolException(mount,
                     "mount '" + mount + "' is read-only — set "
-                            + "jaglan.mount." + mount + ".writable=true to allow " + op);
+                            + "writable: true in _vance/config/mounts/" + mount + ".yaml to allow " + op);
         }
     }
 

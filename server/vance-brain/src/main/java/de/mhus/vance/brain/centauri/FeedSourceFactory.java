@@ -3,7 +3,10 @@ package de.mhus.vance.brain.centauri;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import de.mhus.vance.brain.project.ProjectEnginesStopRequested;
-import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.brain.sourceconfig.SourceConfig;
+import de.mhus.vance.brain.sourceconfig.SourceConfigCache;
+import de.mhus.vance.brain.sourceconfig.SourceConfigLoader;
+import de.mhus.vance.brain.sourceconfig.SourceConfigPaths;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.feed.FeedInstanceConfig;
@@ -22,9 +25,9 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
 /**
- * Assembles {@link FeedSourceInstance}s for a project from the
- * {@code centauri.endpoint.<id>.*} settings, caches them per project and
- * tears them down when the project is suspended.
+ * Assembles {@link FeedSourceInstance}s for a project from the documents under
+ * {@link SourceConfigPaths#FEEDS}, caches them per project and tears them down
+ * when the project is suspended.
  *
  * <p>The cache key is {@code (tenantId, projectId)} — <b>not</b> the reader.
  * The reader pseudonym is a parameter of each call, not a property of the
@@ -33,30 +36,39 @@ import org.springframework.stereotype.Service;
  * nothing, since the credential and the endpoint are the same for all of
  * them.
  *
- * <p>Endpoint settings are resolved at project level ({@code processId=null})
- * to match the project-scoped cache. Resolving the process cascade while
- * caching per project would leak the first caller's process-scoped overrides
- * to every other process until the TTL expires.
- *
  * <p>Unknown protocols, missing fields and refused configurations are
  * dropped with a warning rather than failing the assembly: one broken
  * endpoint must not take the other sources of a feed down with it.
+ *
+ * <p>The parsed configurations are kept beside the instances because two other
+ * collaborators need them: the gate asks whether an endpoint is enabled, and
+ * the actor resolver whether the reader pseudonym may travel to it. Both used
+ * to read a setting per call; both now read the object this factory already
+ * holds.
  */
 @Service
 @Slf4j
-public class FeedSourceFactory {
+public class FeedSourceFactory implements SourceConfigCache {
 
     static final Duration DEFAULT_TTL = Duration.ofMinutes(5);
 
-    private final SettingService settings;
+    /**
+     * Whether the reader pseudonym travels to this source. Default {@code true}
+     * because the feature would otherwise be dead by default and never
+     * exercised; the switch exists all the same, since not wanting one's
+     * readers profiled by a foreign source is a legitimate position.
+     */
+    static final String FIELD_SEND_ACTOR = "sendActor";
+
+    private final SourceConfigLoader configLoader;
     private final SecretResolver secretResolver;
     private final Map<String, FeedProtocol> protocolsById;
-    private final Cache<ScopeKey, List<FeedSourceInstance>> cache;
+    private final Cache<ScopeKey, Sources> cache;
 
     public FeedSourceFactory(
-            SettingService settings, SecretResolver secretResolver,
+            SourceConfigLoader configLoader, SecretResolver secretResolver,
             List<FeedProtocol> protocols) {
-        this.settings = settings;
+        this.configLoader = configLoader;
         this.secretResolver = secretResolver;
         Map<String, FeedProtocol> byId = new LinkedHashMap<>();
         for (FeedProtocol p : protocols) {
@@ -70,7 +82,7 @@ public class FeedSourceFactory {
         this.protocolsById = Map.copyOf(byId);
         this.cache = Caffeine.newBuilder()
                 .expireAfterWrite(DEFAULT_TTL)
-                .<ScopeKey, List<FeedSourceInstance>>removalListener(
+                .<ScopeKey, Sources>removalListener(
                         (key, value, cause) -> disposeAll(value))
                 // The removal listener is the ONE dispose path — for expiry it is
                 // the only one there can be, so an explicit dispose beside a manual
@@ -83,16 +95,14 @@ public class FeedSourceFactory {
                 protocolsById.size(), protocolsById.keySet());
     }
 
+    @Override
+    public String configPathPrefix() {
+        return SourceConfigPaths.FEEDS;
+    }
+
     /** All configured sources of {@code scope}'s project, built on first use. */
     public List<FeedSourceInstance> assemble(FeedScope scope) {
-        if (scope == null) {
-            throw new CentauriException("scope is required");
-        }
-        if (StringUtils.isBlank(scope.projectId())) {
-            throw new CentauriException("feed sources require a project scope");
-        }
-        ScopeKey key = new ScopeKey(scope.tenantId(), scope.projectId());
-        return cache.get(key, k -> build(scope));
+        return sources(scope).instances();
     }
 
     /** The one source with this endpoint id, or null when it is not configured. */
@@ -106,24 +116,57 @@ public class FeedSourceFactory {
     }
 
     /**
+     * The configuration document behind an endpoint, or null when this project
+     * has none by that name.
+     */
+    public @Nullable SourceConfig config(FeedScope scope, String sourceId) {
+        return sources(scope).configs().get(sourceId);
+    }
+
+    /**
      * Drop the cached sources of this project so the next {@link #assemble} reads
-     * the settings again.
+     * the documents again.
      *
      * <p>Exists because the five-minute TTL is indistinguishable from a
-     * misconfiguration: an operator who has just written
-     * {@code centauri.endpoint.*} and sees an empty source list cannot tell
-     * whether they got the keys wrong or are simply early. A caller that can
-     * force the re-read turns that wait into a button.
+     * misconfiguration: an operator who has just written a feed source and sees
+     * an empty source list cannot tell whether they got the file wrong or are
+     * simply early. A caller that can force the re-read turns that wait into a
+     * button. The change listener covers the common case but not every pod —
+     * see {@code SourceConfigDocumentListener}.
      */
     public void evict(FeedScope scope) {
-        if (scope == null || StringUtils.isBlank(scope.projectId())) {
+        if (scope == null) {
             return;
         }
-        List<FeedSourceInstance> evicted =
-                cache.asMap().remove(new ScopeKey(scope.tenantId(), scope.projectId()));
+        evict(scope.tenantId(), scope.projectId());
+    }
+
+    @Override
+    public void evict(String tenantId, String projectId) {
+        if (StringUtils.isBlank(projectId)) {
+            return;
+        }
+        Sources evicted = cache.asMap().remove(new ScopeKey(tenantId, projectId));
         if (evicted != null) {
             log.debug("Centauri: evicted {} source instance(s) for '{}/{}' (explicit refresh)",
-                    evicted.size(), scope.tenantId(), scope.projectId());
+                    evicted.instances().size(), tenantId, projectId);
+        }
+    }
+
+    @Override
+    public void evictTenant(String tenantId) {
+        if (StringUtils.isBlank(tenantId)) {
+            return;
+        }
+        int dropped = 0;
+        for (ScopeKey key : List.copyOf(cache.asMap().keySet())) {
+            if (key.tenantId().equals(tenantId) && cache.asMap().remove(key) != null) {
+                dropped++;
+            }
+        }
+        if (dropped > 0) {
+            log.debug("Centauri: evicted {} project scope(s) of tenant '{}' "
+                    + "(tenant-wide configuration changed)", dropped, tenantId);
         }
     }
 
@@ -134,94 +177,102 @@ public class FeedSourceFactory {
             return;
         }
         ScopeKey key = new ScopeKey(event.tenantId(), event.projectName());
-        List<FeedSourceInstance> evicted = cache.asMap().remove(key);
+        Sources evicted = cache.asMap().remove(key);
         if (evicted != null) {
             log.debug("Centauri: evicted {} source instance(s) for '{}/{}' (project stop)",
-                    evicted.size(), event.tenantId(), event.projectName());
+                    evicted.instances().size(), event.tenantId(), event.projectName());
         }
     }
 
     // ── internals ────────────────────────────────────────────────────
 
-    private List<FeedSourceInstance> build(FeedScope scope) {
-        Map<String, String> raw = settings.findByPrefixCascade(
-                scope.tenantId(), scope.projectId(), /* processId */ null,
-                CentauriSettings.PREFIX_ENDPOINT);
-        if (raw.isEmpty()) {
-            return List.of();
+    private Sources sources(FeedScope scope) {
+        if (scope == null) {
+            throw new CentauriException("scope is required");
+        }
+        if (StringUtils.isBlank(scope.projectId())) {
+            throw new CentauriException("feed sources require a project scope");
+        }
+        ScopeKey key = new ScopeKey(scope.tenantId(), scope.projectId());
+        return cache.get(key, k -> build(scope));
+    }
+
+    private Sources build(FeedScope scope) {
+        List<SourceConfig> configs = configLoader.load(
+                scope.tenantId(), scope.projectId(), SourceConfigPaths.FEEDS);
+        if (configs.isEmpty()) {
+            return Sources.empty();
         }
 
-        Map<String, Map<String, String>> byEndpointId = groupByEndpointId(raw);
-        List<FeedSourceInstance> result = new ArrayList<>(byEndpointId.size());
-        for (Map.Entry<String, Map<String, String>> entry : byEndpointId.entrySet()) {
-            String endpointId = entry.getKey();
-            Map<String, String> fields = entry.getValue();
-
-            // Endpoints with .enabled=false are still instantiated — the gate
-            // consults the same setting at dispatch time, and keeping the
+        List<FeedSourceInstance> instances = new ArrayList<>(configs.size());
+        Map<String, SourceConfig> byId = new LinkedHashMap<>(configs.size());
+        for (SourceConfig config : configs) {
+            // Endpoints with enabled=false are still instantiated — the gate
+            // consults the same configuration at dispatch time, and keeping the
             // instance lets the configuration UI show what exists.
+            byId.put(config.name(), config);
 
-            String protocolId = fields.get(suffix(CentauriSettings.SUFFIX_PROTOCOL));
-            if (StringUtils.isBlank(protocolId)) {
-                log.warn("Centauri: endpoint '{}' has no protocol set, skipping", endpointId);
+            if (StringUtils.isBlank(config.protocol())) {
+                log.warn("Centauri: endpoint '{}' has no protocol set, skipping",
+                        config.documentPath());
                 continue;
             }
-            FeedProtocol protocol = protocolsById.get(protocolId);
+            FeedProtocol protocol = protocolsById.get(config.protocol());
             if (protocol == null) {
                 log.warn("Centauri: endpoint '{}' references unknown protocol '{}', skipping. "
-                        + "Known protocols: {}", endpointId, protocolId, protocolsById.keySet());
+                                + "Known protocols: {}",
+                        config.documentPath(), config.protocol(), protocolsById.keySet());
                 continue;
-            }
-
-            String baseUrl = fields.get(suffix(CentauriSettings.SUFFIX_BASE_URL));
-            Map<String, Object> extras = new LinkedHashMap<>();
-            for (Map.Entry<String, String> f : fields.entrySet()) {
-                if (isCommonField(f.getKey())) {
-                    continue;
-                }
-                extras.put(f.getKey(), f.getValue());
             }
 
             try {
-                String credentialKey = CentauriSettings.endpointApiKey(endpointId);
                 FeedInstanceConfig cfg = new FeedInstanceConfig(
-                        endpointId, protocolId,
-                        baseUrl == null ? "" : baseUrl,
-                        credentialKey,
+                        config.name(), config.protocol(),
+                        config.baseUrl() == null ? "" : config.baseUrl(),
+                        config.credentialLocation(),
                         // Closes over this project's scope — the instance is cached
-                        // per (tenant, project) anyway — and reads on every call, so
-                        // a rotated key takes effect without waiting for the TTL.
-                        () -> resolveCredential(scope, credentialKey),
-                        extras);
-                result.add(protocol.instantiate(cfg));
+                        // per (tenant, project) anyway — and resolves on every call,
+                        // so a rotated secret takes effect without waiting for the TTL.
+                        () -> resolveCredential(scope, config),
+                        protocolExtras(config));
+                instances.add(protocol.instantiate(cfg));
             } catch (RuntimeException e) {
                 log.warn("Centauri: protocol '{}' refused to instantiate endpoint '{}': {}",
-                        protocolId, endpointId, e.toString());
+                        config.protocol(), config.documentPath(), e.toString());
             }
         }
         log.debug("Centauri: assembled {} source instance(s) for '{}/{}'",
-                result.size(), scope.tenantId(), scope.projectId());
-        return List.copyOf(result);
+                instances.size(), scope.tenantId(), scope.projectId());
+        return new Sources(List.copyOf(instances), Map.copyOf(byId));
     }
 
     /**
-     * The endpoint credential, with {@code {{secret:…}}} references resolved.
+     * What the protocol gets to see. {@code sendActor} is held back: it governs
+     * what Centauri sends <em>on behalf of</em> the reader, and the point of
+     * deriving the pseudonym centrally is that no protocol implementation ever
+     * has a say in it.
+     */
+    private static Map<String, Object> protocolExtras(SourceConfig config) {
+        Map<String, Object> extras = new LinkedHashMap<>(config.extras());
+        extras.remove(FIELD_SEND_ACTOR);
+        return extras;
+    }
+
+    /**
+     * The endpoint credential, with {@code {{secret:…}}} references resolved
+     * and a {@code {noop}} literal handed back verbatim.
      *
      * <p>Through {@code resolveForConnector} rather than {@code resolve}: a
      * feed protocol is a connector, not a dynamic element, so it may read a
-     * {@code PASSWORD}-typed setting or a vault entry (spec §10). Reading the
-     * setting straight sent an unresolved {@code {{secret:vault:…}}} into the
-     * {@code Authorization} header verbatim, which reaches the source as a
-     * 401 with nothing to explain it.
+     * {@code PASSWORD}-typed setting or a vault entry (spec §10).
      *
      * <p>The invocation context carries no user and no process on purpose: the
      * instance is cached per {@code (tenant, project)} and shared across every
      * reader, so a user- or process-scoped reference would serve the first
      * caller's secret to everyone behind them.
      */
-    private @Nullable String resolveCredential(FeedScope scope, String credentialKey) {
-        String raw = settings.getDecryptedPasswordCascade(
-                scope.tenantId(), scope.projectId(), null, credentialKey);
+    private @Nullable String resolveCredential(FeedScope scope, SourceConfig config) {
+        String raw = config.apiKey();
         if (raw == null) {
             return null;
         }
@@ -229,52 +280,23 @@ public class FeedSourceFactory {
                 scope.tenantId(), scope.projectId(), null, null, null));
     }
 
-    /**
-     * Group {@code centauri.endpoint.<id>.<suffix>} keys per endpoint, inner
-     * key being the suffix without its leading dot. Keys without a suffix are
-     * skipped silently.
-     */
-    static Map<String, Map<String, String>> groupByEndpointId(Map<String, String> raw) {
-        Map<String, Map<String, String>> out = new LinkedHashMap<>();
-        for (Map.Entry<String, String> e : raw.entrySet()) {
-            String key = e.getKey();
-            if (!key.startsWith(CentauriSettings.PREFIX_ENDPOINT)) {
-                continue;
-            }
-            String rest = key.substring(CentauriSettings.PREFIX_ENDPOINT.length());
-            int dot = rest.indexOf('.');
-            if (dot <= 0 || dot == rest.length() - 1) {
-                continue;
-            }
-            out.computeIfAbsent(rest.substring(0, dot), k -> new LinkedHashMap<>())
-                    .put(rest.substring(dot + 1), e.getValue());
-        }
-        return out;
-    }
-
-    private static boolean isCommonField(String fieldSuffix) {
-        return fieldSuffix.equals(suffix(CentauriSettings.SUFFIX_PROTOCOL))
-                || fieldSuffix.equals(suffix(CentauriSettings.SUFFIX_BASE_URL))
-                || fieldSuffix.equals(suffix(CentauriSettings.SUFFIX_API_KEY))
-                || fieldSuffix.equals(suffix(CentauriSettings.SUFFIX_ENABLED))
-                || fieldSuffix.equals(suffix(CentauriSettings.SUFFIX_SEND_ACTOR))
-                || fieldSuffix.equals(suffix(CentauriSettings.SUFFIX_ACTOR_SALT));
-    }
-
-    private static String suffix(String withLeadingDot) {
-        return withLeadingDot.substring(1);
-    }
-
-    private static void disposeAll(@Nullable List<FeedSourceInstance> instances) {
-        if (instances == null) {
+    private static void disposeAll(@Nullable Sources sources) {
+        if (sources == null) {
             return;
         }
-        for (FeedSourceInstance instance : instances) {
+        for (FeedSourceInstance instance : sources.instances()) {
             try {
                 instance.dispose();
             } catch (RuntimeException ex) {
                 log.warn("Centauri: dispose of '{}' raised: {}", instance.id(), ex.toString());
             }
+        }
+    }
+
+    /** What one project's cache entry holds: the live instances and their configuration. */
+    private record Sources(List<FeedSourceInstance> instances, Map<String, SourceConfig> configs) {
+        static Sources empty() {
+            return new Sources(List.of(), Map.of());
         }
     }
 

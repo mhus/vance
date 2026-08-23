@@ -259,7 +259,8 @@ class LocalFileJaglanProtocolTest {
                 new ByteArrayInputStream("x".getBytes(StandardCharsets.UTF_8))))
                 .isInstanceOf(JaglanProtocolException.class)
                 .satisfies(e -> assertThat(((JaglanProtocolException) e).isRefused()).isTrue())
-                .hasMessageContaining("writable=true");
+                .hasMessageContaining("writable: true")
+                .hasMessageContaining("_vance/config/mounts/");
     }
 
     @Test

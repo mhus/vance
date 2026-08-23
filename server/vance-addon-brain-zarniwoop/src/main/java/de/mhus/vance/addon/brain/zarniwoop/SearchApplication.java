@@ -98,7 +98,7 @@ public class SearchApplication implements VanceApplication {
                 linkBuilder.linkFor(stored, ctx.projectName()),
                 List.of(), List.of(),
                 "Search ready. Open it and type — the modalities on offer follow the "
-                        + "providers configured in research.endpoint.*.",
+                        + "providers configured under _vance/config/research/.",
                 stats);
     }
 

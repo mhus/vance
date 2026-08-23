@@ -1,0 +1,20 @@
+title:       { de: "Suchquelle: Serper.dev",  en: "Search source: Serper.dev" }
+description: { de: "Kommerzielle Google-SERP-API — bedient WEB, IMAGE, VIDEO und PDF aus einem Key.",
+               en: "Commercial Google SERP API — serves WEB, IMAGE, VIDEO and PDF from one key." }
+icon: magnifying-glass
+tags: [research, source]
+
+# The loader reads exactly this folder, so the template pins it.
+folder: _vance/config/research
+
+name:
+  mode: free
+  default: "serper-main"
+
+fields:
+  - name: apiKey
+    type: string
+    required: true
+    label: { de: "API-Key", en: "API key" }
+    help:  { de: "Entweder eine Referenz ({{secret:vault:…}}) oder ein erklärtes Literal ({noop}…). Free-Tier siehe https://serper.dev/billing.",
+             en: "Either a reference ({{secret:vault:…}}) or a declared literal ({noop}…). Free tier at https://serper.dev/billing." }

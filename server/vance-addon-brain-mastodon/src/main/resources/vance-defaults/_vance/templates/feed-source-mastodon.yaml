@@ -1,0 +1,25 @@
+title:       { de: "Feed-Quelle: Mastodon",  en: "Feed source: Mastodon" }
+description: { de: "Öffentliche Timelines eines Mastodon-Servers. Ein Server ist eine Quelle; mehrere in einem Feed ergeben einen föderierten Strom.",
+               en: "The public timelines of a Mastodon server. One server is one source; several in one feed make a federated stream." }
+icon: newspaper
+tags: [feeds, source]
+
+folder: _vance/config/feeds
+
+name:
+  mode: free
+  default: "mastodon"
+
+fields:
+  - name: baseUrl
+    type: string
+    required: true
+    defaultValue: "https://mastodon.social"
+    label: { de: "Base-URL", en: "Base URL" }
+    help:  { de: "Wurzel des Servers. Achtung: die Erlaubnis hängt am Endpunkt, nicht am Server — mastodon.social serviert Hashtag-Timelines, aber nicht die öffentliche.",
+             en: "Root of the server. Note that access is per endpoint, not per server — mastodon.social serves hashtag timelines but refuses the public one." }
+  - name: apiKey
+    type: string
+    label: { de: "App-Token (optional)", en: "App token (optional)" }
+    help:  { de: "Nur nötig, wenn die Instanz die öffentliche Vorschau abgeschaltet hat. Referenz ({{secret:vault:…}}) oder erklärtes Literal ({noop}…).",
+             en: "Only needed when the instance has disabled public preview. A reference ({{secret:vault:…}}) or a declared literal ({noop}…)." }

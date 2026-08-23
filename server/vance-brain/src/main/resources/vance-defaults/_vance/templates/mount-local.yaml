@@ -1,0 +1,28 @@
+title:       { de: "Mount: lokales Verzeichnis",  en: "Mount: local directory" }
+description: { de: "Ein Verzeichnis der Brain-Maschine unter _ext/<name>/ einblenden. Read-only, solange nichts anderes gesagt wird.",
+               en: "Expose a directory of the brain machine under _ext/<name>/. Read-only unless stated otherwise." }
+icon: folder-open
+tags: [mounts, source]
+
+# The loader reads exactly this folder, so the template pins it.
+folder: _vance/config/mounts
+
+# The name is the mount: it becomes a path segment under _ext/ and part of
+# every derived document id, so renaming it later is not supported.
+name:
+  mode: free
+  default: "library"
+
+fields:
+  - name: rootDir
+    type: string
+    required: true
+    label: { de: "Verzeichnis", en: "Directory" }
+    help:  { de: "Absoluter Pfad auf der Brain-Maschine. Muss innerhalb der in vance.jaglan.local.allowedRoots erlaubten Bäume liegen.",
+             en: "Absolute path on the brain machine. Must sit inside one of the trees allowed by vance.jaglan.local.allowedRoots." }
+  - name: writable
+    type: boolean
+    defaultValue: "false"
+    label: { de: "Schreibzugriff erlauben", en: "Allow writing" }
+    help:  { de: "Default aus: ein lokaler Mount schreibt auf das Dateisystem des Pods.",
+             en: "Off by default: a local mount writes to the pod's file system." }

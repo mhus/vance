@@ -80,7 +80,8 @@ class ShippedSettingDenyListContractTest {
         // Each of these lets an agent redirect an infrastructure decision:
         // which model answers, which vault holds the secrets, which store
         // identity a purchase is checked against, where a project's tool
-        // definitions are fetched from, which file tree a mount exposes.
+        // definitions are fetched from. (A mount used to be in this list; it is
+        // a document now, guarded by the reserved _vance/ prefix rule.)
         for (String key : List.of(
                 "ai.provider.openai.apiKey",
                 "ai.provider.openai.baseUrl",
@@ -88,8 +89,7 @@ class ShippedSettingDenyListContractTest {
                 "vault.clientSecret",
                 "store.token.vancetope-library",
                 "store.account.vancetope-library",
-                "kit.token.acme",
-                "jaglan.mount.docs.rootDir")) {
+                "kit.token.acme")) {
             assertThat(policy.isDenied(key)).as("agent write of '%s'", key).isTrue();
         }
     }
@@ -164,8 +164,7 @@ class ShippedSettingDenyListContractTest {
                 "ai.provider.openai.apiKey",
                 "vault.type",
                 "store.account.vancetope-library",
-                "kit.token.acme",
-                "jaglan.mount.docs.rootDir")) {
+                "kit.token.acme")) {
             assertThat(policy.isDenied(key)).as("kit write of '%s'", key).isTrue();
         }
         assertThat(policy.isDenied("crm.baseUrl")).isFalse();

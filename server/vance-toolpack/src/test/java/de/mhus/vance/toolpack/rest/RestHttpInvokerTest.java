@@ -157,7 +157,7 @@ class RestHttpInvokerTest {
                 "auth", Map.of("type", "basic", "user", "alice", "password", "secret")));
 
         new RestHttpInvoker(new PackHttpClient(), cfg, baseUrl,
-                SecretResolver.NOOP)
+                SecretResolver.PASSTHROUGH)
                 .execute(op, Map.of(), CTX);
 
         // base64("alice:secret") = "YWxpY2U6c2VjcmV0"
@@ -230,7 +230,7 @@ class RestHttpInvokerTest {
     private RestHttpInvoker newInvoker(RestApiConfig cfg) {
         return new RestHttpInvoker(
                 new PackHttpClient(), cfg,
-                baseUrl, SecretResolver.NOOP);
+                baseUrl, SecretResolver.PASSTHROUGH);
     }
 
     // ─────── Test HTTP server ───────

@@ -1,0 +1,20 @@
+title:       { de: "Feed-Quelle: Wikipedia",  en: "Feed source: Wikipedia" }
+description: { de: "Letzte Änderungen einer Wikipedia-Sprachausgabe. Kein Konto, kein Key.",
+               en: "Recent changes of one Wikipedia language edition. No account, no key." }
+icon: newspaper
+tags: [feeds, source]
+
+folder: _vance/config/feeds
+
+name:
+  mode: free
+  default: "wikipedia-de"
+
+fields:
+  - name: baseUrl
+    type: string
+    required: true
+    defaultValue: "https://de.wikipedia.org"
+    label: { de: "Base-URL", en: "Base URL" }
+    help:  { de: "Die Sprachausgabe, z.B. https://en.wikipedia.org.",
+             en: "The language edition, e.g. https://en.wikipedia.org." }

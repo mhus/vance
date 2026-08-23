@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
  * all arrive here. The contract belongs to {@code vance-ode-jaglan}; this is
  * the reading end of it.
  *
- * <p>Configuration, all under {@code jaglan.mount.<name>.}:
+ * <p>Configuration, all in {@code _vance/config/mounts/<name>.yaml}:
  *
  * <ul>
  *   <li>{@code protocol = ode}</li>

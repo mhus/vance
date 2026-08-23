@@ -1,0 +1,5 @@
+protocol: pubmed
+baseUrl: https://eutils.ncbi.nlm.nih.gov/entrez/eutils
+{% if contactEmail %}contactEmail: {{ contactEmail }}
+{% endif %}{% if apiKey %}apiKey: "{{ apiKey }}"
+{% endif %}enabled: true

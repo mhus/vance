@@ -2,8 +2,6 @@ package de.mhus.vance.brain.zarniwoop.protocols;
 
 import de.mhus.vance.brain.zarniwoop.ZarniwoopContentStore;
 import de.mhus.vance.shared.net.SsrfGuard;
-import de.mhus.vance.shared.settings.SettingService;
-import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.research.ProviderInstanceConfig;
 import de.mhus.vance.toolpack.research.SearchModality;
 import de.mhus.vance.toolpack.research.SearchProtocol;
@@ -34,8 +32,8 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>The protocol id is {@code ode}, deliberately the same word Centauri uses
  * for its own Ode protocol. Two registers, one vocabulary, no collision: an
- * operator writes {@code research.endpoint.<id>.protocol = ode} next to
- * {@code centauri.endpoint.<id>.protocol = ode} and means the same kind of thing
+ * operator writes {@code protocol: ode} in a research source document next to
+ * {@code protocol: ode} in a feed source document and means the same kind of thing
  * both times.
  *
  * <p><b>What can be searched comes from the far end.</b> Everything interesting
@@ -50,31 +48,22 @@ public class OdeSearchProtocol implements SearchProtocol {
 
     public static final String ID = "ode";
 
-    private final SettingService settings;
     private final ObjectMapper objectMapper;
     private final ZarniwoopContentStore contentStore;
-    private final SecretResolver secretResolver;
     private final OdeSearchHttp http;
 
     @Autowired
     public OdeSearchProtocol(
-            SettingService settings,
-            SecretResolver secretResolver,
             ObjectMapper objectMapper,
             ZarniwoopContentStore contentStore) {
-        this(settings, secretResolver, objectMapper, contentStore,
-                new OdeSearchHttp.JdkOdeSearchHttp());
+        this(objectMapper, contentStore, new OdeSearchHttp.JdkOdeSearchHttp());
     }
 
     /** Test-seam constructor. */
     OdeSearchProtocol(
-            SettingService settings,
-            SecretResolver secretResolver,
             ObjectMapper objectMapper,
             ZarniwoopContentStore contentStore,
             OdeSearchHttp http) {
-        this.settings = settings;
-        this.secretResolver = secretResolver;
         this.objectMapper = objectMapper;
         this.contentStore = contentStore;
         this.http = http;
@@ -140,8 +129,7 @@ public class OdeSearchProtocol implements SearchProtocol {
         // failure into "this endpoint is misconfigured" and would put a lookup
         // in front of every factory rebuild. The check belongs where the call
         // is made — see JdkOdeSearchHttp below, which guards all three of them.
-        return new OdeSearchInstance(
-                cfg, settings, secretResolver, objectMapper, contentStore, http);
+        return new OdeSearchInstance(cfg, objectMapper, contentStore, http);
     }
 
     /**

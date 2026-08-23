@@ -17,7 +17,7 @@ public record CentauriNote(String sourceId, String selector, Kind kind, @Nullabl
         /** No such endpoint is configured in this project. */
         UNKNOWN_SOURCE,
 
-        /** Switched off via {@code centauri.endpoint.<id>.enabled}. */
+        /** Switched off via {@code enabled: false} in the source document. */
         DISABLED,
 
         /** In a cooldown from an earlier failure. */

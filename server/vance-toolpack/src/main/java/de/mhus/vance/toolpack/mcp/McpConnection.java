@@ -51,7 +51,7 @@ public final class McpConnection implements AutoCloseable {
     /**
      * @param secretResolver used to render {@code defaultArgs} templates
      *                       on each {@code tools/call}. {@code null}
-     *                       falls back to {@link SecretResolver#NOOP},
+     *                       falls back to {@link SecretResolver#PASSTHROUGH},
      *                       which leaves templates verbatim — fine when
      *                       no defaults are configured.
      */
@@ -63,7 +63,7 @@ public final class McpConnection implements AutoCloseable {
         this.config = config;
         this.transport = transport;
         this.bootstrapCtx = bootstrapCtx;
-        this.secretResolver = secretResolver == null ? SecretResolver.NOOP : secretResolver;
+        this.secretResolver = secretResolver == null ? SecretResolver.PASSTHROUGH : secretResolver;
         this.materializedAt = Instant.now();
     }
 

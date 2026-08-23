@@ -6,7 +6,7 @@ tags: [app, search]
 
 # Application templates write only the _app.yaml manifest; the folder is chosen
 # by the user. Everything else is set afterwards in the app itself, because the
-# available modalities depend on the project's research.endpoint.<id>.* settings
+# available modalities depend on the project's _vance/config/research/ documents
 # and the form cannot know them here.
 name:
   mode: fixed

@@ -11,7 +11,7 @@
  *
  * <ul>
  *   <li>{@link de.mhus.vance.brain.jaglan.JaglanSourceFactory} — resolves
- *       {@code jaglan.mount.<name>.*} into instances, per project, cached.</li>
+ *       {@code _vance/config/mounts/*.yaml} into instances, per project, cached.</li>
  *   <li>{@link de.mhus.vance.brain.jaglan.JaglanCapabilitiesCache} — holds what
  *       each source says about itself, with a peek that never fetches so
  *       folder listings stay cheap.</li>

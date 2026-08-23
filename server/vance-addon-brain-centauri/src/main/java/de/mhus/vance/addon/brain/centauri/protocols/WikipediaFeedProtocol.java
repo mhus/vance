@@ -25,9 +25,10 @@ import tools.jackson.databind.ObjectMapper;
  * arrived at independently.
  *
  * <pre>
- * centauri.endpoint.wikipedia-de.protocol = wikipedia
- * centauri.endpoint.wikipedia-de.baseUrl  = https://de.wikipedia.org
- * centauri.endpoint.wikipedia-de.language = de       (optional, else from host)
+ * # _vance/config/feeds/wikipedia-de.yaml
+ * protocol: wikipedia
+ * baseUrl:  https://de.wikipedia.org
+ * language: de       (optional, else from host)
  * </pre>
  *
  * <p>Wikimedia requires a descriptive {@code User-Agent} and blocks generic

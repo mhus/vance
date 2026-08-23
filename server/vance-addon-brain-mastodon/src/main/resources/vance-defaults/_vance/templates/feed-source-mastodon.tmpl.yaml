@@ -1,0 +1,4 @@
+protocol: mastodon
+baseUrl: {{ baseUrl }}
+{% if apiKey %}apiKey: "{{ apiKey }}"
+{% endif %}enabled: true

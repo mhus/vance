@@ -4,10 +4,13 @@ import de.mhus.vance.toolpack.research.SearchModality;
 import java.util.Locale;
 
 /**
- * Setting-key constants for the Zarniwoop search/research stack.
- * Centralised here so the factory, dispatcher, frontend tools and
- * (later) the research recipes share one source of truth and
- * settings-editors can resolve cross-references.
+ * What is left of the Zarniwoop setting surface now that an endpoint is a
+ * document under {@code _vance/config/research/}: which endpoint serves a
+ * modality by default, and the subsystem's own knobs.
+ *
+ * <p>Routing stays a setting on purpose — the key names a modality, which is an
+ * enum value, so a form can render it. That was never true of
+ * {@code research.endpoint.<id>.*}, where the id is part of the key.
  *
  * <p>Cascade is the standard {@code SettingService} cascade
  * (tenant → project → think-process).
@@ -17,21 +20,6 @@ public final class ZarniwoopSettings {
     private ZarniwoopSettings() {
         /* constants only */
     }
-
-    // ── Endpoint definitions ─────────────────────────────────────────
-    public static final String PREFIX_ENDPOINT = "research.endpoint.";
-
-    /** Suffix: protocol id (required). */
-    public static final String SUFFIX_PROTOCOL = ".protocol";
-
-    /** Suffix: base URL (required for HTTP-based protocols). */
-    public static final String SUFFIX_BASE_URL = ".baseUrl";
-
-    /** Suffix: credential setting key (optional). */
-    public static final String SUFFIX_API_KEY = ".apiKey";
-
-    /** Suffix: explicit on/off flag (default true). */
-    public static final String SUFFIX_ENABLED = ".enabled";
 
     // ── Routing ───────────────────────────────────────────────────────
     public static final String PREFIX_DEFAULT = "research.default.";
@@ -45,26 +33,6 @@ public final class ZarniwoopSettings {
     /** Build {@code research.fallback.<modality-lowercase>}. */
     public static String fallbackKey(SearchModality modality) {
         return PREFIX_FALLBACK + modality.name().toLowerCase(Locale.ROOT);
-    }
-
-    /** Build {@code research.endpoint.<id>.protocol}. */
-    public static String endpointProtocolKey(String endpointId) {
-        return PREFIX_ENDPOINT + endpointId + SUFFIX_PROTOCOL;
-    }
-
-    /** Build {@code research.endpoint.<id>.baseUrl}. */
-    public static String endpointBaseUrlKey(String endpointId) {
-        return PREFIX_ENDPOINT + endpointId + SUFFIX_BASE_URL;
-    }
-
-    /** Build {@code research.endpoint.<id>.apiKey}. */
-    public static String endpointApiKey(String endpointId) {
-        return PREFIX_ENDPOINT + endpointId + SUFFIX_API_KEY;
-    }
-
-    /** Build {@code research.endpoint.<id>.enabled}. */
-    public static String endpointEnabledKey(String endpointId) {
-        return PREFIX_ENDPOINT + endpointId + SUFFIX_ENABLED;
     }
 
     // ── Service-wide knobs ────────────────────────────────────────────

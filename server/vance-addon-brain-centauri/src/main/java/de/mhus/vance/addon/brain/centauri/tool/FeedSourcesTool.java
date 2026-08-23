@@ -150,7 +150,7 @@ public class FeedSourcesTool implements Tool {
         out.put("sources", sources);
         if (sources.isEmpty()) {
             out.put("hint", "No sources configured in this project. Configuring one is an "
-                    + "operator setting (centauri.endpoint.<id>.*) that no tool can write — "
+                    + "operator document under _vance/config/feeds/ that no tool can write — "
                     + "run manual_read('feeds-sources') and tell the user what to set.");
         }
         log.debug("FeedSourcesTool project='{}' sources={}", project.getName(), sources.size());

@@ -68,7 +68,7 @@ platform's dialect (Windows `cmd.exe` vs. POSIX `sh`), don't assume bash.
 ## Web
 
 - `research_search query=… modality=web` — multi-provider web search
-  routed through the project's `research.endpoint.*` configuration
+  routed through the project's search-source documents
   (default backed by Serper.dev). Use for fresh facts or anything
   you don't already know. Pass `modality=image|video|pdf|news|
   academic|encyclopedia` for those formats. Use `research_rich` when

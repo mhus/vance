@@ -9,7 +9,9 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.project.ProjectEnginesStopRequested;
 import de.mhus.vance.brain.zarniwoop.ZarniwoopGateService.ManualState;
-import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.brain.sourceconfig.SourceConfig;
+import java.util.Map;
+import de.mhus.vance.brain.sourceconfig.SourceConfigPaths;
 import de.mhus.vance.toolpack.research.SearchScope;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,19 +23,29 @@ class ZarniwoopGateServiceTest {
     private static final String INSTANCE = "serper-main";
     private static final SearchScope SCOPE = SearchScope.of(TENANT, PROJECT);
 
-    private SettingService settings;
+    private SearchProviderFactory providerFactory;
     private ZarniwoopGateService gate;
 
     @BeforeEach
     void setUp() {
-        settings = mock(SettingService.class);
-        gate = new ZarniwoopGateService(settings);
+        providerFactory = mock(SearchProviderFactory.class);
+        gate = new ZarniwoopGateService(providerFactory);
+    }
+
+    /** The endpoint is configured and says nothing about enabled. */
+    private void givenConfigured() {
+        givenConfigured(true);
+    }
+
+    private void givenConfigured(boolean enabled) {
+        when(providerFactory.config(any(), any())).thenReturn(new SourceConfig(
+                INSTANCE, SourceConfigPaths.pathFor(SourceConfigPaths.RESEARCH, INSTANCE),
+                "serper", "https://google.serper.dev", null, enabled, Map.of()));
     }
 
     @Test
-    void default_isEnabled_true_when_no_setting() {
-        when(settings.getStringValueCascade(eq(TENANT), eq(PROJECT), any(), any()))
-                .thenReturn(null);
+    void default_isEnabled_true_when_documentSaysNothing() {
+        givenConfigured();
 
         assertThat(gate.isEnabled(SCOPE, INSTANCE)).isTrue();
         assertThat(gate.resolve(SCOPE, INSTANCE).defaultEnabled()).isTrue();
@@ -41,22 +53,16 @@ class ZarniwoopGateServiceTest {
     }
 
     @Test
-    void settings_false_disables_instance() {
-        when(settings.getStringValueCascade(
-                eq(TENANT), eq(PROJECT), any(),
-                eq(ZarniwoopSettings.endpointEnabledKey(INSTANCE))))
-                .thenReturn("false");
+    void configured_false_disables_instance() {
+        givenConfigured(false);
 
         assertThat(gate.isEnabled(SCOPE, INSTANCE)).isFalse();
         assertThat(gate.resolve(SCOPE, INSTANCE).defaultEnabled()).isFalse();
     }
 
     @Test
-    void override_enabled_wins_over_settings_false() {
-        when(settings.getStringValueCascade(
-                eq(TENANT), eq(PROJECT), any(),
-                eq(ZarniwoopSettings.endpointEnabledKey(INSTANCE))))
-                .thenReturn("false");
+    void override_enabled_wins_over_configured_false() {
+        givenConfigured(false);
 
         gate.setOverride(SCOPE, INSTANCE, ManualState.ENABLED);
 
@@ -68,15 +74,15 @@ class ZarniwoopGateServiceTest {
     }
 
     @Test
-    void override_disabled_wins_over_settings_true() {
-        when(settings.getStringValueCascade(any(), any(), any(), any())).thenReturn(null);
+    void override_disabled_wins_over_configured_true() {
+        givenConfigured();
         gate.setOverride(SCOPE, INSTANCE, ManualState.DISABLED);
         assertThat(gate.isEnabled(SCOPE, INSTANCE)).isFalse();
     }
 
     @Test
-    void clearOverride_returns_to_settings_default() {
-        when(settings.getStringValueCascade(any(), any(), any(), any())).thenReturn(null);
+    void clearOverride_returns_to_configured_default() {
+        givenConfigured();
         gate.setOverride(SCOPE, INSTANCE, ManualState.DISABLED);
         assertThat(gate.isEnabled(SCOPE, INSTANCE)).isFalse();
 
@@ -88,7 +94,7 @@ class ZarniwoopGateServiceTest {
 
     @Test
     void project_stop_clears_overrides() {
-        when(settings.getStringValueCascade(any(), any(), any(), any())).thenReturn(null);
+        givenConfigured();
         gate.setOverride(SCOPE, INSTANCE, ManualState.DISABLED);
         SearchScope otherProject = SearchScope.of(TENANT, "other");
         gate.setOverride(otherProject, INSTANCE, ManualState.DISABLED);
@@ -102,7 +108,7 @@ class ZarniwoopGateServiceTest {
 
     @Test
     void setOverride_rejects_missing_project_or_instance() {
-        when(settings.getStringValueCascade(any(), any(), any(), any())).thenReturn(null);
+        givenConfigured();
         SearchScope noProject = new SearchScope(TENANT, "", null, null);
         assertThatThrownBy(() ->
                 gate.setOverride(noProject, INSTANCE, ManualState.DISABLED))

@@ -1,0 +1,4 @@
+protocol: openalex
+baseUrl: https://api.openalex.org
+{% if contactEmail %}contactEmail: {{ contactEmail }}
+{% endif %}enabled: true

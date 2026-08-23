@@ -17,6 +17,12 @@ import org.jspecify.annotations.Nullable;
  * @param nameDefaultTemplate Pebble template for the prefilled filename
  *        (FREE mode), without extension; {@code null} when absent
  * @param nameValue           fixed filename incl. extension (FIXED mode)
+ * @param folder              target folder this template belongs in, or {@code null}
+ *        when the caller decides. Set it for a template whose output only works
+ *        in one place — a source-configuration document under
+ *        {@code _vance/config/research} is read by a loader that looks exactly
+ *        there, so letting the caller pick the folder can only produce a file
+ *        nobody reads.
  * @param typeOverride        explicit MIME override; {@code null} = derive from body extension
  * @param bodyPath            normalized path of the body file (carries the extension)
  * @param bodyContent         raw Pebble body content
@@ -30,6 +36,7 @@ public record ResolvedTemplate(
         TemplateNameMode nameMode,
         @Nullable String nameDefaultTemplate,
         @Nullable String nameValue,
+        @Nullable String folder,
         @Nullable String typeOverride,
         List<FormFieldDto> fields,
         List<String> availableIn,

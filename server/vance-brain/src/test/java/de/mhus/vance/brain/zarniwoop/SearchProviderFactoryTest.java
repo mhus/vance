@@ -11,7 +11,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.project.ProjectEnginesStopRequested;
-import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.brain.sourceconfig.SourceConfig;
+import de.mhus.vance.brain.sourceconfig.SourceConfigLoader;
+import de.mhus.vance.brain.sourceconfig.SourceConfigPaths;
+import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.research.ProviderAvailability;
 import de.mhus.vance.toolpack.research.ProviderInstanceConfig;
 import de.mhus.vance.toolpack.research.QuotaStatus;
@@ -36,10 +39,33 @@ class SearchProviderFactoryTest {
     private static final String TENANT = "acme";
     private static final String PROJECT = "alpha";
 
+    private static SearchProviderFactory factory(
+            SourceConfigLoader loader, List<SearchProtocol> protocols) {
+        return new SearchProviderFactory(loader, SecretResolver.PASSTHROUGH, protocols);
+    }
+
+    /** A configuration document as the loader would hand it over. */
+    private static SourceConfig doc(String name, String protocol, Object... extraPairs) {
+        Map<String, Object> extras = new LinkedHashMap<>();
+        for (int i = 0; i < extraPairs.length; i += 2) {
+            extras.put(String.valueOf(extraPairs[i]), extraPairs[i + 1]);
+        }
+        boolean enabled = !Boolean.FALSE.equals(extras.remove("enabled"));
+        String baseUrl = (String) extras.remove("baseUrl");
+        return new SourceConfig(
+                name, SourceConfigPaths.pathFor(SourceConfigPaths.RESEARCH, name),
+                protocol, baseUrl, (String) extras.remove("apiKey"), enabled, extras);
+    }
+
+    private static void given(SourceConfigLoader loader, SourceConfig... configs) {
+        when(loader.load(eq(TENANT), eq(PROJECT), eq(SourceConfigPaths.RESEARCH)))
+                .thenReturn(List.of(configs));
+    }
+
     @Test
     void assemble_requires_project_scope() {
-        SettingService settings = mock(SettingService.class);
-        SearchProviderFactory factory = new SearchProviderFactory(settings, List.of());
+        SourceConfigLoader loader = mock(SourceConfigLoader.class);
+        SearchProviderFactory factory = factory(loader, List.of());
 
         SearchScope tenantOnly = new SearchScope(TENANT, "", null, null);
 
@@ -50,12 +76,11 @@ class SearchProviderFactoryTest {
 
     @Test
     void assemble_returns_empty_when_no_endpoints_configured() {
-        SettingService settings = mock(SettingService.class);
-        when(settings.findByPrefixCascade(eq(TENANT), eq(PROJECT), any(),
-                eq(ZarniwoopSettings.PREFIX_ENDPOINT)))
-                .thenReturn(Map.of());
+        SourceConfigLoader loader = mock(SourceConfigLoader.class);
+        when(loader.load(eq(TENANT), eq(PROJECT), eq(SourceConfigPaths.RESEARCH)))
+                .thenReturn(List.of());
 
-        SearchProviderFactory factory = new SearchProviderFactory(settings, List.of());
+        SearchProviderFactory factory = factory(loader, List.of());
         List<SearchProviderInstance> result = factory.assemble(SearchScope.of(TENANT, PROJECT));
 
         assertThat(result).isEmpty();
@@ -63,22 +88,15 @@ class SearchProviderFactoryTest {
 
     @Test
     void assemble_dispatches_to_protocol_for_each_endpoint() {
-        SettingService settings = mock(SettingService.class);
-        Map<String, String> endpointSettings = new LinkedHashMap<>();
-        endpointSettings.put("research.endpoint.serper-main.protocol", "serper");
-        endpointSettings.put("research.endpoint.serper-main.baseUrl", "https://google.serper.dev");
-        endpointSettings.put("research.endpoint.wiki-de.protocol", "wikipedia");
-        endpointSettings.put("research.endpoint.wiki-de.baseUrl",
-                "https://de.wikipedia.org/w/api.php");
-        when(settings.findByPrefixCascade(eq(TENANT), eq(PROJECT), any(),
-                eq(ZarniwoopSettings.PREFIX_ENDPOINT)))
-                .thenReturn(endpointSettings);
+        SourceConfigLoader loader = mock(SourceConfigLoader.class);
+        given(loader,
+                doc("serper-main", "serper", "baseUrl", "https://google.serper.dev"),
+                doc("wiki-de", "wikipedia", "baseUrl", "https://de.wikipedia.org/w/api.php"));
 
         RecordingProtocol serper = new RecordingProtocol("serper");
         RecordingProtocol wiki = new RecordingProtocol("wikipedia");
 
-        SearchProviderFactory factory = new SearchProviderFactory(
-                settings, List.of(serper, wiki));
+        SearchProviderFactory factory = factory(loader, List.of(serper, wiki));
 
         List<SearchProviderInstance> result = factory.assemble(SearchScope.of(TENANT, PROJECT));
 
@@ -91,17 +109,13 @@ class SearchProviderFactoryTest {
 
     @Test
     void assemble_skips_endpoints_with_unknown_protocol() {
-        SettingService settings = mock(SettingService.class);
-        Map<String, String> endpointSettings = new LinkedHashMap<>();
-        endpointSettings.put("research.endpoint.alpha.protocol", "unknown");
-        endpointSettings.put("research.endpoint.alpha.baseUrl", "https://example");
-        endpointSettings.put("research.endpoint.serper-main.protocol", "serper");
-        when(settings.findByPrefixCascade(eq(TENANT), eq(PROJECT), any(),
-                eq(ZarniwoopSettings.PREFIX_ENDPOINT)))
-                .thenReturn(endpointSettings);
+        SourceConfigLoader loader = mock(SourceConfigLoader.class);
+        given(loader,
+                doc("alpha", "unknown", "baseUrl", "https://example"),
+                doc("serper-main", "serper"));
 
         RecordingProtocol serper = new RecordingProtocol("serper");
-        SearchProviderFactory factory = new SearchProviderFactory(settings, List.of(serper));
+        SearchProviderFactory factory = factory(loader, List.of(serper));
 
         List<SearchProviderInstance> result = factory.assemble(SearchScope.of(TENANT, PROJECT));
 
@@ -113,17 +127,12 @@ class SearchProviderFactoryTest {
     void assemble_still_instantiates_endpoints_with_enabled_false() {
         // enabled=false is no longer a build-time skip — ZarniwoopGateService
         // applies it at dispatch time so the UI can override.
-        SettingService settings = mock(SettingService.class);
-        Map<String, String> endpointSettings = new LinkedHashMap<>();
-        endpointSettings.put("research.endpoint.alpha.protocol", "serper");
-        endpointSettings.put("research.endpoint.alpha.enabled", "false");
-        endpointSettings.put("research.endpoint.beta.protocol", "serper");
-        when(settings.findByPrefixCascade(eq(TENANT), eq(PROJECT), any(),
-                eq(ZarniwoopSettings.PREFIX_ENDPOINT)))
-                .thenReturn(endpointSettings);
+        SourceConfigLoader loader = mock(SourceConfigLoader.class);
+        given(loader,
+                doc("alpha", "serper", "enabled", false),
+                doc("beta", "serper"));
 
-        SearchProviderFactory factory = new SearchProviderFactory(
-                settings, List.of(new RecordingProtocol("serper")));
+        SearchProviderFactory factory = factory(loader, List.of(new RecordingProtocol("serper")));
 
         List<SearchProviderInstance> result = factory.assemble(SearchScope.of(TENANT, PROJECT));
 
@@ -133,15 +142,11 @@ class SearchProviderFactoryTest {
 
     @Test
     void assemble_caches_per_project_and_protocol_called_once() {
-        SettingService settings = mock(SettingService.class);
-        Map<String, String> endpointSettings = new LinkedHashMap<>();
-        endpointSettings.put("research.endpoint.alpha.protocol", "serper");
-        when(settings.findByPrefixCascade(eq(TENANT), eq(PROJECT), any(),
-                eq(ZarniwoopSettings.PREFIX_ENDPOINT)))
-                .thenReturn(endpointSettings);
+        SourceConfigLoader loader = mock(SourceConfigLoader.class);
+        given(loader, doc("alpha", "serper"));
 
         RecordingProtocol serper = new RecordingProtocol("serper");
-        SearchProviderFactory factory = new SearchProviderFactory(settings, List.of(serper));
+        SearchProviderFactory factory = factory(loader, List.of(serper));
 
         SearchScope scope = SearchScope.of(TENANT, PROJECT);
         factory.assemble(scope);
@@ -149,21 +154,16 @@ class SearchProviderFactoryTest {
         factory.assemble(scope);
 
         assertThat(serper.invocations.get()).isEqualTo(1);
-        verify(settings, times(1)).findByPrefixCascade(eq(TENANT), eq(PROJECT), any(),
-                eq(ZarniwoopSettings.PREFIX_ENDPOINT));
+        verify(loader, times(1)).load(eq(TENANT), eq(PROJECT), eq(SourceConfigPaths.RESEARCH));
     }
 
     @Test
     void project_stop_evicts_cache_and_disposes_instances() {
-        SettingService settings = mock(SettingService.class);
-        Map<String, String> endpointSettings = new LinkedHashMap<>();
-        endpointSettings.put("research.endpoint.alpha.protocol", "serper");
-        when(settings.findByPrefixCascade(eq(TENANT), eq(PROJECT), any(),
-                eq(ZarniwoopSettings.PREFIX_ENDPOINT)))
-                .thenReturn(endpointSettings);
+        SourceConfigLoader loader = mock(SourceConfigLoader.class);
+        given(loader, doc("alpha", "serper"));
 
         RecordingProtocol serper = new RecordingProtocol("serper");
-        SearchProviderFactory factory = new SearchProviderFactory(settings, List.of(serper));
+        SearchProviderFactory factory = factory(loader, List.of(serper));
 
         SearchScope scope = SearchScope.of(TENANT, PROJECT);
         List<SearchProviderInstance> first = factory.assemble(scope);
@@ -179,32 +179,12 @@ class SearchProviderFactoryTest {
 
     @Test
     void project_stop_for_unknown_project_is_safe() {
-        SettingService settings = mock(SettingService.class);
-        SearchProviderFactory factory = new SearchProviderFactory(settings, List.of());
+        SourceConfigLoader loader = mock(SourceConfigLoader.class);
+        SearchProviderFactory factory = factory(loader, List.of());
 
         factory.onProjectStop(new ProjectEnginesStopRequested(TENANT, "no-such-project"));
         // no exception, no eviction
-        verify(settings, never()).findByPrefixCascade(any(), any(), any(), any());
-    }
-
-    @Test
-    void groupByEndpointId_splits_keys_on_first_dot() {
-        Map<String, String> raw = new LinkedHashMap<>();
-        raw.put("research.endpoint.serper-main.protocol", "serper");
-        raw.put("research.endpoint.serper-main.baseUrl", "https://x");
-        raw.put("research.endpoint.serper-main.timeoutMs", "5000");
-        raw.put("research.endpoint.wiki-de.protocol", "wikipedia");
-        raw.put("research.endpoint.bogus", "no-suffix");  // skipped
-
-        Map<String, Map<String, String>> grouped = SearchProviderFactory.groupByEndpointId(raw);
-
-        assertThat(grouped.keySet()).containsExactlyInAnyOrder("serper-main", "wiki-de");
-        assertThat(grouped.get("serper-main"))
-                .containsEntry("protocol", "serper")
-                .containsEntry("baseUrl", "https://x")
-                .containsEntry("timeoutMs", "5000");
-        assertThat(grouped.get("wiki-de"))
-                .containsEntry("protocol", "wikipedia");
+        verify(loader, never()).load(any(), any(), any());
     }
 
     // ── helpers ───────────────────────────────────────────────────────

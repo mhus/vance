@@ -684,7 +684,7 @@ public class InsightsAdminController {
      * with the current availability verdict, a free-text status line
      * from the protocol (Serper credits, Wikipedia "no quota meter"
      * etc.) and the pod-local invocation counter. Read-only —
-     * everything writeable lives in {@code research.endpoint.*}
+     * everything writeable lives in {@code _vance/config/research/}
      * settings under the standard cascade editor.
      */
     @GetMapping("/projects/{project}/insights/zarniwoop")

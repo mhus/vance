@@ -59,6 +59,13 @@ public class TemplateDto {
     private @Nullable String nameValue;
 
     /**
+     * Target folder fixed by the template, or {@code null} when the caller
+     * picks one. When set, the create-dialog shows it and does not offer a
+     * folder chooser — the backend ignores any folder sent alongside it.
+     */
+    private @Nullable String folder;
+
+    /**
      * Optional explicit MIME override for the created document. {@code null}
      * means the MIME is derived from the body file extension.
      */

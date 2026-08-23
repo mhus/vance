@@ -9,8 +9,6 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.brain.tools.web.ImageValidatorService;
 import de.mhus.vance.brain.tools.web.YouTubeValidatorService;
 import de.mhus.vance.brain.zarniwoop.protocols.SerperHttpClient.SerperResponse;
-import de.mhus.vance.shared.settings.SettingService;
-import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.research.ProviderAvailability;
 import de.mhus.vance.toolpack.research.ProviderInstanceConfig;
 import de.mhus.vance.toolpack.research.QuotaStatus;
@@ -33,68 +31,47 @@ class SerperInstanceTest {
     private static final String PROJECT = "alpha";
     private static final SearchScope SCOPE = SearchScope.of(TENANT, PROJECT);
 
-    private static final ProviderInstanceConfig CFG = new ProviderInstanceConfig(
-            "serper-main", "serper",
-            "https://google.serper.dev",
-            "research.endpoint.serper-main.apiKey",
-            Map.of());
+    private static final String CREDENTIAL_LOCATION =
+            "_vance/config/research/serper-main.yaml#apiKey";
 
-    private SerperInstance newInstance(SettingService settings, SerperHttpClient http) {
+    /** The credential now arrives with the config; the factory resolved it. */
+    private SerperInstance newInstance(
+            @org.jspecify.annotations.Nullable String credential, SerperHttpClient http) {
+        ProviderInstanceConfig cfg = new ProviderInstanceConfig(
+                "serper-main", "serper",
+                "https://google.serper.dev",
+                CREDENTIAL_LOCATION,
+                () -> credential,
+                Map.of(), TENANT, PROJECT);
         return new SerperInstance(
-                CFG, settings, passThroughSecrets(), new ObjectMapper(), http,
+                cfg, new ObjectMapper(), http,
                 mock(ImageValidatorService.class),
                 mock(YouTubeValidatorService.class),
                 mock(SerperPdfHeadProbe.class));
     }
 
     @Test
-    void availability_NO_CREDENTIALS_when_both_keys_empty() {
-        SettingService settings = mock(SettingService.class);
-        when(settings.getDecryptedPasswordCascade(
-                eq(TENANT), eq(PROJECT), any(), any())).thenReturn(null);
+    void availability_NO_CREDENTIALS_when_noKeyIsConfigured() {
+        String credential = null;
 
-        SerperInstance instance = newInstance(settings, mock(SerperHttpClient.class));
+        SerperInstance instance = newInstance(credential, mock(SerperHttpClient.class));
 
         assertThat(instance.availability(SCOPE)).isEqualTo(ProviderAvailability.NO_CREDENTIALS);
     }
 
     @Test
     void availability_READY_when_instance_key_set() {
-        SettingService settings = mock(SettingService.class);
-        when(settings.getDecryptedPasswordCascade(
-                eq(TENANT), eq(PROJECT), any(),
-                eq("research.endpoint.serper-main.apiKey")))
-                .thenReturn("KEY-NEW");
+        String credential = "KEY-NEW";
 
-        SerperInstance instance = newInstance(settings, mock(SerperHttpClient.class));
+        SerperInstance instance = newInstance(credential, mock(SerperHttpClient.class));
 
         assertThat(instance.availability(SCOPE)).isEqualTo(ProviderAvailability.READY);
         assertThat(instance.resolveApiKey(SCOPE)).isEqualTo("KEY-NEW");
     }
 
     @Test
-    void resolveApiKey_falls_back_to_legacy_setting() {
-        SettingService settings = mock(SettingService.class);
-        when(settings.getDecryptedPasswordCascade(
-                eq(TENANT), eq(PROJECT), any(),
-                eq("research.endpoint.serper-main.apiKey")))
-                .thenReturn("");
-        when(settings.getDecryptedPasswordCascade(
-                eq(TENANT), eq(PROJECT), any(),
-                eq(SerperInstance.LEGACY_API_KEY_SETTING)))
-                .thenReturn("LEGACY-KEY");
-
-        SerperInstance instance = newInstance(settings, mock(SerperHttpClient.class));
-
-        assertThat(instance.resolveApiKey(SCOPE)).isEqualTo("LEGACY-KEY");
-        assertThat(instance.availability(SCOPE)).isEqualTo(ProviderAvailability.READY);
-    }
-
-    @Test
     void search_parses_organic_hits_from_serper_response() throws Exception {
-        SettingService settings = mock(SettingService.class);
-        when(settings.getDecryptedPasswordCascade(eq(TENANT), eq(PROJECT), any(), any()))
-                .thenReturn("KEY");
+        String credential = "KEY";
         SerperHttpClient http = mock(SerperHttpClient.class);
         String body = """
                 {
@@ -110,7 +87,7 @@ class SerperInstanceTest {
                 .thenReturn(new SerperResponse(200, body,
                         Map.of("x-ratelimit-remaining", "24")));
 
-        SerperInstance instance = newInstance(settings, http);
+        SerperInstance instance = newInstance(credential, http);
 
         SearchResult result = instance.search(
                 SearchRequest.normal("topic", SearchModality.WEB, 5), SCOPE);
@@ -125,14 +102,12 @@ class SerperInstanceTest {
 
     @Test
     void search_sends_query_and_clamped_num_in_request_body() throws Exception {
-        SettingService settings = mock(SettingService.class);
-        when(settings.getDecryptedPasswordCascade(eq(TENANT), eq(PROJECT), any(), any()))
-                .thenReturn("KEY");
+        String credential = "KEY";
         SerperHttpClient http = mock(SerperHttpClient.class);
         when(http.post(any(URI.class), eq("KEY"), any(String.class), any(Duration.class)))
                 .thenReturn(new SerperResponse(200, "{\"organic\":[]}", Map.of()));
 
-        SerperInstance instance = newInstance(settings, http);
+        SerperInstance instance = newInstance(credential, http);
         instance.search(SearchRequest.normal("Lissabon", SearchModality.WEB, 25), SCOPE);
 
         ArgumentCaptor<String> bodyCap = ArgumentCaptor.forClass(String.class);
@@ -150,9 +125,7 @@ class SerperInstanceTest {
 
     @Test
     void newsSearch_hitsTheNewsIndexAndCarriesOutletDateAndLeadImage() throws Exception {
-        SettingService settings = mock(SettingService.class);
-        when(settings.getDecryptedPasswordCascade(eq(TENANT), eq(PROJECT), any(), any()))
-                .thenReturn("KEY");
+        String credential = "KEY";
         SerperHttpClient http = mock(SerperHttpClient.class);
         String body = """
                 {
@@ -167,7 +140,7 @@ class SerperInstanceTest {
         when(http.post(any(URI.class), eq("KEY"), any(String.class), any(Duration.class)))
                 .thenReturn(new SerperResponse(200, body, Map.of()));
 
-        SerperInstance instance = newInstance(settings, http);
+        SerperInstance instance = newInstance(credential, http);
         SearchResult result = instance.search(
                 SearchRequest.normal("amatrice", SearchModality.NEWS, 5), SCOPE);
 
@@ -190,9 +163,7 @@ class SerperInstanceTest {
      */
     @Test
     void newsLeadImageTravelsAsThumbnailNotAsTheResultItself() throws Exception {
-        SettingService settings = mock(SettingService.class);
-        when(settings.getDecryptedPasswordCascade(eq(TENANT), eq(PROJECT), any(), any()))
-                .thenReturn("KEY");
+        String credential = "KEY";
         SerperHttpClient http = mock(SerperHttpClient.class);
         when(http.post(any(URI.class), eq("KEY"), any(String.class), any(Duration.class)))
                 .thenReturn(new SerperResponse(200, """
@@ -200,7 +171,7 @@ class SerperInstanceTest {
                                    "imageUrl": "https://x/lead.jpg"}]}
                         """, Map.of()));
 
-        SerperInstance instance = newInstance(settings, http);
+        SerperInstance instance = newInstance(credential, http);
         SearchResult result = instance.search(
                 SearchRequest.normal("q", SearchModality.NEWS, 5), SCOPE);
 
@@ -211,9 +182,7 @@ class SerperInstanceTest {
 
     @Test
     void newsRowWithoutALinkIsSkippedRatherThanRenderedAsDeadText() throws Exception {
-        SettingService settings = mock(SettingService.class);
-        when(settings.getDecryptedPasswordCascade(eq(TENANT), eq(PROJECT), any(), any()))
-                .thenReturn("KEY");
+        String credential = "KEY";
         SerperHttpClient http = mock(SerperHttpClient.class);
         when(http.post(any(URI.class), eq("KEY"), any(String.class), any(Duration.class)))
                 .thenReturn(new SerperResponse(200, """
@@ -221,7 +190,7 @@ class SerperInstanceTest {
                                   {"title": "Fine", "link": "https://ok/"}]}
                         """, Map.of()));
 
-        SerperInstance instance = newInstance(settings, http);
+        SerperInstance instance = newInstance(credential, http);
         SearchResult result = instance.search(
                 SearchRequest.normal("q", SearchModality.NEWS, 5), SCOPE);
 
@@ -231,19 +200,16 @@ class SerperInstanceTest {
 
     @Test
     void newsIsDeclaredSoTheDispatcherRoutesTheModalityHere() {
-        SerperInstance instance = newInstance(
-                mock(SettingService.class), mock(SerperHttpClient.class));
+        SerperInstance instance = newInstance("KEY", mock(SerperHttpClient.class));
 
         assertThat(instance.modalities()).contains(SearchModality.NEWS);
     }
 
     @Test
     void search_returns_soft_failure_when_no_key() {
-        SettingService settings = mock(SettingService.class);
-        when(settings.getDecryptedPasswordCascade(eq(TENANT), eq(PROJECT), any(), any()))
-                .thenReturn(null);
+        String credential = null;
 
-        SerperInstance instance = newInstance(settings, mock(SerperHttpClient.class));
+        SerperInstance instance = newInstance(credential, mock(SerperHttpClient.class));
 
         SearchResult result = instance.search(
                 SearchRequest.normal("q", SearchModality.WEB, 5), SCOPE);
@@ -253,15 +219,13 @@ class SerperInstanceTest {
 
     @Test
     void search_throws_on_non_200_for_agrajag_classification() throws Exception {
-        SettingService settings = mock(SettingService.class);
-        when(settings.getDecryptedPasswordCascade(eq(TENANT), eq(PROJECT), any(), any()))
-                .thenReturn("KEY");
+        String credential = "KEY";
         SerperHttpClient http = mock(SerperHttpClient.class);
         when(http.post(any(URI.class), eq("KEY"), any(String.class), any(Duration.class)))
                 .thenReturn(new SerperResponse(429, "{\"error\":\"rate limited\"}",
                         Map.of("retry-after", "30")));
 
-        SerperInstance instance = newInstance(settings, http);
+        SerperInstance instance = newInstance(credential, http);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->
                 instance.search(SearchRequest.normal("q", SearchModality.WEB, 5), SCOPE))
@@ -271,15 +235,13 @@ class SerperInstanceTest {
 
     @Test
     void currentQuota_reads_balance_from_account_endpoint() throws Exception {
-        SettingService settings = mock(SettingService.class);
-        when(settings.getDecryptedPasswordCascade(eq(TENANT), eq(PROJECT), any(), any()))
-                .thenReturn("KEY");
+        String credential = "KEY";
         SerperHttpClient http = mock(SerperHttpClient.class);
         when(http.get(any(URI.class), eq("KEY"), any(Duration.class)))
                 .thenReturn(new SerperResponse(200,
                         "{\"balance\":1552,\"rateLimit\":5}", Map.of()));
 
-        SerperInstance instance = newInstance(settings, http);
+        SerperInstance instance = newInstance(credential, http);
 
         Optional<QuotaStatus> q = instance.currentQuota(SCOPE);
 
@@ -289,34 +251,23 @@ class SerperInstanceTest {
 
     @Test
     void currentQuota_empty_when_no_key() {
-        SettingService settings = mock(SettingService.class);
-        when(settings.getDecryptedPasswordCascade(eq(TENANT), eq(PROJECT), any(), any()))
-                .thenReturn(null);
+        String credential = null;
 
-        SerperInstance instance = newInstance(settings, mock(SerperHttpClient.class));
+        SerperInstance instance = newInstance(credential, mock(SerperHttpClient.class));
 
         assertThat(instance.currentQuota(SCOPE)).isEmpty();
     }
 
     @Test
     void currentQuota_empty_when_account_returns_non_200() throws Exception {
-        SettingService settings = mock(SettingService.class);
-        when(settings.getDecryptedPasswordCascade(eq(TENANT), eq(PROJECT), any(), any()))
-                .thenReturn("KEY");
+        String credential = "KEY";
         SerperHttpClient http = mock(SerperHttpClient.class);
         when(http.get(any(URI.class), eq("KEY"), any(Duration.class)))
                 .thenReturn(new SerperResponse(403, "forbidden", Map.of()));
 
-        SerperInstance instance = newInstance(settings, http);
+        SerperInstance instance = newInstance(credential, http);
 
         assertThat(instance.currentQuota(SCOPE)).isEmpty();
     }
 
-    /**
-     * A resolver that hands back what it was given. Reference substitution has
-     * its own tests; here it must only not swallow a plain key.
-     */
-    private static SecretResolver passThroughSecrets() {
-        return (input, ctx) -> input;
-    }
 }

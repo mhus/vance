@@ -83,7 +83,7 @@ public final class McpHttpTransport implements McpTransport {
         this.config = config;
         this.rpc = rpc;
         this.httpClient = httpClient;
-        this.secretResolver = secretResolver == null ? SecretResolver.NOOP : secretResolver;
+        this.secretResolver = secretResolver == null ? SecretResolver.PASSTHROUGH : secretResolver;
     }
 
     @Override

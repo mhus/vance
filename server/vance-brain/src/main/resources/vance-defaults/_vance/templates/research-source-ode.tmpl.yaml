@@ -1,0 +1,5 @@
+protocol: ode
+baseUrl: {{ baseUrl }}
+{% if apiKey %}apiKey: "{{ apiKey }}"
+{% endif %}{% if capsTtlSeconds %}capsTtlSeconds: {{ capsTtlSeconds }}
+{% endif %}enabled: true

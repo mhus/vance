@@ -75,7 +75,12 @@ public class TemplateService {
 
         String bodyExt = template.bodyExtension();
         String filename = resolveFilename(template, requestedName, bodyExt);
-        String targetPath = joinPath(folder, filename);
+        // A template that declares a folder wins over the caller's: it does so
+        // because its output is only read at that path (a loader with a fixed
+        // prefix), and honouring the caller there would write a file nobody
+        // reads. Templates without one keep the historical behaviour.
+        String targetFolder = template.folder() != null ? template.folder() : folder;
+        String targetPath = joinPath(targetFolder, filename);
         String mime = template.typeOverride() != null
                 ? template.typeOverride()
                 : DocumentService.mimeFromPath(filename);

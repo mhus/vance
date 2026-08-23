@@ -58,6 +58,17 @@ class TemplateServiceTest {
             List<FormFieldDto> fields,
             String bodyPath,
             String body) {
+        return template(mode, nameValue, /*folder*/ null, typeOverride, fields, bodyPath, body);
+    }
+
+    private ResolvedTemplate template(
+            TemplateNameMode mode,
+            @Nullable String nameValue,
+            @Nullable String folder,
+            @Nullable String typeOverride,
+            List<FormFieldDto> fields,
+            String bodyPath,
+            String body) {
         return new ResolvedTemplate(
                 "meeting-notes",
                 Map.of("en", "Meeting note"),
@@ -67,6 +78,7 @@ class TemplateServiceTest {
                 mode,
                 /*nameDefaultTemplate*/ null,
                 nameValue,
+                folder,
                 typeOverride,
                 fields,
                 List.of("*"),
@@ -85,6 +97,18 @@ class TemplateServiceTest {
 
         assertThat(applied.path()).isEqualTo("docs/my-notes.md");
         assertThat(applied.mimeType()).isEqualTo("text/markdown");
+    }
+
+    @Test
+    void apply_declaredFolder_overridesTheCallerFolder() {
+        ResolvedTemplate t = template(
+                TemplateNameMode.FREE, null, "_vance/config/research", null,
+                List.of(), "research-arxiv.tmpl.yaml", "protocol: arxiv\n");
+
+        TemplateService.AppliedTemplate applied = service.apply(
+                t, "documents", "arxiv", Map.of(), TENANT, PROJECT, SUBJECT, "en");
+
+        assertThat(applied.path()).isEqualTo("_vance/config/research/arxiv.yaml");
     }
 
     @Test

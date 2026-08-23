@@ -50,7 +50,7 @@ public class ZarniwoopInsightsService {
     /**
      * The provider instances of a project. With {@code refresh} the factory
      * cache is dropped first, which is what an operator needs right after
-     * writing {@code research.endpoint.*} — until then the list is up to five
+     * writing a source document — until then the list is up to five
      * minutes stale and looks exactly like a wrong setting key.
      */
     public List<ZarniwoopInsightsDto> listInstances(

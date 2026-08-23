@@ -84,7 +84,7 @@ class McpConnectionCoercionTest {
             params.put("defaultArgs", defaultArgs);
         }
         return new McpConnection(
-                McpConfig.fromParameters(params), transport, CTX, SecretResolver.NOOP);
+                McpConfig.fromParameters(params), transport, CTX, SecretResolver.PASSTHROUGH);
     }
 
     /** Captures the last {@code tools/call} arguments map. */

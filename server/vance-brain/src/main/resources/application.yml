@@ -97,11 +97,11 @@ vance:
     # decides where the project gets its tool definitions from. It was in the
     # Java default and missing here, and this file wins — the shipped
     # configuration was the weaker of the two.
-    # jaglan.mount.* because a mount points a document namespace at a foreign
-    # (for the `local` protocol: host-local) file tree, read AND write. That is
-    # a wider capability than either of the two above, and it must not be
-    # reachable from an agent-originated setting write.
-    agentWriteDenyKeys: "ai.provider.*,vault.*,store.*,kit.*,jaglan.mount.*"
+    # A mount is no longer a setting — it is a document under
+    # _vance/config/mounts/, so the guard for it moved to the document layer
+    # (KitRecordStore.isReservedPath for kits, the reserved _vance/ prefix rule
+    # for agents). Nothing to deny here any more.
+    agentWriteDenyKeys: "ai.provider.*,vault.*,store.*,kit.*"
     # Keys no {{secret:…}} reference may resolve — the read-side counterpart of
     # agentWriteDenyKeys, deliberately a separate list because "may not write"
     # and "may not resolve" are different questions.
@@ -117,13 +117,12 @@ vance:
     # shape, third question: not an agent and not a reference, but a bundle of
     # files from somewhere else that installs unattended.
     #
-    # Same four families as agentWriteDenyKeys, for the same reasons — a kit
-    # that could set store.account.<sourceId> would rewrite the very value its
-    # own licence gate compares the signed licensedTo against, and one that
-    # could set jaglan.mount.* would give itself a mount of the brain pod's
-    # file system. Shorten this in a deployment where kits are trusted to
-    # configure providers.
-    settingDenyKeys: "ai.provider.*,vault.*,store.*,kit.*,jaglan.mount.*"
+    # Same families as agentWriteDenyKeys, for the same reasons — a kit that
+    # could set store.account.<sourceId> would rewrite the very value its own
+    # licence gate compares the signed licensedTo against. Mounts are documents
+    # now and are refused by KitRecordStore.isReservedPath instead. Shorten this
+    # in a deployment where kits are trusted to configure providers.
+    settingDenyKeys: "ai.provider.*,vault.*,store.*,kit.*"
   jaglan:
     local:
       # Base directories a `protocol: local` mount may point its rootDir at.

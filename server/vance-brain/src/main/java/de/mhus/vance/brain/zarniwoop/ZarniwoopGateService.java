@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.zarniwoop;
 
 import de.mhus.vance.brain.project.ProjectEnginesStopRequested;
-import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.brain.sourceconfig.SourceConfig;
 import de.mhus.vance.toolpack.research.SearchScope;
 import java.util.Map;
 import java.util.Optional;
@@ -17,19 +17,19 @@ import org.springframework.stereotype.Service;
  * instances:
  *
  * <ol>
- *   <li><b>Settings default</b> — {@code research.endpoint.<id>.enabled}
+ *   <li><b>Configured default</b> — {@code enabled} in the source document
  *       (default {@code true}). Persistent, project-cascade. Operators
  *       use this to ship an instance "off by default" (think: an
  *       endpoint that's configured but not in active rotation).</li>
  *   <li><b>Manual override</b> — pod-local, in-memory, scoped per
  *       {@code (tenant, project, instance)}. Set from the Insights
  *       UI to temporarily flip an instance off (or on, when the
- *       settings default keeps it off). Evicted on project suspend
+ *       configured default keeps it off). Evicted on project suspend
  *       and on pod restart.</li>
  * </ol>
  *
  * <p>Resolution: when an override exists it wins outright; otherwise
- * the settings default decides. {@link #isEnabled} is what the
+ * the configured default decides. {@link #isEnabled} is what the
  * dispatcher actually consults — the structured separation is
  * surfaced to the Insights view so the operator sees both layers.
  */
@@ -38,7 +38,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class ZarniwoopGateService {
 
-    private final SettingService settings;
+    private final SearchProviderFactory providerFactory;
 
     private final Map<Key, ManualState> overrides = new ConcurrentHashMap<>();
 
@@ -60,7 +60,7 @@ public class ZarniwoopGateService {
 
     /**
      * Final effective state. Dispatcher calls this. Returns
-     * {@code true} unless the operator (settings or UI) told it
+     * {@code true} unless the operator (document or UI) told it
      * otherwise.
      */
     public boolean isEnabled(SearchScope scope, String instanceId) {
@@ -69,7 +69,7 @@ public class ZarniwoopGateService {
 
     /** Full decision — used by {@code ZarniwoopInsightsService}. */
     public GateDecision resolve(SearchScope scope, String instanceId) {
-        boolean defaultEnabled = settingsDefault(scope, instanceId);
+        boolean defaultEnabled = configuredDefault(scope, instanceId);
         Optional<ManualState> override = currentOverride(scope, instanceId);
         boolean effective = switch (override.orElse(null)) {
             case ENABLED -> true;
@@ -89,7 +89,7 @@ public class ZarniwoopGateService {
                 state, instanceId, scope.tenantId(), scope.projectId());
     }
 
-    /** Drop the manual override; falls back to the settings default. */
+    /** Drop the manual override; falls back to what the document says. */
     public void clearOverride(SearchScope scope, String instanceId) {
         if (!isValid(scope, instanceId)) return;
         if (overrides.remove(keyOf(scope, instanceId)) != null) {
@@ -116,13 +116,14 @@ public class ZarniwoopGateService {
                 event.tenantId(), event.projectName());
     }
 
-    private boolean settingsDefault(SearchScope scope, String instanceId) {
-        String raw = settings.getStringValueCascade(
-                scope.tenantId(), scope.projectId(), scope.processId(),
-                ZarniwoopSettings.endpointEnabledKey(instanceId));
-        // Default is true — only an explicit "false" turns it off.
-        if (raw == null) return true;
-        return !"false".equalsIgnoreCase(raw.trim());
+    /**
+     * What the configuration document says. Default is on — only an explicit
+     * {@code enabled: false} turns an endpoint off. An endpoint this project
+     * has no document for counts as off: there is nothing to dispatch to.
+     */
+    private boolean configuredDefault(SearchScope scope, String instanceId) {
+        SourceConfig config = providerFactory.config(scope, instanceId);
+        return config != null && config.enabled();
     }
 
     private static boolean isValid(SearchScope scope, String instanceId) {

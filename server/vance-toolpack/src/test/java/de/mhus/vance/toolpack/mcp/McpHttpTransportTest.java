@@ -77,7 +77,7 @@ class McpHttpTransportTest {
         McpConfig cfg = McpConfig.fromParameters(Map.of(
                 "transport", "http",
                 "url", endpoint));
-        try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.NOOP)) {
+        try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.PASSTHROUGH)) {
             t.open();
             Object result = t.sendRequest("tools/list", Map.of(),
                     Duration.ofSeconds(5), CTX);
@@ -100,7 +100,7 @@ class McpHttpTransportTest {
         McpConfig cfg = McpConfig.fromParameters(Map.of(
                 "transport", "http",
                 "url", endpoint));
-        try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.NOOP)) {
+        try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.PASSTHROUGH)) {
             t.open();
             t.setNotificationHandler(capturedNotification::set);
             Object result = t.sendRequest("tools/list", Map.of(),
@@ -158,7 +158,7 @@ class McpHttpTransportTest {
         McpConfig cfg = McpConfig.fromParameters(Map.of(
                 "transport", "http",
                 "url", endpoint));
-        try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.NOOP)) {
+        try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.PASSTHROUGH)) {
             t.open();
             t.sendRequest("initialize", Map.of(), Duration.ofSeconds(5), CTX);
             t.sendRequest("tools/list", Map.of(), Duration.ofSeconds(5), CTX);
@@ -189,7 +189,7 @@ class McpHttpTransportTest {
         McpConfig cfg = McpConfig.fromParameters(Map.of(
                 "transport", "http",
                 "url", endpoint));
-        try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.NOOP)) {
+        try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.PASSTHROUGH)) {
             t.open();
             t.sendRequest("initialize", Map.of(), Duration.ofSeconds(5), CTX);
             t.sendRequest("tools/list", Map.of(), Duration.ofSeconds(5), CTX);
@@ -205,7 +205,7 @@ class McpHttpTransportTest {
         McpConfig cfg = McpConfig.fromParameters(Map.of(
                 "transport", "http",
                 "url", endpoint));
-        try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.NOOP)) {
+        try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.PASSTHROUGH)) {
             t.open();
             try {
                 t.sendRequest("tools/list", Map.of(), Duration.ofSeconds(5), CTX);

@@ -110,12 +110,12 @@ public class SettingsSecretResolver implements SecretResolver {
     private final SecretReferenceKeyPolicy referenceKeyPolicy;
 
     @Override
-    public @Nullable String resolve(@Nullable String input, ToolInvocationContext ctx) {
+    public @Nullable String substitute(@Nullable String input, ToolInvocationContext ctx) {
         return substitute(input, ctx, /*connector*/ false);
     }
 
     @Override
-    public @Nullable String resolveForConnector(
+    public @Nullable String substituteForConnector(
             @Nullable String input, ToolInvocationContext ctx) {
         return substitute(input, ctx, /*connector*/ true);
     }

@@ -24,7 +24,7 @@ import org.springframework.stereotype.Component;
  * produce a manifest that parses and then shows an empty feed.
  *
  * <p>The tool does <b>not</b> configure sources. Which endpoints exist is
- * operator configuration ({@code centauri.endpoint.<id>.*}) that no agent can
+ * operator configuration ({@code _vance/config/feeds/}) that no agent can
  * write — see the {@code feeds-sources} manual.
  */
 @Component

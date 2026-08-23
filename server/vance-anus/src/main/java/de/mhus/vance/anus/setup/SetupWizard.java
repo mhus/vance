@@ -1,5 +1,6 @@
 package de.mhus.vance.anus.setup;
 
+import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.password.PasswordService;
 import de.mhus.vance.api.settings.SettingType;
@@ -46,11 +47,15 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class SetupWizard {
 
+    /** Where the search-source documents live; see SourceConfigPaths in the brain. */
+    private static final String SEARCH_SOURCE_PREFIX = "_vance/config/research/";
+
     private final TenantService tenantService;
     private final UserService userService;
     private final PasswordService passwordService;
     private final de.mhus.vance.shared.password.PasswordPolicyService passwordPolicyService;
     private final SettingService settingService;
+    private final DocumentService documentService;
     private final HomeBootstrapService homeBootstrapService;
     // Optional permission-bootstrap SPI — present only when a grant-storing
     // provider (Simple-Auth) is loaded. The setup wizard only ever provisions
@@ -69,6 +74,7 @@ public class SetupWizard {
             PasswordService passwordService,
             de.mhus.vance.shared.password.PasswordPolicyService passwordPolicyService,
             SettingService settingService,
+            DocumentService documentService,
             HomeBootstrapService homeBootstrapService,
             ObjectProvider<de.mhus.vance.shared.permission.PermissionBootstrap> permissionBootstrapProvider,
             ObjectProvider<LineReader> lineReaderProvider) {
@@ -77,6 +83,7 @@ public class SetupWizard {
         this.passwordService = passwordService;
         this.passwordPolicyService = passwordPolicyService;
         this.settingService = settingService;
+        this.documentService = documentService;
         this.homeBootstrapService = homeBootstrapService;
         this.permissionBootstrapProvider = permissionBootstrapProvider;
         this.lineReaderProvider = lineReaderProvider;
@@ -650,9 +657,7 @@ public class SetupWizard {
         seedLanguageSettings(out, state);
 
         writeProviderSettings(out, state);
-        if (!StringUtils.isBlank(state.getSerperKey())) {
-            writeResearchSettings(out, state);
-        }
+        writeResearchSources(out, state);
 
         out.println();
         out.println("Done.");
@@ -715,64 +720,91 @@ public class SetupWizard {
     }
 
     /**
-     * Writes the complete research-endpoint block from {@code init-settings.yaml}
-     * when the operator supplied a Serper key. Keyless providers (wiki/hn/
-     * openlib/openalex/arxiv) come along for the ride — they don't need a
-     * credential and give the tenant a usable academic / news / encyclopaedia
-     * stack out of the box.
+     * Writes the search sources a fresh tenant should have.
+     *
+     * <p>Two halves, and they are deliberately independent. The keyless sources
+     * — Wikipedia, HackerNews, OpenLibrary, OpenAlex, arXiv — are written
+     * unconditionally: they need no credential, and an installation without a
+     * Serper account had no search at all while they hung off that key.
+     * Serper itself is written only when the operator supplied one.
+     *
+     * <p>Endpoints are <b>documents</b> under {@code _vance/config/research/};
+     * routing (which endpoint serves a modality) stays a setting, because there
+     * the key names a modality rather than an instance.
+     *
+     * <p>Nothing is overwritten: a re-run of the wizard leaves an operator's
+     * edited source file alone.
      */
-    private void writeResearchSettings(PrintWriter out, SetupState state) {
+    private void writeResearchSources(PrintWriter out, SetupState state) {
         String tenantId = state.getTenantId();
+        int written = 0;
 
-        // Serper (web search) — requires the operator-supplied key.
-        setString(tenantId, "research.endpoint.serper-main.protocol", "serper", null);
-        setString(tenantId, "research.endpoint.serper-main.baseUrl",
-                "https://google.serper.dev", null);
-        settingService.setEncryptedPassword(
-                tenantId, SettingService.SCOPE_PROJECT,
-                HomeBootstrapService.TENANT_PROJECT_NAME,
-                "research.endpoint.serper-main.apiKey",
-                state.getSerperKey());
-        setBoolean(tenantId, "research.endpoint.serper-main.enabled", true);
-        setString(tenantId, "research.default.web", "serper-main", null);
+        written += writeResearchSource(tenantId, "wiki-de", """
+                protocol: wikipedia
+                baseUrl: https://de.wikipedia.org/w/api.php
+                enabled: true
+                """);
+        written += writeResearchSource(tenantId, "hn-algolia", """
+                protocol: hackernews
+                baseUrl: https://hn.algolia.com/api/v1
+                enabled: true
+                """);
+        written += writeResearchSource(tenantId, "openlib", """
+                protocol: openlibrary
+                baseUrl: https://openlibrary.org
+                enabled: true
+                """);
+        written += writeResearchSource(tenantId, "openalex", """
+                protocol: openalex
+                baseUrl: https://api.openalex.org
+                enabled: true
+                """);
+        written += writeResearchSource(tenantId, "arxiv", """
+                protocol: arxiv
+                baseUrl: https://export.arxiv.org/api
+                enabled: true
+                """);
 
-        // Wikipedia (encyclopaedia) — keyless, doubles as web fallback.
-        setString(tenantId, "research.endpoint.wiki-de.protocol", "wikipedia", null);
-        setString(tenantId, "research.endpoint.wiki-de.baseUrl",
-                "https://de.wikipedia.org/w/api.php", null);
-        setBoolean(tenantId, "research.endpoint.wiki-de.enabled", true);
         setString(tenantId, "research.fallback.web", "wiki-de", null);
         setString(tenantId, "research.default.encyclopedia", "wiki-de", null);
-
-        // HackerNews via Algolia — keyless, default news source.
-        setString(tenantId, "research.endpoint.hn-algolia.protocol", "hackernews", null);
-        setString(tenantId, "research.endpoint.hn-algolia.baseUrl",
-                "https://hn.algolia.com/api/v1", null);
-        setBoolean(tenantId, "research.endpoint.hn-algolia.enabled", true);
         setString(tenantId, "research.default.news", "hn-algolia", null);
-
-        // OpenLibrary — keyless, book lookups.
-        setString(tenantId, "research.endpoint.openlib.protocol", "openlibrary", null);
-        setString(tenantId, "research.endpoint.openlib.baseUrl",
-                "https://openlibrary.org", null);
-        setBoolean(tenantId, "research.endpoint.openlib.enabled", true);
         setString(tenantId, "research.default.book", "openlib", null);
-
-        // OpenAlex (academic, polite pool optional).
-        setString(tenantId, "research.endpoint.openalex.protocol", "openalex", null);
-        setString(tenantId, "research.endpoint.openalex.baseUrl",
-                "https://api.openalex.org", null);
-        setBoolean(tenantId, "research.endpoint.openalex.enabled", true);
         setString(tenantId, "research.default.academic", "openalex", null);
-
-        // arXiv — academic fallback.
-        setString(tenantId, "research.endpoint.arxiv.protocol", "arxiv", null);
-        setString(tenantId, "research.endpoint.arxiv.baseUrl",
-                "https://export.arxiv.org/api", null);
-        setBoolean(tenantId, "research.endpoint.arxiv.enabled", true);
         setString(tenantId, "research.fallback.academic", "arxiv", null);
 
-        out.println("  + Serper key written, research stack enabled");
+        if (!StringUtils.isBlank(state.getSerperKey())) {
+            // The key goes in as a declared literal: the operator typed it here,
+            // and {noop} says in the file that this is a value and not a
+            // reference somebody forgot to resolve.
+            written += writeResearchSource(tenantId, "serper-main", """
+                    protocol: serper
+                    baseUrl: https://google.serper.dev
+                    apiKey: "{noop}%s"
+                    enabled: true
+                    """.formatted(state.getSerperKey()));
+            setString(tenantId, "research.default.web", "serper-main", null);
+            out.println("  + Serper key written, web search enabled");
+        } else {
+            out.println("  ~ no Serper key given — web search stays on Wikipedia");
+        }
+        out.println("  + " + written + " search source(s) written");
+    }
+
+    /**
+     * Write one source document into the tenant-wide project, unless it is
+     * already there. Returns 1 when it wrote something.
+     */
+    private int writeResearchSource(String tenantId, String name, String body) {
+        String path = SEARCH_SOURCE_PREFIX + name + ".yaml";
+        String project = HomeBootstrapService.TENANT_PROJECT_NAME;
+        if (documentService.findByPath(tenantId, project, path).isPresent()) {
+            return 0;
+        }
+        documentService.createText(
+                tenantId, project, path, /*title*/ null, /*tags*/ null, body,
+                /*createdBy*/ null,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+        return 1;
     }
 
     /**

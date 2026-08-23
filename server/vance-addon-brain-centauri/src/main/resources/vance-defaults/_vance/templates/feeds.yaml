@@ -7,7 +7,7 @@ tags: [app, feeds]
 # Application templates write only the _app.yaml manifest; the folder is chosen
 # by the user. Streams are added afterwards in the feed's configuration tab,
 # because which sources exist depends on the project's
-# centauri.endpoint.<id>.* settings and the form cannot know them here.
+# _vance/config/feeds/ documents and the form cannot know them here.
 name:
   mode: fixed
   value: _app.yaml

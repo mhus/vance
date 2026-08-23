@@ -20,8 +20,8 @@ You cannot register a source. It takes two things, both outside your reach:
 1. **Code in the other application** — it has to implement one interface
    (`SearchSource`) and expose the endpoint. That is a development task in
    software Vancetope does not control.
-2. **A settings entry** under `research.endpoint.*`, which is operator
-   configuration. Writing it is not available to you.
+2. **A configuration document** under `_vance/config/research/`, which is
+   operator territory — a write there needs ADMIN. Not available to you.
 
 Say that plainly. Do not offer to "set it up", and do not invent an endpoint id
 and then search against it — an endpoint that does not exist produces "no
@@ -30,23 +30,28 @@ missing configuration.
 
 ## What the operator has to set
 
-The **Research — Search Providers** setting form has an *own search source*
-section. Everything below is what it writes, for anyone configuring it by hand:
+One document per source: `_vance/config/research/<id>.yaml`. The template
+„Suchquelle: Ode" writes it; by hand it looks like this:
 
-| Setting | Required | Meaning |
+```yaml
+protocol: ode
+baseUrl: https://news.example.com/ode/search
+apiKey: "{{secret:vault:news-index}}"
+capsTtlSeconds: 1800
+enabled: true
+```
+
+| Field | Required | Meaning |
 |---|---|---|
-| `research.endpoint.<id>.protocol` | yes | literally `ode` |
-| `research.endpoint.<id>.baseUrl` | yes | full URL including path, e.g. `https://news.example.com/ode/search` |
-| `research.endpoint.<id>.apiKey` | no | bearer token, sent as `Authorization: Bearer <key>`. What it has to match is the far end's business: either its static `vance.ode.zarniwoop.api-key`, or a token its own `OdeAuthService` issued |
-| `research.endpoint.<id>.enabled` | no | absent counts as enabled |
-| `research.endpoint.<id>.capsTtlSeconds` | no | how long the declaration is cached; default 1800, `0` while setting up |
+| `protocol` | yes | literally `ode` |
+| `baseUrl` | yes | full URL including path |
+| `apiKey` | no | bearer token, sent as `Authorization: Bearer <key>`. Either a reference (`{{secret:vault:…}}`) or a declared literal (`{noop}…`). What it has to match is the far end's business: either its static `vance.ode.zarniwoop.api-key`, or a token its own `OdeAuthService` issued |
+| `enabled` | no | absent counts as enabled |
+| `capsTtlSeconds` | no | how long the declaration is cached; default 1800, `0` while setting up |
 
-`<id>` is a name the operator picks (`archive`, `hrafnagud`, `legal-index`). It
-appears in `research_providers` output, in cooldown subjects and in the logs.
-
-The setting form covers **one** Ode endpoint, with the id `ode-search`. Further
-ones are raw settings — the form has fixed keys and cannot know how many
-sources exist.
+**The filename is the id** (`archive.yaml`, `hrafnagud.yaml`, `legal-index.yaml`).
+It appears in `research_providers` output, in cooldown subjects and in the logs.
+There is no limit on how many sources a project has — one file each.
 
 ## What is searchable is declared by the source, not here
 

@@ -102,6 +102,7 @@ public class TemplateController {
                 .nameMode(t.nameMode().wire())
                 .nameDefault(nameDefault == null || nameDefault.isBlank() ? null : nameDefault)
                 .nameValue(t.nameValue())
+                .folder(t.folder())
                 .type(t.typeOverride())
                 .fields(t.fields())
                 .hasForm(!t.fields().isEmpty())

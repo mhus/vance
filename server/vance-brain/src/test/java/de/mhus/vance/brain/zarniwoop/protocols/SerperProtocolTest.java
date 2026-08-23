@@ -6,8 +6,6 @@ import static org.mockito.Mockito.mock;
 
 import de.mhus.vance.brain.tools.web.ImageValidatorService;
 import de.mhus.vance.brain.tools.web.YouTubeValidatorService;
-import de.mhus.vance.shared.settings.SettingService;
-import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.research.ProviderInstanceConfig;
 import de.mhus.vance.toolpack.research.SearchModality;
 import de.mhus.vance.toolpack.research.SearchProviderInstance;
@@ -24,8 +22,6 @@ class SerperProtocolTest {
     @BeforeEach
     void setUp() {
         protocol = new SerperProtocol(
-                mock(SettingService.class),
-                passThroughSecrets(),
                 new ObjectMapper(),
                 mock(SerperHttpClient.class),
                 mock(ImageValidatorService.class),
@@ -49,7 +45,7 @@ class SerperProtocolTest {
         ProviderInstanceConfig cfg = new ProviderInstanceConfig(
                 "serper-main", "serper",
                 "https://google.serper.dev",
-                "research.endpoint.serper-main.apiKey",
+                "_vance/config/research/serper-main.yaml#apiKey",
                 Map.of());
 
         SearchProviderInstance instance = protocol.instantiate(cfg);
@@ -72,11 +68,4 @@ class SerperProtocolTest {
                 .hasMessageContaining("wikipedia");
     }
 
-    /**
-     * A resolver that hands back what it was given. Reference substitution has
-     * its own tests; here it must only not swallow a plain key.
-     */
-    private static SecretResolver passThroughSecrets() {
-        return (input, ctx) -> input;
-    }
 }

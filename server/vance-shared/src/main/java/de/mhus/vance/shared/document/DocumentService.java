@@ -2085,12 +2085,22 @@ public class DocumentService {
                         doc.getPath(), readAsString(doc), source, doc));
     }
 
+    /**
+     * Merge one project's documents directly under {@code prefix} into
+     * {@code acc}.
+     *
+     * <p>The prefix goes into the query rather than into a Java filter: with
+     * the folder narrowed by {@code tenant_project_path_idx}, the cost of a
+     * cascade listing follows the size of the folder instead of the size of the
+     * project. The one-level rule still runs here — a prefix query also returns
+     * the deeper paths, which this layer does not want.
+     */
     private void applyProjectLayer(
             Map<String, LookupResult> acc,
             String tenantId, String projectId, String prefix,
             LookupResult.Source source) {
-        for (DocumentDocument doc : repository.findByTenantIdAndProjectIdAndStatus(
-                tenantId, projectId, DocumentStatus.ACTIVE)) {
+        for (DocumentDocument doc : repository.findByTenantIdAndProjectIdAndStatusAndPathStartsWith(
+                tenantId, projectId, DocumentStatus.ACTIVE, prefix)) {
             String path = doc.getPath();
             if (path == null || !matchesOneLevel(path, prefix)) continue;
             acc.put(path, new LookupResult(path, readAsString(doc), source, doc));

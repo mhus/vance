@@ -1,0 +1,4 @@
+protocol: local
+rootDir: {{ rootDir }}
+writable: {{ writable }}
+enabled: true

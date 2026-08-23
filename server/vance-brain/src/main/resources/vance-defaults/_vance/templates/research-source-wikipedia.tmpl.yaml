@@ -1,0 +1,3 @@
+protocol: wikipedia
+baseUrl: {{ baseUrl }}
+enabled: true

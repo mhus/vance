@@ -135,6 +135,7 @@ public class TemplateLoader {
             compileTemplate(namePolicy.defaultTemplate(), "name.default");
         }
 
+        String folder = normalizeFolder(FormFieldYamlParser.optionalString(spec.get("folder")));
         String typeOverride = FormFieldYamlParser.optionalString(spec.get("type"));
         List<FormFieldDto> fields = FormFieldYamlParser.parseFields(spec.get("fields"), "fields");
         String bodyOverride = FormFieldYamlParser.optionalString(spec.get("body"));
@@ -154,7 +155,7 @@ public class TemplateLoader {
         return new ResolvedTemplate(
                 name, title, description, icon, tags,
                 namePolicy.mode(), namePolicy.defaultTemplate(), namePolicy.value(),
-                typeOverride, fields, availableIn, source,
+                folder, typeOverride, fields, availableIn, source,
                 body.path(), body.content());
     }
 
@@ -191,6 +192,24 @@ public class TemplateLoader {
             case VANCE -> 1;
             case RESOURCE -> 2;
         };
+    }
+
+    /**
+     * Normalize a declared target folder to the shape {@code joinPath} expects:
+     * no leading or trailing slash, {@code null} when absent. A folder that
+     * escapes with {@code ..} is refused at load time — a template is authored
+     * config, and the loader is where authored config gets checked.
+     */
+    private @Nullable String normalizeFolder(@Nullable String raw) {
+        if (raw == null) return null;
+        String trimmed = raw.trim().replaceAll("^/+|/+$", "");
+        if (trimmed.isEmpty()) return null;
+        for (String segment : trimmed.split("/")) {
+            if ("..".equals(segment)) {
+                throw new IllegalStateException("'folder' must not contain '..'");
+            }
+        }
+        return trimmed;
     }
 
     private List<String> parseTags(@Nullable Object raw) {

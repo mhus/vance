@@ -258,6 +258,7 @@ public class KitInstaller {
                     throw new KitException("failed to read " + file, e);
                 }
                 requireNotPrivileged(rel, content);
+                requireNotLocalMount(rel, content);
                 documents.put(rel, content);
             }
         }
@@ -308,6 +309,47 @@ public class KitInstaller {
         throw new KitException("kits must not ship documents declaring"
                 + " $meta.privileged — that flag grants runAs execution authority and is"
                 + " operator territory (offending path: " + rel + ")");
+    }
+
+    /**
+     * Refuse a mount document that uses the {@code local} protocol.
+     *
+     * <p>A kit may ship a mount — an archive that serves its own files over the
+     * ode contract is exactly the case provisioning exists for, and a remote
+     * mount is a connector like a feed source or a search endpoint. A
+     * {@code local} one is different in kind: it points a document namespace at
+     * a directory of <em>this pod's</em> file system, and the provisioning path
+     * installs from a host nobody is watching.
+     *
+     * <p>Not the only guard on that protocol — {@code vance.jaglan.local
+     * .allowed-roots} is empty by default and disables it outright — but the
+     * two answer different questions. That property says which trees may ever
+     * be mounted; this says who may decide to mount one. An operator who opens
+     * {@code /srv/library} for their own use has not thereby invited a
+     * downloaded bundle to put a writable mount in it.
+     *
+     * <p>An unparseable mount document is refused too: on this path "cannot
+     * tell" has to mean no.
+     */
+    private void requireNotLocalMount(String rel, String content) {
+        if (!rel.startsWith(KitRecordStore.MOUNT_CONFIG_PREFIX)) return;
+        Object parsed;
+        try {
+            parsed = new org.yaml.snakeyaml.Yaml().load(content);
+        } catch (RuntimeException e) {
+            throw new KitException("kits must ship mount documents as readable YAML"
+                    + " (offending path: " + rel + "): " + e.getMessage(), e);
+        }
+        if (!(parsed instanceof java.util.Map<?, ?> map)) {
+            throw new KitException("kits must ship mount documents as a YAML mapping"
+                    + " (offending path: " + rel + ")");
+        }
+        Object protocol = map.get("protocol");
+        if (protocol != null && "local".equalsIgnoreCase(String.valueOf(protocol).trim())) {
+            throw new KitException("kits must not ship a mount with protocol 'local' —"
+                    + " that points a document namespace at this pod's file system and is"
+                    + " operator territory (offending path: " + rel + ")");
+        }
     }
 
     // ──────────────────── ownership ────────────────────

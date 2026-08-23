@@ -91,7 +91,7 @@ public class FeedsApplication implements VanceApplication {
 
         String nextStep = config.streams().isEmpty()
                 ? "Feed ready but empty. Add streams in the configuration tab, or configure a "
-                        + "source first with centauri.endpoint.<id>.* settings."
+                        + "source first as a document under _vance/config/feeds/."
                 : "Feed ready with " + config.streams().size() + " stream(s). Open it to read.";
 
         return new CreateResult(APP_NAME, folder, stored.getPath(),

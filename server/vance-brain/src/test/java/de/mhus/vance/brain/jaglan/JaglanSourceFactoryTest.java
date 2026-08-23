@@ -2,13 +2,15 @@ package de.mhus.vance.brain.jaglan;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.brain.sourceconfig.SourceConfig;
+import de.mhus.vance.brain.sourceconfig.SourceConfigLoader;
+import de.mhus.vance.brain.sourceconfig.SourceConfigPaths;
+import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.jaglan.JaglanInstance;
 import de.mhus.vance.toolpack.jaglan.JaglanInstanceConfig;
 import de.mhus.vance.toolpack.jaglan.JaglanProtocol;
@@ -17,24 +19,28 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 /**
- * Settings → mount instances. The behaviour that matters is what happens to a
- * <i>broken</i> mount: it is dropped with a log line, never fatal, because one
- * misconfigured mount must not take a project's other mounts down with it.
+ * Configuration documents → mount instances. The behaviour that matters is what
+ * happens to a <i>broken</i> mount: it is dropped with a log line, never fatal,
+ * because one misconfigured mount must not take a project's other mounts down
+ * with it.
  */
 class JaglanSourceFactoryTest {
 
     private static final String TENANT = "acme";
     private static final String PROJECT = "research";
 
-    private SettingService settings;
+    private SourceConfigLoader configLoader;
+    private JaglanProtocol protocol;
     private JaglanSourceFactory factory;
 
     @BeforeEach
     void setUp() {
-        settings = mock(SettingService.class);
-        JaglanProtocol local = mock(JaglanProtocol.class);
+        configLoader = mock(SourceConfigLoader.class);
+        protocol = mock(JaglanProtocol.class);
+        JaglanProtocol local = protocol;
         when(local.id()).thenReturn("local");
         when(local.instantiate(any(JaglanInstanceConfig.class))).thenAnswer(inv -> {
             JaglanInstanceConfig cfg = inv.getArgument(0);
@@ -43,29 +49,32 @@ class JaglanSourceFactoryTest {
             when(instance.protocolId()).thenReturn(cfg.protocolId());
             return instance;
         });
-        factory = new JaglanSourceFactory(settings, List.of(local));
+        factory = new JaglanSourceFactory(
+                configLoader, SecretResolver.PASSTHROUGH, List.of(local));
     }
 
-    private void given(Map<String, String> raw) {
-        when(settings.findByPrefixCascade(eq(TENANT), eq(PROJECT), isNull(), anyString()))
-                .thenReturn(raw);
+    private void given(SourceConfig... configs) {
+        when(configLoader.load(eq(TENANT), eq(PROJECT), eq(SourceConfigPaths.MOUNTS)))
+                .thenReturn(List.of(configs));
     }
 
-    private static Map<String, String> keys(String... pairs) {
-        Map<String, String> out = new LinkedHashMap<>();
-        for (int i = 0; i < pairs.length; i += 2) {
-            out.put(pairs[i], pairs[i + 1]);
+    /** A mount document as the loader would hand it over. */
+    private static SourceConfig mount(String name, String protocol, Object... extraPairs) {
+        Map<String, Object> extras = new LinkedHashMap<>();
+        for (int i = 0; i < extraPairs.length; i += 2) {
+            extras.put(String.valueOf(extraPairs[i]), extraPairs[i + 1]);
         }
-        return out;
+        boolean enabled = !Boolean.FALSE.equals(extras.remove("enabled"));
+        return new SourceConfig(
+                name, SourceConfigPaths.pathFor(SourceConfigPaths.MOUNTS, name),
+                protocol, (String) extras.remove("baseUrl"), (String) extras.remove("apiKey"),
+                enabled, extras);
     }
 
     @Test
     void assemble_buildsOneInstancePerConfiguredMount() {
-        given(keys(
-                "jaglan.mount.library.protocol", "local",
-                "jaglan.mount.library.rootDir", "/srv/books",
-                "jaglan.mount.archive.protocol", "local",
-                "jaglan.mount.archive.rootDir", "/srv/archive"));
+        given(mount("library", "local", "rootDir", "/srv/books"),
+                mount("archive", "local", "rootDir", "/srv/archive"));
 
         assertThat(factory.assemble(TENANT, PROJECT))
                 .extracting(JaglanInstance::mount)
@@ -73,27 +82,23 @@ class JaglanSourceFactoryTest {
     }
 
     @Test
-    void assemble_noSettings_isEmpty() {
-        given(Map.of());
+    void assemble_noDocuments_isEmpty() {
+        given();
 
         assertThat(factory.assemble(TENANT, PROJECT)).isEmpty();
     }
 
     @Test
     void assemble_mountWithoutProtocol_isSkipped() {
-        // This is the hook a setting form uses to disable a mount without
-        // deleting its other keys.
-        given(keys("jaglan.mount.library.rootDir", "/srv/books"));
+        given(mount("library", null, "rootDir", "/srv/books"));
 
         assertThat(factory.assemble(TENANT, PROJECT)).isEmpty();
     }
 
     @Test
     void assemble_unknownProtocol_isSkippedNotFatal() {
-        given(keys(
-                "jaglan.mount.library.protocol", "does-not-exist",
-                "jaglan.mount.archive.protocol", "local",
-                "jaglan.mount.archive.rootDir", "/srv/archive"));
+        given(mount("library", "does-not-exist"),
+                mount("archive", "local", "rootDir", "/srv/archive"));
 
         assertThat(factory.assemble(TENANT, PROJECT))
                 .extracting(JaglanInstance::mount).containsExactly("archive");
@@ -103,11 +108,8 @@ class JaglanSourceFactoryTest {
     void assemble_illegalMountName_isSkipped() {
         // The name becomes a path segment and part of every derived document
         // id, so it has to be refused where a human can fix it.
-        given(keys(
-                "jaglan.mount.Bad Name.protocol", "local",
-                "jaglan.mount.Bad Name.rootDir", "/srv/x",
-                "jaglan.mount.good.protocol", "local",
-                "jaglan.mount.good.rootDir", "/srv/y"));
+        given(mount("Bad Name", "local", "rootDir", "/srv/x"),
+                mount("good", "local", "rootDir", "/srv/y"));
 
         assertThat(factory.assemble(TENANT, PROJECT))
                 .extracting(JaglanInstance::mount).containsExactly("good");
@@ -115,10 +117,7 @@ class JaglanSourceFactoryTest {
 
     @Test
     void assemble_disabledMount_isSkipped() {
-        given(keys(
-                "jaglan.mount.library.protocol", "local",
-                "jaglan.mount.library.rootDir", "/srv/books",
-                "jaglan.mount.library.enabled", "false"));
+        given(mount("library", "local", "rootDir", "/srv/books", "enabled", false));
 
         assertThat(factory.assemble(TENANT, PROJECT)).isEmpty();
     }
@@ -135,63 +134,45 @@ class JaglanSourceFactoryTest {
             when(i.mount()).thenReturn(((JaglanInstanceConfig) inv.getArgument(0)).mount());
             return i;
         });
-        factory = new JaglanSourceFactory(settings, List.of(picky, local));
-        given(keys(
-                "jaglan.mount.broken.protocol", "picky",
-                "jaglan.mount.fine.protocol", "local"));
+        factory = new JaglanSourceFactory(
+                configLoader, SecretResolver.PASSTHROUGH, List.of(picky, local));
+        given(mount("broken", "picky"), mount("fine", "local"));
 
         assertThat(factory.assemble(TENANT, PROJECT))
                 .extracting(JaglanInstance::mount).containsExactly("fine");
     }
 
     @Test
-    void assemble_extrasCarryEverythingButTheFourCommonFields() {
-        given(keys(
-                "jaglan.mount.library.protocol", "local",
-                "jaglan.mount.library.baseUrl", "https://example.test",
-                "jaglan.mount.library.apiKey", "secret",
-                "jaglan.mount.library.enabled", "true",
-                "jaglan.mount.library.rootDir", "/srv/books",
-                "jaglan.mount.library.writable", "true"));
+    void extrasCarryEverythingButTheCommonFields() {
+        given(mount("library", "local",
+                "baseUrl", "https://example.test",
+                "apiKey", "{noop}secret",
+                "rootDir", "/srv/books",
+                "writable", true));
 
-        Map<String, Map<String, String>> grouped = JaglanSourceFactory.groupByMount(keys(
-                "jaglan.mount.library.protocol", "local",
-                "jaglan.mount.library.rootDir", "/srv/books"));
-        assertThat(grouped).containsOnlyKeys("library");
-        assertThat(grouped.get("library")).containsOnlyKeys("protocol", "rootDir");
+        ArgumentCaptor<JaglanInstanceConfig> captor =
+                ArgumentCaptor.forClass(JaglanInstanceConfig.class);
+        factory.assemble(TENANT, PROJECT);
+        verify(protocol).instantiate(captor.capture());
+        JaglanInstanceConfig cfg = captor.getValue();
 
-        // And the four common fields are recognised as such.
-        assertThat(JaglanSettings.isCommonField("protocol")).isTrue();
-        assertThat(JaglanSettings.isCommonField("baseUrl")).isTrue();
-        assertThat(JaglanSettings.isCommonField("apiKey")).isTrue();
-        assertThat(JaglanSettings.isCommonField("enabled")).isTrue();
-        assertThat(JaglanSettings.isCommonField("rootDir")).isFalse();
-        assertThat(JaglanSettings.isCommonField("writable")).isFalse();
-    }
-
-    @Test
-    void groupByMount_skipsKeysWithoutASuffix() {
-        Map<String, Map<String, String>> grouped = JaglanSourceFactory.groupByMount(keys(
-                "jaglan.mount.library", "nonsense",
-                "jaglan.mount.library.protocol", "local",
-                "unrelated.setting", "x"));
-
-        assertThat(grouped).containsOnlyKeys("library");
-        assertThat(grouped.get("library")).containsOnlyKeys("protocol");
+        assertThat(cfg.extras()).containsOnlyKeys("rootDir", "writable");
+        assertThat(cfg.baseUrl()).isEqualTo("https://example.test");
+        assertThat(cfg.credentials().get()).isEqualTo("secret");
+        assertThat(cfg.credentialSettingKey())
+                .isEqualTo("_vance/config/mounts/library.yaml#apiKey");
     }
 
     @Test
     void find_returnsNullForAnUnconfiguredMount() {
-        given(keys(
-                "jaglan.mount.library.protocol", "local",
-                "jaglan.mount.library.rootDir", "/srv/books"));
+        given(mount("library", "local", "rootDir", "/srv/books"));
 
         assertThat(factory.find(TENANT, PROJECT, "library")).isNotNull();
         assertThat(factory.find(TENANT, PROJECT, "nope")).isNull();
     }
 
     @Test
-    void assemble_blankScope_isEmptyWithoutTouchingSettings() {
+    void assemble_blankScope_isEmptyWithoutReadingAnything() {
         assertThat(factory.assemble("", PROJECT)).isEmpty();
         assertThat(factory.assemble(TENANT, "")).isEmpty();
     }

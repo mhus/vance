@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component;
 /**
  * Serves a directory on the brain's own machine.
  *
- * <p>Configuration, all under {@code jaglan.mount.<name>.}:
+ * <p>Configuration, all in {@code _vance/config/mounts/<name>.yaml}:
  *
  * <ul>
  *   <li>{@code protocol = local}</li>
@@ -42,7 +42,7 @@ import org.springframework.stereotype.Component;
  * are reachable by a project admin, by a setting form and — before the deny
  * list closed that door — by an installed kit. Confinement answers "inside the
  * rootDir", never "which rootDir", so on its own this protocol turned
- * {@code jaglan.mount.x.rootDir=/} plus {@code writable=true} into read/write
+ * a mount with {@code rootDir: /} plus {@code writable: true} into read/write
  * access to the brain pod's whole file system, {@code /proc/self/environ}
  * included.
  *

@@ -35,7 +35,7 @@ class DamogranBuiltinTasksTest {
     private static ExecDamogranTask execTask() {
         WorkspaceService ws = mock(WorkspaceService.class);
         return new ExecDamogranTask(
-                new DamogranStateService(ws), ws, new ComposeSecretResolver(SecretResolver.NOOP));
+                new DamogranStateService(ws), ws, new ComposeSecretResolver(SecretResolver.PASSTHROUGH));
     }
 
     @Test

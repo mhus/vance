@@ -1,0 +1,8 @@
+title:       { de: "Suchquelle: HackerNews",  en: "Search source: HackerNews" }
+description: { de: "HackerNews über den Algolia-Index. Kein Konto, kein Key.",
+               en: "HackerNews through the Algolia index. No account, no key." }
+icon: magnifying-glass
+tags: [research, source]
+folder: _vance/config/research
+name: { mode: free, default: "hn-algolia" }
+fields: []

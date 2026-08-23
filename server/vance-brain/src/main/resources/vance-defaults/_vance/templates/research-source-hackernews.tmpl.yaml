@@ -1,0 +1,3 @@
+protocol: hackernews
+baseUrl: https://hn.algolia.com/api/v1
+enabled: true

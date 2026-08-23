@@ -32,7 +32,7 @@ public class EnvSecretResolver implements SecretResolver {
     private static final Pattern REF = Pattern.compile("\\$\\{env:([A-Za-z_][A-Za-z0-9_]*)\\}");
 
     @Override
-    public @Nullable String resolve(@Nullable String input, ToolInvocationContext ctx) {
+    public @Nullable String substitute(@Nullable String input, ToolInvocationContext ctx) {
         if (input == null || input.isEmpty()) return input;
         Matcher m = REF.matcher(input);
         if (!m.find()) return input;

@@ -12,9 +12,10 @@ import tools.jackson.databind.ObjectMapper;
  * Public Mastodon timelines as a Centauri source, one instance per server.
  *
  * <pre>
- * centauri.endpoint.mastodon-1.protocol = mastodon
- * centauri.endpoint.mastodon-1.baseUrl  = https://mstdn.social
- * centauri.endpoint.mastodon-1.apiKey   = (optional app token)
+ * # _vance/config/feeds/mastodon-1.yaml
+ * protocol: mastodon
+ * baseUrl:  https://mstdn.social
+ * apiKey:   (optional app token)
  * </pre>
  *
  * <p>One server is one source, the way one language wiki is one Wikipedia

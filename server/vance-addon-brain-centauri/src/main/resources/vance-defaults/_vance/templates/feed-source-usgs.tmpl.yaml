@@ -1,0 +1,3 @@
+protocol: usgs
+baseUrl: {{ baseUrl }}
+enabled: true

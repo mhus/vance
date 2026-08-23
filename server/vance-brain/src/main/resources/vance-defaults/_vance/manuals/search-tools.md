@@ -6,7 +6,7 @@ summary: How to pick between memory_search (project-local), research_search / re
 
 The web-search surface is **`research_search`** (modality-aware) plus
 **`research_rich`** (multi-modality fan-out) — both routed through the
-project's `research.endpoint.*` configuration so the operator controls
+project's search-source documents so the operator controls
 which provider serves each modality. The four legacy `web_search` /
 `image_search` / `video_search` / `pdf_search` tools
 still exist as deferred fallbacks; the LLM should prefer the

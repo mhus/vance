@@ -2,7 +2,6 @@ package de.mhus.vance.brain.centauri;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
@@ -10,12 +9,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.brain.sourceconfig.SourceConfig;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.feed.FeedActor;
 import de.mhus.vance.toolpack.feed.FeedScope;
 import de.mhus.vance.toolpack.feed.FeedSourceInstance;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -35,6 +36,9 @@ class FeedActorResolverTest {
 
     @Mock
     private SettingService settings;
+
+    @Mock
+    private FeedSourceFactory sourceFactory;
 
     @Test
     void pseudonym_isStableForTheSameReaderAndSource() {
@@ -96,13 +100,13 @@ class FeedActorResolverTest {
         FeedActor actor = resolver.resolve(FeedScope.of("acme", "proj"), source("alpha"));
 
         assertThat(actor).isNull();
-        verifyNoInteractions(settings);
+        verifyNoInteractions(settings, sourceFactory);
     }
 
     @Test
     void resolve_withSendActorOff_isAnonymous() {
-        when(settings.getBooleanValueCascade(any(), any(), any(), anyString(), anyBoolean()))
-                .thenReturn(false);
+        when(sourceFactory.config(any(), anyString()))
+                .thenReturn(config(Map.of("sendActor", false)));
 
         FeedActor actor = resolver().resolve(scopeWithUser(), source("alpha"));
 
@@ -135,7 +139,7 @@ class FeedActorResolverTest {
         SecretResolver vault = (input, ctx) ->
                 "{{secret:vault:feeds.alpha.salt}}".equals(input) ? "salt-from-vault" : input;
 
-        FeedActor actor = new FeedActorResolver(settings, vault)
+        FeedActor actor = new FeedActorResolver(settings, vault, sourceFactory)
                 .resolve(scopeWithUser(), source("alpha"));
 
         assertThat(actor).isNotNull();
@@ -194,12 +198,18 @@ class FeedActorResolverTest {
     // ── helpers ──────────────────────────────────────────────────────
 
     private FeedActorResolver resolver() {
-        return new FeedActorResolver(settings, SecretResolver.NOOP);
+        return new FeedActorResolver(settings, SecretResolver.PASSTHROUGH, sourceFactory);
     }
 
+    /** sendActor is on by default, so the plain document is the "on" case. */
     private void givenSendActorOn() {
-        when(settings.getBooleanValueCascade(any(), any(), any(), anyString(), anyBoolean()))
-                .thenReturn(true);
+        when(sourceFactory.config(any(), anyString())).thenReturn(config(Map.of()));
+    }
+
+    private static SourceConfig config(Map<String, Object> extras) {
+        return new SourceConfig(
+                "alpha", "_vance/config/feeds/alpha.yaml", "ode",
+                "https://alpha.test/", null, true, extras);
     }
 
     private static FeedSourceInstance source(String id) {

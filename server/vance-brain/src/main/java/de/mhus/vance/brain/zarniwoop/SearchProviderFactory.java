@@ -3,7 +3,12 @@ package de.mhus.vance.brain.zarniwoop;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import de.mhus.vance.brain.project.ProjectEnginesStopRequested;
-import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.brain.sourceconfig.SourceConfig;
+import de.mhus.vance.brain.sourceconfig.SourceConfigCache;
+import de.mhus.vance.brain.sourceconfig.SourceConfigLoader;
+import de.mhus.vance.brain.sourceconfig.SourceConfigPaths;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.research.ProviderInstanceConfig;
 import de.mhus.vance.toolpack.research.SearchProtocol;
 import de.mhus.vance.toolpack.research.SearchProviderInstance;
@@ -20,15 +25,14 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
 /**
- * Assembles {@link SearchProviderInstance}s for a project from the
- * {@code research.endpoint.<id>.*} settings, caches them per project,
- * and tears them down when the project is suspended.
+ * Assembles {@link SearchProviderInstance}s for a project from the documents
+ * under {@link SourceConfigPaths#RESEARCH}, caches them per project, and tears
+ * them down when the project is suspended.
  *
- * <p>The cache key is {@code (tenantId, projectId)}; a five-minute
- * Caffeine TTL handles operator setting changes (until a proper
- * {@code SettingChangedEvent} exists in vance-shared the TTL is the
- * fallback re-assembly trigger). Project-suspend evicts immediately
- * via {@link ProjectEnginesStopRequested} and calls
+ * <p>The cache key is {@code (tenantId, projectId)}; a five-minute Caffeine TTL
+ * is the backstop for a changed document, with the routed change event
+ * shortening it where it reaches. Project-suspend evicts immediately via
+ * {@link ProjectEnginesStopRequested} and calls
  * {@link SearchProviderInstance#dispose()} on every instance.
  *
  * <p>Unknown protocols, missing required fields and explicitly
@@ -38,17 +42,21 @@ import org.springframework.stereotype.Service;
  */
 @Service
 @Slf4j
-public class SearchProviderFactory {
+public class SearchProviderFactory implements SourceConfigCache {
 
     /** Default factory-cache TTL when the setting is unset / invalid. */
     static final Duration DEFAULT_TTL = Duration.ofMinutes(5);
 
-    private final SettingService settings;
+    private final SourceConfigLoader configLoader;
+    private final SecretResolver secretResolver;
     private final Map<String, SearchProtocol> protocolsById;
-    private final Cache<ScopeKey, List<SearchProviderInstance>> cache;
+    private final Cache<ScopeKey, Providers> cache;
 
-    public SearchProviderFactory(SettingService settings, List<SearchProtocol> protocols) {
-        this.settings = settings;
+    public SearchProviderFactory(
+            SourceConfigLoader configLoader, SecretResolver secretResolver,
+            List<SearchProtocol> protocols) {
+        this.configLoader = configLoader;
+        this.secretResolver = secretResolver;
         Map<String, SearchProtocol> byId = new LinkedHashMap<>();
         for (SearchProtocol p : protocols) {
             SearchProtocol prev = byId.put(p.id(), p);
@@ -61,7 +69,7 @@ public class SearchProviderFactory {
         this.protocolsById = Map.copyOf(byId);
         this.cache = Caffeine.newBuilder()
                 .expireAfterWrite(DEFAULT_TTL)
-                .<ScopeKey, List<SearchProviderInstance>>removalListener(
+                .<ScopeKey, Providers>removalListener(
                         (key, value, cause) -> disposeAll(value))
                 // The removal listener is the ONE dispose path — for expiry it is
                 // the only one there can be, so an explicit dispose beside a manual
@@ -81,6 +89,23 @@ public class SearchProviderFactory {
      * has no fallback.
      */
     public List<SearchProviderInstance> assemble(SearchScope scope) {
+        return providers(scope).instances();
+    }
+
+    /**
+     * The configuration document behind an endpoint, or null when this project
+     * has none by that name.
+     */
+    public @Nullable SourceConfig config(SearchScope scope, String instanceId) {
+        return providers(scope).configs().get(instanceId);
+    }
+
+    @Override
+    public String configPathPrefix() {
+        return SourceConfigPaths.RESEARCH;
+    }
+
+    private Providers providers(SearchScope scope) {
         if (scope == null) {
             throw new ZarniwoopException("scope is required");
         }
@@ -93,7 +118,7 @@ public class SearchProviderFactory {
 
     /**
      * Drop the cached instances of this project so the next {@link #assemble}
-     * reads the {@code research.endpoint.*} settings again.
+     * reads the configuration documents again.
      *
      * <p>Exists because the five-minute TTL is indistinguishable from a
      * misconfiguration: an operator who has just written an endpoint and sees an
@@ -103,14 +128,38 @@ public class SearchProviderFactory {
      * re-read and cannot deliver one is worse than none.
      */
     public void evict(SearchScope scope) {
-        if (scope == null || StringUtils.isBlank(scope.projectId())) {
+        if (scope == null) {
             return;
         }
-        List<SearchProviderInstance> evicted =
-                cache.asMap().remove(new ScopeKey(scope.tenantId(), scope.projectId()));
+        evict(scope.tenantId(), scope.projectId());
+    }
+
+    @Override
+    public void evict(String tenantId, String projectId) {
+        if (StringUtils.isBlank(projectId)) {
+            return;
+        }
+        Providers evicted = cache.asMap().remove(new ScopeKey(tenantId, projectId));
         if (evicted != null) {
             log.debug("Zarniwoop: evicted {} provider instance(s) for '{}/{}' (explicit refresh)",
-                    evicted.size(), scope.tenantId(), scope.projectId());
+                    evicted.instances().size(), tenantId, projectId);
+        }
+    }
+
+    @Override
+    public void evictTenant(String tenantId) {
+        if (StringUtils.isBlank(tenantId)) {
+            return;
+        }
+        int dropped = 0;
+        for (ScopeKey key : List.copyOf(cache.asMap().keySet())) {
+            if (key.tenantId().equals(tenantId) && cache.asMap().remove(key) != null) {
+                dropped++;
+            }
+        }
+        if (dropped > 0) {
+            log.debug("Zarniwoop: evicted {} project scope(s) of tenant '{}' "
+                    + "(tenant-wide configuration changed)", dropped, tenantId);
         }
     }
 
@@ -122,66 +171,42 @@ public class SearchProviderFactory {
             return;
         }
         ScopeKey key = new ScopeKey(event.tenantId(), event.projectName());
-        List<SearchProviderInstance> evicted = cache.asMap().remove(key);
+        Providers evicted = cache.asMap().remove(key);
         if (evicted != null) {
             log.debug("Zarniwoop: evicted {} provider instance(s) for '{}/{}' (project stop)",
-                    evicted.size(), event.tenantId(), event.projectName());
+                    evicted.instances().size(), event.tenantId(), event.projectName());
         }
     }
 
     // ── internals ────────────────────────────────────────────────────
 
-    private List<SearchProviderInstance> build(SearchScope scope) {
-        // Resolve endpoint settings at PROJECT scope (processId=null), matching
-        // the project-scoped cache key + the project-wide eviction. Resolving the
-        // process-level cascade here while caching per (tenant, project) leaked
-        // the first-caller process's process-scoped research.endpoint.* overrides
-        // to every other process in the project until TTL expiry (cross-process
-        // setting bleed). Research endpoints are project/tenant config, not
-        // per-process.
-        Map<String, String> rawSettings = settings.findByPrefixCascade(
-                scope.tenantId(), scope.projectId(), /* processId */ null,
-                ZarniwoopSettings.PREFIX_ENDPOINT);
-        if (rawSettings.isEmpty()) {
-            return List.of();
+    private Providers build(SearchScope scope) {
+        List<SourceConfig> configs = configLoader.load(
+                scope.tenantId(), scope.projectId(), SourceConfigPaths.RESEARCH);
+        if (configs.isEmpty()) {
+            return Providers.empty();
         }
 
-        Map<String, Map<String, String>> byEndpointId = groupByEndpointId(rawSettings);
-        List<SearchProviderInstance> result = new ArrayList<>(byEndpointId.size());
-        for (Map.Entry<String, Map<String, String>> entry : byEndpointId.entrySet()) {
-            String endpointId = entry.getKey();
-            Map<String, String> fields = entry.getValue();
+        List<SearchProviderInstance> instances = new ArrayList<>(configs.size());
+        Map<String, SourceConfig> byId = new LinkedHashMap<>(configs.size());
+        for (SourceConfig config : configs) {
+            // Endpoints with enabled=false are still instantiated —
+            // ZarniwoopGateService consults the same configuration at dispatch
+            // time, but keeping the instance lets the UI re-enable it
+            // temporarily via a manual override.
+            byId.put(config.name(), config);
 
-            // Endpoints with .enabled=false are still instantiated —
-            // ZarniwoopGateService consults the same setting at
-            // dispatch time, but keeping the instance lets the UI
-            // re-enable it temporarily via a manual override.
-
-            String protocolId = fields.get(ZarniwoopSettings.SUFFIX_PROTOCOL.substring(1));
-            if (StringUtils.isBlank(protocolId)) {
-                log.warn("Zarniwoop: endpoint '{}' has no protocol set, skipping", endpointId);
+            if (StringUtils.isBlank(config.protocol())) {
+                log.warn("Zarniwoop: endpoint '{}' has no protocol set, skipping",
+                        config.documentPath());
                 continue;
             }
-            SearchProtocol protocol = protocolsById.get(protocolId);
+            SearchProtocol protocol = protocolsById.get(config.protocol());
             if (protocol == null) {
                 log.warn("Zarniwoop: endpoint '{}' references unknown protocol '{}', skipping. "
-                        + "Known protocols: {}", endpointId, protocolId, protocolsById.keySet());
+                                + "Known protocols: {}",
+                        config.documentPath(), config.protocol(), protocolsById.keySet());
                 continue;
-            }
-
-            String baseUrl = fields.get(ZarniwoopSettings.SUFFIX_BASE_URL.substring(1));
-            String credentialKey = ZarniwoopSettings.endpointApiKey(endpointId);
-
-            Map<String, Object> extras = new LinkedHashMap<>();
-            for (Map.Entry<String, String> f : fields.entrySet()) {
-                String suffix = f.getKey();
-                if (suffix.equals(ZarniwoopSettings.SUFFIX_PROTOCOL.substring(1))
-                        || suffix.equals(ZarniwoopSettings.SUFFIX_BASE_URL.substring(1))
-                        || suffix.equals(ZarniwoopSettings.SUFFIX_API_KEY.substring(1))
-                        || suffix.equals(ZarniwoopSettings.SUFFIX_ENABLED.substring(1))) {
-                    continue;
-                }
-                extras.put(suffix, f.getValue());
             }
 
             try {
@@ -189,55 +214,63 @@ public class SearchProviderFactory {
                 // protocol that has to call out before any request arrives —
                 // one fetching a remote capability declaration — has nowhere
                 // else to learn where it lives. Project scope only, for the
-                // same reason the settings above are read that way.
+                // same reason the documents above are read that way.
                 ProviderInstanceConfig cfg = new ProviderInstanceConfig(
-                        endpointId, protocolId,
-                        baseUrl == null ? "" : baseUrl,
-                        credentialKey, extras,
+                        config.name(), config.protocol(),
+                        config.baseUrl() == null ? "" : config.baseUrl(),
+                        config.credentialLocation(),
+                        () -> resolveCredential(scope, config),
+                        config.extras(),
                         scope.tenantId(), scope.projectId());
-                SearchProviderInstance instance = protocol.instantiate(cfg);
-                result.add(instance);
+                instances.add(protocol.instantiate(cfg));
             } catch (RuntimeException e) {
                 log.warn("Zarniwoop: protocol '{}' refused to instantiate endpoint '{}': {}",
-                        protocolId, endpointId, e.toString());
+                        config.protocol(), config.documentPath(), e.toString());
             }
         }
         log.debug("Zarniwoop: assembled {} instance(s) for '{}/{}'",
-                result.size(), scope.tenantId(), scope.projectId());
-        return List.copyOf(result);
+                instances.size(), scope.tenantId(), scope.projectId());
+        return new Providers(List.copyOf(instances), Map.copyOf(byId));
     }
 
     /**
-     * Group {@code research.endpoint.<id>.<suffix>} keys into a
-     * per-endpoint map where the inner key is the suffix without the
-     * leading dot. Keys that don't follow the pattern (e.g. someone
-     * dropped {@code research.endpoint.serper-main} without a suffix)
-     * are skipped silently.
+     * The endpoint credential, with {@code {{secret:…}}} references resolved
+     * and a {@code {noop}} literal handed back verbatim.
+     *
+     * <p>Through {@code resolveForConnector} rather than {@code resolve}: a
+     * search provider is a connector, not a dynamic element, so it may read a
+     * {@code PASSWORD}-typed setting or a vault entry (spec §10).
+     *
+     * <p>The invocation context carries no user and no process on purpose: the
+     * instance is cached per {@code (tenant, project)} and shared across every
+     * caller, so a user- or process-scoped reference would serve the first
+     * caller's secret to everyone behind them.
      */
-    static Map<String, Map<String, String>> groupByEndpointId(Map<String, String> rawSettings) {
-        Map<String, Map<String, String>> out = new LinkedHashMap<>();
-        for (Map.Entry<String, String> e : rawSettings.entrySet()) {
-            String key = e.getKey();
-            if (!key.startsWith(ZarniwoopSettings.PREFIX_ENDPOINT)) continue;
-            String rest = key.substring(ZarniwoopSettings.PREFIX_ENDPOINT.length());
-            int dot = rest.indexOf('.');
-            if (dot <= 0 || dot == rest.length() - 1) continue;
-            String endpointId = rest.substring(0, dot);
-            String suffix = rest.substring(dot + 1);
-            out.computeIfAbsent(endpointId, k -> new LinkedHashMap<>())
-                    .put(suffix, e.getValue());
+    private @Nullable String resolveCredential(SearchScope scope, SourceConfig config) {
+        String raw = config.apiKey();
+        if (raw == null) {
+            return null;
         }
-        return out;
+        return secretResolver.resolveForConnector(raw, new ToolInvocationContext(
+                scope.tenantId(), scope.projectId(), null, null, null));
     }
 
-    private static void disposeAll(@Nullable List<SearchProviderInstance> instances) {
-        if (instances == null) return;
-        for (SearchProviderInstance instance : instances) {
+    private static void disposeAll(@Nullable Providers providers) {
+        if (providers == null) return;
+        for (SearchProviderInstance instance : providers.instances()) {
             try {
                 instance.dispose();
             } catch (RuntimeException ex) {
                 log.warn("Zarniwoop: dispose of '{}' raised: {}", instance.id(), ex.toString());
             }
+        }
+    }
+
+    /** What one project's cache entry holds: the live instances and their configuration. */
+    private record Providers(
+            List<SearchProviderInstance> instances, Map<String, SourceConfig> configs) {
+        static Providers empty() {
+            return new Providers(List.of(), Map.of());
         }
     }
 

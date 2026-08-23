@@ -3,6 +3,7 @@ package de.mhus.vance.brain.centauri;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import de.mhus.vance.api.settings.SettingType;
+import de.mhus.vance.brain.sourceconfig.SourceConfig;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -44,7 +45,7 @@ import org.springframework.stereotype.Service;
  * it. The <b>salt</b> is stored per endpoint name and is what makes the
  * pseudonym unguessable and rotatable. The endpoint's <b>base URL</b> travels
  * in the HMAC message, and that is what makes the derivation specific to the
- * service rather than to a local label: {@code centauri.endpoint.news} in two
+ * service rather than to a local label: a source named {@code news} in two
  * projects is two different foreign organisations under one name, and the
  * salt lives tenant-wide, so without the URL both would see the same reader
  * under the same pseudonym. Operational consequence: rotating the salt — or
@@ -72,6 +73,7 @@ public class FeedActorResolver {
 
     private final SettingService settings;
     private final SecretResolver secretResolver;
+    private final FeedSourceFactory sourceFactory;
     private final SecureRandom random = new SecureRandom();
 
     /**
@@ -97,9 +99,12 @@ public class FeedActorResolver {
             .expireAfterWrite(SALT_CACHE_TTL)
             .build();
 
-    public FeedActorResolver(SettingService settings, SecretResolver secretResolver) {
+    public FeedActorResolver(
+            SettingService settings, SecretResolver secretResolver,
+            FeedSourceFactory sourceFactory) {
         this.settings = settings;
         this.secretResolver = secretResolver;
+        this.sourceFactory = sourceFactory;
     }
 
     /**
@@ -121,8 +126,9 @@ public class FeedActorResolver {
             return null;
         }
         String sourceId = instance.id();
-        if (!settings.getBooleanValueCascade(scope.tenantId(), scope.projectId(), null,
-                CentauriSettings.endpointSendActorKey(sourceId), true)) {
+        SourceConfig config = sourceFactory.config(scope, sourceId);
+        if (config != null
+                && !config.extraBoolean(FeedSourceFactory.FIELD_SEND_ACTOR, true)) {
             return null;
         }
         String salt = obtainSalt(scope, sourceId);

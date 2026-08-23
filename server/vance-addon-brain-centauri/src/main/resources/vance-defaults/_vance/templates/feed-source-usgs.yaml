@@ -1,0 +1,18 @@
+title:       { de: "Feed-Quelle: USGS-Erdbeben",  en: "Feed source: USGS earthquakes" }
+description: { de: "Erdbebenmeldungen des U.S. Geological Survey. Kein Konto, kein Key.",
+               en: "Earthquake reports from the U.S. Geological Survey. No account, no key." }
+icon: newspaper
+tags: [feeds, source]
+
+folder: _vance/config/feeds
+
+name:
+  mode: free
+  default: "usgs"
+
+fields:
+  - name: baseUrl
+    type: string
+    required: true
+    defaultValue: "https://earthquake.usgs.gov"
+    label: { de: "Base-URL", en: "Base URL" }

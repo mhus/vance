@@ -61,6 +61,19 @@ class ComposeSecretResolver {
                         envName);
                 continue;
             }
+            // The literal escape has to be caught BEFORE the wrap: references
+            // arrive bare here ("vault:jira-token"), so wrapping a literal
+            // would produce "{{secret:{noop}…}}" and resolve to nothing.
+            if (SecretResolver.isLiteral(ref)) {
+                String literal = SecretResolver.literalValue(ref);
+                if (literal == null || literal.isEmpty()) {
+                    log.warn("compose secrets: '{}' declares an empty literal — not injecting",
+                            envName);
+                    continue;
+                }
+                out.put(envName, literal);
+                continue;
+            }
             String wrapped = "{{secret:" + ref + "}}";
             String resolved = secretResolver.resolve(wrapped, tc);
             // resolved.equals(wrapped) == no substitution happened: an empty value,

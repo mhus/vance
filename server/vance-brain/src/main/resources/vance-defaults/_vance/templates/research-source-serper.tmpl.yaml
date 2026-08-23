@@ -1,0 +1,4 @@
+protocol: serper
+baseUrl: https://google.serper.dev
+apiKey: "{{ apiKey }}"
+enabled: true

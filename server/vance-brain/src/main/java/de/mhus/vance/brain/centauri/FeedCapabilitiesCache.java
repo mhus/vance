@@ -25,7 +25,7 @@ import org.springframework.stereotype.Service;
  * Capabilities describe the source, not the person reading, which is why no
  * pseudonym travels on the call that fetches them — but the source id alone is
  * not an identity. It is the endpoint name from
- * {@code centauri.endpoint.<id>.*}, so two projects naming an endpoint after
+ * a document name, so two projects naming an endpoint after
  * its job — {@code archive}, {@code news} — are two different services under
  * one key. {@link FeedSourceFactory} is scoped per project for exactly that
  * reason; a cache in front of it has to be scoped the same way or it hands one

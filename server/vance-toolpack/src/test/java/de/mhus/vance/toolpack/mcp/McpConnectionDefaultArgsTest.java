@@ -30,7 +30,7 @@ class McpConnectionDefaultArgsTest {
                 "transport", "http",
                 "url", "http://x/mcp",
                 "defaultArgs", Map.of("cloudId", "FIXED-CLOUD")));
-        McpConnection conn = new McpConnection(cfg, transport, CTX, SecretResolver.NOOP);
+        McpConnection conn = new McpConnection(cfg, transport, CTX, SecretResolver.PASSTHROUGH);
         conn.listTools(CTX);  // warm schema cache — production path always does this first
 
         conn.callTool("jira.search", Map.of("jql", "project = FOO"), CTX);
@@ -53,7 +53,7 @@ class McpConnectionDefaultArgsTest {
                 "transport", "http",
                 "url", "http://x/mcp",
                 "defaultArgs", Map.of("cloudId", "AUTHORITATIVE")));
-        McpConnection conn = new McpConnection(cfg, transport, CTX, SecretResolver.NOOP);
+        McpConnection conn = new McpConnection(cfg, transport, CTX, SecretResolver.PASSTHROUGH);
         conn.listTools(CTX);
 
         conn.callTool("jira.search", Map.of("cloudId", "MODEL-HALLUCINATION"), CTX);
@@ -118,7 +118,7 @@ class McpConnectionDefaultArgsTest {
                 "transport", "http",
                 "url", "http://x/mcp",
                 "defaultArgs", Map.of("cloudId", "must-not-leak")));
-        McpConnection conn = new McpConnection(cfg, transport, CTX, SecretResolver.NOOP);
+        McpConnection conn = new McpConnection(cfg, transport, CTX, SecretResolver.PASSTHROUGH);
         conn.listTools(CTX);
 
         conn.callTool("getAccessibleAtlassianResources", Map.of(), CTX);
@@ -135,7 +135,7 @@ class McpConnectionDefaultArgsTest {
         McpConfig cfg = McpConfig.fromParameters(Map.of(
                 "transport", "http",
                 "url", "http://x/mcp"));
-        McpConnection conn = new McpConnection(cfg, transport, CTX, SecretResolver.NOOP);
+        McpConnection conn = new McpConnection(cfg, transport, CTX, SecretResolver.PASSTHROUGH);
         conn.listTools(CTX);  // warm schema cache — production path always does this first
 
         conn.callTool("jira.search", Map.of("jql", "issue=1"), CTX);

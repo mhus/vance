@@ -53,7 +53,7 @@ grammar, not the permission. Two consequences for what you say to a user:
 
 - If a `public:` stream comes back with a note about a missing token, **suggest a `hashtag:` stream
   on the same server** before suggesting anything else. It is the cheaper fix and it usually works.
-- The real fix is an **app token** for that server in `centauri.endpoint.<id>.apiKey`. An app token
+- The real fix is an **app token** for that server in the source document's `apiKey:` field. An app token
   is not a person and no account is logged in — but writing it is operator work, so say what to set
   and do not claim to have set it.
 

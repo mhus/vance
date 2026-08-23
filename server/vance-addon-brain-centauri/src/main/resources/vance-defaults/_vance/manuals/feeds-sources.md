@@ -1,9 +1,9 @@
 ---
 triggers: feed quelle, feed source, centauri endpoint, quelle hinzufügen, add feed source, wikipedia quelle, usgs quelle, hrafnagud, keine quellen, no sources configured, feed leer
-summary: How feed sources (centauri.endpoint.*) are configured and what to tell the user — you can list the sources with feed_sources but cannot create or change one.
+summary: How feed sources (_vance/config/feeds/*.yaml) are configured and what to tell the user — you can list the sources with feed_sources but cannot create or change one.
 requires-tools: feed_sources
 ---
-# Feed sources — the settings behind a feed
+# Feed sources — the documents behind a feed
 
 A feed reads **streams**, and a stream is one configured **source** plus one **selector**. This manual is about the source half: where it comes from and what to do when it is missing.
 
@@ -11,31 +11,31 @@ A feed reads **streams**, and a stream is one configured **source** plus one **s
 
 **You can see which sources exist:** `feed_sources()` lists them with their selectors. Use it — do not ask the user and do not guess.
 
-**You cannot create or change one.** No tool and no script API writes `centauri.endpoint.*`; that is operator configuration. So when `feed_sources` comes back empty, your job is to **say precisely what to set** — not to attempt it, and not to claim you did.
+**You cannot create or change one.** A source is a document under `_vance/config/feeds/`, and `_vance/**` is operator territory — a write there needs ADMIN, which you do not have. So when `feed_sources` comes back empty, your job is to **say precisely what to set** — not to attempt it, and not to claim you did.
 
 Two failure modes to avoid:
 
-- **Inventing a setting key.** The keys below are the whole surface; a near-miss silently configures nothing.
+- **Inventing a field.** The fields below are the whole surface; a near-miss silently configures nothing.
 - **Claiming to have configured it.** You can verify afterwards with `feed_sources`, and that is the only honest evidence.
 
-## The keys
+## The document
 
-Two are enough; the endpoint id (`<id>`) is free and only has to be used consistently.
+One file per source: `_vance/config/feeds/<id>.yaml`. **The filename is the source id** — it is free and only has to be used consistently.
 
-```
-centauri.endpoint.<id>.protocol = ode | usgs | wikipedia | …   ← an addon can add more
-centauri.endpoint.<id>.baseUrl  = https://…
+```yaml
+protocol: ode        # ode | usgs | wikipedia | …   ← an addon can add more
+baseUrl: https://…
 ```
 
 | Optional | Default | Meaning |
 |---|---|---|
-| `.enabled` | `true` | `false` switches the source off without deleting it |
-| `.apiKey` | — | sent as `Authorization: Bearer …` (PASSWORD) |
-| `.sendActor` | `true` | send the salted reader pseudonym, so the source can personalise |
-| `.language` | from host | only for `wikipedia` on hosts like `commons.wikimedia.org` |
-| `.feedPath` | `/ode/feed` | only for `ode`, when the source moved its path |
+| `enabled` | `true` | `false` switches the source off without deleting the file |
+| `apiKey` | — | sent as `Authorization: Bearer …`. Either a reference (`{{secret:vault:…}}`) or a declared literal (`{noop}…`) — which of the two is the operator's decision |
+| `sendActor` | `true` | send the salted reader pseudonym, so the source can personalise |
+| `language` | from host | only for `wikipedia` on hosts like `commons.wikimedia.org` |
+| `feedPath` | `/ode/feed` | only for `ode`, when the source moved its path |
 
-**Without `.protocol` the source is skipped entirely.** That is also why switching a source off in the setting form removes it from the list rather than leaving it behind as `enabled=false`.
+**Without `protocol` the source is skipped entirely**, and so is a file that is not valid YAML — the brain log names it.
 
 ## The protocols shipped with this addon
 
@@ -59,15 +59,14 @@ protocol's manual.
 
 Three ways, best first:
 
-1. **Setting form** „Feeds — Quellen" in the settings editor — a switch per source, tenant-wide. Covers the ode source and both examples. A protocol from another addon brings its own form; Mastodon's is „Feeds — Mastodon".
-2. **`anus`-CLI:** `setting set -T <tenant> -s tenant -k centauri.endpoint.wikipedia-de.protocol -v wikipedia` (and the same for `.baseUrl`).
-3. **Admin REST:** `PUT /brain/{tenant}/admin/settings/tenant/_vance/<key>`.
+1. **A template.** „Neues Dokument" → the „Vorlage" tab → filter on `source`. There is one per shipped protocol (`feed-source-ode`, `feed-source-wikipedia`, `feed-source-usgs`, and Mastodon's own in its addon); it asks for the URL and writes the file to the right place.
+2. **By hand** in the Cortex: create `_vance/config/feeds/<id>.yaml` with the two required fields above.
 
-`-s tenant` writes tenant-wide, so every project sees it. For one project only: `-s project -r <project>`.
+Where the file lives decides who sees the source: in the **`_tenant`** project it applies to every project of the tenant; in one project it applies there only, and a file of the same name overrides the tenant-wide one entirely (whole document, not field by field).
 
 ## „I configured it and the feed is still empty"
 
-The sources are **cached for five minutes** per project. Right after writing the settings the list is still the old one — and with no sources the configuration tab has no „add stream" button, so it looks like a dead end.
+The sources are **cached for five minutes** per project. Right after writing the document the list may still be the old one — and with no sources the configuration tab has no „add stream" button, so it looks like a dead end.
 
 Tell the user to press **„Reload sources"** in the configuration tab (it forces the re-read), or to wait out the five minutes. A brain restart also clears it.
 

@@ -1,0 +1,16 @@
+title:       { de: "Suchquelle: PubMed",  en: "Search source: PubMed" }
+description: { de: "Biomedizinischer Index (NCBI E-utilities). Ohne Key 3 Anfragen/s, mit Key 10.",
+               en: "Biomedical index (NCBI E-utilities). 3 requests/s without a key, 10 with one." }
+icon: magnifying-glass
+tags: [research, source]
+folder: _vance/config/research
+name: { mode: free, default: "pubmed" }
+fields:
+  - name: contactEmail
+    type: string
+    label: { de: "Kontakt-E-Mail (optional)", en: "Contact e-mail (optional)" }
+  - name: apiKey
+    type: string
+    label: { de: "NCBI-API-Key (optional)", en: "NCBI API key (optional)" }
+    help:  { de: "Referenz ({{secret:vault:…}}) oder erklärtes Literal ({noop}…).",
+             en: "A reference ({{secret:vault:…}}) or a declared literal ({noop}…)." }

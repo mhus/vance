@@ -1,0 +1,24 @@
+title:       { de: "Mount: Ode-Quelle",  en: "Mount: ode source" }
+description: { de: "Eine Fremdanwendung, die den Ode-Jaglan-Vertrag bereitstellt, unter _ext/<name>/ einblenden.",
+               en: "Expose a foreign application serving the ode Jaglan contract under _ext/<name>/." }
+icon: folder-open
+tags: [mounts, source]
+
+folder: _vance/config/mounts
+
+name:
+  mode: free
+  default: "library"
+
+fields:
+  - name: baseUrl
+    type: string
+    required: true
+    label: { de: "Base-URL", en: "Base URL" }
+    help:  { de: "Wurzel der Anwendung, z.B. https://hrafnagud.example.",
+             en: "Root of the application, e.g. https://hrafnagud.example." }
+  - name: apiKey
+    type: string
+    label: { de: "API-Key (optional)", en: "API key (optional)" }
+    help:  { de: "Referenz ({{secret:vault:…}}) oder erklärtes Literal ({noop}…).",
+             en: "A reference ({{secret:vault:…}}) or a declared literal ({noop}…)." }

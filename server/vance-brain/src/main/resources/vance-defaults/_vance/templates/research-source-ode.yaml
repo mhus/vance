@@ -1,0 +1,24 @@
+title:       { de: "Suchquelle: Ode",  en: "Search source: ode" }
+description: { de: "Eine Fremdanwendung, die den Ode-Such-Vertrag bereitstellt (z.B. Hrafnagud über vance-ode-zarniwoop). Was sie durchsuchbar macht, erklärt sie selbst.",
+               en: "A foreign application serving the ode search contract (e.g. Hrafnagud via vance-ode-zarniwoop). What it can search, it declares itself." }
+icon: magnifying-glass
+tags: [research, source]
+folder: _vance/config/research
+name: { mode: free, default: "ode-search" }
+fields:
+  - name: baseUrl
+    type: string
+    required: true
+    label: { de: "Such-Endpunkt", en: "Search endpoint" }
+    help:  { de: "Voller Pfad, z.B. https://hrafnagud.example/ode/search.",
+             en: "Full path, e.g. https://hrafnagud.example/ode/search." }
+  - name: apiKey
+    type: string
+    label: { de: "API-Key (optional)", en: "API key (optional)" }
+    help:  { de: "Referenz ({{secret:vault:…}}) oder erklärtes Literal ({noop}…).",
+             en: "A reference ({{secret:vault:…}}) or a declared literal ({noop}…)." }
+  - name: capsTtlSeconds
+    type: string
+    label: { de: "Capabilities-Haltezeit (Sekunden, optional)", en: "Capabilities cache TTL (seconds, optional)" }
+    help:  { de: "Überschreibt, was die Quelle selbst vorschlägt. 0 = jedes Mal neu fragen.",
+             en: "Overrides what the source itself suggests. 0 = ask every time." }

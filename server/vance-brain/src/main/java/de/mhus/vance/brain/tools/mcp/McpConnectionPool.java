@@ -51,7 +51,7 @@ public final class McpConnectionPool implements AutoCloseable {
 
     public McpConnectionPool(PackHttpClient httpClient, SecretResolver secretResolver) {
         this.httpClient = httpClient;
-        this.secretResolver = secretResolver == null ? SecretResolver.NOOP : secretResolver;
+        this.secretResolver = secretResolver == null ? SecretResolver.PASSTHROUGH : secretResolver;
     }
 
     /**

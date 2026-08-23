@@ -37,7 +37,7 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>Adding a contact email lifts the rate limit to the "polite
  * pool" — read from the per-endpoint extra {@code contactEmail}
- * (e.g. {@code research.endpoint.openalex.contactEmail=me@x.de}).
+ * (e.g. {@code contactEmail: me@x.de} in the source document).
  * Optional but recommended.
  *
  * <p>The abstract returned by OpenAlex is an

@@ -4,9 +4,7 @@ import de.mhus.vance.brain.tools.web.ImageValidatorService;
 import de.mhus.vance.brain.tools.web.YouTubeValidatorService;
 import de.mhus.vance.brain.zarniwoop.protocols.SerperHttpClient.SerperResponse;
 import de.mhus.vance.brain.zarniwoop.protocols.SerperPdfHeadProbe.Verdict;
-import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.research.ProviderAvailability;
 import de.mhus.vance.toolpack.research.ProviderInstanceConfig;
 import de.mhus.vance.toolpack.research.QuotaStatus;
@@ -27,7 +25,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import tools.jackson.databind.JsonNode;
@@ -41,12 +38,8 @@ import tools.jackson.databind.ObjectMapper;
  * {@code ImageValidatorService}/{@code YouTubeValidatorService}/HEAD
  * probe re-used as collaborators.
  *
- * <p>API-key resolution falls back to the legacy
- * {@code web.serper.apiKey} setting when the
- * {@code research.endpoint.<id>.apiKey} key is empty — handles the
- * transition window from §10.7 of the planning document. A
- * deprecation warn is logged the first time the legacy key takes
- * effect.
+ * <p>The API key comes from the endpoint's configuration document, resolved by
+ * the factory.
  */
 @Slf4j
 class SerperInstance implements SearchProviderInstance {
@@ -55,32 +48,20 @@ class SerperInstance implements SearchProviderInstance {
     private static final int DEFAULT_NUM = 5;
     private static final int MAX_NUM = 10;
 
-    /** Legacy setting key — read as fallback during the migration window. */
-    static final String LEGACY_API_KEY_SETTING = "web.serper.apiKey";
-
     private final ProviderInstanceConfig cfg;
-    private final SettingService settings;
-    private final SecretResolver secretResolver;
     private final ObjectMapper objectMapper;
     private final SerperHttpClient http;
     private final ImageValidatorService imageValidator;
     private final YouTubeValidatorService youtubeValidator;
     private final SerperPdfHeadProbe pdfHeadProbe;
 
-    /** Logs the legacy-fallback warning only once per instance lifetime. */
-    private final AtomicBoolean legacyFallbackLogged = new AtomicBoolean(false);
-
     SerperInstance(ProviderInstanceConfig cfg,
-                   SettingService settings,
-                   SecretResolver secretResolver,
                    ObjectMapper objectMapper,
                    SerperHttpClient http,
                    ImageValidatorService imageValidator,
                    YouTubeValidatorService youtubeValidator,
                    SerperPdfHeadProbe pdfHeadProbe) {
         this.cfg = cfg;
-        this.settings = settings;
-        this.secretResolver = secretResolver;
         this.objectMapper = objectMapper;
         this.http = http;
         this.imageValidator = imageValidator;
@@ -532,54 +513,21 @@ class SerperInstance implements SearchProviderInstance {
     }
 
     /**
-     * Resolve the API key with legacy-setting fallback.
+     * The endpoint credential, or an empty string when none is configured.
      *
-     * <p>The stored value may itself be a {@code {{secret:…}}} reference, so it
-     * goes through {@code resolveForConnector} — not the restrictive
-     * {@code resolve}: a search endpoint is a connector, not a dynamic element,
-     * and may therefore read a {@code PASSWORD}-typed setting or a vault entry
-     * (settings spec §10). The restrictive path sees only {@code HIDDEN} and
-     * would substitute an empty string; reading the setting straight, as this
-     * did, put the reference on the wire verbatim. Both end as an opaque 401.
-     *
-     * <p>The invocation context carries no user and no process on purpose: the
-     * endpoint credential belongs to the project's configuration, and this
-     * instance is cached per {@code (tenant, project)} and shared, so a
-     * user-scoped reference would serve the first caller's secret to everyone
-     * behind them.
+     * <p>Resolution happens in the factory — reference lookup, vault, literal
+     * escape — so this is a supplier call, not a settings read. It used to read
+     * {@code research.endpoint.<id>.apiKey} itself and fall back to the legacy
+     * {@code web.serper.apiKey}; the fallback is gone with the move to
+     * configuration documents. That setting is still live, but it belongs to
+     * the standalone {@code web_search} / {@code image_search} /
+     * {@code video_search} tools, which are a different consumer — an endpoint
+     * that wants the same key now names it, rather than inheriting it through a
+     * connection nobody could see.
      */
     String resolveApiKey(SearchScope scope) {
-        String fromInstance = resolveReference(settings.getDecryptedPasswordCascade(
-                scope.tenantId(), scope.projectId(), scope.processId(),
-                cfg.credentialSettingKey()), scope);
-        if (!StringUtils.isBlank(fromInstance)) return fromInstance;
-        String legacy = resolveReference(settings.getDecryptedPasswordCascade(
-                scope.tenantId(), scope.projectId(), scope.processId(),
-                LEGACY_API_KEY_SETTING), scope);
-        if (!StringUtils.isBlank(legacy)) {
-            // Latch keeps the migration warning to one line per
-            // instance lifetime — the dispatcher would otherwise emit
-            // it on every availability + search pair (6+ lines per
-            // research_investigate call).
-            if (legacyFallbackLogged.compareAndSet(false, true)) {
-                log.warn("Serper endpoint '{}' falling back to legacy setting '{}'. "
-                        + "Migrate to '{}' before the next release removes the legacy path.",
-                        cfg.instanceId(), LEGACY_API_KEY_SETTING, cfg.credentialSettingKey());
-            }
-            return legacy;
-        }
-        return "";
-    }
-
-    /** Substitute a {@code {{secret:…}}} reference the setting may hold. */
-    private String resolveReference(
-            @org.jspecify.annotations.Nullable String raw, SearchScope scope) {
-        if (StringUtils.isBlank(raw)) {
-            return "";
-        }
-        String resolved = secretResolver.resolveForConnector(raw, new ToolInvocationContext(
-                scope.tenantId(), scope.projectId(), null, null, null));
-        return resolved == null ? "" : resolved;
+        String credential = cfg.credential();
+        return credential == null ? "" : credential;
     }
 
     List<SearchHit> parseHits(String json, SearchModality modality) {

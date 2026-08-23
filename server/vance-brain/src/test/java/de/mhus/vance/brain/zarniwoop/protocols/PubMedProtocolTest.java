@@ -6,8 +6,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.zarniwoop.protocols.SimpleHttpClient.Response;
-import de.mhus.vance.shared.settings.SettingService;
-import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.research.ProviderInstanceConfig;
 import de.mhus.vance.toolpack.research.SearchHit;
 import de.mhus.vance.toolpack.research.SearchModality;
@@ -23,7 +21,6 @@ import tools.jackson.databind.ObjectMapper;
 
 class PubMedProtocolTest {
 
-    private final SettingService settings = mock(SettingService.class);
 
     private static final SearchScope SCOPE = SearchScope.of("acme", "alpha");
     private static final ProviderInstanceConfig CFG = new ProviderInstanceConfig(
@@ -35,6 +32,15 @@ class PubMedProtocolTest {
             "https://eutils.ncbi.nlm.nih.gov/entrez/eutils",
             "",
             Map.of("contactEmail", "me@x.de", "apiKey", "abc123"));
+
+    /** A config whose credential supplier hands over {@code key}. */
+    private static ProviderInstanceConfig cfgWithCredential(String key) {
+        return new ProviderInstanceConfig(
+                "pubmed", "pubmed",
+                "https://eutils.ncbi.nlm.nih.gov/entrez/eutils",
+                "_vance/config/research/pubmed.yaml#apiKey",
+                () -> key, Map.of(), "acme", "alpha");
+    }
 
     private static final String ESEARCH_JSON = """
             {"header":{"type":"esearch","version":"0.3"},
@@ -77,7 +83,7 @@ class PubMedProtocolTest {
 
     @Test
     void protocol_advertises_academic_modality() {
-        PubMedProtocol p = new PubMedProtocol(new ObjectMapper(), settings, passThroughSecrets());
+        PubMedProtocol p = new PubMedProtocol(new ObjectMapper());
         assertThat(p.modalitiesSupported()).containsExactly(SearchModality.ACADEMIC);
         assertThat(p.id()).isEqualTo("pubmed");
     }
@@ -86,8 +92,7 @@ class PubMedProtocolTest {
     void instance_reports_ready_even_with_blank_baseurl() {
         ProviderInstanceConfig blank = new ProviderInstanceConfig(
                 "pubmed", "pubmed", "", "", Map.of());
-        PubMedProtocol p = new PubMedProtocol(
-                new ObjectMapper(), mock(SimpleHttpClient.class), settings, passThroughSecrets());
+        PubMedProtocol p = new PubMedProtocol(new ObjectMapper(), mock(SimpleHttpClient.class));
         assertThat(p.instantiate(blank).availability(SCOPE))
                 .isEqualTo(de.mhus.vance.toolpack.research.ProviderAvailability.READY);
     }
@@ -99,8 +104,7 @@ class PubMedProtocolTest {
                 .thenReturn(new Response(200, ESEARCH_JSON))
                 .thenReturn(new Response(200, ESUMMARY_JSON));
 
-        PubMedProtocol p = new PubMedProtocol(
-                new ObjectMapper(), http, settings, passThroughSecrets());
+        PubMedProtocol p = new PubMedProtocol(new ObjectMapper(), http);
         SearchResult r = p.instantiate(CFG).search(
                 SearchRequest.normal("crispr crops", SearchModality.ACADEMIC, 5), SCOPE);
 
@@ -141,8 +145,7 @@ class PubMedProtocolTest {
                         {"esearchresult":{"count":"0","idlist":[]}}
                         """));
 
-        PubMedProtocol p = new PubMedProtocol(
-                new ObjectMapper(), http, settings, passThroughSecrets());
+        PubMedProtocol p = new PubMedProtocol(new ObjectMapper(), http);
         SearchResult r = p.instantiate(CFG).search(
                 SearchRequest.normal("xyzzy", SearchModality.ACADEMIC, 5), SCOPE);
 
@@ -164,8 +167,7 @@ class PubMedProtocolTest {
                          "pubdate":"2024","source":"J","authors":[],
                          "articleids":[{"idtype":"pubmed","value":"1"}]}}}"""));
 
-        PubMedProtocol p = new PubMedProtocol(
-                new ObjectMapper(), http, settings, passThroughSecrets());
+        PubMedProtocol p = new PubMedProtocol(new ObjectMapper(), http);
         p.instantiate(CFG_WITH_KEY).search(
                 SearchRequest.normal("q", SearchModality.ACADEMIC, 1), SCOPE);
 
@@ -186,10 +188,10 @@ class PubMedProtocolTest {
     }
 
     @Test
-    void search_resolves_apikey_from_credential_setting_cascade() throws Exception {
-        // Regression (code-review-2): the key comes from the credential-setting
-        // cascade (where SearchProviderFactory routes .apiKey), not extras — CFG
-        // has no extras.apiKey, yet the setting-provided key must reach the URL.
+    void search_resolves_apikey_from_theCredentialChannel() throws Exception {
+        // Regression (code-review-2): the key travels on the credential channel
+        // the factory fills, not in extras — CFG has no extras.apiKey, yet the
+        // configured key must reach the URL.
         SimpleHttpClient http = mock(SimpleHttpClient.class);
         when(http.get(any(URI.class), any(String.class), any(Duration.class)))
                 .thenReturn(new Response(200, """
@@ -198,12 +200,8 @@ class PubMedProtocolTest {
                         {"result":{"uids":["1"],"1":{"uid":"1","title":"t",
                          "pubdate":"2024","source":"J","authors":[],
                          "articleids":[{"idtype":"pubmed","value":"1"}]}}}"""));
-        when(settings.getDecryptedPasswordCascade(any(), any(), any(), any()))
-                .thenReturn("k3yFromSetting");
-
-        PubMedProtocol p = new PubMedProtocol(
-                new ObjectMapper(), http, settings, passThroughSecrets());
-        p.instantiate(CFG).search(
+        PubMedProtocol p = new PubMedProtocol(new ObjectMapper(), http);
+        p.instantiate(cfgWithCredential("k3yFromSetting")).search(
                 SearchRequest.normal("q", SearchModality.ACADEMIC, 1), SCOPE);
 
         ArgumentCaptor<URI> cap = ArgumentCaptor.forClass(URI.class);
@@ -215,8 +213,7 @@ class PubMedProtocolTest {
     @Test
     void search_returns_soft_failure_for_non_academic_modality() throws Exception {
         SimpleHttpClient http = mock(SimpleHttpClient.class);
-        PubMedProtocol p = new PubMedProtocol(
-                new ObjectMapper(), http, settings, passThroughSecrets());
+        PubMedProtocol p = new PubMedProtocol(new ObjectMapper(), http);
         SearchResult r = p.instantiate(CFG).search(
                 SearchRequest.normal("q", SearchModality.WEB, 5), SCOPE);
 
@@ -229,7 +226,4 @@ class PubMedProtocolTest {
      * A resolver that hands back what it was given. Reference substitution has
      * its own tests; here it must only not swallow a plain key.
      */
-    private static SecretResolver passThroughSecrets() {
-        return (input, ctx) -> input;
-    }
 }

@@ -8,8 +8,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.zarniwoop.ZarniwoopContentStore;
-import de.mhus.vance.shared.settings.SettingService;
-import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.research.ContentInline;
 import de.mhus.vance.toolpack.research.ProviderAvailability;
 import de.mhus.vance.toolpack.research.ProviderInstanceConfig;
@@ -42,24 +40,25 @@ class OdeSearchProtocolTest {
     private static final SearchScope SCOPE = new SearchScope("acme", "news", "p1", "u1");
 
     private RecordingHttp http;
-    private SettingService settings;
     private OdeSearchProtocol protocol;
 
     @BeforeEach
     void setUp() {
         http = new RecordingHttp();
-        settings = mock(SettingService.class);
-        when(settings.getDecryptedPasswordCascade(any(), any(), any(), anyString()))
-                .thenReturn("");
         protocol = new OdeSearchProtocol(
-                settings, passThroughSecrets(), JsonMapper.builder().build(),
-                mock(ZarniwoopContentStore.class), http);
+                JsonMapper.builder().build(), mock(ZarniwoopContentStore.class), http);
     }
 
     private SearchProviderInstance instance() {
-        return protocol.instantiate(new ProviderInstanceConfig(
+        return protocol.instantiate(cfg(null));
+    }
+
+    /** The config the factory would build, with {@code credential} already resolved. */
+    private static ProviderInstanceConfig cfg(@org.jspecify.annotations.Nullable String credential) {
+        return new ProviderInstanceConfig(
                 "hrafnagud", OdeSearchProtocol.ID, "https://news.test/ode/search",
-                "research.endpoint.hrafnagud.apiKey", Map.of(), "acme", "news"));
+                "_vance/config/research/hrafnagud.yaml#apiKey",
+                () -> credential, Map.of(), "acme", "news");
     }
 
     // ── the protocol bean ────────────────────────────────────────────
@@ -265,24 +264,15 @@ class OdeSearchProtocolTest {
     }
 
     @Test
-    void theCredentialIsSubstitutedBeforeItBecomesABearerToken() {
-        // The setting may hold a {{secret:…}} reference. Reading it straight put
-        // the reference itself in the Authorization header, which the far end
-        // answers with an opaque 401 and nothing to explain it.
-        when(settings.getDecryptedPasswordCascade(any(), any(), any(), anyString()))
-                .thenReturn("{{secret:vault:ode.key}}");
-        OdeSearchProtocol resolving = new OdeSearchProtocol(
-                settings,
-                (input, ctx) -> "{{secret:vault:ode.key}}".equals(input) ? "real-key" : input,
-                JsonMapper.builder().build(),
-                mock(ZarniwoopContentStore.class), http);
+    void theResolvedCredentialBecomesTheBearerToken() {
+        // Resolution — {{secret:…}} references, vault, {noop} literals — happens
+        // in the factory. What this protocol has to get right is that whatever
+        // the supplier hands over travels as the bearer, unchanged.
         http.capabilities("""
                 {"modalities":["NEWS"],"tiers":["NORMAL"],"maxResults":10}""");
         http.searchResponse("{\"hits\":[]}");
 
-        resolving.instantiate(new ProviderInstanceConfig(
-                        "hrafnagud", OdeSearchProtocol.ID, "https://news.test/ode/search",
-                        "research.endpoint.hrafnagud.apiKey", Map.of(), "acme", "news"))
+        protocol.instantiate(cfg("real-key"))
                 .search(SearchRequest.normal("tariffs", SearchModality.NEWS, 5), SCOPE);
 
         assertThat(http.lastBearer).isEqualTo("real-key");
@@ -539,14 +529,13 @@ class OdeSearchProtocolTest {
 
     @Test
     void search_sendsTheConfiguredBearer() {
-        when(settings.getDecryptedPasswordCascade(any(), any(), any(), anyString()))
-                .thenReturn("s3cret");
         http.capabilities("""
                 {"modalities":["NEWS"],"tiers":["NORMAL"],"maxResults":10}""");
         http.searchResponse("""
                 {"hits":[]}""");
 
-        instance().search(SearchRequest.normal("x", SearchModality.NEWS, 5), SCOPE);
+        protocol.instantiate(cfg("s3cret"))
+                .search(SearchRequest.normal("x", SearchModality.NEWS, 5), SCOPE);
 
         assertThat(http.lastBearer).isEqualTo("s3cret");
     }
@@ -625,7 +614,4 @@ class OdeSearchProtocolTest {
      * A resolver that hands back what it was given. Reference substitution has
      * its own tests; here it must only not swallow a plain key.
      */
-    private static SecretResolver passThroughSecrets() {
-        return (input, ctx) -> input;
-    }
 }

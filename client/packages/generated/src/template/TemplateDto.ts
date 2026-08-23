@@ -14,6 +14,7 @@ export interface TemplateDto {
   nameMode: string;
   nameDefault?: string;
   nameValue?: string;
+  folder?: string;
   type?: string;
   fields: FormFieldDto[];
   hasForm: boolean;

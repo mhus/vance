@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.centauri;
 
 import de.mhus.vance.api.toolhealth.ToolHealthScope;
-import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.brain.sourceconfig.SourceConfig;
 import de.mhus.vance.shared.toolhealth.ToolHealthCooldown;
 import de.mhus.vance.shared.toolhealth.ToolHealthService;
 import de.mhus.vance.toolpack.feed.FeedScope;
@@ -28,7 +28,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class CentauriGateService {
 
-    private final SettingService settings;
+    private final FeedSourceFactory sourceFactory;
     private final ToolHealthService healthService;
 
     /** Why a source is not being asked — surfaced as a page note. */
@@ -48,11 +48,15 @@ public class CentauriGateService {
         return Optional.empty();
     }
 
-    /** Default is on — only an explicit {@code false} turns a source off. */
+    /**
+     * Default is on — only an explicit {@code enabled: false} turns a source
+     * off. An endpoint this project has no document for counts as off: there
+     * is nothing to dispatch to, and reporting it as available would produce a
+     * page note about a source that does not exist.
+     */
     public boolean isEnabled(FeedScope scope, String sourceId) {
-        return settings.getBooleanValueCascade(
-                scope.tenantId(), scope.projectId(), scope.processId(),
-                CentauriSettings.endpointEnabledKey(sourceId), true);
+        SourceConfig config = sourceFactory.config(scope, sourceId);
+        return config != null && config.enabled();
     }
 
     public boolean isCoolingDown(FeedScope scope, String sourceId) {

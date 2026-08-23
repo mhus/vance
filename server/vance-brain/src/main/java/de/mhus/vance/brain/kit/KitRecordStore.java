@@ -264,6 +264,13 @@ public class KitRecordStore {
     public static final String KIT_CONFIG_PREFIX = "_vance/config/kit-";
 
     /**
+     * Mount configuration. Not reserved as a whole — see
+     * {@code KitInstaller.requireNotLocalMount} for the one shape of it a kit
+     * may not ship.
+     */
+    public static final String MOUNT_CONFIG_PREFIX = "_vance/config/mounts/";
+
+    /**
      * True for paths a kit must never ship.
      *
      * <p>Two families, one reason — a kit must not be able to rewrite the

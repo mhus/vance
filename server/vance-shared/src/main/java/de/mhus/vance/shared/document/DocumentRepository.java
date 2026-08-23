@@ -24,6 +24,20 @@ interface DocumentRepository extends MongoRepository<DocumentDocument, String> {
     Page<DocumentDocument> findByTenantIdAndProjectIdAndStatus(
             String tenantId, String projectId, DocumentStatus status, Pageable pageable);
 
+    /**
+     * Prefix-filter on {@code path}, unpaged — the cascade listing
+     * ({@code DocumentService.listByPrefixCascade}) narrows a folder to a
+     * handful of rows with it.
+     *
+     * <p>Spring Data turns {@code StartsWith} into a {@code ^}-anchored regex,
+     * which Mongo serves as a range scan on {@code tenant_project_path_idx}.
+     * The alternative — fetching every active row of the project and filtering
+     * in Java — is what this replaced, and it made the cost of a cascade
+     * listing a function of the project's total document count.
+     */
+    List<DocumentDocument> findByTenantIdAndProjectIdAndStatusAndPathStartsWith(
+            String tenantId, String projectId, DocumentStatus status, String pathPrefix);
+
     /** Prefix-filter on {@code path} for the path-filter UI. */
     Page<DocumentDocument> findByTenantIdAndProjectIdAndStatusAndPathStartsWith(
             String tenantId, String projectId, DocumentStatus status,

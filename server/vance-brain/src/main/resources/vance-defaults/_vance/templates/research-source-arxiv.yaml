@@ -1,0 +1,8 @@
+title:       { de: "Suchquelle: arXiv",  en: "Search source: arXiv" }
+description: { de: "Preprint-Server für Physik, Mathematik und Informatik. Kein Konto, kein Key.",
+               en: "Preprint server for physics, mathematics and computer science. No account, no key." }
+icon: magnifying-glass
+tags: [research, source]
+folder: _vance/config/research
+name: { mode: free, default: "arxiv" }
+fields: []

@@ -32,8 +32,9 @@ import tools.jackson.databind.ObjectMapper;
  * endless scroll needs.
  *
  * <pre>
- * centauri.endpoint.usgs.protocol = usgs
- * centauri.endpoint.usgs.baseUrl  = https://earthquake.usgs.gov
+ * # _vance/config/feeds/usgs.yaml
+ * protocol: usgs
+ * baseUrl:  https://earthquake.usgs.gov
  * </pre>
  */
 @Component

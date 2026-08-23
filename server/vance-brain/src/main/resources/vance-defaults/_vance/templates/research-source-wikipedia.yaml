@@ -1,0 +1,13 @@
+title:       { de: "Suchquelle: Wikipedia",  en: "Search source: Wikipedia" }
+description: { de: "Enzyklopädie-Suche in einer Sprachausgabe. Kein Konto, kein Key.",
+               en: "Encyclopaedia search in one language edition. No account, no key." }
+icon: magnifying-glass
+tags: [research, source]
+folder: _vance/config/research
+name: { mode: free, default: "wiki-de" }
+fields:
+  - name: baseUrl
+    type: string
+    required: true
+    defaultValue: "https://de.wikipedia.org/w/api.php"
+    label: { de: "API-URL", en: "API URL" }

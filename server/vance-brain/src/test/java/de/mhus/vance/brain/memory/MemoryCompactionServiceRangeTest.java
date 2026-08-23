@@ -96,7 +96,8 @@ class MemoryCompactionServiceRangeTest {
         aiChat = mock(AiChat.class);
         chatModel = mock(ChatModel.class);
         when(aiChat.chatModel()).thenReturn(chatModel);
-        when(aiModelService.createChat(eq(config), any(AiChatOptions.class)))
+        when(aiModelService.createChat(eq(config), any(AiChatOptions.class),
+                any(de.mhus.vance.shared.llmusage.CallAttribution.class)))
                 .thenReturn(aiChat);
         when(sessionService.findBySessionId(anyString())).thenReturn(Optional.empty());
     }

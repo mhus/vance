@@ -3,3 +3,9 @@ defaultMaxOutputTokens: 8192
 size: LARGE
 capabilities:
 - vision
+pricing:
+  currency: USD
+  inputPerMTok: 2.5
+  outputPerMTok: 10.0
+  cacheReadPerMTok: 1.25
+  cacheWritePerMTok: 0.0

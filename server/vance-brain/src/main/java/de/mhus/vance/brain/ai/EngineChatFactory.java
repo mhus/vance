@@ -4,6 +4,7 @@ import de.mhus.vance.api.progress.StatusTag;
 import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.audit.AuditService;
+import de.mhus.vance.shared.llmusage.CallAttribution;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -92,7 +93,12 @@ public class EngineChatFactory {
         ChatBehavior behavior = ChatBehaviorBuilder.fromProcess(
                 process, ctx.settingService(), aiModelResolver);
         AiChatOptions options = applyDefaults(baseOptions, process, ctx, engineName);
-        AiChat chat = ctx.aiModelService().createChat(behavior, options);
+        // Billing attribution comes from the process, not from the options:
+        // a tenant-pinned process leaves options.projectId unset so the
+        // catalog resolves at the tenant layer, but the tokens still belong
+        // to the project that spent them.
+        CallAttribution attribution = CallAttribution.ofProcess(process, engineName);
+        AiChat chat = ctx.aiModelService().createChat(behavior, options, attribution);
         return new EngineChatBundle(chat, behavior);
     }
 

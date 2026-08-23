@@ -17,4 +17,11 @@ export interface UsageBucketDto {
   costCacheWrite: number;
   costTotal: number;
   calls: number;
+  callsFailed: number;
+  tokensInFailed: number;
+  tokensOutFailed: number;
+  unpricedCalls: number;
+  unpricedTokensIn: number;
+  unpricedTokensOut: number;
+  images: number;
 }

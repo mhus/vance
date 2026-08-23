@@ -4,3 +4,9 @@ size: SMALL
 capabilities:
 - vision
 - pdf
+pricing:
+  currency: USD
+  inputPerMTok: 1.0
+  outputPerMTok: 5.0
+  cacheReadPerMTok: 0.1
+  cacheWritePerMTok: 1.25

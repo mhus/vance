@@ -11,6 +11,7 @@ import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import de.mhus.vance.brain.ai.ProviderListingHttp;
 import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
+import de.mhus.vance.brain.ai.UsageSink;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import de.mhus.vance.brain.ai.openai.OpenAiProvider;
 import dev.langchain4j.model.openai.OpenAiChatModel;
@@ -48,8 +49,9 @@ public class LmStudioProvider extends AbstractChatProvider {
             ModelCatalog modelCatalog,
             LlmResponseSanitizer responseSanitizer,
             MessageParserRegistry messageParserRegistry,
+            UsageSink usageSink,
             @Value("${vance.ai.lmstudio.base-url:http://localhost:1234/v1}") String baseUrl) {
-        super(modelCatalog, responseSanitizer, messageParserRegistry);
+        super(modelCatalog, responseSanitizer, messageParserRegistry, usageSink);
         this.defaultBaseUrl = baseUrl;
     }
 

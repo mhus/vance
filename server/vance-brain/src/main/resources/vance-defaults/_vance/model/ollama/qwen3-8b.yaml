@@ -4,3 +4,12 @@ defaultMaxOutputTokens: 4096
 size: SMALL
 timeoutSeconds: 600
 stripThinkTags: true
+# Runs locally — no vendor bill. The zero rates are declared rather than
+# omitted: a missing `pricing:` block means "price unknown" and is counted
+# against the usage report's coverage, which would make every local call
+# look like a gap in the invoice. USD so the zero folds into the same
+# currency series as everything else instead of opening a second one.
+pricing:
+  currency: USD
+  inputPerMTok: 0.0
+  outputPerMTok: 0.0

@@ -9,13 +9,19 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.index.CompoundIndexes;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 /**
- * One persisted record per LLM round-trip. Always-on (no setting
- * required) so reports under {@code /brain/{tenant}/usage/...} can
- * answer "what did we spend last month?" without depending on the
- * opt-in {@code tracing.llm} channel.
+ * One persisted record per model-call <i>attempt</i> — the detail level.
+ *
+ * <p><b>Not the billing record.</b> That is
+ * {@link LlmUsageDailyDocument}, which is incremented in the same write.
+ * These rows exist for drill-down: which session, which process, which
+ * attempt, what did the retry cost. Because that is diagnostics rather
+ * than money, they carry a short {@link #expiresAt} and may be switched
+ * off entirely per tenant — something the ledger could not allow while
+ * it *was* the billing record.
  *
  * <p>Carries three layers per call:
  *
@@ -122,6 +128,37 @@ public class LlmUsageDocument {
 
     /** Context-window size of the model used; informational. */
     private @Nullable Integer contextWindowTokens;
+
+    /**
+     * Chat / embedding / image. {@code null} on rows written before the
+     * ledger became kind-aware — read those as {@link UsageKind#CHAT}.
+     */
+    private @Nullable UsageKind kind;
+
+    /**
+     * Whether the attempt produced an answer. {@code null} on rows written
+     * before failed attempts were recorded at all — read those as
+     * {@link UsageOutcome#SUCCESS}, which is what they were.
+     */
+    private @Nullable UsageOutcome outcome;
+
+    /**
+     * 1-based attempt number within one logical call. Values above 1 are
+     * retries inside {@code ResilientChatModel} or advances along a fallback
+     * chain — each one burned tokens and gets its own row.
+     */
+    private int attempt;
+
+    /** Number of images generated; only meaningful for {@link UsageKind#IMAGE}. */
+    private int images;
+
+    /**
+     * TTL anchor, computed at write from the setting cascade.
+     * {@code null} = keep forever. Detail rows are diagnostics, so unlike
+     * the daily buckets they default to a short life.
+     */
+    @Indexed(name = "usage_ttl_idx", expireAfterSeconds = 0)
+    private @Nullable Instant expiresAt;
 
     private Instant createdAt = Instant.EPOCH;
 }

@@ -7,11 +7,17 @@ import de.mhus.vance.shared.rag.RagBackend.SearchHit;
 import de.mhus.vance.shared.rag.RagCatalogService;
 import de.mhus.vance.shared.rag.RagChunkDocument;
 import de.mhus.vance.shared.rag.RagDocument;
+import de.mhus.vance.brain.ai.UsageMeasurement;
+import de.mhus.vance.shared.llmusage.CallAttribution;
+import de.mhus.vance.shared.llmusage.LlmUsageService;
+import de.mhus.vance.shared.llmusage.UsageKind;
+import de.mhus.vance.shared.llmusage.UsageOutcome;
 import de.mhus.vance.shared.settings.SettingService;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.output.Response;
+import dev.langchain4j.model.output.TokenUsage;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -88,6 +94,7 @@ public class RagService {
     private final RagCatalogService catalog;
     private final RagBackend backend;
     private final EmbeddingModelService embeddingModelService;
+    private final de.mhus.vance.brain.ai.UsageSink usageSink;
     private final SettingService settingService;
 
     // ──────────────────── Catalog ────────────────────
@@ -178,7 +185,12 @@ public class RagService {
             return new IngestResult(0);
         }
         List<TextSegment> segments = pieces.stream().map(TextSegment::from).toList();
+        long startedMs = System.currentTimeMillis();
         Response<List<Embedding>> response = model.embedAll(segments);
+        // One row per batch, not per chunk: an ingest of 2000 chunks is one
+        // cost event, and per-chunk rows would drown the ledger for a number
+        // that is identical either way.
+        bookEmbedding(rag, response.tokenUsage(), System.currentTimeMillis() - startedMs);
         List<Embedding> embeddings = response.content();
         if (embeddings.size() != pieces.size()) {
             throw new IllegalStateException(
@@ -227,11 +239,41 @@ public class RagService {
             return List.of();
         }
         EmbeddingModel model = modelFor(rag);
-        Embedding queryVec = model.embed(queryText).content();
+        long startedMs = System.currentTimeMillis();
+        Response<Embedding> embedded = model.embed(queryText);
+        bookEmbedding(rag, embedded.tokenUsage(), System.currentTimeMillis() - startedMs);
+        Embedding queryVec = embedded.content();
         return backend.search(rag.getTenantId(), rag.getId(), queryVec.vector(), topK);
     }
 
     // ──────────────────── Helpers ────────────────────
+
+    /**
+     * Book one embedding call into the usage ledger.
+     *
+     * <p><b>Counted, not priced.</b> Embedding models are absent from the
+     * model catalog — {@code ModelCatalog.lookup} filters on
+     * {@code kind: chat}, and there is no embedding equivalent yet. Rather
+     * than invent a rate here, the row carries real token counts with no
+     * pricing, so it lands in the report's unpriced-coverage counter and
+     * says out loud that the amount does not include embeddings. Giving the
+     * catalog an embedding dimension is the follow-up; a made-up rate in the
+     * wrong place would be worse than a visible gap.
+     */
+    private void bookEmbedding(
+            RagDocument rag, @Nullable TokenUsage usage, long durationMs) {
+        int tokensIn = usage == null || usage.inputTokenCount() == null
+                ? 0 : Math.max(0, usage.inputTokenCount());
+        if (tokensIn <= 0) return;
+        usageSink.onCall(
+                CallAttribution.ofService(
+                        rag.getTenantId(), rag.getProjectId(), LlmUsageService.CALLER_RAG),
+                new UsageMeasurement(
+                        rag.getEmbeddingProvider(), rag.getEmbeddingProvider(),
+                        rag.getEmbeddingModel(), /*pricing*/ null, /*contextWindow*/ null,
+                        UsageKind.EMBEDDING, UsageOutcome.SUCCESS, 1,
+                        tokensIn, 0, 0, 0, 0, null, null, durationMs));
+    }
 
     private EmbeddingModel modelFor(RagDocument rag) {
         // Cascade kill-switch wins over the RAG's stored provider. If

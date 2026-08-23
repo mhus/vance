@@ -2,18 +2,14 @@ package de.mhus.vance.shared.llmusage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
 
 /**
- * Verifies the cost-derivation math + null-safety of the rate-snapshot
- * fields. The repository is mocked — the test pins the
- * pure-transform contract from {@link LlmUsageService#build} so cost
- * fields are reproducible for downstream report queries.
+ * Cost derivation and the pricing-coverage predicate — the two pieces the
+ * invoice depends on. Both are pure transforms, so they are pinned without
+ * a Mongo in sight.
  */
 class LlmUsageServiceTest {
 
@@ -103,40 +99,102 @@ class LlmUsageServiceTest {
     }
 
     @Test
-    void record_returnsNullWhenRepositoryThrows() {
-        LlmUsageRepository repo = mock(LlmUsageRepository.class);
-        when(repo.save(any())).thenThrow(new RuntimeException("mongo down"));
+    void build_carriesAttributionAndCallKind() {
+        LlmUsageService.UsageWrite w = baseBuilder()
+                .tokensIn(10)
+                .tokensOut(5)
+                .outcome(UsageOutcome.FAILED)
+                .attempt(3)
+                .build();
 
-        LlmUsageService svc = new LlmUsageService(repo);
-        LlmUsageDocument out = svc.record(baseBuilder()
-                .tokensIn(100)
-                .tokensOut(50)
-                .priceInputPerMTok(3.00)
-                .priceOutputPerMTok(15.00)
+        LlmUsageDocument d = LlmUsageService.build(w);
+        assertThat(d.getTenantId()).isEqualTo("acme");
+        assertThat(d.getProjectId()).isEqualTo("demo");
+        assertThat(d.getEngineName()).isEqualTo("frankie");
+        assertThat(d.getRecipeName()).isEqualTo("coding");
+        assertThat(d.getKind()).isEqualTo(UsageKind.CHAT);
+        assertThat(d.getOutcome()).isEqualTo(UsageOutcome.FAILED);
+        assertThat(d.getAttempt()).isEqualTo(3);
+    }
+
+    @Test
+    void imageCall_isPricedPerImageNotPerToken() {
+        LlmUsageService.UsageWrite w = LlmUsageService.UsageWrite.builder()
+                .attribution(CallAttribution.ofService(
+                        "acme", "demo", LlmUsageService.CALLER_FENCHURCH))
+                .kind(UsageKind.IMAGE)
+                .images(1)
+                .imageCost(0.039)
                 .currency("USD")
-                .build());
+                .createdAt(Instant.parse("2026-06-24T12:00:00Z"))
+                .build();
 
-        // Tracking failure must not break the chat turn — service
-        // swallows + logs, callers get null back.
-        assertThat(out).isNull();
+        LlmUsageDocument d = LlmUsageService.build(w);
+        assertThat(d.getCostTotal()).isCloseTo(0.039, within(1e-9));
+        assertThat(d.getImages()).isEqualTo(1);
+        assertThat(w.priced()).isTrue();
+    }
+
+    @Test
+    void priced_isFalseWhenTheModelHasNoRateAtAll() {
+        // The distinction that keeps the invoice honest: a model with no
+        // `pricing:` block is unknown, not free. The report has to say so
+        // instead of adding a silent zero into the total.
+        LlmUsageService.UsageWrite unpriced = baseBuilder()
+                .tokensIn(10_000)
+                .tokensOut(5_000)
+                .build();
+        assertThat(unpriced.priced()).isFalse();
+
+        // A local model declares zero explicitly, which counts as priced.
+        LlmUsageService.UsageWrite explicitlyFree = baseBuilder()
+                .tokensIn(10_000)
+                .tokensOut(5_000)
+                .priceInputPerMTok(0.0)
+                .priceOutputPerMTok(0.0)
+                .currency("EUR")
+                .build();
+        assertThat(explicitlyFree.priced()).isTrue();
+        assertThat(LlmUsageService.build(explicitlyFree).getCostTotal()).isZero();
+    }
+
+    @Test
+    void bucketId_isStableAndSeparatesAdjacentKeyFields() {
+        String a = LlmUsageDailyDocument.bucketId(
+                "acme", "2026-06-24", "demo", "arthur", "chat", "gpt-5", "USD", UsageKind.CHAT);
+        String b = LlmUsageDailyDocument.bucketId(
+                "acme", "2026-06-24", "demo", "arthur", "chat", "gpt-5", "USD", UsageKind.CHAT);
+        assertThat(a).isEqualTo(b).startsWith("usage_");
+
+        // Without the \0 separator these two would hash identically.
+        String left = LlmUsageDailyDocument.bucketId(
+                "acme", "2026-06-24", "de", "moarthur", "chat", "gpt-5", "USD", UsageKind.CHAT);
+        assertThat(left).isNotEqualTo(a);
+
+        // Kind is part of the key — same model, different unit.
+        String image = LlmUsageDailyDocument.bucketId(
+                "acme", "2026-06-24", "demo", "arthur", "chat", "gpt-5", "USD", UsageKind.IMAGE);
+        assertThat(image).isNotEqualTo(a);
+    }
+
+    @Test
+    void dayBucket_isUtcAndExpiryAnchorsOnTheDayNotTheWrite() {
+        // 00:30 in UTC+2 is still the previous UTC day — the bucket has to
+        // follow UTC, or a late-evening call lands in tomorrow's invoice.
+        assertThat(LlmUsageDailyDocument.dayOf(Instant.parse("2026-06-24T22:30:00Z")))
+                .isEqualTo("2026-06-24");
+        assertThat(LlmUsageDailyDocument.dayStart("2026-06-24"))
+                .isEqualTo(Instant.parse("2026-06-24T00:00:00Z"));
     }
 
     private static LlmUsageService.UsageWrite.UsageWriteBuilder baseBuilder() {
         return LlmUsageService.UsageWrite.builder()
-                .tenantId("acme")
-                .projectId("demo")
-                .sessionId("sess-1")
-                .processId("proc-1")
-                .recipeName("coding")
-                .engineName("frankie")
+                .attribution(new CallAttribution(
+                        "acme", "demo", "sess-1", "proc-1", "frankie", "coding"))
                 .providerInstance("openai")
                 .providerType("openai")
                 .providerModel("glm-5.2")
                 .modelAlias("default:code")
-                .tokensIn(0)
-                .tokensOut(0)
-                .cacheReadTokens(0)
-                .cacheWriteTokens(0)
                 .durationMs(123)
                 .contextWindowTokens(131_000)
                 .createdAt(Instant.parse("2026-06-24T12:00:00Z"));

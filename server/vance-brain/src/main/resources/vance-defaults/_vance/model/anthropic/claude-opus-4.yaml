@@ -5,3 +5,9 @@ capabilities:
 - vision
 - pdf
 - thinking
+pricing:
+  currency: USD
+  inputPerMTok: 15.0
+  outputPerMTok: 75.0
+  cacheReadPerMTok: 1.5
+  cacheWritePerMTok: 18.75

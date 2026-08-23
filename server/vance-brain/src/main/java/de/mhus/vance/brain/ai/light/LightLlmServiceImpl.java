@@ -7,9 +7,8 @@ import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.ai.ChatBehavior;
 import de.mhus.vance.brain.ai.ChatBehaviorBuilder;
-import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
-import de.mhus.vance.shared.llmusage.LlmUsageService;
+import de.mhus.vance.shared.llmusage.CallAttribution;
 import de.mhus.vance.brain.recipe.RecipeLoader;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.shared.metric.MetricService;
@@ -81,8 +80,6 @@ public class LightLlmServiceImpl implements LightLlmService {
     private final ObjectMapper objectMapper;
     private final MetricService metricService;
     private final de.mhus.vance.shared.audit.AuditService auditService;
-    private final de.mhus.vance.brain.ai.ModelCatalog modelCatalog;
-    private final LlmUsageService llmUsageService;
 
     @Override
     public String call(LightLlmRequest req) {
@@ -345,13 +342,14 @@ public class LightLlmServiceImpl implements LightLlmService {
         options.setTenantId(req.getTenantId());
         options.setProjectId(req.getProjectId());
         applySamplingParams(options, params);
-        // Light calls don't persist to LlmTraceService — the writer hook
-        // is repurposed as the audit + usage-ledger emitter. Caller's
-        // tenantId/projectId closure is captured here; no session scope.
+        // Light calls don't persist to LlmTraceService — the writer hook is
+        // the audit emitter. The usage ledger is no longer written here: the
+        // accounting decorator inside the provider books every attempt,
+        // including the ones this hook never saw (failed calls, retries,
+        // fallback advances).
         String recipeName = recipe.name();
         String tenantId = req.getTenantId();
         String projectId = req.getProjectId();
-        String processId = req.getProcessId();
         options.setLlmTraceWriter((request, response, elapsedMs) -> {
             Integer tokensIn = null;
             Integer tokensOut = null;
@@ -367,8 +365,6 @@ public class LightLlmServiceImpl implements LightLlmService {
                     recipeName, modelName,
                     tokensIn, tokensOut,
                     elapsedMs, response != null, null);
-            persistUsage(entries, modelName, tenantId, projectId, processId,
-                    recipeName, tokensIn, tokensOut, elapsedMs);
         });
 
         // Reported by the resilient decorator once a call succeeds, so a
@@ -383,87 +379,18 @@ public class LightLlmServiceImpl implements LightLlmService {
         // the unbounded behaviour.
         options.setSyncCallDeadline(SYNC_DEADLINE);
 
-        AiChat chat = aiModelService.createChat(behavior, options);
+        // A light call has no think-engine, so it is attributed to the
+        // synthetic caller `_light`; the recipe names the concrete one
+        // (discovery, follow-up, title generation, …).
+        CallAttribution attribution = CallAttribution.light(
+                req.getTenantId(), req.getProjectId(), req.getProcessId(), recipe.name());
+        AiChat chat = aiModelService.createChat(behavior, options, attribution);
         AiChatConfig asked = entries.get(0).config();
         return new BuiltChat(chat.chatModel(),
                 asked.providerInstance() + ":" + asked.modelName(),
                 answered);
     }
 
-    /**
-     * Writes one {@code llm_usage_records} row per light call, so
-     * discovery / follow-up / title-generation / triage volume shows up
-     * in the usage report instead of vanishing into an audit log line.
-     *
-     * <p>The behavior may have fallen back to a secondary model, so the
-     * provider identity is recovered by matching the model name the
-     * request actually carried against the configured entries — only if
-     * that fails do we assume the primary. Rows are attributed to the
-     * synthetic engine {@link LlmUsageService#ENGINE_LIGHT}; the recipe
-     * name carries the concrete caller.
-     *
-     * <p>Never throws: a bookkeeping failure must not fail the call the
-     * user is waiting on.
-     *
-     * <p>Package-private so the test can drive it directly — the trace
-     * writer that invokes it lives inside the chat wrapper, which the
-     * unit test replaces with a scripted model.
-     */
-    void persistUsage(
-            List<ChatBehavior.Entry> entries,
-            @Nullable String modelName,
-            @Nullable String tenantId,
-            @Nullable String projectId,
-            @Nullable String processId,
-            String recipeName,
-            @Nullable Integer tokensIn,
-            @Nullable Integer tokensOut,
-            long elapsedMs) {
-        int in = tokensIn == null || tokensIn < 0 ? 0 : tokensIn;
-        int out = tokensOut == null || tokensOut < 0 ? 0 : tokensOut;
-        if (in <= 0 && out <= 0) return;
-        if (tenantId == null || tenantId.isBlank()) return;
-        if (entries.isEmpty()) return;
-        try {
-            AiChatConfig used = entries.stream()
-                    .map(ChatBehavior.Entry::config)
-                    .filter(c -> c.modelName().equals(modelName))
-                    .findFirst()
-                    .orElseGet(() -> entries.get(0).config());
-            ModelInfo info = modelCatalog.lookupOrDefault(
-                    tenantId, projectId,
-                    used.providerInstance(), used.provider(), used.modelName());
-            ModelInfo.Pricing p = info.pricing();
-            llmUsageService.record(LlmUsageService.UsageWrite.builder()
-                    .tenantId(tenantId)
-                    .projectId(projectId)
-                    .sessionId(null)
-                    .processId(processId)
-                    .recipeName(recipeName)
-                    .engineName(LlmUsageService.ENGINE_LIGHT)
-                    .providerInstance(used.providerInstance())
-                    .providerType(used.provider())
-                    .providerModel(used.modelName())
-                    .modelAlias(used.providerInstance() + ":" + used.modelName())
-                    .tokensIn(in)
-                    .tokensOut(out)
-                    .cacheReadTokens(0)
-                    .cacheWriteTokens(0)
-                    .priceInputPerMTok(p == null ? null : p.inputPerMTok())
-                    .priceOutputPerMTok(p == null ? null : p.outputPerMTok())
-                    .priceCacheReadPerMTok(p == null ? null : p.cacheReadPerMTok())
-                    .priceCacheWritePerMTok(p == null ? null : p.cacheWritePerMTok())
-                    .currency(p == null ? null : p.currency())
-                    .durationMs(elapsedMs)
-                    .contextWindowTokens(
-                            info.contextWindowTokens() > 0 ? info.contextWindowTokens() : null)
-                    .createdAt(java.time.Instant.now())
-                    .build());
-        } catch (RuntimeException e) {
-            log.warn("LightLlm usage persistence failed recipe='{}': {}",
-                    recipeName, e.toString());
-        }
-    }
 
     // ──────────────────── Param helpers ────────────────────
 

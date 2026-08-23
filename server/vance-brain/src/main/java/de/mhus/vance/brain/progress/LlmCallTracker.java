@@ -4,7 +4,6 @@ import de.mhus.vance.api.progress.MetricsPayload;
 import de.mhus.vance.brain.ai.LlmCallStatsLogger;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
-import de.mhus.vance.shared.llmusage.LlmUsageService;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import dev.langchain4j.model.chat.request.ChatRequest;
@@ -37,7 +36,6 @@ public class LlmCallTracker {
 
     private final ProgressEmitter emitter;
     private final MetricService metricService;
-    private final LlmUsageService llmUsageService;
     private final ModelCatalog modelCatalog;
 
     private final ConcurrentMap<String, AtomicReference<Counters>> byProcess = new ConcurrentHashMap<>();
@@ -93,25 +91,14 @@ public class LlmCallTracker {
 
     /**
      * Same as {@link #record(ThinkProcessDocument, ChatRequest, ChatResponse, long, String)}
-     * plus the {@link ModelInfo} that the call hit. Carries two extra
-     * effects:
+     * plus the {@link ModelInfo} that the call hit, which gives the emitted
+     * {@link MetricsPayload} its {@code contextWindowTokens} so the client
+     * HUD can render a fill ratio
+     * ({@code lastCallTokensIn / contextWindowTokens}).
      *
-     * <ul>
-     *   <li>the emitted {@link MetricsPayload} gets {@code contextWindowTokens}
-     *       so the client HUD can render a fill ratio
-     *       ({@code lastCallTokensIn / contextWindowTokens});
-     *   <li>whenever the provider reported token counts, a row is
-     *       persisted to {@code llm_usage_records} via
-     *       {@link LlmUsageService} — including for models without a
-     *       {@code pricing:} block, which then land as token-only
-     *       rows (zero cost, {@code currency == null}). The rate
-     *       snapshot is verewigt so later YAML edits do not rewrite
-     *       history.
-     * </ul>
-     *
-     * Pass {@code null} for {@code modelInfo} when the engine path
-     * doesn't resolve a catalog entry — the usage row is then built
-     * from {@code modelAlias} alone and carries no context window.
+     * <p>Pass {@code null} for {@code modelInfo} when the engine path
+     * doesn't resolve a catalog entry — the payload then carries no context
+     * window.
      */
     public void record(
             ThinkProcessDocument process,
@@ -173,65 +160,13 @@ public class LlmCallTracker {
             metricService.summary("vance.llm.tokens.output", "model", alias).record(dTokensOut);
         }
 
-        // Durable usage ledger. Written whenever the provider reported
-        // tokens — a missing pricing block only zeroes the cost
-        // columns, it must not swallow the row: token/call volume per
-        // model is the primary question the usage report answers, and
-        // an unpriced model that silently vanishes reads as "never
-        // used". Cache tokens are not yet pulled from langchain4j's
-        // TokenUsage — future Anthropic/Gemini-specific shims will
-        // fill them.
-        persistUsage(process, modelAlias, modelInfo, dTokensIn, dTokensOut, elapsedMs);
-    }
-
-    private void persistUsage(
-            ThinkProcessDocument process,
-            @Nullable String modelAlias,
-            @Nullable ModelInfo modelInfo,
-            int dTokensIn,
-            int dTokensOut,
-            long elapsedMs) {
-        if (dTokensIn <= 0 && dTokensOut <= 0) return;
-        ModelInfo.Pricing p = modelInfo == null ? null : modelInfo.pricing();
-        // Without a catalog entry the alias is the only identity we
-        // have — it is already resolved to "provider:model" by the
-        // time it reaches the tracker, so split it rather than write
-        // an anonymous row.
-        String providerInstance = modelInfo != null
-                ? modelInfo.provider() : aliasPart(modelAlias, 0);
-        String providerModel = modelInfo != null
-                ? modelInfo.modelName() : aliasPart(modelAlias, 1);
-        Integer contextWindow = modelInfo != null && modelInfo.contextWindowTokens() > 0
-                ? modelInfo.contextWindowTokens() : null;
-        try {
-            llmUsageService.record(LlmUsageService.UsageWrite.builder()
-                    .tenantId(process.getTenantId())
-                    .projectId(process.getProjectId())
-                    .sessionId(process.getSessionId())
-                    .processId(process.getId())
-                    .recipeName(process.getRecipeName())
-                    .engineName(process.getThinkEngine())
-                    .providerInstance(providerInstance)
-                    .providerType(null)
-                    .providerModel(providerModel)
-                    .modelAlias(modelAlias)
-                    .tokensIn(dTokensIn)
-                    .tokensOut(dTokensOut)
-                    .cacheReadTokens(0)
-                    .cacheWriteTokens(0)
-                    .priceInputPerMTok(p == null ? null : p.inputPerMTok())
-                    .priceOutputPerMTok(p == null ? null : p.outputPerMTok())
-                    .priceCacheReadPerMTok(p == null ? null : p.cacheReadPerMTok())
-                    .priceCacheWritePerMTok(p == null ? null : p.cacheWritePerMTok())
-                    .currency(p == null ? null : p.currency())
-                    .durationMs(elapsedMs)
-                    .contextWindowTokens(contextWindow)
-                    .createdAt(Instant.now())
-                    .build());
-        } catch (RuntimeException e) {
-            log.warn("LlmUsage persistence failed for process='{}': {}",
-                    process.getId(), e.toString());
-        }
+        // No ledger write here. Usage is booked by the accounting decorator
+        // inside the provider (UsageAccountingChatModel), which sits below
+        // the retry layer and therefore sees every attempt, the cache-token
+        // counters, and the calls this method never reached — Jeltz,
+        // Agrajag, Eddie's triage, the Cortex deep-validate service. This
+        // tracker keeps the live HUD and the Prometheus counters, which need
+        // the process and are not accounting.
     }
 
     /** Drop counters for a process — call when the process is deleted. */
@@ -255,19 +190,6 @@ public class LlmCallTracker {
         }
         Counters c = ref.get();
         return new Snapshot(c.tokensIn, c.tokensOut, c.charsIn, c.charsOut, c.calls);
-    }
-
-    /**
-     * Splits a resolved {@code "provider:model"} alias. {@code part 0}
-     * yields the provider instance, {@code part 1} the model name.
-     * Returns {@code null} when the alias is absent or unsplittable —
-     * the usage row then simply carries no provider/model identity.
-     */
-    private static @Nullable String aliasPart(@Nullable String modelAlias, int part) {
-        if (modelAlias == null || modelAlias.isBlank()) return null;
-        int sep = modelAlias.indexOf(':');
-        if (sep <= 0 || sep == modelAlias.length() - 1) return null;
-        return part == 0 ? modelAlias.substring(0, sep) : modelAlias.substring(sep + 1);
     }
 
     private static int tokens(@Nullable Integer raw) {

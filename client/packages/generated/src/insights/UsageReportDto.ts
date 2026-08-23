@@ -10,4 +10,5 @@ export interface UsageReportDto {
   to?: Date;
   bucketBy: string;
   buckets: UsageBucketDto[];
+  detailHorizon?: Date;
 }

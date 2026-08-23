@@ -7,6 +7,7 @@ import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.ai.ChatBehaviorBuilder;
+import de.mhus.vance.shared.llmusage.CallAttribution;
 import de.mhus.vance.shared.settings.SettingService;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,6 +33,9 @@ import tools.jackson.databind.ObjectMapper;
 public class ScriptCortexDeepValidateService {
 
     private static final String MODEL_ALIAS = "default:fast";
+
+    /** Editor-triggered review — no think-process, so it names itself. */
+    private static final String CALLER = "_deep-validate";
 
     private static final String SYSTEM_PROMPT = """
             You are a senior JavaScript reviewer for Vance Script Cortex,
@@ -87,7 +91,8 @@ public class ScriptCortexDeepValidateService {
         AiChatConfig config = ChatBehaviorBuilder.resolveOne(
                 MODEL_ALIAS, tenantId, projectId, /*processId*/ null,
                 settingService, aiModelResolver);
-        AiChat chat = aiModelService.createChat(config);
+        AiChat chat = aiModelService.createChat(
+                config, CallAttribution.ofService(tenantId, projectId, CALLER));
 
         String user = "Review the following JavaScript. Source name: `"
                 + (sourceName == null ? "draft.js" : sourceName) + "`.\n\n```js\n"

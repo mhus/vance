@@ -3,3 +3,9 @@ defaultMaxOutputTokens: 8192
 size: SMALL
 capabilities:
 - vision
+pricing:
+  currency: USD
+  inputPerMTok: 0.4
+  outputPerMTok: 1.6
+  cacheReadPerMTok: 0.1
+  cacheWritePerMTok: 0.0

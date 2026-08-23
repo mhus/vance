@@ -11,6 +11,7 @@ import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import de.mhus.vance.brain.ai.ProviderListingHttp;
 import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
+import de.mhus.vance.brain.ai.UsageSink;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.ollama.OllamaStreamingChatModel;
@@ -53,8 +54,9 @@ public class OllamaProvider extends AbstractChatProvider {
             ModelCatalog modelCatalog,
             LlmResponseSanitizer responseSanitizer,
             MessageParserRegistry messageParserRegistry,
+            UsageSink usageSink,
             @Value("${vance.ai.ollama.base-url:http://localhost:11434}") String baseUrl) {
-        super(modelCatalog, responseSanitizer, messageParserRegistry);
+        super(modelCatalog, responseSanitizer, messageParserRegistry, usageSink);
         this.defaultBaseUrl = baseUrl;
     }
 

@@ -32,7 +32,7 @@ echarts.use([
 const groupBy = ref<'day' | 'week' | 'month'>('day');
 const rangeDays = ref<number>(30);
 
-const { summary, byProject, byModel, byEngine, byRecipe, loading, error, loadAll } =
+const { summary, byProject, byModel, byCaller, byRecipe, loading, error, loadAll } =
   useUsageReport();
 
 async function refresh(): Promise<void> {
@@ -180,9 +180,46 @@ const hasData = computed<boolean>(() =>
   (summary.value?.buckets.length ?? 0) > 0
   || (byProject.value?.buckets.length ?? 0) > 0
   || (byModel.value?.buckets.length ?? 0) > 0
-  || (byEngine.value?.buckets.length ?? 0) > 0
+  || (byCaller.value?.buckets.length ?? 0) > 0
   || (byRecipe.value?.buckets.length ?? 0) > 0,
 );
+
+/**
+ * How much of the window the amount above actually covers, plus what went
+ * wrong alongside it.
+ *
+ * A sum that silently omits every model without a pricing block reads as a
+ * complete figure and is not one. An incomplete number with a footnote is
+ * usable; an incomplete number without one is worse than no number.
+ */
+const coverage = computed<{
+  calls: number;
+  unpriced: number;
+  pricedPct: number;
+  failed: number;
+}>(() => {
+  let calls = 0;
+  let unpriced = 0;
+  let failed = 0;
+  for (const b of summary.value?.buckets ?? []) {
+    calls += b.calls;
+    unpriced += b.unpricedCalls ?? 0;
+    failed += b.callsFailed ?? 0;
+  }
+  const pricedPct = calls > 0 ? Math.round(((calls - unpriced) / calls) * 100) : 100;
+  return { calls, unpriced, pricedPct, failed };
+});
+
+/**
+ * Where the drill-down stops. Totals go back as far as the tenant does;
+ * per-call rows expire. Saying so beats offering a drill-down that comes
+ * back empty.
+ */
+const detailHorizon = computed<string | null>(() => {
+  const iso = summary.value?.detailHorizon;
+  if (!iso) return null;
+  return new Date(iso).toLocaleDateString();
+});
 </script>
 
 <template>
@@ -233,6 +270,25 @@ const hasData = computed<boolean>(() =>
             <strong>{{ fmtCost(sum, cur) }}</strong>
           </div>
         </div>
+        <p class="muted usage-tab__hint">
+          <template v-if="coverage.unpriced > 0">
+            Covers {{ coverage.pricedPct }}% of {{ coverage.calls }} calls —
+            {{ coverage.unpriced }} ran on a model with no price in the catalog and
+            contribute tokens but no amount. Add a <code>pricing:</code> block to those
+            model entries (a genuinely free local model declares an explicit zero).
+          </template>
+          <template v-else>
+            Covers all {{ coverage.calls }} calls in this window.
+          </template>
+          <template v-if="coverage.failed > 0">
+            {{ coverage.failed }} attempts failed; they are counted but not added to the
+            amount.
+          </template>
+        </p>
+        <p v-if="detailHorizon" class="muted usage-tab__hint">
+          Totals reach back further than the drill-down: per-call detail exists from
+          {{ detailHorizon }} onwards, before that only daily sums.
+        </p>
         <div ref="chartHost" class="usage-tab__chart" />
       </VCard>
 
@@ -256,16 +312,19 @@ const hasData = computed<boolean>(() =>
         />
       </VCard>
 
-      <VCard title="By engine">
+      <VCard title="By caller">
         <p class="muted usage-tab__hint">
-          Who is spending. Autonomous engines show up here even when nobody is
-          watching a chat; <code>_light</code> collects the single-shot helper
-          calls (discovery, follow-up, title generation, triage).
+          Who is spending. Autonomous work shows up here even when nobody is
+          watching a chat. Think-engines appear under their own name; the rest
+          name themselves — <code>_light</code> for single-shot helper calls
+          (discovery, follow-up, title generation), <code>_triage</code>,
+          <code>_compaction</code> for memory upkeep, <code>_fenchurch</code>
+          for images, <code>_rag</code> for embeddings.
         </p>
         <UsageBreakdownTable
-          label="Engine"
-          :rows="byEngine?.buckets ?? []"
-          empty-text="No engine data in this window."
+          label="Caller"
+          :rows="byCaller?.buckets ?? []"
+          empty-text="No caller data in this window."
           :fmt-tokens="fmtTokens"
           :fmt-cost="fmtCost"
         />

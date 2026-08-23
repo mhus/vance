@@ -12,6 +12,7 @@ import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import de.mhus.vance.brain.ai.ProviderListingHttp;
 import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
+import de.mhus.vance.brain.ai.UsageSink;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import dev.langchain4j.model.googleai.GeminiThinkingConfig;
 import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
@@ -58,8 +59,9 @@ public class GeminiProvider extends AbstractChatProvider {
     public GeminiProvider(
             ModelCatalog modelCatalog,
             LlmResponseSanitizer responseSanitizer,
-            MessageParserRegistry messageParserRegistry) {
-        super(modelCatalog, responseSanitizer, messageParserRegistry);
+            MessageParserRegistry messageParserRegistry,
+            UsageSink usageSink) {
+        super(modelCatalog, responseSanitizer, messageParserRegistry, usageSink);
     }
 
     @Override

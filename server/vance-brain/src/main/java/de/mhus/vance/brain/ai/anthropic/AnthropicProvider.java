@@ -15,6 +15,7 @@ import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import de.mhus.vance.brain.ai.ProviderListingHttp;
 import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
+import de.mhus.vance.brain.ai.UsageSink;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
@@ -69,8 +70,9 @@ public class AnthropicProvider extends AbstractChatProvider {
             ModelCatalog modelCatalog,
             LlmResponseSanitizer responseSanitizer,
             MessageParserRegistry messageParserRegistry,
+            UsageSink usageSink,
             @Value("${vance.ai.cache.enabled:true}") boolean cacheEnabled) {
-        super(modelCatalog, responseSanitizer, messageParserRegistry);
+        super(modelCatalog, responseSanitizer, messageParserRegistry, usageSink);
         this.cacheEnabled = cacheEnabled;
         if (!cacheEnabled) {
             log.info("Anthropic prompt caching DISABLED via vance.ai.cache.enabled=false");

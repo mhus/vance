@@ -70,23 +70,27 @@ public class LlmUsageReportController {
     }
 
     /**
-     * Totals per think-engine. The interesting question for autonomous
-     * engines: which of them is quietly burning the budget. Light
-     * single-shot calls are reported under the synthetic engine
-     * {@code _light}.
+     * Totals per issuing subsystem. The interesting question for autonomous
+     * work: what is quietly burning the budget. Think-engines appear under
+     * their own name; everything else names itself — {@code _light} for
+     * single-shot calls, {@code _fenchurch} for images, {@code _rag} for
+     * embeddings, {@code _compaction} for memory upkeep, {@code _triage}.
+     *
+     * <p>{@code /by-engine} is kept as an alias: the name was wrong (half
+     * these callers are not engines) but it is a URL clients already use.
      */
-    @GetMapping("/by-engine")
-    public UsageReportDto byEngine(
+    @GetMapping({"/by-caller", "/by-engine"})
+    public UsageReportDto byCaller(
             @PathVariable("tenant") String tenant,
             @RequestParam(value = "from", required = false) @Nullable Instant from,
             @RequestParam(value = "to", required = false) @Nullable Instant to,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         Window w = window(from, to);
-        return reportService.byEngine(tenant, w.from, w.to);
+        return reportService.byCaller(tenant, w.from, w.to);
     }
 
-    /** Totals per recipe — the finer cut under {@link #byEngine}. */
+    /** Totals per recipe — the finer cut under {@link #byCaller}. */
     @GetMapping("/by-recipe")
     public UsageReportDto byRecipe(
             @PathVariable("tenant") String tenant,

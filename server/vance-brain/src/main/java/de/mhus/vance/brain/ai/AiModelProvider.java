@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai;
 
+import de.mhus.vance.shared.llmusage.CallAttribution;
 import java.util.List;
 
 /**
@@ -8,9 +9,9 @@ import java.util.List;
  * all beans of this type.
  *
  * <p>Providers are stateless w.r.t. a given call — each
- * {@link #createChat(AiChatConfig, AiChatOptions)} invocation builds a fresh
- * {@link AiChat}. Any per-provider caching / rate limiting stays inside the
- * provider implementation.
+ * {@code createChat} invocation builds a fresh {@link AiChat}. Any
+ * per-provider caching / rate limiting stays inside the provider
+ * implementation.
  */
 public interface AiModelProvider {
 
@@ -32,11 +33,23 @@ public interface AiModelProvider {
 
     /**
      * Build a chat bound to {@code config} with the given runtime
-     * {@code options}.
+     * {@code options}, charged to {@code attribution}.
+     *
+     * <p>Attribution is a required parameter rather than an optional field
+     * on {@link AiChatOptions}: as a field it gets forgotten, and a
+     * forgotten attribution is an unbilled call that nobody notices. As a
+     * parameter it is a compile error.
+     *
+     * <p>It is <b>not</b> the same thing as
+     * {@code AiChatOptions.tenantId/projectId}. Those say which layer the
+     * model catalog resolves against — a tenant-pinned process deliberately
+     * leaves the project unset there so endpoint and catalog are read from
+     * the same layer — while billing must still name the project that
+     * burned the tokens.
      *
      * @throws AiChatException if instantiation fails
      */
-    AiChat createChat(AiChatConfig config, AiChatOptions options);
+    AiChat createChat(AiChatConfig config, AiChatOptions options, CallAttribution attribution);
 
     /**
      * Enumerate every model the upstream backend currently exposes for

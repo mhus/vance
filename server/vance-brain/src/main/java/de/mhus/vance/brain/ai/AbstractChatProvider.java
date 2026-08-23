@@ -2,6 +2,7 @@ package de.mhus.vance.brain.ai;
 
 import de.mhus.vance.brain.ai.parser.MessageParser;
 import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
+import de.mhus.vance.shared.llmusage.CallAttribution;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import java.util.ArrayList;
@@ -51,14 +52,17 @@ public abstract class AbstractChatProvider implements AiModelProvider {
     protected final ModelCatalog modelCatalog;
     protected final LlmResponseSanitizer responseSanitizer;
     protected final MessageParserRegistry messageParserRegistry;
+    protected final UsageSink usageSink;
 
     protected AbstractChatProvider(
             ModelCatalog modelCatalog,
             LlmResponseSanitizer responseSanitizer,
-            MessageParserRegistry messageParserRegistry) {
+            MessageParserRegistry messageParserRegistry,
+            UsageSink usageSink) {
         this.modelCatalog = modelCatalog;
         this.responseSanitizer = responseSanitizer;
         this.messageParserRegistry = messageParserRegistry;
+        this.usageSink = usageSink;
     }
 
     /**
@@ -67,9 +71,17 @@ public abstract class AbstractChatProvider implements AiModelProvider {
      * override at its own risk; final preserves the orchestration
      * contract so we can evolve cross-cutting layers (e.g. add another
      * decorator) in one place.
+     *
+     * <p>This is where usage accounting is attached, and the only place:
+     * {@code attribution} says who pays, {@code modelInfo} carries the rate
+     * snapshot, and both are in scope here. Wrapping the built pair before
+     * it reaches {@link StandardAiChat} puts the accounting decorator
+     * innermost — below the trace log, below the retry layer — so it sees
+     * every attempt on the wire exactly once.
      */
     @Override
-    public final AiChat createChat(AiChatConfig config, AiChatOptions options) {
+    public final AiChat createChat(
+            AiChatConfig config, AiChatOptions options, CallAttribution attribution) {
         String wireName = getType().wireName();
         if (!wireName.equals(config.provider())) {
             throw new AiChatException(
@@ -100,8 +112,9 @@ public abstract class AbstractChatProvider implements AiModelProvider {
                     modelInfo.modelName(), modelInfo.messageParser());
         }
         try {
-            BuiltChat built = mergeSystemMessages(
-                    buildModels(config, effective, modelInfo), modelInfo);
+            BuiltChat built = withAccounting(
+                    mergeSystemMessages(buildModels(config, effective, modelInfo), modelInfo),
+                    attribution, modelInfo, config.providerInstance(), usageSink);
             return new StandardAiChat(
                     config.fullName(),
                     getType(),
@@ -122,6 +135,33 @@ public abstract class AbstractChatProvider implements AiModelProvider {
             throw new AiChatException(
                     "Failed to build " + wireName + " chat for " + config.fullName(), e);
         }
+    }
+
+    /**
+     * Wrap the built pair so every attempt is booked into the usage ledger.
+     *
+     * <p>Unconditional by design. The trace layer next door is opt-in and
+     * caller-wired, and that is precisely how four call sites ended up
+     * issuing unaccounted calls. Accounting has no switch and no null
+     * branch: {@link UsageSink#NOOP} exists for construction paths outside
+     * Spring, not as a way to turn billing off.
+     *
+     * @see UsageAccountingChatModel
+     */
+    static BuiltChat withAccounting(
+            BuiltChat built,
+            CallAttribution attribution,
+            ModelInfo modelInfo,
+            String providerInstance,
+            UsageSink sink) {
+        return new BuiltChat(
+                new UsageAccountingChatModel(
+                        built.sync(), attribution, modelInfo, providerInstance, sink),
+                built.streaming() == null
+                        ? null
+                        : new UsageAccountingStreamingChatModel(
+                                built.streaming(), attribution, modelInfo,
+                                providerInstance, sink));
     }
 
     /**

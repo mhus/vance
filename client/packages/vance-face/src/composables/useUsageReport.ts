@@ -6,7 +6,7 @@ import { brainFetch } from '@vance/shared';
  * Reactive wrapper around the tenant-wide LLM usage / cost reports.
  *
  * <p>Hits {@code GET /brain/{tenant}/usage/summary|by-project|by-model|
- * by-engine|by-recipe} with optional from/to/groupBy params. One ref
+ * by-caller|by-recipe} with optional from/to/groupBy params. One ref
  * per cut so the UI can render them in parallel without coupling
  * fetches.
  *
@@ -18,7 +18,7 @@ export function useUsageReport(): {
   summary: Ref<UsageReportDto | null>;
   byProject: Ref<UsageReportDto | null>;
   byModel: Ref<UsageReportDto | null>;
-  byEngine: Ref<UsageReportDto | null>;
+  byCaller: Ref<UsageReportDto | null>;
   byRecipe: Ref<UsageReportDto | null>;
   loading: Ref<boolean>;
   error: Ref<string | null>;
@@ -28,7 +28,7 @@ export function useUsageReport(): {
   const summary = ref<UsageReportDto | null>(null);
   const byProject = ref<UsageReportDto | null>(null);
   const byModel = ref<UsageReportDto | null>(null);
-  const byEngine = ref<UsageReportDto | null>(null);
+  const byCaller = ref<UsageReportDto | null>(null);
   const byRecipe = ref<UsageReportDto | null>(null);
   const loading = ref(false);
   const error = ref<string | null>(null);
@@ -47,13 +47,13 @@ export function useUsageReport(): {
         })}`),
         brainFetch<UsageReportDto>('GET', `usage/by-project?${window}`),
         brainFetch<UsageReportDto>('GET', `usage/by-model?${window}`),
-        brainFetch<UsageReportDto>('GET', `usage/by-engine?${window}`),
+        brainFetch<UsageReportDto>('GET', `usage/by-caller?${window}`),
         brainFetch<UsageReportDto>('GET', `usage/by-recipe?${window}`),
       ]);
       summary.value = s;
       byProject.value = p;
       byModel.value = m;
-      byEngine.value = e;
+      byCaller.value = e;
       byRecipe.value = r;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load usage report.';
@@ -67,12 +67,12 @@ export function useUsageReport(): {
     summary.value = null;
     byProject.value = null;
     byModel.value = null;
-    byEngine.value = null;
+    byCaller.value = null;
     byRecipe.value = null;
     error.value = null;
   }
 
-  return { summary, byProject, byModel, byEngine, byRecipe, loading, error, loadAll, reset };
+  return { summary, byProject, byModel, byCaller, byRecipe, loading, error, loadAll, reset };
 }
 
 export interface UsageQuery {

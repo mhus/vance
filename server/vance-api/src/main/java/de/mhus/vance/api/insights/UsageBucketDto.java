@@ -54,6 +54,37 @@ public class UsageBucketDto {
     private double costCacheWrite;
     private double costTotal;
 
-    /** Number of LLM round-trips that contributed. */
+    /** Number of successful model calls that contributed. */
     private long calls;
+
+    /**
+     * Attempts that raised — retries, chain advances, aborted streams.
+     * Kept out of {@link #calls} and out of every {@code cost*} field:
+     * they happened and may well have been billed, but folding them into
+     * the amount would make the figure worse, not better.
+     */
+    private long callsFailed;
+
+    /** Tokens burned by those failed attempts, as far as the provider said. */
+    private long tokensInFailed;
+
+    private long tokensOutFailed;
+
+    /**
+     * Calls in this bucket whose model has no price in the catalog at all.
+     *
+     * <p>This is what keeps the amount honest. Without it the report shows
+     * a sum that looks complete while silently omitting every model that
+     * lacks a {@code pricing:} block — and models do lack one. A local
+     * model that genuinely costs nothing declares an explicit zero rate and
+     * is therefore <i>not</i> counted here.
+     */
+    private long unpricedCalls;
+
+    private long unpricedTokensIn;
+
+    private long unpricedTokensOut;
+
+    /** Generated images; only non-zero for image usage. */
+    private long images;
 }

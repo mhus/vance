@@ -15,6 +15,7 @@ import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import de.mhus.vance.brain.ai.ProviderListingHttp;
 import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
+import de.mhus.vance.brain.ai.UsageSink;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
@@ -83,9 +84,10 @@ public class OpenAiProvider extends AbstractChatProvider {
             ModelCatalog modelCatalog,
             LlmResponseSanitizer responseSanitizer,
             MessageParserRegistry messageParserRegistry,
+            UsageSink usageSink,
             @Value("${vance.ai.openai.base-url:}") String baseUrl,
             @Value("${vance.ai.cache.enabled:true}") boolean cacheEnabled) {
-        super(modelCatalog, responseSanitizer, messageParserRegistry);
+        super(modelCatalog, responseSanitizer, messageParserRegistry, usageSink);
         // Blank means "not configured" — same as absent. A property-default
         // alone is not enough: an environment variable that exists but is
         // empty (VANCE_AI_OPENAI_BASE_URL="", as surefire passes it through

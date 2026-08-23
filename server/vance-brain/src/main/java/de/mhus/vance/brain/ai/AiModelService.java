@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai;
 
+import de.mhus.vance.shared.llmusage.CallAttribution;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -46,7 +47,8 @@ public class AiModelService {
      * @throws IllegalArgumentException if the wire-name in {@code config}
      *         maps to no known {@link ProviderType}
      */
-    public AiChat createChat(AiChatConfig config, AiChatOptions options) {
+    public AiChat createChat(
+            AiChatConfig config, AiChatOptions options, CallAttribution attribution) {
         ProviderType type = ProviderType.requireWireName(config.provider());
         AiModelProvider provider = providers.get(type);
         if (provider == null) {
@@ -54,12 +56,12 @@ public class AiModelService {
                     "No adapter for provider " + type
                             + " — registered: " + providers.keySet());
         }
-        return provider.createChat(config, options);
+        return provider.createChat(config, options, attribution);
     }
 
     /** Convenience for callers who don't need custom options. */
-    public AiChat createChat(AiChatConfig config) {
-        return createChat(config, AiChatOptions.defaults());
+    public AiChat createChat(AiChatConfig config, CallAttribution attribution) {
+        return createChat(config, AiChatOptions.defaults(), attribution);
     }
 
     /**
@@ -74,12 +76,16 @@ public class AiModelService {
      * inherits it instead of starting its own — see the deadline note
      * there.
      */
-    public AiChat createChat(ChatBehavior behavior, AiChatOptions options) {
+    public AiChat createChat(
+            ChatBehavior behavior, AiChatOptions options, CallAttribution attribution) {
         if (behavior.entries().size() == 1) {
-            return createChat(behavior.entries().get(0).config(), options);
+            return createChat(behavior.entries().get(0).config(), options, attribution);
         }
+        // Every entry gets its own chat and therefore its own accounting
+        // decorator, its own model name and its own rate snapshot — which is
+        // what makes a fallback bill as the model that actually answered.
         List<AiChat> built = behavior.entries().stream()
-                .map(e -> createChat(e.config(), options))
+                .map(e -> createChat(e.config(), options, attribution))
                 .toList();
         String name = behavior.entries().stream()
                 .map(ChatBehavior.Entry::label)

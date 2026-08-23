@@ -430,9 +430,31 @@ class ModelCatalogTest {
 
     @Test
     void model_without_pricing_block_returns_null() {
-        // claude-opus-4 ships without pricing block — unpriced model.
-        ModelInfo info = catalog.lookupOrDefault("anthropic", "claude-opus-4");
+        // Stubbed rather than pointing at a bundled entry: the bundled
+        // catalog is being filled in over time (an unpriced model shows up
+        // as a gap in the usage report's coverage), so naming a real one
+        // here would make this test fail the day someone prices it.
+        stubModelDoc(TENANT, PROJECT, "openai/priceless-1.yaml", """
+                contextWindowTokens: 8192
+                size: SMALL
+                """);
+        catalog.refresh();
+
+        ModelInfo info = catalog.lookupOrDefault(TENANT, PROJECT, "openai", "priceless-1");
         assertThat(info.pricing()).isNull();
+    }
+
+    @Test
+    void locallyHostedModelsDeclareAnExplicitZeroRate() {
+        // "No pricing block" has to mean "price unknown" and nothing else —
+        // it is what the usage report counts against its coverage. A model
+        // that genuinely costs nothing says so, instead of being
+        // indistinguishable from one whose price we simply never entered.
+        // Keyed by wireName, like the neighbouring ollama test above.
+        ModelInfo info = catalog.lookupOrDefault("ollama", "qwen3:8b");
+        assertThat(info.pricing()).isNotNull();
+        assertThat(info.pricing().inputPerMTok()).isZero();
+        assertThat(info.pricing().outputPerMTok()).isZero();
     }
 
     @Test

@@ -7,6 +7,7 @@ import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.ai.ChatBehaviorBuilder;
+import de.mhus.vance.shared.llmusage.CallAttribution;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import dev.langchain4j.data.message.ChatMessage;
@@ -41,6 +42,9 @@ import tools.jackson.databind.ObjectMapper;
 public class DefaultLlmTriageStage implements LlmTriageStage {
 
     private static final String FAST_MODEL_ALIAS = "default:fast";
+
+    /** Fires per worker reply, so it gets its own line in the report. */
+    private static final String CALLER = "_triage";
 
     private static final String SYSTEM_PROMPT = """
             You classify a worker chat reply for a hub assistant called Eddie.
@@ -91,7 +95,12 @@ public class DefaultLlmTriageStage implements LlmTriageStage {
             return heuristic;
         }
 
-        AiChat ai = aiModelService.createChat(config, AiChatOptions.defaults());
+        // One call per worker reply — the highest-frequency unbilled path
+        // there was. Attributed to the process it triages for, under its own
+        // caller name so its volume is visible separately from Eddie's turns.
+        AiChat ai = aiModelService.createChat(
+                config, AiChatOptions.defaults(),
+                CallAttribution.ofProcess(context, CALLER));
         StringBuilder body = new StringBuilder();
         body.append("WORKER: ").append(input.workerEngine() == null ? "?" : input.workerEngine())
                 .append("\nVOICE_MODE: ").append(input.voiceMode())

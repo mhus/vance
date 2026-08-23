@@ -5,6 +5,10 @@ import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.ChatBehaviorBuilder;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.image.AiImageConfig;
+import de.mhus.vance.brain.ai.UsageMeasurement;
+import de.mhus.vance.shared.llmusage.CallAttribution;
+import de.mhus.vance.shared.llmusage.LlmUsageService;
+import de.mhus.vance.shared.llmusage.UsageOutcome;
 import de.mhus.vance.brain.ai.image.AiImageException;
 import de.mhus.vance.brain.ai.image.AiImageService;
 import de.mhus.vance.brain.ai.image.DocumentImageDestinationStream;
@@ -99,6 +103,7 @@ public class FenchurchService {
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
     private final ProgressEmitter progressEmitter;
     private final ThinkProcessService thinkProcessService;
+    private final de.mhus.vance.brain.ai.UsageSink usageSink;
 
     @Value("${vance.fenchurch.scheduler-pool-size:2}")
     private int schedulerPoolSize;
@@ -528,6 +533,8 @@ public class FenchurchService {
                 .durationMs(durationMs)
                 .build();
         callTracker.recordCall(record);
+        bookUsage(request, config, modelInfo.costFor("standard"),
+                UsageOutcome.SUCCESS, durationMs);
         if (log.isDebugEnabled()) {
             log.debug("Fenchurch: generated image tenant='{}' path='{}' model='{}' "
                             + "size={} duration={}ms",
@@ -557,6 +564,41 @@ public class FenchurchService {
                 .durationMs(System.currentTimeMillis() - callStart)
                 .build();
         callTracker.recordCall(record);
+        // No cost on a failure — the vendor may or may not have charged, and
+        // guessing an amount is worse than counting the attempt.
+        bookUsage(request, config, /*cost*/ null, UsageOutcome.FAILED,
+                System.currentTimeMillis() - callStart);
+    }
+
+    /**
+     * Book the image call into the usage ledger, alongside the quota row.
+     *
+     * <p>Two collections on purpose, and they must never be added together:
+     * {@code image_call_records} counts <i>reservations</i> for the quota
+     * gate — including ones that were never charged — while the ledger holds
+     * what was actually spent. One is a permit, the other is a fact.
+     *
+     * <p>Currency is USD because {@code ImageModelInfo.costFor} is declared
+     * in USD; writing it into the row puts the assumption in the data rather
+     * than in someone's head.
+     */
+    private void bookUsage(
+            GenerateImageRequest request,
+            AiImageConfig config,
+            @Nullable Double costUsd,
+            UsageOutcome outcome,
+            long durationMs) {
+        usageSink.onCall(
+                new CallAttribution(
+                        request.getTenantId(),
+                        request.getProjectId(),
+                        /*sessionId*/ null,
+                        request.getProcessId(),
+                        LlmUsageService.CALLER_FENCHURCH,
+                        /*recipeName*/ null),
+                UsageMeasurement.image(
+                        config.providerInstance(), config.provider(), config.modelName(),
+                        costUsd, "USD", outcome, durationMs));
     }
 
     private static String outcomeFromError(Throwable cause) {

@@ -7,6 +7,7 @@ import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.connection.MessageHandler;
 import de.mhus.vance.foot.daemon.DaemonRegistrationService;
 import de.mhus.vance.foot.ide.IntellijMcpRegistrationService;
+import de.mhus.vance.foot.remote.RemoteControlService;
 import de.mhus.vance.foot.session.AutoBootstrapService;
 import de.mhus.vance.foot.session.TimezoneSeedService;
 import de.mhus.vance.foot.ui.ChatTerminal;
@@ -32,6 +33,7 @@ public class WelcomeHandler implements MessageHandler {
     private final DaemonRegistrationService daemonRegistration;
     private final IntellijMcpRegistrationService intellijMcpRegistration;
     private final WindowTitleService windowTitle;
+    private final RemoteControlService remoteControl;
     private final ObjectMapper json = JsonMapper.builder().build();
 
     /**
@@ -45,7 +47,8 @@ public class WelcomeHandler implements MessageHandler {
                           TimezoneSeedService timezoneSeed,
                           DaemonRegistrationService daemonRegistration,
                           IntellijMcpRegistrationService intellijMcpRegistration,
-                          WindowTitleService windowTitle) {
+                          WindowTitleService windowTitle,
+                          RemoteControlService remoteControl) {
         this.terminal = terminal;
         this.connection = connection;
         this.autoBootstrap = autoBootstrap;
@@ -53,6 +56,7 @@ public class WelcomeHandler implements MessageHandler {
         this.daemonRegistration = daemonRegistration;
         this.intellijMcpRegistration = intellijMcpRegistration;
         this.windowTitle = windowTitle;
+        this.remoteControl = remoteControl;
     }
 
     @Override
@@ -82,6 +86,10 @@ public class WelcomeHandler implements MessageHandler {
         // below short-circuits because daemon connections don't bind a
         // session — the SKIP_PROPERTY is set by the -d CLI shortcut.
         daemonRegistration.triggerAfterWelcome();
+        // Re-announce on every welcome, including a reconnect that landed on a
+        // different pod: the remote-control roster entry is rewritten there and
+        // routing follows the (unchanged) clientId, so nothing is re-addressed.
+        remoteControl.triggerAfterWelcome();
         // Seed the account's display.timezone from this machine when unset
         // (only-if-absent, never overwrites an explicit choice). Runs on
         // its own executor — independent of bootstrap.

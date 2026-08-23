@@ -31,6 +31,7 @@ import {
   VModal,
 } from '@components/index';
 import ProcessPanel from '@components/ProcessPanel.vue';
+import ClientsPanel from './ClientsPanel.vue';
 import SessionSearchModal from './SessionSearchModal.vue';
 import SessionCropModal from './SessionCropModal.vue';
 
@@ -121,6 +122,14 @@ const sessionFilter = ref('');
  * open by tapping the button.
  */
 const pickerToolsOpen = ref(false);
+
+/**
+ * Sessions ⇄ Clients. The clients view is project-independent — a CLI client
+ * is reachable from the moment its WebSocket is up, whether or not it has
+ * bound a session — so it deliberately ignores the project selection in the
+ * sidebar rather than filtering by it.
+ */
+const mainTab = ref<'sessions' | 'clients'>('sessions');
 
 const filteredSessions = computed<SessionSummaryRichDto[]>(() => {
   const needle = sessionFilter.value.trim().toLowerCase();
@@ -716,9 +725,30 @@ onBeforeUnmount(stopAutoScroll);
           {{ $t('chat.picker.pickAProject') }}
         </h2>
 
+        <!-- Sessions ⇄ Clients. A running CLI client is a peer to a session,
+             not a separate universe — one switches between "what I was
+             talking to" and "what is running for me right now". -->
+        <div class="flex items-center gap-1">
+          <VButton
+            size="sm"
+            :variant="mainTab === 'sessions' ? 'secondary' : 'ghost'"
+            @click="mainTab = 'sessions'"
+          >
+            {{ $t('chat.picker.tabs.sessions') }}
+          </VButton>
+          <VButton
+            size="sm"
+            :variant="mainTab === 'clients' ? 'secondary' : 'ghost'"
+            @click="mainTab = 'clients'"
+          >
+            {{ $t('chat.picker.tabs.clients') }}
+          </VButton>
+        </div>
+
         <!-- Phone-only menu toggle. CSS in scoped block hides it on
              wider screens and turns .picker-tools into a popup. -->
         <VButton
+          v-if="mainTab === 'sessions'"
           variant="ghost"
           size="sm"
           class="picker-tools-toggle"
@@ -729,6 +759,7 @@ onBeforeUnmount(stopAutoScroll);
         </VButton>
 
         <div
+          v-if="mainTab === 'sessions'"
           class="picker-tools"
           :class="{ 'picker-tools--open': pickerToolsOpen }"
         >
@@ -762,9 +793,18 @@ onBeforeUnmount(stopAutoScroll);
         </div>
       </div>
 
+      <!-- Clients tab: remote control of running CLI clients. Independent of
+           the selected project — a foot is reachable from the moment its
+           WebSocket is up, whatever (if anything) it is bound to. -->
+      <div v-if="mainTab === 'clients'" class="flex-1 min-h-0 overflow-y-auto px-6 py-4">
+        <div class="max-w-3xl mx-auto h-full">
+          <ClientsPanel />
+        </div>
+      </div>
+
       <!-- Scrollable list area — content is centered/constrained for
            readability while the header above stays full-width. -->
-      <div class="flex-1 min-h-0 overflow-y-auto px-6 py-4">
+      <div v-else class="flex-1 min-h-0 overflow-y-auto px-6 py-4">
         <div class="max-w-3xl mx-auto flex flex-col gap-4">
         <VAlert v-if="bootstrapError" variant="error">{{ bootstrapError }}</VAlert>
         <VAlert v-if="sessionsError" variant="error">{{ sessionsError }}</VAlert>

@@ -9,7 +9,10 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import org.jline.terminal.Terminal;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
@@ -40,6 +43,7 @@ import org.springframework.stereotype.Component;
  * character streaming but keeps the live region coherent.
  */
 @Component
+@lombok.extern.slf4j.Slf4j
 public class ChatTerminal {
 
     /** Maximum lines kept in the {@link #buffer} ring. Bounded so a long-running
@@ -51,6 +55,17 @@ public class ChatTerminal {
     private final PrintWriter stdoutWriter = new PrintWriter(System.out, true);
     private final Deque<Line> buffer = new ArrayDeque<>(BUFFER_LIMIT);
     private final Object bufferLock = new Object();
+
+    /**
+     * Monotonic line counter. Independent of the ring: a line evicted from
+     * {@link #buffer} does not reset or reuse its number, which is what lets a
+     * reattaching watcher tell "nothing new" from "I missed 300 lines".
+     */
+    private final AtomicLong seqCounter = new AtomicLong();
+
+    /** Live sinks fed by {@link #record}. COW — registered once, read hot. */
+    private final CopyOnWriteArrayList<Consumer<Line>> lineListeners = new CopyOnWriteArrayList<>();
+
     private final FootConfig config;
     private final LiveRegion liveRegion;
     private final AtomicReference<@Nullable MarkdownAnsiRenderer> markdownRenderer = new AtomicReference<>();
@@ -447,13 +462,75 @@ public class ChatTerminal {
         }
     }
 
+    /**
+     * Lines newer than {@code sinceSeq}, oldest first, capped at {@code limit}.
+     * The resume path for a remote watcher reattaching after a gap: it passes
+     * the last {@code seq} it saw and gets exactly what it missed.
+     *
+     * <p>{@link Backlog#truncated()} is {@code true} when the requested anchor
+     * had already fallen out of the bounded ring — said explicitly rather than
+     * handing back a shorter list that reads as a gapless history.
+     */
+    public Backlog since(long sinceSeq, int limit) {
+        synchronized (bufferLock) {
+            if (buffer.isEmpty()) {
+                return new Backlog(List.of(), false);
+            }
+            long oldestKept = buffer.peekFirst().seq();
+            // sinceSeq == 0 means "whatever you still have" — not a gap.
+            boolean truncated = sinceSeq > 0 && oldestKept > sinceSeq + 1;
+            List<Line> out = new ArrayList<>();
+            for (Line line : buffer) {
+                if (line.seq() > sinceSeq) {
+                    out.add(line);
+                }
+            }
+            if (limit > 0 && out.size() > limit) {
+                out = new ArrayList<>(out.subList(out.size() - limit, out.size()));
+                truncated = true;
+            }
+            return new Backlog(List.copyOf(out), truncated);
+        }
+    }
+
+    /** Highest sequence number handed out so far; {@code 0} before the first line. */
+    public long lastSeq() {
+        return seqCounter.get();
+    }
+
+    /**
+     * Registers a sink that sees every recorded line as it happens. Push
+     * counterpart to {@link #tail} — the remote-control channel needs to
+     * forward lines live, and polling a ring buffer for that would either lag
+     * or duplicate.
+     *
+     * <p>Listeners must not block and must not throw; a throwing listener is
+     * logged at TRACE and skipped so a broken sink can never wedge the
+     * terminal.
+     */
+    public void addLineListener(Consumer<Line> listener) {
+        lineListeners.add(listener);
+    }
+
+    public void removeLineListener(Consumer<Line> listener) {
+        lineListeners.remove(listener);
+    }
+
     private void record(Verbosity level, String message) {
-        Line line = new Line(Instant.now(), level, message);
+        Line line = new Line(seqCounter.incrementAndGet(), Instant.now(), level, message);
         synchronized (bufferLock) {
             if (buffer.size() == BUFFER_LIMIT) {
                 buffer.removeFirst();
             }
             buffer.addLast(line);
+        }
+        // Outside the lock: a listener must never be able to hold the buffer.
+        for (Consumer<Line> listener : lineListeners) {
+            try {
+                listener.accept(line);
+            } catch (RuntimeException e) {
+                log.trace("ChatTerminal line listener failed: {}", e.toString());
+            }
         }
     }
 
@@ -468,6 +545,13 @@ public class ChatTerminal {
         record(Verbosity.INFO, message);
     }
 
-    /** One captured terminal line. */
-    public record Line(Instant timestamp, Verbosity level, String text) {}
+    /**
+     * One captured terminal line. {@code seq} is monotonic per process and
+     * survives ring eviction, so a remote watcher can detect gaps rather than
+     * silently missing lines.
+     */
+    public record Line(long seq, Instant timestamp, Verbosity level, String text) {}
+
+    /** Result of {@link #since}: the missed lines plus whether any were lost. */
+    public record Backlog(List<Line> lines, boolean truncated) {}
 }

@@ -99,7 +99,8 @@ class VanceFootCommandContinueTest {
                 mock(SessionService.class),
                 mock(OneShotTurnGate.class),
                 mock(FootToolPackRegistry.class),
-                mock(ProjectPackConsent.class));
+                mock(ProjectPackConsent.class),
+                new de.mhus.vance.foot.remote.RemoteControlGate(config));
         command.continueSession = true;
         command.noConnect = true;
     }

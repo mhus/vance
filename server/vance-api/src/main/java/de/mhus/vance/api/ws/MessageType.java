@@ -613,6 +613,85 @@ public final class MessageType {
      */
     public static final String SIGNAL = "signal";
 
+    // ─── clients channel (foot remote control) ──────────────────────────
+    // Session-independent remote control of a running CLI client ("clients"
+    // channel). A foot announces itself with a process-stable clientId; a
+    // watcher (web/mobile) lists, attaches, and feeds input. Routing is keyed
+    // by clientId, never by pod — see planning/foot-remote-control.md §3.2.
+    // Every frame on this channel is a notification: no request/reply, hence
+    // no cross-pod RPC. The command result arrives through the output stream
+    // the watcher is already subscribed to.
+
+    /**
+     * Foot → Brain: announce this client. Payload:
+     * {@link RemoteClientAnnounce}. Sent after every WELCOME (so a reconnect
+     * — including onto a different pod — re-establishes the roster entry) and
+     * on a runtime {@code /remote on}.
+     */
+    public static final String CLIENT_ANNOUNCE = "client-announce";
+
+    /**
+     * Foot → Brain: refresh the roster TTL and report live state. Payload:
+     * {@link RemoteClientState}. A missing heartbeat expires the roster entry.
+     */
+    public static final String CLIENT_HEARTBEAT = "client-heartbeat";
+
+    /**
+     * Foot → Brain → watchers: a batch of terminal lines. Payload:
+     * {@link RemoteOutputBatch}. Only produced while at least one watcher is
+     * attached; carries a monotonic per-client {@code seq} so a watcher can
+     * resume after a gap.
+     */
+    public static final String CLIENT_OUTPUT = "client-output";
+
+    /**
+     * Foot → Brain → watchers: the client's live state (connection, bound
+     * session, UI mode, busy). Payload: {@link RemoteClientState}. This is
+     * what the pinned terminal UI would show — the line stream never carries
+     * it (see planning/foot-remote-control.md §1).
+     */
+    public static final String CLIENT_STATE = "client-state";
+
+    /**
+     * Foot → Brain → watchers: the client is blocked on a question (sandbox
+     * permission ask, {@code ask_user}, line prompt). Payload:
+     * {@link RemoteClientPrompt}, {@code open=false} when it resolved.
+     */
+    public static final String CLIENT_PROMPT = "client-prompt";
+
+    /**
+     * Watcher → Brain: request the roster of own clients. No payload; the
+     * answer is a {@link #CLIENT_ROSTER} push (one roster per user, so no
+     * correlation is needed).
+     */
+    public static final String CLIENT_LIST = "client-list";
+
+    /** Brain → watcher: the roster snapshot. Payload: {@link RemoteClientRoster}. */
+    public static final String CLIENT_ROSTER = "client-roster";
+
+    /**
+     * Watcher → Brain → foot: start watching a client. Payload:
+     * {@link RemoteAttachRequest} with an optional {@code sinceSeq} for
+     * backlog replay. Turns on output streaming at the foot end.
+     */
+    public static final String CLIENT_ATTACH = "client-attach";
+
+    /** Watcher → Brain → foot: stop watching. Payload: {@link RemoteAttachRequest}. */
+    public static final String CLIENT_DETACH = "client-detach";
+
+    /**
+     * Watcher → Brain → foot: submit one input line, exactly as if typed at
+     * the JLine prompt. Payload: {@link RemoteInputRequest}. Fire-and-forget
+     * — the effect shows up in the output stream.
+     */
+    public static final String CLIENT_INPUT = "client-input";
+
+    /**
+     * Watcher → Brain → foot: interrupt the running turn (pause, or stop with
+     * {@code hard=true}). Payload: {@link RemoteInterruptRequest}.
+     */
+    public static final String CLIENT_INTERRUPT = "client-interrupt";
+
     private MessageType() {
     }
 }

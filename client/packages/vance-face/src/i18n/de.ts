@@ -388,7 +388,32 @@ export default {
       pending: '{n} Änderung(en)',
       removeToggle: 'Aus Erinnerung entfernen',
     },
+    clients: {
+      heading: 'Laufende CLI-Clients',
+      refresh: 'Aktualisieren',
+      emptyTitle: 'Keine laufenden Clients',
+      emptyHint: 'Eine vancetope-CLI meldet sich hier an, solange sie läuft. '
+        + 'Mit --remote-control gestartet, nimmt sie sofort Eingaben von hier an.',
+      podLocalOnly: 'Es werden nur Clients dieses Server-Knotens angezeigt '
+        + '(knotenübergreifend braucht Redis).',
+      busy: 'beschäftigt',
+      fullscreen: 'Vollbild-UI',
+      noSession: 'keine Session gebunden',
+      stateLine: 'Verbindung: {connection} · UI: {ui}',
+      pause: 'Pause',
+      stop: 'Stopp',
+      detach: 'Lösen',
+      gap: 'Ein Teil der Ausgabe fehlt — der Client konnte nicht so weit zurück liefern.',
+      noOutput: 'Noch keine Ausgabe.',
+      inputPlaceholder: 'Zeile eingeben — Kommandos beginnen mit /',
+      inputBlocked: 'Eingabe ist auf diesem Client gesperrt',
+      send: 'Senden',
+    },
     picker: {
+      tabs: {
+        sessions: 'Sessions',
+        clients: 'Clients',
+      },
       projectsTitle: 'Projekte',
       loading: 'Laden…',
       ungrouped: 'Ohne Gruppe',

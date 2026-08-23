@@ -393,7 +393,32 @@ export default {
       pending: '{n} change(s)',
       removeToggle: 'Remove from memory',
     },
+    clients: {
+      heading: 'Running CLI clients',
+      refresh: 'Refresh',
+      emptyTitle: 'No running clients',
+      emptyHint: 'A vancetope CLI announces itself here while it runs. '
+        + 'Start it with --remote-control to allow input from here right away.',
+      podLocalOnly: 'Only clients connected to this server node are listed '
+        + '(cross-node listing needs Redis).',
+      busy: 'busy',
+      fullscreen: 'fullscreen UI',
+      noSession: 'no session bound',
+      stateLine: 'Connection: {connection} · UI: {ui}',
+      pause: 'Pause',
+      stop: 'Stop',
+      detach: 'Detach',
+      gap: 'Some output was lost — the client could not replay that far back.',
+      noOutput: 'No output yet.',
+      inputPlaceholder: 'Type a line — commands start with /',
+      inputBlocked: 'Input is blocked on this client',
+      send: 'Send',
+    },
     picker: {
+      tabs: {
+        sessions: 'Sessions',
+        clients: 'Clients',
+      },
       projectsTitle: 'Projects',
       loading: 'Loading…',
       ungrouped: 'Ungrouped',

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.ColorResolver;
 import de.mhus.vance.foot.ui.LiveRegion;
@@ -32,7 +33,10 @@ class PermissionPromptTest {
         PendingPermissionPrompt pending = new PendingPermissionPrompt(terminal);
         PermissionPrompt prompt =
                 new PermissionPrompt(pending, terminal, liveRegion, loader, permissions,
-                        mock(ColorResolver.class));
+                        mock(ColorResolver.class),
+                        new de.mhus.vance.foot.remote.RemoteWatcherState(),
+                        new de.mhus.vance.foot.remote.RemoteClientIdentity(new FootConfig()),
+                        new FootConfig());
         return new Stack(prompt, pending, loader, permissions);
     }
 

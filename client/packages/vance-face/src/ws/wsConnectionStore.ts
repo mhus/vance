@@ -26,6 +26,13 @@ import type {
   PointerMoveRequest,
   PointerNotification,
   PointerSubscribeRequest,
+  RemoteAttachRequest,
+  RemoteClientPrompt,
+  RemoteClientRoster,
+  RemoteClientState,
+  RemoteInputRequest,
+  RemoteInterruptRequest,
+  RemoteOutputBatch,
   SessionResumeRequest,
   SessionResumeResponse,
   SignalFrame,
@@ -1164,6 +1171,182 @@ function wireSignalsSocketWatch(): void {
 }
 
 wireSignalsSocketWatch();
+
+// ─── clients-channel (remote control of running CLI clients) ──
+
+/**
+ * Desired-state of {@code clients}-channel attachments. Replayed on reconnect:
+ * the routing key is the (process-stable) clientId, never a pod, so an attach
+ * survives both ends moving — our socket reconnecting and the client's.
+ */
+const desiredClientAttachments = new Map<string, number>();
+
+type ClientRosterHandler = (roster: RemoteClientRoster) => void;
+type ClientOutputHandler = (batch: RemoteOutputBatch) => void;
+type ClientStateHandler = (state: RemoteClientState) => void;
+type ClientPromptHandler = (prompt: RemoteClientPrompt) => void;
+
+const clientRosterListeners = new Set<ClientRosterHandler>();
+const clientOutputListeners = new Map<string, Set<ClientOutputHandler>>();
+const clientStateListeners = new Map<string, Set<ClientStateHandler>>();
+const clientPromptListeners = new Map<string, Set<ClientPromptHandler>>();
+
+let clientsUnsubscribes: Array<() => void> = [];
+let clientsSocketWatchStopped = false;
+
+/** Ask for the roster of own CLI clients. Answer arrives via {@link onClientRoster}. */
+export async function requestClientList(): Promise<void> {
+  const sock = await ensureConnected();
+  sock.sendOnChannel('clients', 'client-list', {});
+}
+
+/** Register a roster-push callback. Returns an unsubscribe. */
+export function onClientRoster(handler: ClientRosterHandler): () => void {
+  clientRosterListeners.add(handler);
+  return () => clientRosterListeners.delete(handler);
+}
+
+/**
+ * Start watching a client. {@code sinceSeq} is the last line already seen —
+ * the client replays from there, so a short disconnect does not silently lose
+ * output (and reports a gap when its ring could not cover it).
+ */
+export async function attachClient(clientId: string, sinceSeq = 0): Promise<void> {
+  desiredClientAttachments.set(clientId, sinceSeq);
+  const sock = await ensureConnected();
+  sock.sendOnChannel('clients', 'client-attach', { clientId, sinceSeq } as RemoteAttachRequest);
+}
+
+/** Stop watching a client — the client stops streaming once nobody watches. */
+export async function detachClient(clientId: string): Promise<void> {
+  desiredClientAttachments.delete(clientId);
+  if (socket.value && !socket.value.closed()) {
+    socket.value.sendOnChannel('clients', 'client-detach', { clientId } as RemoteAttachRequest);
+  }
+}
+
+/** Remember the resume anchor so a reconnect re-attaches at the right place. */
+export function noteClientSeq(clientId: string, seq: number): void {
+  if (desiredClientAttachments.has(clientId)) {
+    desiredClientAttachments.set(clientId, seq);
+  }
+}
+
+/**
+ * Submit one input line to a client. Fire-and-forget by design: the effect
+ * shows up in the output stream, which is also the honest failure mode — a
+ * line sent into a reconnect gap is dropped, not queued for later.
+ */
+export async function sendClientInput(
+  clientId: string,
+  line: string,
+  requestId?: string,
+): Promise<void> {
+  const sock = await ensureConnected();
+  sock.sendOnChannel('clients', 'client-input', { clientId, line, requestId } as RemoteInputRequest);
+}
+
+/** Interrupt the client's running turn ({@code hard} = stop instead of pause). */
+export async function sendClientInterrupt(clientId: string, hard: boolean): Promise<void> {
+  const sock = await ensureConnected();
+  sock.sendOnChannel('clients', 'client-interrupt', { clientId, hard } as RemoteInterruptRequest);
+}
+
+export function onClientOutput(clientId: string, handler: ClientOutputHandler): () => void {
+  return addPerClient(clientOutputListeners, clientId, handler);
+}
+
+export function onClientState(clientId: string, handler: ClientStateHandler): () => void {
+  return addPerClient(clientStateListeners, clientId, handler);
+}
+
+export function onClientPrompt(clientId: string, handler: ClientPromptHandler): () => void {
+  return addPerClient(clientPromptListeners, clientId, handler);
+}
+
+function addPerClient<T>(
+  registry: Map<string, Set<T>>,
+  clientId: string,
+  handler: T,
+): () => void {
+  let set = registry.get(clientId);
+  if (!set) {
+    set = new Set<T>();
+    registry.set(clientId, set);
+  }
+  set.add(handler);
+  return () => {
+    const current = registry.get(clientId);
+    if (!current) return;
+    current.delete(handler);
+    if (current.size === 0) registry.delete(clientId);
+  };
+}
+
+function firePerClient<T extends { clientId?: string }>(
+  registry: Map<string, Set<(payload: T) => void>>,
+  payload: T | null,
+  label: string,
+): void {
+  if (!payload || !payload.clientId) return;
+  const listeners = registry.get(payload.clientId);
+  if (!listeners || listeners.size === 0) return;
+  for (const handler of Array.from(listeners)) {
+    try {
+      handler(payload);
+    } catch (e) {
+      console.warn(`[wsStore] ${label} handler for '${payload.clientId}' threw:`, e);
+    }
+  }
+}
+
+function attachClientsListeners(sock: BrainWebSocket): void {
+  detachClientsListeners();
+  clientsUnsubscribes = [
+    sock.onChannel<RemoteClientRoster>('clients', 'client-roster', (data) => {
+      if (!data) return;
+      for (const handler of Array.from(clientRosterListeners)) {
+        try {
+          handler(data);
+        } catch (e) {
+          console.warn('[wsStore] client-roster handler threw:', e);
+        }
+      }
+    }),
+    sock.onChannel<RemoteOutputBatch>('clients', 'client-output', (data) =>
+      firePerClient(clientOutputListeners, data, 'client-output')),
+    sock.onChannel<RemoteClientState>('clients', 'client-state', (data) =>
+      firePerClient(clientStateListeners, data, 'client-state')),
+    sock.onChannel<RemoteClientPrompt>('clients', 'client-prompt', (data) =>
+      firePerClient(clientPromptListeners, data, 'client-prompt')),
+  ];
+}
+
+function detachClientsListeners(): void {
+  for (const off of clientsUnsubscribes) {
+    try { off(); } catch { /* ignore */ }
+  }
+  clientsUnsubscribes = [];
+}
+
+function wireClientsSocketWatch(): void {
+  if (clientsSocketWatchStopped) return;
+  clientsSocketWatchStopped = true;
+  watch(socket, (next) => {
+    detachClientsListeners();
+    if (!next) return;
+    attachClientsListeners(next);
+    for (const [clientId, sinceSeq] of desiredClientAttachments) {
+      try {
+        next.sendOnChannel('clients', 'client-attach', { clientId, sinceSeq } as RemoteAttachRequest);
+      } catch (e) {
+        console.warn(`[wsStore] clients reconnect-reattach failed for '${clientId}':`, e);
+      }
+    }
+  }, { immediate: true });
+}
+
+wireClientsSocketWatch();
 
 /**
  * Inform the store that the server-side binding is already in place

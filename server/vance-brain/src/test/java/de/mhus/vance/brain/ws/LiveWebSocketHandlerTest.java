@@ -70,6 +70,7 @@ class LiveWebSocketHandlerTest {
                 documentChannelHandler, documentSubscriberRegistry,
                 pointerChannelHandler, pointerBroadcaster,
                 signalChannelHandler, signalBroadcaster,
+                mock(de.mhus.vance.brain.ws.clients.RemoteClientChannelHandler.class),
                 keepAlive, new VanceBrainProperties());
 
         wsSession = mock(WebSocketSession.class);

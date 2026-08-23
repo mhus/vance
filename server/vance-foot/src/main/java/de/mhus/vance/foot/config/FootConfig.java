@@ -23,6 +23,7 @@ public class FootConfig {
     private Auth auth = new Auth();
     private Client client = new Client();
     private Debug debug = new Debug();
+    private Remote remote = new Remote();
     private History history = new History();
     private Bootstrap bootstrap = new Bootstrap();
     private Ui ui = new Ui();
@@ -123,6 +124,51 @@ public class FootConfig {
     @Data
     public static class Debug {
         private Rest rest = new Rest();
+    }
+
+    /**
+     * Remote control of this running client from another device (web/mobile)
+     * through the brain — see {@code planning/foot-remote-control.md}.
+     *
+     * <p>Attaching to a foot means submitting lines to a live REPL that owns
+     * {@code client_exec_run} and {@code client_file_write}, i.e. effectively a
+     * shell on this machine. The mode is therefore a deliberate act, never a
+     * silent default.
+     */
+    @Data
+    public static class Remote {
+        /**
+         * {@code off} — never announce, the client is invisible to remote
+         * control. {@code ask} (default) — announce and stream output, but
+         * refuse input until a local {@code /remote allow}: right when someone
+         * is sitting at the terminal. {@code allow} — accept input right away;
+         * the mode for leaving a long job running and walking away, set with
+         * {@code --remote-control}.
+         */
+        private String mode = "ask";
+
+        /** Roster/heartbeat interval. Must stay well below the brain-side TTL. */
+        private java.time.Duration heartbeat = java.time.Duration.ofSeconds(30);
+
+        /**
+         * Max lines per outbound batch. Bounds one frame, not the stream —
+         * a burst is split across batches, never dropped.
+         */
+        private int maxBatchLines = 200;
+
+        /**
+         * How long output lines are buffered before being flushed as one
+         * batch. Coalescing exists because a chat turn emits lines faster than
+         * a phone can usefully repaint.
+         */
+        private java.time.Duration flushInterval = java.time.Duration.ofMillis(250);
+
+        /**
+         * Interactive-prompt timeout while a remote watcher is attached. The
+         * local default (25 s) is tuned for someone at the keyboard and would
+         * deny before a phone notification is even read.
+         */
+        private java.time.Duration promptTimeout = java.time.Duration.ofMinutes(5);
     }
 
     @Data

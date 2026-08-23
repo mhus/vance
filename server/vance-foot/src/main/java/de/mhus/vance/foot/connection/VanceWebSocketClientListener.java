@@ -25,6 +25,18 @@ public interface VanceWebSocketClientListener {
     }
 
     /**
+     * Called for a frame that arrived on a channel other than {@code session}.
+     *
+     * <p>Kept separate from {@link #onMessage} on purpose: the session channel
+     * carries request/reply correlation and session-id tracking, the others do
+     * not. Folding them together would put notification traffic through the
+     * pending-reply table and make an unknown channel look like a stale reply.
+     * Default is a no-op, so a channel nobody claims is simply dropped.
+     */
+    default void onChannelMessage(String channel, WebSocketEnvelope envelope) {
+    }
+
+    /**
      * Called when the connection closes, whether by local request, peer close,
      * or transport error.
      *

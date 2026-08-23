@@ -119,6 +119,29 @@ public class ConnectionService {
         this.auth = auth;
     }
 
+    /**
+     * Inbound handlers for non-session Live-WS channels, keyed by channel name.
+     * Registered by the owning service at startup instead of injected here, so
+     * {@code ConnectionService} keeps no compile-time dependency on channel
+     * features (and no Spring cycle through them).
+     */
+    private final java.util.Map<String, java.util.function.BiConsumer<String, WebSocketEnvelope>>
+            channelListeners = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Claims a Live-WS channel. One listener per channel — a second
+     * registration for the same name fails the boot rather than silently
+     * shadowing the first.
+     */
+    public void registerChannelListener(
+            String channel, java.util.function.BiConsumer<String, WebSocketEnvelope> listener) {
+        var previous = channelListeners.putIfAbsent(channel, listener);
+        if (previous != null) {
+            throw new IllegalStateException("Channel '" + channel + "' already has a listener: "
+                    + previous.getClass().getName());
+        }
+    }
+
     public State state() {
         return state.get();
     }
@@ -551,12 +574,22 @@ public class ConnectionService {
      * in if the socket is wedged, which is itself a failure to report.
      */
     public boolean send(WebSocketEnvelope envelope) {
+        return sendOnChannel(de.mhus.vance.api.ws.LiveChannels.SESSION, envelope);
+    }
+
+    /**
+     * Sends a notification on a non-session Live-WS channel (currently
+     * {@code clients}). Same fire-and-check semantics as {@link #send}: the
+     * boolean says the frame left the process, nothing more — these channels
+     * have no acknowledgement by design.
+     */
+    public boolean sendOnChannel(String channel, WebSocketEnvelope envelope) {
         VanceWebSocketClient c = clientRef.get();
         if (c == null || !c.isOpen()) {
             return false;
         }
         try {
-            c.send(envelope).get(2, java.util.concurrent.TimeUnit.SECONDS);
+            c.send(channel, envelope).get(2, java.util.concurrent.TimeUnit.SECONDS);
             lastOutboundAtMs.set(System.currentTimeMillis());
             return true;
         } catch (java.util.concurrent.TimeoutException e) {
@@ -772,6 +805,24 @@ public class ConnectionService {
         @Override
         public void onMessage(WebSocketEnvelope envelope) {
             dispatcher.dispatch(envelope);
+        }
+
+        @Override
+        public void onChannelMessage(String channel, WebSocketEnvelope envelope) {
+            java.util.function.BiConsumer<String, WebSocketEnvelope> handler =
+                    channelListeners.get(channel);
+            if (handler == null) {
+                terminal.println(Verbosity.DEBUG,
+                        "No listener for channel '%s' (type=%s) — dropped", channel,
+                        envelope.getType());
+                return;
+            }
+            try {
+                handler.accept(channel, envelope);
+            } catch (RuntimeException e) {
+                terminal.println(Verbosity.DEBUG,
+                        "Channel '%s' listener failed: %s", channel, e.toString());
+            }
         }
 
         @Override

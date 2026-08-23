@@ -143,6 +143,17 @@ public class VanceFootCommand implements Callable<Integer> {
                     + "permissions.yaml sandbox switch for this run.")
     boolean noSandbox;
 
+    @Option(names = "--remote-control",
+            description = "Accept remote input from your own web/mobile clients right away "
+                    + "(vance.remote.mode=allow). Without it the client is listed and streams "
+                    + "output, but input needs a local /remote allow — set this before walking "
+                    + "away from a long run, since there is nobody left at the terminal to ask.")
+    boolean remoteControl;
+
+    @Option(names = "--no-remote-control",
+            description = "Never announce this client for remote control (vance.remote.mode=off).")
+    boolean noRemoteControl;
+
     @Option(names = "--no-tool-output",
             description = "Suppress the cosmetic 'tool used' block in the chat output. "
                     + "Equivalent to vance.ui.tool-output.enabled=false.")
@@ -292,6 +303,7 @@ public class VanceFootCommand implements Callable<Integer> {
     private final OneShotTurnGate oneShotGate;
     private final FootToolPackRegistry toolPacks;
     private final ProjectPackConsent packConsent;
+    private final de.mhus.vance.foot.remote.RemoteControlGate remoteGate;
 
     public VanceFootCommand(ChatRepl repl,
                             ConnectionService connection,
@@ -316,7 +328,9 @@ public class VanceFootCommand implements Callable<Integer> {
                             SessionService sessions,
                             OneShotTurnGate oneShotGate,
                             FootToolPackRegistry toolPacks,
-                            ProjectPackConsent packConsent) {
+                            ProjectPackConsent packConsent,
+                            de.mhus.vance.foot.remote.RemoteControlGate remoteGate) {
+        this.remoteGate = remoteGate;
         this.repl = repl;
         this.connection = connection;
         this.terminal = terminal;
@@ -573,6 +587,16 @@ public class VanceFootCommand implements Callable<Integer> {
             // defaults.sandbox=false from .vancetope/config.yaml — CLI --no-sandbox
             // already handled above; this is the config.yaml path.
             permissions.disableSandbox();
+        }
+        if (remoteControl && noRemoteControl) {
+            terminal.error("--remote-control and --no-remote-control are mutually exclusive.");
+            return 2;
+        }
+        if (remoteControl) {
+            remoteGate.setMode(de.mhus.vance.foot.remote.RemoteControlGate.MODE_ALLOW);
+        }
+        if (noRemoteControl) {
+            remoteGate.setMode(de.mhus.vance.foot.remote.RemoteControlGate.MODE_OFF);
         }
         if (noToolOutput) {
             config.getUi().getToolOutput().setEnabled(false);

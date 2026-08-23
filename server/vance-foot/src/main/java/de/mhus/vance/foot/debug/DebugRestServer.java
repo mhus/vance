@@ -6,10 +6,10 @@ import com.sun.net.httpserver.HttpServer;
 import de.mhus.vance.foot.command.ChatInputService;
 import de.mhus.vance.foot.command.CommandService;
 import de.mhus.vance.foot.config.FootConfig;
+import de.mhus.vance.api.ws.RemoteClientState;
 import de.mhus.vance.foot.connection.ConnectionService;
-import de.mhus.vance.foot.session.SessionService;
+import de.mhus.vance.foot.remote.FootStateService;
 import de.mhus.vance.foot.ui.ChatTerminal;
-import de.mhus.vance.foot.ui.InterfaceService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
@@ -65,8 +65,7 @@ public final class DebugRestServer {
     private final CommandService commandService;
     private final ChatInputService chatInputService;
     private final ConnectionService connectionService;
-    private final InterfaceService interfaceService;
-    private final SessionService sessionService;
+    private final FootStateService footState;
     private final ObjectMapper json = JsonMapper.builder().build();
 
     private @Nullable HttpServer server;
@@ -76,15 +75,13 @@ public final class DebugRestServer {
                            CommandService commandService,
                            ChatInputService chatInputService,
                            ConnectionService connectionService,
-                           InterfaceService interfaceService,
-                           SessionService sessionService) {
+                           FootStateService footState) {
         this.config = config;
         this.terminal = terminal;
         this.commandService = commandService;
         this.chatInputService = chatInputService;
         this.connectionService = connectionService;
-        this.interfaceService = interfaceService;
-        this.sessionService = sessionService;
+        this.footState = footState;
     }
 
     @PostConstruct
@@ -126,16 +123,21 @@ public final class DebugRestServer {
                 writeJson(exchange, 405, Map.of("error", "method not allowed"));
                 return;
             }
+            // Same snapshot the remote-control channel sends. Two transports,
+            // one source — building the map here again is how the two views
+            // drift apart.
+            RemoteClientState state = footState.snapshot();
             Map<String, Object> body = new LinkedHashMap<>();
-            body.put("connection", connectionService.state().name());
+            body.put("connection", state.getConnection());
             body.put("connectionOpen", connectionService.isOpen());
-            body.put("verbosity", terminal.threshold().name());
-            body.put("uiMode", interfaceService.mode().name());
-            SessionService.BoundSession bound = sessionService.current();
-            if (bound != null) {
+            body.put("verbosity", state.getVerbosity());
+            body.put("uiMode", state.getUiMode());
+            body.put("busy", state.isBusy());
+            body.put("lastSeq", state.getLastSeq());
+            if (state.getSessionId() != null) {
                 Map<String, String> sessionMap = new LinkedHashMap<>();
-                sessionMap.put("sessionId", bound.sessionId());
-                sessionMap.put("projectId", bound.projectId());
+                sessionMap.put("sessionId", state.getSessionId());
+                sessionMap.put("projectId", state.getProjectId());
                 body.put("session", sessionMap);
             } else {
                 body.put("session", null);
@@ -155,6 +157,7 @@ public final class DebugRestServer {
             List<Map<String, Object>> lines = new ArrayList<>();
             for (ChatTerminal.Line line : terminal.tail(limit)) {
                 Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("seq", line.seq());
                 entry.put("timestamp", line.timestamp().toString());
                 entry.put("level", line.level().name());
                 entry.put("text", line.text());

@@ -1,6 +1,7 @@
 package de.mhus.vance.foot.connection;
 
 import de.mhus.vance.api.ws.HandshakeHeaders;
+import de.mhus.vance.api.ws.LiveChannels;
 import de.mhus.vance.api.ws.LiveEnvelope;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
@@ -97,27 +98,42 @@ public class VanceWebSocketClient implements AutoCloseable {
                 .thenAccept(ws -> this.webSocket = ws);
     }
 
-    /** Sends a fully-built envelope. Fails the returned future on serialization or transport error. */
+    /** Sends a fully-built envelope on the {@code session} channel. */
     public CompletableFuture<Void> send(WebSocketEnvelope envelope) {
+        return send(LiveChannels.SESSION, envelope);
+    }
+
+    /**
+     * Sends a fully-built envelope on {@code channel}. Fails the returned future
+     * on serialization or transport error.
+     *
+     * <p>Only the {@code session} channel participates in session-id tracking
+     * and request/reply correlation — the other channels are notification-only
+     * and, in the {@code clients} case, deliberately session-independent (the
+     * client is reachable before anything is bound).
+     */
+    public CompletableFuture<Void> send(String channel, WebSocketEnvelope envelope) {
         WebSocket ws = webSocket;
         if (ws == null) {
             CompletableFuture<Void> failed = new CompletableFuture<>();
             failed.completeExceptionally(new IllegalStateException("WebSocket is not connected"));
             return failed;
         }
+        boolean sessionChannel = LiveChannels.SESSION.equals(channel);
         // Remember the type so the inbound dispatch can update
         // currentSessionId when this particular request gets its reply.
-        if (envelope.getId() != null) {
+        if (sessionChannel && envelope.getId() != null) {
             pendingTypes.put(envelope.getId(), envelope.getType());
         }
         // session-unbind is fire-and-forget — clear the cached id right away
         // so subsequent envelopes drop back to the unbound state.
-        if (MessageType.SESSION_UNBIND.equals(envelope.getType())) {
+        if (sessionChannel && MessageType.SESSION_UNBIND.equals(envelope.getType())) {
             currentSessionId = null;
         }
         String json;
         try {
-            LiveEnvelope wrapped = new LiveEnvelope("session", currentSessionId, envelope);
+            LiveEnvelope wrapped = new LiveEnvelope(
+                    channel, sessionChannel ? currentSessionId : null, envelope);
             json = objectMapper.writeValueAsString(wrapped);
         } catch (JacksonException e) {
             CompletableFuture<Void> failed = new CompletableFuture<>();
@@ -191,10 +207,20 @@ public class VanceWebSocketClient implements AutoCloseable {
                 fragmentBuffer.setLength(0);
                 try {
                     LiveEnvelope outer = objectMapper.readValue(full, LiveEnvelope.class);
-                    if (!"session".equals(outer.getChannel()) || outer.getPayload() == null) {
-                        // Non-session channel frames are reserved for future
-                        // use; ignore so a forward-compatible server can ship
-                        // them without breaking older clients.
+                    if (outer.getPayload() == null) {
+                        ws.request(1);
+                        return null;
+                    }
+                    if (!LiveChannels.SESSION.equals(outer.getChannel())) {
+                        // Non-session channels are notification-only and have
+                        // their own routing; hand them over untouched (no
+                        // reply correlation, no session-id extraction). An
+                        // unclaimed channel is dropped by the listener, which
+                        // keeps a forward-compatible server from breaking an
+                        // older client.
+                        WebSocketEnvelope other = objectMapper.convertValue(
+                                outer.getPayload(), WebSocketEnvelope.class);
+                        listener.onChannelMessage(outer.getChannel(), other);
                         ws.request(1);
                         return null;
                     }

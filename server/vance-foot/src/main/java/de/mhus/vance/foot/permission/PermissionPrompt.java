@@ -1,5 +1,10 @@
 package de.mhus.vance.foot.permission;
 
+import de.mhus.vance.api.ws.RemoteClientPrompt;
+import de.mhus.vance.api.ws.RemoteClientPromptOption;
+import de.mhus.vance.foot.config.FootConfig;
+import de.mhus.vance.foot.remote.RemoteClientIdentity;
+import de.mhus.vance.foot.remote.RemoteWatcherState;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.ColorResolver;
 import de.mhus.vance.foot.ui.LiveRegion;
@@ -36,19 +41,28 @@ public class PermissionPrompt implements InteractivePermissionResolver {
     private final PermissionConfigLoader loader;
     private final PermissionService permissions;
     private final ColorResolver colorResolver;
+    private final RemoteWatcherState watchers;
+    private final RemoteClientIdentity identity;
+    private final FootConfig config;
 
     public PermissionPrompt(PendingPermissionPrompt pending,
                             ChatTerminal terminal,
                             @Lazy LiveRegion liveRegion,
                             PermissionConfigLoader loader,
                             PermissionService permissions,
-                            ColorResolver colorResolver) {
+                            ColorResolver colorResolver,
+                            RemoteWatcherState watchers,
+                            RemoteClientIdentity identity,
+                            FootConfig config) {
         this.pending = pending;
         this.terminal = terminal;
         this.liveRegion = liveRegion;
         this.loader = loader;
         this.permissions = permissions;
         this.colorResolver = colorResolver;
+        this.watchers = watchers;
+        this.identity = identity;
+        this.config = config;
     }
 
     /**
@@ -64,13 +78,31 @@ public class PermissionPrompt implements InteractivePermissionResolver {
                     toolName, subject);
             return PermissionDecision.DENY;
         }
-        if (!liveRegion.isAttached()) {
+        // A remote watcher is an answering surface too: it feeds lines through
+        // the same input path the REPL does. Without this the whole point of
+        // remote control would be lost exactly when it matters — a foot run
+        // without a live region could never be unblocked from the road.
+        boolean remote = watchers.hasWatchers();
+        if (!liveRegion.isAttached() && !remote) {
             log.warn("permission DENY (no interactive REPL attached): tool='{}' {}",
                     toolName, subject);
             return PermissionDecision.DENY;
         }
 
-        PermissionChoice choice = pending.await(() -> printMenu(toolName, domain, subject), TIMEOUT_MS);
+        // The 25 s default is tuned for a human at the keyboard. With somebody
+        // watching from elsewhere it would deny before the notification is even
+        // read, so the window follows where the answer can come from.
+        long timeoutMs = remote
+                ? Math.max(TIMEOUT_MS, config.getRemote().getPromptTimeout().toMillis())
+                : TIMEOUT_MS;
+
+        publishPrompt(toolName, domain, subject, true, timeoutMs);
+        PermissionChoice choice;
+        try {
+            choice = pending.await(() -> printMenu(toolName, domain, subject), timeoutMs);
+        } finally {
+            publishPrompt(toolName, domain, subject, false, 0);
+        }
         if (choice == null) {
             terminal.warn("⏲ permission prompt timed out — denied: " + toolName + " on " + subject);
             return PermissionDecision.DENY;
@@ -87,6 +119,41 @@ public class PermissionPrompt implements InteractivePermissionResolver {
         terminal.info("✗ denied: " + toolName + " on " + subject
                 + (choice.isAlways() ? " (saved)" : ""));
         return PermissionDecision.DENY;
+    }
+
+    /**
+     * Mirrors the menu to attached remote watchers so a phone can render
+     * buttons. Each option carries the literal line it submits — the remote
+     * answer then travels the exact path a typed answer would, and there is no
+     * second answer protocol to keep in sync with this menu.
+     */
+    private void publishPrompt(String toolName, PermissionDomain domain, String subject,
+                               boolean open, long timeoutMs) {
+        watchers.publishPrompt(RemoteClientPrompt.builder()
+                .clientId(identity.clientId())
+                .kind("permission")
+                .open(open)
+                .question("Permission required: " + toolName)
+                .subject(domainLabel(domain) + ": " + subject)
+                .options(List.of(
+                        option("allow once", "1"),
+                        option("allow always", "2"),
+                        option("deny once", "3"),
+                        option("deny always", "4")))
+                .timeoutMs(timeoutMs)
+                .build());
+    }
+
+    private static RemoteClientPromptOption option(String label, String value) {
+        return RemoteClientPromptOption.builder().label(label).value(value).build();
+    }
+
+    private static String domainLabel(PermissionDomain domain) {
+        return switch (domain) {
+            case COMMANDS -> "command";
+            case DELETE -> "delete path";
+            case PATHS -> "path";
+        };
     }
 
     private void printMenu(String toolName, PermissionDomain domain, String subject) {

@@ -1,7 +1,9 @@
 package de.mhus.vance.brain.ws;
 
+import de.mhus.vance.api.ws.LiveChannels;
 import de.mhus.vance.api.ws.LiveEnvelope;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.ws.clients.RemoteClientChannelHandler;
 import de.mhus.vance.brain.ws.documents.DocumentChannelHandler;
 import de.mhus.vance.brain.ws.documents.DocumentSubscriberRegistry;
 import de.mhus.vance.brain.ws.pointers.PointerBroadcaster;
@@ -69,6 +71,7 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
     private static final String CHANNEL_DOCUMENTS = "documents";
     private static final String CHANNEL_POINTERS = "pointers";
     private static final String CHANNEL_SIGNALS = "signals";
+    private static final String CHANNEL_CLIENTS = LiveChannels.CLIENTS;
 
     private final VanceWebSocketHandler chatHandler;
     private final ObjectMapper objectMapper;
@@ -81,6 +84,7 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
     private final PointerBroadcaster pointerBroadcaster;
     private final SignalChannelHandler signalChannelHandler;
     private final SignalBroadcaster signalBroadcaster;
+    private final RemoteClientChannelHandler remoteClientChannelHandler;
     private final WebSocketKeepAliveService keepAlive;
     private final VanceBrainProperties properties;
 
@@ -149,6 +153,7 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
             case CHANNEL_DOCUMENTS -> documentChannelHandler.handle(wsSession, ctx, live);
             case CHANNEL_POINTERS -> pointerChannelHandler.handle(wsSession, ctx, live);
             case CHANNEL_SIGNALS -> signalChannelHandler.handle(wsSession, ctx, live);
+            case CHANNEL_CLIENTS -> remoteClientChannelHandler.handle(wsSession, ctx, live);
             default -> sender.sendError(wsSession, null, 400,
                     "Channel not supported in v1: '" + channel + "'");
         }
@@ -214,6 +219,15 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
             signalBroadcaster.unsubscribeAll(wsSession);
         } catch (RuntimeException e) {
             log.warn("signals.unsubscribeAll for external='{}' failed: {}",
+                    wsSession.getId(), e.toString());
+        }
+        try {
+            // Both roles at once: this connection may have been a CLI client
+            // (drop its roster entry) or a watcher (drop its attachments, and
+            // tell the client it lost one so it stops streaming).
+            remoteClientChannelHandler.forgetConnection(wsSession);
+        } catch (RuntimeException e) {
+            log.warn("clients.forgetConnection for external='{}' failed: {}",
                     wsSession.getId(), e.toString());
         }
         chatHandler.afterConnectionClosed(wsSession, status);

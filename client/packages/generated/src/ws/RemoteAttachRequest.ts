@@ -6,4 +6,5 @@
 export interface RemoteAttachRequest {
   clientId: string;
   sinceSeq: number;
+  watcherId?: string;
 }

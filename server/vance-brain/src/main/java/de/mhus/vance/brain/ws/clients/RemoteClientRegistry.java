@@ -90,6 +90,18 @@ public class RemoteClientRegistry {
                                 String tenantId,
                                 String userId,
                                 RemoteClientAnnounce announce) {
+        // A clientId already held by somebody else is not takeable. Ids are
+        // random enough that this is not a realistic attack, but they show up
+        // in rosters and logs — and the consequence of getting it wrong is
+        // severe: the impostor would own the routing entry, the real client's
+        // frames would be dropped as "unannounced", and its owner could no
+        // longer attach to their own machine.
+        LocalClient held = byClientId.get(announce.getClientId());
+        if (held != null
+                && (!held.tenantId().equals(tenantId) || !held.userId().equals(userId))) {
+            throw new IllegalStateException(
+                    "clientId '" + announce.getClientId() + "' is held by another user");
+        }
         RemoteClientInfo info = RemoteClientInfo.builder()
                 .clientId(announce.getClientId())
                 .label(announce.getLabel())

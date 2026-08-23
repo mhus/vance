@@ -172,6 +172,52 @@ class RemoteClientChannelHandlerTest {
     }
 
     @Test
+    void detach_onForeignClient_isRefused() throws Exception {
+        announceAlice(ws("c1"));
+
+        handler.handle(ws("watcher"), ctx("bob"),
+                frame(MessageType.CLIENT_DETACH,
+                        RemoteAttachRequest.builder().clientId("fc_1").build()));
+
+        // Detach is a watcher frame like any other: without the check, knowing
+        // an id would be enough to make a foreign client go quiet.
+        assertThat(errorCode()).isEqualTo(404);
+        verify(relay, never()).detachWatcher(any(), any());
+        verify(relay, never()).toClient(any(), any(), any(), any());
+    }
+
+    @Test
+    void attach_stampsTheWatcherIdentityFromTheConnection() throws Exception {
+        announceAlice(ws("c1"));
+
+        handler.handle(ws("watcher"), ctx("alice"),
+                frame(MessageType.CLIENT_ATTACH,
+                        RemoteAttachRequest.builder()
+                                .clientId("fc_1").sinceSeq(7).watcherId("spoofed").build()));
+
+        ArgumentCaptor<WebSocketEnvelope> captor = ArgumentCaptor.forClass(WebSocketEnvelope.class);
+        verify(relay).toClient(any(), any(), eq("fc_1"), captor.capture());
+        RemoteAttachRequest relayed = objectMapper.convertValue(
+                captor.getValue().getData(), RemoteAttachRequest.class);
+
+        // The client counts watchers by this value; a sender-supplied one would
+        // let a watcher unsubscribe another (or collapse both into one entry).
+        assertThat(relayed.getWatcherId()).isEqualTo("editor-alice");
+        assertThat(relayed.getSinceSeq()).isEqualTo(7);
+    }
+
+    @Test
+    void announce_ofAForeignClientId_isRejectedAsConflict() throws Exception {
+        announceAlice(ws("c1"));
+
+        handler.handle(ws("c2"), ctx("bob"), frame(MessageType.CLIENT_ANNOUNCE,
+                RemoteClientAnnounce.builder().clientId("fc_1").label("impostor").build()));
+
+        assertThat(errorCode()).isEqualTo(409);
+        assertThat(registry.owns("acme", "alice", "fc_1")).isTrue();
+    }
+
+    @Test
     void unknownType_isRejected() throws Exception {
         handler.handle(ws("c1"), ctx("alice"), frame("client-does-not-exist", null));
 

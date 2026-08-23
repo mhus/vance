@@ -301,16 +301,23 @@ onBeforeUnmount(() => {
           {{ prompt.subject }}
         </div>
         <div class="flex flex-wrap gap-2">
+          <!-- An answer is input, so it is gated like input. Offering an
+               enabled button that the client will refuse would put the refusal
+               where nobody sees it — in the client's local terminal. -->
           <VButton
             v-for="option in prompt.options ?? []"
             :key="option.value"
             size="sm"
             variant="secondary"
+            :disabled="!inputAllowed"
             @click="answerPrompt(option.value)"
           >
             {{ option.label }}
           </VButton>
         </div>
+        <p v-if="!inputAllowed" class="text-xs opacity-70">
+          {{ inputBlockedReason ?? t('chat.clients.inputBlocked') }}
+        </p>
       </div>
 
       <div

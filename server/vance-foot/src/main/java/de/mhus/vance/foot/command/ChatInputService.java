@@ -230,6 +230,34 @@ public class ChatInputService {
     }
 
     /**
+     * Delivers {@code line} to an active prompt (line prompt or sandbox
+     * permission ask) and reports whether it was consumed.
+     *
+     * <p>Exists for callers that dispatch chat asynchronously and would
+     * otherwise queue a prompt answer behind the round-trip that is waiting
+     * for it — the deadlock {@link #submitFromRepl} avoids by answering on the
+     * input thread. Both {@code offerAnswer} implementations are non-blocking
+     * (a queue {@code offer}), so this is safe to call from a socket dispatch
+     * thread.
+     *
+     * <p>Returns {@code false} when no prompt is waiting; the caller then
+     * treats the line as ordinary input.
+     */
+    public boolean offerToActivePrompt(@Nullable String line) {
+        String raw = line == null ? "" : line;
+        // Blank is a valid answer to a line prompt (accept default / skip), so
+        // this runs before the empty check — same order as submitFromRepl.
+        if (pendingLine.offerAnswer(raw)) {
+            return true;
+        }
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) {
+            return false;
+        }
+        return pendingPermission.offerAnswer(trimmed);
+    }
+
+    /**
      * ESC-triggered pause. Always sends the {@code process-pause} —
      * identical to explicit {@code /pause}.
      *

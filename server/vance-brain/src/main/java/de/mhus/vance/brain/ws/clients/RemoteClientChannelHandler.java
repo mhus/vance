@@ -96,7 +96,12 @@ public class RemoteClientChannelHandler {
             sendError(wsSession, 400, "client-announce missing 'clientId'");
             return;
         }
-        registry.announce(wsSession, ctx.getTenantId(), ctx.getUserId(), announce);
+        try {
+            registry.announce(wsSession, ctx.getTenantId(), ctx.getUserId(), announce);
+        } catch (IllegalStateException conflict) {
+            log.debug("client-announce rejected: {}", conflict.getMessage());
+            sendError(wsSession, 409, conflict.getMessage());
+        }
     }
 
     private void onHeartbeat(WebSocketSession wsSession, WebSocketEnvelope inner) {
@@ -146,7 +151,8 @@ public class RemoteClientChannelHandler {
             return;
         }
         relay.attachWatcher(wsSession, ctx, req.getClientId());
-        relay.toClient(ctx.getTenantId(), ctx.getUserId(), req.getClientId(), inner);
+        relay.toClient(ctx.getTenantId(), ctx.getUserId(), req.getClientId(),
+                stamped(req, ctx, MessageType.CLIENT_ATTACH));
     }
 
     private void onDetach(WebSocketSession wsSession, ConnectionContext ctx, WebSocketEnvelope inner)
@@ -156,8 +162,32 @@ public class RemoteClientChannelHandler {
             sendError(wsSession, 400, "client-detach missing 'clientId'");
             return;
         }
+        // Authorized like every other watcher frame. Without the check, anyone
+        // who learned a clientId could detach somebody else's watcher and make
+        // that client go quiet — a small denial, but a free one.
+        if (!authorize(wsSession, ctx, req.getClientId())) {
+            return;
+        }
         relay.detachWatcher(wsSession, req.getClientId());
-        relay.toClient(ctx.getTenantId(), ctx.getUserId(), req.getClientId(), inner);
+        relay.toClient(ctx.getTenantId(), ctx.getUserId(), req.getClientId(),
+                stamped(req, ctx, MessageType.CLIENT_DETACH));
+    }
+
+    /**
+     * Re-emits an attach/detach frame with the watcher's identity filled in
+     * from the connection.
+     *
+     * <p>Server-set on purpose: the client end counts watchers to decide
+     * whether to stream, and it cannot derive who is asking — the frame reaches
+     * it relayed, so the socket it arrives on is the brain's. Trusting a
+     * sender-supplied value would also let one watcher unsubscribe another.
+     */
+    private WebSocketEnvelope stamped(RemoteAttachRequest req, ConnectionContext ctx, String type) {
+        return WebSocketEnvelope.notification(type, RemoteAttachRequest.builder()
+                .clientId(req.getClientId())
+                .sinceSeq(req.getSinceSeq())
+                .watcherId(ctx.getEditorId())
+                .build());
     }
 
     private void onInput(WebSocketSession wsSession, ConnectionContext ctx, WebSocketEnvelope inner)

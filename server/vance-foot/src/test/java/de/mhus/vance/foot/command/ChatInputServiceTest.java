@@ -1,5 +1,6 @@
 package de.mhus.vance.foot.command;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -23,6 +24,8 @@ class ChatInputServiceTest {
     private final ConnectionService connection = mock(ConnectionService.class);
     private final SessionService sessions = mock(SessionService.class);
     private final BusyIndicator busyIndicator = mock(BusyIndicator.class);
+    private final PendingPermissionPrompt pendingPermission = mock(PendingPermissionPrompt.class);
+    private final PendingLinePrompt pendingLine = mock(PendingLinePrompt.class);
 
     private ChatInputService newService() {
         return new ChatInputService(
@@ -34,8 +37,8 @@ class ChatInputServiceTest {
                 busyIndicator,
                 mock(IdeContextBuilder.class),
                 mock(PendingAskUserPicker.class),
-                mock(PendingPermissionPrompt.class),
-                mock(PendingLinePrompt.class),
+                pendingPermission,
+                pendingLine,
                 mock(AutoAiService.class),
                 mock(ConversationAuditService.class),
                 new PendingAttachmentService(),
@@ -77,5 +80,54 @@ class ChatInputServiceTest {
         newService().requestPauseFromInterrupt();
 
         verify(connection, never()).send(any());
+    }
+
+    // ─── offerToActivePrompt ────────────────────────────────────────────
+    // The seam that keeps a remote prompt answer off the single-threaded chat
+    // executor. That thread is typically blocked inside the very round-trip
+    // whose tool call is waiting for the answer, so queueing it there would
+    // deadlock until the prompt times out into a deny.
+
+    @Test
+    void offerToActivePrompt_deliversToAWaitingLinePrompt() {
+        when(pendingLine.offerAnswer("hunter2")).thenReturn(true);
+
+        assertThat(newService().offerToActivePrompt("hunter2")).isTrue();
+        verify(pendingPermission, never()).offerAnswer(any());
+    }
+
+    @Test
+    void offerToActivePrompt_deliversToAWaitingPermissionPrompt() {
+        when(pendingLine.offerAnswer(any())).thenReturn(false);
+        when(pendingPermission.offerAnswer("1")).thenReturn(true);
+
+        assertThat(newService().offerToActivePrompt("1")).isTrue();
+    }
+
+    @Test
+    void offerToActivePrompt_blankIsALinePromptAnswerButNeverAPermissionOne() {
+        when(pendingLine.offerAnswer("")).thenReturn(false);
+
+        // Blank is a valid line-prompt answer (accept default), so it must be
+        // offered there — but an empty string is not a menu choice.
+        assertThat(newService().offerToActivePrompt("")).isFalse();
+        verify(pendingLine).offerAnswer("");
+        verify(pendingPermission, never()).offerAnswer(any());
+    }
+
+    @Test
+    void offerToActivePrompt_withoutAnyPrompt_leavesTheLineToTheCaller() {
+        when(pendingLine.offerAnswer(any())).thenReturn(false);
+        when(pendingPermission.offerAnswer(any())).thenReturn(false);
+
+        assertThat(newService().offerToActivePrompt("hello there")).isFalse();
+    }
+
+    @Test
+    void offerToActivePrompt_trimsBeforeOfferingToThePermissionMenu() {
+        when(pendingLine.offerAnswer(any())).thenReturn(false);
+        when(pendingPermission.offerAnswer("2")).thenReturn(true);
+
+        assertThat(newService().offerToActivePrompt("  2  ")).isTrue();
     }
 }

@@ -75,7 +75,8 @@ public class RemoteControlRelay {
         this.registry = registry;
     }
 
-    private record Watcher(WebSocketSession wsSession, String tenantId, String userId) {}
+    private record Watcher(WebSocketSession wsSession, String tenantId, String userId,
+                           String editorId) {}
 
     @PostConstruct
     public void start() {
@@ -94,7 +95,8 @@ public class RemoteControlRelay {
         String wsId = wsSession.getId();
         watchersByClient.computeIfAbsent(clientId, k -> ConcurrentHashMap.newKeySet()).add(wsId);
         clientsByWatcher.computeIfAbsent(wsId, k -> ConcurrentHashMap.newKeySet()).add(clientId);
-        watcherInfo.putIfAbsent(wsId, new Watcher(wsSession, ctx.getTenantId(), ctx.getUserId()));
+        watcherInfo.putIfAbsent(wsId,
+                new Watcher(wsSession, ctx.getTenantId(), ctx.getUserId(), ctx.getEditorId()));
         log.trace("remote watcher attached: ws={} client={}", wsId, clientId);
     }
 
@@ -125,8 +127,12 @@ public class RemoteControlRelay {
         }
         for (String clientId : clients) {
             removeFromClient(clientId, wsId);
-            if (watcher != null && !hasWatchers(clientId)) {
-                sendDetachToClient(watcher.tenantId(), watcher.userId(), clientId);
+            // Tell the client this particular watcher is gone even when others
+            // remain: it keeps its own set and must not be left holding a
+            // phantom entry that keeps the stream alive forever.
+            if (watcher != null) {
+                sendDetachToClient(watcher.tenantId(), watcher.userId(), clientId,
+                        watcher.editorId());
             }
         }
     }
@@ -146,10 +152,12 @@ public class RemoteControlRelay {
         return ids != null && !ids.isEmpty();
     }
 
-    private void sendDetachToClient(String tenantId, String userId, String clientId) {
+    private void sendDetachToClient(String tenantId, String userId, String clientId,
+                                    String watcherId) {
         WebSocketEnvelope detach = WebSocketEnvelope.notification(
                 de.mhus.vance.api.ws.MessageType.CLIENT_DETACH,
-                de.mhus.vance.api.ws.RemoteAttachRequest.builder().clientId(clientId).build());
+                de.mhus.vance.api.ws.RemoteAttachRequest.builder()
+                        .clientId(clientId).watcherId(watcherId).build());
         toClient(tenantId, userId, clientId, detach);
     }
 
@@ -157,7 +165,7 @@ public class RemoteControlRelay {
 
     /** Deliver a frame to the CLI client with {@code clientId}, wherever it hangs. */
     public void toClient(String tenantId, String userId, String clientId, WebSocketEnvelope envelope) {
-        boolean deliveredLocally = deliverToLocalClient(clientId, envelope);
+        boolean deliveredLocally = deliverToLocalClient(tenantId, userId, clientId, envelope);
         // Publish regardless of a local hit: the authoritative holder may be a
         // peer pod that took the client over after a reconnect, and a stale
         // local entry must not silently swallow the command.
@@ -174,9 +182,25 @@ public class RemoteControlRelay {
         publish(TO_WATCHERS, tenantId, userId, clientId, envelope);
     }
 
-    private boolean deliverToLocalClient(String clientId, WebSocketEnvelope envelope) {
+    /**
+     * Delivers to the local client with {@code clientId}, but only when it
+     * belongs to the tenant and user the command was authorized for.
+     *
+     * <p>The ownership gate sits in the channel handler; this is the second
+     * fence, and it matters most on the cross-pod path, where the frame arrives
+     * as bytes on a shared Redis channel rather than from a handler that just
+     * checked something.
+     */
+    private boolean deliverToLocalClient(String tenantId, String userId, String clientId,
+                                         WebSocketEnvelope envelope) {
         RemoteClientRegistry.LocalClient client = registry.findLocal(clientId);
         if (client == null) {
+            return false;
+        }
+        if (!Objects.equals(client.tenantId(), tenantId)
+                || !Objects.equals(client.userId(), userId)) {
+            log.debug("remote-control drop: client '{}' is not owned by {}/{}",
+                    clientId, tenantId, userId);
             return false;
         }
         return trySend(client.wsSession(), envelope, clientId);
@@ -229,11 +253,12 @@ public class RemoteControlRelay {
         if (Objects.equals(parts[0], podId)) return;  // own echo
         String direction = parts[1];
         String tenantId = parts[2];
+        String userId = parts[3];
         String clientId = parts[4];
         WebSocketEnvelope envelope = decode(parts[5]);
         if (envelope == null) return;
         if (TO_CLIENT.equals(direction)) {
-            deliverToLocalClient(clientId, envelope);
+            deliverToLocalClient(tenantId, userId, clientId, envelope);
         } else if (TO_WATCHERS.equals(direction)) {
             deliverToLocalWatchers(tenantId, clientId, envelope);
         }

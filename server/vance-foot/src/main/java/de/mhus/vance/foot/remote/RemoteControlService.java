@@ -20,9 +20,9 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -71,8 +71,15 @@ public class RemoteControlService implements RemoteWatcherState.PromptPublisher 
 
     private final ObjectMapper json = JsonMapper.builder().build();
 
-    /** Lines waiting to be batched. Only filled while a watcher is attached. */
-    private final Queue<ChatTerminal.Line> pending = new ConcurrentLinkedQueue<>();
+    /**
+     * Lines waiting to be batched. Only filled while a watcher is attached.
+     * Bounded — see {@link #onLine} for why the bound is enforced by the queue
+     * rather than by a size check.
+     */
+    private final BlockingQueue<ChatTerminal.Line> pending = new LinkedBlockingQueue<>(2000);
+
+    /** Whether the bound above forced a drop since the last batch went out. */
+    private final AtomicBoolean droppedSinceLastBatch = new AtomicBoolean();
 
     /** Guards against two flushes overlapping on a burst. */
     private final AtomicBoolean flushing = new AtomicBoolean();
@@ -217,13 +224,16 @@ public class RemoteControlService implements RemoteWatcherState.PromptPublisher 
         if (!watchers.hasWatchers()) {
             return;
         }
-        pending.add(line);
-        // Hard ceiling so a runaway producer cannot grow the queue without
-        // bound between two flush ticks. Dropping the oldest is right here:
-        // the watcher detects the gap from the seq jump.
-        int max = Math.max(50, config.getRemote().getMaxBatchLines() * 10);
-        while (pending.size() > max) {
-            pending.poll();
+        // Bounded queue: a runaway producer cannot grow it between two flush
+        // ticks, and the drop is recorded rather than left for the watcher to
+        // infer. `offer` on a full queue returns false in O(1) — an unbounded
+        // queue plus a size() check would be O(n) per recorded line, i.e.
+        // quadratic on the terminal's own write path during exactly the burst
+        // that makes it matter.
+        while (!pending.offer(line)) {
+            if (pending.poll() != null) {
+                droppedSinceLastBatch.set(true);
+            }
         }
     }
 
@@ -248,10 +258,14 @@ public class RemoteControlService implements RemoteWatcherState.PromptPublisher 
             if (batch.isEmpty()) {
                 return;
             }
+            // Report a drop instead of shipping a shorter list that reads as a
+            // gapless log. The watcher shows a gap marker on this flag; making
+            // it infer the hole from a seq jump would mean every consumer has
+            // to implement continuity checking correctly.
             send(MessageType.CLIENT_OUTPUT, RemoteOutputBatch.builder()
                     .clientId(identity.clientId())
                     .lines(batch)
-                    .truncated(false)
+                    .truncated(droppedSinceLastBatch.getAndSet(false))
                     .build());
         } finally {
             flushing.set(false);
@@ -327,14 +341,19 @@ public class RemoteControlService implements RemoteWatcherState.PromptPublisher 
     }
 
     /**
-     * Watchers are identified by their attach payload, not by a transport id:
-     * the frame reaches us relayed through the brain, so the socket it arrived
-     * on is the brain's, not the watcher's. The clientId in the payload is our
-     * own; what distinguishes two watchers is therefore not visible here — and
-     * does not need to be, since presence is all this end uses it for.
+     * Which watcher a frame is about. The value is stamped by the brain from
+     * the watcher's connection — it cannot be derived here, because the frame
+     * arrives relayed and the socket it came in on is the brain's.
+     *
+     * <p>It must not fall back to the {@code clientId}: that is <em>our own</em>
+     * id and identical for every watcher, so two attached devices would share
+     * one entry and the first detach would silence the stream for the second.
+     * An unstamped frame (older brain) is treated as a single anonymous
+     * watcher, which is the pre-existing behaviour and no worse than it.
      */
     private static String watcherIdOf(RemoteAttachRequest req) {
-        return req.getClientId() == null ? "watcher" : "watcher:" + req.getClientId();
+        String stamped = req.getWatcherId();
+        return stamped == null || stamped.isBlank() ? "watcher:anonymous" : "watcher:" + stamped;
     }
 
     private void onInput(@Nullable RemoteInputRequest req) {
@@ -347,13 +366,26 @@ public class RemoteControlService implements RemoteWatcherState.PromptPublisher 
             send(MessageType.CLIENT_STATE, state.snapshot());
             return;
         }
+        // Local echo first, and always: whoever reads this terminal later must
+        // be able to see that the line did not come from this keyboard.
+        terminal.println(Verbosity.INFO, "❯ [remote] %s", req.getLine());
+
+        // An answer to a waiting prompt is delivered *here*, not on the input
+        // executor. That executor is single-threaded and a chat submit occupies
+        // it for the whole round-trip — including the tool call whose
+        // permission ask is waiting for this very answer. Queueing the answer
+        // behind it would deadlock until the prompt times out into a deny,
+        // which is exactly the failure ChatInputService.submitFromRepl
+        // documents and avoids. offerAnswer is a non-blocking queue offer, so
+        // the socket dispatch thread can do it directly.
+        if (input.offerToActivePrompt(req.getLine())) {
+            return;
+        }
+
         ExecutorService exec = inputExecutor;
         if (exec == null) {
             return;
         }
-        // Local echo first, and always: whoever reads this terminal later must
-        // be able to see that the line did not come from this keyboard.
-        terminal.println(Verbosity.INFO, "❯ [remote] %s", req.getLine());
         exec.submit(() -> {
             try {
                 input.submit(req.getLine());

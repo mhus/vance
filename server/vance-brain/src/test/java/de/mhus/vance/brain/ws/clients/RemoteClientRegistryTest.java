@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.ws.clients;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -146,6 +147,27 @@ class RemoteClientRegistryTest {
         assertThat(updated.info().getSessionId()).isEqualTo("sess-9");
         assertThat(updated.info().getLastSeq()).isEqualTo(42);
         assertThat(updated.info().isBusy()).isTrue();
+    }
+
+    @Test
+    void announce_cannotTakeOverAnotherUsersClientId() {
+        registry.announce(ws("c1"), "acme", "alice", announce("fc_1"));
+
+        // Taking the id over would silently break the real client: its frames
+        // would be dropped as "unannounced" and its owner could not attach.
+        assertThatThrownBy(() -> registry.announce(ws("c2"), "acme", "bob", announce("fc_1")))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(registry.owns("acme", "alice", "fc_1")).isTrue();
+        assertThat(registry.owns("acme", "bob", "fc_1")).isFalse();
+    }
+
+    @Test
+    void announce_cannotTakeOverAcrossTenants() {
+        registry.announce(ws("c1"), "acme", "alice", announce("fc_1"));
+
+        assertThatThrownBy(() -> registry.announce(ws("c2"), "other", "alice", announce("fc_1")))
+                .isInstanceOf(IllegalStateException.class);
     }
 
     @Test

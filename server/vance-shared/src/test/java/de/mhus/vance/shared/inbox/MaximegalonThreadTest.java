@@ -319,4 +319,30 @@ class MaximegalonThreadTest {
                 .requiresAction(true)
                 .status(MaximegalonStatus.PENDING);
     }
+
+    // ──── Persistence contract ──────────────────────────────────────────
+
+    /**
+     * The embedded message id must be stored as {@code id}, not {@code _id}.
+     *
+     * <p>Spring Data maps a field called {@code id} onto {@code _id} by
+     * convention, even inside an embedded document. Every {@code arrayFilters}
+     * in the service addresses {@code messages.$[m].id} — so without the
+     * explicit {@code @Field} the filter matches nothing and reactions and
+     * per-message read marks do <em>nothing at all</em>, silently: the update is
+     * well-formed, Mongo applies it to zero elements, and reads still show an id
+     * because the mapper fills it back in. This test exists because that cost an
+     * hour to find in a browser.
+     */
+    @Test
+    void message_idIsStoredUnderItsOwnName_notAsMongoId() throws Exception {
+        java.lang.reflect.Field field = MaximegalonMessage.class.getDeclaredField("id");
+        org.springframework.data.mongodb.core.mapping.Field mapping =
+                field.getAnnotation(org.springframework.data.mongodb.core.mapping.Field.class);
+
+        assertThat(mapping)
+                .as("MaximegalonMessage.id needs @Field(\"id\") or Spring Data stores it as _id")
+                .isNotNull();
+        assertThat(mapping.value()).isEqualTo("id");
+    }
 }

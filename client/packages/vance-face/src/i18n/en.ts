@@ -120,6 +120,12 @@ export default {
   },
 
   inboxThread: {
+    addReaction: 'Add a reaction',
+    reason: {
+      assignee_must_stay: 'You are the assignee of this open ask — delegate it instead of unsubscribing.',
+      message_limit_reached: 'This thread has reached its message limit. Open a new thread for what is left.',
+      invalid_parent: 'That message cannot be replied to — replies go one level deep.',
+    },
     participants: 'Taking part:',
     team: '(team {team})',
     follow: 'Following',

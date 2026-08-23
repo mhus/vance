@@ -275,10 +275,7 @@ export function useInbox(): {
    * admitting it.
    */
   function threadError(e: unknown, fallbackKey: string): string {
-    if (e instanceof RestError && e.status === 409) {
-      const reason = /"reason"\s*:\s*"([a-z_]+)"/.exec(e.message)?.[1];
-      if (reason) return reason;
-    }
+    if (e instanceof RestError && e.reason) return e.reason;
     return e instanceof Error ? e.message : fallbackKey;
   }
 

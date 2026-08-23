@@ -1006,6 +1006,7 @@ const breadcrumbs = computed<string[]>(() => {
               <InboxThreadPanel
                 :item="inbox.selected.value"
                 :busy="submitting"
+                :error="inbox.error.value"
                 @post="onThreadPost"
                 @read="onThreadRead"
                 @invite="onThreadInvite"

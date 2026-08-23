@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { VButton, VInput, VTextarea, VToggle } from '@vance/components';
+import { VAlert, VButton, VInput, VTextarea, VToggle } from '@vance/components';
 import { getUsername } from '@vance/shared';
 import type { MaximegalonDto, MaximegalonMessageDto } from '@vance/generated';
 
@@ -22,6 +22,13 @@ import type { MaximegalonDto, MaximegalonMessageDto } from '@vance/generated';
 const props = defineProps<{
   item: MaximegalonDto;
   busy?: boolean;
+  /**
+   * Last failure from a thread action. Rendered here rather than relying on the
+   * page-level alert, which lives inside the list view and is therefore
+   * invisible while a thread is open — the exact situation in which these
+   * actions happen.
+   */
+  error?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -54,23 +61,44 @@ const PALETTE: ReadonlyArray<{ key: string; char: string }> = [
   { key: 'tada', char: '🎉' },
 ];
 
-// ── Read reporting ───────────────────────────────────────────────────
-//
-// Once per thread id: re-reporting on every re-render would be a write per
-// keystroke in the composer.
-const reportedFor = ref<string | null>(null);
+/**
+ * Where the "new from here" line goes: the first message this user had not read
+ * when they opened the thread. A snapshot, not persisted — it only has to
+ * survive this visit, not the session.
+ */
+const firstUnreadId = ref<string | null>(null);
 
-watch(() => props.item.id, (id) => {
-  if (!id || reportedFor.value === id) return;
-  reportedFor.value = id;
-  if (hasUnreadForMe.value) emit('read');
-}, { immediate: true });
+function firstUnreadFor(item: MaximegalonDto): string | null {
+  return (item.messages ?? []).find((m) => !m.readBy?.includes(me.value))?.id ?? null;
+}
+
+// ── Read reporting ───────────────────────────────────────────────────
 
 /** Mirrors the server's rule, so we only report when there is something to report. */
 const hasUnreadForMe = computed<boolean>(() => {
   if (!props.item.readBy?.includes(me.value)) return true;
   return (props.item.messages ?? []).some((m) => !m.readBy?.includes(me.value));
 });
+
+// Once per thread id: re-reporting on every re-render would be a write per
+// keystroke in the composer.
+//
+// Declared *after* hasUnreadForMe on purpose — an immediate watcher runs during
+// setup, so a const declared below it is still in its temporal dead zone and the
+// component throws on first open. Neither the build nor vue-tsc catches that.
+const reportedFor = ref<string | null>(null);
+
+watch(() => props.item.id, (id) => {
+  if (!id || reportedFor.value === id) return;
+  reportedFor.value = id;
+  // Freeze the divider *before* reporting. Reporting the read replaces the
+  // item with the server's answer, in which nothing is unread any more — so a
+  // computed over the current readBy would always be empty and the line could
+  // never appear. It marks where this visit started, which is why it is a
+  // snapshot and not derived state.
+  firstUnreadId.value = firstUnreadFor(props.item);
+  if (hasUnreadForMe.value) emit('read');
+}, { immediate: true });
 
 // ── Tree ─────────────────────────────────────────────────────────────
 //
@@ -88,13 +116,6 @@ const tree = computed<Node[]>(() => {
   }));
 });
 
-/**
- * Where the "new from here" line goes: the first message this user has not
- * read. Derived from what is on screen and not persisted — it only has to
- * survive looking at the thread, not the session.
- */
-const firstUnreadId = computed<string | null>(() =>
-  (props.item.messages ?? []).find((m) => !m.readBy?.includes(me.value))?.id ?? null);
 
 const following = computed<boolean>(() => props.item.participants?.includes(me.value) ?? false);
 
@@ -129,27 +150,97 @@ function toggleReaction(message: MaximegalonMessageDto | null, key: string): voi
   emit('react', key, !mine, message?.id ?? null);
 }
 
-function reactionCount(message: MaximegalonMessageDto | null, key: string): number {
-  const source = message ? message.reactions : props.item.reactions;
-  return source?.find((r) => r.key === key)?.userIds?.length ?? 0;
+/**
+ * Only the reactions somebody actually gave, as chips — the way Slack does it.
+ *
+ * <p>Rendering the whole palette everywhere was the first attempt and it is
+ * noise: six buttons per message plus six on the thread is thirty controls on a
+ * short discussion, and the count of interest (how many agreed) drowns among
+ * the ones nobody pressed. Existing reactions carry information; empty ones
+ * carry only the offer, and one button is enough to make the offer.
+ */
+function chipsFor(message: MaximegalonMessageDto | null): Array<{
+  key: string; char: string; count: number; mine: boolean;
+}> {
+  const source = (message ? message.reactions : props.item.reactions) ?? [];
+  return source
+    .filter((r) => (r.userIds?.length ?? 0) > 0)
+    .map((r) => ({
+      key: r.key,
+      // Unknown keys still render: the palette may grow, and a reaction from a
+      // newer client must not vanish from an older one. The shortcode is a
+      // readable fallback.
+      char: PALETTE.find((p) => p.key === r.key)?.char ?? `:${r.key}:`,
+      count: r.userIds?.length ?? 0,
+      mine: r.userIds?.includes(me.value) ?? false,
+    }));
 }
 
-function reactedByMe(message: MaximegalonMessageDto | null, key: string): boolean {
-  const source = message ? message.reactions : props.item.reactions;
-  return source?.find((r) => r.key === key)?.userIds?.includes(me.value) ?? false;
+/**
+ * Which target currently has its palette open — a message id, or `'thread'`.
+ *
+ * <p>Explicit state and an inline expansion, not a dropdown: DaisyUI's dropdown
+ * opens on `:focus-within`, so clicking a button inside it takes focus off the
+ * trigger and the menu is gone before the click lands. That is fine for
+ * `<li><a>` navigation, which is what {@code VDropdown} is built for, and wrong
+ * for a grid of buttons — the first attempt looked right and silently did
+ * nothing. Expanding in place needs no positioning and no focus timing.
+ */
+const paletteFor = ref<string | null>(null);
+
+function togglePalette(target: MaximegalonMessageDto | null): void {
+  const id = target?.id ?? 'thread';
+  paletteFor.value = paletteFor.value === id ? null : id;
+}
+
+function pickReaction(target: MaximegalonMessageDto | null, key: string): void {
+  toggleReaction(target, key);
+  paletteFor.value = null;
 }
 
 /** The generator maps Instant to Date; a string still arrives over the wire. */
 function when(at: Date | string | undefined): string {
   return at ? new Date(at).toLocaleString() : '';
 }
+
+/**
+ * The server answers a refused invariant with a stable code. Turning it into a
+ * sentence is the client's job: "assignee_must_stay" says nothing to a reader,
+ * "you are the assignee of an open ask — delegate instead" says what to do.
+ * Unknown text is passed through rather than swallowed.
+ */
+const REASONS = new Set(['assignee_must_stay', 'message_limit_reached', 'invalid_parent']);
+
+const errorText = computed<string | null>(() => {
+  const raw = props.error;
+  if (!raw) return null;
+  return REASONS.has(raw) ? t(`inboxThread.reason.${raw}`) : raw;
+});
+
+/**
+ * Remount counter for the toggle. A checkbox is set by the browser on click; if
+ * the server then refuses and `following` is unchanged, Vue has nothing to
+ * re-render and the DOM keeps the value the click produced — the switch would
+ * claim "not following" while the participant list says otherwise. Bumping the
+ * key forces the input to be rebuilt from state.
+ */
+const toggleKey = ref(0);
+
+watch(() => [props.item.participants, props.error], () => {
+  toggleKey.value += 1;
+});
+
 </script>
 
 <template>
   <section class="flex flex-col gap-4 border-t pt-4 mt-4">
-    <!-- Participants + follow. The list is who gets updates; the toggle is
-         how you leave. An assignee with an open ask is refused by the server
-         (a process waits on them) — the error surfaces above. -->
+    <VAlert v-if="errorText" variant="error">
+      <span>{{ errorText }}</span>
+    </VAlert>
+
+    <!-- Participants + follow. The list is who gets updates; the toggle is how
+         you leave. An assignee with an open ask is refused by the server (a
+         process waits on them) and the reason appears in the alert above. -->
     <header class="flex flex-wrap items-center justify-between gap-2">
       <div class="flex flex-wrap items-center gap-2">
         <span class="text-sm opacity-70">{{ t('inboxThread.participants') }}</span>
@@ -163,6 +254,7 @@ function when(at: Date | string | undefined): string {
         </span>
       </div>
       <VToggle
+        :key="toggleKey"
         :model-value="following"
         :title="t('inboxThread.followTitle')"
         :label="t('inboxThread.follow')"
@@ -173,20 +265,33 @@ function when(at: Date | string | undefined): string {
     <!-- Reactions on the thread's own question. -->
     <div class="flex flex-wrap items-center gap-1">
       <VButton
-        v-for="r in PALETTE"
-        :key="r.key"
+        v-for="c in chipsFor(null)"
+        :key="c.key"
         size="sm"
-        :variant="reactedByMe(null, r.key) ? 'primary' : 'ghost'"
-        :title="r.key"
-        @click="toggleReaction(null, r.key)"
-      >
-        {{ r.char }}<span v-if="reactionCount(null, r.key)" class="ml-1 text-xs">{{
-          reactionCount(null, r.key)
-        }}</span>
-      </VButton>
+        :variant="c.mine ? 'primary' : 'ghost'"
+        :title="c.key"
+        @click="emit('react', c.key, !c.mine, null)"
+      >{{ c.char }}<span class="ml-1 text-xs">{{ c.count }}</span></VButton>
+      <VButton
+        size="sm"
+        variant="ghost"
+        :title="t('inboxThread.addReaction')"
+        @click="togglePalette(null)"
+      >&#9786;+</VButton>
+      <template v-if="paletteFor === 'thread'">
+        <VButton
+          v-for="r in PALETTE"
+          :key="r.key"
+          size="sm"
+          variant="ghost"
+          :title="r.key"
+          @click="pickReaction(null, r.key)"
+        >{{ r.char }}</VButton>
+      </template>
     </div>
 
-    <!-- The clarification. -->
+    <!-- The clarification. Roots with one level of replies; deeper nesting is
+         refused by the server. -->
     <ol v-if="tree.length" class="flex flex-col gap-3">
       <li v-for="node in tree" :key="node.message.id" class="flex flex-col gap-2">
         <div
@@ -202,25 +307,35 @@ function when(at: Date | string | undefined): string {
           <p class="whitespace-pre-wrap text-sm">{{ node.message.body }}</p>
           <div class="flex flex-wrap items-center gap-1">
             <VButton
-              v-for="r in PALETTE"
-              :key="r.key"
+              v-for="c in chipsFor(node.message)"
+              :key="c.key"
               size="sm"
-              :variant="reactedByMe(node.message, r.key) ? 'primary' : 'ghost'"
-              :title="r.key"
-              @click="toggleReaction(node.message, r.key)"
-            >
-              {{ r.char }}<span
-                v-if="reactionCount(node.message, r.key)"
-                class="ml-1 text-xs"
-              >{{ reactionCount(node.message, r.key) }}</span>
-            </VButton>
+              :variant="c.mine ? 'primary' : 'ghost'"
+              :title="c.key"
+              @click="emit('react', c.key, !c.mine, node.message.id)"
+            >{{ c.char }}<span class="ml-1 text-xs">{{ c.count }}</span></VButton>
+            <VButton
+              size="sm"
+              variant="ghost"
+              :title="t('inboxThread.addReaction')"
+              @click="togglePalette(node.message)"
+            >&#9786;+</VButton>
+            <template v-if="paletteFor === node.message.id">
+              <VButton
+                v-for="r in PALETTE"
+                :key="r.key"
+                size="sm"
+                variant="ghost"
+                :title="r.key"
+                @click="pickReaction(node.message, r.key)"
+              >{{ r.char }}</VButton>
+            </template>
             <VButton size="sm" variant="ghost" @click="startReply(node.message.id)">
               {{ t('inboxThread.reply') }}
             </VButton>
           </div>
         </article>
 
-        <!-- One level of replies; deeper nesting is refused by the server. -->
         <ol v-if="node.replies.length" class="flex flex-col gap-2 pl-6 border-l">
           <li v-for="reply in node.replies" :key="reply.id" class="flex flex-col gap-1">
             <div
@@ -234,18 +349,29 @@ function when(at: Date | string | undefined): string {
             <p class="whitespace-pre-wrap text-sm">{{ reply.body }}</p>
             <div class="flex flex-wrap items-center gap-1">
               <VButton
-                v-for="r in PALETTE"
-                :key="r.key"
+                v-for="c in chipsFor(reply)"
+                :key="c.key"
                 size="sm"
-                :variant="reactedByMe(reply, r.key) ? 'primary' : 'ghost'"
-                :title="r.key"
-                @click="toggleReaction(reply, r.key)"
-              >
-                {{ r.char }}<span
-                  v-if="reactionCount(reply, r.key)"
-                  class="ml-1 text-xs"
-                >{{ reactionCount(reply, r.key) }}</span>
-              </VButton>
+                :variant="c.mine ? 'primary' : 'ghost'"
+                :title="c.key"
+                @click="emit('react', c.key, !c.mine, reply.id)"
+              >{{ c.char }}<span class="ml-1 text-xs">{{ c.count }}</span></VButton>
+              <VButton
+                size="sm"
+                variant="ghost"
+                :title="t('inboxThread.addReaction')"
+                @click="togglePalette(reply)"
+              >&#9786;+</VButton>
+              <template v-if="paletteFor === reply.id">
+                <VButton
+                  v-for="r in PALETTE"
+                  :key="r.key"
+                  size="sm"
+                  variant="ghost"
+                  :title="r.key"
+                  @click="pickReaction(reply, r.key)"
+                >{{ r.char }}</VButton>
+              </template>
             </div>
           </li>
         </ol>
@@ -253,8 +379,8 @@ function when(at: Date | string | undefined): string {
     </ol>
     <p v-else class="text-sm opacity-60">{{ t('inboxThread.empty') }}</p>
 
-    <!-- Composer. Contributing is not deciding: this posts a message and
-         leaves the answer buttons above untouched. -->
+    <!-- Composer. Contributing is not deciding: this posts a message and leaves
+         the answer buttons above untouched. -->
     <div class="flex flex-col gap-2">
       <div v-if="replyTo" class="flex items-center gap-2 text-xs opacity-70">
         <span>{{ t('inboxThread.replyingTo') }}</span>

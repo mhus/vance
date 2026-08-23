@@ -8,6 +8,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.jspecify.annotations.Nullable;
+import org.springframework.data.mongodb.core.mapping.Field;
 
 /**
  * One contribution to a thread's clarification — embedded in
@@ -41,7 +42,19 @@ import org.jspecify.annotations.Nullable;
 @AllArgsConstructor
 public class MaximegalonMessage {
 
-    /** Stable id within the thread, assigned on append. */
+    /**
+     * Stable id within the thread, assigned on append.
+     *
+     * <p><b>{@code @Field} is load-bearing.</b> Spring Data maps a field named
+     * {@code id} onto {@code _id} by convention, even inside an embedded
+     * document — so without this the stored key is {@code _id} while every
+     * {@code arrayFilters} written against {@code messages.$[m].id} matches
+     * nothing. That fails <em>silently</em>: the update is well-formed, Mongo
+     * applies it to zero elements, and reads still return an id because the
+     * mapper fills it back from {@code _id}. Reactions and per-message read
+     * marks simply did nothing until this was pinned down.
+     */
+    @Field("id")
     private String id = "";
 
     private String authorUserId = "";

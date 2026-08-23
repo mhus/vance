@@ -114,6 +114,12 @@ export default {
   },
 
   inboxThread: {
+    addReaction: 'Reaktion hinzufügen',
+    reason: {
+      assignee_must_stay: 'Du bist zuständig für diese offene Frage — delegiere sie, statt sie abzubestellen.',
+      message_limit_reached: 'Dieser Thread hat sein Beitragslimit erreicht. Eröffne einen neuen für den Rest.',
+      invalid_parent: 'Auf diesen Beitrag kann nicht geantwortet werden — Antworten gehen eine Ebene tief.',
+    },
     participants: 'Beteiligt:',
     team: '(Team {team})',
     follow: 'Folgen',

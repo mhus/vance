@@ -7,9 +7,31 @@ export class RestError extends Error {
     public readonly status: number,
     public readonly path: string,
     message: string,
+    /**
+     * Machine-readable code from a refusal body, when the endpoint sends one
+     * (`{"reason": "...", "message": "..."}`).
+     *
+     * The message is the sentence; this is which rule was hit. Without it a
+     * caller can only pattern-match on prose, so an endpoint that carefully
+     * returns a stable code would have it thrown away at the door — and the
+     * user gets the server's English instead of a translated line that says
+     * what to do.
+     */
+    public readonly reason?: string,
   ) {
     super(message);
     this.name = 'RestError';
+  }
+}
+
+/** The `reason` code out of an error body, if it carries one. */
+function reasonCodeFrom(text: string): string | undefined {
+  if (!text) return undefined;
+  try {
+    const body = JSON.parse(text) as { reason?: unknown };
+    return typeof body.reason === 'string' && body.reason ? body.reason : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -128,7 +150,7 @@ export async function brainFetch<T>(
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new RestError(response.status, path, reasonFrom(text, response));
+    throw new RestError(response.status, path, reasonFrom(text, response), reasonCodeFrom(text));
   }
   return parseJson<T>(response);
 }
@@ -206,7 +228,7 @@ export async function brainFetchWithMeta<T>(
   }
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new RestError(response.status, path, reasonFrom(text, response));
+    throw new RestError(response.status, path, reasonFrom(text, response), reasonCodeFrom(text));
   }
   const data = await parseJson<T>(response);
   return { data, response };
@@ -245,7 +267,7 @@ export async function brainFetchBlob(
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new RestError(response.status, path, reasonFrom(text, response));
+    throw new RestError(response.status, path, reasonFrom(text, response), reasonCodeFrom(text));
   }
 
   const blob = await response.blob();
@@ -302,7 +324,7 @@ export async function brainFetchText(path: string): Promise<string | null> {
   if (response.status === 404) return null;
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new RestError(response.status, path, reasonFrom(text, response));
+    throw new RestError(response.status, path, reasonFrom(text, response), reasonCodeFrom(text));
   }
   return response.text();
 }
@@ -366,7 +388,7 @@ export async function brainSendRaw<T>(
   }
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new RestError(response.status, path, reasonFrom(text, response));
+    throw new RestError(response.status, path, reasonFrom(text, response), reasonCodeFrom(text));
   }
   return parseJson<T>(response);
 }

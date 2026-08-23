@@ -89,6 +89,8 @@ public class UrsaSchedulerService {
     /** LLM-facing materialised log of every run — see {@link SchedulerLogService}. */
     private final SchedulerLogService schedulerLogService;
     private final UrsaFireClaimService fireClaimService;
+    /** Durable "already fired" state for {@code at:} schedulers. */
+    private final UrsaOneShotFireService oneShotFireService;
     /** For auto-disable notifications — see {@link #autoDisableScheduler}. */
     private final InboxItemService inboxItemService;
 
@@ -277,13 +279,13 @@ public class UrsaSchedulerService {
         ResolvedUrsaScheduler cfg = reg.config;
         if (cfg.isOneShot()) {
             if (!cfg.enabled()) return null;
-            // Once a STARTED event has been recorded, the one-shot is
-            // considered consumed regardless of what the YAML still says.
-            boolean fired = eventLogService.findLatest(
-                    reg.tenantId,
-                    UrsaSchedulerSourceKeys.sourceFor(cfg.name()),
-                    java.util.List.of(EventType.STARTED)).isPresent();
-            return fired ? null : cfg.at();
+            Instant at = cfg.at();
+            if (at == null) return null;
+            // Once the fire marker is set, the one-shot is considered
+            // consumed regardless of what the YAML still says.
+            boolean fired = oneShotFireService.hasFired(
+                    reg.tenantId, reg.projectId, cfg.name(), at);
+            return fired ? null : at;
         }
         String cron = cfg.cron();
         if (cron == null) return null;
@@ -371,10 +373,11 @@ public class UrsaSchedulerService {
     }
 
     /**
-     * One-shot ({@code at:}) registration. The event log is the source
-     * of truth for "already fired" — a brain that crashes between fire
-     * and doc-disable still won't re-fire on restart. Past-due at-values
-     * fire immediately (catch-up); future ones go through Spring's
+     * One-shot ({@code at:}) registration. The fire marker held by
+     * {@link UrsaOneShotFireService} is the source of truth for "already
+     * fired" — a brain that crashes between fire and doc-disable still
+     * won't re-fire on restart. Past-due at-values fire immediately
+     * (catch-up); future ones go through Spring's
      * {@code schedule(Runnable, Instant)} which is automatically a
      * one-shot. See {@code specification/scheduler.md} §10a.
      */
@@ -386,10 +389,8 @@ public class UrsaSchedulerService {
                     tenantId, projectId, config.name());
             return false;
         }
-        boolean alreadyFired = eventLogService.findLatest(
-                tenantId,
-                UrsaSchedulerSourceKeys.sourceFor(config.name()),
-                java.util.List.of(EventType.STARTED)).isPresent();
+        boolean alreadyFired = oneShotFireService.hasFired(
+                tenantId, projectId, config.name(), at);
         Registration reg = new Registration(tenantId, projectId, config, zone, null);
         registry.put(registryKey(tenantId, projectId, config.name()), reg);
         if (alreadyFired) {
@@ -787,6 +788,15 @@ public class UrsaSchedulerService {
                 EventType.STARTED, correlationId,
                 parentSessionId, spawnedProcessId, runAs,
                 startedPayload.isEmpty() ? null : startedPayload);
+        // One-shot anchor. Written here — after a successful spawn, before
+        // trashAfterFire() at the end of this method — so a crash in the
+        // window between the two self-heals on the next bootstrap instead
+        // of re-firing. A failed spawn returns earlier and stays re-armed.
+        Instant oneShotAt = cfg.isOneShot() ? cfg.at() : null;
+        if (oneShotAt != null) {
+            oneShotFireService.markFired(
+                    reg.tenantId, reg.projectId, cfg.name(), oneShotAt, correlationId);
+        }
         String startedDetails = startedPayload.isEmpty()
                 ? null
                 : startedPayload.entrySet().stream()
@@ -835,7 +845,8 @@ public class UrsaSchedulerService {
      * <p>No-op when the registration has no backing {@code documentId}
      * — e.g. for entries that exist only through a cascade lookup
      * without a row in this project's store. The one-shot semantics
-     * still hold via the event-log check on bootstrap.
+     * still hold via the fire marker checked on bootstrap
+     * ({@link UrsaOneShotFireService}).
      */
     private void trashAfterFire(Registration reg) {
         String docId = reg.config.documentId();

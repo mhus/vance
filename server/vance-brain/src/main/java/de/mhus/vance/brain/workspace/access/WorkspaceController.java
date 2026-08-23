@@ -6,8 +6,11 @@ import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.location.LocationService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.project.ProjectManagerService;
+import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
+import de.mhus.vance.shared.project.ProjectStatus;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceFileSizeExceededException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
@@ -70,7 +73,8 @@ public class WorkspaceController {
     private final WorkspaceRoutingCache routingCache;
     private final WorkspaceAccessProperties properties;
     private final LocationService locationService;
-    private final ProjectManagerService projectManager;
+    private final ProjectLifecycleService lifecycleService;
+    private final ProjectService projectService;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final RequestAuthority authority;
@@ -80,7 +84,8 @@ public class WorkspaceController {
                                WorkspaceRoutingCache routingCache,
                                WorkspaceAccessProperties properties,
                                LocationService locationService,
-                               ProjectManagerService projectManager,
+                               ProjectLifecycleService lifecycleService,
+                               ProjectService projectService,
                                ObjectMapper objectMapper,
                                RequestAuthority authority,
                                @Value("${vance.internal.token:}") String internalToken) {
@@ -88,7 +93,8 @@ public class WorkspaceController {
         this.routingCache = routingCache;
         this.properties = properties;
         this.locationService = locationService;
-        this.projectManager = projectManager;
+        this.lifecycleService = lifecycleService;
+        this.projectService = projectService;
         this.objectMapper = objectMapper;
         this.authority = authority;
         this.internalToken = internalToken == null ? "" : internalToken;
@@ -162,17 +168,67 @@ public class WorkspaceController {
 
     /**
      * Adopt an unowned or stale-homed project onto this pod so its workspace
-     * can be served locally. {@code claimForLocalPod}'s CAS accepts a
+     * can be served locally. The claim inside {@code bring}'s CAS accepts a
      * {@code null} or stale {@code homeNode} and refuses only a claim held by
      * a <em>live</em> other pod — in which case we must not serve local.
      * Podless projects never reach here (handled before the routing lookup).
+     *
+     * <p><b>Adopting means bringing, not just claiming.</b> Two reasons, and
+     * the first one is why this used to call {@code claimForLocalPod}
+     * directly:
+     * <ul>
+     *   <li>A bare claim owns the project without activating it. Since the
+     *       lease rework the hook and scheduler document listeners are gated
+     *       on {@code ProjectActivationRegistry} while the change router
+     *       serves the <em>writing</em> pod regardless of ownership — so a
+     *       project adopted by a read request would hold its hooks and
+     *       schedulers on this pod and run none of them. No error appears
+     *       anywhere; they are simply silent.</li>
+     *   <li>A claim does not materialise a workspace. The adopt path exists
+     *       to serve files, and {@code bring} runs {@code WorkspaceService
+     *       .init}, which restores the folder from its Mongo snapshots. A
+     *       claim alone answers with an empty tree on any pod that does not
+     *       happen to have the folder on disk already — the very 404 this
+     *       path was added to fix.</li>
+     * </ul>
+     *
+     * <p><b>Only projects that want to run are adopted.</b> {@code bring}
+     * transitions any non-RUNNING status to RUNNING, which is right for an
+     * explicit bring and wrong for something that happens by itself: opening
+     * the workspace tab of a SUSPENDED project would restart it — the exact
+     * "suspend does not survive by itself" defect the status selector in
+     * {@code ProjectService.findStrandedNeedingOwner} was narrowed to fix.
+     * A parked project answers with an empty tree / 404, which is also the
+     * truthful answer: suspend puts its workspace off-disk.
+     *
+     * <p>Cost is bounded: once adopted, {@code routingCache.isSelfOwned}
+     * short-circuits before this method on every following request, and
+     * {@code bring} itself returns after a lease refresh when the project is
+     * already RUNNING here.
+     *
+     * <p>Fail-soft on purpose. This is a read path, and its documented
+     * degradation is an empty tree / 404, not a 500 — so a workspace-init
+     * failure is reported and treated as "adoption refused" rather than
+     * propagated to the browser.
      */
     private boolean tryAdoptLocally(String tenant, String project) {
+        ProjectStatus status = projectService.findByTenantAndName(tenant, project)
+                .map(ProjectDocument::getStatus)
+                .orElse(null);
+        if (!ProjectService.wantsToRun(status)) {
+            log.debug("Workspace adopt skipped for {}/{}: status={} does not want to run",
+                    tenant, project, status);
+            return false;
+        }
         try {
-            projectManager.claimForLocalPod(tenant, project);
+            lifecycleService.bring(tenant, project);
             return true;
         } catch (ProjectManagerService.ClaimRejectedException e) {
             log.debug("Workspace adopt refused for {}/{}: {}", tenant, project, e.getMessage());
+            return false;
+        } catch (RuntimeException e) {
+            log.warn("Workspace adopt failed for {}/{} — serving as unowned: {}",
+                    tenant, project, e.toString());
             return false;
         }
     }

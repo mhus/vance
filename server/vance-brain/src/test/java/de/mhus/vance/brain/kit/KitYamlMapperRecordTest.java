@@ -81,6 +81,46 @@ class KitYamlMapperRecordTest {
     }
 
     @Test
+    void installedRecord_provisioningParams_roundTrip() {
+        // The record is the only place the parameters a kit was fetched with
+        // survive — a manual update rebuilds its request from here. A writer
+        // that does not emit them is the same failure as not recording them.
+        KitInstalledRecordDto original = minimalRecord();
+        original.getOrigin().setParams(new java.util.LinkedHashMap<>(java.util.Map.of(
+                "lang", "de", "modules", List.of("crm", "invoicing"))));
+
+        KitInstalledRecordDto parsed = KitYamlMapper.parseInstalledRecord(
+                KitYamlMapper.writeInstalledRecord(original));
+
+        assertThat(parsed.getOrigin().getParams())
+                .containsEntry("lang", "de")
+                .containsEntry("modules", List.of("crm", "invoicing"));
+    }
+
+    @Test
+    void installedRecord_withoutParams_staysAbsentRatherThanEmpty() {
+        // "Asked for nothing" and "asked for an empty map" are the same thing,
+        // and an empty `params: {}` in the file only invites the question.
+        KitInstalledRecordDto parsed = KitYamlMapper.parseInstalledRecord(
+                KitYamlMapper.writeInstalledRecord(minimalRecord()));
+
+        assertThat(parsed.getOrigin().getParams()).isNull();
+    }
+
+    @Test
+    void installedRecord_paramsThatAreNotAMap_areRefused() {
+        // These get re-sent to the source on the next update; reading a scalar
+        // as "no parameters" would repeat the bug the field exists to fix.
+        String yaml = KitYamlMapper.writeInstalledRecord(minimalRecord())
+                .replace("origin:", "origin:\n  params: nonsense");
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> KitYamlMapper.parseInstalledRecord(yaml))
+                .isInstanceOf(de.mhus.vance.shared.kit.KitException.class)
+                .hasMessageContaining("'params' must be a map");
+    }
+
+    @Test
     void installedRecord_signatureStatusAndSource_roundTrip() {
         KitInstalledRecordDto original = minimalRecord();
         original.setSignatureStatus(KitSignatureStatus.VERIFIED);

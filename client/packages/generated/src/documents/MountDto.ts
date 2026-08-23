@@ -7,10 +7,10 @@ import { MountAccess } from './MountAccess';
 
 export interface MountDto {
   name: string;
-  displayName: string;
+  displayName?: string;
   protocolId: string;
   access: MountAccess;
-  itemCount: number;
-  statusText: string;
+  itemCount?: number;
+  statusText?: string;
   canSearch: boolean;
 }

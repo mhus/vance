@@ -47,10 +47,11 @@ parameters:
   from:     "noreply@example.com"
 ```
 
-The referenced settings must be typed **`HIDDEN`** (encrypted, but resolvable
-through a reference), not `PASSWORD`. A PASSWORD-typed target fails with a named
-error asking for it to be re-typed — details in
-`manual_read('vault-secrets')`.
+The referenced settings should be typed **`PASSWORD`** — that is the type for
+connector credentials, and the SMTP connector resolves it. `HIDDEN` works too,
+but only pick it when a script or a compose task has to resolve the same value
+itself. Do **not** ask for a working `PASSWORD` setting to be re-typed; details
+in `manual_read('vault-secrets')`.
 
 ## Minimal config
 

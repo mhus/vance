@@ -92,15 +92,24 @@ public class KitLegacyMigrator {
                     LEGACY_MANIFEST_PATH + " has no usable origin — nothing to migrate from");
         }
 
+        // By origin, not by the derived id — the identity of a kit is
+        // (url, path); the name in the id is a label. Looking the record up by
+        // id missed a kit that had renamed itself since, and the migration then
+        // wrote a *second* record for the same source. findByOrigin iterates an
+        // unsorted list, so updates afterwards alternated between the two and
+        // each treated the other's artefacts as a stranger's.
+        KitInstalledRecordDto existing = recordStore.findByOrigin(
+                tenantId, projectId,
+                manifest.getOrigin().getUrl(), manifest.getOrigin().getPath());
+        if (existing != null) {
+            return new Result(false, existing.getId(), 0, 0,
+                    "kit '" + existing.getId() + "' is already installed as a record — "
+                            + "delete " + LEGACY_MANIFEST_PATH + " by hand if it is stale");
+        }
         String kitId = KitRecordId.of(
                 manifest.getKit().getName(),
                 manifest.getOrigin().getUrl(),
                 manifest.getOrigin().getPath());
-        if (recordStore.find(tenantId, projectId, kitId) != null) {
-            return new Result(false, kitId, 0, 0,
-                    "kit '" + kitId + "' is already installed as a record — "
-                            + "delete " + LEGACY_MANIFEST_PATH + " by hand if it is stale");
-        }
 
         String topLayer = manifest.getKit().getName();
         List<KitArtefactDto> documents = new ArrayList<>();

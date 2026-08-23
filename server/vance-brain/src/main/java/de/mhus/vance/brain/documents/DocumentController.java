@@ -391,25 +391,41 @@ public class DocumentController {
         authority.enforce(httpRequest,
                 new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
 
+        // A mounted document has no content version we can state. Its row
+        // carries no storageId by construction, so the storageId-or-id rule
+        // below would fall back to the *derived, immutable* document id: the
+        // ETag would never change, and `no-cache` (cache + always revalidate)
+        // would then serve the first body the browser ever saw, forever, for a
+        // file that lives in somebody else's tree. No honest validator means
+        // no caching at all — `no-store` rather than a constant ETag.
+        boolean mounted = DocumentService.isMounted(doc.getPath());
+
         // Content version = storageId. Streaming-store hands a fresh id on
         // every write, so the moment the body changes the ETag changes too;
         // re-using the same id implies byte-identical content. Falls back
         // to the document id (immutable) when storageId is missing (inline
         // docs from before the storage migration / empty content).
-        String version = doc.getStorageId() != null ? doc.getStorageId() : doc.getId();
-        String etag = "\"" + version + "\"";
-        if (ifNoneMatch != null && etagsMatch(ifNoneMatch, etag)) {
-            return ResponseEntity.status(HttpStatus.NOT_MODIFIED)
-                    .eTag(etag)
-                    .cacheControl(CacheControl.noCache().cachePrivate())
-                    .build();
+        String etag = null;
+        if (!mounted) {
+            String version = doc.getStorageId() != null ? doc.getStorageId() : doc.getId();
+            etag = "\"" + version + "\"";
+            if (ifNoneMatch != null && etagsMatch(ifNoneMatch, etag)) {
+                return ResponseEntity.status(HttpStatus.NOT_MODIFIED)
+                        .eTag(etag)
+                        .cacheControl(CacheControl.noCache().cachePrivate())
+                        .build();
+            }
         }
 
         InputStream stream = documentService.loadContent(doc);
         MediaType contentType = parseMimeType(doc.getMimeType());
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(contentType);
-        if (doc.getSize() > 0) {
+        // Size on a mounted row is whatever the last stat said, and the body is
+        // streamed live from the source: declaring the stale number truncates a
+        // grown file or breaks the response for a shrunk one. Let the container
+        // chunk it instead.
+        if (!mounted && doc.getSize() > 0) {
             headers.setContentLength(doc.getSize());
         }
         String filename = doc.getName() == null || doc.getName().isBlank()
@@ -423,8 +439,12 @@ public class DocumentController {
         // reloads. The previous `max-age=300` skipped revalidation entirely
         // and was the cause of "reload shows stale content" after a peer
         // write — see live-WS documents.changed wiring.
-        headers.setETag(etag);
-        headers.setCacheControl("private, no-cache");
+        if (etag != null) {
+            headers.setETag(etag);
+            headers.setCacheControl("private, no-cache");
+        } else {
+            headers.setCacheControl("private, no-store");
+        }
         return ResponseEntity.ok().headers(headers).body(new InputStreamResource(stream));
     }
 
@@ -597,6 +617,11 @@ public class DocumentController {
         body.put("message", ex.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
+
+    // Jaglan refusals (mount read-only, an operation that does not apply
+    // inside _ext/) are translated by JaglanExceptionAdvice, not here: mounted
+    // paths are reachable from several controllers, and a handler on this one
+    // would answer for one of them only.
 
     /**
      * Build a {@link DocumentService.WriterIdentity} from the inbound REST

@@ -142,8 +142,12 @@ record DefaultThinkEngineContext(
                 attachmentSink)
                 // Carry the budget so a later withAdditional (skill tools
                 // land in primary after the classification) re-fits
-                // instead of overflowing the endpoint's cap.
-                .withBudget(budget, familyHints);
+                // instead of overflowing the endpoint's cap. The demoted
+                // names ride along so the prompt renderer can keep them
+                // out of the cache-anchored half of the discovery block —
+                // without them the budget's own demotions would rewrite
+                // the static prefix on every turn (code review 4, B58).
+                .withBudget(budget, familyHints, c.demoted());
     }
 
     /**

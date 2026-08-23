@@ -153,6 +153,35 @@ class SearchHitRowsTest {
     }
 
     @Test
+    void shape_capsTheSnippetSoItCannotBeUsedInsteadOfTheBody() {
+        // Half a cost control is none: with only the body capped, a source that
+        // wants to fill the context window sends the text as a snippet.
+        String huge = "s".repeat(50_000);
+
+        Map<String, Object> row = SearchHitRows.shape(
+                hit("T", "https://a.test/1", huge, huge, null));
+
+        assertThat((String) row.get("snippet"))
+                .hasSize(SearchHitRows.MAX_FIELD_CHARS + 1)
+                .endsWith(SearchHitRows.ELLIPSIS);
+        assertThat((String) row.get("source"))
+                .hasSize(SearchHitRows.MAX_FIELD_CHARS + 1);
+    }
+
+    @Test
+    void shape_capsATextualExtraToo() {
+        // Extras are as foreign as the fields beside them, and an uncapped one
+        // is the same hole in the same wall.
+        SearchHit hit = new SearchHit("T", "https://a.test/1", null, null,
+                SearchModality.WEB, null, Map.of("abstract", "x".repeat(50_000)));
+
+        Map<String, Object> row = SearchHitRows.shape(hit);
+
+        assertThat((String) row.get("abstract"))
+                .hasSize(SearchHitRows.MAX_FIELD_CHARS + 1);
+    }
+
+    @Test
     void shape_leavesTheUrlAlone() {
         // A URL is not free text; collapsing it would corrupt an escaped path.
         String url = "https://a.test/path%20with%20escape?q=a+b";

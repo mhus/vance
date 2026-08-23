@@ -48,6 +48,18 @@ final class SearchHitRows {
     static final int MAX_BODY_CHARS = 1000;
 
     /**
+     * Characters of any other remote string per hit — title, snippet, source
+     * label, and every textual extra.
+     *
+     * <p>Without this the body cap was half a cost control: a source that wants
+     * to put text in the context window sends it as {@code snippet} instead of
+     * as content, and ten hits with a 50-KB snippet each are half a megabyte in
+     * a turn. A snippet is a reason to open a link, and 400 characters is more
+     * than enough to be one.
+     */
+    static final int MAX_FIELD_CHARS = 400;
+
+    /**
      * A truncated body ends in this. The model must be able to tell a cut-off
      * sentence from a complete one, or it will quote half of one as the whole
      * thing.
@@ -81,13 +93,13 @@ final class SearchHitRows {
                 row.put(e.getKey(), safeExtra(e.getValue()));
             }
         }
-        row.put("title", UntrustedContent.collapseWhitespace(hit.title()));
+        row.put("title", field(hit.title()));
         row.put("url", hit.url());
         if (!StringUtils.isBlank(hit.snippet())) {
-            row.put("snippet", UntrustedContent.collapseWhitespace(hit.snippet()));
+            row.put("snippet", field(hit.snippet()));
         }
         if (!StringUtils.isBlank(hit.source())) {
-            row.put("source", UntrustedContent.collapseWhitespace(hit.source()));
+            row.put("source", field(hit.source()));
         }
         String body = bodyOf(hit.content());
         if (body != null) {
@@ -109,7 +121,18 @@ final class SearchHitRows {
         if (value instanceof Number || value instanceof Boolean) {
             return value;
         }
-        return UntrustedContent.collapseWhitespace(String.valueOf(value));
+        return field(String.valueOf(value));
+    }
+
+    /**
+     * One remote string, shaped: collapsed so it cannot inject structure, and
+     * capped so it cannot inject cost.
+     */
+    private static String field(@Nullable String value) {
+        String collapsed = UntrustedContent.collapseWhitespace(value);
+        return collapsed.length() <= MAX_FIELD_CHARS
+                ? collapsed
+                : collapsed.substring(0, MAX_FIELD_CHARS) + ELLIPSIS;
     }
 
     /**

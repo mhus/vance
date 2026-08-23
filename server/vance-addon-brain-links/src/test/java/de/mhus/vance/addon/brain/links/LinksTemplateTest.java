@@ -48,6 +48,20 @@ class LinksTemplateTest {
         assertThat(parse(render(vars("Reading", null))).description()).isNull();
     }
 
+    @Test
+    void rendered_titleWithQuotesStaysValidYaml() {
+        // The title is a free-text form field interpolated into a YAML scalar.
+        // Before the template quoted defensively, `"Später" lesen` produced
+        // `title: ""Später" lesen"` — the manifest was written anyway (the
+        // application kind has no validate) and the app opened broken.
+        String hostile = "\"Später\" lesen \\ it's fine";
+
+        ApplicationDocument doc = parse(render(vars(hostile, "a 'quoted' teaser")));
+
+        assertThat(doc.title()).isEqualTo(hostile);
+        assertThat(doc.description()).isEqualTo("a 'quoted' teaser");
+    }
+
     // ── helpers ──────────────────────────────────────────────────────
 
     private static Map<String, Object> vars(String title, String description) {

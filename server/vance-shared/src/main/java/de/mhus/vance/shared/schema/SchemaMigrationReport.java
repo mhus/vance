@@ -11,8 +11,11 @@ import java.util.List;
  *                          id, empty when nothing was ever applied
  * @param appliedByOtherPod another pod held the lock and had finished the pending
  *                          work by the time we looked again
- * @param baselined         the database carried no marker at all and was stamped
- *                          at the current version without running anything
+ * @param baselined         the database carried no marker at all and was
+ *                          stamped at the current version. Usually without
+ *                          running anything; a registry line that sets
+ *                          {@link SchemaMigrationSource.Registered#runOnBaseline()}
+ *                          runs even here and then appears in {@link #applied}
  */
 public record SchemaMigrationReport(
         List<String> applied,

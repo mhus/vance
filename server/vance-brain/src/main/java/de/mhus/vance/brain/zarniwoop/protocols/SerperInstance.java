@@ -5,6 +5,8 @@ import de.mhus.vance.brain.tools.web.YouTubeValidatorService;
 import de.mhus.vance.brain.zarniwoop.protocols.SerperHttpClient.SerperResponse;
 import de.mhus.vance.brain.zarniwoop.protocols.SerperPdfHeadProbe.Verdict;
 import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.research.ProviderAvailability;
 import de.mhus.vance.toolpack.research.ProviderInstanceConfig;
 import de.mhus.vance.toolpack.research.QuotaStatus;
@@ -58,6 +60,7 @@ class SerperInstance implements SearchProviderInstance {
 
     private final ProviderInstanceConfig cfg;
     private final SettingService settings;
+    private final SecretResolver secretResolver;
     private final ObjectMapper objectMapper;
     private final SerperHttpClient http;
     private final ImageValidatorService imageValidator;
@@ -69,6 +72,7 @@ class SerperInstance implements SearchProviderInstance {
 
     SerperInstance(ProviderInstanceConfig cfg,
                    SettingService settings,
+                   SecretResolver secretResolver,
                    ObjectMapper objectMapper,
                    SerperHttpClient http,
                    ImageValidatorService imageValidator,
@@ -76,6 +80,7 @@ class SerperInstance implements SearchProviderInstance {
                    SerperPdfHeadProbe pdfHeadProbe) {
         this.cfg = cfg;
         this.settings = settings;
+        this.secretResolver = secretResolver;
         this.objectMapper = objectMapper;
         this.http = http;
         this.imageValidator = imageValidator;
@@ -526,15 +531,31 @@ class SerperInstance implements SearchProviderInstance {
         return base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
     }
 
-    /** Resolve the API key with legacy-setting fallback. */
+    /**
+     * Resolve the API key with legacy-setting fallback.
+     *
+     * <p>The stored value may itself be a {@code {{secret:…}}} reference, so it
+     * goes through {@code resolveForConnector} — not the restrictive
+     * {@code resolve}: a search endpoint is a connector, not a dynamic element,
+     * and may therefore read a {@code PASSWORD}-typed setting or a vault entry
+     * (settings spec §10). The restrictive path sees only {@code HIDDEN} and
+     * would substitute an empty string; reading the setting straight, as this
+     * did, put the reference on the wire verbatim. Both end as an opaque 401.
+     *
+     * <p>The invocation context carries no user and no process on purpose: the
+     * endpoint credential belongs to the project's configuration, and this
+     * instance is cached per {@code (tenant, project)} and shared, so a
+     * user-scoped reference would serve the first caller's secret to everyone
+     * behind them.
+     */
     String resolveApiKey(SearchScope scope) {
-        String fromInstance = settings.getDecryptedPasswordCascade(
+        String fromInstance = resolveReference(settings.getDecryptedPasswordCascade(
                 scope.tenantId(), scope.projectId(), scope.processId(),
-                cfg.credentialSettingKey());
+                cfg.credentialSettingKey()), scope);
         if (!StringUtils.isBlank(fromInstance)) return fromInstance;
-        String legacy = settings.getDecryptedPasswordCascade(
+        String legacy = resolveReference(settings.getDecryptedPasswordCascade(
                 scope.tenantId(), scope.projectId(), scope.processId(),
-                LEGACY_API_KEY_SETTING);
+                LEGACY_API_KEY_SETTING), scope);
         if (!StringUtils.isBlank(legacy)) {
             // Latch keeps the migration warning to one line per
             // instance lifetime — the dispatcher would otherwise emit
@@ -548,6 +569,17 @@ class SerperInstance implements SearchProviderInstance {
             return legacy;
         }
         return "";
+    }
+
+    /** Substitute a {@code {{secret:…}}} reference the setting may hold. */
+    private String resolveReference(
+            @org.jspecify.annotations.Nullable String raw, SearchScope scope) {
+        if (StringUtils.isBlank(raw)) {
+            return "";
+        }
+        String resolved = secretResolver.resolveForConnector(raw, new ToolInvocationContext(
+                scope.tenantId(), scope.projectId(), null, null, null));
+        return resolved == null ? "" : resolved;
     }
 
     List<SearchHit> parseHits(String json, SearchModality modality) {

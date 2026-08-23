@@ -10,6 +10,7 @@ import de.mhus.vance.brain.tools.web.ImageValidatorService;
 import de.mhus.vance.brain.tools.web.YouTubeValidatorService;
 import de.mhus.vance.brain.zarniwoop.protocols.SerperHttpClient.SerperResponse;
 import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.research.ProviderAvailability;
 import de.mhus.vance.toolpack.research.ProviderInstanceConfig;
 import de.mhus.vance.toolpack.research.QuotaStatus;
@@ -40,7 +41,7 @@ class SerperInstanceTest {
 
     private SerperInstance newInstance(SettingService settings, SerperHttpClient http) {
         return new SerperInstance(
-                CFG, settings, new ObjectMapper(), http,
+                CFG, settings, passThroughSecrets(), new ObjectMapper(), http,
                 mock(ImageValidatorService.class),
                 mock(YouTubeValidatorService.class),
                 mock(SerperPdfHeadProbe.class));
@@ -309,5 +310,13 @@ class SerperInstanceTest {
         SerperInstance instance = newInstance(settings, http);
 
         assertThat(instance.currentQuota(SCOPE)).isEmpty();
+    }
+
+    /**
+     * A resolver that hands back what it was given. Reference substitution has
+     * its own tests; here it must only not swallow a plain key.
+     */
+    private static SecretResolver passThroughSecrets() {
+        return (input, ctx) -> input;
     }
 }

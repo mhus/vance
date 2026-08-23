@@ -92,6 +92,23 @@ class FeedsTemplateTest {
         assertThat(render(full())).doesNotContain("{{").doesNotContain("{%");
     }
 
+    @Test
+    void rendered_titleWithQuotesStaysValidYaml() {
+        // Free text goes straight into a YAML scalar. Before the template
+        // quoted defensively, `"Später" lesen` produced `title: ""Später"
+        // lesen"` — a manifest that no longer parses, written without a
+        // complaint because the application kind has no validate.
+        String hostile = "\"Später\" lesen \\ it's fine";
+        Map<String, Object> ctx = full();
+        ctx.put("title", hostile);
+        ctx.put("description", "a 'quoted' one");
+
+        ApplicationDocument doc = parse(render(ctx));
+
+        assertThat(doc.title()).isEqualTo(hostile);
+        assertThat(doc.description()).isEqualTo("a 'quoted' one");
+    }
+
     // ── helpers ──────────────────────────────────────────────────────
 
     private static Map<String, Object> full() {

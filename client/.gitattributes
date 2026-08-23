@@ -1,0 +1,14 @@
+# Source always diffs as text.
+#
+# A single stray NUL byte in a source file (starred/starredStore.ts had one in
+# a template literal) makes git call the whole file binary: no diff in review,
+# no blame, no `git log -p`, and grep skips it. The `diff` attribute forces the
+# textual diff for these paths even when such a byte slips in again. It does
+# not touch EOL handling — that stays at git's default.
+*.ts    diff
+*.tsx   diff
+*.vue   diff
+*.js    diff
+*.json  diff
+*.css   diff
+*.md    diff

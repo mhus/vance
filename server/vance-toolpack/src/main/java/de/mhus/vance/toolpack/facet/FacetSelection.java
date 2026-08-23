@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * What the reader picked, as {@code key → values}.
@@ -29,6 +31,8 @@ import org.jspecify.annotations.Nullable;
  */
 public final class FacetSelection {
 
+    private static final Logger log = LoggerFactory.getLogger(FacetSelection.class);
+
     private FacetSelection() {
         /* static only */
     }
@@ -43,6 +47,16 @@ public final class FacetSelection {
      * trimmed. A key whose values are all blank disappears entirely: an empty
      * value list would otherwise read as „match nothing" at one call site and
      * „match everything" at the next.
+     *
+     * <p>A key containing a dot is dropped too — the same rule
+     * {@link Facet} enforces on the declaring end, for the same reason: a
+     * selection is persisted inside an application manifest and MongoDB reads
+     * a dot in a map key as a path separator. This is the way in from tool
+     * arguments and request bodies, so it is the second place that has to hold
+     * the invariant. Dropping rather than throwing, because such a key can
+     * never match a declared facet anyway ({@link #restrictTo} would remove it
+     * one step later) and a malformed filter is not a reason to fail a whole
+     * search.
      */
     public static Map<String, List<String>> normalize(
             @Nullable Map<String, List<String>> raw) {
@@ -53,6 +67,11 @@ public final class FacetSelection {
         for (Map.Entry<String, List<String>> e : raw.entrySet()) {
             String key = e.getKey() == null ? null : e.getKey().trim();
             if (key == null || key.isEmpty() || e.getValue() == null) {
+                continue;
+            }
+            if (key.indexOf('.') >= 0) {
+                log.warn("Dropping facet selection key '{}': a facet key must not contain "
+                        + "'.' — the selection is persisted as a map key", key);
                 continue;
             }
             Set<String> values = new LinkedHashSet<>();

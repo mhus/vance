@@ -17,10 +17,15 @@ import org.jspecify.annotations.Nullable;
  * parse time.
  *
  * <p>Such a setting is persisted as
- * {@link de.mhus.vance.api.settings.SettingType#HIDDEN}, not {@code PASSWORD}:
- * being referenced by the kit's documents is the whole purpose of
- * {@link Kind#SETTING}, and a {@code PASSWORD}-typed setting is not
- * reference-readable. See {@code planning/setting-type-hidden.md} §7.
+ * {@link de.mhus.vance.api.settings.SettingType#PASSWORD}, not {@code HIDDEN}.
+ * The kit installs a credential for its own connector — an SMTP password, a
+ * REST token — and a connector resolves it through
+ * {@code SecretResolver.resolveForConnector}, which reads both encrypted
+ * types. The type follows the <em>use</em>, not the origin: making it readable
+ * for agents and scripts on top buys nothing. See
+ * {@code planning/setting-type-hidden.md} §7 and
+ * {@code TemplateApplier.persistSetting}, which is where the choice is made and
+ * {@code TemplateApplierSettingTypeTest}, which pins it.
  */
 public record TemplateInputTarget(
         Kind kind,

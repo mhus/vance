@@ -78,21 +78,40 @@ public class ProcessCountsPusher {
      * previous connection.
      */
     public void pushInitial(WebSocketSession wsSession, String tenantId, String sessionId) {
-        ProcessCounts counts = countFor(tenantId, sessionId);
-        try {
-            sender.sendNotification(wsSession, MessageType.PROCESS_COUNTS,
-                    toNotification(sessionId, counts));
-            lastSent.put(sessionId, counts);
-        } catch (IOException ioe) {
-            log.debug("Failed to push process-counts to session='{}': {}",
-                    sessionId, ioe.toString());
-        }
+        // Inside compute, like the delta path: the count, the send and the
+        // filter update belong to one another, and a concurrent transition
+        // must not interleave between them.
+        lastSent.compute(sessionId, (key, previous) -> {
+            ProcessCounts counts = countFor(tenantId, sessionId);
+            try {
+                sender.sendNotification(wsSession, MessageType.PROCESS_COUNTS,
+                        toNotification(sessionId, counts));
+            } catch (IOException ioe) {
+                log.debug("Failed to push process-counts to session='{}': {}",
+                        sessionId, ioe.toString());
+                return previous;
+            }
+            return counts;
+        });
     }
 
     /**
      * Recompute on every status transition and broadcast when the numbers
-     * moved. Cheap by design: one indexed session query, then an in-memory
+     * moved. Cheap by design: one projected session query, then an in-memory
      * fold and an equality check.
+     *
+     * <p><b>Read, compare and send all happen under the map's per-key
+     * lock.</b> Comparing alone stopped a duplicate frame but not a
+     * reordering: with the count taken outside the lock, two lanes
+     * transitioning together could read different states, and the one that
+     * read the <em>older</em> one could still win the write and publish
+     * last. The badge then showed the stale number and the filter remembered
+     * it — so it stayed wrong until some later transition happened to move
+     * the numbers again, which for a session that has just settled is never.
+     *
+     * <p>The mapping function does not touch this map, so holding the bin
+     * while publishing cannot deadlock; it only serialises other work on the
+     * same session, which is exactly the point.
      */
     @EventListener
     public void onStatusChanged(ThinkProcessStatusChangedEvent event) {
@@ -103,29 +122,18 @@ public class ProcessCountsPusher {
         if (sessionId == null || sessionId.isBlank()) {
             return;
         }
-        ProcessCounts counts = countFor(event.tenantId(), sessionId);
-        // compute-and-compare under the map's per-key lock so two lanes
-        // transitioning concurrently cannot both decide "changed" and emit
-        // the same frame twice.
-        boolean[] changed = new boolean[1];
         lastSent.compute(sessionId, (key, previous) -> {
+            ProcessCounts counts = countFor(event.tenantId(), sessionId);
             if (counts.equals(previous)) {
                 return previous;
             }
-            changed[0] = true;
-            return counts;
+            boolean delivered = events.publish(sessionId, MessageType.PROCESS_COUNTS,
+                    toNotification(sessionId, counts));
+            // Nobody listening — forget the session (null removes the entry)
+            // so a later reconnect gets a fresh frame instead of being
+            // coalesced away against state no client ever saw.
+            return delivered ? counts : null;
         });
-        if (!changed[0]) {
-            return;
-        }
-        boolean delivered = events.publish(sessionId, MessageType.PROCESS_COUNTS,
-                toNotification(sessionId, counts));
-        if (!delivered) {
-            // Nobody listening — forget the session so a later reconnect
-            // gets a fresh frame instead of being coalesced away against
-            // state no client ever saw.
-            lastSent.remove(sessionId);
-        }
     }
 
     /**

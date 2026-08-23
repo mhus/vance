@@ -16,10 +16,12 @@ import org.jspecify.annotations.Nullable;
  *       auto-generated {@code toString()} of every record it travels
  *       through and from there into a log line. Hence a
  *       {@link Supplier}, resolved at the moment of use.</li>
- *   <li><b>Project scope, carried explicitly.</b> Mounts are configured per
- *       project and never cascade to {@code _tenant}, so both ids travel
- *       with the config — a protocol that needs to scope a remote call has
- *       them without reaching for a request context.</li>
+ *   <li><b>Scope carried explicitly.</b> A mount is resolved for one
+ *       {@code (tenant, project)} pair — the settings themselves cascade
+ *       {@code _tenant} → project, so the same {@code _tenant} configuration
+ *       produces one instance per project. Both ids therefore travel with the
+ *       config: a protocol that needs to scope a remote call has them without
+ *       reaching for a request context.</li>
  * </ul>
  *
  * @param mount                the mount name, already validated against the

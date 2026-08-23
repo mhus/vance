@@ -94,9 +94,19 @@ class OdeKitSourceLoaderTest {
                 .build();
     }
 
-    private static KitInheritDto reference() {
+    /**
+     * The kit reference. Its url is the address the build POST goes to and the
+     * one substituted as {@code accessUrl} — sources are matched by longest url
+     * prefix, so the configuration's url may be a shorter host-level entry that
+     * covers several endpoints.
+     */
+    private KitInheritDto reference() {
+        return reference(baseUrl());
+    }
+
+    private static KitInheritDto reference(String url) {
         KitInheritDto ref = new KitInheritDto();
-        ref.setUrl("http://irrelevant");
+        ref.setUrl(url);
         ref.setPath("acme-crm");
         return ref;
     }
@@ -263,14 +273,39 @@ class OdeKitSourceLoaderTest {
 
     @Test
     void load_trailingSlashInUrl_doesNotDoubleUp(@TempDir Path target) {
-        KitSourceDto withSlash = source();
-        withSlash.setUrl(baseUrl() + "/");
-
-        loader.load(reference(), withSlash,
+        loader.load(reference(baseUrl() + "/"), source(),
                 KitAccess.of("acme", "sales"), target);
 
         assertThat(MAPPER.readTree(received.getFirst()).get("accessUrl").asString())
                 .isEqualTo(baseUrl());
+    }
+
+    @Test
+    void load_endpointFollowsTheReference_notTheConfiguredPrefix(@TempDir Path target) {
+        // A source may be configured for a whole host and cover several
+        // endpoints under it by prefix. Building from the configuration url
+        // would POST to the wrong one — and bake the wrong base url into the
+        // delivered tool definitions.
+        KitSourceDto hostWide = source();
+        hostWide.setUrl("http://127.0.0.1");
+
+        loader.load(reference(), hostWide, KitAccess.of("acme", "sales"), target);
+
+        assertThat(MAPPER.readTree(received.getFirst()).get("accessUrl").asString())
+                .isEqualTo(baseUrl());
+    }
+
+    @Test
+    void load_nonHttpUrl_isRefusedWithAKitException(@TempDir Path target) {
+        // SafeLink permits mailto: — it answers "may a human be shown this".
+        // As a request target it would reach HttpRequest.newBuilder and throw
+        // an IllegalArgumentException nobody catches, i.e. a 500.
+        assertThatThrownBy(() -> loader.load(
+                reference("mailto:ops@example.com"), source(),
+                KitAccess.of("acme", "sales"), target))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("not an http(s) endpoint");
+        assertThat(received).isEmpty();
     }
 
     // ──────────────────── rendering (phase 2) ────────────────────
@@ -278,6 +313,22 @@ class OdeKitSourceLoaderTest {
     private static final String TEMPLATED_DESCRIPTOR =
             "name: acme-crm\nversion: 1.4.0\ndescription: CRM tools\nrender:\n"
                     + "  - tools/crm.yaml\n";
+
+    @Test
+    void load_declaredFile_getsTheInstallIdSubstituted(@TempDir Path target) throws IOException {
+        // Part of the documented variable set (planning/kit-ode-provisioning.md
+        // §4) and previously missing from the render context — with
+        // strictVariables=false it rendered empty rather than failing.
+        payload = zip(Map.of(
+                "kit.yaml", TEMPLATED_DESCRIPTOR,
+                "tools/crm.yaml", "install: {{ installId }}\n"));
+
+        loader.load(reference(), source(),
+                KitAccess.of("acme", "sales").withInstallId("k-42"), target);
+
+        assertThat(Files.readString(target.resolve("tools/crm.yaml")))
+                .isEqualTo("install: k-42\n");
+    }
 
     @Test
     void load_declaredFile_getsTheAccessUrlSubstituted(@TempDir Path target) throws IOException {
@@ -376,11 +427,9 @@ class OdeKitSourceLoaderTest {
     }
 
     @Test
-    void load_unsafeSourceUrl_failsBeforeAnyRequest(@TempDir Path target) {
-        KitSourceDto bad = source();
-        bad.setUrl("javascript:alert(1)");
-
-        assertThatThrownBy(() -> loader.load(reference(), bad,
+    void load_unsafeReferenceUrl_failsBeforeAnyRequest(@TempDir Path target) {
+        assertThatThrownBy(() -> loader.load(
+                reference("javascript:alert(1)"), source(),
                 KitAccess.of("acme", "sales"), target))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("not usable as an endpoint");

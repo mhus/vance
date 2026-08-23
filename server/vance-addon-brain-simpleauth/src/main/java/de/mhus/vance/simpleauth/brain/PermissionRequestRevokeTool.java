@@ -8,6 +8,7 @@ import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -43,6 +44,22 @@ public class PermissionRequestRevokeTool implements Tool {
     @Override
     public boolean primary() {
         return false;
+    }
+
+    /**
+     * Same treatment as {@code permission_request_grant} — see the note
+     * there. {@code primary()} alone does not keep a schema out of a
+     * classified turn's manifest; {@code ContextToolsApi.classify} reads
+     * {@link #deferred()}.
+     */
+    @Override
+    public Set<String> labels() {
+        return Set.of("executive");
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
     }
 
     @Override

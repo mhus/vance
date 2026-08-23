@@ -228,6 +228,56 @@ class SchemaMigrationServiceTest {
     }
 
     @Test
+    void runPending_baseline_stillRunsAMigrationThatOptedIn() {
+        // "No marker" also describes a database restored from before the
+        // anchor release. For a migration that is the only writer of a value
+        // the running code now reads differently, being skipped there is not
+        // recoverable — no later boot re-tries it.
+        noMarkers();
+        acquireSucceeds();
+
+        SchemaMigrationReport report = service(
+                entry(FIRST, First.class),
+                onBaseline(SECOND, Second.class)).runPending();
+
+        assertThat(EXECUTED).containsExactly(SECOND);
+        assertThat(report.baselined()).isTrue();
+        assertThat(report.applied()).containsExactly(SECOND);
+        assertThat(report.version()).isEqualTo(SECOND);
+    }
+
+    @Test
+    void runPending_baseline_stampsOnlyTheSkippedOnes() {
+        // The one that ran must keep its APPLIED marker — stamping it
+        // BASELINED afterwards would claim work never happened.
+        noMarkers();
+        acquireSucceeds();
+
+        service(entry(FIRST, First.class), onBaseline(SECOND, Second.class)).runPending();
+
+        assertThat(savedMarkers())
+                .filteredOn(m -> SECOND.equals(m.getId()))
+                .allSatisfy(m -> assertThat(m.getStatus())
+                        .isEqualTo(SchemaMigrationState.APPLIED));
+        assertThat(savedMarkers())
+                .filteredOn(m -> FIRST.equals(m.getId()))
+                .allSatisfy(m -> assertThat(m.getStatus())
+                        .isEqualTo(SchemaMigrationState.BASELINED));
+    }
+
+    @Test
+    void runPending_baseline_takesTheLock_onlyWhenSomethingActuallyRuns() {
+        // The "identical markers, no lock needed" argument covers stamping,
+        // not a migration that touches data.
+        noMarkers();
+        acquireSucceeds();
+
+        service(onBaseline(FIRST, First.class)).runPending();
+
+        verify(lockStore).tryAcquire(anyString(), any(), any());
+    }
+
+    @Test
     void runPending_doesNotBaseline_whenOnlyAFailedMarkerExists() {
         // A failed marker is proof the database has been seen before — baselining
         // it would silently drop the migration that is trying to run.
@@ -361,6 +411,11 @@ class SchemaMigrationServiceTest {
 
     private static Registered entry(String id, Class<? extends SchemaMigration> type) {
         return new Registered(id, type);
+    }
+
+    /** A registry line that refuses to be baselined away. */
+    private static Registered onBaseline(String id, Class<? extends SchemaMigration> type) {
+        return new Registered(id, type, /*runOnBaseline*/ true);
     }
 
     /**

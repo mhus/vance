@@ -148,6 +148,23 @@ public class MagratheaTaskExecutor {
             return;
         }
 
+        // The start refused every state whose capability this run lacks —
+        // every state except the ones that catch `capability_missing`, which
+        // is the author saying "let it run and hand me the failure". This is
+        // where that failure is produced. Without it the waiver was a way to
+        // switch the start check off and nothing else: the exempted state ran
+        // as though the capability were there (an agent_task with
+        // `inheritContext:` quietly inheriting nothing) and the catch: branch
+        // was unreachable, so the symptom was answers missing context nobody
+        // could see was dropped.
+        String lacking = missingCapability(executor, state, start);
+        if (lacking != null) {
+            log.info("Magrathea run {} state '{}' cannot run with this binding: {}",
+                    task.getWorkflowRunId(), task.getStateName(), lacking);
+            publishOutcome(task, state.type(), TaskOutcome.capabilityMissing(lacking), 0L);
+            return;
+        }
+
         // Replay vars + params for the executor's view.
         Map<String, Object> vars = projector.projectVars(
                 task.getTenantId(), task.getProjectId(), task.getWorkflowRunId());
@@ -228,6 +245,29 @@ public class MagratheaTaskExecutor {
             return;
         }
         publishOutcome(task, state.type(), outcome.get(), System.currentTimeMillis() - started);
+    }
+
+    /**
+     * The first capability this state needs and the run does not have, or
+     * {@code null} when it can run.
+     *
+     * <p>Read from the frozen {@link StartRecord} rather than recomputed:
+     * the run's binding must not change under a running plan, which is the
+     * same reason the record carries it in the first place.
+     */
+    private static @org.jspecify.annotations.Nullable String missingCapability(
+            MagratheaTypeExecutor executor, MagratheaStateSpec state, StartRecord start) {
+        java.util.Set<de.mhus.vance.api.magrathea.RunCapability> needed = executor.requires(state);
+        if (needed.isEmpty()) return null;
+        java.util.Set<String> have = start.getCapabilities() == null
+                ? java.util.Set.of()
+                : start.getCapabilities();
+        for (de.mhus.vance.api.magrathea.RunCapability capability : needed) {
+            if (!have.contains(capability.name())) {
+                return "state '" + state.name() + "' needs " + capability;
+            }
+        }
+        return null;
     }
 
     /**

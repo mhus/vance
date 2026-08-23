@@ -883,6 +883,30 @@ class ModelCatalogTest {
         assertThat(info.maxTools()).isNull();
     }
 
+    @Test
+    void modelWithoutADocument_stillGetsTheProviderSidecarCap() {
+        // A new release, an exotic gateway model, discovery not run — the
+        // fallback path used to build a ModelInfo with "no known limit"
+        // even though _vance/model/openai/_provider.yaml states 128. The
+        // budget then went in blind and the endpoint answered 400.
+        ModelInfo info = catalog.lookupOrDefault(
+                TENANT, PROJECT, "openai", "gpt-does-not-exist-yet");
+
+        assertThat(info.maxTools()).isEqualTo(128);
+    }
+
+    @Test
+    void namedGatewayWithoutASidecar_getsNoCap_evenOnTheOpenAiProtocol() {
+        // The sidecar is keyed by the *instance* directory, and the bundled
+        // openai one says so explicitly: a gateway configured as
+        // `ai.provider.my-gateway.type=openai` is a different endpoint and
+        // may enforce a different number, or none.
+        ModelInfo info = catalog.lookupOrDefault(
+                TENANT, PROJECT, "my-gateway", "openai", "some-model");
+
+        assertThat(info.maxTools()).isNull();
+    }
+
     private void stubModelDoc(String tenantId, String projectId, String relPath, String yamlBody) {
         stubDocAtPrefix(ModelCatalog.MODEL_PATH_PREFIX,
                 tenantId, projectId, relPath, yamlBody);

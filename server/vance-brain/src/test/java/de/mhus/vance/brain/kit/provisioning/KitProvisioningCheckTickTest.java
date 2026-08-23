@@ -25,6 +25,7 @@ class KitProvisioningCheckTickTest {
 
     private KitProvisioningProperties properties;
     private KitProvisioningCheck check;
+    private KitProvisioningService provisioningService;
     private ProjectActivationRegistry activationRegistry;
     private KitProvisioningCheckTick tick;
 
@@ -32,8 +33,10 @@ class KitProvisioningCheckTickTest {
     void setUp() {
         properties = new KitProvisioningProperties();
         check = mock(KitProvisioningCheck.class);
+        provisioningService = mock(KitProvisioningService.class);
         activationRegistry = new ProjectActivationRegistry();
-        tick = new KitProvisioningCheckTick(properties, check, activationRegistry);
+        tick = new KitProvisioningCheckTick(
+                properties, check, provisioningService, activationRegistry);
         when(check.check(any(), any()))
                 .thenReturn(new KitProvisioningCheck.Report(List.of(), List.of(), List.of()));
     }
@@ -81,6 +84,19 @@ class KitProvisioningCheckTickTest {
     }
 
     @Test
+    void runningProjectsAlsoGetTheUnattendedHalf() {
+        // Reporting alone left `authority: update` entries inert: the check
+        // deliberately says nothing about them ("the update path deals with
+        // it") and nothing periodic called the update path.
+        activationRegistry.activate("acme", "mail-assistant");
+
+        tick.tick();
+
+        verify(provisioningService, times(1))
+                .provisionCoalesced("acme", "mail-assistant");
+    }
+
+    @Test
     void disabledByConfiguration_doesNothing() {
         activationRegistry.activate("acme", "mail-assistant");
         properties.setCheckEnabled(false);
@@ -88,5 +104,6 @@ class KitProvisioningCheckTickTest {
         tick.tick();
 
         verify(check, never()).check(any(), any());
+        verify(provisioningService, never()).provisionCoalesced(any(), any());
     }
 }

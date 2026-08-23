@@ -64,6 +64,20 @@ class FeedsDigestRecipeTest {
     }
 
     @Test
+    void digestRecipe_namesTheInboxRecipientInItsExampleCall() {
+        // `targetUserId` is a required parameter of `inbox_post` with no
+        // fallback to the runAs user. The prompt spells out the exact call
+        // shape on purpose, so leaving the parameter out of it means the one
+        // productive call of a scheduled job throws — or the model invents a
+        // user id and the digest lands with a stranger. `whoami` is the
+        // sanctioned source for the id.
+        String prompt = String.valueOf(digest().get("promptPrefix"));
+
+        assertThat(prompt).contains("targetUserId");
+        assertThat(prompt).contains("whoami");
+    }
+
+    @Test
     void digestRecipe_isNotOfferedInTheUserPicker() {
         // It is a scheduled worker, not a chat mode — somebody who wants to read
         // a feed opens the feed.

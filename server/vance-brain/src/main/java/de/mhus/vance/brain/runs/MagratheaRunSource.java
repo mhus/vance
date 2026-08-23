@@ -9,6 +9,7 @@ import de.mhus.vance.api.runs.RunLinkDto;
 import de.mhus.vance.api.runs.RunStatus;
 import de.mhus.vance.api.runs.RunStepDto;
 import de.mhus.vance.api.runs.RunSummaryDto;
+import de.mhus.vance.brain.magrathea.MagratheaGateChatAnswerService;
 import de.mhus.vance.brain.magrathea.MagratheaWorkflowService;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
 import de.mhus.vance.shared.magrathea.MagratheaStateProjector;
@@ -61,6 +62,8 @@ public class MagratheaRunSource implements RunSource {
     /** Whose session a bound run belongs to — see visibleTo. */
     private final de.mhus.vance.shared.session.SessionService sessionService;
     private final de.mhus.vance.shared.permission.PermissionService permissionService;
+    /** Finds the gate a waiting run sits at — see {@link #waitingOnInboxItem}. */
+    private final MagratheaGateChatAnswerService gateAnswers;
 
     @Override
     public String sourceId() {
@@ -96,6 +99,7 @@ public class MagratheaRunSource implements RunSource {
                 .variables(run.getVars() == null ? new LinkedHashMap<>() : run.getVars())
                 .children(readChildren(tenantId, projectId, nativeId))
                 .links(readLinks(tenantId, projectId, nativeId, run))
+                .waitingOnInboxItemId(waitingOnInboxItem(tenantId, nativeId, run.getStatus()))
                 .allowedActions(actionsFor(run.getStatus()))
                 .errorMessage(terminalReason(tenantId, projectId, nativeId, run.getStatus()))
                 .result(run.getResult())
@@ -191,6 +195,37 @@ public class MagratheaRunSource implements RunSource {
                         de.mhus.vance.shared.magrathea.journal.StatusRecord.class)
                 .map(de.mhus.vance.shared.magrathea.journal.StatusRecord::getReason)
                 .orElse(null);
+    }
+
+    /**
+     * The inbox item this run is waiting at, when it is waiting at one.
+     *
+     * <p>{@code runs-view.md} §4.2 promises this field for Magrathea and
+     * nothing produced it, which made the one link a reader opens the detail
+     * page <em>for</em> — "it says waiting; waiting on what?" — impossible to
+     * render. The answer already existed: {@code findOpenGateItem} is what
+     * the chat route uses to decide whether an utterance is an answer.
+     *
+     * <p>Only asked of a live run: a finished one has no open gate, and the
+     * two extra reads per detail view are not worth spending to prove it.
+     * A failure to look is not a failure of the page — the field stays empty
+     * and the rest of the detail renders, which is the same shape the field
+     * has when there is simply no gate.
+     */
+    private @Nullable String waitingOnInboxItem(
+            String tenantId, String runId, @Nullable MagratheaRunStatus status) {
+        if (status != MagratheaRunStatus.RUNNING && status != MagratheaRunStatus.PAUSED) {
+            return null;
+        }
+        try {
+            return gateAnswers.findOpenGateItem(tenantId, runId)
+                    .map(de.mhus.vance.shared.inbox.InboxItemDocument::getId)
+                    .orElse(null);
+        } catch (RuntimeException e) {
+            log.debug("Magrathea run {} — could not look up its open gate: {}",
+                    runId, e.toString());
+            return null;
+        }
     }
 
     /**

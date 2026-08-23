@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.workspace.access;
 
 import de.mhus.vance.brain.cluster.ClusterService;
+import de.mhus.vance.brain.project.ProjectEnginesStopRequested;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectOwnership;
 import de.mhus.vance.shared.project.ProjectService;
@@ -10,6 +11,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 /**
@@ -21,29 +23,34 @@ import org.springframework.stereotype.Component;
  * expired resolves to empty and is forgotten on the next miss, so the caller
  * adopts it locally. See {@code specification/workspace-access.md} §4.
  *
- * <p>The cache is now genuinely a <em>cache</em>: it saves the endpoint
- * lookup, not a liveness verdict. Before the lease it also cached the answer
- * to "is that node still alive", which is exactly the kind of thing a TTL
- * cache must not hold.
+ * <p>The entry is a <em>max-age</em>, not an idle timeout. It used to expire
+ * against "last used" and every hit pushed that forward, so a project asked
+ * for more often than the TTL never re-read Mongo at all — the only way back
+ * to the truth was a connect failure, and the failure mode this guards against
+ * produces no connect failure: the pod that lost the lease is still up and
+ * still answers. An entry is therefore only reused for as long as the gates it
+ * was derived from stay true, i.e.
+ * {@link ClusterService#routingAnswerMaxAge()} (see {@code ClusterTimeWindows}).
  */
 @Component
 @Slf4j
 public class WorkspaceRoutingCache {
 
-    record PodEntry(String endpoint, Instant lastUsed) {
+    /** {@code resolvedAt} is when the endpoint was read, never touched again. */
+    record PodEntry(String endpoint, Instant resolvedAt) {
     }
 
     private final ConcurrentMap<ProjectPodKey, PodEntry> entries = new ConcurrentHashMap<>();
     private final ProjectService projectService;
     private final ClusterService clusterService;
-    private final Duration ttl;
+    private final WorkspaceAccessProperties properties;
 
     public WorkspaceRoutingCache(ProjectService projectService,
                                  ClusterService clusterService,
                                  WorkspaceAccessProperties properties) {
         this.projectService = projectService;
         this.clusterService = clusterService;
-        this.ttl = properties.getCacheTtl();
+        this.properties = properties;
     }
 
     /**
@@ -54,10 +61,15 @@ public class WorkspaceRoutingCache {
      * that and call {@link #invalidate} on connect failure.
      */
     public Optional<String> lookup(ProjectPodKey key) {
-        Instant now = Instant.now();
+        return lookup(key, Instant.now());
+    }
+
+    /** Extracted so tests can drive the max-age boundary deterministically. */
+    Optional<String> lookup(ProjectPodKey key, Instant now) {
         PodEntry cached = entries.get(key);
         if (cached != null && !isExpired(cached, now)) {
-            entries.put(key, new PodEntry(cached.endpoint(), now));
+            // Deliberately no write-back: reuse must not extend the entry's
+            // life, or a hot route never revalidates.
             return Optional.of(cached.endpoint());
         }
         Optional<String> fresh = readFromMongo(key);
@@ -124,16 +136,47 @@ public class WorkspaceRoutingCache {
         Optional<String> endpoint = clusterService.resolveEndpointByPodId(holder.get());
         if (endpoint.isEmpty()) {
             log.debug("Project {}/{} is leased by pod '{}' but the cluster registry has no "
-                            + "endpoint row for it; caller adopts locally",
+                            + "live endpoint for it (row purged, stopped, or not beating); "
+                            + "caller adopts locally",
                     key.tenantId(), key.projectName(), doc.get().getHomeNode());
         }
         return endpoint;
     }
 
-    private boolean isExpired(PodEntry entry, Instant now) {
-        if (ttl.isZero() || ttl.isNegative()) {
-            return false;
+    /**
+     * Drop the route for a project this pod just lost or shut down. The pod
+     * that stops serving a project is the first to know its cached endpoint is
+     * a guess, and it learns that here rather than through a connect failure
+     * that will not come (the previous holder is still up and still answers).
+     *
+     * <p>Listening on the engine-stop event instead of being called from
+     * {@code ProjectLeaseService} keeps the lease reconciler free of a
+     * workspace dependency and picks up suspend and close for free — in all
+     * three cases the local route for that project is no longer ours to
+     * assume.
+     */
+    @EventListener
+    public void onProjectEnginesStopRequested(ProjectEnginesStopRequested event) {
+        entries.remove(new ProjectPodKey(event.tenantId(), event.projectName()));
+    }
+
+    /**
+     * Age at which an entry has to be re-derived: the cluster's routing window,
+     * optionally shortened by {@code vance.workspace.access.cache-ttl}. The
+     * cluster window is never <em>lengthened</em> by configuration — an
+     * endpoint read behind a lease gate and a liveness gate cannot be more
+     * durable than the shorter of the two.
+     */
+    private Duration maxAge() {
+        Duration routing = clusterService.routingAnswerMaxAge();
+        Duration configured = properties.getCacheTtl();
+        if (configured == null || configured.isZero() || configured.isNegative()) {
+            return routing;
         }
-        return entry.lastUsed().plus(ttl).isBefore(now);
+        return configured.compareTo(routing) < 0 ? configured : routing;
+    }
+
+    private boolean isExpired(PodEntry entry, Instant now) {
+        return entry.resolvedAt().plus(maxAge()).isBefore(now);
     }
 }

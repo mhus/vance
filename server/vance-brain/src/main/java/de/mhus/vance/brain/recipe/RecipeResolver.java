@@ -460,12 +460,14 @@ public class RecipeResolver {
         ResolvedRecipe r = resolved.get();
         String modeKey = (mode == null) ? null : mode.name();
         ProfileBlock profileBlock = resolveProfileBlock(r, connectionProfile);
-        RecipeModeBlock hit = lookupModeBlock(r, connectionProfile, modeKey);
+        List<RecipeModeBlock> modeChain = modeBlockChain(r, connectionProfile, modeKey);
 
         // Budget-priority hints are unioned along the cascade instead of
         // resolved first-hit-wins. They carry no visibility effect, so two
         // layers ranking different tools cannot contradict each other —
         // and a priority-only block must not shadow an outer add/defer.
+        // Which is also why every visited mode-block contributes here, not
+        // only the one that wins the visibility lookup below.
         List<String> keep = new ArrayList<>();
         List<String> dropFirst = new ArrayList<>();
         collectPriority(tenantId, projectId, ctx,
@@ -473,13 +475,20 @@ public class RecipeResolver {
         collectPriority(tenantId, projectId, ctx,
                 profileBlock.allowedToolsKeep(), profileBlock.allowedToolsDropFirst(),
                 keep, dropFirst);
-        if (hit != null) {
+        for (RecipeModeBlock block : modeChain) {
             collectPriority(tenantId, projectId, ctx,
-                    hit.allowedToolsKeep(), hit.allowedToolsDropFirst(), keep, dropFirst);
+                    block.allowedToolsKeep(), block.allowedToolsDropFirst(), keep, dropFirst);
         }
 
-        // Visibility cascade: first matching block wins.
-        if (hit != null && !hit.isEmpty()) {
+        // Visibility cascade: first block that actually states visibility wins.
+        RecipeModeBlock hit = null;
+        for (RecipeModeBlock block : modeChain) {
+            if (!block.isEmpty()) {
+                hit = block;
+                break;
+            }
+        }
+        if (hit != null) {
             return expandFilter(tenantId, projectId, hit, ctx, keep, dropFirst);
         }
 
@@ -533,18 +542,28 @@ public class RecipeResolver {
     }
 
     /**
-     * Walks the mode-block cascade. Returns the first non-empty
-     * {@link RecipeModeBlock} encountered, or {@code null} when none
-     * applies (caller falls through to profile-base / recipe-base).
+     * Every mode-block that applies, in cascade order — not just the
+     * winner.
      *
      * <p>Order: {@code profiles[profile].modes[mode] →
      * profiles[profile].modes["default"] → profiles["default"].modes[mode] →
      * profiles["default"].modes["default"] → recipe.modes[mode] →
      * recipe.modes["default"]}.
+     *
+     * <p>The caller takes the first <em>non-empty</em> block for the
+     * visibility lists (first-hit-wins) and unions the priority hints over
+     * all of them. Returning only the first <em>present</em> block would
+     * conflate the two: a block carrying nothing but {@code allowedToolsKeep}
+     * is visibility-empty by design ({@link RecipeModeBlock#isEmpty()}), and
+     * stopping there would drop the {@code allowedToolsRemove} of a block
+     * further down the cascade — tools that should be gone stay primary.
+     * With the new ranking lists, "present and visibility-empty" is an
+     * expected shape rather than a curiosity.
      */
-    private static @Nullable RecipeModeBlock lookupModeBlock(
+    private static List<RecipeModeBlock> modeBlockChain(
             ResolvedRecipe r, @Nullable String connectionProfile, @Nullable String modeKey) {
-        if (modeKey == null) modeKey = MODE_DEFAULT_KEY;
+        String key = modeKey == null ? MODE_DEFAULT_KEY : modeKey;
+        List<RecipeModeBlock> chain = new ArrayList<>();
         Map<String, ProfileBlock> profiles = r.profiles();
         // 1+2: exact profile, then default profile
         ProfileBlock[] profileChain = {
@@ -554,19 +573,25 @@ public class RecipeResolver {
         };
         for (ProfileBlock pb : profileChain) {
             if (pb == null) continue;
-            Map<String, RecipeModeBlock> modes = pb.modes();
-            if (modes == null || modes.isEmpty()) continue;
-            RecipeModeBlock exact = modes.get(modeKey);
-            if (exact != null) return exact;
-            RecipeModeBlock catchAll = modes.get(MODE_DEFAULT_KEY);
-            if (catchAll != null) return catchAll;
+            addModeBlocks(chain, pb.modes(), key);
         }
         // 3: recipe-base modes
-        Map<String, RecipeModeBlock> baseModes = r.modes();
-        if (baseModes == null || baseModes.isEmpty()) return null;
-        RecipeModeBlock baseExact = baseModes.get(modeKey);
-        if (baseExact != null) return baseExact;
-        return baseModes.get(MODE_DEFAULT_KEY);
+        addModeBlocks(chain, r.modes(), key);
+        return chain;
+    }
+
+    /** Appends {@code modes[key]} then {@code modes["default"]}, when present. */
+    private static void addModeBlocks(
+            List<RecipeModeBlock> chain,
+            @Nullable Map<String, RecipeModeBlock> modes,
+            String key) {
+        if (modes == null || modes.isEmpty()) return;
+        RecipeModeBlock exact = modes.get(key);
+        if (exact != null) chain.add(exact);
+        if (!MODE_DEFAULT_KEY.equals(key)) {
+            RecipeModeBlock catchAll = modes.get(MODE_DEFAULT_KEY);
+            if (catchAll != null) chain.add(catchAll);
+        }
     }
 
     private ToolFilter expandFilter(

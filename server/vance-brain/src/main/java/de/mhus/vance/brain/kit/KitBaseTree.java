@@ -57,11 +57,6 @@ final class KitBaseTree {
         return contents.get(path);
     }
 
-    /** True once a base tree was successfully materialised. */
-    boolean available() {
-        return ensureResolved();
-    }
-
     private boolean ensureResolved() {
         if (attempted) return resolved != null;
         attempted = true;

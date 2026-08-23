@@ -371,6 +371,39 @@ class RecipeResolverModeFilterTest {
         assertThat(f.keep()).containsExactly("doc_read");
     }
 
+    @Test
+    void priorityOnlyProfileModeBlock_doesNotShadowAnOuterModeBlock() {
+        // The profile's mode block is present but visibility-empty (it only
+        // ranks). Stopping the cascade there would drop the recipe-level
+        // mode block's remove list — tools that should be gone stay primary.
+        ResolvedRecipe r = new ResolvedRecipe(
+                "arthur", "test recipe", "arthur", Map.of(),
+                null, PromptMode.APPEND, null,
+                /*add*/ List.of(), /*remove*/ List.of(), /*defer*/ List.of(),
+                /*keep*/ List.of(), /*dropFirst*/ List.of(),
+                /*modes*/ Map.of("NORMAL", new RecipeModeBlock(
+                        List.of(), List.of("destructive_tool"), List.of())),
+                /*profiles*/ Map.of("foot", new ProfileBlock(
+                        List.of(), List.of(), List.of(),
+                        List.of(), List.of(),
+                        Map.of("NORMAL", new RecipeModeBlock(
+                                /*add*/ List.of(), /*remove*/ List.of(),
+                                /*defer*/ List.of(),
+                                /*keep*/ List.of("doc_read"),
+                                /*dropFirst*/ List.of())),
+                        null, Map.of(), null)),
+                List.of(), null, List.of(), false, false, false, null, List.of(),
+                List.of(), RecipeSource.RESOURCE);
+        when(loader.load(any(), any(), eq("arthur"))).thenReturn(Optional.of(r));
+
+        RecipeResolver.ToolFilter f = resolver.toolFilterFor(
+                TENANT, PROJECT, "arthur", "foot", ProcessMode.NORMAL);
+
+        assertThat(f.remove()).containsExactly("destructive_tool");
+        // The ranking of the shadowed-past block is still collected.
+        assertThat(f.keep()).containsExactly("doc_read");
+    }
+
     private static ResolvedRecipe recipeWithPriority(
             List<String> baseKeep,
             List<String> baseDropFirst,

@@ -89,6 +89,8 @@ public class WorkspaceListTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String dirName = WorkspaceDirResolver.resolve(workspace, ctx, stringOrNull(params, "dirName"));
         String subPath = stringOrNull(params, "path");
+        WorkspaceSubPath.requirePresent(
+                workspace, ctx, dirName, subPath, /*requireDirectory*/ true);
         String prefix = WorkspaceSubPath.prefix(subPath);
         List<String> all;
         try {

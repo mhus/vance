@@ -37,7 +37,9 @@ class LocalFileJaglanProtocolTest {
 
     @BeforeEach
     void setUp() throws IOException {
-        protocol = new LocalFileJaglanProtocol(new WorkspaceRootService());
+        // The operator allow-list is what enables the protocol at all — see
+        // localProtocol_withoutAnAllowedRoot_isDisabled below.
+        protocol = new LocalFileJaglanProtocol(new WorkspaceRootService(), root.toString());
         Files.createDirectories(root.resolve("books"));
         Files.writeString(root.resolve("books/dune.txt"), "spice");
         Files.writeString(root.resolve("readme.md"), "hello");
@@ -71,6 +73,52 @@ class LocalFileJaglanProtocolTest {
                 () -> null, "acme", "research", Map.of())))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("rootDir is required");
+    }
+
+    @Test
+    void localProtocol_withoutAnAllowedRoot_isDisabled() {
+        // rootDir comes from a project-scoped setting, so without an operator
+        // allow-list a project admin (or, before the deny list, an installed
+        // kit) could point a mount at "/" and read the pod's file system.
+        // Empty property = protocol off; a capability this wide must not be
+        // obtainable by omission.
+        LocalFileJaglanProtocol disabled =
+                new LocalFileJaglanProtocol(new WorkspaceRootService(), "");
+
+        assertThatThrownBy(() -> disabled.instantiate(new JaglanInstanceConfig(
+                "library", LocalFileJaglanProtocol.ID, "", "",
+                () -> null, "acme", "research",
+                Map.of(LocalFileJaglanProtocol.EXTRA_ROOT_DIR, root.toString()))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(LocalFileJaglanProtocol.ALLOWED_ROOTS_PROPERTY);
+    }
+
+    @Test
+    void instantiate_rootDirOutsideTheAllowedRoots_isRefused() {
+        LocalFileJaglanProtocol narrow = new LocalFileJaglanProtocol(
+                new WorkspaceRootService(), root.resolve("books").toString());
+
+        assertThatThrownBy(() -> narrow.instantiate(new JaglanInstanceConfig(
+                "library", LocalFileJaglanProtocol.ID, "", "",
+                () -> null, "acme", "research",
+                Map.of(LocalFileJaglanProtocol.EXTRA_ROOT_DIR, root.toString()))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("outside every directory the operator permitted");
+    }
+
+    @Test
+    void instantiate_rootDirBelowAnAllowedRoot_isAccepted() {
+        // The allow-list names base directories, not exact mounts — a project
+        // may pick any subtree of one.
+        LocalFileJaglanProtocol wide =
+                new LocalFileJaglanProtocol(new WorkspaceRootService(), root.toString());
+
+        assertThat(wide.instantiate(new JaglanInstanceConfig(
+                "library", LocalFileJaglanProtocol.ID, "", "",
+                () -> null, "acme", "research",
+                Map.of(LocalFileJaglanProtocol.EXTRA_ROOT_DIR,
+                        root.resolve("books").toString()))))
+                .isNotNull();
     }
 
     @Test

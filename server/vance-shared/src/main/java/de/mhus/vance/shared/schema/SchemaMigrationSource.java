@@ -51,6 +51,31 @@ public interface SchemaMigrationSource {
      * <p>The class is instantiated only when the migration is actually
      * pending — a registry of a hundred entries costs one reflective
      * constructor call on the boot that needs it, and none on the others.
+     *
+     * @param runOnBaseline opt out of being skipped by
+     *        {@code SchemaMigrationService.baseline()}. Default {@code false},
+     *        which is the documented rule: a database with no marker is taken
+     *        to be new, so historical transforms have nothing to do there.
+     *        <p>Set it to {@code true} for the migrations where that guess
+     *        being wrong is <b>not recoverable</b>. The wrong case is a
+     *        database that predates the framework and was never booted with
+     *        the anchor release — a restored backup, a staging dump, a paused
+     *        installation. It is indistinguishable from a new one from here,
+     *        and if the migration is the only writer of a value the running
+     *        code now reads differently, nothing later puts it right: no
+     *        second boot re-tries it, and no edit in the product touches it.
+     *        <p>The price of saying {@code true} is that a genuinely new
+     *        database runs one no-op query. The price of leaving it
+     *        {@code false} wrongly is a silently mis-configured installation,
+     *        so the choice is not symmetric. It still is not a default:
+     *        the migration has to be cheap on an empty database and
+     *        idempotent, and most are neither critical nor free.
      */
-    record Registered(String id, Class<? extends SchemaMigration> type) {}
+    record Registered(String id, Class<? extends SchemaMigration> type, boolean runOnBaseline) {
+
+        /** The ordinary line: baselined away with everything else. */
+        public Registered(String id, Class<? extends SchemaMigration> type) {
+            this(id, type, false);
+        }
+    }
 }

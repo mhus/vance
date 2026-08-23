@@ -62,6 +62,29 @@ class FeedFilterTest {
     }
 
     @Test
+    void blankKeywords_areDroppedRatherThanEmptyingTheFeed() {
+        // An empty include term can never match — `contains` refuses an empty
+        // needle — so a single stray one used to reject every entry and leave
+        // the reader an empty feed with nothing to explain it. Reachable over
+        // REST and over `feed_read`; only the manifest path filtered it.
+        FeedFilter filter = new FeedFilter(
+                null, Set.of(), List.of("", "  "), List.of("  "), null);
+
+        assertThat(filter.include()).isEmpty();
+        assertThat(filter.exclude()).isEmpty();
+        assertThat(filter.needsPostFilter(caps(true, true, true))).isFalse();
+        assertThat(filter.matches(item("Tram line opens", null))).isTrue();
+    }
+
+    @Test
+    void keywords_areTrimmed() {
+        FeedFilter filter = new FeedFilter(
+                null, Set.of(), List.of(" rail "), List.of(), null);
+
+        assertThat(filter.include()).containsExactly("rail");
+    }
+
+    @Test
     void matches_itemWithoutDeclaredLanguage_passesALanguageFilter() {
         FeedFilter german = new FeedFilter(null, Set.of("de"), List.of(), List.of(), null);
 

@@ -52,14 +52,14 @@ class ToolBudgetServiceTest {
     void catalogValue_becomesTheLimit() {
         stubModel("openai:gpt-x", "openai", "gpt-x", 128);
 
-        assertThat(service.limitFor(process("openai:gpt-x", List.of()), "proj")).hasValue(128);
+        assertThat(service.limitFor(process("openai:gpt-x", List.of()))).hasValue(128);
     }
 
     @Test
     void noCatalogValueAnywhere_meansNoLimit() {
         stubModel("anthropic:claude-x", "anthropic", "claude-x", null);
 
-        assertThat(service.limitFor(process("anthropic:claude-x", List.of()), "proj")).isEmpty();
+        assertThat(service.limitFor(process("anthropic:claude-x", List.of()))).isEmpty();
     }
 
     @Test
@@ -67,7 +67,7 @@ class ToolBudgetServiceTest {
         stubModel("openai:gpt-x", "openai", "gpt-x", 128);
         stubModel("cheap", "openai", "gpt-small", 64);
 
-        assertThat(service.limitFor(process("openai:gpt-x", List.of("cheap")), "proj")).hasValue(64);
+        assertThat(service.limitFor(process("openai:gpt-x", List.of("cheap")))).hasValue(64);
     }
 
     @Test
@@ -75,7 +75,7 @@ class ToolBudgetServiceTest {
         stubModel("openai:gpt-x", "openai", "gpt-x", 128);
         stubModel("big", "anthropic", "claude-x", null);
 
-        assertThat(service.limitFor(process("openai:gpt-x", List.of("big")), "proj")).hasValue(128);
+        assertThat(service.limitFor(process("openai:gpt-x", List.of("big")))).hasValue(128);
     }
 
     @Test
@@ -83,7 +83,7 @@ class ToolBudgetServiceTest {
         stubModel("openai:gpt-x", "openai", "gpt-x", 128);
         observed.learnFrom("openai:gpt-x", "maximum length 96", 128);
 
-        assertThat(service.limitFor(process("openai:gpt-x", List.of()), "proj")).hasValue(96);
+        assertThat(service.limitFor(process("openai:gpt-x", List.of()))).hasValue(96);
     }
 
     @Test
@@ -91,18 +91,18 @@ class ToolBudgetServiceTest {
         stubModel("openai:gpt-x", "openai", "gpt-x", null);
         observed.learnFrom("openai:gpt-x", "maximum length 128", 200);
 
-        assertThat(service.limitFor(process("openai:gpt-x", List.of()), "proj")).hasValue(128);
+        assertThat(service.limitFor(process("openai:gpt-x", List.of()))).hasValue(128);
     }
 
     @Test
     void learningANewLimit_invalidatesTheMemo() {
         stubModel("openai:gpt-x", "openai", "gpt-x", null);
         ThinkProcessDocument process = process("openai:gpt-x", List.of());
-        assertThat(service.limitFor(process, "proj")).isEmpty();
+        assertThat(service.limitFor(process)).isEmpty();
 
         observed.learnFrom("openai:gpt-x", "maximum length 128", 200);
 
-        assertThat(service.limitFor(process, "proj")).hasValue(128);
+        assertThat(service.limitFor(process)).hasValue(128);
     }
 
     @Test
@@ -148,7 +148,7 @@ class ToolBudgetServiceTest {
         when(resolver.resolveOrDefault(any(), any(), any(), any()))
                 .thenThrow(new IllegalStateException("no api key"));
 
-        assertThat(service.limitFor(process("broken", List.of()), "proj")).isEmpty();
+        assertThat(service.limitFor(process("broken", List.of()))).isEmpty();
     }
 
     @Test
@@ -187,7 +187,7 @@ class ToolBudgetServiceTest {
         ThinkProcessDocument p = process("openai:gpt-x", List.of());
         p.getEngineParams().put("aiScope", "tenant");
 
-        assertThat(service.limitFor(p, "proj")).hasValue(128);
+        assertThat(service.limitFor(p)).hasValue(128);
 
         verify(resolver).resolveOrDefault(eq("openai:gpt-x"), eq("acme"), isNull(), isNull());
         verify(catalog).lookupOrDefault(
@@ -198,7 +198,7 @@ class ToolBudgetServiceTest {
     void unpinnedProcess_stillResolvesThroughTheProjectCascade() {
         stubModel("openai:gpt-x", "openai", "gpt-x", 128);
 
-        assertThat(service.limitFor(process("openai:gpt-x", List.of()), "proj")).hasValue(128);
+        assertThat(service.limitFor(process("openai:gpt-x", List.of()))).hasValue(128);
 
         verify(resolver).resolveOrDefault(eq("openai:gpt-x"), eq("acme"), eq("proj"), eq("p-1"));
     }
@@ -211,11 +211,43 @@ class ToolBudgetServiceTest {
         ThinkProcessDocument pinned = process("openai:gpt-x", List.of());
         pinned.getEngineParams().put("aiScope", "tenant");
 
-        service.limitFor(process("openai:gpt-x", List.of()), "proj");
-        service.limitFor(pinned, "proj");
+        service.limitFor(process("openai:gpt-x", List.of()));
+        service.limitFor(pinned);
 
         verify(resolver).resolveOrDefault(eq("openai:gpt-x"), eq("acme"), eq("proj"), eq("p-1"));
         verify(resolver).resolveOrDefault(eq("openai:gpt-x"), eq("acme"), isNull(), isNull());
+    }
+
+    @Test
+    void twoProcessesInOneProject_doNotShareAMemoEntry() {
+        // The process id is a settings layer of its own, and the alias is
+        // resolved through it. Sharing the memo would let whichever process
+        // ran first decide the other's budget for the cache TTL.
+        stubModel("openai:gpt-x", "openai", "gpt-x", 128);
+        ThinkProcessDocument a = process("openai:gpt-x", List.of());
+        ThinkProcessDocument b = process("openai:gpt-x", List.of());
+        b.setId("p-2");
+
+        service.limitFor(a);
+        service.limitFor(b);
+
+        verify(resolver).resolveOrDefault(eq("openai:gpt-x"), eq("acme"), eq("proj"), eq("p-1"));
+        verify(resolver).resolveOrDefault(eq("openai:gpt-x"), eq("acme"), eq("proj"), eq("p-2"));
+    }
+
+    @Test
+    void aiScope_followsTheProcessProject_notTheWorkingProject() {
+        // ChatBehaviorBuilder.fromProcess and EngineChatFactory both read
+        // process.getProjectId(); reading the cap through a cross-project
+        // worker's *working* project would budget a different endpoint.
+        stubModel("openai:gpt-x", "openai", "gpt-x", 128);
+        ThinkProcessDocument p = process("openai:gpt-x", List.of());
+        p.setProjectId("home-project");
+
+        service.forProcess(p, "working-project", Map.of());
+
+        verify(resolver).resolveOrDefault(
+                eq("openai:gpt-x"), eq("acme"), eq("home-project"), eq("p-1"));
     }
 
     @Test

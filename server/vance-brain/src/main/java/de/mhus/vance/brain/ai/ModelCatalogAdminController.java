@@ -36,6 +36,7 @@ public class ModelCatalogAdminController {
 
     private final ModelCatalog modelCatalog;
     private final ModelDiscoveryService discoveryService;
+    private final de.mhus.vance.brain.tools.budget.ObservedToolLimitRegistry observedToolLimits;
     private final RequestAuthority authority;
 
     @PostMapping("/refresh")
@@ -64,4 +65,28 @@ public class ModelCatalogAdminController {
         log.info("ModelDiscovery: manual discovery requested by tenant '{}'", tenant);
         return discoveryService.discoverForTenant(tenant);
     }
+
+    /**
+     * Drops the tool-array limits this pod learned from provider
+     * rejections ({@code ObservedToolLimitRegistry}).
+     *
+     * <p>Those values are in-memory, have no TTL and are kept as
+     * "smallest ever seen" — so a number mis-parsed out of one bad error
+     * body would cap that model until the pod restarts. This is the way
+     * back without a restart; the durable answer stays {@code maxTools:}
+     * in the model document.
+     */
+    @PostMapping("/forget-tool-limits")
+    public ForgetToolLimitsResult forgetToolLimits(
+            @PathVariable("tenant") String tenant,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        int forgotten = observedToolLimits.clear();
+        log.info("ObservedToolLimitRegistry: cleared {} learned limit(s) on request of tenant '{}'",
+                forgotten, tenant);
+        return new ForgetToolLimitsResult(forgotten);
+    }
+
+    /** How many learned endpoint limits {@link #forgetToolLimits} dropped. */
+    public record ForgetToolLimitsResult(int forgotten) {}
 }

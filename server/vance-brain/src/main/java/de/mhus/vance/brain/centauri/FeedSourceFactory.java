@@ -4,6 +4,8 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import de.mhus.vance.brain.project.ProjectEnginesStopRequested;
 import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.feed.FeedInstanceConfig;
 import de.mhus.vance.toolpack.feed.FeedProtocol;
 import de.mhus.vance.toolpack.feed.FeedScope;
@@ -47,11 +49,15 @@ public class FeedSourceFactory {
     static final Duration DEFAULT_TTL = Duration.ofMinutes(5);
 
     private final SettingService settings;
+    private final SecretResolver secretResolver;
     private final Map<String, FeedProtocol> protocolsById;
     private final Cache<ScopeKey, List<FeedSourceInstance>> cache;
 
-    public FeedSourceFactory(SettingService settings, List<FeedProtocol> protocols) {
+    public FeedSourceFactory(
+            SettingService settings, SecretResolver secretResolver,
+            List<FeedProtocol> protocols) {
         this.settings = settings;
+        this.secretResolver = secretResolver;
         Map<String, FeedProtocol> byId = new LinkedHashMap<>();
         for (FeedProtocol p : protocols) {
             FeedProtocol prev = byId.put(p.id(), p);
@@ -185,8 +191,7 @@ public class FeedSourceFactory {
                         // Closes over this project's scope — the instance is cached
                         // per (tenant, project) anyway — and reads on every call, so
                         // a rotated key takes effect without waiting for the TTL.
-                        () -> settings.getDecryptedPasswordCascade(
-                                scope.tenantId(), scope.projectId(), null, credentialKey),
+                        () -> resolveCredential(scope, credentialKey),
                         extras);
                 result.add(protocol.instantiate(cfg));
             } catch (RuntimeException e) {
@@ -197,6 +202,31 @@ public class FeedSourceFactory {
         log.debug("Centauri: assembled {} source instance(s) for '{}/{}'",
                 result.size(), scope.tenantId(), scope.projectId());
         return List.copyOf(result);
+    }
+
+    /**
+     * The endpoint credential, with {@code {{secret:…}}} references resolved.
+     *
+     * <p>Through {@code resolveForConnector} rather than {@code resolve}: a
+     * feed protocol is a connector, not a dynamic element, so it may read a
+     * {@code PASSWORD}-typed setting or a vault entry (spec §10). Reading the
+     * setting straight sent an unresolved {@code {{secret:vault:…}}} into the
+     * {@code Authorization} header verbatim, which reaches the source as a
+     * 401 with nothing to explain it.
+     *
+     * <p>The invocation context carries no user and no process on purpose: the
+     * instance is cached per {@code (tenant, project)} and shared across every
+     * reader, so a user- or process-scoped reference would serve the first
+     * caller's secret to everyone behind them.
+     */
+    private @Nullable String resolveCredential(FeedScope scope, String credentialKey) {
+        String raw = settings.getDecryptedPasswordCascade(
+                scope.tenantId(), scope.projectId(), null, credentialKey);
+        if (raw == null) {
+            return null;
+        }
+        return secretResolver.resolveForConnector(raw, new ToolInvocationContext(
+                scope.tenantId(), scope.projectId(), null, null, null));
     }
 
     /**

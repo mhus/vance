@@ -1,7 +1,10 @@
 package de.mhus.vance.brain.zarniwoop.protocols;
 
+import de.mhus.vance.brain.prompt.ForeignPromptText;
 import de.mhus.vance.brain.zarniwoop.ZarniwoopContentStore;
 import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.facet.Facet;
 import de.mhus.vance.toolpack.facet.FacetValue;
 import de.mhus.vance.toolpack.research.ContentInline;
@@ -116,8 +119,16 @@ final class OdeSearchInstance implements SearchProviderInstance {
 
     private static final int DEFAULT_MAX_RESULTS = 10;
 
+    /**
+     * How many declared expert parameters {@link #promptHint()} will name.
+     * Enough to tell the model what kind of endpoint this is; past that the
+     * names only cost tokens in a prompt that is rebuilt for every plan.
+     */
+    static final int MAX_HINTED_EXPERT_PARAMS = 15;
+
     private final ProviderInstanceConfig cfg;
     private final SettingService settings;
+    private final SecretResolver secretResolver;
     private final ObjectMapper objectMapper;
     private final ZarniwoopContentStore contentStore;
     private final OdeSearchProtocol.OdeSearchHttp http;
@@ -150,11 +161,13 @@ final class OdeSearchInstance implements SearchProviderInstance {
     OdeSearchInstance(
             ProviderInstanceConfig cfg,
             SettingService settings,
+            SecretResolver secretResolver,
             ObjectMapper objectMapper,
             ZarniwoopContentStore contentStore,
             OdeSearchProtocol.OdeSearchHttp http) {
         this.cfg = cfg;
         this.settings = settings;
+        this.secretResolver = secretResolver;
         this.objectMapper = objectMapper;
         this.contentStore = contentStore;
         this.http = http;
@@ -280,9 +293,26 @@ final class OdeSearchInstance implements SearchProviderInstance {
                 .append("Foreign search endpoint '").append(cfg.instanceId())
                 .append("' (Ode), serving ").append(names(c.modalities()))
                 .append(". Subject areas: ").append(names(c.domains())).append('.');
-        if (!c.expertParams().isEmpty()) {
+        // The declared parameter names are the one part of this sentence we do
+        // not author, and it is rendered into the plan recipe's system prompt
+        // for every research_investigate in the project — then cached for half
+        // an hour. Names are filtered against a name grammar rather than
+        // quoted, and their number is capped: a remote value that is not a
+        // name is prose, and prose from the far end is exactly what the Ode
+        // contract has no field for.
+        List<String> declared = ForeignPromptText.identifiers(
+                c.expertParams(), MAX_HINTED_EXPERT_PARAMS);
+        if (!declared.isEmpty()) {
             sb.append(" Expert filters it understands: ")
-                    .append(String.join(", ", c.expertParams())).append('.');
+                    .append(String.join(", ", declared));
+            int more = c.expertParams().size() - declared.size();
+            if (more > 0) {
+                sb.append(" (and ").append(more).append(" more)");
+            }
+            sb.append('.');
+        } else if (!c.expertParams().isEmpty()) {
+            sb.append(" It declares ").append(c.expertParams().size())
+                    .append(" expert filter(s), none of them a usable name.");
         }
         sb.append(" What it indexes is defined by the operating application, "
                 + "not by Vancetope.");
@@ -421,7 +451,15 @@ final class OdeSearchInstance implements SearchProviderInstance {
             Caps parsed = parseCaps(response.body());
             caps = parsed;
             capsFetchedAt = Instant.now();
-            lastError = null;
+            // A declaration that names no modality this version knows is served
+            // — the source answered, and domains/tiers fall back to something
+            // usable — but it must not read as healthy. Without a status line
+            // the provider panel says READY, no tab appears anywhere, and the
+            // operator has nothing to go on. The one thing worse than a missing
+            // row is a row that says the wrong thing.
+            lastError = parsed.modalities().isEmpty()
+                    ? "endpoint declares no modality this version understands"
+                    : null;
             return parsed;
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
@@ -640,13 +678,18 @@ final class OdeSearchInstance implements SearchProviderInstance {
         // actually sent, not against the request — those differ whenever the
         // source declared a smaller ceiling, and holding it to a limit it was
         // never given would log a broken promise it did not make.
+        int truncated = 0;
         if (hits.size() > maxResults) {
             log.warn("Ode endpoint '{}' returned {} hits for maxResults={} — truncating",
                     cfg.instanceId(), hits.size(), maxResults);
+            truncated = hits.size() - maxResults;
             hits = hits.subList(0, maxResults);
         }
         String note = root.path("note").asString(null);
-        int dropped = root.path("droppedCount").asInt(0) + skipped;
+        // Truncated hits count as dropped too. Reporting returnedCount=10,
+        // droppedCount=0 for a source that sent 40 puts the warning in the log
+        // and nothing in the answer — the DTO is what a caller can see.
+        int dropped = root.path("droppedCount").asInt(0) + skipped + truncated;
         return new SearchResult(
                 req.query(), req.modality(), cfg.instanceId(), tier,
                 List.copyOf(hits), hits.size(), dropped,
@@ -735,7 +778,37 @@ final class OdeSearchInstance implements SearchProviderInstance {
         String key = settings.getDecryptedPasswordCascade(
                 scope.tenantId(), scope.projectId(), scope.processId(),
                 cfg.credentialSettingKey());
-        return StringUtils.isBlank(key) ? null : key;
+        return blankToNull(resolveReference(key, scope.tenantId(), scope.projectId()));
+    }
+
+    /**
+     * Substitute a {@code {{secret:…}}} reference the setting may hold.
+     *
+     * <p>Through {@code resolveForConnector} rather than {@code resolve}: a
+     * search endpoint is a connector, not a dynamic element, so it may read a
+     * {@code PASSWORD}-typed setting or a vault entry (settings spec §10). The
+     * restrictive path sees only {@code HIDDEN} and would substitute an empty
+     * string — a silent 401 at the far end with nothing anywhere to explain it.
+     * Reading the setting straight, as this did, sent the reference itself to
+     * the wire verbatim, which fails the same way.
+     *
+     * <p>The invocation context deliberately carries no user and no process:
+     * the endpoint credential is a property of the project's configuration, and
+     * this instance is cached per {@code (tenant, project)} and shared by every
+     * reader, so a user-scoped reference would hand the first caller's secret
+     * to everyone behind them.
+     */
+    private @Nullable String resolveReference(
+            @Nullable String raw, String tenantId, @Nullable String projectId) {
+        if (StringUtils.isBlank(raw)) {
+            return null;
+        }
+        return secretResolver.resolveForConnector(raw, new ToolInvocationContext(
+                tenantId, projectId, null, null, null));
+    }
+
+    private static @Nullable String blankToNull(@Nullable String value) {
+        return StringUtils.isBlank(value) ? null : value;
     }
 
     /**
@@ -755,7 +828,7 @@ final class OdeSearchInstance implements SearchProviderInstance {
         }
         String key = settings.getDecryptedPasswordCascade(
                 cfg.tenantId(), cfg.projectId(), null, cfg.credentialSettingKey());
-        return StringUtils.isBlank(key) ? null : key;
+        return blankToNull(resolveReference(key, cfg.tenantId(), cfg.projectId()));
     }
 
     private int clampMaxResults(int requested, int declared) {

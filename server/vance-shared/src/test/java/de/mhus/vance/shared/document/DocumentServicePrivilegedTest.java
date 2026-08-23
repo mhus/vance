@@ -54,11 +54,20 @@ class DocumentServicePrivilegedTest {
         DocumentArchiveService archiveService = mock(DocumentArchiveService.class);
         SettingService settingService = mock(SettingService.class);
 
-        // Non-ADMIN subject: the resolver allows everything except ADMIN.
+        // Models the real chain: PermissionService short-circuits a SYSTEM
+        // subject before any resolver runs, and the resolver behind it denies
+        // ADMIN to this WRITER-level user. Modelled rather than blanket-denied
+        // so the two SYSTEM shapes stay distinguishable — WriteActor.SYSTEM
+        // (SYSTEM subject) must pass, WriteActor.system(user) must not.
         PermissionService permissionService = mock(PermissionService.class);
-        doThrow(new PermissionDeniedException(
-                writer.subject(), new Resource.Document("acme", "proj", "x"), Action.ADMIN))
-                .when(permissionService).enforce(any(), any(), eq(Action.ADMIN), any());
+        org.mockito.Mockito.doAnswer(inv -> {
+            SecurityContext subject = inv.getArgument(0);
+            if (subject.subjectType() == de.mhus.vance.shared.permission.SubjectType.SYSTEM) {
+                return null;
+            }
+            throw new PermissionDeniedException(
+                    subject, new Resource.Document("acme", "proj", "x"), Action.ADMIN);
+        }).when(permissionService).enforce(any(), any(), eq(Action.ADMIN), any());
         @SuppressWarnings("unchecked")
         ObjectProvider<PermissionService> psp = mock(ObjectProvider.class);
         when(psp.getObject()).thenReturn(permissionService);
@@ -127,5 +136,39 @@ class DocumentServicePrivilegedTest {
 
         assertThatThrownBy(() -> service.setLockedFor("d4", List.of(), writer))
                 .isInstanceOf(PermissionDeniedException.class);
+    }
+
+    @Test
+    void systemReasonDoesNotWaiveThePrivilegedGate() {
+        // WriteActor.system(subject) is the "server code vouches for this user"
+        // channel, and PermissionService short-circuits it — which is how the
+        // scheduler / hook / event tools get past the reserved-prefix rule for
+        // _vance/. Honouring it here too would mean a plain WRITER could plant
+        // a runAs-carrying document through exactly those tools, i.e. the gate
+        // would be off on the only paths it exists for.
+        when(repository.findById("d5")).thenReturn(Optional.of(doc("d5", true)));
+
+        assertThatThrownBy(() -> service.update(
+                "d5", null, null, "new body", null,
+                WriteActor.system(writer.subject())))
+                .isInstanceOf(PermissionDeniedException.class);
+    }
+
+    @Test
+    void aGenuinelyUserlessSystemWriteStillPasses() {
+        // WriteActor.SYSTEM carries a SYSTEM *subject* — migrations, bootstrap,
+        // lifecycle. There is no principal to hold responsible, and refusing it
+        // would break the paths that legitimately install privileged documents.
+        when(repository.findById("d6")).thenReturn(Optional.of(doc("d6", true)));
+        when(repository.save(any(DocumentDocument.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(headerParser.parse(any(), any())).thenReturn(Optional.empty());
+        try {
+            when(headerParser.parseStream(any(), any())).thenReturn(Optional.empty());
+        } catch (java.io.IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        assertThatCode(() -> service.update("d6", null, null, "body", null, WriteActor.SYSTEM))
+                .doesNotThrowAnyException();
     }
 }

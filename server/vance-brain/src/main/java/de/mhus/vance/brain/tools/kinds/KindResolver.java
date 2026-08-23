@@ -68,9 +68,13 @@ public class KindResolver {
      * {@link KindRegistry} closes that path without teaching this resolver
      * anything about individual kinds — the handler owns its marker.
      *
-     * <p>Only consulted when the caller named no kind AND no document exists
-     * at the path: an explicit kind is a decision, and an existing document
-     * keeps its kind on overwrite.
+     * <p>Only consulted when neither side names a <em>specific</em> kind: a
+     * requested kind is a decision, and so is the kind an existing document
+     * already carries. {@code text} is neither — it is the name of
+     * "unspecified" (see below), so an overwrite of a {@code kind: text}
+     * document is re-detected and can end up as {@code diagram} once the
+     * body grows a ```mermaid fence. Pinned by
+     * {@code KindResolverTest.existingText_isReplacedByDetection}.
      */
     public String resolve(
             @Nullable String requested,

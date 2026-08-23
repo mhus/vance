@@ -343,8 +343,10 @@ class SettingsSecretResolverTest {
 
     @Test
     void vault_references_are_unaffected_by_the_setting_type_gate() {
-        // vault: goes to the external manager, not to a setting — the gate has
-        // no say there, and that stays the agent-facing secret channel.
+        // This resolver applies no type gate to vault: — whether one applies is
+        // the provider's business (the settings-backed one reads through the
+        // HIDDEN-only path, an external manager has no setting types at all).
+        // vault: therefore stays the agent-facing secret channel.
         when(vault.readSecret(new VaultScope(TENANT, USER, PROJECT), "deploy-token"))
                 .thenReturn("from-vault");
 
@@ -398,9 +400,13 @@ class SettingsSecretResolverTest {
 
     @Test
     void vaultScope_isNotMatchedAgainstSettingPatterns() {
-        // `vault:` names an entry in the vault's own namespace, not a
-        // setting. A key that merely spells like the reserved prefix must
-        // still resolve — the deny-list governs setting keys.
+        // `vault:` names an entry in the vault's own namespace, not a setting.
+        // An Infisical secret that merely spells like the reserved prefix must
+        // still resolve — the deny-list governs setting keys, and this layer
+        // cannot tell whose namespace it is looking at. The provider can, and
+        // the settings-backed one applies the very same policy itself
+        // (SettingsVaultProviderTest), so the barrier is not lost — it just
+        // sits where the answer is knowable.
         when(vault.readSecret(any(VaultScope.class), eq("vault.clientId")))
                 .thenReturn("from-vault");
 

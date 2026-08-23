@@ -259,9 +259,18 @@ public class MagratheaWorkflowService {
                 binding);
     }
 
-    /** File stem of {@code path} — what the run is called in listings and metrics. */
-    private static String workflowNameFromPath(String path) {
-        String stem = path.substring(path.lastIndexOf('/') + 1);
+    /**
+     * File stem of {@code path} — what the run is called in listings, in
+     * metrics and in the journal's {@code StartRecord}.
+     *
+     * <p>Package-private rather than private so the REST layer can answer
+     * with the <em>same</em> name it journalled. Echoing the request path
+     * back as {@code workflowName} handed clients a value that no
+     * {@code ?workflow=<name>} query would ever match.
+     */
+    static String workflowNameFromPath(String path) {
+        String stem = path.trim();
+        stem = stem.substring(stem.lastIndexOf('/') + 1);
         int dot = stem.lastIndexOf('.');
         return dot > 0 ? stem.substring(0, dot) : stem;
     }

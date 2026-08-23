@@ -185,6 +185,34 @@ class BundledSettingFormsTest {
         assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "research-2026")).isTrue();
     }
 
+    @Test
+    void vault_conditionalFieldsAreNotRequired() throws IOException {
+        ResolvedSettingForm f = loadBundled("vault");
+
+        // The provider select defaults to `settings`, which needs no
+        // connection at all. FormValidator does not know `showIf` — it sees
+        // the whole field list and reports "required" for anything blank —
+        // so a required Infisical field would make the form unsavable for
+        // the default provider. Regression: the form shipped with
+        // required:true on baseUrl/project/environment/clientId/clientSecret
+        // and every save returned 422.
+        assertThat(f.fields())
+                .filteredOn(field -> field.getShowIf() != null)
+                .isNotEmpty()
+                .allSatisfy(field -> assertThat(field.isRequired())
+                        .as("field '%s' is behind showIf and must not be required", field.getName())
+                        .isFalse());
+
+        // The one unconditional field may — and must — stay required.
+        assertThat(f.fields())
+                .filteredOn(field -> "type".equals(field.getName()))
+                .singleElement()
+                .satisfies(field -> {
+                    assertThat(field.isRequired()).isTrue();
+                    assertThat(field.getDefaultValue()).isEqualTo("settings");
+                });
+    }
+
     private ResolvedSettingForm loadBundled(String name) throws IOException {
         String resourcePath = "vance-defaults/_vance/setting_forms/" + name + ".yaml";
         String yaml = readClasspath(resourcePath);

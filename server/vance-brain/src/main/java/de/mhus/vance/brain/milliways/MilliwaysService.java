@@ -131,8 +131,8 @@ public class MilliwaysService {
             scope = resolve(target);
         } catch (PermissionDeniedException e) {
             count(handlerId, "denied");
-            audit(handlerId, target, "denied", AuditSeverity.WARN,
-                    Map.of("reason", "document_read_denied"));
+            audit(handlerId, target, target.subject(), "denied", AuditSeverity.WARN,
+                    Map.of("reason", "read_denied"));
             throw e;
         } catch (ShareException e) {
             // Also counted and audited: a subject refused while being defanged
@@ -141,7 +141,7 @@ public class MilliwaysService {
             // here let those pass through invisibly — no counter, no audit
             // entry, and `denied` stopped meaning "an attempt was refused".
             count(handlerId, "denied");
-            audit(handlerId, target, "denied", AuditSeverity.INFO,
+            audit(handlerId, target, target.subject(), "denied", AuditSeverity.INFO,
                     Map.of("reason", String.valueOf(e.getMessage())));
             throw e;
         }
@@ -158,22 +158,37 @@ public class MilliwaysService {
         ShareResult result;
         try {
             result = handler.share(new ShareRequest(scope, values));
+        } catch (ShareUnavailableException e) {
+            // The pack disappeared between availability() and share(). Same
+            // classification as the check above — counted, not audited: a
+            // handler that stopped being usable is not a refusal.
+            count(handlerId, "unavailable");
+            throw e;
         } catch (ShareException e) {
             count(handlerId, "denied");
-            audit(handlerId, target, "denied", AuditSeverity.INFO,
+            audit(handlerId, target, scope.subject(), "denied", AuditSeverity.INFO,
                     Map.of("reason", String.valueOf(e.getMessage())));
+            throw e;
+        } catch (PermissionDeniedException e) {
+            // A handler enforcing its own resource (the app handler's
+            // `Project WRITE` on the target app) is a refusal, not a broken
+            // relay — `failed` is the alarm signal for "the way out is dead"
+            // and must not be noised up by authorization.
+            count(handlerId, "denied");
+            audit(handlerId, target, scope.subject(), "denied", AuditSeverity.WARN,
+                    Map.of("reason", "handler_denied"));
             throw e;
         } catch (RuntimeException e) {
             count(handlerId, "failed");
-            audit(handlerId, target, "failed", AuditSeverity.WARN,
+            audit(handlerId, target, scope.subject(), "failed", AuditSeverity.WARN,
                     Map.of("error", e.getClass().getSimpleName()));
             throw e;
         }
 
         count(handlerId, "success");
-        audit(handlerId, target, "success", AuditSeverity.INFO, result.details());
+        audit(handlerId, target, scope.subject(), "success", AuditSeverity.INFO, result.details());
         log.info("Shared tenantId='{}' projectId='{}' subject={} via '{}' by '{}'",
-                target.tenantId(), target.projectId(), target.subject().parts(),
+                target.tenantId(), target.projectId(), scope.subject().parts(),
                 handlerId, target.ctx().subjectId());
         return ShareResultDto.builder()
                 .handlerId(handler.id())
@@ -185,17 +200,31 @@ public class MilliwaysService {
     // ──────────────────── internals ────────────────────
 
     /**
-     * Sanitises the subject, resolves a referenced document and enforces
-     * {@code READ} on it. Also the gate for listing: which ways out exist for
-     * a document is not something a user who cannot read it needs to learn.
+     * Sanitises the subject, enforces {@code READ} on the project it happens
+     * in, and — when the subject names a document — resolves that document
+     * and enforces {@code READ} on it too. Also the gate for listing: which
+     * ways out exist here is not something a user who cannot read the place
+     * needs to learn.
      *
-     * <p>A subject without a document has nothing to authorize against — its
-     * link and snippet came from the sharer. That is not a hole the façade
-     * should paper over with an invented resource; the brake for sending
-     * outward sits in the handler that does it.
+     * <p><b>The project is not a free selector.</b> {@code projectId} arrives
+     * in the request body and decides which packs resolve, whose relay sends
+     * and what the audit trail says the act belonged to. A subject without a
+     * document carries nothing else to authorize against, so without this
+     * check a user with no grant on {@code finance} could list its
+     * {@code smtp_sender} packs — From addresses included — and then send
+     * arbitrary text through its credentials. §8.1 accepts that a link plus a
+     * snippet can leave through <em>the project relay</em>; it does not accept
+     * picking the project.
+     *
+     * <p>Project {@code READ} costs the document-carrying case nothing: a
+     * document read already inherits from the project.
      */
     private ShareScope resolve(ShareTarget target) {
         ShareSubject subject = sanitise(target.subject());
+        permissionService.enforce(
+                target.ctx(),
+                new Resource.Project(target.tenantId(), target.projectId()),
+                Action.READ);
         if (!subject.hasDocument()) {
             return ShareScope.of(target, subject, null);
         }
@@ -287,13 +316,20 @@ public class MilliwaysService {
         metricService.counter(METRIC_SHARES, "handler", handlerId, "outcome", outcome).increment();
     }
 
+    /**
+     * Records the act. {@code subject} is the <b>sanitised</b> form wherever
+     * one exists — the raw one would report parts that became empty after
+     * trimming, so a snippet of pure whitespace would leave a trace claiming
+     * a quote nobody ever saw. Only the {@code resolve} failure path falls
+     * back to the raw subject, because there sanitising is what failed.
+     */
     private void audit(
             String handlerId,
             ShareTarget target,
+            ShareSubject subject,
             String outcome,
             AuditSeverity severity,
             Map<String, Object> details) {
-        ShareSubject subject = target.subject();
         Map<String, Object> merged = new LinkedHashMap<>();
         merged.put("handler", handlerId);
         // Which parts were shared, and the link's host. Without this a

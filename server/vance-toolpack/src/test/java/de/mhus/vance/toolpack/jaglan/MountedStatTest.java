@@ -93,9 +93,13 @@ class MountedStatTest {
     }
 
     @Test
-    void source_labelFallsBackToTheMountName() {
-        assertThat(source(null, null, null, false).label()).isEqualTo("library");
-        assertThat(source("Book Library", 42L, null, false).label()).isEqualTo("Book Library");
+    void source_displayNameIsNullWhenTheSourceDeclaresNone() {
+        // label() used to fold this into the mount name; it had no caller and
+        // was dropped, so the fallback now belongs to whoever renders it.
+        assertThat(source(null, null, null, false).displayName()).isNull();
+        assertThat(source(null, null, null, false).name()).isEqualTo("library");
+        assertThat(source("Book Library", 42L, null, false).displayName())
+                .isEqualTo("Book Library");
         assertThat(source("Book Library", 42L, null, false).itemCount()).isEqualTo(42L);
     }
 

@@ -2557,6 +2557,16 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         }
         messages.add(SystemMessage.from(base));
 
+        // Budget-demoted tools — the half of the discovery list that
+        // moves with activation recency and measured usage. DYNAMIC on
+        // purpose: folding it into the prefix above would bust the cache
+        // marker for the whole engine prompt every time the ranking
+        // shifts. See ContextToolsApi#demotedDiscoveryBlockMarkdown.
+        String demotedBlock = ctx.tools().demotedDiscoveryBlockMarkdown();
+        if (demotedBlock != null && !demotedBlock.isBlank()) {
+            messages.add(VanceSystemMessage.dynamic(demotedBlock));
+        }
+
         // Active skills — body + inline reference docs, rendered with
         // this turn's Pebble context plus each skill's invocation
         // arguments. Its own message so a skill activation does not bust

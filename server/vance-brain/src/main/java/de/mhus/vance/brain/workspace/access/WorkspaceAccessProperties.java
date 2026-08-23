@@ -29,9 +29,16 @@ public class WorkspaceAccessProperties {
     private long maxFileSize = 10L * 1024 * 1024;
 
     /**
-     * Idle TTL for the routing cache. Entries unused for this duration are
-     * dropped on the next access. Failure-driven invalidation runs in
-     * addition to this — see spec §4.3.
+     * Optional <em>additional</em> cap on the age of a routing-cache entry.
+     * The binding cap is the cluster's routing window
+     * ({@code ClusterTimeWindows.routingAnswerMaxAge}) — a cached endpoint was
+     * derived from a lease and a heartbeat and cannot outlive the shorter of
+     * the two, so this value can only shorten that, never extend it. Zero or
+     * negative means "no extra cap"; the cluster window still applies.
+     *
+     * <p>It is a max-age, not an idle timeout: reusing an entry does not
+     * extend its life. Failure-driven invalidation runs in addition — see spec
+     * §4.3.
      */
     private Duration cacheTtl = Duration.ofMinutes(30);
 

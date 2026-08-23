@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.history;
 
+import de.mhus.vance.brain.prompt.ForeignPromptText;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -47,14 +48,26 @@ public final class BufferingHistoryTagSink implements HistoryTagSink {
         buffer.addAll(tags);
     }
 
+    /**
+     * Buffer one failed tool call.
+     *
+     * <p>{@code message} is the exception message of an arbitrary tool, so it
+     * may carry the response body of a host somebody else controls. It is
+     * collapsed <em>before</em> it is clipped, because
+     * {@code ChatHistoryRenderer.renderAssistant} renders these entries as a
+     * bullet list appended to the <b>AiMessage</b> content — the role the model
+     * trusts most — and replays it in every later turn. A newline in the reason
+     * would put a second {@code - } bullet, or a fake {@code [vance] …} header,
+     * into a block the model reads as its own record of what happened.
+     *
+     * <p>{@code toolName} is server-side and needs no shaping.
+     */
     @Override
     public synchronized void emitFailure(String toolName, @Nullable String message) {
         if (toolName == null || toolName.isBlank()) return;
         if (failures.size() >= MAX_FAILURES) return;
-        String reason = message == null || message.isBlank() ? "no reason reported" : message;
-        if (reason.length() > MAX_FAILURE_CHARS) {
-            reason = reason.substring(0, MAX_FAILURE_CHARS) + "…";
-        }
+        String reason = ForeignPromptText.field(message, MAX_FAILURE_CHARS);
+        if (reason.isEmpty()) reason = "no reason reported";
         String entry = toolName + " → " + reason;
         // Same tool failing the same way twice in a turn is one fact.
         if (!failures.contains(entry)) failures.add(entry);

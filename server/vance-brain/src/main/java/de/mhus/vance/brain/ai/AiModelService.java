@@ -67,6 +67,12 @@ public class AiModelService {
      * exactly like {@link #createChat(AiChatConfig, AiChatOptions)}.
      * Multi-entry composes the entries into a {@link ChainedAiChat} that
      * advances through fallbacks when an entry's retry budget is exhausted.
+     *
+     * <p>Both levels get the same {@link AiChatOptions}, deadline included.
+     * That is safe because {@link ResilientChatModel} turns the duration
+     * into one absolute end-of-budget per call and a nested instance
+     * inherits it instead of starting its own — see the deadline note
+     * there.
      */
     public AiChat createChat(ChatBehavior behavior, AiChatOptions options) {
         if (behavior.entries().size() == 1) {

@@ -4,16 +4,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.shared.permission.PermissionBootstrap;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
@@ -36,13 +42,23 @@ class UserServiceTest {
     private static final String TENANT = "acme";
     private UserRepository repo;
     private MongoTemplate mongoTemplate;
+    private PermissionBootstrap permissionBootstrap;
     private UserService service;
 
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp() {
         repo = mock(UserRepository.class);
         mongoTemplate = mock(MongoTemplate.class);
-        service = new UserService(repo, mongoTemplate);
+        permissionBootstrap = mock(PermissionBootstrap.class);
+        ObjectProvider<PermissionBootstrap> bootstrapProvider = mock(ObjectProvider.class);
+        // ifAvailable is a default method; a plain mock would swallow it and the
+        // "grants are revoked" tests below would pass without the wiring existing.
+        doAnswer(inv -> {
+            inv.<Consumer<PermissionBootstrap>>getArgument(0).accept(permissionBootstrap);
+            return null;
+        }).when(bootstrapProvider).ifAvailable(any());
+        service = new UserService(repo, mongoTemplate, bootstrapProvider);
         when(repo.save(any(UserDocument.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
@@ -277,6 +293,33 @@ class UserServiceTest {
                 .isInstanceOf(UserService.ReservedNameException.class)
                 .hasMessageContaining("reserved");
         verify(repo, never()).save(any());
+    }
+
+    @Test
+    void delete_revokesEveryGrantHeldUnderTheName_beforeRemovingTheDocument() {
+        // Grants key on the username, not the Mongo id. Left behind, they are
+        // inherited by the next account created under the same name — realistic
+        // for service-account schemes (_daemon-prod-01) and reused human logins.
+        // Revocation runs first so a failing grant store aborts the delete rather
+        // than orphaning the grant.
+        UserDocument admin = UserDocument.builder().tenantId(TENANT).name("marvin.acme").build();
+        when(repo.findByTenantIdAndName(TENANT, "marvin.acme")).thenReturn(Optional.of(admin));
+
+        service.delete(TENANT, "marvin.acme");
+
+        InOrder order = inOrder(permissionBootstrap, repo);
+        order.verify(permissionBootstrap).revokeAll(TENANT, "marvin.acme");
+        order.verify(repo).delete(admin);
+    }
+
+    @Test
+    void delete_ofAnUnknownUser_touchesNoGrants() {
+        when(repo.findByTenantIdAndName(TENANT, "ghost")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.delete(TENANT, "ghost"))
+                .isInstanceOf(UserService.UserNotFoundException.class);
+
+        verify(permissionBootstrap, never()).revokeAll(any(), any());
     }
 
     @Test

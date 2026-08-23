@@ -95,10 +95,23 @@ public class ChatRepl {
     }
 
     /**
-     * Sets up the terminal, attaches the live region, and blocks until
-     * the user quits.
+     * Builds — once — the JLine terminal this REPL runs on, binds
+     * {@link ChatTerminal} to it and registers it with
+     * {@link InterfaceService}.
+     *
+     * <p>Split out of {@link #run()} because the startup session pickers
+     * ({@code -c} local history, {@code --resume} server list) are Lanterna
+     * fullscreen excursions and {@link InterfaceService#runFullscreen} refuses
+     * to run without a registered terminal — yet they resolve long before the
+     * REPL loop starts. {@code VanceFootCommand} therefore calls this ahead
+     * of them; {@link #run()} reuses whatever it produced.
+     *
+     * @return the terminal (never {@code null} — JLine falls back to a dumb
+     *         terminal rather than failing)
      */
-    public void run() throws IOException {
+    public Terminal ensureTerminal() throws IOException {
+        @Nullable Terminal existing = terminal;
+        if (existing != null) return existing;
         Terminal t = TerminalBuilder.builder()
                 .system(true)
                 .dumb(true)
@@ -106,6 +119,15 @@ public class ChatRepl {
         this.terminal = t;
         chatTerminal.attach(t);
         interfaceService.registerJlineTerminal(t);
+        return t;
+    }
+
+    /**
+     * Sets up the terminal, attaches the live region, and blocks until
+     * the user quits.
+     */
+    public void run() throws IOException {
+        Terminal t = ensureTerminal();
 
         historyFile = resolveHistoryFile();
         liveRegion.loadHistory(loadHistoryFromFile(historyFile));

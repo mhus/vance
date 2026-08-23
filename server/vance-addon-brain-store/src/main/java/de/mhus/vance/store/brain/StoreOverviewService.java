@@ -99,6 +99,22 @@ public class StoreOverviewService {
             @Nullable String accountId,
             boolean reachable,
             @Nullable String problem,
+            /**
+             * Whether the entitlements below are the account's actual ones.
+             *
+             * <p>False means the delivery service did not answer, so an entry
+             * that is not marked {@link EntryState#OWNED} may well be owned —
+             * and a screen that offers "Buy" on it is offering a second
+             * purchase of something already paid for. Nothing upstream stops
+             * that: the order goes through the store account rather than the
+             * link, and {@code OrderService.create} has no "already owns it"
+             * guard.
+             *
+             * <p>True without a connection is not a contradiction: there is no
+             * account whose entitlements could be unknown, and buying needs an
+             * account, so the question does not arise.
+             */
+            boolean ownershipKnown,
             List<Entry> entries) {}
 
     private final KitSourceRegistry sources;
@@ -137,15 +153,16 @@ public class StoreOverviewService {
             log.info("StoreOverviewService: store '{}' is not listable: {}",
                     source.getId(), e.getMessage());
             return new SourceView(source.getId(), titleOf(source), source.getUrl(),
-                    connection.accountId(), false, e.getMessage(), List.of());
+                    connection.accountId(), false, e.getMessage(), false, List.of());
         }
 
         // Owned kits come from the delivery service, which answers per link
         // token. Without a connection there is simply nothing owned to show —
         // not an error, just a store nobody has signed in to yet.
-        List<KitLibraryEntryDto> owned = connection.isConnected()
+        Entitlements entitlements = connection.isConnected()
                 ? safeLibrary(tenantId, projectId, userId, source)
-                : List.of();
+                : Entitlements.noAccount();
+        List<KitLibraryEntryDto> owned = entitlements.entries();
 
         Map<String, String> installedVersions = installedVersions(tenantId, projectId, source);
 
@@ -164,7 +181,13 @@ public class StoreOverviewService {
             String installed = installedVersions.get(path);
             byPath.put(path, new Entry(
                     source.getId(), source.getUrl(), path,
-                    entry.vendorName(), entry.kitId(), entry.displayName(),
+                    // Normalised like the owned branch below. `vendor` is
+                    // declared non-null, but this one comes from the store's
+                    // JSON and Jackson leaves an absent field null whatever
+                    // @NullMarked says — and the sort at the end of this
+                    // method reads it, so one such entry used to lose the
+                    // whole overview rather than just its own row.
+                    orBlank(entry.vendorName()), entry.kitId(), entry.displayName(),
                     entry.description(), entry.license(), entry.homepage(),
                     entry.version(), installed, null, true,
                     entry.score() == null ? 0d : entry.score().average(),
@@ -174,7 +197,11 @@ public class StoreOverviewService {
                     entry.vendorDomain(),
                     // Not stateOf() alone: with nothing installed this row
                     // is OFFERED, not OWNED — ownership is what the link
-                    // answers, and there is no link here.
+                    // answers, and there is no link here. When the link
+                    // exists but did not answer, this stays OFFERED too and
+                    // SourceView.ownershipKnown carries the doubt: a fourth
+                    // state per entry would say the same thing once per row
+                    // about a fact that holds for the whole source.
                     installed == null
                             ? EntryState.OFFERED
                             : stateOf(installed, entry.version())));
@@ -219,12 +246,20 @@ public class StoreOverviewService {
 
         List<Entry> entries = new ArrayList<>(byPath.values());
         entries.sort(Comparator.comparing(Entry::vendor).thenComparing(Entry::kitId));
+        // `problem` stays reserved for "the store could not be asked at all" —
+        // an unlistable library is a partial answer, and the screen tells that
+        // apart by `ownershipKnown` rather than by a banner that would read
+        // like the whole shop is down.
         return new SourceView(source.getId(), titleOf(source), source.getUrl(),
-                connection.accountId(), true, null, entries);
+                connection.accountId(), true, null, entitlements.known(), entries);
     }
 
     private static List<String> orEmpty(@Nullable List<String> values) {
         return values == null ? List.of() : values;
+    }
+
+    private static String orBlank(@Nullable String value) {
+        return value == null ? "" : value;
     }
 
     /** Its configured title, else its id — the id is a handle, not a name. */
@@ -280,19 +315,47 @@ public class StoreOverviewService {
                 : EntryState.UPDATABLE;
     }
 
-    private List<KitLibraryEntryDto> safeLibrary(
+    /**
+     * What the delivery service said this account owns — and whether it said
+     * anything at all.
+     *
+     * <p>The flag is the whole point of the type. An empty list on its own
+     * reads as "owns nothing", which for an unreachable delivery service is a
+     * claim nobody made, and the screen acts on it: an owned-but-not-installed
+     * kit falls back to {@code OFFERED} with a live Buy button. The purchase
+     * then goes through the store account rather than the link, so it
+     * succeeds, grants a second entitlement and issues a second invoice.
+     */
+    private record Entitlements(List<KitLibraryEntryDto> entries, boolean known) {
+
+        static Entitlements of(List<KitLibraryEntryDto> entries) {
+            return new Entitlements(entries, true);
+        }
+
+        /** Nobody is signed in: there is no account, so nothing is unknown. */
+        static Entitlements noAccount() {
+            return new Entitlements(List.of(), true);
+        }
+
+        static Entitlements unknown() {
+            return new Entitlements(List.of(), false);
+        }
+    }
+
+    private Entitlements safeLibrary(
             String tenantId, String projectId, String userId, KitSourceDto source) {
         try {
-            return library.list(tenantId, projectId, userId).stream()
+            return Entitlements.of(library.list(tenantId, projectId, userId).stream()
                     .filter(entry -> source.getId().equals(entry.getSourceId()))
-                    .toList();
+                    .toList());
         } catch (KitException e) {
             // The catalogue answered, the library did not — an expired or
             // revoked link, most likely. Showing the catalogue without the
-            // purchases beats showing nothing.
+            // purchases beats showing nothing, but it must not be shown as if
+            // the purchases were known to be absent.
             log.info("StoreOverviewService: library of '{}' is not listable: {}",
                     source.getId(), e.getMessage());
-            return List.of();
+            return Entitlements.unknown();
         }
     }
 

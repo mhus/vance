@@ -107,7 +107,12 @@ public class ProjectStartupReclaimer {
      *
      * <p>The candidate set is "needs an owner and holds no live lease" — the
      * derived {@code ownerRequired} for the default {@code AUTO} projects, plus
-     * anything an operator pinned to {@code PERMANENT}. Its predecessor
+     * anything an operator pinned to {@code PERMANENT}, and only for the
+     * statuses that express the intent to run. A {@code SUSPENDED} project is
+     * <em>not</em> pulled: {@code bring} would take it straight back to
+     * RUNNING, so a suspend would expire together with the holder's lease on
+     * the next restart, restarting the very scheduler it was meant to stop
+     * ({@code ProjectService.findProjectsNeedingOwner}). Its predecessor
      * selected on {@code PERMANENT} alone and therefore matched nothing at all,
      * which is why this used to log {@code brought=0 skipped=0} on every boot
      * ({@code planning/project-ownership-lease-design.md} §1.1).

@@ -419,8 +419,14 @@ onMounted(load);
       </p>
 
       <div class="flex gap-2 items-end mt-2">
-        <VInput v-model="from" label="From" help="YYYY-MM-DD" />
-        <VInput v-model="to" label="To (exclusive)" help="YYYY-MM-DD" />
+        <!-- Each field in its own box: two w-full inputs in one flex row
+             fight each other and the buttons beside them. -->
+        <div class="w-40">
+          <VInput v-model="from" label="From" help="YYYY-MM-DD" />
+        </div>
+        <div class="w-40">
+          <VInput v-model="to" label="To (exclusive)" help="YYYY-MM-DD" />
+        </div>
         <VButton size="sm" :disabled="loading" @click="runReport">Build</VButton>
         <!--
           The same period as the screen shows, rendered. Not a second

@@ -21,13 +21,18 @@ import de.mhus.vance.store.brain.StoreClient.ReleaseRequest;
 import de.mhus.vance.store.brain.StoreClient.Vendor;
 import de.mhus.vance.store.brain.StoreClient.VendorTerms;
 import de.mhus.vance.shared.access.AccessFilterBase;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import jakarta.servlet.http.HttpServletRequest;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -51,7 +56,15 @@ import org.springframework.web.server.ResponseStatusException;
  * token in return — what comes back is an account id, which is not a
  * secret and is what the screen needs to say who is signed in.
  *
- * <p>Spec: {@code planning/kit-store.md} §7 Phase S3.
+ * <p><b>Two authorisation rules, not one.</b> Nearly everything here acts
+ * with the caller's own store credential and is therefore personal —
+ * {@link #personalActor}. Only what writes into the project takes
+ * {@code Project ADMIN}: {@link #install} and {@link #publish}. Which roles
+ * a person has <em>at the store</em> is the store's answer, not ours; the
+ * brain only guards whose credential gets used.
+ *
+ * <p>Spec: {@code specification/kit-store.md} §6, §11a, §11b;
+ * {@code planning/kit-store.md} §7 Phase S3.
  */
 @RestController
 @RequestMapping("/brain/{tenant}/addon/store")
@@ -68,6 +81,13 @@ public class StoreAddonController {
     private final KitStoreCredentials credentials;
     private final RequestAuthority authority;
     private final StoreDeveloperService developerService;
+
+    /** How long an answer to "who am I here" is reused — see {@link #identityOf}. */
+    private static final long IDENTITY_TTL_SECONDS = 30;
+    /** Above this many entries, expired ones are swept on the next write. */
+    private static final int IDENTITY_CACHE_MAX = 64;
+
+    private final Map<String, CachedIdentity> identityCache = new ConcurrentHashMap<>();
 
 
     public record ConnectRequest(
@@ -97,7 +117,7 @@ public class StoreAddonController {
             @PathVariable("projectId") String projectId,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         return overview.overview(tenant, projectId, actor(request));
     }
 
@@ -115,7 +135,7 @@ public class StoreAddonController {
             @RequestBody ConnectRequest body,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         try {
             return connections.connect(
                     tenant, actor(request), library(tenant, body.sourceId()),
@@ -133,7 +153,7 @@ public class StoreAddonController {
             @RequestBody DisconnectRequest body,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         connections.disconnect(tenant, actor(request), source);
         return new StoreConnectionService.Connection(source.getId(), null);
@@ -159,6 +179,8 @@ public class StoreAddonController {
             @RequestBody InstallRequest body,
             HttpServletRequest request) {
 
+        // Project ADMIN, not the personal rule: this writes documents and
+        // settings into {projectId}.
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
         KitSourceDto source = library(tenant, body.sourceId());
         // Asked locally. It used to be answered by re-running the whole
@@ -190,10 +212,12 @@ public class StoreAddonController {
     /**
      * Buy a kit.
      *
-     * <p>Asks for the store password, unlike everything else here — the
-     * store accepts a link token for reviewing and for nothing that spends
-     * money. The password is used once and discarded, exactly as when
-     * signing in, and the session is closed straight afterwards.
+     * <p>Asks for the store password, unlike most of what is here — the
+     * store takes this installation's link for reading and managing, but
+     * not for spending money or entering an agreement
+     * ({@code specification/kit-store.md} §11a). The password is used once
+     * and discarded, exactly as when signing in, and the session is closed
+     * straight afterwards.
      */
     @PostMapping("/{projectId}/buy")
     public StoreClient.Order buy(
@@ -202,7 +226,7 @@ public class StoreAddonController {
             @RequestBody BuyRequest body,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
             StoreClient.Session session =
@@ -232,7 +256,7 @@ public class StoreAddonController {
             @RequestParam("sourceId") String sourceId,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         try {
             return storeClient.withdrawalNotice(library(tenant, sourceId));
         } catch (KitException e) {
@@ -250,7 +274,7 @@ public class StoreAddonController {
             @RequestParam("kitId") String kitId,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         try {
             return storeClient.reviews(library(tenant, sourceId), vendor, kitId);
         } catch (KitException e) {
@@ -274,7 +298,7 @@ public class StoreAddonController {
             @RequestBody ReviewRequest body,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         KitAccess access = credentials.resolve(
                 tenant, projectId, actor(request), source.getUrl(), null);
@@ -347,7 +371,7 @@ public class StoreAddonController {
             @RequestParam("sourceId") String sourceId,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         String token = credentials.resolve(
                 tenant, projectId, actor(request), source.getUrl(), null).token();
@@ -386,7 +410,7 @@ public class StoreAddonController {
             @RequestBody RenewRequest body,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
             StoreClient.Session session =
@@ -424,7 +448,7 @@ public class StoreAddonController {
             @RequestBody ApplyVendorRequest body,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
             return withSession(source, body.email(), body.password(), session ->
@@ -443,7 +467,7 @@ public class StoreAddonController {
             @RequestBody CreateKitRequest body,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
             return storeClient.createKit(source, requireToken(tenant, projectId, source, request),
@@ -469,6 +493,8 @@ public class StoreAddonController {
             @RequestBody PublishRequest body,
             HttpServletRequest request) {
 
+        // Project ADMIN, not the personal rule: this exports the whole
+        // project and ships it to a store.
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
@@ -525,8 +551,7 @@ public class StoreAddonController {
             @PathVariable("projectId") String projectId,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
-        String actor = actor(request);
+        String actor = personalActor(tenant, projectId, request);
         List<Connection> out = new ArrayList<>();
         for (KitSourceDto source : sources.configuredSources(tenant)) {
             if (source.getType() != KitSourceType.LIBRARY) continue;
@@ -539,17 +564,18 @@ public class StoreAddonController {
                         true, null, null, false, false));
                 continue;
             }
-            try {
-                StoreClient.Identity identity = storeClient.identity(source, token);
-                out.add(new Connection(source.getId(), titleOf(source), source.getUrl(),
-                        true, null, identity.accountId(),
-                        identity.operator(), identity.vendor()));
-            } catch (KitException e) {
+            IdentityAnswer answer = identityOf(source, token);
+            StoreClient.Identity identity = answer.identity();
+            if (identity == null) {
                 // This is the one screen where the address and the reason
                 // belong: somebody here can act on them.
                 out.add(new Connection(source.getId(), titleOf(source), source.getUrl(),
-                        false, e.getMessage(), null, false, false));
+                        false, answer.problem(), null, false, false));
+                continue;
             }
+            out.add(new Connection(source.getId(), titleOf(source), source.getUrl(),
+                    true, null, identity.accountId(),
+                    identity.operator(), identity.vendor()));
         }
         return out;
     }
@@ -567,8 +593,7 @@ public class StoreAddonController {
             @PathVariable("projectId") String projectId,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
-        String actor = actor(request);
+        String actor = personalActor(tenant, projectId, request);
         List<String> operated = new ArrayList<>();
         List<String> developed = new ArrayList<>();
         for (KitSourceDto source : sources.configuredSources(tenant)) {
@@ -576,21 +601,92 @@ public class StoreAddonController {
             String token = credentials.resolve(tenant, projectId, actor, source.getUrl(), null)
                     .token();
             if (token == null || token.isBlank()) continue;
-            try {
-                StoreClient.Identity identity = storeClient.identity(source, token);
-                if (identity.operator()) operated.add(source.getId());
-                if (identity.vendor()) developed.add(source.getId());
-            } catch (KitException e) {
+            IdentityAnswer answer = identityOf(source, token);
+            StoreClient.Identity identity = answer.identity();
+            if (identity == null) {
                 // An unreachable store is no role, and it is not worth an
                 // error banner over a tab strip. The profile screen is where
                 // that failure is shown, because that is where it can be
                 // acted on.
                 log.debug("StoreAddonController: could not ask '{}' who we are: {}",
-                        source.getId(), e.getMessage());
+                        source.getId(), answer.problem());
+                continue;
             }
+            if (identity.operator()) operated.add(source.getId());
+            if (identity.vendor()) developed.add(source.getId());
         }
         return new Surfaces(operated, developed);
     }
+
+    /**
+     * Who this installation is at one store — asked at most once every
+     * {@value #IDENTITY_TTL_SECONDS} seconds per (source, token).
+     *
+     * <p>Opening the store area asks three times in a row: {@code overview},
+     * {@code surfaces}, {@code connections}. Against a library that does not
+     * answer, that is three timeouts in series before anything renders, for
+     * an answer that was already known after the first. <b>The failure is
+     * cached too</b> — remembering only successes would leave exactly the
+     * slow case uncached.
+     *
+     * <p>Keyed by the token, so signing in or out takes effect at once: a
+     * fresh link is a different key, and no link means no call. What lags by
+     * up to half a minute is a role granted at the store meanwhile, which is
+     * not a thing anybody watches this screen for.
+     *
+     * <p>By its <em>fingerprint</em>, not the token itself — the token is a
+     * live credential and has no business sitting in a long-lived map that a
+     * heap dump or a stray {@code toString()} could carry out of this
+     * process. The key is never logged.
+     */
+    private IdentityAnswer identityOf(KitSourceDto source, String token) {
+        String key = source.getId() + '\0' + fingerprint(token);
+        Instant now = Instant.now();
+        CachedIdentity hit = identityCache.get(key);
+        if (hit != null && hit.until().isAfter(now)) {
+            return hit.answer();
+        }
+        IdentityAnswer answer;
+        try {
+            answer = new IdentityAnswer(storeClient.identity(source, token), null);
+        } catch (KitException e) {
+            answer = new IdentityAnswer(null, e.getMessage());
+        }
+        if (identityCache.size() >= IDENTITY_CACHE_MAX) {
+            // Bounded along the number of users, which is what a per-token
+            // key grows with. Expired entries first; if that is not enough,
+            // the whole map goes — thirty seconds of memoisation is worth
+            // nothing worth keeping.
+            identityCache.values().removeIf(entry -> !entry.until().isAfter(now));
+            if (identityCache.size() >= IDENTITY_CACHE_MAX) {
+                identityCache.clear();
+            }
+        }
+        identityCache.put(key, new CachedIdentity(
+                answer, now.plusSeconds(IDENTITY_TTL_SECONDS)));
+        return answer;
+    }
+
+    /**
+     * A stable, non-reversible stand-in for a link token, for use as a map
+     * key. SHA-256 — not {@code hashCode}, whose collisions would hand one
+     * account's identity to another.
+     */
+    private static String fingerprint(String token) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(token.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required by every JVM", e);
+        }
+    }
+
+    /** Either an identity or the reason there is none. */
+    private record IdentityAnswer(
+            StoreClient.@Nullable Identity identity, @Nullable String problem) {}
+
+    private record CachedIdentity(IdentityAnswer answer, Instant until) {}
 
     // ──────────────────── operator ────────────────────
 
@@ -622,7 +718,7 @@ public class StoreAddonController {
             @RequestParam("sourceId") String sourceId,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         String token = requireToken(tenant, projectId, source, request);
         try {
@@ -652,7 +748,7 @@ public class StoreAddonController {
             @RequestParam("sourceId") String sourceId,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         try {
             return storeClient.payVendor(
@@ -671,7 +767,7 @@ public class StoreAddonController {
             @RequestParam("sourceId") String sourceId,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         try {
             return storeClient.releasePayout(
@@ -689,7 +785,7 @@ public class StoreAddonController {
             @RequestParam("sourceId") String sourceId,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         try {
             return storeClient.reconcilePayouts(
@@ -707,7 +803,7 @@ public class StoreAddonController {
             @RequestBody RefundRequest body,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
             return storeClient.refund(source,
@@ -735,7 +831,7 @@ public class StoreAddonController {
             @RequestParam("sourceId") String sourceId,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         try {
             return storeClient.unclassified(
@@ -753,7 +849,7 @@ public class StoreAddonController {
             @RequestBody ClassifyRequest body,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
             return storeClient.classify(source,
@@ -776,7 +872,7 @@ public class StoreAddonController {
             @RequestBody ReissueRequest body,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
             return storeClient.reissueCreditNote(source,
@@ -797,7 +893,7 @@ public class StoreAddonController {
             @RequestParam("sourceId") String sourceId,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         try {
             return storeClient.receipts(
@@ -822,7 +918,7 @@ public class StoreAddonController {
             @RequestParam("orderName") String orderName,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         try {
             return paper(storeClient.invoicePdf(
@@ -842,7 +938,7 @@ public class StoreAddonController {
             @RequestParam("number") String number,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         try {
             return paper(storeClient.creditNotePdf(source,
@@ -862,7 +958,7 @@ public class StoreAddonController {
             @RequestParam("to") String to,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         try {
             return paper(storeClient.taxReportPdf(
@@ -889,7 +985,7 @@ public class StoreAddonController {
             @RequestParam("to") String to,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         try {
             return storeClient.taxReport(
@@ -909,7 +1005,7 @@ public class StoreAddonController {
             @RequestBody DomainRequest body,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
             return storeClient.claimDomain(source,
@@ -928,7 +1024,7 @@ public class StoreAddonController {
             @RequestBody DomainRequest body,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
             return storeClient.verifyDomain(source,
@@ -951,10 +1047,12 @@ public class StoreAddonController {
             @RequestParam("vendorName") String vendorName,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
-        String token = credentials.resolve(
-                tenant, projectId, actor(request), source.getUrl(), null).token();
+        // requireToken, like every other token-bearing endpoint: without it
+        // the client sends "Bearer null" and the screen reports the store
+        // rejecting a credential that was never presented.
+        String token = requireToken(tenant, projectId, source, request);
         try {
             return new VendorMoneyView(
                     storeClient.myDue(source, token, vendorName),
@@ -981,10 +1079,9 @@ public class StoreAddonController {
             @RequestBody PayoutAccountRequest body,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
-        String token = credentials.resolve(
-                tenant, projectId, actor(request), source.getUrl(), null).token();
+        String token = requireToken(tenant, projectId, source, request);
         try {
             return storeClient.setPayoutAccount(source, token, body.vendorName(),
                     body.type(), body.handle(), body.holderName(),
@@ -1006,7 +1103,7 @@ public class StoreAddonController {
             @RequestParam("sourceId") String sourceId,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         String token = requireToken(tenant, projectId, source, request);
         try {
@@ -1027,7 +1124,7 @@ public class StoreAddonController {
             @RequestBody OperatorRequest body,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
+        personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         String token = requireToken(tenant, projectId, source, request);
         try {
@@ -1082,6 +1179,44 @@ public class StoreAddonController {
         return value;
     }
 
+    /**
+     * A store operation that acts with the caller's <em>own</em> credential —
+     * signing in, buying, reading one's receipts, reviewing, and every
+     * developer/operator call the store itself authorises by link.
+     *
+     * <p>These belong to a person, not to a project ({@code kit-store.md} §6
+     * and §11b: "the connection to a store is a property of the human"). They
+     * used to require {@code Project ADMIN}, which — with the client sending
+     * {@code _tenant} — meant only tenant admins could link their own store
+     * account or see what they had paid. What is checked instead:
+     *
+     * <ul>
+     *   <li>there is a caller at all (a store credential has an owner), and</li>
+     *   <li>the {@code projectId} naming the middle layer of the credential
+     *       cascade is one they may read. A project account shared by a team
+     *       is a documented setup; another person's hub is not — it holds
+     *       <em>their</em> link token, and a tenant admin reading through it
+     *       would be acting as them at the store, which no store-side check
+     *       would catch.</li>
+     * </ul>
+     *
+     * <p>What still takes {@code Project ADMIN} is what writes into the
+     * project: {@link #install} and {@link #publish}.
+     */
+    private String personalActor(
+            String tenant, String projectId, HttpServletRequest request) {
+        String actor = actor(request);
+        if (ProjectService.isPodless(projectId)
+                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)
+                && !HomeBootstrapService.hubProjectName(actor).equals(projectId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "'" + projectId + "' is somebody else's — a store credential is used"
+                            + " through your own scope, the tenant, or a shared project");
+        }
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
+        return actor;
+    }
+
     /** This installation's link token, or a clear refusal. */
     private String requireToken(
             String tenant, String projectId, KitSourceDto source, HttpServletRequest request) {
@@ -1119,8 +1254,20 @@ public class StoreAddonController {
         return version.isBlank() || "unversioned".equals(version) ? null : version;
     }
 
+    /**
+     * A failure at the store, as a status the caller can read.
+     *
+     * <p>Two outcomes, because they are two situations: the store answered
+     * and said no ({@link StoreRefusedException} → 409, the caller can fix
+     * it — wrong password, unconfirmed account, an order the store will not
+     * take), or it could not be asked at all → 502. Mapping both to 502 put
+     * a mistyped password in the log as a gateway error, indistinguishable
+     * from the delivery service being down.
+     */
     private static ResponseStatusException storeError(KitException e) {
-        return new ResponseStatusException(HttpStatus.BAD_GATEWAY, e.getMessage(), e);
+        return e instanceof StoreRefusedException
+                ? new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e)
+                : new ResponseStatusException(HttpStatus.BAD_GATEWAY, e.getMessage(), e);
     }
 
     /**

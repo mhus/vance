@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.kit;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -156,6 +157,89 @@ class KitServiceTest {
                 .doesNotThrowAnyException();
         verify(installer).apply(any(), any(), any(), any(), eq(KitImportMode.APPLY),
                 anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any());
+    }
+
+    @Test
+    void importKit_apply_rejectsTheAuthoringManifest() {
+        // APPLY is the untracked splat: no record, no update path, no export.
+        // Writing the manifest anyway produced the one state that combination
+        // excludes — a project able to export a kit it has no record of. The
+        // two checkboxes sit next to each other in the UI, so it needs saying.
+        KitImportRequestDto request = importRequest(KitImportMode.APPLY);
+        request.setWriteManifest(true);
+
+        assertThatThrownBy(() -> service.importKit(
+                TENANT, request, null, SettingWriteOrigin.USER))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("apply cannot write the authoring manifest");
+        verifyInstallerNeverRan();
+    }
+
+    @Test
+    void updateInstalled_carriesTheRecordedProvisioningStampIntoTheRequest() {
+        // buildRecord writes the request's stamp, so a request without one
+        // stored null — and a record without a stamp is never change-checked
+        // again (differs(null, …) is false by contract). One "update all" click
+        // used to switch provisioning checking off for that kit permanently.
+        stubResolved(descriptor("normal-kit").build());
+        stubInstallerResult();
+        KitInstalledRecordDto record = record("normal-kit", "normal-kit-abc123");
+        record.getOrigin().setProvisioningStamp("ode:rev-7");
+        when(recordStore.find(TENANT, PROJECT, "normal-kit-abc123")).thenReturn(record);
+
+        service.updateInstalled(TENANT, PROJECT, "normal-kit-abc123", false, null, null,
+                null, SettingWriteOrigin.USER);
+
+        org.mockito.ArgumentCaptor<KitAccess> access =
+                org.mockito.ArgumentCaptor.forClass(KitAccess.class);
+        verify(installer).apply(access.capture(), any(), any(), any(), any(),
+                anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any());
+        assertThat(access.getValue().provisioningStamp()).isEqualTo("ode:rev-7");
+    }
+
+    @Test
+    void updateInstalled_carriesTheRecordedParamsIntoTheRequest() {
+        // The worse half of the same bug: without them the host that assembles
+        // per request builds the *default* variant, so "the German build with
+        // the invoicing module" quietly becomes the plain one — and nothing in
+        // the result says so.
+        stubResolved(descriptor("normal-kit").build());
+        stubInstallerResult();
+        KitInstalledRecordDto record = record("normal-kit", "normal-kit-abc123");
+        record.getOrigin().setParams(new LinkedHashMap<>(java.util.Map.of(
+                "lang", "de", "modules", List.of("crm"))));
+        when(recordStore.find(TENANT, PROJECT, "normal-kit-abc123")).thenReturn(record);
+
+        service.updateInstalled(TENANT, PROJECT, "normal-kit-abc123", false, null, null,
+                null, SettingWriteOrigin.USER);
+
+        org.mockito.ArgumentCaptor<KitAccess> access =
+                org.mockito.ArgumentCaptor.forClass(KitAccess.class);
+        verify(installer).apply(access.capture(), any(), any(), any(), any(),
+                anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any());
+        assertThat(access.getValue().params())
+                .containsEntry("lang", "de")
+                .containsEntry("modules", List.of("crm"));
+    }
+
+    @Test
+    void reapplyAll_carriesTheRecordedParamsIntoTheRequest() {
+        stubResolved(descriptor("normal-kit").build());
+        stubInstallerResult();
+        KitInstalledRecordDto record = record("normal-kit", "normal-kit-abc123");
+        record.getOrigin().setParams(new LinkedHashMap<>(java.util.Map.of("lang", "de")));
+        record.getOrigin().setProvisioningStamp("ode:rev-7");
+        when(recordStore.listInLayerOrder(TENANT, PROJECT))
+                .thenReturn(new ArrayList<>(List.of(record)));
+
+        service.reapplyAll(TENANT, PROJECT, null, null, null, SettingWriteOrigin.USER);
+
+        org.mockito.ArgumentCaptor<KitAccess> access =
+                org.mockito.ArgumentCaptor.forClass(KitAccess.class);
+        verify(installer).apply(access.capture(), any(), any(), any(), any(),
+                anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any());
+        assertThat(access.getValue().params()).containsEntry("lang", "de");
+        assertThat(access.getValue().provisioningStamp()).isEqualTo("ode:rev-7");
     }
 
     // ── multi-kit preconditions ──────────────────────────────────────

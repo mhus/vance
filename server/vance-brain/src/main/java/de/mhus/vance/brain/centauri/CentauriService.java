@@ -23,10 +23,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -41,9 +41,16 @@ import org.springframework.stereotype.Service;
  * sources would otherwise be as available as the least available of them. A
  * stream that is off, cooling down, failing or too slow becomes a
  * {@link CentauriNote} and the remaining streams still render.
+ *
+ * <p><b>And a stream that failed has not said anything.</b> Every stream that
+ * produced no page is handed to the merge as a
+ * {@link FeedMerger.StreamSilence} rather than simply being absent from the
+ * fetch list, because absence there also means "removed from the
+ * configuration" — and that one is allowed to drop a cursor while an outage
+ * is not. The same rule ends the round: a settled silence may, an unresolved
+ * one may not.
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class CentauriService {
 
@@ -65,6 +72,48 @@ public class CentauriService {
     private final CentauriCursorCodec cursorCodec;
     private final AgrajagChecker agrajagChecker;
     private final MetricService metrics;
+    private final Duration fetchBudget;
+
+    @Autowired
+    public CentauriService(
+            FeedSourceFactory factory,
+            FeedCapabilitiesCache capabilities,
+            CentauriGateService gate,
+            FeedActorResolver actorResolver,
+            CentauriCursorCodec cursorCodec,
+            AgrajagChecker agrajagChecker,
+            MetricService metrics) {
+        this(factory, capabilities, gate, actorResolver, cursorCodec, agrajagChecker, metrics,
+                STREAM_TIMEOUT);
+    }
+
+    /**
+     * Same, with the fan-out budget as a parameter — the seam the tests need.
+     *
+     * <p>What happens when the budget runs out is precisely the behaviour that
+     * was wrong (streams behind a slow one were booked as timed out with their
+     * pages already in hand), and a test that has to reach that point cannot
+     * spend fifteen seconds getting there. Production always uses
+     * {@link #STREAM_TIMEOUT}; this is not a configuration point.
+     */
+    CentauriService(
+            FeedSourceFactory factory,
+            FeedCapabilitiesCache capabilities,
+            CentauriGateService gate,
+            FeedActorResolver actorResolver,
+            CentauriCursorCodec cursorCodec,
+            AgrajagChecker agrajagChecker,
+            MetricService metrics,
+            Duration fetchBudget) {
+        this.factory = factory;
+        this.capabilities = capabilities;
+        this.gate = gate;
+        this.actorResolver = actorResolver;
+        this.cursorCodec = cursorCodec;
+        this.agrajagChecker = agrajagChecker;
+        this.metrics = metrics;
+        this.fetchBudget = fetchBudget;
+    }
 
     public CentauriPage fetchPage(CentauriPageRequest request, FeedScope scope) {
         if (scope == null || StringUtils.isBlank(scope.projectId())) {
@@ -76,25 +125,34 @@ public class CentauriService {
 
         CentauriCursor incoming = cursorCodec.decode(request.cursor());
         List<CentauriNote> notes = new ArrayList<>();
+        List<FeedMerger.StreamSilence> silences = new ArrayList<>();
         List<Planned> planned = new ArrayList<>();
 
         for (FeedStream stream : request.streams()) {
             if (incoming.isExhausted(stream)) {
+                // Not a silence: an exhausted stream is already recorded in the
+                // incoming cursor, which the merge carries over on its own.
                 continue;
             }
             FeedSourceInstance instance = factory.find(scope, stream.sourceId());
             if (instance == null) {
                 notes.add(new CentauriNote(stream.sourceId(), stream.selector(),
                         CentauriNote.Kind.UNKNOWN_SOURCE, null));
+                silences.add(FeedMerger.StreamSilence.settled(stream));
                 continue;
             }
             var blocked = gate.check(scope, instance.id());
             if (blocked.isPresent()) {
+                boolean disabled = blocked.get() == CentauriGateService.Blocked.DISABLED;
                 notes.add(new CentauriNote(stream.sourceId(), stream.selector(),
-                        blocked.get() == CentauriGateService.Blocked.DISABLED
-                                ? CentauriNote.Kind.DISABLED
-                                : CentauriNote.Kind.COOLING_DOWN,
+                        disabled ? CentauriNote.Kind.DISABLED : CentauriNote.Kind.COOLING_DOWN,
                         null));
+                // Off is a decision and settles the round; a cooldown is the
+                // aftermath of a failure and settles nothing — the source may
+                // have plenty, we are simply not asking right now.
+                silences.add(disabled
+                        ? FeedMerger.StreamSilence.settled(stream)
+                        : FeedMerger.StreamSilence.unresolved(stream));
                 continue;
             }
             // Capabilities are resolved inside the fetch task, not here: for an
@@ -103,17 +161,17 @@ public class CentauriService {
             planned.add(new Planned(stream, instance));
         }
 
-        if (planned.isEmpty()) {
-            return CentauriPage.empty(notes);
-        }
-
-        List<FeedMerger.StreamFetch> fetches = fetchAll(planned, request, scope, incoming, notes);
-        if (fetches.isEmpty()) {
-            return CentauriPage.empty(notes);
-        }
+        // No early return for "nothing was fetched": that path used to answer
+        // CentauriPage.empty(), which drops the incoming cursor and reports
+        // hasMore=false — so one network blip ended the scroll and restarted
+        // the whole feed at its top. The merge below carries the cursor through
+        // untouched and derives hasMore from the silences instead.
+        List<FeedMerger.StreamFetch> fetches =
+                fetchAll(planned, request, scope, incoming, notes, silences);
 
         FeedMerger.MergeResult merged = FeedMerger.merge(
-                fetches, request.filter(), request.pageSize(), request.direction(), incoming);
+                fetches, silences, request.filter(), request.pageSize(),
+                request.direction(), incoming);
 
         return new CentauriPage(
                 merged.items(),
@@ -159,7 +217,19 @@ public class CentauriService {
                     + " — nothing was sent");
         }
 
-        FeedCapabilities caps = capabilities.get(scope, instance);
+        FeedCapabilities caps;
+        try {
+            caps = capabilities.get(scope, instance);
+        } catch (RuntimeException e) {
+            // "Could not ask what it accepts" is not "does not accept this".
+            // Falling through to UNSUPPORTED would have told the reader the
+            // source refuses a signal it may well take.
+            reportFailure(instance, scope, e);
+            metrics.counter("vance.centauri.signal",
+                    "source", sourceId, "outcome", "failed").increment();
+            throw new CentauriException("source '" + sourceId
+                    + "' could not state what it accepts: " + e.getMessage(), e);
+        }
         if (!caps.accepts(request.signal())) {
             metrics.counter("vance.centauri.signal",
                     "source", sourceId, "outcome", "unsupported").increment();
@@ -168,7 +238,7 @@ public class CentauriService {
 
         FeedSignalRequest withActor = new FeedSignalRequest(
                 request.itemId(), request.signal(), request.reason(), request.requestKind(),
-                request.note(), actorResolver.resolve(scope, sourceId));
+                request.note(), actorResolver.resolve(scope, instance));
 
         FeedSignalOutcome outcome;
         try {
@@ -209,7 +279,7 @@ public class CentauriService {
         }
         try {
             Optional<FeedItem> item = instance.loadItem(
-                    itemId, actorResolver.resolve(scope, sourceId));
+                    itemId, actorResolver.resolve(scope, instance));
             metrics.counter("vance.centauri.item", "source", sourceId,
                     "outcome", item.isPresent() ? "found" : "unknown").increment();
             return item;
@@ -231,13 +301,17 @@ public class CentauriService {
      */
     private List<FeedMerger.StreamFetch> fetchAll(
             List<Planned> planned, CentauriPageRequest request, FeedScope scope,
-            CentauriCursor incoming, List<CentauriNote> notes) {
+            CentauriCursor incoming, List<CentauriNote> notes,
+            List<FeedMerger.StreamSilence> silences) {
 
+        if (planned.isEmpty()) {
+            return List.of();
+        }
         List<FeedMerger.StreamFetch> out = new ArrayList<>(planned.size());
         // One deadline for the whole fan-out. Awaiting the futures in sequence
         // with a per-future timeout would multiply the budget by the number of
         // dead sources; the remaining budget is what each wait actually gets.
-        long deadlineNanos = System.nanoTime() + STREAM_TIMEOUT.toNanos();
+        long deadlineNanos = System.nanoTime() + fetchBudget.toNanos();
         try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Future<Fetched>> futures = new ArrayList<>(planned.size());
             for (Planned p : planned) {
@@ -246,16 +320,24 @@ public class CentauriService {
             for (int i = 0; i < planned.size(); i++) {
                 Planned p = planned.get(i);
                 try {
-                    long remainingNanos = deadlineNanos - System.nanoTime();
-                    if (remainingNanos <= 0) {
-                        throw new TimeoutException("shared fetch deadline spent");
-                    }
+                    // Clamped, not refused: an exhausted budget is not by itself
+                    // a statement about *this* stream. Every task started at the
+                    // same moment, so the ones behind a slow source have long
+                    // finished — and `get(0, …)` hands back a completed future's
+                    // value and only times out on one that is still running.
+                    // Treating the spent budget as a timeout threw away pages
+                    // that were sitting right there, on every page a feed had
+                    // one slow source.
+                    long remainingNanos = Math.max(0L, deadlineNanos - System.nanoTime());
                     Fetched fetched = futures.get(i)
                             .get(remainingNanos, TimeUnit.NANOSECONDS);
                     if (fetched.page() == null) {
                         notes.add(new CentauriNote(p.stream().sourceId(), p.stream().selector(),
                                 CentauriNote.Kind.MISSING_FACET,
                                 String.join(", ", fetched.missingFacets())));
+                        // The source stated what it can do and the answer was no.
+                        // That is a statement, so the round may end on it.
+                        silences.add(FeedMerger.StreamSilence.settled(p.stream()));
                         metrics.counter("vance.centauri.fetch",
                                 "source", p.instance().id(), "outcome", "missing_facet")
                                 .increment();
@@ -269,6 +351,7 @@ public class CentauriService {
                     futures.get(i).cancel(true);
                     notes.add(new CentauriNote(p.stream().sourceId(), p.stream().selector(),
                             CentauriNote.Kind.TIMED_OUT, null));
+                    silences.add(FeedMerger.StreamSilence.unresolved(p.stream()));
                     metrics.counter("vance.centauri.fetch",
                             "source", p.instance().id(), "outcome", "timeout").increment();
                 } catch (ExecutionException e) {
@@ -276,6 +359,7 @@ public class CentauriService {
                     reportFailure(p, scope, cause);
                     notes.add(new CentauriNote(p.stream().sourceId(), p.stream().selector(),
                             CentauriNote.Kind.FAILED, cause.getMessage()));
+                    silences.add(FeedMerger.StreamSilence.unresolved(p.stream()));
                     metrics.counter("vance.centauri.fetch",
                             "source", p.instance().id(), "outcome", "failed").increment();
                 } catch (InterruptedException e) {
@@ -290,6 +374,12 @@ public class CentauriService {
     private Fetched fetchOne(
             Planned p, CentauriPageRequest request, FeedScope scope, CentauriCursor incoming) {
         FeedFilter filter = request.filter();
+        // Raises when the source could not state its capabilities, which lands
+        // in the ExecutionException branch of fetchAll: a FAILED note plus the
+        // failure tracker. It must not be swallowed here — reading an
+        // unreachable declaration as "declares nothing" told the reader "this
+        // source does not offer that facet", which is a claim the source never
+        // made, and hid a permanently broken endpoint from the cooldown logic.
         FeedCapabilities caps = capabilities.get(scope, p.instance());
         List<String> missing = filter.undeclaredFacets(caps);
         if (!missing.isEmpty()) {
@@ -300,7 +390,7 @@ public class CentauriService {
         }
         int limit = FeedMerger.fetchLimit(
                 request.pageSize(), filter.needsPostFilter(caps), caps.maxPageSize());
-        @Nullable FeedActor actor = actorResolver.resolve(scope, p.instance().id());
+        @Nullable FeedActor actor = actorResolver.resolve(scope, p.instance());
         FeedFilter pushdown = filter.projectTo(caps);
         FeedFetch fetch = new FeedFetch(
                 p.stream().selector(),

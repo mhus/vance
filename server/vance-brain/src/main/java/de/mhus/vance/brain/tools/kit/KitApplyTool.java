@@ -83,7 +83,7 @@ public class KitApplyTool implements Tool {
         }
         String projectId = KitToolSupport.requireProjectAuthorized(ctx,
                 KitToolSupport.optionalString(params, "project"),
-                permissionService, contextFactory, de.mhus.vance.shared.permission.Action.WRITE);
+                permissionService, contextFactory, de.mhus.vance.shared.permission.Action.ADMIN);
         KitImportRequestDto request = KitImportRequestDto.builder()
                 .projectId(projectId)
                 .source(KitToolSupport.sourceFrom(params))

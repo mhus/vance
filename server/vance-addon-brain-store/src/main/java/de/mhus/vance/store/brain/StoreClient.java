@@ -101,7 +101,7 @@ public class StoreClient {
                 .build(), source);
 
         if (response.statusCode() == 401) {
-            throw new KitException("the store rejected those credentials");
+            throw new StoreRefusedException("the store rejected those credentials");
         }
         if (response.statusCode() != 200) {
             throw new KitException("the store returned HTTP " + response.statusCode()
@@ -228,10 +228,10 @@ public class StoreClient {
                 .build(), source);
 
         if (response.statusCode() == 403) {
-            throw new KitException("this store account is not confirmed yet");
+            throw new StoreRefusedException("this store account is not confirmed yet");
         }
         if (response.statusCode() == 400 || response.statusCode() == 409) {
-            throw new KitException("the store refused the order: " + describe(response));
+            throw new StoreRefusedException("the store refused the order: " + describe(response));
         }
         if (response.statusCode() != 201 && response.statusCode() != 200) {
             throw new KitException("the store returned HTTP " + response.statusCode()
@@ -262,9 +262,13 @@ public class StoreClient {
      * token.
      *
      * <p>The link is the account's own agent here, and here is where the
-     * kit is actually used. The store accepts it for this one endpoint and
-     * for nothing else — a link cannot change a password or mint another
-     * link, because those are decisions about the account itself.
+     * kit is actually used. What a link may do is everything the machine
+     * was authorised for — reviewing, submitting releases, operator
+     * decisions, payouts. Where the line runs is not "review only" but
+     * <em>spending money and entering agreements</em>: buying, renewing a
+     * publishing period and applying as a vendor take a session, as do
+     * decisions about the account itself (password, links). See
+     * {@code specification/kit-store.md} §11a.
      */
     public Review review(
             KitSourceDto source, String linkToken, String vendor, String kitId,
@@ -281,7 +285,7 @@ public class StoreClient {
                 .build(), source);
 
         if (response.statusCode() == 401) {
-            throw new KitException("the store no longer accepts this installation's link"
+            throw new StoreRefusedException("the store no longer accepts this installation's link"
                     + " — sign in again");
         }
         if (response.statusCode() != 200) {
@@ -455,7 +459,7 @@ public class StoreClient {
                 .build(), source);
 
         if (response.statusCode() == 409) {
-            throw new KitException("the store refused the application: " + describe(response));
+            throw new StoreRefusedException("the store refused the application: " + describe(response));
         }
         if (response.statusCode() != 201 && response.statusCode() != 200) {
             throw new KitException("the store returned HTTP " + response.statusCode()
@@ -563,7 +567,8 @@ public class StoreClient {
     }
 
     public List<SaleRow> orders(KitSourceDto source, String linkToken, @Nullable String status) {
-        String path = "/store/admin/orders" + (status == null ? "" : "?status=" + status);
+        String path = "/store/admin/orders"
+                + (status == null ? "" : "?status=" + encode(status));
         return getList(source, path, linkToken, SaleRow.class, "orders");
     }
 
@@ -687,7 +692,7 @@ public class StoreClient {
                 .build(), source);
 
         if (response.statusCode() == 400 || response.statusCode() == 409) {
-            throw new KitException("the store refused the renewal: " + describe(response));
+            throw new StoreRefusedException("the store refused the renewal: " + describe(response));
         }
         if (response.statusCode() != 201 && response.statusCode() != 200) {
             throw new KitException("the store returned HTTP " + response.statusCode()
@@ -737,7 +742,7 @@ public class StoreClient {
                 .build(), source);
 
         if (response.statusCode() != 201 && response.statusCode() != 200) {
-            throw new KitException("the store refused the kit: " + describe(response));
+            throw new StoreRefusedException("the store refused the kit: " + describe(response));
         }
         return read(response.body(), CatalogueEntry.class, source);
     }
@@ -771,7 +776,7 @@ public class StoreClient {
                 .build(), source);
 
         if (response.statusCode() == 403) {
-            throw new KitException("the store will not take this release yet: "
+            throw new StoreRefusedException("the store will not take this release yet: "
                     + describe(response));
         }
         if (response.statusCode() != 201 && response.statusCode() != 200) {
@@ -935,14 +940,43 @@ public class StoreClient {
         // The store's suggestion, reduced to something that can safely be
         // put back into a header of ours. It is a remote party's string —
         // the brain is the one that has to hand it to a browser, and a name
-        // carrying a quote would end the quoted value it sits in.
+        // carrying a quote would end the quoted value it sits in. The
+        // fallback goes through the same reduction: it is built from a
+        // request parameter, so it is no more trustworthy than the header.
         String filename = response.headers().firstValue("Content-Disposition")
-                .map(header -> header.replaceFirst(".*filename=\"?([^\";]+)\"?.*", "$1"))
+                .map(StoreClient::filenameIn)
                 .map(StoreClient::safeFilename)
                 .filter(name -> !name.isBlank())
-                .orElse(fallbackName);
-        return new Paper(response.body(), filename);
+                .orElseGet(() -> safeFilename(fallbackName));
+        return new Paper(response.body(),
+                filename.isBlank() ? "document.pdf" : filename);
     }
+
+    /**
+     * The {@code filename} out of a {@code Content-Disposition} header, or
+     * an empty string when it does not carry one.
+     *
+     * <p>A {@code find} rather than a whole-header {@code replaceFirst}: the
+     * replacement form returns the <em>input</em> when the pattern does not
+     * match, so {@code inline} became a filename called "inline" and the
+     * fallback was unreachable. Both spellings are read, {@code filename=}
+     * and RFC-5987 {@code filename*=}; the charset prefix of the latter is
+     * dropped by {@link #safeFilename} along with everything else that is
+     * not a name.
+     */
+    static String filenameIn(String header) {
+        java.util.regex.Matcher m = FILENAME_IN_DISPOSITION.matcher(header);
+        if (!m.find()) {
+            return "";
+        }
+        String value = m.group(1);
+        // RFC 5987: charset'language'name — keep the name.
+        int lastQuote = value.lastIndexOf('\'');
+        return lastQuote >= 0 ? value.substring(lastQuote + 1) : value;
+    }
+
+    private static final java.util.regex.Pattern FILENAME_IN_DISPOSITION =
+            java.util.regex.Pattern.compile("filename\\*?\\s*=\\s*\"?([^\";]+)\"?");
 
     // ──────────────────── plumbing ────────────────────
 
@@ -974,7 +1008,7 @@ public class StoreClient {
         if (token != null) request.header("Authorization", "Bearer " + token);
         HttpResponse<String> response = send(request.build(), source);
         if (response.statusCode() == 401) {
-            throw new KitException("the store no longer accepts this credential"
+            throw new StoreRefusedException("the store no longer accepts this credential"
                     + " — sign in again");
         }
         if (response.statusCode() != 200) {
@@ -1006,11 +1040,11 @@ public class StoreClient {
         }
         HttpResponse<String> response = send(request.build(), source);
         if (response.statusCode() == 404) {
-            throw new KitException("this account may not do that at " + source.getId()
+            throw new StoreRefusedException("this account may not do that at " + source.getId()
                     + ", or " + what + " no longer applies");
         }
         if (response.statusCode() != 200 && response.statusCode() != 201) {
-            throw new KitException("the store refused " + what + ": " + describe(response));
+            throw new StoreRefusedException("the store refused " + what + ": " + describe(response));
         }
         return read(response.body(), type, source);
     }
@@ -1033,7 +1067,7 @@ public class StoreClient {
             // The operator surface answers 404 rather than 403 to an
             // account that is not an operator. Saying "not found" back
             // would send somebody looking for a typo.
-            throw new KitException("this account may not do that at " + source.getId()
+            throw new StoreRefusedException("this account may not do that at " + source.getId()
                     + ", or " + what + " no longer applies");
         }
         if (response.statusCode() != 200 && response.statusCode() != 201) {

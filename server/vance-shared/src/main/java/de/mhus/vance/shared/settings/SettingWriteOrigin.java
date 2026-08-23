@@ -14,11 +14,12 @@ package de.mhus.vance.shared.settings;
  * path.
  *
  * <p>Consumers: {@code KitService.importKit} / {@code applyTemplate} and their
- * downstream setting writes, which apply the agent-write rules W1–W3 (no
- * overwrite of a PASSWORD setting, model-context values become
- * {@link de.mhus.vance.api.settings.SettingType#HIDDEN}, deny-listed keys are
- * refused) only for {@link #AGENT}. See
- * {@code planning/setting-type-hidden.md} §6.
+ * downstream setting writes, which apply the agent-write rules W1 and W3 (no
+ * overwrite of a setting an agent may not read back, deny-listed keys refused)
+ * only for {@link #AGENT}. W2 — "a value that passed through the model context
+ * becomes {@link de.mhus.vance.api.settings.SettingType#HIDDEN}" — was withdrawn:
+ * the type follows the <em>use</em> the caller declares, not the provenance of
+ * the value. See {@code planning/setting-type-hidden.md} §6.
  */
 public enum SettingWriteOrigin {
 

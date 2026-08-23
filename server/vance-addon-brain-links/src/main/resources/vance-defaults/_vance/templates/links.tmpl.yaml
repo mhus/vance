@@ -1,8 +1,10 @@
 $meta:
   kind: application
   app: links
-title: "{{ title }}"
-{% if description %}description: "{{ description }}"{% endif %}
+# Single-quoted YAML with ' doubled: user text reaches this file verbatim, and a
+# title containing a quote or a backslash must not be able to break the manifest.
+title: '{{ title | replace({"'": "''"}) }}'
+{% if description %}description: '{{ description | replace({"'": "''"}) }}'{% endif %}
 links:
   entries: []
   index:

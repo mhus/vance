@@ -73,6 +73,22 @@ class OrphanStorageSweepTickTest {
     }
 
     @Test
+    void sweep_archivePhaseFailure_stillRunsTheBlobPhase() {
+        // The two phases are independent — running archives first is only an
+        // optimisation. A Mongo hiccup while walking the archives used to skip
+        // the blob sweep for a whole hour.
+        when(archiveCleanupService.sweepOnce(anyInt()))
+                .thenThrow(new RuntimeException("mongo hiccup"));
+        when(cleanupService.sweepOnce(any(), any(), anyInt())).thenReturn(4L);
+
+        OrphanStorageSweepTick.CleanupResult r = tick.sweep(Instant.parse("2026-06-12T08:00:00Z"));
+
+        assertThat(r.orphanArchivesDeleted()).isZero();
+        assertThat(r.orphanStorageDeleted()).isEqualTo(4);
+        verify(cleanupService).sweepOnce(any(), any(), anyInt());
+    }
+
+    @Test
     void tick_swallowsSweepFailure() {
         when(masterService.isLocalPodMaster()).thenReturn(true);
         when(cleanupService.sweepOnce(any(), any(), anyInt()))

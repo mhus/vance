@@ -51,22 +51,15 @@ public class InboxEffectRegistry {
     }
 
     /**
-     * Runs the effect declared by {@code item}, if any.
-     *
-     * <p>Never throws: a failing effect must not roll back a decision the
-     * human already made. The caller records the failure on the item.
-     *
-     * @return {@code true} when an effect ran to completion, {@code false}
-     *         when none applied, and {@code null}-free otherwise
-     * @throws InboxEffectFailedException when the effect itself threw —
-     *         the caller turns this into a visible failure marker rather
-     *         than letting it escape to the answering client
-     */
-    /**
      * Whether the item's effect delivers the decision to the originating
      * process on its own. Unknown or absent effect types answer
      * {@code false}, which keeps the generic route as the default and an
      * unrecognised item audible rather than silent.
+     *
+     * <p>Note that this answers what the effect type <em>would</em> do, not
+     * what a particular dispatch <em>did</em>: a run that returned early or
+     * failed notified nobody. Callers that suppress the generic route must
+     * check the actual outcome as well — see {@code InboxAnsweredListener}.
      */
     public boolean notifiesOrigin(InboxItemDocument item) {
         String type = item.getEffectType();

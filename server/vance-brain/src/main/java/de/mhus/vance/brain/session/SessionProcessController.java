@@ -5,6 +5,7 @@ import de.mhus.vance.api.thinkprocess.ProcessMessagesResponse;
 import de.mhus.vance.api.thinkprocess.ProcessSummary;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageDtoMapper;
 import de.mhus.vance.shared.chat.ChatMessageService;
@@ -28,10 +29,12 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Read-only think-process view of <em>any</em> session of the tenant — the
+ * Read-only think-process view of a session the caller may read — the
  * preview the web session picker offers per row, so "what are this session's
  * workers doing?" can be answered without binding (and thereby taking over)
- * the session.
+ * the session. Readable means the same here as everywhere else: the caller's
+ * own session, or one whose owner allowed several clients
+ * ({@link SessionAccess}).
  *
  * <p><b>Why not the WebSocket handlers.</b> {@code process-list} and
  * {@code process-messages} resolve against the <em>bound</em> session by
@@ -119,9 +122,20 @@ public class SessionProcessController {
     }
 
     /**
-     * Resolve the session inside the tenant and enforce {@link Action#READ} on
-     * it. A session of another tenant is a 404, not a 403 — the caller has no
-     * business learning it exists.
+     * Resolve the session inside the tenant and check both gates on it.
+     *
+     * <p>Two, not one. {@link Action#READ} on {@code Resource.Session}
+     * resolves to the <em>project</em> role (R3), so on its own it hands every
+     * project READER the transcript of every conversation held in that
+     * project. The ownership rule from
+     * {@code specification/multi-user-sessions.md} is the second gate and the
+     * one this preview actually needs — the picker it feeds lists own +
+     * {@code allowMultipleClients} sessions and nothing else
+     * ({@code SessionService.listWithFilters}).
+     *
+     * <p>A session of another tenant is a 404, not a 403 — the caller has no
+     * business learning it exists. A session they may not read answers 403,
+     * matching {@code ChatHistoryController} on the same data.
      */
     private void requireReadableSession(
             String tenant, String sessionId, HttpServletRequest request) {
@@ -129,8 +143,21 @@ public class SessionProcessController {
                 .filter(s -> tenant.equals(s.getTenantId()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Session '" + sessionId + "' not found"));
+        if (!SessionAccess.mayAccess(session, currentUser(request))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Session '" + sessionId + "' belongs to another user");
+        }
         authority.enforce(request,
                 new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
                 Action.READ);
+    }
+
+    /** The authenticated caller, as the access filter left it on the request. */
+    private static String currentUser(HttpServletRequest request) {
+        Object user = request.getAttribute(AccessFilterBase.ATTR_USERNAME);
+        if (!(user instanceof String name) || name.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No authenticated user");
+        }
+        return name;
     }
 }

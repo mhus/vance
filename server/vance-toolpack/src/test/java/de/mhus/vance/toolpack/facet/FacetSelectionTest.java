@@ -53,6 +53,21 @@ class FacetSelectionTest {
     }
 
     @Test
+    void normalize_dropsAKeyWithADot() {
+        // Same invariant Facet enforces on the declaring end: a selection is
+        // persisted as a map key inside an application manifest, and MongoDB
+        // reads a dot as a path separator. This is the way in from tool
+        // arguments and request bodies, so it has to hold here too.
+        Map<String, List<String>> raw = new LinkedHashMap<>();
+        raw.put("origin.place", List.of("m49:142"));
+        raw.put("origin-topic", List.of("gaming"));
+
+        Map<String, List<String>> out = FacetSelection.normalize(raw);
+
+        assertThat(out).containsExactly(Map.entry("origin-topic", List.of("gaming")));
+    }
+
+    @Test
     void facetKey_withADotIsRejected() {
         assertThatThrownBy(() -> Facet.flat("origin.place", "Origin", List.of()))
                 .isInstanceOf(IllegalArgumentException.class)

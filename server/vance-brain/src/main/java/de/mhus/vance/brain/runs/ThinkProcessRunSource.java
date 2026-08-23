@@ -60,6 +60,9 @@ public class ThinkProcessRunSource implements RunSource {
     /** Owns pause/resume/stop for processes; the WS handlers use the same. */
     private final de.mhus.vance.brain.session.SessionLifecycleService sessionLifecycle;
     private final de.mhus.vance.brain.thinkengine.ProcessEventEmitter processEventEmitter;
+    /** Whose session a process belongs to — see visibleTo. */
+    private final de.mhus.vance.shared.session.SessionService sessionService;
+    private final de.mhus.vance.shared.permission.PermissionService permissionService;
 
     @Override
     public String sourceId() {
@@ -135,10 +138,18 @@ public class ThinkProcessRunSource implements RunSource {
      * <p>{@code SUSPENDED} is deliberately not resumable here: that hold
      * belongs to the session, and offering a second owner for the same
      * state is how a state ends up flapping.
+     *
+     * <p>{@code IDLE} and {@code BLOCKED} offer no {@code PAUSE} either,
+     * and for a plainer reason: {@code SessionLifecycleService.pauseProcess}
+     * only pauses what is interruptible and reports {@code false} for those
+     * two. A button that is rendered, pressed, and then does nothing is
+     * worse than an absent one — and it is not the same thing as a refusal,
+     * which is what a run somebody may not touch answers.
      */
     private static Set<RunAction> actionsFor(ThinkProcessDocument process) {
         return switch (process.getStatus()) {
-            case INIT, RUNNING, IDLE, BLOCKED -> Set.of(RunAction.PAUSE, RunAction.STOP);
+            case INIT, RUNNING -> Set.of(RunAction.PAUSE, RunAction.STOP);
+            case IDLE, BLOCKED -> Set.of(RunAction.STOP);
             case PAUSED -> Set.of(RunAction.RESUME, RunAction.STOP);
             case SUSPENDED -> Set.of(RunAction.STOP);
             case CLOSED -> Set.of();
@@ -215,4 +226,36 @@ public class ThinkProcessRunSource implements RunSource {
         };
     }
 
+    /**
+     * A process belongs to a person through its session, which is narrower
+     * than the project the caller was checked against — so the same rule
+     * {@code MagratheaRunSource} applies to a bound run applies here: the
+     * session is a system one (scheduler, agrajag — nobody's conversation),
+     * the caller owns it, or the caller administers the project.
+     *
+     * <p>Without this the read side hands a project READER the {@code goal}
+     * of every worker somebody else dictated into their chat, and the write
+     * side stops their runs. A missing process is reported visible on
+     * purpose — "no such run" is then answered once, by {@code get} and
+     * {@code perform}, rather than twice with two different meanings.
+     */
+    @Override
+    public boolean visibleTo(
+            de.mhus.vance.shared.permission.SecurityContext subject,
+            String tenantId, String projectId, String nativeId) {
+        Optional<ThinkProcessDocument> found = load(tenantId, projectId, nativeId);
+        if (found.isEmpty()) return true;
+        String sessionId = found.get().getSessionId();
+        if (sessionId == null || sessionId.isBlank()) return true;
+
+        return sessionService.findBySessionId(sessionId)
+                .map(session -> session.isSystem()
+                        || (subject != null
+                            && subject.subjectId().equals(session.getUserId()))
+                        || permissionService.check(subject,
+                                new de.mhus.vance.shared.permission.Resource.Project(
+                                        tenantId, projectId),
+                                de.mhus.vance.shared.permission.Action.ADMIN))
+                .orElse(true);
+    }
 }

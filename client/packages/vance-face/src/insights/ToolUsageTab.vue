@@ -119,12 +119,15 @@ function barWidth(role: ToolUsageRoleInsightsDto, tool: ToolUsageEntryInsightsDt
           {{ totals.calls }} call{{ totals.calls === 1 ? '' : 's' }} ·
           {{ totals.discovery }} discovery lookup{{ totals.discovery === 1 ? '' : 's' }}
         </div>
-        <VInput
-          v-model="filter"
-          class="w-56"
-          size="sm"
-          placeholder="Filter tool or family…"
-        />
+        <!-- Width goes on a wrapper: VInput carries `w-full` itself, and a
+             merged `w-56` loses to it at equal specificity. -->
+        <div class="w-56">
+          <VInput
+            v-model="filter"
+            size="sm"
+            placeholder="Filter tool or family…"
+          />
+        </div>
         <VButton
           variant="neutral"
           size="xs"

@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.project;
 
+import de.mhus.vance.shared.project.ProjectService;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
@@ -64,12 +65,33 @@ public class ProjectActivationRegistry {
         return Set.copyOf(active);
     }
 
-    /**
-     * How many projects this pod has activated — compared against the number
-     * of leases it still holds to detect that one was taken away. See
-     * {@code ProjectLeaseService}.
-     */
+    /** How many projects this pod has activated, podless ones included. */
     public int size() {
         return active.size();
+    }
+
+    /**
+     * How many of the activated projects are supposed to hold a lease — the
+     * number {@code ProjectLeaseService} compares its renewal count against.
+     *
+     * <p>Podless projects ({@code _user_<login>}, {@code _tenant}) are
+     * activated here on purpose — their schedulers and hooks do live on this
+     * pod — but they take no lease by definition. Counting them made the
+     * comparison permanently short: one connected user was enough to log
+     * "a lease was taken away" every single minute and pay for the
+     * reconciliation query behind it, which then correctly skipped exactly the
+     * projects that had caused the alarm. A warning that fires in the normal
+     * case cannot report an anomaly, so the filter belongs one level earlier,
+     * in the count itself.
+     */
+    public int leaseHoldingSize() {
+        int count = 0;
+        for (String key : active) {
+            int slash = key.indexOf('/');
+            if (slash <= 0) continue;
+            if (ProjectService.isPodless(key.substring(slash + 1))) continue;
+            count++;
+        }
+        return count;
     }
 }

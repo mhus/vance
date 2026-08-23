@@ -60,6 +60,17 @@ public class KitService {
             SettingWriteOrigin origin) {
         validateImport(request);
         requireProject(tenantId, request.getProjectId());
+        // APPLY is the untracked splat: no record, no update path, no export
+        // (kits.md §6.4). Writing the authoring manifest anyway produced
+        // exactly the state that combination is meant to exclude — a project
+        // that can export a kit it has no record of. The two checkboxes sit
+        // next to each other in the UI, so this needs saying rather than
+        // assuming.
+        if (request.getMode() == KitImportMode.APPLY && request.isWriteManifest()) {
+            throw new KitException("apply cannot write the authoring manifest — apply leaves"
+                    + " no trace by design. Use install or update if this project should"
+                    + " become the source of this kit.");
+        }
 
         // One lookup for the whole operation: which store account this
         // installation is signed in to, and the credential to fetch with.
@@ -253,7 +264,32 @@ public class KitService {
                 .prune(prune)
                 .token(token)
                 .vaultPassword(vaultPassword)
+                // Carried over, not dropped. buildRecord writes the request's
+                // stamp into the new record, so a manual update that omitted it
+                // stored null — and a record without a stamp is never
+                // change-checked again (KitProvisioningStamp.differs returns
+                // false for it, by contract). One "Update all" click used to
+                // switch provisioning checking off for that kit permanently.
+                .provisioningStamp(record.getOrigin().getProvisioningStamp())
+                // Same reconstruction, and the worse half of the same bug: a
+                // host that assembles per request would have been asked for the
+                // default variant, so the project would silently lose whatever
+                // it was equipped with. The record is the only place these
+                // survive — the hand-written config document is never written
+                // by the server and is not where machine state belongs.
+                .params(paramsOf(record))
                 .build();
+    }
+
+    /**
+     * The parameters this kit was fetched with, from its record. Never null:
+     * {@link KitImportRequestDto#getParams()} is read straight through into
+     * {@code KitAccess}, and an absent map there would read as "asked for
+     * nothing" at exactly the point where the distinction matters.
+     */
+    private static java.util.Map<String, Object> paramsOf(KitInstalledRecordDto record) {
+        java.util.Map<String, Object> params = record.getOrigin().getParams();
+        return params == null ? java.util.Map.of() : params;
     }
 
     /**
@@ -315,6 +351,11 @@ public class KitService {
                 .prune(false)
                 .token(token)
                 .vaultPassword(vaultPassword)
+                // Same reason as in updateRequestFor: a reapply is about write
+                // order, not about forgetting where the kit came from — or what
+                // it was asked for.
+                .provisioningStamp(record.getOrigin().getProvisioningStamp())
+                .params(paramsOf(record))
                 .build();
     }
 

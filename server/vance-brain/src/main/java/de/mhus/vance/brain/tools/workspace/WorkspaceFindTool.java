@@ -130,6 +130,8 @@ public class WorkspaceFindTool implements Tool {
         // generated-filter all judge the part *below* it — same contract the
         // CLIENT backend documents, so file_find means one thing on both
         // targets.
+        WorkspaceSubPath.requirePresent(
+                workspace, ctx, dirName, subPath, /*requireDirectory*/ true);
         String prefix = WorkspaceSubPath.prefix(subPath);
         List<Entry> entries = new ArrayList<>();
         int totalConsidered = 0;

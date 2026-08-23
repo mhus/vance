@@ -1453,7 +1453,16 @@ public class DocumentService {
         String normalizedPath = normalizePath(path);
         enforceWrite(tenantId, projectId, normalizedPath,
                 de.mhus.vance.shared.permission.Action.CREATE, actor);
-        if (repository.existsByTenantIdAndProjectIdAndPath(tenantId, projectId, normalizedPath)) {
+        boolean mounted = JaglanPaths.isMounted(normalizedPath);
+        // For a mount the repository alone cannot answer "does this already
+        // exist": the shell row only appears once somebody browsed or stat'ed
+        // the entry, so a plain index check would let a create silently
+        // overwrite a file that is sitting in the source.
+        boolean exists = mounted
+                ? findByPath(tenantId, projectId, normalizedPath).isPresent()
+                : repository.existsByTenantIdAndProjectIdAndPath(
+                        tenantId, projectId, normalizedPath);
+        if (exists) {
             throw new DocumentAlreadyExistsException(
                     "Document '" + normalizedPath + "' already exists in "
                             + tenantId + "/" + projectId);
@@ -1465,6 +1474,17 @@ public class DocumentService {
         boolean autoSummary = autoSummaryOverride != null
                 ? autoSummaryOverride
                 : isAutoSummaryEligible(mimeType);
+
+        // A mounted document's row is a metadata shell addressed by a
+        // *derived* id — see JaglanPaths.documentId. Letting Mongo mint an
+        // ObjectId here produced a row with the right path and the wrong _id:
+        // the next findByPath / folder listing tried to upsert the shell under
+        // the derived id, hit the unique (tenant, project, path) index, and the
+        // resulting DuplicateKeyException was booked as a mount outage. One
+        // created document made the whole mount unusable, and it did not heal.
+        String mountedId = mounted
+                ? JaglanPaths.documentIdForPath(tenantId, projectId, normalizedPath)
+                : null;
 
         DocumentDocument doc = DocumentDocument.builder()
                 .tenantId(tenantId)
@@ -1479,10 +1499,22 @@ public class DocumentService {
                 .compressed(write.compressed())
                 .createdBy(createdBy)
                 .status(DocumentStatus.ACTIVE)
-                .autoSummary(autoSummary)
-                .ragEnabled(ragEnabledOverride)
-                .lineageId(java.util.UUID.randomUUID().toString())
+                // Mounted content is never summarised or embedded — the same
+                // answer the shell upsert writes, given here so the row is
+                // right from its first moment instead of from its first re-stat.
+                .autoSummary(!mounted && autoSummary)
+                .ragEnabled(mounted ? Boolean.FALSE : ragEnabledOverride)
+                // Derived rather than random for a mounted row, matching
+                // JaglanShellService: a purged-and-rewritten shell keeps its
+                // identity, and archives do not apply there anyway.
+                .lineageId(mountedId != null ? mountedId : java.util.UUID.randomUUID().toString())
                 .build();
+        if (mountedId != null) {
+            doc.setId(mountedId);
+            // mountFreshUntil stays null on purpose: the row counts as stale,
+            // so the next resolve re-stats the source and fills in the fields
+            // only a stat knows (mime, size, directory flag, access lock).
+        }
         // Header parsing reads back through loadContent → the just-written
         // storage blob. One extra round-trip per create, but it keeps the
         // streaming-write path branch-free.
@@ -2356,6 +2388,21 @@ public class DocumentService {
         if (newPath != null) {
             String normalized = normalizePath(newPath);
             if (!normalized.equals(doc.getPath())) {
+                // Same reason moveToTrash refuses: a mounted document's id is
+                // derived from its path, so renaming the row leaves an id that
+                // no longer matches the address, and moving out of _ext leaves
+                // a row with no storageId whose content reads as empty. Neither
+                // touches the source, so the rename would be a lie either way.
+                if (JaglanPaths.isMounted(doc.getPath())) {
+                    throw new JaglanAccessException(JaglanPaths.mountNameOf(doc.getPath()),
+                            "mounted documents cannot be renamed or moved — rename at the "
+                                    + "source instead: '" + doc.getPath() + "'");
+                }
+                if (JaglanPaths.isMounted(normalized)) {
+                    throw new JaglanAccessException(JaglanPaths.mountNameOf(normalized),
+                            "documents cannot be moved into a mount — create them at the "
+                                    + "source instead: '" + normalized + "'");
+                }
                 if (repository.existsByTenantIdAndProjectIdAndPath(
                         doc.getTenantId(), doc.getProjectId(), normalized)) {
                     throw new DocumentAlreadyExistsException(
@@ -2404,6 +2451,13 @@ public class DocumentService {
      * the cascade reads cheaply.
      */
     boolean shouldArchiveOnSave(DocumentDocument doc) {
+        // Versioning does not apply to mounted content and never will:
+        // archiving means copying bytes, which is the one thing a pass-through
+        // mount exists to avoid. Without this the second save of a mounted
+        // document writes an archive row with storageId == null — a version
+        // the panel lists and that restores as empty content.
+        // See specification/public/jaglan-system.md §9.
+        if (isMounted(doc.getPath())) return false;
         if (!archiveEnabledDefault) return false;
         boolean projectEnabled = settingService.getBooleanValueCascade(
                 doc.getTenantId(), doc.getProjectId(), /*thinkProcessId*/ null,
@@ -2421,6 +2475,23 @@ public class DocumentService {
         long minSeconds = resolveMinIntervalSeconds(
                 doc.getTenantId(), doc.getProjectId());
         return Instant.now().isAfter(last.plusSeconds(minSeconds));
+    }
+
+    /**
+     * Refuse an explicit versioning gesture on a mounted document.
+     *
+     * <p>{@link #shouldArchiveOnSave} answers the implicit case with a plain
+     * {@code false} — an autosave is not a request. The explicit ones (create
+     * a version, restore one) are, and "what does not apply refuses by name
+     * rather than quietly doing nothing" is the rule for the whole {@code _ext}
+     * namespace (§9). A restore is the worse of the two to leave silent: it
+     * reports success and changes nothing at the source.
+     */
+    private static void requireNotMountedForVersioning(DocumentDocument doc) {
+        if (!isMounted(doc.getPath())) return;
+        throw new JaglanAccessException(JaglanPaths.mountNameOf(doc.getPath()),
+                "mounted documents are not versioned — there is nothing to snapshot or "
+                        + "restore for '" + doc.getPath() + "'");
     }
 
     private long resolveMinIntervalSeconds(String tenantId, String projectId) {
@@ -2446,16 +2517,24 @@ public class DocumentService {
 
     /**
      * Number of archive entries for {@code doc}. UI badge.
+     *
+     * <p>Always {@code 0} for a mounted document — versioning does not apply
+     * there (§9). Answered rather than refused because this feeds a badge:
+     * an exception in a read that only decorates a listing would break the
+     * listing over a feature that is simply absent.
      */
     public long countArchives(DocumentDocument doc) {
+        if (isMounted(doc.getPath())) return 0L;
         return archiveService.countForLineage(
                 doc.getTenantId(), doc.getProjectId(), doc.getLineageId());
     }
 
     /**
-     * All archive entries for {@code doc}'s lineage, newest first.
+     * All archive entries for {@code doc}'s lineage, newest first. Empty for
+     * a mounted document — see {@link #countArchives}.
      */
     public List<DocumentArchiveDocument> listArchives(DocumentDocument doc) {
+        if (isMounted(doc.getPath())) return List.of();
         return archiveService.listForLineage(
                 doc.getTenantId(), doc.getProjectId(), doc.getLineageId());
     }
@@ -2507,6 +2586,7 @@ public class DocumentService {
         enforceWrite(live.getTenantId(), live.getProjectId(), live.getPath(),
                 de.mhus.vance.shared.permission.Action.WRITE, actor);
         enforcePrivilegedAdmin(live, actor);
+        requireNotMountedForVersioning(live);
         DocumentArchiveDocument archive = archiveService.findById(archiveId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Unknown archive id='" + archiveId + "'"));
@@ -2600,6 +2680,7 @@ public class DocumentService {
                         "Unknown document id='" + liveDocId + "'"));
         enforceWrite(live.getTenantId(), live.getProjectId(), live.getPath(),
                 de.mhus.vance.shared.permission.Action.READ, actor);
+        requireNotMountedForVersioning(live);
         DocumentArchiveDocument archive = archiveService.findById(archiveId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Unknown archive id='" + archiveId + "'"));
@@ -2703,6 +2784,7 @@ public class DocumentService {
         enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
                 de.mhus.vance.shared.permission.Action.WRITE, actor);
         enforcePrivilegedAdmin(doc, actor);
+        requireNotMountedForVersioning(doc);
 
         // On/off cascade — identical to shouldArchiveOnSave(), minus the
         // interval check (that's the whole point of the manual button).
@@ -4042,13 +4124,37 @@ public class DocumentService {
      * MODIFYING an already-privileged document both require Document
      * {@code ADMIN} — a plain WRITER must not plant or alter a runAs-carrying
      * document. Enforced on top of the ordinary write check.
+     *
+     * <p><b>The check runs under
+     * {@link de.mhus.vance.shared.permission.WriteReason#USER}, deliberately not
+     * under {@code actor.reason()}.</b> {@code WriteReason.SYSTEM} is the
+     * "server code vouches for this user" channel, and {@code PermissionService}
+     * short-circuits it before any resolver sees it. Every surface that writes a
+     * {@code runAs}-carrying document uses exactly that channel to get past the
+     * reserved-prefix rule (the scheduler / hook / event tools and their
+     * controllers all build {@code WriteActor.system(subject)}), so honouring
+     * the reason here would waive the one gate standing between a WRITER and
+     * arbitrary {@code runAs} authority — the gate would be wirkungslos on
+     * precisely the paths it exists for.
+     *
+     * <p>A genuinely user-less write still passes: {@code WriteActor.SYSTEM}
+     * carries a SYSTEM <em>subject</em>, which {@code PermissionService} lets
+     * through regardless of the reason. Bootstrap, migrations and lifecycle
+     * writes are unaffected. What a SYSTEM-subject write does <em>not</em> get
+     * is a free pass for content that arrived from outside — a kit tree is
+     * refused its {@code privileged} header at the kit layer instead
+     * ({@code KitInstaller.scanBuildTree}), because there is no calling
+     * principal there to hold responsible.
      */
     private void enforcePrivilegedAdmin(DocumentDocument doc,
             de.mhus.vance.shared.permission.WriteActor actor) {
-        if (doc.isPrivileged()) {
-            enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
-                    de.mhus.vance.shared.permission.Action.ADMIN, actor);
-        }
+        if (!doc.isPrivileged()) return;
+        permissionServiceProvider.getObject().enforce(
+                actor.subject(),
+                new de.mhus.vance.shared.permission.Resource.Document(
+                        doc.getTenantId(), doc.getProjectId(), doc.getPath()),
+                de.mhus.vance.shared.permission.Action.ADMIN,
+                de.mhus.vance.shared.permission.WriteReason.USER);
     }
 
     /**

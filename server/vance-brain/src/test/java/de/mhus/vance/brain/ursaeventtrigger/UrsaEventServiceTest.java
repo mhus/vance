@@ -51,6 +51,8 @@ class UrsaEventServiceTest {
     private de.mhus.vance.brain.ursascheduler.SystemSessionResolver systemSessionResolver;
     private UrsaEventLogService eventLogService;
     private UrsaEventService service;
+    private ObjectProvider<de.mhus.vance.brain.project.ProjectLocator> locatorProvider;
+    private ObjectProvider<de.mhus.vance.brain.project.ProjectManagerService> managerProvider;
 
     @BeforeEach
     void setUp() {
@@ -86,16 +88,23 @@ class UrsaEventServiceTest {
         // semantics, and an absent locator means "run here", which is what the
         // podless and single-pod paths do anyway.
         @SuppressWarnings("unchecked")
-        org.springframework.beans.factory.ObjectProvider<de.mhus.vance.brain.project.ProjectLocator>
-                locatorProvider = mock(org.springframework.beans.factory.ObjectProvider.class);
+        ObjectProvider<de.mhus.vance.brain.project.ProjectLocator> locators =
+                mock(ObjectProvider.class);
         @SuppressWarnings("unchecked")
-        org.springframework.beans.factory.ObjectProvider<
-                de.mhus.vance.brain.project.ProjectManagerService> managerProvider =
-                mock(org.springframework.beans.factory.ObjectProvider.class);
-        service = new UrsaEventService(
+        ObjectProvider<de.mhus.vance.brain.project.ProjectManagerService> managers =
+                mock(ObjectProvider.class);
+        locatorProvider = locators;
+        managerProvider = managers;
+        service = newService(/*asyncMaxConcurrent*/ 32);
+    }
+
+    /** Same wiring as {@link #setUp()}, with the async ceiling as a knob. */
+    private UrsaEventService newService(int asyncMaxConcurrent) {
+        return new UrsaEventService(
                 eventLoader, settingService, metricService, workflowProvider,
                 actionExecutorRegistry, systemSessionResolver, eventLogService,
-                locatorProvider, managerProvider, mock(UrsaEventForwarder.class));
+                locatorProvider, managerProvider, mock(UrsaEventForwarder.class),
+                asyncMaxConcurrent);
     }
 
     // ─── synchronous output ─────────────────────────────────────────────
@@ -114,9 +123,10 @@ class UrsaEventServiceTest {
     @Test
     void script_event_returns_its_result_to_the_caller() {
         // The value was always computed and mapped into ActionResult.output
-        // — it just never left the service.
+        // — it just never left the service. No runAs: the script runs under
+        // the event's own identity, so there is nothing to withhold.
         when(eventLoader.load(TENANT, PROJECT, EVENT))
-                .thenReturn(Optional.of(event(b -> b.script("_vance/scripts/x.js"))));
+                .thenReturn(Optional.of(event(b -> b.script("_vance/scripts/x.js").runAs(null))));
         scriptReturns("Der Rat hat zugestimmt.");
 
         UrsaEventService.UrsaEventTriggerResult r = service.trigger(
@@ -155,6 +165,62 @@ class UrsaEventServiceTest {
                 .record(eq(r.correlationId()), any());
     }
 
+    // ─── async admission control ────────────────────────────────────────
+
+    @Test
+    void async_script_events_are_rejected_once_every_slot_is_taken() throws Exception {
+        // The event route carries no JWT and no rate limit. While the script
+        // ran on the request thread the servlet pool was an implicit ceiling;
+        // answering immediately removed it, so the ceiling has to be explicit.
+        UrsaEventService bounded = newService(/*asyncMaxConcurrent*/ 1);
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(
+                event(b -> b.script("_vance/scripts/slow.js").async(true))));
+        java.util.concurrent.CountDownLatch started = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        when(actionExecutorRegistry.execute(any(), any(), any())).thenAnswer(inv -> {
+            started.countDown();
+            release.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            return de.mhus.vance.brain.action.ActionResult.success(Map.of("value", "done"));
+        });
+
+        try {
+            bounded.trigger(TENANT, PROJECT, EVENT, "POST", null, null);
+            assertThat(started.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+
+            assertThatThrownBy(() -> bounded.trigger(TENANT, PROJECT, EVENT, "POST", null, null))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                    .isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
+    void an_async_slot_comes_back_when_the_script_finishes() throws Exception {
+        UrsaEventService bounded = newService(/*asyncMaxConcurrent*/ 1);
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(
+                event(b -> b.script("_vance/scripts/quick.js").async(true))));
+        scriptReturns("done");
+
+        bounded.trigger(TENANT, PROJECT, EVENT, "POST", null, null);
+
+        // The slot is released after the task body, so poll rather than
+        // assume an ordering between the task and this thread.
+        UrsaEventService.UrsaEventTriggerResult second = null;
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+        while (second == null) {
+            try {
+                second = bounded.trigger(TENANT, PROJECT, EVENT, "POST", null, null);
+            } catch (ResponseStatusException ex) {
+                if (System.nanoTime() > deadline) throw ex;
+                Thread.sleep(20);
+            }
+        }
+
+        assertThat(second.correlationId()).isNotBlank();
+    }
+
     // ─── output visibility on the bypass surface ────────────────────────
 
     @Test
@@ -179,6 +245,34 @@ class UrsaEventServiceTest {
 
         UrsaEventService.UrsaEventTriggerResult r =
                 service.triggerAdmin(TENANT, PROJECT, EVENT, null, "agent:marvin");
+
+        assertThat(r.output()).containsEntry("value", "shared");
+    }
+
+    @Test
+    void public_webhook_withholds_output_when_the_event_crosses_identity() {
+        // auth.public + runAs is the inverted case: the log document was
+        // already redacted while the anonymous HTTP caller got the full
+        // return value of the privileged script.
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(
+                event(b -> b.script("_vance/scripts/x.js").runAs("ci-bot"))));
+        scriptReturns("secret");
+
+        UrsaEventService.UrsaEventTriggerResult r = service.trigger(
+                TENANT, PROJECT, EVENT, "POST", null, null);
+
+        assertThat(r.output()).isNull();
+        assertThat(r.workflowName()).isEqualTo("script:_vance/scripts/x.js");
+    }
+
+    @Test
+    void public_webhook_gets_output_when_the_event_opts_in() {
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(
+                event(b -> b.script("_vance/scripts/x.js").runAs("ci-bot").outputToAgents(true))));
+        scriptReturns("shared");
+
+        UrsaEventService.UrsaEventTriggerResult r = service.trigger(
+                TENANT, PROJECT, EVENT, "POST", null, null);
 
         assertThat(r.output()).containsEntry("value", "shared");
     }

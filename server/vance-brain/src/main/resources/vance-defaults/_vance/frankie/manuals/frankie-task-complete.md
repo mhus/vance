@@ -18,9 +18,13 @@ is the tool that opts in, not the engine.
 **Not every recipe has one.** Check your tool list; do not guess a
 name. The recipes that ship with one:
 
-  Must be called exactly once; natural-stop is not accepted there.
-- **trillian-worker-void** — `trillian_done(summary="…")`, optionally with
-  `data` for a structured payload.
+- **trillian-worker-void** / **trillian-worker-adam** —
+  `trillian_done(summary="…")`, optionally with `data` for a structured
+  payload. Must be called exactly once; natural-stop is not accepted
+  there. The same recipes have a second named exit,
+  `trillian_ask(question="…", blocker="…")`: it also leaves the loop,
+  but the worker stays parked with its state and waits for an answer
+  instead of finishing.
 
 **coding** has none: finish with a plain text reply listing what
 changed and which files were touched. That is the natural stop, and it

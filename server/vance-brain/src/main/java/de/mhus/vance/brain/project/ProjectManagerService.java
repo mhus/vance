@@ -73,6 +73,21 @@ public class ProjectManagerService {
      * <p>Podless system projects (see {@link ProjectService#isPodless})
      * are returned unchanged — they live on whichever pod the user's
      * WS lands on and never take a lease.
+     *
+     * <p><b>Owning is not running — do not use this as an entry point.</b>
+     * This is the raw lease primitive: it makes the pod the owner and does
+     * <em>not</em> put the project into {@link ProjectActivationRegistry}.
+     * The activation-gated document listeners ({@code UrsaHookDocumentListener},
+     * {@code UrsaSchedulerDocumentListener}) only refresh on the activating
+     * pod, while {@code DocumentChangeRouter} serves the <em>writing</em> pod
+     * regardless of ownership — so a project that is claimed but never brought
+     * holds its hooks and schedulers here and runs none of them, silently and
+     * without an error anywhere. Every path that reacts to a user wanting to
+     * <em>use</em> the project (session create / resume / bootstrap, workspace
+     * adopt) must therefore go through
+     * {@link ProjectLifecycleService#bring(String, String)}, which claims
+     * through this method and then activates. {@code bring} is idempotent and
+     * short-circuits to a lease refresh once the project runs here.
      */
     public ProjectDocument claimForLocalPod(String tenantId, String projectName) {
         if (ProjectService.isPodless(projectName)) {
@@ -203,8 +218,10 @@ public class ProjectManagerService {
      * ClusterService#resolveEndpoint} happily returned the dead pod's
      * {@code host:port} — it only checked the row exists, not its heartbeat —
      * so every {@code session-resume} was tunnelled to a host that no longer
-     * answered (observed 2026-07-01). An expired lease now answers that
-     * question before an endpoint is ever looked up.
+     * answered (observed 2026-07-01). An expired lease now removes the holder
+     * before an endpoint is ever looked up — and because the lease TTL is the
+     * longer window, {@link ClusterService#resolveEndpointByPodId} keeps the
+     * staleness gate as the second one (see {@code ClusterTimeWindows}).
      *
      * <p>This is the lookup primitive for engine-to-engine routing
      * (Eddie → Arthur via Working WS) and for workspace REST routing.
@@ -252,6 +269,12 @@ public class ProjectManagerService {
      *
      * <p>One atomic CAS, no live-pod snapshot to assemble first. Two pods
      * racing on a fresh project pick one winner, never both.
+     *
+     * <p><b>A {@link ClaimResult.Local} answer is a lease, not a running
+     * project.</b> Same rule as {@link #claimForLocalPod}: the caller must
+     * follow up with {@link ProjectLifecycleService#bring(String, String)}
+     * before treating the project as usable, or its hooks and schedulers stay
+     * dark on the pod that owns them.
      */
     public ClaimResult claimForLocalPodOrRedirect(String tenantId, String projectName) {
         if (ProjectService.isPodless(projectName)) {
@@ -280,7 +303,8 @@ public class ProjectManagerService {
                 .orElseThrow(() -> new ClaimRejectedException(
                         "Project '" + tenantId + "/" + projectName
                                 + "' is leased by pod '" + current.getHomeNode()
-                                + "' but the cluster registry has no endpoint for it"));
+                                + "' but the cluster registry has no live endpoint for it "
+                                + "(row purged, stopped, or not beating)"));
         return new ClaimResult.Redirect(endpoint);
     }
 

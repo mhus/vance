@@ -14,6 +14,7 @@ import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.shared.inbox.InboxEffectRegistry;
 import de.mhus.vance.shared.inbox.InboxItemAnsweredEvent;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
+import de.mhus.vance.shared.inbox.InboxItemHistoryEntry;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.List;
@@ -41,6 +42,8 @@ class InboxAnsweredListenerTest {
     ProcessEventEmitter eventEmitter;
     @Mock
     InboxEffectRegistry effectRegistry;
+    @Mock
+    de.mhus.vance.shared.inbox.InboxItemService inboxItemService;
 
     @Test
     void anOrdinaryAnswer_reachesTheOriginProcess() {
@@ -100,13 +103,66 @@ class InboxAnsweredListenerTest {
         verify(thinkProcessService, never()).appendPending(anyString(), any());
     }
 
+    @Test
+    void anEffectThatFailed_stillReachesTheOriginProcess() {
+        // InboxItemService.answer swallows whatever the effect throws and
+        // publishes the answered-event anyway. Suppressing on the effect
+        // *type* therefore dropped the only message the origin was ever
+        // going to get: the item is ANSWERED, the mutation never happened,
+        // and the process stays BLOCKED with nobody left to unblock it.
+        InboxItemDocument item = item();
+        when(effectRegistry.notifiesOrigin(item)).thenReturn(true);
+        when(thinkProcessService.appendPending(anyString(), any())).thenReturn(true);
+        InboxItemDocument afterFailure = item();
+        afterFailure.setHistory(List.of(
+                InboxItemHistoryEntry.builder().action("ANSWERED").build(),
+                InboxItemHistoryEntry.builder().action("EFFECT_FAILED").build()));
+        when(inboxItemService.findById(any(), eq("item-1")))
+                .thenReturn(java.util.Optional.of(afterFailure));
+
+        listener().onAnswered(new InboxItemAnsweredEvent(item));
+
+        verify(thinkProcessService).appendPending(eq(PROCESS), any(PendingMessageDocument.class));
+        verify(eventEmitter).scheduleTurn(PROCESS);
+    }
+
+    @Test
+    void anAbstention_keepsTheGenericRoute_evenForANotifyingEffect() {
+        // Abstention is not consent, so InboxEffectRegistry.dispatch runs
+        // nothing at all — and an effect that did not run notified nobody.
+        InboxItemDocument item = item();
+        item.getAnswer().setOutcome(AnswerOutcome.UNDECIDABLE);
+        when(effectRegistry.notifiesOrigin(item)).thenReturn(true);
+        when(thinkProcessService.appendPending(anyString(), any())).thenReturn(true);
+
+        listener().onAnswered(new InboxItemAnsweredEvent(item));
+
+        verify(eventEmitter).scheduleTurn(PROCESS);
+    }
+
+    @Test
+    void aNonApprovalItem_keepsTheGenericRoute_evenForANotifyingEffect() {
+        // Only APPROVAL carries the approve/reject answer dispatch needs;
+        // anything else is refused there and nothing is delivered.
+        InboxItemDocument item = item();
+        item.setType(de.mhus.vance.api.inbox.InboxItemType.DECISION);
+        when(effectRegistry.notifiesOrigin(item)).thenReturn(true);
+        when(thinkProcessService.appendPending(anyString(), any())).thenReturn(true);
+
+        listener().onAnswered(new InboxItemAnsweredEvent(item));
+
+        verify(eventEmitter).scheduleTurn(PROCESS);
+    }
+
     private InboxAnsweredListener listener() {
-        return new InboxAnsweredListener(thinkProcessService, eventEmitter, effectRegistry);
+        return new InboxAnsweredListener(
+                thinkProcessService, eventEmitter, effectRegistry, inboxItemService);
     }
 
     private static InboxItemDocument item() {
         InboxItemDocument item = new InboxItemDocument();
         item.setId("item-1");
+        item.setTenantId("acme");
         item.setOriginProcessId(PROCESS);
         item.setType(de.mhus.vance.api.inbox.InboxItemType.APPROVAL);
         AnswerPayload answer = new AnswerPayload();

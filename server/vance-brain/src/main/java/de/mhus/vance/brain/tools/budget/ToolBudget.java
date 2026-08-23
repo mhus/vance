@@ -34,8 +34,10 @@ import java.util.Map;
  *                          top-class slot. Beyond that, the oldest
  *                          activations compete in the lowest class —
  *                          a long-running process would otherwise fill
- *                          the whole manifest with activations. {@code 0}
- *                          disables the cap.
+ *                          the whole manifest with activations. Read only
+ *                          while a surface is actually being cut, so it
+ *                          has no effect without a known {@code maxTools}.
+ *                          {@code 0} disables the cap.
  */
 public record ToolBudget(
         int maxTools,

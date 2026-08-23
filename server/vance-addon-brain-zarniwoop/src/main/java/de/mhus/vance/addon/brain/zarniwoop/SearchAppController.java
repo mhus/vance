@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -160,9 +161,8 @@ public class SearchAppController {
                 // normal tier would silently do nothing, so it is dropped here
                 // where the reason can be written down.
                 tier == SearchTier.EXPERT ? blankToNull(body.instance()) : null,
-                tier == SearchTier.EXPERT && body.expertParams() != null
-                        ? body.expertParams() : Map.of(),
-                body.facets() == null ? Map.of() : body.facets());
+                tier == SearchTier.EXPERT ? withoutNulls(body.expertParams()) : Map.of(),
+                withoutNulls(body.facets()));
 
         SearchResult result = zarniwoopService.search(req, scope, toolContext(scope));
         return toView(result);
@@ -424,7 +424,7 @@ public class SearchAppController {
      * come from the same untrusted place and agreeing with either is a choice we
      * do not have to make.
      */
-    private static MediaType safeMediaType(String raw) {
+    static MediaType safeMediaType(String raw) {
         MediaType parsed;
         try {
             parsed = MediaType.parseMediaType(raw);
@@ -465,6 +465,30 @@ public class SearchAppController {
 
     private static @Nullable String blankToNull(@Nullable String raw) {
         return StringUtils.isBlank(raw) ? null : raw.trim();
+    }
+
+    /**
+     * A parameter map from a JSON body, without the entries whose value is
+     * {@code null}.
+     *
+     * <p>{@code SearchRequest}'s compact constructor uses {@code Map.copyOf},
+     * which throws on a null value — so
+     * {@code {"expertParams":{"site":null}}} came back as a 500, and a 500
+     * tells the client to retry something that can never work. The documented
+     * shape of a refused request here is 409. Same treatment as
+     * {@code ResearchSearchExpertTool.copyDeclaredParams}.
+     */
+    private static <V> Map<String, V> withoutNulls(@Nullable Map<String, V> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, V> out = new LinkedHashMap<>(raw.size());
+        for (Map.Entry<String, V> e : raw.entrySet()) {
+            if (e.getKey() != null && e.getValue() != null) {
+                out.put(e.getKey(), e.getValue());
+            }
+        }
+        return out;
     }
 
     private static SearchScope scope(

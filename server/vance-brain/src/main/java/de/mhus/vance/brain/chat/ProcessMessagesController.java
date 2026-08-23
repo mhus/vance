@@ -1,6 +1,5 @@
 package de.mhus.vance.brain.chat;
 
-import de.mhus.vance.api.chat.ChatMessageDto;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageDtoMapper;
@@ -65,14 +64,19 @@ public class ProcessMessagesController {
             messages = messages.subList(messages.size() - DEFAULT_LIMIT, messages.size());
         }
 
+        // The process name, not null: every row here belongs to the process
+        // we just loaded, so it is in hand. `null` on the DTO means "the
+        // process row is gone" — passing it for "did not bother" makes a
+        // client reading `processName` as the worker marker
+        // (ChatMessageDto#isWorkerMessage) draw the wrong conclusion.
+        String processName = process.getName();
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("processId", processId);
         out.put("status", process.getStatus() == null ? null : process.getStatus().name().toLowerCase());
-        out.put("messages", messages.stream().map(ProcessMessagesController::toDto).toList());
+        out.put("messages", messages.stream()
+                .map(doc -> ChatMessageDtoMapper.toDto(doc, processName))
+                .toList());
         return out;
-    }
-
-    private static ChatMessageDto toDto(ChatMessageDocument doc) {
-        return ChatMessageDtoMapper.toDto(doc, null);
     }
 }

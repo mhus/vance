@@ -22,11 +22,7 @@
  */
 
 import { registerRemotes, loadRemote } from '@module-federation/runtime';
-
-interface AddonEntry {
-  name: string;
-  path: string;
-}
+import { addonRemoteEntry, addonRemoteName, loadAddonManifest } from './addonManifest';
 
 interface RegisterExpose {
   register?: () => void;
@@ -34,20 +30,10 @@ interface RegisterExpose {
 }
 
 export async function loadAddonRegistrations(): Promise<void> {
-  let addons: AddonEntry[];
-  try {
-    const response = await fetch('/face/addons', {
-      headers: { Accept: 'application/json' },
-    });
-    if (!response.ok) return;
-    addons = (await response.json()) as AddonEntry[];
-  } catch {
-    // /face/addons unreachable or malformed — carry on with built-in
-    // kinds only. The face entrypoint writes this file at boot; if
-    // it's missing the brain was down during face boot.
-    return;
-  }
-
+  // An unreachable or malformed manifest reads as "no addons" — carry on with
+  // built-in kinds only. The face entrypoint writes the file at boot; if it is
+  // missing the brain was down during face boot.
+  const addons = await loadAddonManifest();
   if (addons.length === 0) return;
 
   // Step 1: register each addon as a Module Federation remote.
@@ -55,8 +41,8 @@ export async function loadAddonRegistrations(): Promise<void> {
   // <script type="module"> — without it Vite's `import`-emitting
   // remoteEntry throws "Cannot use import statement outside a module".
   const remotes = addons.map((a) => ({
-    name: `vance_addon_${a.name}`,
-    entry: `/addons/${a.name}/remoteEntry.js`,
+    name: addonRemoteName(a.name),
+    entry: addonRemoteEntry(a.name),
     type: 'module' as const,
   }));
   try {
@@ -70,7 +56,7 @@ export async function loadAddonRegistrations(): Promise<void> {
   // invoke it. Missing exposes are silent — slideshow-style addons that
   // only contribute an editor without Kind registration don't ship one.
   for (const addon of addons) {
-    const exposeId = `vance_addon_${addon.name}/register`;
+    const exposeId = `${addonRemoteName(addon.name)}/register`;
     try {
       const mod = (await loadRemote<RegisterExpose>(exposeId)) ?? undefined;
       if (!mod) continue;

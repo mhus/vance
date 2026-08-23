@@ -1,7 +1,9 @@
 package de.mhus.vance.brain.zarniwoop.protocols;
 
 import de.mhus.vance.brain.zarniwoop.ZarniwoopContentStore;
+import de.mhus.vance.shared.net.SsrfGuard;
 import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.research.ProviderInstanceConfig;
 import de.mhus.vance.toolpack.research.SearchModality;
 import de.mhus.vance.toolpack.research.SearchProtocol;
@@ -51,23 +53,28 @@ public class OdeSearchProtocol implements SearchProtocol {
     private final SettingService settings;
     private final ObjectMapper objectMapper;
     private final ZarniwoopContentStore contentStore;
+    private final SecretResolver secretResolver;
     private final OdeSearchHttp http;
 
     @Autowired
     public OdeSearchProtocol(
             SettingService settings,
+            SecretResolver secretResolver,
             ObjectMapper objectMapper,
             ZarniwoopContentStore contentStore) {
-        this(settings, objectMapper, contentStore, new OdeSearchHttp.JdkOdeSearchHttp());
+        this(settings, secretResolver, objectMapper, contentStore,
+                new OdeSearchHttp.JdkOdeSearchHttp());
     }
 
     /** Test-seam constructor. */
     OdeSearchProtocol(
             SettingService settings,
+            SecretResolver secretResolver,
             ObjectMapper objectMapper,
             ZarniwoopContentStore contentStore,
             OdeSearchHttp http) {
         this.settings = settings;
+        this.secretResolver = secretResolver;
         this.objectMapper = objectMapper;
         this.contentStore = contentStore;
         this.http = http;
@@ -128,7 +135,13 @@ public class OdeSearchProtocol implements SearchProtocol {
             throw new IllegalArgumentException(
                     "Ode endpoint '" + cfg.instanceId() + "' has no baseUrl");
         }
-        return new OdeSearchInstance(cfg, settings, objectMapper, contentStore, http);
+        // No egress check here on purpose. SsrfGuard.assertAllowed resolves the
+        // host, so calling it at instantiation would turn a transient DNS
+        // failure into "this endpoint is misconfigured" and would put a lookup
+        // in front of every factory rebuild. The check belongs where the call
+        // is made — see JdkOdeSearchHttp below, which guards all three of them.
+        return new OdeSearchInstance(
+                cfg, settings, secretResolver, objectMapper, contentStore, http);
     }
 
     /**
@@ -150,43 +163,68 @@ public class OdeSearchProtocol implements SearchProtocol {
         BinaryResponse getBytes(URI url, @Nullable String bearer, Duration timeout)
                 throws Exception;
 
+        /**
+         * Production wiring.
+         *
+         * <p><b>Redirects are not followed, and every response is capped.</b>
+         * All three calls go to software this installation does not own, so the
+         * far end writes the {@code Location} header and decides the body size.
+         *
+         * <ul>
+         *   <li>{@code Redirect.NEVER} plus {@link SsrfGuard#assertAllowed}
+         *       before the call. Following would let the endpoint aim a
+         *       <em>reading</em> request at the internal network — the answer is
+         *       parsed into search hits and, for {@code /content}, streamed to a
+         *       browser. It would also carry the {@code Authorization: Bearer}
+         *       header to a host the far end chose, which is a credential leak
+         *       no per-hop address check prevents. A configured API answering
+         *       {@code 302} is a wrong setting, and it surfaces as
+         *       "returned HTTP 302" rather than as a silent hop.
+         *   <li>{@link SsrfGuard#capped} on every body handler. The plain
+         *       handlers buffer without limit into the brain heap, and
+         *       {@code /content} pays for the same bytes twice (here, and again
+         *       in the controller that reads the stashed file).
+         * </ul>
+         */
         final class JdkOdeSearchHttp implements OdeSearchHttp {
 
             private static final String USER_AGENT =
                     "Vance-Zarniwoop/0.1 (+https://github.com/mhus/vance)";
 
-            private final HttpClient client = HttpClient.newBuilder()
-                    .followRedirects(HttpClient.Redirect.NORMAL)
+            private final HttpClient client = SsrfGuard.guardedClientBuilder()
                     .connectTimeout(Duration.ofSeconds(5))
                     .build();
 
             @Override
             public Response get(URI url, @Nullable String bearer, Duration timeout)
                     throws Exception {
+                SsrfGuard.assertAllowed(url);
                 HttpResponse<String> r = client.send(
                         builder(url, bearer, timeout).GET().build(),
-                        HttpResponse.BodyHandlers.ofString());
+                        SsrfGuard.capped(HttpResponse.BodyHandlers.ofString()));
                 return new Response(r.statusCode(), r.body() == null ? "" : r.body());
             }
 
             @Override
             public Response post(URI url, @Nullable String bearer, String json, Duration timeout)
                     throws Exception {
+                SsrfGuard.assertAllowed(url);
                 HttpResponse<String> r = client.send(
                         builder(url, bearer, timeout)
                                 .header("Content-Type", "application/json")
                                 .POST(HttpRequest.BodyPublishers.ofString(json))
                                 .build(),
-                        HttpResponse.BodyHandlers.ofString());
+                        SsrfGuard.capped(HttpResponse.BodyHandlers.ofString()));
                 return new Response(r.statusCode(), r.body() == null ? "" : r.body());
             }
 
             @Override
             public BinaryResponse getBytes(URI url, @Nullable String bearer, Duration timeout)
                     throws Exception {
+                SsrfGuard.assertAllowed(url);
                 HttpResponse<byte[]> r = client.send(
                         builder(url, bearer, timeout).GET().build(),
-                        HttpResponse.BodyHandlers.ofByteArray());
+                        SsrfGuard.capped(HttpResponse.BodyHandlers.ofByteArray()));
                 return new BinaryResponse(
                         r.statusCode(),
                         r.body() == null ? new byte[0] : r.body(),

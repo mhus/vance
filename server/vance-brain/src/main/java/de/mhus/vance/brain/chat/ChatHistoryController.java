@@ -3,6 +3,7 @@ package de.mhus.vance.brain.chat;
 import de.mhus.vance.api.chat.ChatMessageDto;
 import de.mhus.vance.api.chat.SessionCropRequest;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.session.SessionAccess;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageDtoMapper;
@@ -101,7 +102,7 @@ public class ChatHistoryController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Crop view is owner-only");
         }
-        if (!isOwner && !session.isAllowMultipleClients()) {
+        if (!SessionAccess.mayAccess(session, currentUser)) {
             log.debug("Chat history access denied: session='{}' owner='{}' caller='{}'",
                     sessionId, session.getUserId(), currentUser);
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
@@ -244,11 +245,20 @@ public class ChatHistoryController {
             return List.of();
         }
 
-        if (body.getRemove() != null && !body.getRemove().isEmpty()) {
-            chatMessageService.markRemoved(tenant, sessionId, body.getRemove());
+        // Chat-process-scoped, like the read side. markRemoved/unmarkRemoved
+        // match on (id, tenant, session), so an id belonging to a worker of
+        // the same session would be a valid target — and since the scrollback
+        // started returning worker rows with their messageId, those ids are
+        // in every client's hands. Dropping them here keeps a running worker
+        // from losing parts of its own replay history to somebody's crop.
+        Set<String> croppable = croppableIds(tenant, sessionId, chatProcessId);
+        List<String> remove = onlyCroppable(body.getRemove(), croppable);
+        List<String> restore = onlyCroppable(body.getRestore(), croppable);
+        if (!remove.isEmpty()) {
+            chatMessageService.markRemoved(tenant, sessionId, remove);
         }
-        if (body.getRestore() != null && !body.getRestore().isEmpty()) {
-            chatMessageService.unmarkRemoved(tenant, sessionId, body.getRestore());
+        if (!restore.isEmpty()) {
+            chatMessageService.unmarkRemoved(tenant, sessionId, restore);
         }
 
         // Crop is chat-process-scoped, so every row carries the same name.
@@ -258,6 +268,46 @@ public class ChatHistoryController {
         return chatMessageService.historyForCrop(tenant, sessionId, chatProcessId).stream()
                 .map(doc -> toDto(doc, chatProcessName))
                 .toList();
+    }
+
+    /**
+     * The ids the crop editor is allowed to touch: the messages of the
+     * session's chat-process, removed ones included so a restore still works.
+     * Same list the editor was rendered from.
+     */
+    private Set<String> croppableIds(String tenant, String sessionId, String chatProcessId) {
+        Set<String> ids = new HashSet<>();
+        for (ChatMessageDocument m
+                : chatMessageService.historyForCrop(tenant, sessionId, chatProcessId)) {
+            if (m.getId() != null) {
+                ids.add(m.getId());
+            }
+        }
+        return ids;
+    }
+
+    /**
+     * Silently, because a crop is idempotent by design: the modal was
+     * rendered from a snapshot, and an id that is no longer croppable (a
+     * compaction archived it meanwhile) is not an error the user can act on.
+     * Foreign-process ids are logged — they cannot come from the crop UI.
+     */
+    private static List<String> onlyCroppable(
+            @Nullable List<String> requested, Set<String> croppable) {
+        if (requested == null || requested.isEmpty()) {
+            return List.of();
+        }
+        List<String> kept = new ArrayList<>(requested.size());
+        for (String id : requested) {
+            if (croppable.contains(id)) {
+                kept.add(id);
+            }
+        }
+        if (kept.size() != requested.size()) {
+            log.debug("Crop request dropped {} message id(s) outside the chat-process",
+                    requested.size() - kept.size());
+        }
+        return kept;
     }
 
     private static ChatMessageDto toDto(

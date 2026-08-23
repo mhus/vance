@@ -47,6 +47,7 @@ import { useStarredStore } from '@/starred/starredStore';
 import { isBinaryMime } from './stores/cortexStore';
 import { useCortexStore } from './stores/cortexStore';
 import { cortexHref, readCortexView, writeCortexView, type CortexView } from './cortexUrl';
+import { resolveDocumentIdByPath } from './resolveDocumentPath';
 import { useViewEditMode } from './useViewEditMode';
 import { resolveHelpPath } from './help';
 import { CortexClientToolService } from './clientToolService';
@@ -280,7 +281,7 @@ onMounted(async () => {
       createPrefill.value = { path: createPath ?? '' };
       showCreate.value = true;
     } else if (createPath) {
-      openPathHandoff(createPath);
+      await openPathHandoff(pid, createPath);
     }
     // Open the tabs the URL declares (create/path are dropped in the process).
     await restoreView();
@@ -357,25 +358,34 @@ let lastActiveDoc: string | null = null;
  * path: a starred tile stores `(project, path)` because that is the stable
  * business key, and a run's definition link does the same. Resolving here rather
  * than at the sender keeps Mongo ids out of stored data and out of the address
- * bar — and it is the only place that already has the project's document list
- * loaded.
+ * bar.
+ *
+ * The loaded file list is only a fast path: it is one page (500 entries), so a
+ * miss there says nothing about whether the document exists. The authority is
+ * `documents/by-path`, and only its 404 justifies the boot error.
  *
  * Rewrites the URL *before* {@link restoreView} runs, so the resolved tab travels
  * through the normal open/doc contract instead of needing a second opening path.
  * A path that does not resolve is a dead end for the whole navigation, so it
  * surfaces as a boot error rather than an empty editor.
  */
-function openPathHandoff(rawPath: string): void {
+async function openPathHandoff(pid: string, rawPath: string): Promise<void> {
   const wanted = rawPath.replace(/^\/+/, '');
   if (!wanted) return;
-  const match = store.files.find((f) => f.path === wanted);
-  if (!match) {
-    bootError.value = `No document '${wanted}' in project '${projectId.value}'.`;
+  let id: string | null;
+  try {
+    id = await resolveDocumentIdByPath(pid, wanted, store.files);
+  } catch (e) {
+    bootError.value = e instanceof Error ? e.message : `Failed to resolve '${wanted}'.`;
+    return;
+  }
+  if (!id) {
+    bootError.value = `No document '${wanted}' in project '${pid}'.`;
     return;
   }
   const view = readCortexView();
-  const open = view.open.includes(match.id) ? view.open : [...view.open, match.id];
-  const qs = writeCortexView(window.location.search, { ...view, open, doc: match.id });
+  const open = view.open.includes(id) ? view.open : [...view.open, id];
+  const qs = writeCortexView(window.location.search, { ...view, open, doc: id });
   window.history.replaceState({ cortex: true }, '', `/cortex.html${qs ? `?${qs}` : ''}`);
 }
 

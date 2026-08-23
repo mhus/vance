@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.workspace;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -8,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.shared.workspace.WorkspaceProperties;
 import de.mhus.vance.shared.workspace.WorkspaceService;
+import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -89,7 +91,10 @@ class WorkspaceSubtreeAndFilterTest {
     }
 
     @Test
-    void list_path_descendsIntoTheSubtree() {
+    void list_path_descendsIntoTheSubtree() throws IOException {
+        writeFile("src/Main.java", "x");
+        writeFile("src/util/Helper.java", "x");
+        writeFile("other/x.txt", "x");
         mockList("src/Main.java", "src/util/Helper.java", "other/x.txt");
 
         Map<String, Object> out = new WorkspaceListTool(workspace)
@@ -99,7 +104,9 @@ class WorkspaceSubtreeAndFilterTest {
     }
 
     @Test
-    void list_path_doesNotMatchASiblingWithTheSamePrefix() {
+    void list_path_doesNotMatchASiblingWithTheSamePrefix() throws IOException {
+        writeFile("src/Main.java", "x");
+        writeFile("srcgen/Generated.java", "x");
         mockList("src/Main.java", "srcgen/Generated.java");
 
         Map<String, Object> out = new WorkspaceListTool(workspace)
@@ -107,6 +114,56 @@ class WorkspaceSubtreeAndFilterTest {
 
         // "src" must not swallow "srcgen/" — the prefix is slash-terminated.
         assertThat(out.get("entries")).isEqualTo(List.of("Main.java"));
+    }
+
+    // ──────────────── a path that names nothing is an error ──────────────
+
+    @Test
+    void list_path_thatNamesNothing_failsInsteadOfReturningNoEntries() throws IOException {
+        // "0 entries" reads as "the directory is empty" to a model. The
+        // CLIENT half of file_list fails loudly here, and the wrapper's
+        // troubleshooting hint promises that message.
+        writeFile("src/Main.java", "x");
+        mockList("src/Main.java");
+
+        assertThatThrownBy(() -> new WorkspaceListTool(workspace)
+                .invoke(Map.of("dirName", DIR, "path", "scr"), CTX))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("No such path");
+    }
+
+    @Test
+    void list_path_namingAFile_saysNotADirectory() throws IOException {
+        writeFile("src/Main.java", "x");
+        mockList("src/Main.java");
+
+        assertThatThrownBy(() -> new WorkspaceListTool(workspace)
+                .invoke(Map.of("dirName", DIR, "path", "src/Main.java"), CTX))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("Not a directory");
+    }
+
+    @Test
+    void count_path_thatNamesNothing_failsInsteadOfCountingZero() throws IOException {
+        // The regression: a typo used to answer filesCounted: 0, lines: 0.
+        writeFile("src/Main.java", "one\n");
+        mockList("src/Main.java");
+
+        assertThatThrownBy(() -> new WorkspaceCountTool(workspace)
+                .invoke(Map.of("dirName", DIR, "path", "src/Mian.java"), CTX))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("No such path");
+    }
+
+    @Test
+    void grep_path_thatNamesNothing_failsInsteadOfMatchingNothing() throws IOException {
+        writeFile("src/Main.java", "needle\n");
+        mockList("src/Main.java");
+
+        assertThatThrownBy(() -> new WorkspaceGrepTool(workspace)
+                .invoke(Map.of("pattern", "needle", "dirName", DIR, "path", "scr"), CTX))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("No such path");
     }
 
     // ──────────────── file_grep: path, maxDepth, includeGenerated ────────

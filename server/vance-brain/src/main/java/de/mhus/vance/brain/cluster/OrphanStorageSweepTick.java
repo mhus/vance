@@ -49,7 +49,14 @@ public class OrphanStorageSweepTick {
             return;
         }
         try {
-            sweep(Instant.now());
+            // Each phase guards itself; this catches anything outside them so a
+            // bad round never takes the scheduler thread with it.
+            CleanupResult result = sweep(Instant.now());
+            if (!result.isClean()) {
+                log.info("OrphanStorageSweepTick: removed {} orphan archive(s) and "
+                                + "{} orphan blob(s)",
+                        result.orphanArchivesDeleted(), result.orphanStorageDeleted());
+            }
         } catch (RuntimeException e) {
             log.warn("OrphanStorageSweepTick: sweep failed: {}", e.toString());
         }
@@ -62,10 +69,25 @@ public class OrphanStorageSweepTick {
      * nobody points at. Archives first, because deleting one can release
      * the last claim on a blob and the blob sweep should see that in the
      * same run rather than an hour later.
+     *
+     * <p>The order is an optimisation, not a dependency, so the phases are
+     * guarded separately: a Mongo hiccup while walking the archives used to
+     * skip the blob phase for a whole hour, and the log said only "sweep
+     * failed". A failed phase reports zero and the other one still runs.
      */
     CleanupResult sweep(Instant now) {
-        long archives = archiveCleanupService.sweepOnce(batchSize);
-        long blobs = cleanupService.sweepOnce(now, gracePeriod, batchSize);
+        long archives = 0;
+        try {
+            archives = archiveCleanupService.sweepOnce(batchSize);
+        } catch (RuntimeException e) {
+            log.warn("OrphanStorageSweepTick: archive phase failed: {}", e.toString());
+        }
+        long blobs = 0;
+        try {
+            blobs = cleanupService.sweepOnce(now, gracePeriod, batchSize);
+        } catch (RuntimeException e) {
+            log.warn("OrphanStorageSweepTick: blob phase failed: {}", e.toString());
+        }
         return new CleanupResult(archives, blobs);
     }
 

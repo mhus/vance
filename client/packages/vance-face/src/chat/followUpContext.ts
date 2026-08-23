@@ -21,6 +21,11 @@ function speakerLabel(message: ChatMessageDto): string {
  * Builds the bounded, speaker-aware transcript sent to reply-mode follow-up.
  * Worker messages are excluded by the caller because they are not part of the
  * visible main conversation.
+ *
+ * <p>A conversation whose tail is a USER message has no anchor: the other side
+ * has not answered yet, so there is nothing to suggest a reply to. Without this
+ * rule the optimistic echo of the user's own message would trigger a follow-up
+ * request (and a ghost bubble suggesting a reply to their own sentence).
  */
 export function buildFollowUpContext(messages: ChatMessageDto[]): FollowUpContext | null {
   const usable = messages.filter((message) => {
@@ -28,6 +33,7 @@ export function buildFollowUpContext(messages: ChatMessageDto[]): FollowUpContex
   });
   const anchor = usable.at(-1);
   if (!anchor?.messageId) return null;
+  if (String(anchor.role) === 'USER') return null;
 
   const blocks = usable.slice(-MAX_MESSAGES).map((message) => {
     return `${speakerLabel(message)}:\n${message.content.trim()}`;

@@ -58,10 +58,18 @@ public class ToolBudgetProperties {
     private List<String> dropFirstFamilies = List.of();
 
     /**
-     * Cap on how many activated deferred tools may occupy the surface at
-     * once. Independent of the budget: a long-running process would
-     * otherwise accumulate activations until they alone fill the
-     * manifest. {@code 0} disables the cap.
+     * How many activated deferred tools may hold a top-class slot when the
+     * surface has to be cut. Past this count the oldest activations lose
+     * their {@code TIER_ACTIVATED} standing and compete in the lowest
+     * class instead, so a long-running process cannot fill the whole
+     * manifest with what it once looked at. {@code 0} disables it.
+     *
+     * <p>This is a <em>ranking</em> cap, not a hard one: it is read inside
+     * {@link ToolTriage#apply} and therefore only matters when a limit is
+     * known and the surface exceeds it. Where no endpoint states a
+     * {@code maxTools} (Anthropic today), nothing is cut at all and this
+     * value is never consulted — there the bound on accumulated
+     * activations is the activation TTL, not this number.
      */
     private int maxActivatedTools = 40;
 }

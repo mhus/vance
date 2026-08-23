@@ -77,6 +77,23 @@ describe('parseWorkflowGraph', () => {
     expect(g.problems).toEqual(["state 'a' points to undeclared state 'nowhere'"]);
   });
 
+  it('ghosts a target whose declaration was skipped as unusable', () => {
+    // `b` is declared but not a mapping, so it never becomes a node. Without
+    // a ghost the edge would reach VueFlow with a target that has no node and
+    // be dropped silently — the reader would see no line at all.
+    const g = parseWorkflowGraph(
+      'start: a\nstates:\n  a:\n    type: terminal\n    on:\n      success: b\n  b: oops\n',
+    );
+
+    expect(g.states.map((s) => s.name)).toEqual(['a', 'b']);
+    expect(g.states.find((s) => s.name === 'b')?.missing).toBe(true);
+    expect(g.edges[0].dangling).toBe(true);
+    expect(g.problems).toEqual([
+      "state 'b' is not a mapping",
+      "state 'a' points to unusable state 'b'",
+    ]);
+  });
+
   it('reports a start that names no declared state', () => {
     const g = parseWorkflowGraph('start: ghost\nstates:\n  a:\n    type: terminal\n');
     expect(g.problems).toEqual(["'start: ghost' does not match any state"]);

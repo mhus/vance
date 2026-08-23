@@ -42,4 +42,19 @@ public record TaskOutcome(
     public static TaskOutcome failure(String errorMessage) {
         return new TaskOutcome(TaskCompletedEvent.OUTCOME_FAILURE, null, errorMessage, null);
     }
+
+    /**
+     * The state needs a {@code RunCapability} this run was not started with,
+     * and its author said what to do about it with
+     * {@code catch: { capability_missing: … }}.
+     *
+     * <p>The outcome name is the lower-case form of
+     * {@link de.mhus.vance.api.magrathea.MagratheaErrorKind#CAPABILITY_MISSING},
+     * which is how {@code catch:} routing reads an outcome back into an
+     * error kind.
+     */
+    public static TaskOutcome capabilityMissing(String errorMessage) {
+        return new TaskOutcome(
+                TaskCompletedEvent.OUTCOME_CAPABILITY_MISSING, null, errorMessage, null);
+    }
 }

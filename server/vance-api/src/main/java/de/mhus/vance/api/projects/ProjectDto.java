@@ -56,9 +56,12 @@ public class ProjectDto {
     private @Nullable String lifecycleType;
 
     /**
-     * Derived: the project holds background work (schedulers, hooks, event
-     * triggers, kit provisioning) and therefore has to be kept on a live pod.
-     * Read-only — it follows the documents, it is not set by hand.
+     * Derived: the project holds background work that has to keep running
+     * without anyone asking for it, and therefore has to be kept on a live
+     * pod. Exactly two sources count — scheduler entries and hooks. Event
+     * triggers do not (they are reactive: something else already woke the
+     * project) and neither does kit provisioning (it happens once). Read-only
+     * — it follows the documents, it is not set by hand.
      */
     private boolean ownerRequired;
 

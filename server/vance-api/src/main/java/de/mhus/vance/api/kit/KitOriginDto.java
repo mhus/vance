@@ -3,6 +3,7 @@ package de.mhus.vance.api.kit;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import java.time.Instant;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -55,4 +56,33 @@ public class KitOriginDto {
      * answer. {@link #commit} still carries the human-readable stamp.
      */
     private @Nullable String provisioningStamp;
+
+    /**
+     * What the source was asked for when this kit was fetched — the
+     * {@code params:} of the provisioning entry, verbatim.
+     *
+     * <p>Recorded because it cannot be reconstructed from anywhere else and
+     * an update needs it. A manual {@code kit update} rebuilds the request
+     * from this record; without the parameters it asked a host that assembles
+     * per request for the <em>default</em> variant, and a project silently
+     * lost its equipment ("the German build with the invoicing module" became
+     * the plain one). The stamp next to it has the same problem and the same
+     * answer.
+     *
+     * <p><b>Never a resolved secret.</b> Parameters are deliberately not
+     * secret-resolved anywhere in the chain — a {@code {{secret:…}}} written
+     * here goes to a third party as the reference it is, and the credential
+     * for that party is the token, which is a separate field and is
+     * <em>not</em> recorded. So this holds exactly the text the provisioning
+     * document holds, in a document under the same reserved {@code _vance/}
+     * namespace: nothing is exposed that was not already. If parameter
+     * resolution is ever introduced, the resolved value must not reach this
+     * field.
+     *
+     * <p>{@code null} means "none were asked for" — a hand-typed install, or
+     * a provisioning entry without a {@code params:} block. Written afresh on
+     * every update, like every other part of the record, so removing the
+     * block from {@code provisioning.yaml} does take effect.
+     */
+    private @Nullable Map<String, Object> params;
 }

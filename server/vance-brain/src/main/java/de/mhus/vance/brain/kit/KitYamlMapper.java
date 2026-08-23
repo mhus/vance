@@ -243,6 +243,7 @@ public final class KitYamlMapper {
                 .installedAt(parseInstant(originTyped.get("installedAt")))
                 .installedBy(stringOrNull(originTyped.get("installedBy")))
                 .provisioningStamp(stringOrNull(originTyped.get("provisioningStamp")))
+                .params(originParams(originTyped.get("params"), label + " origin"))
                 .build();
 
         KitDescriptorDto descriptor = null;
@@ -336,6 +337,12 @@ public final class KitYamlMapper {
         if (o.getInstalledBy() != null) origin.put("installedBy", o.getInstalledBy());
         if (o.getProvisioningStamp() != null) {
             origin.put("provisioningStamp", o.getProvisioningStamp());
+        }
+        // Parse and write have to agree on the field set, or a re-read quietly
+        // drops it — and dropping this one is exactly the bug the field exists
+        // to fix.
+        if (o.getParams() != null && !o.getParams().isEmpty()) {
+            origin.put("params", new LinkedHashMap<>(o.getParams()));
         }
         root.put("origin", origin);
 
@@ -584,12 +591,35 @@ public final class KitYamlMapper {
         return KitSourcesDto.builder().sources(sources).build();
     }
 
+    /**
+     * The {@code params:} an install record remembers. {@code null} rather
+     * than an empty map when absent, so "asked for nothing" and "asked for
+     * something that happens to be empty" stay the same thing and the field
+     * disappears from the YAML instead of appearing as {@code params: {}}.
+     *
+     * <p>A malformed block throws: these parameters are re-sent to the source
+     * on the next update, and quietly dropping them would repeat the failure
+     * the field was added for.
+     */
+    @SuppressWarnings("unchecked")
+    private static @Nullable Map<String, Object> originParams(
+            @Nullable Object raw, String label) {
+        if (raw == null) return null;
+        if (!(raw instanceof Map<?, ?> map)) {
+            throw new KitException(label + " 'params' must be a map");
+        }
+        if (map.isEmpty()) return null;
+        // Copied rather than passed through: what SnakeYAML returns is mutable
+        // and shared with the parsed tree.
+        return new LinkedHashMap<>((Map<String, Object>) map);
+    }
+
     private static KitSourceType parseSourceType(String raw, String label) {
         try {
             return KitSourceType.valueOf(raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             throw new KitException(label + ": unknown source type '" + raw.trim()
-                    + "' — expected one of git, folder, library");
+                    + "' — expected one of git, folder, library, ode");
         }
     }
 
@@ -628,6 +658,10 @@ public final class KitYamlMapper {
             e.put("url", s.getUrl());
             e.put("signature", s.getSignature().name().toLowerCase(Locale.ROOT));
             if (s.getPublicKey() != null) e.put("publicKey", s.getPublicKey());
+            // Parse and write have to agree on the field set, or a re-export
+            // quietly drops it — the same rule descriptorMap states above.
+            if (s.getStoreUrl() != null) e.put("storeUrl", s.getStoreUrl());
+            if (s.getTitle() != null) e.put("title", s.getTitle());
             out.add(e);
         }
         Map<String, Object> root = new LinkedHashMap<>();

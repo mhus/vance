@@ -267,6 +267,32 @@ class TrillianSessionLifecycleHookTest {
     }
 
     @Test
+    void theAccountReleasedIsTheOneTheCurrentGenerationRunsAs() {
+        // A bootstrap cycle that could not adopt the previous account mints
+        // a fresh one, so a control session can carry several
+        // trillianUserName values across its generations. Reading an
+        // arbitrary one revoked and deleted an account that was already
+        // gone, while the live _trillian-* account kept its project-ADMIN
+        // grant and its documents — the orphan the release path exists to
+        // prevent.
+        ThinkProcessDocument older =
+                agedControlProcess(PEER, java.time.Instant.parse("2026-08-11T10:00:00Z"));
+        older.setId("control-proc-old");
+        older.getEngineParams().put(
+                TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME, "_trillian-adam-0001");
+        ThinkProcessDocument current =
+                agedControlProcess(PEER, java.time.Instant.parse("2026-08-13T12:00:00Z"));
+        when(thinkProcessService.findBySession(TENANT, CONTROL))
+                .thenReturn(List.of(older, current));
+
+        hook.onSessionClosed(session(CONTROL));
+
+        verify(userService).delete(TENANT, ACCOUNT);
+        verify(userService, never()).delete(TENANT, "_trillian-adam-0001");
+        verify(permissionBootstrap, never()).revokeAll(TENANT, "_trillian-adam-0001");
+    }
+
+    @Test
     void theLinkIsFoundOnAnyProcess_notJustTheCurrentChat() {
         // After a reactivate the link lives on the renamed, closed
         // predecessor rather than on the live chat process.

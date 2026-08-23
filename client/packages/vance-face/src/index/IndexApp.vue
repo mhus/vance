@@ -14,6 +14,7 @@ import {
   hydrateIdentity,
   isAccessAlive,
   isRefreshAlive,
+  loadAddonManifest,
   login,
   LoginError,
   rankOf,
@@ -158,24 +159,15 @@ async function onReconcile(): Promise<void> {
 }
 
 async function loadAddonTiles(): Promise<void> {
-  try {
-    const res = await fetch('/face/addons', { headers: { Accept: 'application/json' } });
-    if (!res.ok) return;
-    const entries = (await res.json()) as Array<{
-      name: string;
-      tile?: { label?: string; description?: string; minLevel?: string };
-    }>;
-    addonTiles.value = entries
-      .filter((e) => e.tile?.label)
-      .map((e) => ({
-        name: e.name,
-        label: e.tile!.label as string,
-        description: e.tile!.description,
-        minLevel: normLevel(e.tile!.minLevel),
-      }));
-  } catch {
-    // no addons / offline — no tiles
-  }
+  // No addons / offline reads as an empty manifest — no tiles.
+  addonTiles.value = (await loadAddonManifest())
+    .filter((e) => e.tile?.label)
+    .map((e) => ({
+      name: e.name,
+      label: e.tile!.label as string,
+      description: e.tile!.description,
+      minLevel: normLevel(e.tile!.minLevel),
+    }));
 }
 
 onMounted(async () => {

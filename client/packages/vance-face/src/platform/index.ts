@@ -2,6 +2,7 @@
 // `bootWeb` is imported separately as a side effect at the top of
 // every `main.ts` before this barrel is touched.
 
+export * from './addonManifest';
 export * from './webUiSession';
 export * from './themeWeb';
 export * from './loginWeb';

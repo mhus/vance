@@ -61,6 +61,19 @@ public class VaultService {
     static final String METRIC_WRITES = "vance.vault.writes";
 
     /**
+     * Which kind of vault a call was routed to — {@code settings} or
+     * {@code external}, one increment per read or write.
+     *
+     * <p>Its own counter rather than an outcome on {@link #METRIC_READS}: that
+     * one carries the <em>result</em> of a call (success / not_found / denied /
+     * error) and every one of its values is terminal, so exactly one increment
+     * happens per call and {@code success / sum(outcomes)} is a success rate.
+     * Mixing "which binding was used" into the same series double-counted every
+     * call in the default installation and turned that ratio into 50%.
+     */
+    static final String METRIC_BINDINGS = "vance.vault.bindings";
+
+    /**
      * Binding used when no {@code vault.type} is set anywhere along the cascade:
      * the settings-backed vault ({@link SettingsVaultProvider}). No endpoint and
      * no credential — it resolves inside Vancetope against HIDDEN settings.
@@ -171,9 +184,13 @@ public class VaultService {
     }
 
     /**
-     * Resolve the binding and select the provider for {@code scope}, emitting the
-     * structural outcome (not_configured / no_provider / error) under {@code metric}.
-     * Shared by read and write so the resolve+select+metric boilerplate lives once.
+     * Resolve the binding and select the provider for {@code scope}. Shared by
+     * read and write so the resolve+select+metric boilerplate lives once.
+     *
+     * <p>Only the two <em>terminal</em> structural failures (no_provider, error)
+     * go onto {@code metric} — they end the call, so the counter still sees one
+     * increment per call. The non-terminal fact "which vault served this" goes on
+     * {@link #METRIC_BINDINGS} instead.
      */
     private Bound bind(VaultScope scope, String metric) {
         VaultBinding binding;
@@ -192,11 +209,12 @@ public class VaultService {
             // No external manager bound → the settings-backed vault. So a
             // {{secret:vault:<key>}} reference works from day one, and a document
             // written against it stays valid when Infisical is bound later.
-            // Counted separately from a real binding so the metric still shows how
-            // many installations run without an external manager.
-            count(metric, "settings_fallback");
             binding = SETTINGS_FALLBACK;
         }
+        // Which vault served the call, on its own series — see METRIC_BINDINGS.
+        // Not folded into `metric`, whose outcomes are terminal results.
+        count(METRIC_BINDINGS, SettingsVaultProvider.TYPE.equals(binding.type())
+                ? "settings" : "external");
         VaultProvider provider;
         try {
             provider = selectProvider(binding.type());

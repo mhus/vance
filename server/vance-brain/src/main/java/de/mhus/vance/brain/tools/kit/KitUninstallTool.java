@@ -91,7 +91,7 @@ public class KitUninstallTool implements Tool {
         }
         String projectId = KitToolSupport.requireProjectAuthorized(ctx,
                 KitToolSupport.optionalString(params, "project"),
-                permissionService, contextFactory, de.mhus.vance.shared.permission.Action.WRITE);
+                permissionService, contextFactory, de.mhus.vance.shared.permission.Action.ADMIN);
         String kitRef = KitToolSupport.requireString(params, "kit");
         boolean prune = KitToolSupport.optionalBoolean(params, "prune");
         return KitToolSupport.resultToMap(kitService.uninstall(

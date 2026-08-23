@@ -38,8 +38,22 @@ import org.springframework.stereotype.Component;
  * {@code provisioning.yaml} is deliberately <em>not</em> a reason to keep it on
  * a pod (see {@code ProjectOwnerRequirementService}).
  *
- * <p>Reports only. Installing is the other triggers' business (see
- * {@link KitProvisioningCheck}).
+ * <h2>Both halves, because the entry decides which one applies</h2>
+ * The tick used to call {@link KitProvisioningCheck} alone, and that made it
+ * inert for exactly the entries the spec's trigger table points it at:
+ * {@code classify} returns {@code null} for an installed kit whose entry
+ * permits unattended refresh ("the update path deals with it") — but no
+ * periodic caller of the update path existed. {@code provisionCoalesced} hangs
+ * off project start and off an edit to {@code provisioning.yaml}, neither of
+ * which fires when the <em>host</em> publishes something. So a project with
+ * {@code authority: update} sat on an old kit until somebody restarted it.
+ *
+ * <p>Now: provision first, report second. The two are disjoint by construction
+ * — provisioning only touches what the entry permits unattended, the check only
+ * reports what it does not — and doing it in that order means a divergence that
+ * is about to be fixed is not also announced. Neither throws at us; both are
+ * built to be called on every tick for every project (one document lookup when
+ * nothing is declared).
  */
 @Component
 @RequiredArgsConstructor
@@ -49,6 +63,7 @@ public class KitProvisioningCheckTick {
 
     private final KitProvisioningProperties properties;
     private final KitProvisioningCheck check;
+    private final KitProvisioningService provisioningService;
     private final ProjectActivationRegistry activationRegistry;
 
     @Scheduled(
@@ -67,6 +82,10 @@ public class KitProvisioningCheckTick {
             String projectName = key.substring(slash + 1);
             swept++;
             try {
+                // First the half the entry granted unattended, then the half it
+                // did not. Order matters only to avoid reporting a divergence
+                // that the same round has already resolved.
+                provisioningService.provisionCoalesced(tenantId, projectName);
                 KitProvisioningCheck.Report report = check.check(tenantId, projectName);
                 reported += report.reported().size();
             } catch (RuntimeException e) {

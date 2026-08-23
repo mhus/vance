@@ -31,9 +31,11 @@ import org.springframework.stereotype.Service;
  * the same one.
  *
  * <p>Detection is free: compare the renewal's matched count against the number
- * of projects this pod thinks it activated. Equal — the normal case — costs
- * nothing beyond the write. Short means at least one is gone, and only then do
- * we pay for a query to find out which.
+ * of <em>lease-holding</em> projects this pod thinks it activated
+ * ({@link ProjectActivationRegistry#leaseHoldingSize()} — podless projects are
+ * activated too but hold no lease). Equal — the normal case — costs nothing
+ * beyond the write. Short means at least one is gone, and only then do we pay
+ * for a query to find out which.
  *
  * <p><b>Deactivation writes nothing.</b> We lost the lease, so the new owner
  * has already initialised the workspace from Mongo; our local folder is a
@@ -71,13 +73,17 @@ public class ProjectLeaseService {
     void renewAndReconcile() {
         String selfPodId = clusterService.selfPodId();
         long held = projectService.renewLeases(selfPodId, Instant.now());
-        int activated = activationRegistry.size();
-        if (held >= activated) {
-            log.trace("ProjectLeaseService: renewed {} lease(s), {} activated", held, activated);
+        // Podless projects are activated here but never take a lease, so they
+        // are not part of this accounting — counting them made the comparison
+        // permanently short and the warning below meaningless.
+        int expected = activationRegistry.leaseHoldingSize();
+        if (held >= expected) {
+            log.trace("ProjectLeaseService: renewed {} lease(s), {} lease-holding project(s) "
+                    + "activated", held, expected);
             return;
         }
-        log.warn("ProjectLeaseService: hold {} lease(s) but {} project(s) are activated here — "
-                + "reconciling", held, activated);
+        log.warn("ProjectLeaseService: hold {} lease(s) but {} lease-holding project(s) are "
+                + "activated here — reconciling", held, expected);
         deactivateLostProjects(selfPodId);
     }
 

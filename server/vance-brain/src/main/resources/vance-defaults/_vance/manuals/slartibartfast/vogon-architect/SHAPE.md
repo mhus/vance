@@ -1,8 +1,3 @@
---- kind: shape
-    for: vogon-architect
-    topic: what a Vogon plan is, structurally
----
-
 # Vogon Plan — Shape
 
 Slartibartfast's GATHERING reads this as engine-bundled evidence, so

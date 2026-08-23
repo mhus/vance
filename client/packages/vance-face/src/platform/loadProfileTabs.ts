@@ -24,12 +24,7 @@
 
 import { registerRemotes, loadRemote } from '@module-federation/runtime';
 import { markRaw, type Component } from 'vue';
-
-interface AddonEntry {
-  name: string;
-  path: string;
-  profile?: { label?: string; expose?: string; sortIndex?: number };
-}
+import { addonRemoteEntry, addonRemoteName, loadAddonManifest } from './addonManifest';
 
 /** One addon-contributed tab, ready to render. */
 export interface ProfileTab {
@@ -50,23 +45,14 @@ const DEFAULT_EXPOSE = './profile';
  * person needs to be able to open when something else is broken.
  */
 export async function loadProfileTabs(): Promise<ProfileTab[]> {
-  let addons: AddonEntry[];
-  try {
-    const response = await fetch('/face/addons', { headers: { Accept: 'application/json' } });
-    if (!response.ok) return [];
-    addons = (await response.json()) as AddonEntry[];
-  } catch {
-    return [];
-  }
-
-  const contributors = addons.filter((a) => a.profile?.label);
+  const contributors = (await loadAddonManifest()).filter((a) => a.profile?.label);
   if (contributors.length === 0) return [];
 
   try {
     registerRemotes(
       contributors.map((a) => ({
-        name: `vance_addon_${a.name}`,
-        entry: `/addons/${a.name}/remoteEntry.js`,
+        name: addonRemoteName(a.name),
+        entry: addonRemoteEntry(a.name),
         type: 'module' as const,
       })),
       { force: true },
@@ -76,26 +62,38 @@ export async function loadProfileTabs(): Promise<ProfileTab[]> {
     return [];
   }
 
-  const tabs: ProfileTab[] = [];
-  for (const addon of contributors) {
-    const expose = addon.profile?.expose ?? DEFAULT_EXPOSE;
-    try {
+  // In parallel: the tabs are independent, and one slow remote must not add
+  // its latency to every remote after it. The sort below restores the order,
+  // so settle order carries no meaning.
+  const settled = await Promise.allSettled(
+    contributors.map(async (addon) => {
+      const expose = addon.profile?.expose ?? DEFAULT_EXPOSE;
       const mod = await loadRemote<{ default?: Component } | Component>(
-        `vance_addon_${addon.name}/${expose.replace(/^\.\//, '')}`,
+        `${addonRemoteName(addon.name)}/${expose.replace(/^\.\//, '')}`,
       );
       const resolved = (mod as { default?: Component })?.default ?? (mod as Component);
-      if (!resolved) continue;
-      tabs.push({
+      if (!resolved) return null;
+      return {
         id: addon.name,
         label: addon.profile!.label!,
         sortIndex: addon.profile?.sortIndex,
         component: markRaw(resolved),
-      });
-    } catch (e) {
+      } satisfies ProfileTab;
+    }),
+  );
+
+  const tabs: ProfileTab[] = [];
+  settled.forEach((result, index) => {
+    if (result.status === 'rejected') {
       // One addon's broken bundle must not cost the whole screen.
-      console.warn(`[loadProfileTabs] '${addon.name}' contributed no usable tab`, e);
+      console.warn(
+        `[loadProfileTabs] '${contributors[index].name}' contributed no usable tab`,
+        result.reason,
+      );
+      return;
     }
-  }
+    if (result.value) tabs.push(result.value);
+  });
 
   // Numbered first and in order, the rest alphabetically after them —
   // so an addon that cares can place itself and one that does not still

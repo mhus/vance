@@ -10,8 +10,17 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.audit.AuditService;
 import de.mhus.vance.shared.crypto.AesEncryptionService;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -148,6 +157,127 @@ class SettingTypeEncryptedContractTest {
         assertThat(SettingType.HIDDEN.referenceReadable()).isTrue();
         assertThat(SettingType.PASSWORD.encrypted()).isTrue();
         assertThat(SettingType.PASSWORD.referenceReadable()).isFalse();
+    }
+
+    // ──────────────── W1 asks the predicate, not the constant ────────────────
+
+    @Test
+    void setAgentSecret_refusesToOverwriteWhatAnAgentMayNotReadBack() {
+        SettingDocument stored = service.setEncryptedSecret(
+                TENANT, PROJECT, REF, "smtp.password", "operator-set", SettingType.PASSWORD);
+        stubFind(stored);
+
+        assertThatThrownBy(() -> service.setAgentSecret(
+                TENANT, PROJECT, REF, "smtp.password", "agent-set", SettingType.HIDDEN))
+                .isInstanceOf(SecretAccessDeniedException.class)
+                .hasMessageContaining("smtp.password");
+    }
+
+    @Test
+    void setAgentSecret_overwritesAHiddenSetting() {
+        // The other side of the same threshold: a vault secret exists to be
+        // written by the tools that resolve it, so HIDDEN has to stay writable.
+        SettingDocument stored = service.setEncryptedSecret(
+                TENANT, PROJECT, REF, "deploy-token", "old", SettingType.HIDDEN);
+        stubFind(stored);
+
+        SettingDocument saved = service.setAgentSecret(
+                TENANT, PROJECT, REF, "deploy-token", "new", SettingType.HIDDEN);
+
+        assertThat(saved.getType()).isEqualTo(SettingType.HIDDEN);
+    }
+
+    // ──────────────── no constant comparison anywhere in main ────────────────
+
+    /**
+     * Matches a comparison of a {@link SettingType} constant, in either
+     * direction and either operator, plus the {@code equals} spelling of the
+     * same thought.
+     */
+    private static final Pattern CONSTANT_COMPARISON = Pattern.compile(
+            "(?:[=!]=\\s*SettingType\\.(?:PASSWORD|HIDDEN))"
+                    + "|(?:SettingType\\.(?:PASSWORD|HIDDEN)\\s*[=!]=)"
+                    + "|(?:SettingType\\.(?:PASSWORD|HIDDEN)\\.equals\\s*\\()"
+                    + "|(?:\\.equals\\s*\\(\\s*SettingType\\.(?:PASSWORD|HIDDEN)\\s*\\))");
+
+    /**
+     * The one rule CLAUDE.md and {@code specification/public/settings-system.md}
+     * state literally: no {@code == SettingType.PASSWORD} in the tree outside the
+     * enum itself. It is a rule about <em>every future</em> call site, which no
+     * behavioural test can express — with two protection levels the predicate and
+     * the constant agree, so the failure the rule prevents only becomes
+     * observable once a third level exists, i.e. after the damage.
+     *
+     * <p>Hence the source scan. {@code SettingType.java} is exempt (it defines
+     * the thresholds) and so is test code, which legitimately pins what each
+     * constant answers.
+     */
+    @Test
+    void noProductionSourceComparesAgainstAProtectionConstant() {
+        Path serverRoot = serverRoot();
+        List<Path> sourceRoots = mainJavaRoots(serverRoot);
+        assertThat(sourceRoots)
+                .as("source roots found below %s", serverRoot)
+                .isNotEmpty();
+
+        List<String> offenders = new ArrayList<>();
+        for (Path root : sourceRoots) {
+            try (Stream<Path> files = Files.walk(root)) {
+                files.filter(p -> p.getFileName().toString().endsWith(".java"))
+                        .filter(p -> !p.getFileName().toString().equals("SettingType.java"))
+                        .forEach(p -> {
+                            Matcher m = CONSTANT_COMPARISON.matcher(read(p));
+                            while (m.find()) {
+                                offenders.add(serverRoot.relativize(p) + ": " + m.group());
+                            }
+                        });
+            } catch (IOException e) {
+                throw new UncheckedIOException("cannot scan " + root, e);
+            }
+        }
+
+        assertThat(offenders)
+                .as("compare against SettingType.encrypted() / .referenceReadable() instead — "
+                        + "a constant comparison silently excludes every level added later")
+                .isEmpty();
+    }
+
+    /**
+     * Every {@code <module>/src/main/java} below the aggregator, including the
+     * one extra nesting level the {@code plugins/} aggregator introduces. Test
+     * sources are deliberately not scanned.
+     */
+    private static List<Path> mainJavaRoots(Path serverRoot) {
+        try (Stream<Path> paths = Files.walk(serverRoot, 5)) {
+            return paths.filter(Files::isDirectory)
+                    .filter(p -> p.endsWith(Path.of("src", "main", "java")))
+                    .toList();
+        } catch (IOException e) {
+            throw new UncheckedIOException("cannot list modules of " + serverRoot, e);
+        }
+    }
+
+    /** The Maven aggregator directory holding all server modules. */
+    private static Path serverRoot() {
+        Path dir = Path.of("").toAbsolutePath();
+        while (dir != null) {
+            if (Files.isDirectory(dir.resolve("vance-api"))
+                    && Files.isDirectory(dir.resolve("vance-shared"))
+                    && Files.isDirectory(dir.resolve("vance-brain"))) {
+                return dir;
+            }
+            dir = dir.getParent();
+        }
+        throw new IllegalStateException(
+                "server root not found above " + Path.of("").toAbsolutePath());
+    }
+
+    private static String read(Path p) {
+        try {
+            return Files.readString(p, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException("cannot read " + p, e);
+        }
     }
 
     private void stubFind(SettingDocument doc) {

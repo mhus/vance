@@ -42,11 +42,33 @@ class TrillianWorkerEngineTest {
     }
 
     @Test
-    void theMarkerIsConsumed_soTheNextTerminationCloses() {
-        // Otherwise a worker that once asked could never finish.
+    void theMarkerSurvivesThePark_soAParkedWorkerStaysDistinguishable() {
+        // Clearing it here would collapse "waiting for an answer" and
+        // "simply finished" into the same IDLE, and a Nature reading the
+        // obstacle markers would then advise a nudge for a worker that has
+        // nothing left to be nudged about.
         givenAskPending(true);
 
         engine().onWorkerTerminate(process());
+
+        verify(processes, never()).setEngineParamOverride(
+                PROC, TrillianWorkerEngine.PARAM_ASK_PENDING, null);
+    }
+
+    @Test
+    void theMarkerIsClearedWhenTheWorkerRunsAgain() {
+        // The worker running again IS the answer arriving — otherwise a
+        // later real termination would park instead of close.
+        givenAskPending(true);
+
+        try {
+            // Only the pre-loop side effect is under test; Frankie's turn
+            // itself runs against unconfigured collaborators.
+            engine().runTurn(process(), mock(
+                    de.mhus.vance.brain.thinkengine.ThinkEngineContext.class));
+        } catch (RuntimeException expected) {
+            // ignored on purpose
+        }
 
         verify(processes).setEngineParamOverride(
                 PROC, TrillianWorkerEngine.PARAM_ASK_PENDING, null);

@@ -1,7 +1,11 @@
 package de.mhus.vance.shared.thinkprocess;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
@@ -9,8 +13,10 @@ import de.mhus.vance.shared.enginemessage.EngineMessageService;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Query;
 
 /**
  * {@link ThinkProcessService#countBySession} — the status→bucket folding
@@ -23,14 +29,16 @@ class ThinkProcessServiceCountsTest {
     private static final String SESSION = "s-1";
 
     private ThinkProcessRepository repository;
+    private MongoTemplate mongoTemplate;
     private ThinkProcessService service;
 
     @BeforeEach
     void setUp() {
         repository = mock(ThinkProcessRepository.class);
+        mongoTemplate = mock(MongoTemplate.class);
         service = new ThinkProcessService(
                 repository,
-                mock(MongoTemplate.class),
+                mongoTemplate,
                 mock(ApplicationEventPublisher.class),
                 mock(EngineMessageService.class));
     }
@@ -100,8 +108,27 @@ class ThinkProcessServiceCountsTest {
                 .isNotEqualTo(new ThinkProcessService.ProcessCounts(1, 3, 2));
     }
 
+    @Test
+    void countBySession_readsOnlyStatusAndName() {
+        // This runs on every status transition, and RUNNING↔IDLE flips once
+        // per turn per process. Materialising whole documents meant a session
+        // with forty workers pulled forty embedded pending-queues, param maps
+        // and skill lists from Mongo to produce three integers.
+        givenProcesses(doc("worker", ThinkProcessStatus.RUNNING));
+
+        service.countBySession(TENANT, SESSION, null);
+
+        ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).find(query.capture(), eq(ThinkProcessDocument.class));
+        // An inclusion projection naming exactly the two fields the fold
+        // reads — anything else comes back with the row.
+        assertThat(query.getValue().getFieldsObject().keySet()).contains("status", "name");
+        // Never the whole row.
+        verify(repository, never()).findByTenantIdAndSessionId(any(), any());
+    }
+
     private void givenProcesses(ThinkProcessDocument... docs) {
-        when(repository.findByTenantIdAndSessionId(TENANT, SESSION))
+        when(mongoTemplate.find(any(Query.class), eq(ThinkProcessDocument.class)))
                 .thenReturn(List.of(docs));
     }
 

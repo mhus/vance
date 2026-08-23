@@ -48,9 +48,22 @@ public class BrainSchemaMigrations implements SchemaMigrationSource {
     private static final List<Registered> MIGRATIONS = List.of(
             new Registered("2026-08-12_001", BaselineAnchorMigration.class),
             new Registered("2026-08-21_001", Migrator_2026_08_21_001_ProjectLease.class),
-            new Registered("2026-08-22_001", Migrator_2026_08_22_001_OwnerRequired.class),
+            // runOnBaseline: these two decide whether a project is kept on a
+            // pod, and they are the only writers of that decision for existing
+            // data. A database restored from before the anchor release looks
+            // new from here and would be baselined — leaving every project on
+            // lifecycleType=EPHEMERAL, which the new code reads as "never start
+            // this by itself". Schedulers, hooks and events would then never be
+            // placed again, silently, and no later boot or product action puts
+            // it right. Both are self-emptying filters, so on a genuinely new
+            // database they cost one query each and change nothing. They travel
+            // together: _001 sets the flag including kit provisioning and _002
+            // takes provisioning back out.
+            new Registered("2026-08-22_001", Migrator_2026_08_22_001_OwnerRequired.class,
+                    /*runOnBaseline*/ true),
             new Registered("2026-08-22_002",
-                    Migrator_2026_08_22_002_OwnerRequiredWithoutProvisioning.class));
+                    Migrator_2026_08_22_002_OwnerRequiredWithoutProvisioning.class,
+                    /*runOnBaseline*/ true));
 
     @Override
     public List<Registered> migrations() {

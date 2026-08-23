@@ -33,6 +33,8 @@ final class FakeFeedSource implements FeedSourceInstance {
             40, Set.of(), false, Duration.ofMinutes(30));
 
     private @Nullable RuntimeException failure;
+    private @Nullable RuntimeException capabilitiesFailure;
+    private @Nullable Duration fetchDelay;
     private @Nullable RuntimeException signalFailure;
     private final List<de.mhus.vance.toolpack.feed.FeedSignalRequest> signals = new ArrayList<>();
 
@@ -63,6 +65,22 @@ final class FakeFeedSource implements FeedSourceInstance {
 
     FakeFeedSource failingWith(RuntimeException e) {
         this.failure = e;
+        return this;
+    }
+
+    /** A source that cannot say what it can do — a broken capabilities endpoint. */
+    FakeFeedSource failingCapabilitiesWith(RuntimeException e) {
+        this.capabilitiesFailure = e;
+        return this;
+    }
+
+    /**
+     * A source that answers late. Interruptible on purpose: the dispatcher
+     * cancels a future it gave up on, and a task that ignored that would hold
+     * the executor's close() open for the whole delay.
+     */
+    FakeFeedSource answeringAfter(Duration delay) {
+        this.fetchDelay = delay;
         return this;
     }
 
@@ -126,6 +144,9 @@ final class FakeFeedSource implements FeedSourceInstance {
 
     @Override
     public FeedCapabilities capabilities() {
+        if (capabilitiesFailure != null) {
+            throw capabilitiesFailure;
+        }
         return capabilities;
     }
 
@@ -147,6 +168,14 @@ final class FakeFeedSource implements FeedSourceInstance {
     @Override
     public FeedPage fetch(FeedFetch request) {
         received.add(request);
+        if (fetchDelay != null) {
+            try {
+                Thread.sleep(fetchDelay);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("fetch interrupted", e);
+            }
+        }
         if (failure != null) {
             throw failure;
         }

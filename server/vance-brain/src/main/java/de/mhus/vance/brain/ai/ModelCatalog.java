@@ -219,7 +219,7 @@ public class ModelCatalog {
             @Nullable String tenantId, @Nullable String projectId,
             String provider, String modelName) {
         return lookup(tenantId, projectId, provider, modelName)
-                .orElseGet(() -> fallback(provider, modelName));
+                .orElseGet(() -> fallback(tenantId, projectId, provider, modelName));
     }
 
     /** Cascade-aware lookup with named-instance → protocol-type fallback (see §3 spec). */
@@ -236,7 +236,7 @@ public class ModelCatalog {
                 return viaType.get();
             }
         }
-        return fallback(providerInstance, modelName);
+        return fallback(tenantId, projectId, providerInstance, modelName);
     }
 
     // ──────────────────── Bundled-only convenience ────────────────────
@@ -720,10 +720,6 @@ public class ModelCatalog {
             // Discovery markers (informational)
             "discoveredBy", "discoveredAt");
 
-    private ModelInfo buildInfo(String provider, String modelName, Map<String, Object> spec) {
-        return buildInfo(provider, modelName, spec, /*providerSpec*/ null);
-    }
-
     private ModelInfo buildInfo(
             String provider, String modelName, Map<String, Object> spec,
             @Nullable Map<String, Object> providerSpec) {
@@ -836,11 +832,33 @@ public class ModelCatalog {
      * model family that rejects {@code max_tokens} does so whether or
      * not someone got around to writing its YAML.
      */
-    private ModelInfo fallback(@Nullable String provider, @Nullable String modelName) {
+    /**
+     * The stand-in for a model that has no document anywhere in the
+     * cascade — a new release, an exotic gateway model, discovery not run.
+     *
+     * <p>Takes the scope because {@code maxTools} does not belong to the
+     * model: it is what the <em>endpoint</em> accepts, and the provider
+     * sidecar states it once for every model behind that endpoint
+     * ("a gateway serving 100 models should state its tool cap once, not
+     * in 100 documents"). Dropping it here was the one case where the
+     * operator had written the number down and the budget still went in
+     * blind — costing a visible 400 per pod before
+     * {@code ObservedToolLimitRegistry} learned it back from the rejection.
+     */
+    private ModelInfo fallback(
+            @Nullable String tenantId, @Nullable String projectId,
+            @Nullable String provider, @Nullable String modelName) {
+        // Instance-keyed, not protocol-keyed: the bundled
+        // openai/_provider.yaml says so in as many words — a gateway
+        // configured as `ai.provider.cortecs.type=openai` does not inherit
+        // OpenAI's cap, because it is a different endpoint that may enforce
+        // a different number or none.
+        Integer maxTools = sidecarMaxTools(tenantId, projectId, provider);
         log.warn("ModelCatalog: no entry for '{}/{}' — falling back to {}-token context, "
-                        + "no capabilities, {}s timeout",
+                        + "no capabilities, {}s timeout, maxTools={}",
                 provider, modelName, FALLBACK_TEMPLATE.contextWindowTokens(),
-                FALLBACK_TEMPLATE.timeoutSeconds());
+                FALLBACK_TEMPLATE.timeoutSeconds(),
+                maxTools == null ? "unknown" : maxTools);
         return new ModelInfo(
                 provider == null ? "?" : provider,
                 modelName == null ? "?" : modelName,
@@ -856,7 +874,17 @@ public class ModelCatalog {
                 modelQuirks.outputTokenParamFor(modelName)
                         .orElse(OutputTokenParam.MAX_TOKENS),
                 modelQuirks.unsupportedParamsFor(modelName).orElse(Set.of()),
-                modelQuirks.reasoningEffortWhenOffFor(modelName).orElse(null));
+                modelQuirks.reasoningEffortWhenOffFor(modelName).orElse(null),
+                maxTools);
+    }
+
+    /** The {@code maxTools} a provider sidecar declares, if any. */
+    private @Nullable Integer sidecarMaxTools(
+            @Nullable String tenantId, @Nullable String projectId, @Nullable String provider) {
+        Map<String, Object> spec = providerSpec(tenantId, projectId, provider);
+        if (spec == null) return null;
+        return readPositiveInt(
+                spec.get("maxTools"), provider == null ? "?" : provider, "_provider", "maxTools");
     }
 
     /**

@@ -52,13 +52,16 @@ public interface PermissionBootstrap {
      * short-lived account has to be able to take them back when the account
      * goes away.
      *
-     * <p>Needed because user deletion does <em>not</em> cascade into grant
-     * storage ({@code UserService.delete} only removes the {@code
-     * UserDocument}) — without this, every ephemeral service-account leaves a
-     * grant behind that outlives its subject.
+     * <p>A grant is keyed on the user <em>name</em>, not on the Mongo id, so it
+     * survives the document unless somebody removes it — and a name can come
+     * back (service accounts follow a scheme, human logins get reused), at which
+     * point the new account silently inherits authority nobody granted it.
+     * {@code UserService.delete} therefore calls this for every deletion; the
+     * Trillian lifecycle hook calls it as well, ahead of the account delete, so
+     * grants go even when the account itself is already gone.
      *
      * <p>Idempotent: removing grants of an unknown or already-cleaned user is
-     * a no-op.
+     * a no-op. Both callers rely on that.
      */
     void revokeAll(String tenant, String username);
 }

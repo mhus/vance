@@ -58,6 +58,18 @@ public class LiveRegion {
     private static final int LIVE_FIXED_ROWS = 3;
     private static final int INPUT_PREFIX = 3;
 
+    /**
+     * Hand-off drain window after a fullscreen excursion. JLine's pump can
+     * publish the tail bytes of an escape sequence after Lanterna has already
+     * closed, so the replacement reader discards everything until the stream
+     * has been quiet for {@link #HANDOFF_QUIET_MS}, giving up after
+     * {@link #HANDOFF_MAX_MS}.
+     */
+    private static final long HANDOFF_QUIET_MS = 25;
+    private static final long HANDOFF_MAX_MS = 250;
+    /** Scheduling slack {@link #pause()} grants the drain on top of {@link #HANDOFF_MAX_MS}. */
+    private static final long HANDOFF_SLACK_MS = 150;
+
     private final StatusBar statusBar;
     private final FootConfig config;
     private final ColorResolver colorResolver;
@@ -66,6 +78,24 @@ public class LiveRegion {
     private final AtomicBoolean stopRequested = new AtomicBoolean();
     /** True while a Lanterna excursion (or similar) owns the TTY and we must keep our threads idle. */
     private final AtomicBoolean paused = new AtomicBoolean();
+    /**
+     * True from {@link #resume()} restarting the input reader until that
+     * reader has discarded the asynchronous hand-off residue of the
+     * excursion. Deliberately <em>separate</em> from {@link #paused}: the
+     * output gate reopens the moment we have the terminal back, only the
+     * keyboard is not trustworthy yet. {@link #pause()} waits for this flag
+     * so a second excursion never starts while the previous reader is live.
+     */
+    private final AtomicBoolean handoffDraining = new AtomicBoolean();
+    /**
+     * Identity of the live input reader. Every reader thread is started with
+     * the generation it was created for and retires as soon as a newer one
+     * exists — {@link #paused} cannot do that job, because a {@code /ui-*}
+     * slash command runs the whole pause/excursion/resume cycle <em>on</em>
+     * the reader thread, which is therefore still unwinding while its
+     * replacement is already reading.
+     */
+    private final AtomicInteger inputGeneration = new AtomicInteger();
     /** Static output captured while {@link #paused}; replayed by {@link #resume()}. */
     private final DeferredOutput deferred = new DeferredOutput();
     private final AtomicInteger frame = new AtomicInteger();
@@ -352,7 +382,18 @@ public class LiveRegion {
                 ANIMATION_INTERVAL_MS, ANIMATION_INTERVAL_MS, TimeUnit.MILLISECONDS);
         animator = anim;
 
-        Thread it = new Thread(this::inputLoop, "foot-live-region-input");
+        startInputThread();
+    }
+
+    /**
+     * Starts a reader thread bound to a fresh {@link #inputGeneration}, which
+     * retires any predecessor that is still alive. Published before the start
+     * so {@link #pause()} / {@link #detach()} never miss a reader that has
+     * already begun consuming terminal bytes.
+     */
+    private void startInputThread() {
+        int generation = inputGeneration.incrementAndGet();
+        Thread it = new Thread(() -> inputLoop(generation), "foot-live-region-input");
         it.setDaemon(true);
         inputThread = it;
         it.start();
@@ -428,6 +469,13 @@ public class LiveRegion {
      * straight into the borrowed screen.
      */
     public synchronized void pause() {
+        // A previous resume() may still have its replacement reader inside the
+        // hand-off drain window. That window used to be expressed by leaving
+        // `paused` set, which made this call a silent no-op: it returned
+        // before stopping the animator, joining the reader, disabling
+        // bracketed paste or restoring the terminal attributes — and the next
+        // excursion then fought our reader for the TTY. Wait the drain out.
+        awaitHandoffDrained();
         if (paused.getAndSet(true)) return;
         Terminal t = terminal;
         if (t == null) return;   // nothing to tear down — the flag alone gates output
@@ -463,6 +511,26 @@ public class LiveRegion {
     }
 
     /**
+     * Bounded wait for the {@link #resume()} hand-off drain to finish. The
+     * drain itself is capped at {@link #HANDOFF_MAX_MS}; we grant a little
+     * scheduling slack on top and then give up — a wedged reader must never
+     * deadlock the thread that wants the terminal back.
+     */
+    private void awaitHandoffDrained() {
+        if (!handoffDraining.get()) return;
+        long deadline = System.nanoTime()
+                + TimeUnit.MILLISECONDS.toNanos(HANDOFF_MAX_MS + HANDOFF_SLACK_MS);
+        while (handoffDraining.get() && System.nanoTime() < deadline) {
+            try {
+                Thread.sleep(5);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+    }
+
+    /**
      * Reclaim the TTY after a {@link #pause()}. Re-applies our soft-raw
      * attributes, re-enables bracketed paste, replays whatever arrived
      * while we were paused, repaints the live region, and restarts the
@@ -472,8 +540,13 @@ public class LiveRegion {
         if (!paused.get()) return;
         Terminal t = terminal;
         if (t == null) {
-            paused.set(false);
-            flushDeferred();
+            // Nothing to re-arm — reopen the output gate and replay under the
+            // write lock, so a concurrent emitStatic cannot slip a newer line
+            // in front of the backlog.
+            synchronized (writeLock) {
+                paused.set(false);
+                flushDeferred();
+            }
             return;
         }
         // Lanterna talks directly to System.in while JLine's pump remains
@@ -508,15 +581,25 @@ public class LiveRegion {
      * out so an attribute failure above cannot skip it.
      */
     private void restartAfterResume() {
+        // One write-lock hold for the whole gate flip: emitStatic reads
+        // `paused` under the same lock, so a line arriving from the WS thread
+        // right now either joins the backlog we are about to replay or lands
+        // after it — never in front of it.
         synchronized (writeLock) {
             writeRaw(ESC + "[?2004h");   // re-enable bracketed paste
+            // The keyboard stays untrusted until the replacement reader has
+            // discarded the asynchronous hand-off residue — that is the
+            // separate handoffDraining gate. Output is ours again right now;
+            // leaving `paused` set for that window used to bottle up every
+            // line the brain pushed during it, with no later flush to release
+            // them.
+            handoffDraining.set(true);
+            paused.set(false);
+            flushDeferred();
         }
-        // Keep the pause gate set until the replacement reader has drained
-        // the asynchronous hand-off residue. inputLoop clears it once ready.
-        // Backlog first, live region second — the replayed lines have to
-        // land in the scrollback *above* the pinned block, exactly where
-        // they would have gone had the excursion never happened.
-        flushDeferred();
+        // Backlog first, live region second — the replayed lines have to land
+        // in the scrollback *above* the pinned block, exactly where they would
+        // have gone had the excursion never happened.
         paintLive();
 
         ScheduledExecutorService anim = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -528,12 +611,7 @@ public class LiveRegion {
                 ANIMATION_INTERVAL_MS, ANIMATION_INTERVAL_MS, TimeUnit.MILLISECONDS);
         animator = anim;
 
-        // Publish the thread before starting it: pause()/detach() must never
-        // miss a reader that has already begun consuming terminal bytes.
-        Thread it = new Thread(this::inputLoop, "foot-live-region-input");
-        it.setDaemon(true);
-        inputThread = it;
-        it.start();
+        startInputThread();
     }
 
     /** Request a redraw of the live region (e.g., when status state changed). */
@@ -557,16 +635,19 @@ public class LiveRegion {
         // breaks rely on it) — normalise to a bare newline so it survives
         // the writeStatic no-newline append instead of being dropped.
         if (text.isEmpty()) text = "\n";
-        if (paused.get()) {
-            deferred.add(text);
-            return;
-        }
-        if (terminal == null) {
-            // No live region active — fall back to plain stdout-ish write.
-            System.out.println(text);
-            return;
-        }
+        // The pause gate is read under the write lock: resume() flips it and
+        // replays the backlog while holding the same lock, so this line can
+        // never be printed ahead of older, still-deferred ones.
         synchronized (writeLock) {
+            if (paused.get()) {
+                deferred.add(text);
+                return;
+            }
+            if (terminal == null) {
+                // No live region active — fall back to plain stdout-ish write.
+                System.out.println(text);
+                return;
+            }
             eraseLive();
             writeStatic(text);
             paintLiveInner();
@@ -732,7 +813,16 @@ public class LiveRegion {
 
     // ─── Input loop ────────────────────────────────────────────────
 
-    private void inputLoop() {
+    /**
+     * Whether {@code generation} still identifies the live input reader: we
+     * neither handed the TTY away ({@link #paused}) nor were replaced by a
+     * newer reader ({@link #inputGeneration}).
+     */
+    private boolean isCurrentInput(int generation) {
+        return !paused.get() && inputGeneration.get() == generation;
+    }
+
+    private void inputLoop(int generation) {
         NonBlockingReader r = this.reader;
         if (r == null) return;
         try {
@@ -741,11 +831,14 @@ public class LiveRegion {
             // short quiet period and discard all hand-off residue before
             // treating bytes as user input. This avoids orphaned arrow-key
             // tails ("[A", "[[B") appearing literally at the prompt.
-            if (paused.get()) {
-                drainReaderUntilQuiet(r, 25L, 250L);
-                paused.set(false);
+            if (handoffDraining.get()) {
+                try {
+                    drainReaderUntilQuiet(r, HANDOFF_QUIET_MS, HANDOFF_MAX_MS);
+                } finally {
+                    handoffDraining.set(false);
+                }
             }
-            while (!stopRequested.get() && !paused.get()) {
+            while (!stopRequested.get() && isCurrentInput(generation)) {
                 int b;
                 try {
                     b = r.read();
@@ -763,6 +856,10 @@ public class LiveRegion {
                     continue;
                 }
                 if (b == -1) break;
+                // The read may have blocked across a pause()/resume()
+                // hand-off. A retired reader must not act on the byte it just
+                // took, or two threads interpret the same keyboard.
+                if (!isCurrentInput(generation)) break;
                 if (b == 3 || b == 4) {  // Ctrl-C / Ctrl-D
                     fireQuit();
                     return;
@@ -868,10 +965,11 @@ public class LiveRegion {
         } catch (IOException ignored) {
             // stream closed — exit cleanly
         }
-        // Only declare a quit if we weren't deliberately paused. During
-        // a Lanterna excursion the input thread exits because the TTY
-        // was taken away; that's normal, not a quit signal.
-        if (!paused.get()) {
+        // Only declare a quit if this reader was still the live one. During a
+        // Lanterna excursion the input thread exits because the TTY was taken
+        // away, and after the excursion because a replacement reader took
+        // over; neither is a quit signal.
+        if (isCurrentInput(generation)) {
             fireQuit();
         }
     }

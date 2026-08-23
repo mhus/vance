@@ -22,12 +22,14 @@ import de.mhus.vance.toolpack.research.SearchRequest;
 import de.mhus.vance.toolpack.research.SearchResult;
 import de.mhus.vance.toolpack.research.SearchTier;
 import jakarta.servlet.http.HttpServletRequest;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.http.MediaType;
 
 /**
  * The controller is a mapping layer, so these tests are about the mapping
@@ -301,6 +303,60 @@ class SearchAppControllerTest {
         when(zarniwoopService.search(any(), any(), any()))
                 .thenReturn(resultOf(SearchModality.ACADEMIC, hit(content)));
         return controller.search(TENANT, PROJECT, null, req("x"), request);
+    }
+
+    // ── the mime clamp on the content endpoint ───────────────────────
+
+    @Test
+    void safeMediaType_clampsAnythingNotOnTheAllowList() {
+        // These bytes come from a foreign service and render on the brain's own
+        // origin: text/html and image/svg+xml both carry script, so agreeing
+        // with the source about either is a choice we do not have to make.
+        assertThat(SearchAppController.safeMediaType("text/html"))
+                .isEqualTo(MediaType.APPLICATION_OCTET_STREAM);
+        assertThat(SearchAppController.safeMediaType("image/svg+xml"))
+                .isEqualTo(MediaType.APPLICATION_OCTET_STREAM);
+    }
+
+    @Test
+    void safeMediaType_clampsATypeItCannotParse() {
+        assertThat(SearchAppController.safeMediaType("not a media type"))
+                .isEqualTo(MediaType.APPLICATION_OCTET_STREAM);
+    }
+
+    @Test
+    void safeMediaType_rebuildsFromTheEssenceSoNoParameterRidesAlong() {
+        MediaType clamped = SearchAppController.safeMediaType(
+                "application/pdf; boundary=--x; foo=bar");
+
+        assertThat(clamped.getType()).isEqualTo("application");
+        assertThat(clamped.getSubtype()).isEqualTo("pdf");
+        assertThat(clamped.getParameters()).isEmpty();
+    }
+
+    @Test
+    void safeMediaType_statesUtf8ForTextAndNothingElse() {
+        assertThat(SearchAppController.safeMediaType("text/plain").getCharset())
+                .isEqualTo(StandardCharsets.UTF_8);
+        assertThat(SearchAppController.safeMediaType("image/png").getCharset()).isNull();
+    }
+
+    // ── a null in a parameter map ────────────────────────────────────
+
+    @Test
+    void search_aNullExpertParamIsDroppedRatherThanCrashing() {
+        // SearchRequest copies its maps with Map.copyOf, which throws on a null
+        // value — the caller got a 500 for a request the documented contract
+        // answers with 409.
+        Map<String, Object> params = new java.util.HashMap<>();
+        params.put("site", null);
+        params.put("desk", "world");
+        when(zarniwoopService.search(any(), any(), any())).thenReturn(emptyResult());
+
+        controller.search(TENANT, PROJECT, null, new SearchRequestView(
+                "tariffs", null, "expert", null, null, null, params), request);
+
+        assertThat(captured().expertParams()).containsExactly(Map.entry("desk", "world"));
     }
 
     private static SearchRequestView req(String query) {

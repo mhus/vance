@@ -58,6 +58,15 @@ import org.jspecify.annotations.Nullable;
  * is therefore not believed — the stream is marked exhausted and the reason
  * logged. One stream drops out of this scroll; believing it costs the whole
  * view.
+ *
+ * <h2>Why silence is an input rather than an absence</h2>
+ * A stream that did not answer this round looks, from a list of fetches
+ * alone, exactly like a stream that is no longer configured — and the two
+ * demand opposite handling. A removed stream's cursor is dead weight; a
+ * timed-out stream's cursor is the reader's scroll position, and dropping it
+ * restarts that source at its newest entry on the next page. So the merge is
+ * told about the streams that stayed silent, and about which kind of silence
+ * it was — see {@link StreamSilence}.
  */
 @Slf4j
 public final class FeedMerger {
@@ -94,6 +103,51 @@ public final class FeedMerger {
         }
     }
 
+    /**
+     * A requested stream that handed back no page this round.
+     *
+     * <p>What the merge needs is not the exact reason but whether the silence
+     * is <b>a statement about the stream</b> or <b>the absence of one</b>.
+     * Everything else follows from that single distinction, which is why it
+     * is a two-valued {@link Kind} rather than a copy of
+     * {@link CentauriNote.Kind}: the note explains the silence to a human,
+     * this classifies it for the cursor.
+     */
+    public record StreamSilence(FeedStream stream, Kind kind) {
+
+        public enum Kind {
+
+            /**
+             * The stream answered by not being asked: it is not configured,
+             * it is switched off, or it does not declare the facet the reader
+             * selected. A round may end on that — the answer will not change
+             * between two page requests.
+             */
+            SETTLED,
+
+            /**
+             * Nobody said anything: a timeout, a transport failure, a
+             * cooldown from an earlier one. The stream may well have more
+             * entries, so the scroll must not be declared finished because of
+             * it, and its cursor must survive untouched — the next round has
+             * to resume where the reader is, not at the top of that source.
+             */
+            UNRESOLVED
+        }
+
+        public static StreamSilence settled(FeedStream stream) {
+            return new StreamSilence(stream, Kind.SETTLED);
+        }
+
+        public static StreamSilence unresolved(FeedStream stream) {
+            return new StreamSilence(stream, Kind.UNRESOLVED);
+        }
+
+        boolean isUnresolved() {
+            return kind == Kind.UNRESOLVED;
+        }
+    }
+
     /** The merged page plus the cursor that resumes after it. */
     public record MergeResult(
             List<CentauriItem> items,
@@ -111,8 +165,15 @@ public final class FeedMerger {
         return Math.max(1, Math.min(wanted, maxPageSize));
     }
 
+    /**
+     * @param silences the requested streams that produced no page, and why
+     *                 that matters — see {@link StreamSilence}. Never derived
+     *                 from {@code fetches}: their absence there is exactly
+     *                 what cannot be told apart from a removed stream.
+     */
     public static MergeResult merge(
             List<StreamFetch> fetches,
+            List<StreamSilence> silences,
             FeedFilter filter,
             int pageSize,
             FeedDirection direction,
@@ -142,7 +203,14 @@ public final class FeedMerger {
         int droppedByFilter = 0;
         int droppedAsDuplicate = 0;
         @Nullable Candidate cut = null;
+        @Nullable Candidate lastDelivered = null;
 
+        // pageSize >= 1 is a precondition (CentauriPageRequest enforces it), and
+        // it is what makes the loop below sufficient on its own: the break only
+        // fires once something was delivered, so an empty `delivered` means every
+        // candidate was looked at and `cut` is already the last of them. That is
+        // what keeps a round in which the filter rejected everything from
+        // standing still.
         for (Candidate candidate : all) {
             if (delivered.size() >= pageSize) {
                 break;
@@ -164,18 +232,12 @@ public final class FeedMerger {
                     candidate.fetch().instance().id(),
                     candidate.fetch().instance().displayName(),
                     candidate.stream().selector()));
-        }
-
-        // Nothing delivered although entries were looked at: every one was
-        // rejected, so the cut is the last of them. Without this the cursor
-        // would stand still and the client would ask for the same page again.
-        if (delivered.isEmpty() && !all.isEmpty()) {
-            cut = all.get(all.size() - 1);
+            lastDelivered = candidate;
         }
 
         CentauriCursor.Builder next = new CentauriCursor.Builder()
                 .carryOver(incoming)
-                .retainOnly(streamKeys(fetches, incoming));
+                .retainOnly(streamKeys(fetches, silences, incoming));
 
         boolean hasMore = false;
         for (StreamFetch fetch : fetches) {
@@ -215,18 +277,30 @@ public final class FeedMerger {
                 hasMore = true;
             }
         }
+        // A stream that did not answer has said nothing about whether it has
+        // more, so the page must not claim the scroll is over on its behalf.
+        // Settled silences are excluded on purpose: "not configured", "switched
+        // off" and "does not declare that facet" are answers, and an answer may
+        // end a round.
+        for (StreamSilence silence : silences) {
+            if (silence.isUnresolved()) {
+                hasMore = true;
+            }
+        }
         // Streams already exhausted before this round were not fetched, so the
         // loop above never saw them — carry the flag forward explicitly.
         for (String key : incoming.exhausted()) {
             next.markExhausted(FeedStream.parseKey(key));
         }
-        // The cut, not the last delivered entry. They differ whenever the page
-        // ended on a rejected candidate, and then the delivered one is behind the
-        // cursor — a watermark that lags the position it is supposed to describe.
-        // Nothing filters on it today; a field that quietly disagrees with its
-        // neighbour is how that stops being true safely.
-        if (cut != null) {
-            next.watermark(cut.item().publishedAt());
+        // publishedAt of the last *delivered* entry (spec §5.1), which is not
+        // the cut whenever the page ended on a rejected candidate. The cut is
+        // the cursor's business and already expressed per stream in
+        // `perStream`; a second field describing "where the page ended" in a
+        // subtly different way is how two readers of one bundle start to
+        // disagree. Left untouched when a round delivered nothing — the
+        // previous value still describes the last entry the reader saw.
+        if (lastDelivered != null) {
+            next.watermark(lastDelivered.item().publishedAt());
         }
 
         return new MergeResult(
@@ -257,14 +331,25 @@ public final class FeedMerger {
     }
 
     /**
-     * Keys worth keeping in the next cursor: the streams just fetched plus
-     * the ones already exhausted. Anything else has been removed from the
-     * feed configuration and its cursor is dead weight.
+     * Keys worth keeping in the next cursor: every stream this round
+     * <b>asked about</b> — answered or not — plus the ones already exhausted.
+     * Anything else has been removed from the feed configuration and its
+     * cursor is dead weight.
+     *
+     * <p>"Asked about" rather than "answered" is the whole point. Keying this
+     * on {@code fetches} alone made a source that timed out or sat in a
+     * cooldown indistinguishable from one the reader had deleted: its cursor
+     * was dropped, and on the next page it started over at its newest entry
+     * in the middle of a scroll.
      */
-    private static Set<String> streamKeys(List<StreamFetch> fetches, CentauriCursor incoming) {
+    private static Set<String> streamKeys(
+            List<StreamFetch> fetches, List<StreamSilence> silences, CentauriCursor incoming) {
         Set<String> keys = new HashSet<>(incoming.exhausted());
         for (StreamFetch fetch : fetches) {
             keys.add(fetch.stream().key());
+        }
+        for (StreamSilence silence : silences) {
+            keys.add(silence.stream().key());
         }
         return keys;
     }

@@ -109,10 +109,21 @@ public class StandardAiChat implements AiChat {
         //                       stripThinkTags / messageParser is active
         //                       so well-behaved models keep the old
         //                       call-graph exactly)
-        this.sync = sync == null
-                ? null
-                : maybeSanitize(wrapSync(name, sync, options),
-                        sanitizer, stripThinkTags, messageParser);
+        // A missing sync model is rejected here, not tolerated. The
+        // package is @NullMarked, so AiChat.chatModel() is non-null by
+        // contract, and every consumer already relies on that: ask()
+        // dereferences it unguarded, and ChainedAiChat feeds it straight
+        // into a SyncChainEntry. Letting a half-built pair through only
+        // moved the failure to whichever caller happened not to stream —
+        // which is how a provider without a sync side stayed invisible
+        // until it was put into a multi-entry chain.
+        if (sync == null) {
+            throw new IllegalArgumentException(
+                    "sync ChatModel is null for '" + name + "' — an AiChat must carry "
+                            + "both a sync and a streaming model");
+        }
+        this.sync = maybeSanitize(wrapSync(name, sync, options),
+                sanitizer, stripThinkTags, messageParser);
         this.streaming = wrapStreaming(name, streaming, options, messageParser);
         this.options = options;
     }
@@ -280,7 +291,9 @@ public class StandardAiChat implements AiChat {
 
     @Override
     public boolean isAvailable() {
-        return sync != null && streaming != null;
+        // Only the streaming side is checked: the constructor rejects a
+        // null sync model, so testing it here could never be false.
+        return streaming != null;
     }
 
     private ChatRequest buildRequest(

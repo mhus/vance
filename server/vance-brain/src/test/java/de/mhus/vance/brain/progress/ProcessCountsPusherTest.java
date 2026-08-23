@@ -172,6 +172,48 @@ class ProcessCountsPusherTest {
         verify(events, never()).publish(any(), any(), any());
     }
 
+    @Test
+    void concurrentTransitions_neverReadTheStateAtTheSameTime() throws Exception {
+        // The reorder this guards: with the count taken outside the map's
+        // per-key lock, two lanes read the session concurrently, and the one
+        // that saw the *older* state could still win the write and publish
+        // last. The badge then stood on the stale number with the filter
+        // remembering it — permanently wrong for a session that has just
+        // settled, because only a further transition would correct it.
+        java.util.concurrent.CyclicBarrier startTogether =
+                new java.util.concurrent.CyclicBarrier(2);
+        java.util.concurrent.atomic.AtomicInteger inFlight =
+                new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicBoolean overlapped =
+                new java.util.concurrent.atomic.AtomicBoolean();
+        when(thinkProcessService.countBySession(any(), any(), any())).thenAnswer(inv -> {
+            if (inFlight.incrementAndGet() > 1) overlapped.set(true);
+            try {
+                Thread.sleep(50);
+            } finally {
+                inFlight.decrementAndGet();
+            }
+            return new ProcessCounts(1, 0, 0);
+        });
+
+        Runnable transition = () -> {
+            try {
+                startTogether.await();
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+            pusher.onStatusChanged(event(ThinkProcessStatus.IDLE, ThinkProcessStatus.RUNNING));
+        };
+        Thread a = new Thread(transition);
+        Thread b = new Thread(transition);
+        a.start();
+        b.start();
+        a.join();
+        b.join();
+
+        assertThat(overlapped).isFalse();
+    }
+
     private void givenCounts(ProcessCounts counts) {
         when(thinkProcessService.countBySession(
                 TENANT, SESSION, SessionChatBootstrapper.CHAT_PROCESS_NAME))

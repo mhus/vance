@@ -77,9 +77,4 @@ public record JaglanCapabilities(
         return new JaglanCapabilities(
                 MountAccess.RO, false, null, DEFAULT_TTL, null, null);
     }
-
-    /** {@code true} when the source asked for no caching and got the floor. */
-    public boolean cachingDiscouraged() {
-        return metadataTtl.equals(MIN_TTL);
-    }
 }

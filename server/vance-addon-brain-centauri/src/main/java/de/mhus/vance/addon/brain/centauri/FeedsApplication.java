@@ -3,6 +3,7 @@ package de.mhus.vance.addon.brain.centauri;
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.centauri.FeedStream;
 import de.mhus.vance.brain.permission.SecurityContextFactory;
+import de.mhus.vance.brain.prompt.ForeignPromptText;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -186,6 +187,13 @@ public class FeedsApplication implements VanceApplication {
         // "there is a marked entry in the Active-App block" by hand before the
         // right data was used. So: name the act, say what it is not, and forbid
         // the hedge. Same fix in the links and search apps.
+        //
+        // The value is `${sourceId}/${itemId} — ${title}`, and the title half
+        // was written by the stream, not by us: an archive, a wiki, another
+        // installation. It goes through the same collapse-cap-mark shaping
+        // FeedItemTool already applies to the very same field — a newline in a
+        // headline would otherwise open a line of its own inside the block
+        // that tells the model not to doubt what it says.
         String selected = ctx.selection();
         if (selected != null && !selected.isBlank()) {
             sb.append("The reader has clicked one entry in this feed. This IS what they mean "
@@ -193,7 +201,8 @@ public class FeedsApplication implements VanceApplication {
                             + "— it is the app's own pick, NOT a text selection inside a "
                             + "document. Never answer that no selection arrived, and never ask "
                             + "them to mark it again: ")
-                    .append(selected.trim()).append('\n')
+                    .append(ForeignPromptText.quoted(selected)).append('\n')
+                    .append(ForeignPromptText.PROVENANCE_NOTE).append('\n')
                     .append("Read it in full with feed_item(sourceId, itemId) — the part "
                             + "before the slash is the source, the part after it the id.\n");
         }
@@ -210,6 +219,17 @@ public class FeedsApplication implements VanceApplication {
         return FeedsConfig.from(readManifest(tenantId, projectName, folder));
     }
 
+    /**
+     * The manifest of this feed.
+     *
+     * <p><b>The identity check lives here.</b> {@link #writeConfig} writes
+     * {@code app: feeds} back unconditionally, so a wrong {@code folder} — no
+     * attack needed — would convert a workbook manifest into a feed one: the
+     * {@code workbook:} block survives as ballast, the kind lookup
+     * {@code application:workbook} stops matching, and the app is gone from the
+     * UI with no error anywhere. One check on the read side covers the config
+     * endpoints, the page endpoint and the tools.
+     */
     ApplicationDocument readManifest(String tenantId, String projectName, String folder) {
         String manifestPath = normaliseFolder(folder) + "/" + APP_MANIFEST;
         Optional<DocumentDocument> doc =
@@ -218,7 +238,13 @@ public class FeedsApplication implements VanceApplication {
             throw new ToolException("No feed manifest at '" + manifestPath + "'");
         }
         String body = documentService.readContent(doc.get());
-        return ApplicationCodec.parse(body, doc.get().getMimeType());
+        ApplicationDocument parsed = ApplicationCodec.parse(body, doc.get().getMimeType());
+        String app = parsed.app();
+        if (!app.isBlank() && !APP_NAME.equals(app)) {
+            throw new ToolException("'" + manifestPath + "' is an app: " + app
+                    + ", not a feed — refusing to overwrite its manifest.");
+        }
+        return parsed;
     }
 
     /** Replace the {@code config.feeds} block, keeping title and description. */
@@ -242,6 +268,15 @@ public class FeedsApplication implements VanceApplication {
                 existing.orElse(null), userId);
     }
 
+    /**
+     * The folder this call works with — the value that gets authorised and the
+     * value that gets written, in that order.
+     *
+     * <p>{@code ..} is refused rather than collapsed, for the same reason the
+     * clip path refuses it: collapsing would put a second normalisation step
+     * between the authorisation and the write, and that gap is exactly the
+     * bypass shape. A folder is a name somebody picked, not a traversal.
+     */
     static String normaliseFolder(@Nullable String folder) {
         if (folder == null) {
             throw new ToolException("folder is required");
@@ -255,6 +290,12 @@ public class FeedsApplication implements VanceApplication {
         }
         if (f.isEmpty()) {
             throw new ToolException("folder must not be empty");
+        }
+        if (f.contains("..")) {
+            throw new ToolException("folder must not contain '..': " + folder);
+        }
+        if (f.contains("//")) {
+            throw new ToolException("folder must not contain an empty segment: " + folder);
         }
         return f;
     }

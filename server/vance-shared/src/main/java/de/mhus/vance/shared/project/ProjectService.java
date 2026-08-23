@@ -59,6 +59,30 @@ public class ProjectService {
     private static final String F_OWNER_REQUIRED = "ownerRequired";
     private static final String F_HOME_RESOURCE_SCORE = "homeResourceScore";
 
+    /**
+     * The statuses that express the intent "should be live somewhere" — the
+     * only ones an owner is claimed for. {@code SUSPENDING} and
+     * {@code SUSPENDED} express the opposite intent and {@code CLOSED} is
+     * terminal; recovery must not overrule any of the three.
+     */
+    private static final List<ProjectStatus> WANTS_TO_RUN = List.of(
+            ProjectStatus.INIT, ProjectStatus.RECOVERING, ProjectStatus.RUNNING);
+
+    /**
+     * The same "should be live somewhere" question as {@link #WANTS_TO_RUN},
+     * asked about a single project instead of as a query predicate.
+     *
+     * <p>Exposed because the recovery selector is not the only caller that has
+     * to respect a suspend. {@code ProjectLifecycleService.bring} deliberately
+     * transitions <em>any</em> non-RUNNING status to RUNNING — that is right
+     * for an explicit bring and wrong for anything that happens by itself, so
+     * an implicit caller (a workspace read adopting an unowned project, say)
+     * has to ask first. One authority for the set, two shapes of question.
+     */
+    public static boolean wantsToRun(@Nullable ProjectStatus status) {
+        return status != null && WANTS_TO_RUN.contains(status);
+    }
+
     private final ProjectRepository repository;
     private final MongoTemplate mongoTemplate;
     private final AuditService auditService;
@@ -467,11 +491,22 @@ public class ProjectService {
      * <ul>
      *   <li>{@link LifecycleType#PERMANENT} — always.</li>
      *   <li>{@link LifecycleType#AUTO} — when {@code ownerRequired} is true,
-     *       i.e. the project carries schedulers, hooks, event triggers or a
-     *       provisioning document.</li>
+     *       i.e. the project carries scheduler entries or hooks.</li>
      *   <li>{@link LifecycleType#EPHEMERAL} — never (explicit opt-out).</li>
      *   <li>{@link LifecycleType#HOMELESS} — never (no pod affinity at all).</li>
      * </ul>
+     *
+     * <p><b>Status is read as intent, and only two intents want an owner.</b>
+     * {@code WANTS_TO_RUN} is {@code INIT}, {@code RECOVERING},
+     * {@code RUNNING} — "should be live somewhere". The selector used to be
+     * {@code status != CLOSED}, which swept {@code SUSPENDED} and
+     * {@code SUSPENDING} in with them, and {@code ProjectLifecycleService.bring}
+     * transitions <em>any</em> non-RUNNING status straight to RUNNING. Suspend
+     * therefore did not survive a restart: an operator suspends a project
+     * because its nightly scheduler costs money, the holder's lease expires on
+     * the next reboot, and the Boot-Self-Pull brings it back — for the very
+     * scheduler that was the reason to suspend it. Getting back is still
+     * possible, just not by itself: an explicit locate or bring does it.
      *
      * <p>An indexable range scan: both "needs an owner" and "stranded" are
      * properties of the document, where the predecessor had to {@code $nin} a
@@ -491,7 +526,7 @@ public class ProjectService {
                 Criteria.where(F_HOME_POD).is(null),
                 expiredLease(Instant.now(), leaseTtl));
         Query query = new Query(new Criteria().andOperator(
-                        Criteria.where(F_STATUS).ne(ProjectStatus.CLOSED),
+                        Criteria.where(F_STATUS).in(WANTS_TO_RUN),
                         needsOwner,
                         stranded))
                 .limit(Math.max(1, limit));

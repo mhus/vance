@@ -175,14 +175,23 @@ public class SessionResumeFlow {
      * {@code null} when there is nothing to pick (empty input) or the picker
      * could not be rendered.
      *
-     * <p>On picker failure (e.g. {@code --no-ui}, where a fullscreen Lanterna
-     * excursion cannot run) we degrade to the newest local entry rather than
-     * cancelling, so {@code -c} still resumes something sensible.
+     * <p>On picker failure we degrade to the newest local entry rather than
+     * cancelling, so {@code -c} still resumes something sensible. The two
+     * reasons are kept apart: a headless run ({@code --no-ui}, no TTY) simply
+     * has no surface to draw on and says so at verbose level, while a picker
+     * that was available and then blew up is a warning the user should see.
      */
     public LocalSessionPickerView.@Nullable Result continueFromLocal(
             List<SessionAnchor.SessionEntry> entries) {
         if (entries == null || entries.isEmpty()) {
             return null;
+        }
+        if (!interfaceService.isFullscreenAvailable()) {
+            terminal.println(Verbosity.VERBOSE,
+                    "No interactive terminal for the local session picker "
+                            + "— resuming the most recent local session.");
+            return new LocalSessionPickerView.Result(
+                    LocalSessionPickerView.Choice.RESUME_ENTRY, entries.get(0));
         }
         LocalSessionPickerView.Result[] picked = new LocalSessionPickerView.Result[] { null };
         try {
@@ -245,6 +254,13 @@ public class SessionResumeFlow {
     }
 
     private @Nullable SessionSummary pickInteractively(List<SessionSummary> candidates) {
+        if (!interfaceService.isFullscreenAvailable()) {
+            // No surface to draw on — say what to do instead of reporting a
+            // rendering failure that never happened.
+            terminal.error("The session picker needs an interactive terminal. "
+                    + "Re-run with --last to resume the most recent match.");
+            return null;
+        }
         SessionSummary[] picked = new SessionSummary[] { null };
         try {
             interfaceService.runFullscreen(session ->

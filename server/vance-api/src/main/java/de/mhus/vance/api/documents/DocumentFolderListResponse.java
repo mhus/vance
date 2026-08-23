@@ -8,6 +8,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Folder-listing view for the documents editor — combines the
@@ -56,5 +57,5 @@ public class DocumentFolderListResponse {
      * {@code UNSUPPORTED} and {@code UNAVAILABLE} mean the question was not
      * answered at all — a client must not present those as "nothing found".
      */
-    private MountSearchOutcome mountSearch;
+    private @Nullable MountSearchOutcome mountSearch;
 }

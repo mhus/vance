@@ -133,6 +133,8 @@ public class WorkspaceGrepTool implements Tool {
         // 'path' narrows the search to a subtree; glob, depth and the
         // generated-filter judge the part below it — the same contract the
         // CLIENT backend documents.
+        WorkspaceSubPath.requirePresent(
+                workspace, ctx, dirName, subPath, /*requireDirectory*/ true);
         String prefix = WorkspaceSubPath.prefix(subPath);
         List<Map<String, Object>> matches = new ArrayList<>();
         int filesScanned = 0;

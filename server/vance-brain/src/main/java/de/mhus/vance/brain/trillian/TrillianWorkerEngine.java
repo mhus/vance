@@ -53,13 +53,21 @@ public class TrillianWorkerEngine extends FrankieEngine {
     public static final String NAME = "trillian-worker";
 
     /**
-     * engineParamOverrides marker set by {@code trillian_ask}: this exit
-     * is a question, not a result.
+     * engineParamOverrides marker set by {@code trillian_ask}: a question
+     * is open and unanswered.
      *
      * <p>Carried on the process rather than through the tool result,
      * because the result protocol is Frankie's and this must not touch
-     * it. Cleared as it is read, so a later real termination closes
-     * normally.
+     * it.
+     *
+     * <p>It survives the park, and is cleared at the start of the next
+     * turn — the worker running again <em>is</em> the answer arriving.
+     * That makes it the honest answer to "is this IDLE worker waiting for
+     * someone, or did it simply finish?", which a Nature needs before it
+     * describes a parked worker or spends a re-check on it. Clearing it
+     * on the way out (as the first version did) collapsed both cases into
+     * one and left the obstacle markers speaking for a worker that had
+     * long since carried on.</p>
      */
     public static final String PARAM_ASK_PENDING = "trillianAskPending";
 
@@ -100,6 +108,35 @@ public class TrillianWorkerEngine extends FrankieEngine {
     }
 
     /**
+     * A turn starting means the worker is no longer waiting: whatever it
+     * asked has been answered, or somebody nudged it to look again.
+     * Either way the question is no longer open, so the marker goes
+     * before Frankie's loop runs — a question raised <em>during</em> this
+     * turn sets it again and is read on the way out.
+     *
+     * <p>The obstacle markers ({@code blocker}, probe budget) are
+     * deliberately left standing: a re-ask of the same question has to
+     * keep the budget it has already spent, and
+     * {@code TrillianAskTool} resets them itself when the question
+     * changes.
+     */
+    @Override
+    public void runTurn(ThinkProcessDocument process,
+                        de.mhus.vance.brain.thinkengine.ThinkEngineContext ctx) {
+        if (askPending(process.getId())) {
+            try {
+                processes.setEngineParamOverride(process.getId(), PARAM_ASK_PENDING, null);
+            } catch (RuntimeException e) {
+                // A stale marker makes a later real termination park
+                // instead of close — bad, but not worth losing the turn.
+                log.warn("Trillian worker id='{}' could not clear its ask marker: {}",
+                        process.getId(), e.toString());
+            }
+        }
+        super.runTurn(process, ctx);
+    }
+
+    /**
      * A question parks the worker; anything else closes it as Frankie
      * would.
      *
@@ -109,7 +146,7 @@ public class TrillianWorkerEngine extends FrankieEngine {
      */
     @Override
     protected @Nullable ThinkProcessStatus onWorkerTerminate(ThinkProcessDocument process) {
-        if (!consumeAskPending(process.getId())) {
+        if (!askPending(process.getId())) {
             return super.onWorkerTerminate(process);
         }
         log.info("Trillian worker id='{}' asked a question — staying IDLE with its context",
@@ -117,18 +154,14 @@ public class TrillianWorkerEngine extends FrankieEngine {
         return ThinkProcessStatus.IDLE;
     }
 
-    /** Reads and clears the marker; {@code false} when it was not set. */
-    private boolean consumeAskPending(String processId) {
+    /** Whether an unanswered question is open on this worker. */
+    private boolean askPending(String processId) {
         try {
             ThinkProcessDocument fresh = processes.findById(processId).orElse(null);
             Map<String, Object> overrides =
                     fresh == null ? null : fresh.getEngineParamOverrides();
             Object raw = overrides == null ? null : overrides.get(PARAM_ASK_PENDING);
-            if (!Boolean.TRUE.equals(raw)) {
-                return false;
-            }
-            processes.setEngineParamOverride(processId, PARAM_ASK_PENDING, null);
-            return true;
+            return Boolean.TRUE.equals(raw);
         } catch (RuntimeException e) {
             // Closing is the safe reading of an unclear state: a worker
             // wrongly kept alive waits forever, one wrongly closed costs

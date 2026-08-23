@@ -566,15 +566,19 @@ public class SettingService {
 
     /**
      * Stores a secret whose value passed through an agent's context. Enforces the
-     * three agent-write rules from {@code planning/setting-type-hidden.md} §6:
+     * two agent-write rules that survived from
+     * {@code planning/setting-type-hidden.md} §6 — W2 ("a value that passed
+     * through the model context becomes HIDDEN") was deliberately withdrawn, see
+     * the paragraph below:
      *
      * <ul>
      *   <li><b>W3</b> — a deny-listed key ({@link AgentSettingKeyPolicy}) is
      *       refused outright, whatever its type and whether or not it exists.</li>
-     *   <li><b>W1</b> — an existing {@link SettingType#PASSWORD} setting is never
-     *       overwritten. Otherwise an agent could clobber a credential with a
-     *       value of its own and read it back; confidentiality would survive (it
-     *       only reads its own value) but the real credential would be gone.</li>
+     *   <li><b>W1</b> — an existing setting that an agent may not read back is
+     *       never overwritten either. Otherwise an agent could clobber a
+     *       credential with a value of its own and read it back; confidentiality
+     *       would survive (it only reads its own value) but the real credential
+     *       would be gone.</li>
      * </ul>
      *
      * <p><b>The type follows the use, not the origin.</b> The caller declares it:
@@ -592,7 +596,14 @@ public class SettingService {
             @Nullable String plaintext, SettingType type) {
         agentKeyPolicy.requireAgentWritable(key);
         Optional<SettingDocument> existing = find(tenantId, referenceType, referenceId, key);
-        if (existing.isPresent() && existing.get().getType() == SettingType.PASSWORD) {
+        // The threshold is referenceReadable(), not encrypted(): W1 protects
+        // exactly what an agent may not read back, and HIDDEN has to stay
+        // overwritable (vault_secret_set / vault_secret_generate write it).
+        // Spelled as a predicate rather than `== PASSWORD` because a constant
+        // comparison silently excludes any future level above PASSWORD — the
+        // whole reason SettingType exposes two monotone thresholds instead of
+        // asking call sites to enumerate constants.
+        if (existing.isPresent() && !existing.get().getType().referenceReadable()) {
             log.warn("Refusing agent-originated overwrite of PASSWORD setting: "
                             + "tenant='{}' ref='{}:{}' key='{}'",
                     tenantId, referenceType, referenceId, key);

@@ -6,6 +6,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import de.mhus.vance.toolpack.jaglan.JaglanCapabilities;
 import de.mhus.vance.toolpack.jaglan.JaglanInstance;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,13 +36,19 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class JaglanCapabilitiesCache {
 
-    @Value("${vance.jaglan.capabilities-ttl-seconds:1800}")
-    private long ttlSeconds = 1800;
+    /** The documented default, and what a hand-constructed instance uses. */
+    static final Duration DEFAULT_TTL = Duration.ofMinutes(30);
 
-    private final Cache<String, JaglanCapabilities> cache = Caffeine.newBuilder()
-            .maximumSize(512)
-            .expireAfterWrite(Duration.ofMinutes(30))
-            .build();
+    @Value("${vance.jaglan.capabilities-ttl-seconds:1800}")
+    private long ttlSeconds = DEFAULT_TTL.toSeconds();
+
+    /**
+     * Rebuilt in {@link #applyConfiguredTtl()}: Caffeine bakes the expiry into
+     * the instance, and a builder that runs in the field initialiser runs
+     * before {@code @Value} injection. Built here as well so an instance
+     * constructed by hand (unit tests) is usable without the Spring lifecycle.
+     */
+    private volatile Cache<String, JaglanCapabilities> cache = newCache(DEFAULT_TTL);
 
     /**
      * Remember a failed fetch briefly so a dead mount does not get probed on
@@ -52,6 +59,36 @@ public class JaglanCapabilitiesCache {
             .maximumSize(512)
             .expireAfterWrite(Duration.ofSeconds(30))
             .build();
+
+    /**
+     * Apply the configured TTL once the property is injected.
+     *
+     * <p>Discarding the initial cache is free — nothing can have been fetched
+     * before the context is up — and it is the only way the property can take
+     * effect at all. Without it {@code vance.jaglan.capabilities-ttl-seconds}
+     * was a documented knob wired to nothing: an operator setting it to 60 and
+     * watching a source stay read-only for half an hour has no way to tell
+     * that from a broken source.
+     */
+    @PostConstruct
+    void applyConfiguredTtl() {
+        Duration ttl = configuredTtl();
+        if (ttl.isNegative()) {
+            log.warn("vance.jaglan.capabilities-ttl-seconds is negative ({}s), using {}s",
+                    ttlSeconds, DEFAULT_TTL.toSeconds());
+            ttl = DEFAULT_TTL;
+            ttlSeconds = DEFAULT_TTL.toSeconds();
+        }
+        cache = newCache(ttl);
+        log.debug("Jaglan: capabilities are trusted for {}s", ttl.toSeconds());
+    }
+
+    private static Cache<String, JaglanCapabilities> newCache(Duration ttl) {
+        return Caffeine.newBuilder()
+                .maximumSize(512)
+                .expireAfterWrite(ttl)
+                .build();
+    }
 
     /** Cached capabilities, or {@code null} — never fetches. */
     public @Nullable JaglanCapabilities peek(
@@ -108,11 +145,7 @@ public class JaglanCapabilitiesCache {
         failures.invalidate(key);
     }
 
-    /**
-     * The configured TTL for capabilities, exposed so the service can log it.
-     * Kept as a value rather than baked into the cache builder because the
-     * builder runs before property injection.
-     */
+    /** How long a source's self-description is trusted. */
     public Duration configuredTtl() {
         return Duration.ofSeconds(ttlSeconds);
     }

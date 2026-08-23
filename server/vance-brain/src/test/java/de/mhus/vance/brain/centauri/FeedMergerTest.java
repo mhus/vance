@@ -28,7 +28,7 @@ class FeedMergerTest {
         FakeFeedSource alpha = new FakeFeedSource("alpha");
         FakeFeedSource beta = new FakeFeedSource("beta");
 
-        var result = FeedMerger.merge(
+        var result = merge(
                 List.of(
                         fetch(ALPHA, alpha, page(false, null,
                                 item("a1", "2026-08-19T10:00:00Z", "https://a.test/1"),
@@ -48,7 +48,7 @@ class FeedMergerTest {
         FakeFeedSource beta = new FakeFeedSource("beta");
         String sameMoment = "2026-08-19T10:00:00Z";
 
-        var result = FeedMerger.merge(
+        var result = merge(
                 List.of(
                         fetch(BETA, beta, page(false, null,
                                 item("b1", sameMoment, "https://b.test/1"))),
@@ -67,7 +67,7 @@ class FeedMergerTest {
     void merge_pageSmallerThanFetch_advancesCursorOnlyToDeliveredItem() {
         FakeFeedSource alpha = new FakeFeedSource("alpha");
 
-        var result = FeedMerger.merge(
+        var result = merge(
                 List.of(fetch(ALPHA, alpha, page(true, "page-end",
                         item("a1", "2026-08-19T10:00:00Z", "https://a.test/1"),
                         item("a2", "2026-08-19T09:00:00Z", "https://a.test/2"),
@@ -88,7 +88,7 @@ class FeedMergerTest {
         FeedFilter excludeAll = new FeedFilter(
                 null, Set.of(), List.of(), List.of("advert"), null);
 
-        var result = FeedMerger.merge(
+        var result = merge(
                 List.of(fetch(ALPHA, alpha, page(true, "page-end",
                         item("a1", "2026-08-19T10:00:00Z", "https://a.test/1", "an advert"),
                         item("a2", "2026-08-19T09:00:00Z", "https://a.test/2", "another advert")))),
@@ -107,7 +107,7 @@ class FeedMergerTest {
     void merge_emptyPageWithMoreToCome_advancesViaPageCursor() {
         FakeFeedSource alpha = new FakeFeedSource("alpha");
 
-        var result = FeedMerger.merge(
+        var result = merge(
                 List.of(fetch(ALPHA, alpha, new FeedPage(List.of(), "page-end", true))),
                 FeedFilter.none(), 10, FeedDirection.OLDER, CentauriCursor.fresh());
 
@@ -120,7 +120,7 @@ class FeedMergerTest {
     void merge_emptyPageClaimingMoreWithNoCursor_retiresTheStream() {
         FakeFeedSource alpha = new FakeFeedSource("alpha");
 
-        var result = FeedMerger.merge(
+        var result = merge(
                 // hasMore with nothing delivered and nothing to resume from: the
                 // next request would be identical, so believing it would spin the
                 // scroll forever.
@@ -136,7 +136,7 @@ class FeedMergerTest {
     void merge_midPageCut_usesTheSourcesOwnPerItemCursor() {
         FakeFeedSource alpha = new FakeFeedSource("alpha");
 
-        var result = FeedMerger.merge(
+        var result = merge(
                 List.of(fetch(ALPHA, alpha, page(true, "page-end",
                         FakeFeedSource.itemWithCursor(
                                 "a1", "2026-08-19T10:00:00Z", "https://a.test/1", "ts-10|a1"),
@@ -155,7 +155,7 @@ class FeedMergerTest {
         FakeFeedSource alpha = new FakeFeedSource("alpha");
         FeedFilter filter = new FeedFilter("tariffs", Set.of(), List.of(), List.of(), null);
 
-        var result = FeedMerger.merge(
+        var result = merge(
                 // The source matched on text it does not deliver — a translated
                 // entry, indexed by its original words. Re-checking locally used
                 // to drop a hit the source had found correctly.
@@ -176,7 +176,7 @@ class FeedMergerTest {
                 Map.of(ALPHA.key(), "a9"), Instant.parse("2026-08-19T07:00:00Z"),
                 Set.of(ALPHA.key()));
 
-        var result = FeedMerger.merge(
+        var result = merge(
                 List.of(fetch(BETA, beta, page(false, null,
                         item("b1", "2026-08-19T06:00:00Z", "https://b.test/1")))),
                 FeedFilter.none(), 10, FeedDirection.OLDER, incoming);
@@ -191,7 +191,7 @@ class FeedMergerTest {
         FakeFeedSource alpha = new FakeFeedSource("alpha");
         FakeFeedSource beta = new FakeFeedSource("beta");
 
-        var result = FeedMerger.merge(
+        var result = merge(
                 List.of(
                         fetch(ALPHA, alpha, page(false, null,
                                 item("a1", "2026-08-19T10:00:00Z",
@@ -211,7 +211,7 @@ class FeedMergerTest {
         CentauriCursor incoming = new CentauriCursor(
                 Map.of("gone|somewhere", "g1", BETA.key(), "b0"), null, Set.of());
 
-        var result = FeedMerger.merge(
+        var result = merge(
                 List.of(fetch(BETA, beta, page(false, null,
                         item("b1", "2026-08-19T09:00:00Z", "https://b.test/1")))),
                 FeedFilter.none(), 10, FeedDirection.OLDER, incoming);
@@ -223,7 +223,7 @@ class FeedMergerTest {
     void merge_newerDirection_ordersOldestFirst() {
         FakeFeedSource alpha = new FakeFeedSource("alpha");
 
-        var result = FeedMerger.merge(
+        var result = merge(
                 List.of(fetch(ALPHA, alpha, page(false, null,
                         item("a1", "2026-08-19T10:00:00Z", "https://a.test/1"),
                         item("a2", "2026-08-19T08:00:00Z", "https://a.test/2")))),
@@ -237,7 +237,7 @@ class FeedMergerTest {
     void merge_unsortedPage_isSortedRatherThanTrusted() {
         FakeFeedSource alpha = new FakeFeedSource("alpha");
 
-        var result = FeedMerger.merge(
+        var result = merge(
                 List.of(fetch(ALPHA, alpha, page(true, null,
                         item("a2", "2026-08-19T08:00:00Z", "https://a.test/2"),
                         item("a1", "2026-08-19T10:00:00Z", "https://a.test/1")))),
@@ -265,7 +265,105 @@ class FeedMergerTest {
                 .isNotEqualTo(FeedMerger.normalizeUrl("https://news.test/a?id=8"));
     }
 
+    // ── silence: the streams that answered nothing ───────────────────
+
+    @Test
+    void merge_streamSilentThisRound_keepsItsCursorAndKeepsTheScrollOpen() {
+        // A source that timed out or sits in a cooldown has not said "I am
+        // done" and has not been removed either. Dropping its cursor restarts
+        // it at its newest entry on the next page — the reader would see the
+        // same handful of B entries again in the middle of a scroll.
+        FakeFeedSource beta = new FakeFeedSource("beta");
+        CentauriCursor incoming = new CentauriCursor(
+                Map.of(ALPHA.key(), "a-page-4", BETA.key(), "b-page-4"), null, Set.of());
+
+        var result = FeedMerger.merge(
+                List.of(fetch(BETA, beta, page(false, null,
+                        item("b1", "2026-08-19T09:00:00Z", "https://b.test/1")))),
+                List.of(FeedMerger.StreamSilence.unresolved(ALPHA)),
+                FeedFilter.none(), 10, FeedDirection.OLDER, incoming);
+
+        assertThat(result.cursor().perStream()).containsEntry(ALPHA.key(), "a-page-4");
+        assertThat(result.cursor().exhausted()).doesNotContain(ALPHA.key());
+        // beta said it is finished, alpha said nothing — so the page is not
+        // the end of the feed.
+        assertThat(result.hasMore()).isTrue();
+    }
+
+    @Test
+    void merge_streamSettledThisRound_keepsItsCursorButMayEndTheRound() {
+        // "Switched off" and "does not declare that facet" are answers. The
+        // cursor survives because the stream is still configured, but the
+        // scroll is allowed to end on it — otherwise a disabled source keeps
+        // an endless scroll alive forever with nothing to add.
+        FakeFeedSource beta = new FakeFeedSource("beta");
+        CentauriCursor incoming = new CentauriCursor(
+                Map.of(ALPHA.key(), "a-page-4"), null, Set.of());
+
+        var result = FeedMerger.merge(
+                List.of(fetch(BETA, beta, page(false, null,
+                        item("b1", "2026-08-19T09:00:00Z", "https://b.test/1")))),
+                List.of(FeedMerger.StreamSilence.settled(ALPHA)),
+                FeedFilter.none(), 10, FeedDirection.OLDER, incoming);
+
+        assertThat(result.cursor().perStream()).containsEntry(ALPHA.key(), "a-page-4");
+        assertThat(result.hasMore()).isFalse();
+    }
+
+    @Test
+    void merge_everyStreamSilent_carriesTheWholeCursorThrough() {
+        // A network blip that takes out every source at once. Answering with a
+        // fresh cursor would restart the feed at its top on the next "load
+        // more" — the reader loses the position they scrolled to, and nothing
+        // in the response says that happened.
+        CentauriCursor incoming = new CentauriCursor(
+                Map.of(ALPHA.key(), "a-page-4", BETA.key(), "b-page-4"),
+                Instant.parse("2026-08-19T07:00:00Z"), Set.of());
+
+        var result = FeedMerger.merge(
+                List.of(),
+                List.of(FeedMerger.StreamSilence.unresolved(ALPHA),
+                        FeedMerger.StreamSilence.unresolved(BETA)),
+                FeedFilter.none(), 10, FeedDirection.OLDER, incoming);
+
+        assertThat(result.items()).isEmpty();
+        assertThat(result.cursor().perStream())
+                .containsEntry(ALPHA.key(), "a-page-4")
+                .containsEntry(BETA.key(), "b-page-4");
+        assertThat(result.cursor().watermark())
+                .isEqualTo(Instant.parse("2026-08-19T07:00:00Z"));
+        assertThat(result.hasMore()).isTrue();
+    }
+
+    @Test
+    void merge_watermark_namesTheLastDeliveredEntryNotTheCut() {
+        // Spec §5.1: the watermark is the publishedAt of the last *delivered*
+        // entry. The page below ends on a rejected one, so cut and delivered
+        // differ — and a watermark describing an entry nobody saw is a field
+        // that disagrees with its own definition.
+        FakeFeedSource alpha = new FakeFeedSource("alpha");
+        FeedFilter excludeAdverts = new FeedFilter(
+                null, Set.of(), List.of(), List.of("advert"), null);
+
+        var result = merge(
+                List.of(fetch(ALPHA, alpha, page(true, "page-end",
+                        item("a1", "2026-08-19T10:00:00Z", "https://a.test/1", "a story"),
+                        item("a2", "2026-08-19T09:00:00Z", "https://a.test/2", "an advert")))),
+                excludeAdverts, 10, FeedDirection.OLDER, CentauriCursor.fresh());
+
+        assertThat(result.items()).extracting(i -> i.item().id()).containsExactly("a1");
+        assertThat(result.cursor().watermark())
+                .isEqualTo(Instant.parse("2026-08-19T10:00:00Z"));
+    }
+
     // ── helpers ──────────────────────────────────────────────────────
+
+    /** Every stream answered — the shape most of these cases are about. */
+    private static FeedMerger.MergeResult merge(
+            List<FeedMerger.StreamFetch> fetches, FeedFilter filter, int pageSize,
+            FeedDirection direction, CentauriCursor incoming) {
+        return FeedMerger.merge(fetches, List.of(), filter, pageSize, direction, incoming);
+    }
 
     private static FeedMerger.StreamFetch fetch(
             FeedStream stream, FakeFeedSource source, FeedPage page) {

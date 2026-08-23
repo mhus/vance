@@ -28,7 +28,12 @@ fields:
     help:  { de: "web, news, image, video, pdf, academic, encyclopedia, book. Wenn kein Provider sie bedient, öffnet die App auf der ersten, die bedient wird — ein Tab, der nicht antworten kann, wird nicht angezeigt.",
              en: "web, news, image, video, pdf, academic, encyclopedia, book. If no provider serves it, the app opens on the first one that is served — a tab that cannot answer is not shown." }
   - name: defaultNum
-    type: string
+    # integer, not string: the body template inserts it unquoted at a YAML
+    # integer position, so a typed non-number would land there as a bare
+    # word and the manifest would no longer parse.
+    type: integer
+    integerMin: 1
+    integerMax: 100
     defaultValue: "10"
     label: { de: "Treffer pro Suche", en: "Results per search" }
     help:  { de: "Jede Suche kostet Provider-Quota. Der Wert ist die Obergrenze pro Anfrage, nicht ein Ziel.",

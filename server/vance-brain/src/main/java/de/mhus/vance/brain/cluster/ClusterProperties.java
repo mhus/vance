@@ -10,6 +10,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * behaviour. Defaults match the user-facing intent: one cluster
  * called {@code "default"}, a heartbeat per minute, and a stale
  * window twice as wide so a single missed beat doesn't flap pods.
+ *
+ * <p>This class holds the <em>values</em>. How the several time windows in it
+ * relate to each other — which one bounds which, and which two are
+ * deliberately independent — is stated in one place,
+ * {@link ClusterTimeWindows}, and that is where a reader should go before
+ * changing any duration here.
  */
 @Data
 @ConfigurationProperties(prefix = "vance.cluster")
@@ -37,6 +43,10 @@ public class ClusterProperties {
      * {@code lastHeartbeatAt} is older than this is treated as gone by
      * {@code BrainPodService.isStale}. Default is 2× the heartbeat
      * interval so a single missed tick does not flap pods.
+     *
+     * <p>Independent of {@link Lease#ttl} on purpose — "is the pod alive" and
+     * "does the pod own this project" are two questions, see
+     * {@link ClusterTimeWindows}. Routing applies both.
      */
     private Duration staleAfter = Duration.ofMinutes(2);
 
@@ -70,6 +80,11 @@ public class ClusterProperties {
          * <p>It is read-side policy, not baked into the stored data — raising
          * it takes effect immediately instead of waiting for leases to roll
          * over.
+         *
+         * <p><b>Not</b> an upper bound on the other windows. It is longer than
+         * {@link ClusterProperties#staleAfter} by default and may stay that
+         * way; what follows from that is spelled out in
+         * {@link ClusterTimeWindows}.
          */
         private Duration ttl = Duration.ofMinutes(5);
 

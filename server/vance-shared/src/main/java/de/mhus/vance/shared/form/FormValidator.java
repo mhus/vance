@@ -18,6 +18,29 @@ import org.springframework.stereotype.Service;
  *
  * <p>Errors are collected (not fail-fast) — the Web-UI can highlight
  * every broken field in one round-trip.
+ *
+ * <h2>Conditional fields ({@code showIf}) are exempt from {@code required}</h2>
+ * {@link FormFieldDto#getShowIf()} is a <b>Pebble</b> expression, and this
+ * validator is deliberately Pebble-free: it lives in {@code vance-shared}, runs
+ * before any renderer, and is shared by wizards, kit tool-templates and document
+ * templates — none of which carry {@code showIf} at all
+ * ({@link FormFieldYamlParser} does not even parse it). Only Setting Forms do,
+ * and there the expression is evaluated at apply time by the brain's plan
+ * builder, which then treats a hidden field's binding as absent.
+ *
+ * <p>Enforcing {@code required} here on such a field asserts the opposite of the
+ * documented contract ("treated as absent for required/bindsTo enforcement") and
+ * has a concrete failure: the vault form's provider select defaults to
+ * {@code settings}, which needs no connection, yet every Infisical-only field
+ * behind a {@code showIf} was reported {@code required} and the form returned
+ * 422 on <em>every</em> save. Skipping them cannot produce that class of error at
+ * all, and gives up only the case "the condition is in fact true and the user
+ * left the field empty" — which the planner sees anyway, with the values in hand.
+ *
+ * <p>The narrower alternative — have the caller evaluate the expressions and pass
+ * the visible set in — stays open, and is what an exact enforcement would need.
+ * It is not built here because it would put a parameter on this class that only
+ * one of its four callers could ever fill.
  */
 @Service
 public class FormValidator {
@@ -65,7 +88,10 @@ public class FormValidator {
         String type = field.getType();
         boolean missing = raw == null || (raw instanceof String s && s.isBlank());
         if (missing) {
-            if (field.isRequired()) {
+            // A blank conditional field may simply be one whose condition is
+            // false — see the class javadoc. Only the type checks below are
+            // skipped along with it, and those have nothing to check anyway.
+            if (field.isRequired() && !isConditional(field)) {
                 errors.add(new FormValidationError(path, "required"));
             }
             return;
@@ -147,6 +173,18 @@ public class FormValidator {
             }
             default -> errors.add(new FormValidationError(path, "unknown_field_type"));
         }
+    }
+
+    /**
+     * Whether the field's presence depends on a condition this validator cannot
+     * evaluate. Note it asks only about {@code showIf}: {@code writeIf} decides
+     * whether the <em>target setting</em> is written or deleted, not whether the
+     * user was shown a box to fill in, so a {@code required} field with a
+     * {@code writeIf} stays required.
+     */
+    private static boolean isConditional(FormFieldDto field) {
+        String showIf = field.getShowIf();
+        return showIf != null && !showIf.isBlank();
     }
 
     private static @Nullable Integer tryParseInt(Object raw) {

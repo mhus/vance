@@ -1779,24 +1779,29 @@ const combinedError = computed<string | null>(() =>
             :key="index"
             class="flex flex-wrap items-end gap-2"
           >
-            <VSelect
-              v-model="rule.namespace"
-              class="w-40"
-              :label="$t('scopes.kit.config.namespace')"
-              :options="kitPolicyNamespaceOptions"
-            />
-            <VInput
-              v-model="rule.pattern"
-              class="flex-1 min-w-48"
-              :label="$t('scopes.kit.config.pattern')"
-              :placeholder="rule.namespace === 'setting' ? 'ai.alias.*' : 'recipes/*.yaml'"
-            />
-            <VSelect
-              v-model="rule.action"
-              class="w-40"
-              :label="$t('scopes.kit.config.action')"
-              :options="kitPolicyActionOptions"
-            />
+            <!-- Width goes on a wrapper: VSelect/VInput carry `w-full`
+                 themselves, and a merged `w-40` loses at equal specificity. -->
+            <div class="w-40">
+              <VSelect
+                v-model="rule.namespace"
+                :label="$t('scopes.kit.config.namespace')"
+                :options="kitPolicyNamespaceOptions"
+              />
+            </div>
+            <div class="flex-1 min-w-48">
+              <VInput
+                v-model="rule.pattern"
+                :label="$t('scopes.kit.config.pattern')"
+                :placeholder="rule.namespace === 'setting' ? 'ai.alias.*' : 'recipes/*.yaml'"
+              />
+            </div>
+            <div class="w-40">
+              <VSelect
+                v-model="rule.action"
+                :label="$t('scopes.kit.config.action')"
+                :options="kitPolicyActionOptions"
+              />
+            </div>
             <VButton variant="ghost" size="sm" @click="removeKitPolicyRule(index)">
               {{ $t('scopes.common.delete') }}
             </VButton>

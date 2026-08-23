@@ -20,9 +20,9 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
@@ -44,7 +44,6 @@ import org.springframework.web.server.ResponseStatusException;
  * outside the brain.
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class UrsaEventService {
 
@@ -56,6 +55,13 @@ public class UrsaEventService {
 
     /** Micrometer timer for successful trigger latency. Tag: {@code event}. */
     private static final String METRIC_TRIGGER_DURATION = "vance.ursaevents.trigger.duration";
+
+    /**
+     * Default ceiling for concurrent async script events. High enough that a
+     * legitimate burst of webhooks is not throttled, low enough that a flood
+     * meets a wall instead of the heap.
+     */
+    private static final String DEFAULT_ASYNC_MAX_CONCURRENT = "32";
 
     private final UrsaEventLoader eventLoader;
     private final SettingService settingService;
@@ -80,12 +86,71 @@ public class UrsaEventService {
      * Runs {@code async: true} script events off the request thread.
      *
      * <p>Virtual threads: these tasks are dominated by whatever the script
-     * waits on (an LLM call, a document write), so a pool size would cap
-     * concurrency without saving anything. The script's own
+     * waits on (an LLM call, a document write), so a thread-pool size would
+     * cap concurrency without saving anything. The script's own
      * {@code timeoutSeconds} bounds each task.
      */
     private final ExecutorService asyncScriptExecutor = Executors.newThreadPerTaskExecutor(
             Thread.ofVirtual().name("event-async-", 0).factory());
+
+    /**
+     * How many async script events may be in flight at once.
+     *
+     * <p>The thread cost is not the reason — see {@link #asyncScriptExecutor}
+     * — the reason is that {@code /brain/{tenant}/event/**} is the one
+     * {@code /brain} route without a JWT and, by design, without a rate limit.
+     * While the script ran on the request thread the servlet pool was an
+     * implicit ceiling; answering immediately removed it, so an
+     * {@code auth.public: true} script event with {@code async: true} would
+     * otherwise let a caller start work as fast as it can open connections.
+     * {@code timeoutSeconds} bounds how long one run takes, never how many
+     * there are.
+     *
+     * <p>{@code null} when {@code vance.events.async.max-concurrent} is
+     * {@code 0} — the documented escape hatch for a deployment that puts its
+     * own limiter in front.
+     */
+    private final @Nullable Semaphore asyncScriptSlots;
+
+    /** Configured value behind {@link #asyncScriptSlots}, kept for log messages. */
+    private final int asyncMaxConcurrent;
+
+    public UrsaEventService(
+            UrsaEventLoader eventLoader,
+            SettingService settingService,
+            MetricService metricService,
+            ObjectProvider<MagratheaWorkflowService> workflowServiceProvider,
+            ActionExecutorRegistry actionExecutorRegistry,
+            SystemSessionResolver systemSessionResolver,
+            UrsaEventLogService eventLogService,
+            ObjectProvider<de.mhus.vance.brain.project.ProjectLocator> projectLocatorProvider,
+            ObjectProvider<de.mhus.vance.brain.project.ProjectManagerService> projectManagerProvider,
+            UrsaEventForwarder forwarder,
+            @org.springframework.beans.factory.annotation.Value(
+                    "${vance.events.async.max-concurrent:" + DEFAULT_ASYNC_MAX_CONCURRENT + "}")
+            int asyncMaxConcurrent) {
+        // The default lives in DEFAULT_ASYNC_MAX_CONCURRENT so the number is
+        // stated once; 0 disables the ceiling.
+        this.eventLoader = eventLoader;
+        this.settingService = settingService;
+        this.metricService = metricService;
+        this.workflowServiceProvider = workflowServiceProvider;
+        this.actionExecutorRegistry = actionExecutorRegistry;
+        this.systemSessionResolver = systemSessionResolver;
+        this.eventLogService = eventLogService;
+        this.projectLocatorProvider = projectLocatorProvider;
+        this.projectManagerProvider = projectManagerProvider;
+        this.forwarder = forwarder;
+        this.asyncMaxConcurrent = asyncMaxConcurrent;
+        this.asyncScriptSlots = asyncMaxConcurrent > 0
+                ? new Semaphore(asyncMaxConcurrent)
+                : null;
+        if (this.asyncScriptSlots == null) {
+            log.warn("vance.events.async.max-concurrent={} — async script events are unbounded; "
+                            + "the event endpoint carries no JWT and no rate limit",
+                    asyncMaxConcurrent);
+        }
+    }
 
     /**
      * Cap on the output rendered into the per-trigger log document.
@@ -267,8 +332,10 @@ public class UrsaEventService {
                 // executeAction already tagged the metric outcome; copy
                 // it into our log tracking so the document mirrors the
                 // metric vocab. The failure happened before dispatch, so
-                // this side owns the log again.
-                skipLog = false;
+                // this side owns the log again — except for a throttled
+                // dispatch, where a document per rejection would make the
+                // flood control an amplifier (same reasoning as not_found).
+                skipLog = isThrottled(ex);
                 outcome = mapResponseStatusToOutcome(ex);
                 errorMessage = ex.getReason();
                 throw ex;
@@ -282,6 +349,17 @@ public class UrsaEventService {
             targetName = result.workflowName();
             spawnedId = result.workflowRunId();
             outputSummary = summariseOutput(result.output(), event.outputVisibleToAgents());
+            if (!event.requiresAuth() && !event.outputVisibleToAgents()) {
+                // Same rule as triggerAdmin, same reason: the caller did not
+                // authenticate. `auth.public: true` plus `runAs:` is exactly
+                // that combination on the webhook surface — withholding from
+                // the agent in the project while handing the privileged
+                // script's return value to an anonymous caller would have the
+                // control backwards. An authenticated webhook is unaffected,
+                // as specification/public/events.md §8b states.
+                return new UrsaEventTriggerResult(result.workflowName(), result.workflowRunId(),
+                        /*output*/ null, result.correlationId(), result.firedAt());
+            }
             return result;
         } finally {
             if (!skipLog) {
@@ -430,48 +508,83 @@ public class UrsaEventService {
      * <p>Safe to move off the request thread because everything the
      * executor needs travels in its arguments: identity is in the
      * {@link TriggerContext}, not in a thread-bound holder.
+     *
+     * <p>Admission first: a slot is taken on the calling thread and released
+     * by the task. No slot means the trigger is <b>rejected</b> with 429
+     * rather than queued — a queue behind an unauthenticated endpoint only
+     * moves the flood from the CPU to the heap, and a webhook caller that is
+     * told "not now" can retry, while one that is silently enqueued cannot
+     * tell an accepted run from a dropped one. See {@link #asyncScriptSlots}.
      */
     private void dispatchAsync(String tenantId, String projectId, String eventName,
             TriggerAction action, TriggerContext context, String correlationId,
             Instant firedAt, LogIdentity logIdentity, @Nullable String runAs,
             boolean outputVisible) {
 
+        Semaphore slots = asyncScriptSlots;
+        if (slots != null && !slots.tryAcquire()) {
+            log.warn("Async event '{}/{}/{}' rejected — all {} async slots are in use",
+                    tenantId, projectId, eventName, asyncMaxConcurrent);
+            countOutcome(eventName, "throttled");
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                    "Too many async event scripts are already running");
+        }
+
         long startNanos = System.nanoTime();
-        asyncScriptExecutor.submit(() -> {
-            String outcome;
-            String errorMessage = null;
-            Map<String, Object> output = null;
-            try {
-                ActionResult result =
-                        actionExecutorRegistry.execute(action, context, TriggerKind.EVENT);
-                if (result.outcome().isFailure()) {
-                    outcome = "spawn_failed";
-                    errorMessage = result.errorMessage() == null
-                            ? result.outcome().name() : result.errorMessage();
-                } else {
-                    outcome = "success";
-                    output = result.output();
+        try {
+            asyncScriptExecutor.submit(() -> {
+                try {
+                    runAsyncAction(tenantId, projectId, eventName, action, context,
+                            correlationId, firedAt, logIdentity, runAs, outputVisible, startNanos);
+                } finally {
+                    if (slots != null) slots.release();
                 }
-            } catch (RuntimeException ex) {
+            });
+        } catch (RuntimeException | Error ex) {
+            // submit() never ran the task, so nothing will release the slot.
+            if (slots != null) slots.release();
+            throw ex;
+        }
+    }
+
+    /** Body of an async dispatch — see {@link #dispatchAsync}. */
+    private void runAsyncAction(String tenantId, String projectId, String eventName,
+            TriggerAction action, TriggerContext context, String correlationId,
+            Instant firedAt, LogIdentity logIdentity, @Nullable String runAs,
+            boolean outputVisible, long startNanos) {
+        String outcome;
+        String errorMessage = null;
+        Map<String, Object> output = null;
+        try {
+            ActionResult result =
+                    actionExecutorRegistry.execute(action, context, TriggerKind.EVENT);
+            if (result.outcome().isFailure()) {
                 outcome = "spawn_failed";
-                errorMessage = ex.toString();
-                log.warn("Async event '{}/{}/{}' failed: {}",
-                        tenantId, projectId, eventName, ex.toString());
+                errorMessage = result.errorMessage() == null
+                        ? result.outcome().name() : result.errorMessage();
+            } else {
+                outcome = "success";
+                output = result.output();
             }
-            // Deliberately no metric here: the dispatch was already counted
-            // as a success by the caller, and counting again would make the
-            // per-event totals mean two different things at once.
-            long durationMs = Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
-            eventLogService.record(correlationId,
-                    new UrsaEventLogService.TriggerOutcome(
-                            tenantId, projectId, eventName,
-                            logIdentity.source(), logIdentity.httpMethod(),
-                            logIdentity.triggeredBy(),
-                            firedAt, durationMs, outcome,
-                            targetNameOf(action, eventName), /*spawnedId*/ null, runAs,
-                            /*payloadContentType*/ null, /*payloadSizeBytes*/ -1,
-                            summariseOutput(output, outputVisible), errorMessage));
-        });
+        } catch (RuntimeException ex) {
+            outcome = "spawn_failed";
+            errorMessage = ex.toString();
+            log.warn("Async event '{}/{}/{}' failed: {}",
+                    tenantId, projectId, eventName, ex.toString());
+        }
+        // Deliberately no metric here: the dispatch was already counted
+        // as a success by the caller, and counting again would make the
+        // per-event totals mean two different things at once.
+        long durationMs = Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
+        eventLogService.record(correlationId,
+                new UrsaEventLogService.TriggerOutcome(
+                        tenantId, projectId, eventName,
+                        logIdentity.source(), logIdentity.httpMethod(),
+                        logIdentity.triggeredBy(),
+                        firedAt, durationMs, outcome,
+                        targetNameOf(action, eventName), /*spawnedId*/ null, runAs,
+                        /*payloadContentType*/ null, /*payloadSizeBytes*/ -1,
+                        summariseOutput(output, outputVisible), errorMessage));
     }
 
     /** Which trigger surface a log entry belongs to. */
@@ -541,7 +654,7 @@ public class UrsaEventService {
                         correlationId, firedAt, logIdentity);
             } catch (ResponseStatusException ex) {
                 // Re-tag the metric outcome under the admin source.
-                skipLog = false;
+                skipLog = isThrottled(ex);
                 countOutcomeAdmin(eventName, mapResponseStatusToOutcome(ex));
                 outcome = mapResponseStatusToOutcome(ex);
                 errorMessage = ex.getReason();
@@ -623,8 +736,14 @@ public class UrsaEventService {
         }
     }
 
+    /** A rejected async dispatch — see the {@code skipLog} handling above. */
+    private static boolean isThrottled(ResponseStatusException ex) {
+        return ex.getStatusCode().value() == HttpStatus.TOO_MANY_REQUESTS.value();
+    }
+
     private static String mapResponseStatusToOutcome(ResponseStatusException ex) {
         int code = ex.getStatusCode().value();
+        if (code == 429) return "throttled";
         if (code == 503) return "magrathea_unavailable";
         if (code == 502) return "spawn_failed";
         if (code == 403) return "permission_denied";

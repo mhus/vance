@@ -14,6 +14,8 @@ import de.mhus.vance.api.kit.KitOriginDto;
 import de.mhus.vance.api.kit.KitPolicyAction;
 import de.mhus.vance.brain.servertool.ServerToolRegistry;
 import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.document.DocumentHeader;
+import de.mhus.vance.shared.document.DocumentHeaderParser;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.kit.KitHash;
@@ -84,6 +86,12 @@ public class KitInstaller {
     public static final String MERGE_SIDECAR_SUFFIX = ".kit-merge";
 
     private final DocumentService documentService;
+    /**
+     * Front-matter parsing for the build-tree scan — the same parser
+     * {@code DocumentService.create} uses to seed {@code $meta.privileged},
+     * so the guard below sees exactly what the write would have seeded.
+     */
+    private final DocumentHeaderParser headerParser;
     private final SettingService settingService;
     private final ServerToolRegistry serverToolRegistry;
     private final AgentSettingKeyPolicy agentKeyPolicy;
@@ -176,7 +184,7 @@ public class KitInstaller {
             if (tracked) {
                 recordStore.save(tenantId, projectId,
                         buildRecord(access, recordId, top, source, resolved,
-                                documentArtefacts, settingArtefacts, scan, actor),
+                                documentArtefacts, settingArtefacts, scan, previous, actor),
                         actor);
             }
         } finally {
@@ -198,9 +206,15 @@ public class KitInstaller {
      * True when the project already declares itself the source of exactly this
      * kit. Compared over the record identity — {@code (url, path)} — because
      * that is what "the same kit" means everywhere else.
+     *
+     * <p>A version that turned itself into an {@code artifact} stops being an
+     * authoring source from that update on. §3.2 rejects the combination "also
+     * afterwards", and only checking it at install time meant a kit could
+     * acquire the flag and keep its manifest refreshed anyway.
      */
     private boolean isAuthoringSourceOf(
             String tenantId, String projectId, String recordId, KitDescriptorDto top) {
+        if (top.isArtifact()) return false;
         KitManifestDto existing = recordStore.loadManifest(tenantId, projectId);
         if (existing == null || existing.getOrigin() == null) return false;
         String manifestRecordId = KitRecordId.of(
@@ -227,18 +241,24 @@ public class KitInstaller {
                 String rel = docsRoot.relativize(file).toString().replace('\\', '/');
                 // A kit that could write here would forge its own install
                 // record — grant itself immunity from other kits, rewrite
-                // ownership, embellish its descriptor.
+                // ownership, embellish its descriptor — or, under
+                // _vance/config/kit-*, rewrite the source list that decides
+                // whether the next kit needs a signature at all.
                 if (KitRecordStore.isReservedPath(rel)) {
                     throw new KitException("kits must not ship documents under "
-                            + KitRecordStore.KITS_PREFIX
-                            + " — that directory is owned by the kit subsystem"
+                            + KitRecordStore.KITS_PREFIX + " or "
+                            + KitRecordStore.KIT_CONFIG_PREFIX
+                            + "* — those are owned by the kit subsystem"
                             + " (offending path: " + rel + ")");
                 }
+                String content;
                 try {
-                    documents.put(rel, Files.readString(file));
+                    content = Files.readString(file);
                 } catch (IOException e) {
                     throw new KitException("failed to read " + file, e);
                 }
+                requireNotPrivileged(rel, content);
+                documents.put(rel, content);
             }
         }
 
@@ -258,6 +278,36 @@ public class KitInstaller {
             }
         }
         return new BuildTreeScan(documents, settings);
+    }
+
+    /**
+     * Refuse a kit document that declares {@code $meta.privileged}.
+     *
+     * <p>{@code privileged} is what makes the Ursa loaders honour a
+     * {@code runAs:} — it is execution authority, not content. Every kit write
+     * goes out as {@link WriteActor#SYSTEM}, and a SYSTEM subject is allowed
+     * past {@code DocumentService.enforcePrivilegedAdmin} by construction:
+     * there is no calling principal in a kit write to hold responsible for the
+     * elevation, only the person who typed a url. So a kit installed by a
+     * project WRITER — or pulled in unattended by a provisioning host — could
+     * plant {@code _vance/scheduler/nightly.yaml} with
+     * {@code runAs: <tenant-admin>} and have it run under that identity from
+     * the next scheduler reload.
+     *
+     * <p>Refused rather than clamped to {@code false}: silently stripping the
+     * flag would leave a scheduler entry that looks authorised in the file and
+     * is not in effect, which is the harder failure to diagnose. Same loudness
+     * as the {@code _vance/kits/**} guard above, and for the same reason.
+     */
+    private void requireNotPrivileged(String rel, String content) {
+        Optional<DocumentHeader> header =
+                headerParser.parse(DocumentService.mimeFromPath(rel), content);
+        if (header.isEmpty() || header.get().getValues() == null) return;
+        String raw = header.get().getValues().get(DocumentService.PRIVILEGED_HEADER);
+        if (raw == null || !Boolean.parseBoolean(raw.trim())) return;
+        throw new KitException("kits must not ship documents declaring"
+                + " $meta.privileged — that flag grants runAs execution authority and is"
+                + " operator territory (offending path: " + rel + ")");
     }
 
     // ──────────────────── ownership ────────────────────
@@ -418,7 +468,7 @@ public class KitInstaller {
                 .documentsSkippedByPolicy(skippedByPolicy)
                 .documentsConflicted(conflicted);
 
-        refreshAffectedToolEntries(tenantId, projectId, added, updated, List.of());
+        refreshAffectedToolEntries(tenantId, projectId, added, updated);
         return artefacts;
     }
 
@@ -477,10 +527,9 @@ public class KitInstaller {
      */
     private void refreshAffectedToolEntries(
             String tenantId, String projectId,
-            List<String> added, List<String> updated, List<String> removed) {
+            List<String> added, List<String> updated) {
         for (String path : added) refreshOneIfTool(tenantId, projectId, path);
         for (String path : updated) refreshOneIfTool(tenantId, projectId, path);
-        for (String path : removed) refreshOneIfTool(tenantId, projectId, path);
     }
 
     private void refreshOneIfTool(String tenantId, String projectId, String path) {
@@ -832,7 +881,15 @@ public class KitInstaller {
             String recordId, KitDescriptorDto top, KitInheritDto source,
             KitResolver.ResolvedKit resolved,
             List<KitArtefactDto> documents, List<KitArtefactDto> settings,
-            BuildTreeScan scan, @Nullable String actor) {
+            BuildTreeScan scan, @Nullable KitInstalledRecordDto previous,
+            @Nullable String actor) {
+        // "No stamp in the request" means unchanged, not deleted. Overwriting a
+        // recorded stamp with null would silence the provisioning check for
+        // this kit for good — differs(null, …) is false by contract.
+        String provisioningStamp = access.provisioningStamp() != null
+                ? access.provisioningStamp()
+                : (previous == null || previous.getOrigin() == null
+                        ? null : previous.getOrigin().getProvisioningStamp());
         return KitInstalledRecordDto.builder()
                 .id(recordId)
                 .kit(KitMetadataDto.builder()
@@ -848,8 +905,26 @@ public class KitInstaller {
                         .installedAt(Instant.now())
                         .installedBy(actor)
                         // Only provisioning supplies this; a hand-typed install
-                        // leaves it null and is simply never change-checked.
-                        .provisioningStamp(access.provisioningStamp())
+                        // leaves it null and is simply never change-checked. An
+                        // update of an already-provisioned kit keeps the one on
+                        // the record — see above.
+                        .provisioningStamp(provisioningStamp)
+                        // Written from the request every time, not merged with
+                        // what was there. That is the difference to the stamp
+                        // above and it is deliberate: an empty stamp means "this
+                        // path has nothing to say", while empty parameters are a
+                        // statement — removing the params: block from
+                        // provisioning.yaml has to take effect. Keeping them
+                        // across a *manual* update is therefore solved one level
+                        // up, in KitService.updateRequestFor, which puts the
+                        // recorded parameters back into the request.
+                        //
+                        // Safe to persist: parameters are never secret-resolved
+                        // (KitAccess.params), so this is the same text the
+                        // provisioning document already holds, in a document
+                        // under the same reserved namespace.
+                        .params(access.params().isEmpty()
+                                ? null : new LinkedHashMap<>(access.params()))
                         .build())
                 .descriptor(top)
                 .artefacts(KitArtefactsDto.builder()
@@ -978,10 +1053,4 @@ public class KitInstaller {
         return false;
     }
 
-    /** Set-based union helper used by tests. */
-    static Set<String> unionKeys(Set<String> a, Set<String> b) {
-        Set<String> out = new LinkedHashSet<>(a);
-        out.addAll(b);
-        return out;
-    }
 }

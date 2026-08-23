@@ -188,7 +188,14 @@ async function addUserSetting(): Promise<void> {
       'user',
       selection.value.name,
       key,
-      newSettingValue.value === '' ? null : newSettingValue.value,
+      // Only an empty PASSWORD means "no value": it creates the row without
+      // storing a secret. For every other type an empty value is a deliberate
+      // "explicitly empty here" — it must persist as "" so the cascade stops
+      // at this scope instead of falling through to the outer layer. Sending
+      // null would store null, which keeps cascading.
+      isEncryptedSettingType(newSettingType.value) && newSettingValue.value === ''
+        ? null
+        : newSettingValue.value,
       newSettingType.value,
       newSettingDescription.value.trim() || null,
     );

@@ -104,7 +104,22 @@ public class KitRecordStore {
      * time-derived one by construction.
      */
     private long layerRank(String tenantId, String projectId, KitInstalledRecordDto record) {
-        Integer explicit = loadConfig(tenantId, projectId, record.getId()).getSortIndex();
+        Integer explicit;
+        try {
+            explicit = loadConfig(tenantId, projectId, record.getId()).getSortIndex();
+        } catch (KitException e) {
+            // Same reasoning as the malformed-record skip in list(): the config
+            // document is the only kit file a human edits by hand, so it is the
+            // likeliest to be broken — and letting it throw here took down
+            // `status`, `update-all` and `reapply-all` for every *other* kit in
+            // the project with an HTTP 500. Ordering falls back to install time.
+            // Applying the policy still fails hard (KitInstaller.apply), which
+            // is where a wrong `action:` must not be guessed at.
+            log.warn("KitRecordStore: malformed config for kit '{}' in {}/{} — "
+                            + "ordering by install time instead: {}",
+                    record.getId(), tenantId, projectId, e.getMessage());
+            explicit = null;
+        }
         if (explicit != null) return EXPLICIT_RANK_BASE + explicit;
         // No index: install order, most recent wins. Seconds are plenty —
         // two kits installed in the same second fall back to id, which is at
@@ -242,16 +257,40 @@ public class KitRecordStore {
     // ──────────────────── guard ────────────────────
 
     /**
-     * True for paths a kit must never ship. A kit that could write into
-     * {@code _vance/kits/} would forge its own install record — set a
-     * competing kit's policy to {@code ignore}, rewrite ownership,
-     * embellish its own descriptor. Harmless for a kit a colleague
-     * shares, not harmless for one that was bought.
+     * The kit subsystem's own configuration outside {@link #KITS_PREFIX}:
+     * {@code _vance/config/kit-sources.yaml} today, and any {@code kit-*}
+     * sibling that joins it. See {@link #isReservedPath}.
+     */
+    public static final String KIT_CONFIG_PREFIX = "_vance/config/kit-";
+
+    /**
+     * True for paths a kit must never ship.
+     *
+     * <p>Two families, one reason — a kit must not be able to rewrite the
+     * rules it is judged by.
+     *
+     * <ul>
+     *   <li>{@link #KITS_PREFIX} — a kit that could write here would forge its
+     *       own install record: set a competing kit's policy to {@code ignore},
+     *       rewrite ownership, embellish its own descriptor.</li>
+     *   <li>{@link #KIT_CONFIG_PREFIX} — {@code kit-sources.yaml} decides the
+     *       type, the signature policy and the public key of <b>every</b>
+     *       source. A kit installed into {@code _tenant} (a supported case, and
+     *       what a {@code provisioning.yaml} there does) could otherwise ship
+     *       its own copy with {@code signature: off} for the attacker's host,
+     *       and every later install would check nothing. It cannot write a
+     *       provisioning entry, but switching the signature requirement off is
+     *       most of the way there.</li>
+     * </ul>
+     *
+     * <p>Harmless for a kit a colleague shares, not harmless for one that was
+     * bought. Spec: {@code specification/public/kits.md} §12a.5.
      */
     public static boolean isReservedPath(String documentPath) {
         String normalized = documentPath.startsWith("/")
                 ? documentPath.substring(1) : documentPath;
-        return normalized.startsWith(KITS_PREFIX);
+        return normalized.startsWith(KITS_PREFIX)
+                || normalized.startsWith(KIT_CONFIG_PREFIX);
     }
 
     // ──────────────────── document plumbing ────────────────────

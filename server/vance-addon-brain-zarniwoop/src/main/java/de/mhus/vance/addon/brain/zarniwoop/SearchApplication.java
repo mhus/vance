@@ -2,6 +2,7 @@ package de.mhus.vance.addon.brain.zarniwoop;
 
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.SecurityContextFactory;
+import de.mhus.vance.brain.prompt.ForeignPromptText;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -183,6 +184,12 @@ public class SearchApplication implements VanceApplication {
         // because nothing told it that this hint IS the answer to "which one do
         // I have open". Say what it is not, and forbid the hedge. Same fix in
         // the links and feeds apps.
+        //
+        // The value itself is `${hit.title} — ${hit.url}`, so half of it is
+        // text a foreign index wrote. It goes through the same collapse-cap-
+        // mark shaping the tool path uses (SearchHitRows.shape); without it a
+        // title with a newline in it starts a line of its own inside a block
+        // that also tells the model not to doubt what it says.
         String selected = ctx.selection();
         if (selected != null && !selected.isBlank()) {
             sb.append("The reader has opened one hit in this list. This IS what they mean by "
@@ -190,7 +197,8 @@ public class SearchApplication implements VanceApplication {
                             + "the app's own pick, NOT a text selection inside a document. Never "
                             + "answer that no selection arrived, and never ask them to mark it "
                             + "again: ")
-                    .append(selected.trim()).append('\n')
+                    .append(ForeignPromptText.quoted(selected)).append('\n')
+                    .append(ForeignPromptText.PROVENANCE_NOTE).append('\n')
                     .append("Read it with web_fetch on the URL — a search result is a "
                             + "pointer, not a document we hold.\n");
         }

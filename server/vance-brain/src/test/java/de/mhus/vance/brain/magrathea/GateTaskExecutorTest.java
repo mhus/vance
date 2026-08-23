@@ -2,6 +2,7 @@ package de.mhus.vance.brain.magrathea;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -24,6 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 
 class GateTaskExecutorTest {
 
@@ -36,11 +38,7 @@ class GateTaskExecutorTest {
 
     @Test
     void approval_gate_creates_item_links_task_and_returns_async() {
-        when(inboxService.create(any())).thenAnswer(inv -> {
-            InboxItemDocument doc = inv.getArgument(0);
-            doc.setId("inbox-1");
-            return doc;
-        });
+        when(inboxService.create(any())).thenAnswer(inv -> inv.getArgument(0));
 
         Optional<TaskOutcome> outcome = executor.execute(ctx(gateState(Map.of(
                 "kind", "APPROVAL",
@@ -66,7 +64,15 @@ class GateTaskExecutorTest {
                 .containsEntry("workflowName", "noop")
                 .containsEntry("workflowState", "review");
 
-        verify(taskService).linkInboxItem("task-1", "inbox-1");
+        // The id is the executor's, not the insert's, and the task carries
+        // it before the row exists: an answer can arrive the instant
+        // `create` returns, and a link written after that is a link written
+        // too late — MagratheaInboxCompletionListener finds no task and the
+        // completion is dropped for good.
+        assertThat(created.getId()).isNotBlank();
+        InOrder order = inOrder(taskService, inboxService);
+        order.verify(taskService).linkInboxItem("task-1", created.getId());
+        order.verify(inboxService).create(any());
     }
 
     @Test
@@ -193,8 +199,15 @@ class GateTaskExecutorTest {
         verify(timeoutScheduler).arm(any(), any());
     }
 
+    /**
+     * The link is written first, so a failed create leaves one behind. That
+     * is the cheaper of the two errors: it points at an id that was never
+     * inserted, so nothing can ever resolve through it, and the task
+     * completes as a failure immediately — which unsets its {@code
+     * runStatus}. The reverse order loses answers instead.
+     */
     @Test
-    void inbox_create_failure_does_not_link_and_returns_failure() {
+    void inbox_create_failure_returns_failure_and_leaves_only_a_dangling_link() {
         when(inboxService.create(any())).thenThrow(new RuntimeException("dup"));
 
         Optional<TaskOutcome> outcome = executor.execute(ctx(gateState(Map.of(
@@ -202,7 +215,8 @@ class GateTaskExecutorTest {
 
         assertThat(outcome.get().outcome()).isEqualTo(TaskCompletedEvent.OUTCOME_FAILURE);
         assertThat(outcome.get().errorMessage()).contains("dup");
-        verify(taskService, never()).linkInboxItem(any(), any());
+        verify(timeoutScheduler, never()).arm(any(), any());
+        verify(ownerNotifier, never()).runBlocked(any(), any(), any(), any());
     }
 
     // ─────── helpers ───────

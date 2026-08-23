@@ -101,7 +101,7 @@ public class SchemaMigrationService {
      * sources fails the boot: ids are the version scale, and letting one
      * silently win would make the scale meaningless.
      */
-    private final Map<String, Class<? extends SchemaMigration>> migrations;
+    private final Map<String, SchemaMigrationSource.Registered> migrations;
 
     /** Lease-holder and marker identity of this process. */
     private final String ownerId = resolveOwnerId();
@@ -140,7 +140,7 @@ public class SchemaMigrationService {
      * source's test; here the merged set is sorted by id, which is what
      * makes the {@code YYYY-MM-DD_NNN} shape mandatory.
      */
-    private static Map<String, Class<? extends SchemaMigration>> index(
+    private static Map<String, SchemaMigrationSource.Registered> index(
             List<SchemaMigrationSource> sources) {
 
         if (sources.isEmpty()) {
@@ -150,7 +150,7 @@ public class SchemaMigrationService {
                             + "SchemaMigrationSource. Refusing to boot rather than treating an "
                             + "unmigrated database as up to date.");
         }
-        Map<String, Class<? extends SchemaMigration>> byId = new TreeMap<>();
+        Map<String, SchemaMigrationSource.Registered> byId = new TreeMap<>();
         Map<String, String> declaredBy = new LinkedHashMap<>();
         for (SchemaMigrationSource source : sources) {
             List<SchemaMigrationSource.Registered> declared = source.migrations();
@@ -167,7 +167,7 @@ public class SchemaMigrationService {
                             + source.sourceName() + "'. Ids are the version scale and must be "
                             + "unique across all sources in one application.");
                 }
-                byId.put(entry.id(), entry.type());
+                byId.put(entry.id(), entry);
             }
         }
         log.debug("Schema migrations: {} migration(s) from {} source(s): {}",
@@ -194,7 +194,9 @@ public class SchemaMigrationService {
                     report.version(), report.declared());
         } else if (report.baselined()) {
             // baseline() already logged the details at WARN.
-            log.info("Schema migrations: new database baselined at version '{}'", report.version());
+            log.info("Schema migrations: new database baselined at version '{}'{}",
+                    report.version(),
+                    report.applied().isEmpty() ? "" : " — ran " + report.applied());
         } else if (report.appliedByOtherPod()) {
             log.info("Schema migrations: brought to version '{}' by another pod", report.version());
         } else {
@@ -244,27 +246,54 @@ public class SchemaMigrationService {
      *
      * <p><b>The one case this gets wrong</b> is a database that predates the
      * framework and does hold old-shaped data — from here it looks exactly like a
-     * new one and gets baselined instead of migrated. Harmless as long as the
-     * anchor {@link BaselineAnchorMigration} is the only thing baselined
-     * away, which is why the anchor ships <em>before</em> the first real
-     * migration: afterwards every database is known, and nothing is ever silently
-     * skipped again. See {@code specification/schema-migration.md} §2.2.
+     * new one and gets baselined instead of migrated. The anchor
+     * {@link BaselineAnchorMigration} shipped <em>before</em> the first real
+     * migration so that every database in service is already known; what the
+     * anchor cannot reach is a database that was never booted with that release
+     * — a restored backup, a staging dump, a paused installation. See
+     * {@code specification/schema-migration.md} §2.2.
      *
-     * <p>No lease is taken: two pods baselining a fresh database concurrently
-     * write byte-identical markers keyed by {@code _id}.
+     * <p>That residue is why a registry line may set
+     * {@link SchemaMigrationSource.Registered#runOnBaseline()}: for a migration
+     * whose skip cannot be undone later, running one no-op query against a
+     * genuinely new database is the cheaper of the two mistakes. Those lines run
+     * here; everything else is stamped.
+     *
+     * <p>No lease is taken while nothing runs: two pods baselining a fresh
+     * database concurrently write byte-identical markers keyed by {@code _id}.
+     * As soon as one line does run, the ordinary lease applies — that argument
+     * only ever covered stamping.
      */
     private SchemaMigrationReport baseline() {
         List<String> ids = List.copyOf(migrations.keySet());
+        String version = ids.get(ids.size() - 1);
+        List<String> mustRun = ids.stream()
+                .filter(id -> migrations.get(id).runOnBaseline())
+                .toList();
+
+        List<String> applied = List.of();
+        boolean byOtherPod = false;
+        if (!mustRun.isEmpty()) {
+            log.warn("Schema migrations: no marker found — baselining at version '{}', but {} "
+                            + "migration(s) run anyway because skipping them on a pre-framework "
+                            + "database could not be corrected later: {}",
+                    version, mustRun.size(), mustRun);
+            // Run before stamping: applyAll() skips anything at or below the
+            // current version, and stamping first would put every id there.
+            SchemaMigrationReport ran = runLocked(mustRun);
+            applied = ran.applied();
+            byOtherPod = ran.appliedByOtherPod();
+        }
         for (String id : ids) {
+            if (mustRun.contains(id)) continue;
             writeMarker(id, SchemaMigrationState.BASELINED, 0L, null);
         }
-        String version = ids.get(ids.size() - 1);
         log.warn("Schema migrations: no marker found — treating this as a new database and "
-                        + "baselining it at version '{}' without running anything ({} migration(s) "
-                        + "marked BASELINED). If this database actually predates the migration "
-                        + "framework, its data has NOT been migrated.",
-                version, ids.size());
-        return new SchemaMigrationReport(List.of(), migrations.size(), version, false, true);
+                        + "baselining it at version '{}' ({} of {} migration(s) marked BASELINED "
+                        + "without running). If this database actually predates the migration "
+                        + "framework, the skipped ones have NOT been applied.",
+                version, ids.size() - mustRun.size(), ids.size());
+        return new SchemaMigrationReport(applied, migrations.size(), version, byOtherPod, true);
     }
 
     /**
@@ -358,10 +387,11 @@ public class SchemaMigrationService {
     }
 
     private SchemaMigration instantiate(String id) {
-        Class<? extends SchemaMigration> type = migrations.get(id);
-        if (type == null) {
+        SchemaMigrationSource.Registered registered = migrations.get(id);
+        if (registered == null) {
             throw new SchemaMigrationException("No schema migration registered for id '" + id + "'");
         }
+        Class<? extends SchemaMigration> type = registered.type();
         try {
             return type.getDeclaredConstructor().newInstance();
         } catch (ReflectiveOperationException e) {
@@ -461,11 +491,11 @@ public class SchemaMigrationService {
 
     private void writeMarker(
             String id, SchemaMigrationState state, long durationMs, @Nullable String error) {
-        Class<? extends SchemaMigration> type = migrations.get(id);
+        SchemaMigrationSource.Registered registered = migrations.get(id);
         mongoTemplate.save(SchemaMigrationDocument.builder()
                 .id(id)
                 .status(state)
-                .migrationClass(type == null ? null : type.getName())
+                .migrationClass(registered == null ? null : registered.type().getName())
                 .appliedAt(Instant.now())
                 .appliedByPod(ownerId)
                 .durationMs(durationMs)

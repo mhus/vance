@@ -46,6 +46,19 @@ public class InterfaceService {
     }
 
     /**
+     * Whether {@link #runFullscreen} has a terminal to work with at all.
+     *
+     * <p>Callers with a sensible non-interactive fallback — the startup
+     * session pickers — ask this instead of catching the
+     * {@link IllegalStateException} below: "there is no surface" (headless
+     * run, {@code --no-ui}) is a different situation from "the surface broke
+     * mid-render", and folding both into one warning hides the second.
+     */
+    public boolean isFullscreenAvailable() {
+        return jlineTerminal.get() != null;
+    }
+
+    /**
      * Runs a Lanterna excursion. The live region releases input, Lanterna
      * takes over the alternate screen buffer, and the region reclaims input
      * when {@code excursion} exits. The mode is restored to

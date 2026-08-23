@@ -103,6 +103,16 @@ public class LocalFileJaglanInstance implements JaglanInstance {
         try (Stream<Path> children = Files.list(folder)) {
             for (Path child : children.toList()) {
                 String name = child.getFileName().toString();
+                if (!confinement.isWithin(root, child)) {
+                    // A symlink pointing out of the mount. Skipped rather than
+                    // thrown: one bad entry must not take the folder down, and
+                    // listing it would leak size, mtime and mime type of a file
+                    // outside the mount — plus promise a read that open() then
+                    // correctly refuses.
+                    log.debug("Jaglan local mount '{}': '{}' leaves the root, skipped",
+                            mount, child);
+                    continue;
+                }
                 out.add(toStat(child, prefix + name));
             }
         } catch (IOException e) {

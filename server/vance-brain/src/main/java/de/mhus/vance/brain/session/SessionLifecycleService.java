@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -544,36 +545,65 @@ public class SessionLifecycleService {
     }
 
     /**
-     * Pause a running process: status → PAUSED on its lane, so the change
-     * cannot land in the middle of a turn.
+     * How long a caller waits for the pause to land on the lane before
+     * returning without the confirmation. The lane task stays queued
+     * either way — the cap is only about how long a request thread stays
+     * bound to a lane that is busy with a model call.
+     */
+    private static final long PAUSE_WAIT_SECONDS = 10;
+
+    /**
+     * Pause a single process — the named-process counterpart of
+     * {@link #pauseActiveInSession(String)}, and built the same way.
      *
-     * <p>Nothing in flight is aborted — a pause means "start nothing
-     * new". Whatever the engine is doing right now finishes and the
-     * process settles into PAUSED afterwards.
+     * <p>Two channels, because one of them is always too late: the status
+     * transition runs on the process's lane so it cannot land in the
+     * middle of a turn, but a lane task cannot run while that turn holds
+     * the lane. So the out-of-band halt flag goes out first — that is what
+     * an engine's loop head reads (see {@code OrchestratorInterrupt}), and
+     * what makes the pause take effect inside the current turn rather than
+     * after it.
      *
-     * <p>Idempotent: already paused or already closed is a no-op rather
-     * than an error, which is what lets a caller press the button twice.
+     * <p>The wait for the lane is capped at {@link #PAUSE_WAIT_SECONDS}:
+     * callers reach this from a WebSocket receive thread, and an
+     * unbounded wait binds that thread for the length of whatever the
+     * engine is doing. A timeout is not a failure — the write is queued
+     * and the halt flag is already set.
+     *
+     * <p>Only {@linkplain #isInterruptible interruptible} processes are
+     * touched, the same filter the session-wide pause uses: an IDLE
+     * process has nothing to halt and flipping it to PAUSED would mint a
+     * bogus "USER INTERRUPTED — RECONSIDER" preamble on the user's next
+     * message; a BLOCKED one is owed an answer and pausing it strands the
+     * party that owes it.
      *
      * @return {@code true} when this call did the pausing
      */
     public boolean pauseProcess(ThinkProcessDocument process) {
-        ThinkProcessStatus status = process.getStatus();
-        if (status == ThinkProcessStatus.CLOSED || status == ThinkProcessStatus.PAUSED) {
+        if (!isInterruptible(process)) {
+            log.debug("pauseProcess id='{}' skipped — status {} has nothing to interrupt",
+                    process.getId(), process.getStatus());
             return false;
         }
+        thinkProcessService.requestHalt(process.getId());
+        CompletableFuture<Void> landed = laneScheduler.submit(process.getId(), () -> {
+            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.PAUSED);
+            thinkProcessService.clearHalt(process.getId());
+            return null;
+        });
         try {
-            laneScheduler.submit(process.getId(), () -> {
-                thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.PAUSED);
-                return null;
-            }).get();
-            return true;
+            landed.get(PAUSE_WAIT_SECONDS, TimeUnit.SECONDS);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted while pausing " + process.getId(), ie);
-        } catch (java.util.concurrent.ExecutionException ee) {
+        } catch (java.util.concurrent.TimeoutException te) {
+            log.warn("pauseProcess id='{}' — lane busy, PAUSED stays queued (halt flag is set)",
+                    process.getId());
+        } catch (ExecutionException ee) {
             Throwable cause = ee.getCause() == null ? ee : ee.getCause();
             throw new IllegalStateException("Pause failed: " + cause.getMessage(), cause);
         }
+        return true;
     }
 
     /**

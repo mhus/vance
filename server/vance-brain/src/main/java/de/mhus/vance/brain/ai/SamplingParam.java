@@ -49,11 +49,6 @@ public enum SamplingParam {
         this.wireName = wireName;
     }
 
-    /** The {@link AiChatOptions} property name. */
-    public String fieldName() {
-        return fieldName;
-    }
-
     /** The JSON field name on an OpenAI-shaped request. */
     public String wireName() {
         return wireName;

@@ -45,7 +45,12 @@ public class KitSettingKeyPolicy {
     private final List<String> denyPatterns;
 
     public KitSettingKeyPolicy(
-            @Value("${vance.kits.settingDenyKeys:ai.provider.*,vault.*}") String raw) {
+            // Keep this default in step with the shipped application.yml. A
+            // deployment that does not ship our config must not end up with a
+            // weaker list than one that does — that asymmetry is exactly how
+            // kit.* went missing (code review 4, B5).
+            @Value("${vance.kits.settingDenyKeys:"
+                    + "ai.provider.*,vault.*,store.*,kit.*,jaglan.mount.*}") String raw) {
         this.denyPatterns = SettingKeyPatterns.parse(raw);
         log.debug("KitSettingKeyPolicy: {} deny pattern(s): {}",
                 denyPatterns.size(), denyPatterns);

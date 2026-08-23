@@ -15,7 +15,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -37,8 +36,10 @@ import org.springframework.stereotype.Service;
  * <p><b>Memoised per turn-ish.</b> Resolving the chain reads the alias
  * cascade from settings, and {@code tools()} is called once per
  * action-loop iteration. The result is cached for
- * {@link #LIMIT_CACHE_TTL} against the inputs that can change it
- * (scope, model spec, fallback list) and invalidated immediately when the
+ * {@link #LIMIT_CACHE_TTL} against every input that can change it
+ * (tenant, project <em>and</em> process — all three are settings layers
+ * the alias resolves through — plus model spec and fallback list), bounded
+ * by {@link #LIMIT_CACHE_MAX}, and invalidated immediately when the
  * observed-limit registry learns something new.
  *
  * <p>Fail-open throughout: any resolution error means "no known limit",
@@ -51,12 +52,31 @@ public class ToolBudgetService {
     /** How long a resolved limit is reused before the cascade is read again. */
     static final Duration LIMIT_CACHE_TTL = Duration.ofMinutes(2);
 
+    /**
+     * Upper bound on memoised limits — least-recently-used evicted past
+     * this. The TTL decides whether an entry is still <em>valid</em>, not
+     * how many may exist: an expired entry is overwritten but never
+     * dropped on its own, and the key carries the project, of which a
+     * brain has one per user ({@code _user_<login>}). Same construction
+     * and same reasoning as {@code ToolUsageService.READ_CACHE_MAX}.
+     */
+    static final int LIMIT_CACHE_MAX = 512;
+
     private final AiModelResolver aiModelResolver;
     private final ModelCatalog modelCatalog;
     private final ObservedToolLimitRegistry observedLimits;
     private final ToolUsageService toolUsageService;
     private final ToolBudgetProperties properties;
-    private final Map<String, CachedLimit> limitCache = new ConcurrentHashMap<>();
+    // Access-order LRU behind a synchronized wrapper: get() reorders and
+    // put() may evict, so both mutate and a plain map would not survive
+    // the concurrent turns that read it.
+    private final Map<String, CachedLimit> limitCache = java.util.Collections.synchronizedMap(
+            new java.util.LinkedHashMap<String, CachedLimit>(64, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, CachedLimit> eldest) {
+                    return size() > LIMIT_CACHE_MAX;
+                }
+            });
 
     public ToolBudgetService(
             AiModelResolver aiModelResolver,
@@ -76,7 +96,10 @@ public class ToolBudgetService {
      *
      * @param projectId         the process's effective project (may differ
      *                          from {@code process.getProjectId()} for
-     *                          cross-project workers)
+     *                          cross-project workers). Used for the
+     *                          <em>demand</em> counters only — the cap is
+     *                          read through the process's own AI scope,
+     *                          see {@link #limitFor}
      * @param activationRecency {@code toolName → activation timestamp}
      *                          from {@code ThinkProcessDocument}
      * @return a budget; {@link ToolBudget#UNLIMITED} when no cap is known
@@ -89,7 +112,7 @@ public class ToolBudgetService {
         if (!properties.isEnabled()) {
             return ToolBudget.UNLIMITED;
         }
-        OptionalInt limit = limitFor(process, projectId);
+        OptionalInt limit = limitFor(process);
         if (limit.isEmpty()) {
             return ToolBudget.UNLIMITED;
         }
@@ -119,8 +142,15 @@ public class ToolBudgetService {
     /**
      * The effective cap for this process — {@code min} over the chain, or
      * empty when no entry declares one.
+     *
+     * <p>Takes no project: the AI scope is the process's own
+     * ({@code process.getProjectId()}), because that is the one
+     * {@link ChatBehaviorBuilder#fromProcess} and {@code EngineChatFactory}
+     * resolve the endpoint and the catalog through. A cross-project worker
+     * carries its <em>working</em> project elsewhere, and reading the cap
+     * through that layer could budget a model the request never reaches.
      */
-    public OptionalInt limitFor(ThinkProcessDocument process, @Nullable String projectId) {
+    public OptionalInt limitFor(ThinkProcessDocument process) {
         String spec = ChatBehaviorBuilder.readModelSpec(process);
         List<String> fallbacks = ChatBehaviorBuilder.readFallbackAliases(process);
         // Same settings view the chat itself will be built from: a
@@ -129,8 +159,15 @@ public class ToolBudgetService {
         // project cascade instead could land on a different model than the
         // one the request will actually be sent to — and then budget the
         // wrong endpoint's limit. See ChatBehaviorBuilder.fromProcess.
-        ScopeView scope = scopeFor(process, projectId);
-        String cacheKey = process.getTenantId() + "|" + scope.projectId() + "|" + spec
+        ScopeView scope = scopeFor(process);
+        // The process id belongs in the key because it is a settings layer
+        // of its own (SCOPE_THINK_PROCESS, writable through the admin API)
+        // and limitForSpec resolves the alias through it. Without it, two
+        // processes in one project that pin different models would hand
+        // each other the wrong cap for LIMIT_CACHE_TTL — either an
+        // unnecessary cut or the provider 400 the budget exists to avoid.
+        String cacheKey = process.getTenantId() + "|" + scope.projectId()
+                + "|" + scope.processId() + "|" + spec
                 + "|" + String.join(",", fallbacks);
         long version = observedLimits.version();
         Instant now = Instant.now();
@@ -152,12 +189,11 @@ public class ToolBudgetService {
      * way {@link ChatBehaviorBuilder} expresses it: {@code null} for both
      * inner scopes collapses the cascade to its base layer.
      */
-    private static ScopeView scopeFor(
-            ThinkProcessDocument process, @Nullable String projectId) {
+    private static ScopeView scopeFor(ThinkProcessDocument process) {
         boolean pinned = ChatBehaviorBuilder.readAiConfigScope(process) == AiConfigScope.TENANT;
         return pinned
                 ? new ScopeView(null, null)
-                : new ScopeView(projectId, process.getId());
+                : new ScopeView(process.getProjectId(), process.getId());
     }
 
     private OptionalInt resolveChainLimit(

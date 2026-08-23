@@ -459,6 +459,38 @@ class SessionLifecycleServiceTest {
         verify(thinkProcessService, never()).requestHalt("p-closed");
     }
 
+    @Test
+    void pauseProcess_raisesTheHaltFlag_soAMidTurnEngineBailsOut() {
+        // Same two channels as the session-wide pause: the PAUSED write is
+        // a lane task and cannot run while the turn it is meant to stop
+        // holds the lane, so the out-of-band flag is the only signal that
+        // reaches a running loop in time.
+        assertThat(lifecycle.pauseProcess(process("p-1", ThinkProcessStatus.RUNNING))).isTrue();
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(thinkProcessService);
+        order.verify(thinkProcessService).requestHalt("p-1");
+        order.verify(thinkProcessService).updateStatus("p-1", ThinkProcessStatus.PAUSED);
+        order.verify(thinkProcessService).clearHalt("p-1");
+    }
+
+    @Test
+    void pauseProcess_leavesAlone_whatHasNothingToInterrupt() {
+        // The single-process path used the filter that the session-wide one
+        // applies — an IDLE process flipped to PAUSED mints a bogus "USER
+        // INTERRUPTED — RECONSIDER" preamble on the next message, and a
+        // BLOCKED one is owed an answer by somebody.
+        for (ThinkProcessStatus status : List.of(
+                ThinkProcessStatus.IDLE, ThinkProcessStatus.BLOCKED,
+                ThinkProcessStatus.PAUSED, ThinkProcessStatus.SUSPENDED,
+                ThinkProcessStatus.CLOSED)) {
+            assertThat(lifecycle.pauseProcess(process("p-" + status, status)))
+                    .as("pause of a %s process", status)
+                    .isFalse();
+        }
+        verify(thinkProcessService, never()).requestHalt(any());
+        verify(thinkProcessService, never()).updateStatus(any(), eq(ThinkProcessStatus.PAUSED));
+    }
+
     // ─── reactivate ─────────────────────────────────────────────────────
 
     @Test

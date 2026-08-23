@@ -1,5 +1,7 @@
 package de.mhus.vance.api.slartibartfast;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+
 /**
  * Which kind of plan-artifact the Slartibartfast run is asked to
  * produce. Determines the validator wired into VALIDATING and the
@@ -14,7 +16,16 @@ public enum OutputSchemaType {
      * ({@code VogonArchitect}) because the job is different: judgements
      * and iteration rather than commands and retries. Validated by the
      * one plan parser, {@code MagratheaWorkflowLoader}.
+     *
+     * <p>Was called {@code VOGON_STRATEGY}. The alias is what makes that
+     * rename survivable: a Slart process that was running at deploy time has
+     * the old name persisted in its {@code engineParams}, and
+     * {@code SlartibartfastEngine.loadState} deserialises that state on
+     * <em>every</em> further turn. Without the alias Jackson rejects it and
+     * the process is terminally stuck — the lenient spawn-parameter fallback
+     * never sees the persisted state.
      */
+    @JsonAlias("VOGON_STRATEGY")
     VOGON_PLAN,
 
     /** Marvin recipe YAML — engineParams (allowedSubTaskRecipes

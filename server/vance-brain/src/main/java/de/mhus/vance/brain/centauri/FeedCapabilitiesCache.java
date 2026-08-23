@@ -62,9 +62,19 @@ public class FeedCapabilitiesCache {
     /**
      * The source's capabilities, asking it at most once per its own TTL.
      *
-     * <p>A source that cannot answer is not fatal: the fallback is the most
-     * pessimistic set — nothing pushes down, no back channel — which costs
-     * post-filtering and hides buttons rather than producing wrong results.
+     * <p><b>Raises when the source could not answer</b>, and that is the point
+     * rather than an oversight. This used to hand back the most pessimistic
+     * set — nothing pushes down, no back channel, no facets — on the reasoning
+     * that it merely costs post-filtering. It costs more than that: the
+     * pessimistic set is a <i>declaration</i>, so an unreachable endpoint
+     * became a statement the source never made. With a facet filter active the
+     * reader was told "this source does not offer that dimension", the failure
+     * tracker never saw the outage, and a permanently broken {@code
+     * capabilities} endpoint stayed invisible for as long as the filter stood.
+     *
+     * <p>The original exception travels unwrapped: the failure tracker
+     * classifies transport errors by type, and a wrapper would hide the
+     * classification that decides whether a cooldown is warranted.
      */
     public FeedCapabilities get(FeedScope scope, FeedSourceInstance instance) {
         String key = key(scope, instance.id());
@@ -76,9 +86,9 @@ public class FeedCapabilitiesCache {
         try {
             fresh = instance.capabilities();
         } catch (RuntimeException e) {
-            log.warn("Centauri: source '{}' could not state its capabilities, "
-                    + "assuming the pessimistic set: {}", instance.id(), e.toString());
-            return FeedCapabilities.enumerableReadOnly(FeedCapabilities.DEFAULT_MAX_PAGE_SIZE);
+            log.warn("Centauri: source '{}' could not state its capabilities: {}",
+                    instance.id(), e.toString());
+            throw e;
         }
         cache.put(key, fresh);
         return fresh;

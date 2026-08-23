@@ -54,7 +54,7 @@ Three things go wrong here, so check them:
 
 - **The cron has six fields**, seconds first. `"30 7 * * *"` is a five-field cron and will not load.
 - **`initialMessage` carries the parameters.** The recipe does not know which feed you mean; folder and window come from this text.
-- **`runAs` decides who receives the item.** Without it the scheduler runs as the document's creator — fine when that is the same person, wrong when an admin sets it up for somebody else.
+- **`runAs` decides who receives the item** — indirectly. It sets the *identity of the run*, and the recipe resolves the recipient from it via `whoami()`; `inbox_post` itself has no default recipient. Without `runAs` the scheduler runs as the document's creator — fine when that is the same person, wrong when an admin sets it up for somebody else.
 
 After writing the document, run `scheduler_refresh` — the registration is read at project bootstrap, not per tick, so a new schedule is otherwise invisible until the next restart.
 

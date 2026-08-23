@@ -76,11 +76,73 @@ class TrillianAskToolTest {
         assertThat(ask("anything")).containsEntry(FrankieTermination.RESULT_TERMINATE_KEY, true);
     }
 
+    @Test
+    void aDifferentQuestion_getsAFreshRecheckBudget() {
+        // The worker spent its probes on one obstacle, was answered,
+        // carried on and met another. Inheriting the exhausted breaker
+        // would deny the new obstacle the cheap re-check it deserves —
+        // the only thing left would be the two-hour probe.
+        ThinkProcessDocument worker = worker();
+        ask(worker, "The database is locked — should I wait?");
+        worker.getEngineParamOverrides().put(TrillianAskTool.PARAM_ASK_PROBES, 3);
+        worker.getEngineParamOverrides().put(
+                TrillianAskTool.PARAM_ASK_OPENED_AT, 1_700_000_000_000L);
+        org.mockito.Mockito.clearInvocations(processes);
+
+        ask(worker, "The export directory does not exist — create it?");
+
+        verify(processes).setEngineParamOverride(PROC, TrillianAskTool.PARAM_ASK_PROBES, null);
+        verify(processes).setEngineParamOverride(PROC, TrillianAskTool.PARAM_ASK_OPENED_AT, null);
+    }
+
+    @Test
+    void theSameQuestionComingBack_keepsItsBudget() {
+        // That is the case the breaker exists for: rounds that changed
+        // nothing. Resetting on every re-ask would make it never open, and
+        // the nudge would repeat for as long as the worker lives.
+        ThinkProcessDocument worker = worker();
+        ask(worker, "The database is locked — should I wait?");
+        worker.getEngineParamOverrides().put(TrillianAskTool.PARAM_ASK_PROBES, 2);
+        org.mockito.Mockito.clearInvocations(processes);
+
+        // Same question, re-typed: whitespace and case are not a new question.
+        ask(worker, "  the DATABASE is locked — should I   wait? ");
+
+        verify(processes, org.mockito.Mockito.never())
+                .setEngineParamOverride(PROC, TrillianAskTool.PARAM_ASK_PROBES, null);
+    }
+
     private Map<String, Object> ask(String question) {
+        return ask(worker(), question);
+    }
+
+    /**
+     * A worker whose overrides actually change when the tool writes them —
+     * the episode logic reads back what it wrote, so a mock that forgets
+     * would make every ask look like the first.
+     */
+    private ThinkProcessDocument worker() {
         ThinkProcessDocument process = new ThinkProcessDocument();
         process.setId(PROC);
         process.setTenantId("acme");
         process.setSessionId("sess-1");
+        process.setEngineParamOverrides(new java.util.LinkedHashMap<>());
+        org.mockito.Mockito.doAnswer(inv -> {
+            Object value = inv.getArgument(2);
+            if (value == null) {
+                process.getEngineParamOverrides().remove(inv.<String>getArgument(1));
+            } else {
+                process.getEngineParamOverrides().put(inv.getArgument(1), value);
+            }
+            return true;
+        }).when(processes).setEngineParamOverride(
+                org.mockito.ArgumentMatchers.eq(PROC),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any());
+        return process;
+    }
+
+    private Map<String, Object> ask(ThinkProcessDocument process, String question) {
         when(processes.findById(PROC)).thenReturn(Optional.of(process));
         ToolInvocationContext ctx = mock(ToolInvocationContext.class);
         when(ctx.processId()).thenReturn(PROC);

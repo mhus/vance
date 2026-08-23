@@ -60,7 +60,15 @@ public class KitAdminController {
             @PathVariable("projectId") String projectId,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.ADMIN);
-        return kitService.status(tenant, projectId);
+        try {
+            return kitService.status(tenant, projectId);
+        } catch (KitException e) {
+            // A kit problem must never reach the client as a 500 — this is the
+            // endpoint the kit card in scopes.html reads, so an unexplained
+            // error here is the one thing that stops the user fixing whatever
+            // is broken.
+            throw kitError(e);
+        }
     }
 
     /**
@@ -73,7 +81,12 @@ public class KitAdminController {
             @PathVariable("projectId") String projectId,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.ADMIN);
-        KitManifestDto manifest = kitService.authoringManifest(tenant, projectId);
+        KitManifestDto manifest;
+        try {
+            manifest = kitService.authoringManifest(tenant, projectId);
+        } catch (KitException e) {
+            throw kitError(e);
+        }
         return manifest == null
                 ? ResponseEntity.noContent().build()
                 : ResponseEntity.ok(manifest);

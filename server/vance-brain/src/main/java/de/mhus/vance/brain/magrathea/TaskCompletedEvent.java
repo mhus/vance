@@ -38,4 +38,11 @@ public record TaskCompletedEvent(
 
     public static final String OUTCOME_SUCCESS = "success";
     public static final String OUTCOME_FAILURE = "failure";
+
+    /**
+     * Lower-case name of {@code MagratheaErrorKind.CAPABILITY_MISSING} — the
+     * one error kind produced by the dispatcher rather than by a task, for a
+     * state that opted out of the start-time refusal by catching it.
+     */
+    public static final String OUTCOME_CAPABILITY_MISSING = "capability_missing";
 }

@@ -137,8 +137,11 @@ public final class ToolTriage {
      * @param primary         kept primary names (mandatory always in)
      * @param activated       kept activated-deferred names
      * @param demoted         names removed from the surface, in demotion
-     *                        order — for the log line, not for the model
-     * @param demotedFamilies distinct families the demotion touched
+     *                        order — least important first, so the list
+     *                        reads as "this went first, then this". For
+     *                        the log line, not for the model
+     * @param demotedFamilies distinct families the demotion touched, in the
+     *                        same order as {@code demoted}
      * @param limit           the effective limit that was applied
      */
     public record Result(
@@ -177,7 +180,15 @@ public final class ToolTriage {
         Set<String> floor = mandatory == null ? Set.of() : mandatory;
         Hints h = hints == null ? Hints.EMPTY : hints;
 
-        int surfaceSize = primaryIn.size() + activatedIn.size();
+        // Union, not sum: the two sets are disjoint straight out of
+        // classify(), but a post-classification widening (withAdditional
+        // promoting a tool the model had already activated) can put a name
+        // in both. Counting it twice makes the surface look a slot larger
+        // than it is — and at the boundary that costs a whole family.
+        int surfaceSize = primaryIn.size();
+        for (String name : activatedIn) {
+            if (!primaryIn.contains(name)) surfaceSize++;
+        }
         if (budget == null || !budget.hasLimit() || surfaceSize <= budget.effectiveLimit()) {
             return new Result(primaryIn, activatedIn, List.of(), List.of(),
                     budget == null ? 0 : budget.effectiveLimit());
@@ -222,7 +233,11 @@ public final class ToolTriage {
         ranked.sort(groupComparator(budget));
 
         Set<String> keepNames = new LinkedHashSet<>(keptFloor);
-        List<String> demoted = new ArrayList<>();
+        // Collected while walking `ranked`, i.e. best-first, then reversed
+        // on the way out: "demotion order" means the order things were
+        // given up, and the first thing given up is the least important
+        // one. See the ordering note on Result#demoted.
+        List<List<String>> givenUp = new ArrayList<>();
         List<String> demotedFamilies = new ArrayList<>();
         int remaining = limit - keptFloor.size();
         for (Map.Entry<GroupKey, List<String>> entry : ranked) {
@@ -235,9 +250,15 @@ public final class ToolTriage {
             // Whole family goes. Skipping it (instead of stopping) lets a
             // smaller, lower-ranked family still use the leftover slots —
             // the order stays priority-driven either way.
-            demoted.addAll(members);
+            givenUp.add(members);
             String family = entry.getKey().family();
             if (!demotedFamilies.contains(family)) demotedFamilies.add(family);
+        }
+        java.util.Collections.reverse(givenUp);
+        java.util.Collections.reverse(demotedFamilies);
+        List<String> demoted = new ArrayList<>();
+        for (List<String> members : givenUp) {
+            demoted.addAll(members);
         }
 
         Set<String> keptPrimary = new LinkedHashSet<>();

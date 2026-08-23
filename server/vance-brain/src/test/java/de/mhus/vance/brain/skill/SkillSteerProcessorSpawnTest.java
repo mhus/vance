@@ -139,6 +139,25 @@ class SkillSteerProcessorSpawnTest {
     }
 
     @Test
+    void activate_spawnSkill_carriesOnceThroughToTheChild() {
+        // run decides the place, --once the duration; SkillRun calls the two
+        // orthogonal. Dropping the flag at the spawn made the child register
+        // the skill sticky although the caller asked for a single use.
+        ResolvedSkill skill = spawnSkill("code-review", "Review the diff.", false);
+        when(skillResolver.resolve(any(), eq("code-review"))).thenReturn(Optional.of(skill));
+        when(sessionService.findBySessionId(anyString())).thenReturn(Optional.empty());
+        spawnYields(process("c1", List.of()));
+
+        processor.activate(process("p1", List.of()), "code-review", /*oneShot*/ true);
+
+        verify(thinkProcessService).replaceActiveSkills(eq("c1"), skillsCaptor.capture());
+        assertThat(skillsCaptor.getValue())
+                .singleElement()
+                .extracting(ActiveSkillRefEmbedded::isOneShot)
+                .isEqualTo(true);
+    }
+
+    @Test
     void activate_spawnSkill_childDoesNotSpawnAgain() {
         ResolvedSkill skill = spawnSkill("code-review", "Review the diff.", false);
         when(skillResolver.resolve(any(), eq("code-review"))).thenReturn(Optional.of(skill));

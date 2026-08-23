@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.vault;
 
 import de.mhus.vance.api.settings.SettingType;
+import de.mhus.vance.shared.settings.SecretReferenceKeyPolicy;
 import de.mhus.vance.shared.settings.SettingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +30,18 @@ import org.springframework.stereotype.Component;
  * {@code {{secret:vault:ai.provider.default.apiKey}}} readable again — exactly the
  * hole the type split closed. See {@code planning/setting-type-hidden.md} §5.
  *
+ * <h2>The key deny-list applies here, and only here</h2>
+ * {@code SettingsSecretResolver} exempts the {@code vault:} scope from
+ * {@link SecretReferenceKeyPolicy} because a vault key generally names an entry
+ * in a <em>foreign</em> namespace — an Infisical secret called
+ * {@code ai.provider.openai.apiKey} is not the setting of that name, and denying
+ * it would be a refusal based on a coincidence of spelling. For <em>this</em>
+ * provider that reasoning does not hold: the key it is handed <b>is</b> a setting
+ * key, passed to {@link SettingService#getReferenceSecretCascade} verbatim. So the
+ * policy runs at the one place where the namespace is actually ours, which keeps
+ * the second barrier (a reserved key is unreachable by name, whatever its type)
+ * intact for the default installation without lying about remote vaults.
+ *
  * <h2>Cascade and scope</h2>
  * Reads use the <b>project</b> cascade (think-process → project → {@code _tenant})
  * and deliberately skip the user layer, matching the bare-key reference form. A
@@ -53,6 +66,7 @@ public class SettingsVaultProvider implements VaultProvider {
     public static final String TYPE = "settings";
 
     private final SettingService settingService;
+    private final SecretReferenceKeyPolicy referenceKeyPolicy;
 
     @Override
     public String type() {
@@ -67,6 +81,10 @@ public class SettingsVaultProvider implements VaultProvider {
 
     @Override
     public @Nullable String readSecret(VaultBinding binding, VaultScope scope, String key) {
+        // Before any lookup, and independent of whether the setting exists: the
+        // key names one of ours, so a reserved name is off-limits here just as it
+        // is through {{secret:project:…}}.
+        referenceKeyPolicy.requireReferenceReadable(key);
         log.trace("Settings vault read: key='{}' tenant='{}' project='{}'",
                 key, scope.tenantId(), scope.projectId());
         return settingService.getReferenceSecretCascade(

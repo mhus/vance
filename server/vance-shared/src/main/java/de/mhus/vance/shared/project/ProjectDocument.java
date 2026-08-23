@@ -127,7 +127,11 @@ public class ProjectDocument {
     /**
      * Derived: does this project hold pod-local background work that has to
      * keep running when nobody is looking? True when it carries scheduler
-     * entries, hooks, event triggers or a kit-provisioning document.
+     * entries or hooks — and only those. Event triggers are reactive
+     * (something else already woke the project) and kit provisioning happens
+     * once, so neither justifies pinning a project to a pod; the authority on
+     * that list is {@code ProjectOwnerRequirementService
+     * .ACTIVATION_SOURCE_PREFIXES}.
      *
      * <p>Maintained by {@code ProjectOwnerRequirementService} from document
      * change events, written only when the value flips. Never set by hand —

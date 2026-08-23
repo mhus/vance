@@ -97,9 +97,81 @@ class LinkUrlsTest {
     }
 
     @Test
+    void normalise_storesANonAsciiHostAsPunycode() {
+        // URI.getHost() is null for a non-ASCII hostname, so asking it and
+        // refusing the answer made a link straight out of the browser's address
+        // bar unstorable — through no surface, and not by hand either, because
+        // LinkEntry.fromMap normalises with the same function.
+        assertThat(LinkUrls.normalise("https://münchen.de/veranstaltungen"))
+                .isEqualTo("https://xn--mnchen-3ya.de/veranstaltungen");
+    }
+
+    @Test
+    void identity_treatsBothSpellingsOfAnIdnHostAsOneLink() {
+        assertThat(LinkUrls.identity("https://münchen.de/x"))
+                .isEqualTo(LinkUrls.identity("https://xn--mnchen-3ya.de/x"));
+    }
+
+    @Test
+    void normalise_acceptsAHostWithAnUnderscore() {
+        // Also registry-based as far as URI is concerned, and also a real host
+        // somebody pastes from an internal tool list.
+        assertThat(LinkUrls.normalise("http://my_host.example.com/x"))
+                .isEqualTo("http://my_host.example.com/x");
+    }
+
+    @Test
+    void normalise_acceptsAPastedHostAndPortWithoutAScheme() {
+        // The old rule was "contains a colon ⇒ it is a scheme", which read the
+        // most likely paste in a list of internal tools as mailto:-shaped.
+        assertThat(LinkUrls.normalise("192.168.1.5:8080/admin"))
+                .isEqualTo("https://192.168.1.5:8080/admin");
+        assertThat(LinkUrls.normalise("localhost:3000/x"))
+                .isEqualTo("https://localhost:3000/x");
+    }
+
+    @Test
+    void normalise_stillRefusesASchemePrefixThatIsNotAPort() {
+        // The separation has to hold in both directions, or the port fix
+        // reopens the javascript: hole.
+        assertThatThrownBy(() -> LinkUrls.normalise("javascript:void(0)"))
+                .isInstanceOf(ToolException.class);
+        assertThatThrownBy(() -> LinkUrls.normalise("data:text/html;base64,PHNjcmlwdD4="))
+                .isInstanceOf(ToolException.class);
+    }
+
+    @Test
+    void normalise_acceptsASchemelessPasteWithANestedUrlInTheQuery() {
+        // "contains ://" is not the same question as "starts with a scheme".
+        assertThat(LinkUrls.normalise("example.com/out?u=https://target.example/x"))
+                .isEqualTo("https://example.com/out?u=https://target.example/x");
+    }
+
+    @Test
+    void normalise_refusesAPortThatIsNotAPort() {
+        assertThatThrownBy(() -> LinkUrls.normalise("https://example.com:99999/a"))
+                .isInstanceOf(ToolException.class);
+    }
+
+    @Test
     void hostLabel_stripsWww() {
         assertThat(LinkUrls.hostLabel("https://www.example.com/a")).isEqualTo("example.com");
         assertThat(LinkUrls.hostLabel("https://blog.example.com/a"))
                 .isEqualTo("blog.example.com");
+    }
+
+    @Test
+    void hostLabel_showsAnIdnHostInTheSpellingAPersonRecognises() {
+        // Stored as punycode so two spellings are one entry; xn--mnchen-3ya.de
+        // on a card names no page anybody knows.
+        assertThat(LinkUrls.hostLabel("https://xn--mnchen-3ya.de/x")).isEqualTo("münchen.de");
+    }
+
+    @Test
+    void isHttp_isTheOneGuardForAStoredPicture() {
+        assertThat(LinkUrls.isHttp("https://cdn.example/a.png")).isTrue();
+        assertThat(LinkUrls.isHttp("javascript:alert(1)")).isFalse();
+        assertThat(LinkUrls.isHttp("data:image/png;base64,AAA")).isFalse();
+        assertThat(LinkUrls.isHttp(null)).isFalse();
     }
 }

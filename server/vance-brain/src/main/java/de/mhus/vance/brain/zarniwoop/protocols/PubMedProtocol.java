@@ -1,6 +1,8 @@
 package de.mhus.vance.brain.zarniwoop.protocols;
 
 import de.mhus.vance.brain.zarniwoop.protocols.SimpleHttpClient.Response;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.research.ProviderAvailability;
 import de.mhus.vance.toolpack.research.ProviderInstanceConfig;
 import de.mhus.vance.toolpack.research.QuotaStatus;
@@ -58,18 +60,22 @@ public class PubMedProtocol implements SearchProtocol {
     private final ObjectMapper objectMapper;
     private final SimpleHttpClient http;
     private final de.mhus.vance.shared.settings.SettingService settings;
+    private final SecretResolver secretResolver;
 
     @Autowired
     public PubMedProtocol(ObjectMapper objectMapper,
-                          de.mhus.vance.shared.settings.SettingService settings) {
-        this(objectMapper, new SimpleHttpClient.JdkSimpleHttpClient(), settings);
+                          de.mhus.vance.shared.settings.SettingService settings,
+                          SecretResolver secretResolver) {
+        this(objectMapper, new SimpleHttpClient.JdkSimpleHttpClient(), settings, secretResolver);
     }
 
     PubMedProtocol(ObjectMapper objectMapper, SimpleHttpClient http,
-                   de.mhus.vance.shared.settings.SettingService settings) {
+                   de.mhus.vance.shared.settings.SettingService settings,
+                   SecretResolver secretResolver) {
         this.objectMapper = objectMapper;
         this.http = http;
         this.settings = settings;
+        this.secretResolver = secretResolver;
     }
 
     @Override public String id() { return ID; }
@@ -87,7 +93,7 @@ public class PubMedProtocol implements SearchProtocol {
                     "PubMedProtocol cannot instantiate config with protocol '"
                             + cfg.protocolId() + "'");
         }
-        return new PubMedInstance(cfg, objectMapper, http, settings);
+        return new PubMedInstance(cfg, objectMapper, http, settings, secretResolver);
     }
 
     // ── Instance ─────────────────────────────────────────────────────
@@ -102,15 +108,18 @@ public class PubMedProtocol implements SearchProtocol {
         private final ObjectMapper objectMapper;
         private final SimpleHttpClient http;
         private final de.mhus.vance.shared.settings.SettingService settings;
+        private final SecretResolver secretResolver;
 
         PubMedInstance(ProviderInstanceConfig cfg,
                        ObjectMapper objectMapper,
                        SimpleHttpClient http,
-                       de.mhus.vance.shared.settings.SettingService settings) {
+                       de.mhus.vance.shared.settings.SettingService settings,
+                       SecretResolver secretResolver) {
             this.cfg = cfg;
             this.objectMapper = objectMapper;
             this.http = http;
             this.settings = settings;
+            this.secretResolver = secretResolver;
         }
 
         @Override public String id() { return cfg.instanceId(); }
@@ -383,14 +392,32 @@ public class PubMedProtocol implements SearchProtocol {
          * .apiKey suffix into {@code credentialSettingKey}, so the old
          * {@code extras.get("apiKey")} was always empty — the 10 req/s tier was
          * unreachable. Falls back to an inline extras.apiKey for back-compat.
+         *
+         * <p>The stored value may be a {@code {{secret:…}}} reference, so it
+         * goes through {@code resolveForConnector} — not the restrictive
+         * {@code resolve}: a search endpoint is a connector, not a dynamic
+         * element, and may read a {@code PASSWORD}-typed setting or a vault
+         * entry (settings spec §10). Without the substitution the reference
+         * itself went out as the {@code api_key} query parameter. The
+         * invocation context carries no user and no process: the instance is
+         * cached per {@code (tenant, project)} and shared by every reader.
          */
         private String resolveApiKey(SearchScope scope) {
-            String fromSetting = settings.getDecryptedPasswordCascade(
+            String fromSetting = resolveReference(settings.getDecryptedPasswordCascade(
                     scope.tenantId(), scope.projectId(), scope.processId(),
-                    cfg.credentialSettingKey());
+                    cfg.credentialSettingKey()), scope);
             if (!StringUtils.isBlank(fromSetting)) return fromSetting;
             Object raw = cfg.extras() == null ? null : cfg.extras().get("apiKey");
             return raw == null ? "" : raw.toString().trim();
+        }
+
+        /** Substitute a {@code {{secret:…}}} reference the setting may hold. */
+        private String resolveReference(
+                @org.jspecify.annotations.Nullable String raw, SearchScope scope) {
+            if (StringUtils.isBlank(raw)) return "";
+            String resolved = secretResolver.resolveForConnector(raw, new ToolInvocationContext(
+                    scope.tenantId(), scope.projectId(), null, null, null));
+            return resolved == null ? "" : resolved;
         }
 
         private String baseUrl() {

@@ -11,6 +11,7 @@ import de.mhus.vance.api.thinkprocess.ProcessListResponse;
 import de.mhus.vance.api.thinkprocess.ProcessMessagesResponse;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.permission.Action;
@@ -44,6 +45,7 @@ class SessionProcessControllerTest {
     private static final String TENANT = "acme";
     private static final String SESSION = "sess-1";
     private static final String PROJECT = "proj-1";
+    private static final String OWNER = "marvin";
 
     @Mock private SessionService sessionService;
     @Mock private ThinkProcessService thinkProcessService;
@@ -57,12 +59,19 @@ class SessionProcessControllerTest {
     void setUp() {
         controller = new SessionProcessController(
                 sessionService, thinkProcessService, chatMessageService, authority);
-        when(sessionService.findBySessionId(SESSION)).thenReturn(Optional.of(
-                SessionDocument.builder()
-                        .sessionId(SESSION)
-                        .tenantId(TENANT)
-                        .projectId(PROJECT)
-                        .build()));
+        when(request.getAttribute(AccessFilterBase.ATTR_USERNAME)).thenReturn(OWNER);
+        when(sessionService.findBySessionId(SESSION))
+                .thenReturn(Optional.of(session(OWNER, false)));
+    }
+
+    private static SessionDocument session(String owner, boolean shared) {
+        return SessionDocument.builder()
+                .sessionId(SESSION)
+                .tenantId(TENANT)
+                .projectId(PROJECT)
+                .userId(owner)
+                .allowMultipleClients(shared)
+                .build();
     }
 
     @Test
@@ -93,6 +102,51 @@ class SessionProcessControllerTest {
 
     @Test
     void list_enforcesSessionReadOnTheSessionsOwnProject() {
+        when(thinkProcessService.findBySession(TENANT, SESSION)).thenReturn(List.of());
+
+        controller.list(TENANT, SESSION, false, request);
+
+        verify(authority).enforce(request,
+                new Resource.Session(TENANT, PROJECT, SESSION), Action.READ);
+    }
+
+    // ──────────── whose conversation it is ────────────
+    //
+    // Resource.Session READ resolves to the project role, so it alone let
+    // every project READER pull a colleague's transcript here — while
+    // GET /sessions/{id}/messages refused them the same rows. The picker
+    // this feeds lists own + shared sessions and nothing else.
+
+    @Test
+    void list_privateSessionOfAnotherUser_is403() {
+        when(sessionService.findBySessionId(SESSION))
+                .thenReturn(Optional.of(session("trillian", false)));
+
+        assertThatThrownBy(() -> controller.list(TENANT, SESSION, false, request))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("403");
+        verify(thinkProcessService, org.mockito.Mockito.never())
+                .findBySession(any(), any());
+    }
+
+    @Test
+    void messages_privateSessionOfAnotherUser_is403() {
+        when(sessionService.findBySessionId(SESSION))
+                .thenReturn(Optional.of(session("trillian", false)));
+
+        assertThatThrownBy(() -> controller.messages(TENANT, SESSION, "chat", null, request))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("403");
+        verify(chatMessageService, org.mockito.Mockito.never())
+                .activeHistoryWithInterim(any(), any(), any());
+    }
+
+    @Test
+    void list_sharedSessionOfAnotherUser_isReadable() {
+        // allowMultipleClients is the owner's own "anyone may join" — the
+        // one thing that opens their session to a colleague.
+        when(sessionService.findBySessionId(SESSION))
+                .thenReturn(Optional.of(session("trillian", true)));
         when(thinkProcessService.findBySession(TENANT, SESSION)).thenReturn(List.of());
 
         controller.list(TENANT, SESSION, false, request);

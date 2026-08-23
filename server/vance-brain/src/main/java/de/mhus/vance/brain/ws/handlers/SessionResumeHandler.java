@@ -8,8 +8,10 @@ import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.progress.ProcessCountsPusher;
+import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.project.ProjectManagerService.ClaimResult;
+import de.mhus.vance.brain.session.SessionAccess;
 import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.ws.ConnectionContext;
@@ -43,6 +45,7 @@ public class SessionResumeHandler implements WsHandler {
     private final WebSocketSender sender;
     private final SessionService sessionService;
     private final ProjectManagerService projectManager;
+    private final ProjectLifecycleService lifecycleService;
     private final SessionConnectionRegistry connectionRegistry;
     private final de.mhus.vance.brain.events.SessionRosterBroadcaster rosterBroadcaster;
     private final InboxPendingSummaryPusher inboxSummaryPusher;
@@ -89,12 +92,18 @@ public class SessionResumeHandler implements WsHandler {
                     "Session '" + request.getSessionId() + "' belongs to another tenant");
             return;
         }
-        boolean isOwner = doc.getUserId().equals(ctx.getUserId());
-        if (!isOwner && !doc.isAllowMultipleClients()) {
+        // Same access rule as the REST surfaces — kept in one place so the
+        // call sites cannot drift apart (that drift is what let
+        // SessionProcessController hand out foreign transcripts).
+        if (!SessionAccess.mayAccess(doc, ctx.getUserId())) {
             sender.sendError(wsSession, envelope, 403,
                     "Session '" + request.getSessionId() + "' belongs to another user");
             return;
         }
+        // Being allowed in is not the same as owning it: only the owner
+        // takes the bind, sets the session profile and resumes engines.
+        // A guest on an allowMultipleClients session gets neither.
+        boolean isOwner = doc.getUserId().equals(ctx.getUserId());
         authority.enforce(ctx,
                 new Resource.Session(doc.getTenantId(), doc.getProjectId(), doc.getSessionId()),
                 Action.START);
@@ -107,6 +116,18 @@ public class SessionResumeHandler implements WsHandler {
                             + redirect.endpoint() + ")");
             return;
         }
+        // Owning is not running: the claim pins the project to this pod, it
+        // does not activate it. Since the lease rework the activation-gated
+        // document listeners (UrsaHook / UrsaScheduler) only refresh on the
+        // pod that has the project in its ProjectActivationRegistry, and the
+        // change router serves the *writing* pod regardless of ownership — so
+        // a project resumed here but never brought would own its hooks and
+        // schedulers while running none of them, silently and without an
+        // error anywhere. bring() is idempotent and short-circuits to a lease
+        // refresh once the project is RUNNING here (and is a no-op-ish local
+        // re-init for podless _user_*/_vance projects), which is exactly what
+        // SessionCreateHandler already does after its claim.
+        lifecycleService.bring(doc.getTenantId(), doc.getProjectId());
 
         // Concurrent-owner guard: when another *live* connection of the
         // same user already holds this session, a silent takeover starts a

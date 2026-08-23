@@ -13,8 +13,8 @@ params:
   # reasoning budget on rewording headlines.
   model: default:fast
   validation: false
-  # Safety net only. The intended shape is two or three calls:
-  # feed_read → (optionally a second window) → inbox_post.
+  # Safety net only. The intended shape is three or four calls:
+  # feed_read → (optionally a second window) → whoami → inbox_post.
   maxIterations: 8
   # Scheduler-spawned: there is no parent conversation to inherit.
   inheritContext: none
@@ -37,8 +37,11 @@ promptPrefix: |
      never invent a source id.
   2. Group what came back by topic, not by source. Drop the noise: bot edits,
      duplicates of the same story, entries whose title says nothing.
-  3. `inbox_post(type="OUTPUT_TEXT", title="<feed name> — <window>", body=…,
-     criticality="LOW")`.
+  3. `whoami()` — the `userId` it returns is the recipient. `inbox_post` has no
+     default recipient; it fails without one, and a guessed id delivers the
+     digest to a stranger.
+  4. `inbox_post(targetUserId=<userId from whoami>, type="OUTPUT_TEXT",
+     title="<feed name> — <window>", body=…, criticality="LOW")`.
 
   ## The body
 

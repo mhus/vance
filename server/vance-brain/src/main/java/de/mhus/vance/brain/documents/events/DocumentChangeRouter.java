@@ -30,9 +30,10 @@ import org.springframework.stereotype.Component;
  * about it:
  *
  * <ul>
- *   <li>System projects ({@code _tenant}, {@code _vance}) → self plus every
- *       live pod in the cluster, because the cascade affects every project in
- *       the tenant.</li>
+ *   <li>The tenant-wide project ({@code _tenant}) → self plus every live pod in
+ *       the cluster, because the cascade affects every project in the tenant.
+ *       It is the only broadcast case: {@code _vance} stopped being a
+ *       {@code projectId} in commit {@code 4f9532f7b}.</li>
  *   <li>Lease held by a remote pod → self plus that pod.</li>
  *   <li>Lease held by self, no valid lease at all, podless project, unknown
  *       project → self only.</li>

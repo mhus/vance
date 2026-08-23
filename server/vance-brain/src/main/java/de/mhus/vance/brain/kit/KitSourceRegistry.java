@@ -29,10 +29,14 @@ import org.springframework.stereotype.Service;
  * with no signature requirement — which is exactly how kits behaved
  * before sources existed.
  *
- * <p>Matched by <b>longest url prefix</b>. That lets a tenant configure
- * a whole host loosely and one repository on it strictly, and it keeps
- * the kit reference itself a plain {@code (url, path)} pair: adding a
- * source never changes any installed kit's identity.
+ * <p>An <em>unreadable</em> document is a different matter from an absent
+ * one: it is refused, not ignored. See {@link #readDocument}.
+ *
+ * <p>Matched by <b>longest url prefix</b>, and only at a path-segment
+ * boundary. That lets a tenant configure a whole host loosely and one
+ * repository on it strictly, and it keeps the kit reference itself a plain
+ * {@code (url, path)} pair: adding a source never changes any installed
+ * kit's identity.
  *
  * <p>Spec: {@code planning/kit-shop.md} §5.1.
  */
@@ -65,7 +69,7 @@ public class KitSourceRegistry {
         int bestLength = -1;
         for (KitSourceDto candidate : configuredSources(tenantId)) {
             String prefix = normalize(candidate.getUrl());
-            if (prefix.isEmpty() || !needle.startsWith(prefix)) continue;
+            if (prefix.isEmpty() || !coversUrl(prefix, needle)) continue;
             if (prefix.length() > bestLength) {
                 best = candidate;
                 bestLength = prefix.length();
@@ -123,13 +127,21 @@ public class KitSourceRegistry {
             KitSourcesDto parsed = KitYamlMapper.parseSources(content);
             return parsed.getSources();
         } catch (KitException e) {
-            // A broken sources file must not silently widen what is allowed:
-            // falling back to "no sources" keeps the pre-configuration
-            // behaviour, which is the narrower of the two readings.
+            // Fail closed. "No sources" is not the narrower reading, it is the
+            // widest one: with the list empty no prefix claims the url any
+            // more, resolve() guesses GIT, and KitSignaturePolicy.defaultFor
+            // hands back OFF — so a typo in one line would turn
+            // `signature: required` into no signature at all for every source
+            // in the file, visible as a single WARN. That is exactly what
+            // KitYamlMapper.parseSources is strict about, and swallowing the
+            // exception here undid its strictness one frame later.
             log.warn("KitSourceRegistry: {} in tenant '{}' is malformed: {} — "
-                    + "ignoring it, kits load as if unconfigured",
+                    + "refusing every kit source resolution until it is fixed",
                     SOURCES_PATH, tenantId, e.getMessage());
-            return List.of();
+            throw new KitException(SOURCES_PATH + " in tenant '" + tenantId
+                    + "' is malformed and cannot be trusted to say which sources are"
+                    + " allowed and which need a signature — fix it before installing"
+                    + " or updating kits (" + e.getMessage() + ")", e);
         }
     }
 
@@ -141,6 +153,22 @@ public class KitSourceRegistry {
         } catch (IOException e) {
             throw new KitException("failed to read " + SOURCES_PATH, e);
         }
+    }
+
+    /**
+     * Whether a configured source url covers a kit url.
+     *
+     * <p>Prefix match, but only at a segment boundary. A bare
+     * {@code startsWith} let {@code https://github.com/acme-sandbox-evil/x.git}
+     * be claimed by the source configured for {@code https://github.com/acme}.
+     * Usually that only makes a foreign url inherit a <em>stricter</em> policy,
+     * which is harmless — but it inverts as soon as a longer, looser entry
+     * exists ({@code …/acme} required, {@code …/acme-sandbox} off): whoever
+     * controls {@code acme-sandbox-evil} then wins the {@code off} entry.
+     */
+    private static boolean coversUrl(String prefix, String needle) {
+        if (!needle.startsWith(prefix)) return false;
+        return needle.length() == prefix.length() || needle.charAt(prefix.length()) == '/';
     }
 
     /**

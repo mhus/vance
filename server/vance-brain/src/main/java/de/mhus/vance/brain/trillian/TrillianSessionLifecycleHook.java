@@ -268,12 +268,7 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
      * <p>Newest first, and skip any whose session no longer exists.
      */
     private Optional<String> peerSessionOf(SessionDocument session) {
-        List<ThinkProcessDocument> processes = new ArrayList<>(
-                thinkProcessService.findBySession(session.getTenantId(), session.getSessionId()));
-        processes.sort(Comparator.comparing(
-                ThinkProcessDocument::getCreatedAt,
-                Comparator.nullsFirst(Comparator.naturalOrder())).reversed());
-        for (ThinkProcessDocument p : processes) {
+        for (ThinkProcessDocument p : processesNewestFirst(session)) {
             String peer = paramString(p, TrillianSessionBootstrapper.PARAM_PEER_SESSION_ID);
             if (StringUtils.isBlank(peer)) {
                 continue;
@@ -292,18 +287,38 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
      * Reads a wiring value off any process of the session, not just the
      * current chat one: after a reactivate the link lives on the renamed,
      * closed predecessor.
+     *
+     * <p>Newest first, for the same reason {@link #peerSessionOf} sorts:
+     * every archive/reactivate cycle leaves another closed chat-process
+     * behind, and the repository promises no order. Taking an arbitrary
+     * generation's {@code trillianUserName} made
+     * {@code releaseAccount} revoke and delete an account that no longer
+     * existed while the live one kept its project-ADMIN grant and its
+     * documents — exactly the orphan the release path was written to
+     * prevent.
      */
-
     private Optional<String> paramOfAnyProcess(SessionDocument session, String key) {
-        List<ThinkProcessDocument> processes =
-                thinkProcessService.findBySession(session.getTenantId(), session.getSessionId());
-        for (ThinkProcessDocument p : processes) {
+        for (ThinkProcessDocument p : processesNewestFirst(session)) {
             String value = paramString(p, key);
             if (StringUtils.isNotBlank(value)) {
                 return Optional.of(value);
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * The session's think-processes, most recently created first. The
+     * repository returns them unordered (in practice: insertion order),
+     * so anything that wants "the current generation" has to say so.
+     */
+    private List<ThinkProcessDocument> processesNewestFirst(SessionDocument session) {
+        List<ThinkProcessDocument> processes = new ArrayList<>(
+                thinkProcessService.findBySession(session.getTenantId(), session.getSessionId()));
+        processes.sort(Comparator.comparing(
+                ThinkProcessDocument::getCreatedAt,
+                Comparator.nullsFirst(Comparator.naturalOrder())).reversed());
+        return processes;
     }
 
     private static @Nullable String paramString(ThinkProcessDocument process, String key) {

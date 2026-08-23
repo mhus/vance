@@ -279,20 +279,28 @@ async function onClearCooldown(
       "
     />
 
-    <table v-else class="table table-sm">
-      <thead>
-        <tr>
-          <th class="cursor-pointer select-none" @click="toggleSort('toolName')">
+    <!-- Plain Tailwind, no DaisyUI `table` classes: those are banned outside
+         `src/components/` (web-ui.md §7.4). Same shape as ToolUsageTab. -->
+    <table v-else class="w-full text-sm">
+      <thead class="text-xs opacity-60">
+        <tr class="text-left">
+          <th
+            class="font-normal px-3 py-1 cursor-pointer select-none"
+            @click="toggleSort('toolName')"
+          >
             Subject{{ arrow('toolName') }}
           </th>
-          <th class="w-28">Kind</th>
-          <th class="w-28 cursor-pointer select-none" @click="toggleSort('status')">
+          <th class="font-normal px-3 py-1 w-28">Kind</th>
+          <th
+            class="font-normal px-3 py-1 w-28 cursor-pointer select-none"
+            @click="toggleSort('status')"
+          >
             Status{{ arrow('status') }}
           </th>
-          <th class="w-40">Classification</th>
-          <th class="w-24">Cooldowns</th>
-          <th class="w-44">Since</th>
-          <th>Note</th>
+          <th class="font-normal px-3 py-1 w-40">Classification</th>
+          <th class="font-normal px-3 py-1 w-24">Cooldowns</th>
+          <th class="font-normal px-3 py-1 w-44">Since</th>
+          <th class="font-normal px-3 py-1">Note</th>
         </tr>
       </thead>
       <tbody>
@@ -302,8 +310,8 @@ async function onClearCooldown(
           </td>
         </tr>
         <template v-for="e in filtered" :key="e.scope + '|' + e.toolName">
-          <tr>
-            <td class="font-mono">
+          <tr class="border-t border-base-content/5">
+            <td class="px-3 py-1 font-mono">
               <button
                 type="button"
                 class="cursor-pointer text-left hover:underline"
@@ -312,26 +320,26 @@ async function onClearCooldown(
                 {{ isExpanded(e) ? '▾' : '▸' }} {{ e.toolName }}
               </button>
             </td>
-            <td class="text-xs">
+            <td class="px-3 py-1 text-xs">
               <span :class="'badge-kind badge-kind--' + subjectKind(e.toolName)">
                 {{ subjectKindLabel(subjectKind(e.toolName)) }}
               </span>
             </td>
-            <td class="text-xs">
+            <td class="px-3 py-1 text-xs">
               <span :class="statusBadgeClass(e.status)">{{ e.status }}</span>
             </td>
-            <td class="text-xs opacity-80">{{ e.classification ?? '—' }}</td>
-            <td class="text-xs">
+            <td class="px-3 py-1 text-xs opacity-80">{{ e.classification ?? '—' }}</td>
+            <td class="px-3 py-1 text-xs">
               <span v-if="cooldownCount(e) > 0" class="text-warning">
                 ⏳ {{ cooldownCount(e) }}
               </span>
               <span v-else class="opacity-40">—</span>
             </td>
-            <td class="text-xs opacity-80">{{ formatTimestamp(e.statusSince) }}</td>
-            <td class="text-xs opacity-80">{{ e.note ?? '—' }}</td>
+            <td class="px-3 py-1 text-xs opacity-80">{{ formatTimestamp(e.statusSince) }}</td>
+            <td class="px-3 py-1 text-xs opacity-80">{{ e.note ?? '—' }}</td>
           </tr>
 
-          <tr v-if="isExpanded(e)" class="health-detail-row">
+          <tr v-if="isExpanded(e)">
             <td colspan="7" class="p-3">
               <div class="bg-base-200 rounded p-3 space-y-2 text-xs">
                 <div v-if="e.expectedRecoveryAt" class="opacity-80">
@@ -344,35 +352,36 @@ async function onClearCooldown(
                   No active cooldowns — nothing is gating this subject right now.
                 </div>
 
-                <table v-else class="table table-xs">
-                  <thead>
-                    <tr class="opacity-60">
-                      <th>Signature</th>
-                      <th>Classification</th>
-                      <th>Hits</th>
-                      <th>User</th>
-                      <th>Note</th>
-                      <th>Expires</th>
-                      <th></th>
+                <table v-else class="w-full text-xs">
+                  <thead class="opacity-60">
+                    <tr class="text-left">
+                      <th class="font-normal px-2 py-1">Signature</th>
+                      <th class="font-normal px-2 py-1">Classification</th>
+                      <th class="font-normal px-2 py-1">Hits</th>
+                      <th class="font-normal px-2 py-1">User</th>
+                      <th class="font-normal px-2 py-1">Note</th>
+                      <th class="font-normal px-2 py-1">Expires</th>
+                      <th class="font-normal px-2 py-1"></th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr
                       v-for="cd in (e.activeCooldowns ?? [])"
                       :key="cd.errorSignature + '|' + (cd.userId ?? '*')"
+                      class="border-t border-base-content/5"
                     >
-                      <td class="font-mono">{{ cd.errorSignature }}</td>
-                      <td>{{ cd.lastClassification ?? '—' }}</td>
-                      <td>{{ cd.hits }}</td>
-                      <td>{{ cd.userId ?? '*' }}</td>
-                      <td class="opacity-80">{{ cd.note ?? '—' }}</td>
-                      <td>
+                      <td class="px-2 py-1 font-mono">{{ cd.errorSignature }}</td>
+                      <td class="px-2 py-1">{{ cd.lastClassification ?? '—' }}</td>
+                      <td class="px-2 py-1">{{ cd.hits }}</td>
+                      <td class="px-2 py-1">{{ cd.userId ?? '*' }}</td>
+                      <td class="px-2 py-1 opacity-80">{{ cd.note ?? '—' }}</td>
+                      <td class="px-2 py-1">
                         {{ formatCountdown(cd.nextSpawnAllowedAt) }}
                         <span class="opacity-50">
                           ({{ formatTimestamp(cd.nextSpawnAllowedAt) }})
                         </span>
                       </td>
-                      <td>
+                      <td class="px-2 py-1">
                         <VButton
                           variant="neutral"
                           size="xs"
@@ -433,8 +442,5 @@ async function onClearCooldown(
 .badge-kind--search {
   background: color-mix(in oklab, var(--color-secondary) 18%, transparent);
   color: var(--color-secondary);
-}
-.health-detail-row > td {
-  background: transparent;
 }
 </style>

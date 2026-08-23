@@ -12,6 +12,9 @@ recurring stream — rather than get one answer:
 - Read a feed with `feed_read(folder=…)` or `feed_read(streams=[…], since="-24h")`
   — for digests and "what happened since…", not for searching. An empty result is
   not proof that nothing happened, and `unavailable` streams belong in your answer.
+- One entry in full — the body a list row only teases — is
+  `feed_item(sourceId, itemId)`. When the reader has clicked a card, the
+  Active-App block names it as `<sourceId>/<itemId>`; that is the pair to pass.
 - Asked for a recurring digest ("jeden Morgen", "täglich"): that is the
   `feeds-digest` recipe plus a scheduler document —
   `manual_read('feeds-digest')` before you build it by hand.

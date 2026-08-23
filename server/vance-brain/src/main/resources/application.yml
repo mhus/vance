@@ -92,7 +92,50 @@ vance:
     # account identity that decide which kits this installation may
     # fetch — an agent able to rewrite it could redirect a purchase
     # identity (planning/kit-store.md §3 S3).
-    agentWriteDenyKeys: "ai.provider.*,vault.*,store.*"
+    # kit.* for the same reason one level down: kit.token.<host> is what a
+    # project's kit provisioning fetches with, so an agent able to write it
+    # decides where the project gets its tool definitions from. It was in the
+    # Java default and missing here, and this file wins — the shipped
+    # configuration was the weaker of the two.
+    # jaglan.mount.* because a mount points a document namespace at a foreign
+    # (for the `local` protocol: host-local) file tree, read AND write. That is
+    # a wider capability than either of the two above, and it must not be
+    # reachable from an agent-originated setting write.
+    agentWriteDenyKeys: "ai.provider.*,vault.*,store.*,kit.*,jaglan.mount.*"
+    # Keys no {{secret:…}} reference may resolve — the read-side counterpart of
+    # agentWriteDenyKeys, deliberately a separate list because "may not write"
+    # and "may not resolve" are different questions.
+    #
+    # store.token.* is here but kit.token.* is NOT, and the asymmetry is the
+    # point: nothing legitimately references a store token (compiled code reads
+    # it at a fixed name through SettingService), while a provisioning document
+    # resolves kit.token.<host> through exactly such a reference. Folding the
+    # two lists together would break provisioning to close a store leak.
+    secretReferenceDenyKeys: "ai.provider.*,vault.*,store.token.*"
+  kits:
+    # Setting keys a kit may not write into a project. Third list of this
+    # shape, third question: not an agent and not a reference, but a bundle of
+    # files from somewhere else that installs unattended.
+    #
+    # Same four families as agentWriteDenyKeys, for the same reasons — a kit
+    # that could set store.account.<sourceId> would rewrite the very value its
+    # own licence gate compares the signed licensedTo against, and one that
+    # could set jaglan.mount.* would give itself a mount of the brain pod's
+    # file system. Shorten this in a deployment where kits are trusted to
+    # configure providers.
+    settingDenyKeys: "ai.provider.*,vault.*,store.*,kit.*,jaglan.mount.*"
+  jaglan:
+    local:
+      # Base directories a `protocol: local` mount may point its rootDir at.
+      # Comma-separated absolute paths; a mount may name any subtree of one.
+      #
+      # EMPTY (the default) DISABLES THE local PROTOCOL. rootDir arrives from a
+      # project-scoped setting, and the confinement check only answers "inside
+      # the rootDir", never "which rootDir" — so without this list a project
+      # admin could set rootDir=/ plus writable=true and read/write the brain
+      # pod's whole file system, /proc/self/environ included. Operator config
+      # only, never a setting, same character as vance.exec.isolation.
+      allowed-roots: ""
   fook:
     # Master on/off switch for the Fook feedback/triage subsystem —
     # the vance_support_request LLM tool, the web user-menu feedback

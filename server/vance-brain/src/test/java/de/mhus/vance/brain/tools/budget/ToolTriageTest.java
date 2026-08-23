@@ -223,6 +223,39 @@ class ToolTriageTest {
         assertThat(first.demoted()).isEqualTo(second.demoted());
     }
 
+    @Test
+    void demotionOrder_readsLeastImportantFirst() {
+        // Ranking runs best-first; the list is what got given up, and the
+        // first thing given up is the one that mattered least. keep >
+        // built-in > pack, so the pack must lead the list, not trail it.
+        Set<String> primary = names("doc_read", "slack_rest__a", "zzz_keepme");
+
+        ToolTriage.Result r = ToolTriage.apply(
+                primary, Set.of(), Set.of(),
+                ToolTriage.Hints.ofNames(Set.of("zzz_keepme"), Set.of(), Set.of()),
+                new ToolBudget(1, 0));
+
+        assertThat(r.primary()).containsExactly("zzz_keepme");
+        assertThat(r.demoted()).containsExactly("slack_rest__a", "doc_read");
+        assertThat(r.demotedFamilies()).containsExactly("slack_rest", "doc");
+    }
+
+    @Test
+    void aToolInBothBuckets_isCountedOnce() {
+        // withAdditional can promote a tool the model already activated.
+        // Summing the two sets would make this look like a 3-tool surface
+        // and cut a family that actually fits.
+        Set<String> primary = names("doc_read", "doc_write");
+        Set<String> activated = names("doc_read");
+
+        ToolTriage.Result r = ToolTriage.apply(
+                primary, activated, Set.of(), ToolTriage.Hints.EMPTY,
+                new ToolBudget(2, 0));
+
+        assertThat(r.changed()).isFalse();
+        assertThat(r.primary()).containsExactly("doc_read", "doc_write");
+    }
+
     private static Set<String> names(String... values) {
         return new LinkedHashSet<>(java.util.Arrays.asList(values));
     }

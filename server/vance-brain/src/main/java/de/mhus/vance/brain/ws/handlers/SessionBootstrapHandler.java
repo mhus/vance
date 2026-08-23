@@ -17,7 +17,7 @@ import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.progress.ProcessCountsPusher;
-import de.mhus.vance.brain.project.ProjectManagerService;
+import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
@@ -76,7 +76,7 @@ public class SessionBootstrapHandler implements WsHandler {
     private final WebSocketSender sender;
     private final SessionService sessionService;
     private final ProjectService projectService;
-    private final ProjectManagerService projectManager;
+    private final ProjectLifecycleService lifecycleService;
     private final ThinkProcessService thinkProcessService;
     private final ThinkEngineService thinkEngineService;
     private final SessionConnectionRegistry connectionRegistry;
@@ -336,15 +336,28 @@ public class SessionBootstrapHandler implements WsHandler {
                 })
                 .toList();
         for (SessionDocument candidate : candidates) {
+            // bring() rather than a bare claim, and *before* the bind:
+            //
+            //  - bring, because a claim only pins the project to this pod. It
+            //    does not put it into the ProjectActivationRegistry, and since
+            //    the lease rework the hook / scheduler document listeners are
+            //    activation-gated while the change router serves the writing
+            //    pod regardless of ownership. Claim-only means this pod owns
+            //    the project's hooks and schedulers and runs none of them,
+            //    with no error anywhere.
+            //  - before the bind, because bring clears every stale session
+            //    binding of the project (unbindAllForProjects). A bind taken
+            //    first would be swept away by the very call that makes the
+            //    project usable. Nothing is bound yet here, so a failure needs
+            //    no compensating unbind — it propagates to handle()'s catch
+            //    exactly as the claim did.
+            //
+            // A candidate whose bind then loses the race leaves its project
+            // brought. That is harmless: it is a project this user holds an
+            // open session in, and bring is idempotent.
+            lifecycleService.bring(candidate.getTenantId(), candidate.getProjectId());
             if (sessionService.tryBind(
                     candidate.getSessionId(), ctx.getEditorId())) {
-                try {
-                    projectManager.claimForLocalPod(
-                            candidate.getTenantId(), candidate.getProjectId());
-                } catch (RuntimeException claimFailed) {
-                    sessionService.unbind(candidate.getSessionId(), ctx.getEditorId());
-                    throw claimFailed;
-                }
                 return Optional.of(candidate);
             }
         }
@@ -374,7 +387,11 @@ public class SessionBootstrapHandler implements WsHandler {
                     "Project '" + projectId + "' not found");
             return Optional.empty();
         }
-        projectManager.claimForLocalPod(ctx.getTenantId(), projectId);
+        // Claim *and* activate — see tryAutoResumeLatest for why a bare claim
+        // leaves the project's hooks and schedulers silently dark. Safe here
+        // in any order: the session does not exist yet, so bring's stale-bind
+        // sweep has nothing of ours to clear.
+        lifecycleService.bring(ctx.getTenantId(), projectId);
         SessionDocument fresh = sessionService.create(
                 ctx.getTenantId(),
                 ctx.getUserId(),
@@ -417,7 +434,11 @@ public class SessionBootstrapHandler implements WsHandler {
                             + ctx.getProfile() + "' — start a new session instead");
             return Optional.empty();
         }
-        projectManager.claimForLocalPod(doc.getTenantId(), doc.getProjectId());
+        // Claim *and* activate — see tryAutoResumeLatest. The bind below runs
+        // after bring's stale-bind sweep, and the concurrent-owner guard reads
+        // the in-memory connection registry, not the Mongo bind, so the sweep
+        // cannot mask a live sibling.
+        lifecycleService.bring(doc.getTenantId(), doc.getProjectId());
         // Concurrent-owner guard (same rule as SessionResumeHandler): a live
         // sibling connection of the same user already holding this session is
         // a conflict, not a takeover target — refuse unless the caller opted

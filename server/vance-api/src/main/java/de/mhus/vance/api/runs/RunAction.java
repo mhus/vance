@@ -12,8 +12,12 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
  * would erase the audit trail the design exists to keep
  * ({@code planning/runs-view.md} §9).
  *
- * <p>v1 reports an empty set everywhere: the vocabulary is fixed now so
- * that adding the verbs later touches no DTO and no UI.
+ * <p>All three sources answer with real verbs, derived from the run's
+ * current state — the per-source matrix is in
+ * {@code specification/public/runs-view.md} §6. Performing one is
+ * idempotent everywhere: an action the run does not currently offer is a
+ * logged no-op, not an error, because the button was rendered from a
+ * snapshot the run may have moved on from.
  */
 @GenerateTypeScript("runs")
 public enum RunAction {

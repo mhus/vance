@@ -1,6 +1,7 @@
 package de.mhus.vance.addon.brain.links;
 
 import de.mhus.vance.brain.applications.VanceApplication;
+import de.mhus.vance.brain.prompt.ForeignPromptText;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.toolpack.ToolException;
@@ -235,6 +236,13 @@ public class LinksApplication implements VanceApplication {
      * sent", then recited the entry in scare quotes as if it were hearsay. The
      * search app never had that problem because it says a hit is "open". So:
      * name the act (clicked a card), say what it is not, and forbid the hedge.
+     *
+     * <p><b>Every value read off the manifest is shaped.</b> The two branches
+     * used to disagree about that: the unknown-URL branch collapsed and capped,
+     * the found branch appended the row raw — including {@code title}, which is
+     * the one field this app copies out of a foreign page. A {@code \n- } in it
+     * would add a bullet to a list the model reads as ours. Both branches go
+     * through {@link ForeignPromptText} now, so they cannot drift apart again.
      */
     private static void appendSelection(StringBuilder sb, LinksConfig config,
                                         @Nullable String selection) {
@@ -248,13 +256,8 @@ public class LinksApplication implements VanceApplication {
             }
         }
         if (selected == null) {
-            // Foreign text in a prompt: collapse it and cap it. It came from
-            // our own client, but that is a reason to keep it tidy, not a
-            // reason to trust its length.
-            String shown = url.replaceAll("\\s+", " ");
-            if (shown.length() > 300) shown = shown.substring(0, 300) + "…";
             sb.append("The reader has clicked a card whose link is no longer in this list: ")
-                    .append(shown)
+                    .append(ForeignPromptText.quoted(url))
                     .append(" — say that plainly instead of listing the other entries.\n");
             return;
         }
@@ -262,35 +265,47 @@ public class LinksApplication implements VanceApplication {
                 .append("\"this link\", \"the selected link\" or \"the entry I marked\" — it is the ")
                 .append("app's own pick, NOT a text selection inside a document. Never answer ")
                 .append("that no selection arrived, and never ask them to mark it again:\n")
-                .append("- url: ").append(selected.url()).append('\n')
-                .append("- title: ").append(selected.displayTitle()).append('\n');
+                .append("- url: ").append(ForeignPromptText.quoted(selected.url())).append('\n')
+                .append("- title: ").append(ForeignPromptText.quoted(selected.displayTitle()))
+                .append('\n');
         if (selected.group() != null) {
-            sb.append("- group: ").append(selected.group()).append('\n');
+            sb.append("- group: ").append(ForeignPromptText.quoted(selected.group())).append('\n');
         }
         if (!selected.tags().isEmpty()) {
-            sb.append("- tags: ").append(String.join(", ", selected.tags())).append('\n');
+            List<String> tags = new ArrayList<>(selected.tags().size());
+            for (String tag : selected.tags()) {
+                tags.add(ForeignPromptText.quoted(tag));
+            }
+            sb.append("- tags: ").append(String.join(", ", tags)).append('\n');
         }
         if (selected.note() != null) {
-            sb.append("- note (theirs): ").append(selected.note()).append('\n');
+            sb.append("- note (theirs): ").append(ForeignPromptText.quoted(selected.note()))
+                    .append('\n');
         }
         if (selected.teaser() != null) {
-            sb.append("- teaser (theirs): ").append(selected.teaser()).append('\n');
+            sb.append("- teaser (theirs): ").append(ForeignPromptText.quoted(selected.teaser()))
+                    .append('\n');
         } else {
             sb.append("- teaser: none stored — the page's own description is shown live.\n");
         }
-        sb.append("To read the page itself use `web_fetch` on that URL; the list stores no ")
+        sb.append(ForeignPromptText.PROVENANCE_NOTE).append('\n')
+                .append("To read the page itself use `web_fetch` on that URL; the list stores no ")
                 .append("page content.\n");
     }
 
     // ── the generated index ───────────────────────────────────────
 
     static String renderIndex(LinksConfig config, String title) {
+        // The manifest title is hand- or agent-written YAML, so it gets the
+        // same one-line treatment as the rest before it becomes a header line
+        // and a heading.
+        String heading = oneLine(title);
         StringBuilder sb = new StringBuilder();
         sb.append("---\n$meta:\n  kind: workpage\n");
-        sb.append("title: \"").append(escape(title)).append(" — Index\"\n");
+        sb.append("title: \"").append(escape(heading)).append(" — Index\"\n");
         sb.append("description: \"Generated from the link list.\"\n");
         sb.append("---\n");
-        sb.append("# ").append(title).append("\n\n");
+        sb.append("# ").append(heading).append("\n\n");
         sb.append("```vance-callout\nseverity: note\ntitle: Auto-generated\n")
                 .append("body: This page is rewritten on every `app_rebuild` — edits here are lost.\n")
                 .append("```\n\n");
@@ -308,7 +323,13 @@ public class LinksApplication implements VanceApplication {
             if (rows.isEmpty()) continue;
             if (!group.isEmpty()) sb.append("## ").append(group).append("\n\n");
             for (LinkEntry e : rows) {
-                sb.append("- [").append(mdText(e.displayTitle())).append("](")
+                // oneLine before mdText, and for the title too: escaping stops
+                // a `]` from ending the label early, but a newline ends the
+                // list item itself — the rest of the title lands as a loose
+                // paragraph next to a bare URL in brackets. The title is the
+                // field that comes off the foreign page, so it is the one that
+                // needs it most.
+                sb.append("- [").append(mdText(oneLine(e.displayTitle()))).append("](")
                         .append(e.url()).append(")");
                 // Teaser then note, in that order and visibly different: the
                 // teaser is what the page says about itself, the note is why
@@ -371,7 +392,16 @@ public class LinksApplication implements VanceApplication {
         return null;
     }
 
+    /**
+     * Quote a value for a double-quoted YAML scalar in the generated header.
+     *
+     * <p>The backslash has to go first: YAML reads {@code \} inside double
+     * quotes as the start of an escape sequence, so a manifest title like
+     * {@code Docs\Links} produced a header the parser rejects — and a
+     * generated {@code _index.md} whose {@code $meta} does not parse is no
+     * longer a {@code kind: workpage} at all.
+     */
     private static String escape(String s) {
-        return s.replace("\"", "\\\"");
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }

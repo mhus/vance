@@ -29,7 +29,13 @@ class MagratheaRunSourceTest {
     private final MagratheaStateProjector projector = mock(MagratheaStateProjector.class);
     private final de.mhus.vance.brain.magrathea.MagratheaWorkflowService workflows =
             mock(de.mhus.vance.brain.magrathea.MagratheaWorkflowService.class);
-    private final MagratheaRunSource source = new MagratheaRunSource(journal, projector, workflows, mock(de.mhus.vance.shared.session.SessionService.class), mock(de.mhus.vance.shared.permission.PermissionService.class));
+    private final de.mhus.vance.brain.magrathea.MagratheaGateChatAnswerService gateAnswers =
+            mock(de.mhus.vance.brain.magrathea.MagratheaGateChatAnswerService.class);
+    private final MagratheaRunSource source = new MagratheaRunSource(
+            journal, projector, workflows,
+            mock(de.mhus.vance.shared.session.SessionService.class),
+            mock(de.mhus.vance.shared.permission.PermissionService.class),
+            gateAnswers);
 
     @Test
     void listsProjectedRunsWithACompositeId() {
@@ -99,6 +105,43 @@ class MagratheaRunSourceTest {
                 .singleElement()
                 .satisfies(l -> assertThat(l.getTarget())
                         .isEqualTo("_vance/workflows/helloworld.yaml"));
+    }
+
+    // ──────────── what a waiting run is waiting on ────────────
+    //
+    // runs-view.md §4.2 lists waitingOnInboxItemId as one of the four shared
+    // detail blocks and assigns it to Magrathea ("the gate item"). Nothing
+    // filled it, so the detail page could not link to the one thing a
+    // reader opens it for.
+
+    @Test
+    void detailNamesTheOpenGateItem() {
+        stubDetail("r1");
+        when(gateAnswers.findOpenGateItem("acme", "r1")).thenReturn(Optional.of(
+                de.mhus.vance.shared.inbox.InboxItemDocument.builder().id("item-7").build()));
+
+        assertThat(source.get("acme", "proj", "r1").orElseThrow().getWaitingOnInboxItemId())
+                .isEqualTo("item-7");
+    }
+
+    @Test
+    void detailOfARunSittingAtNoGateNamesNothing() {
+        stubDetail("r1");
+        when(gateAnswers.findOpenGateItem("acme", "r1")).thenReturn(Optional.empty());
+
+        assertThat(source.get("acme", "proj", "r1").orElseThrow().getWaitingOnInboxItemId())
+                .isNull();
+    }
+
+    @Test
+    void aFinishedRunIsNotAskedAboutGatesAtAll() {
+        // Its gates are closed by definition, and the lookup costs two reads.
+        when(projector.project("acme", "proj", "r1"))
+                .thenReturn(Optional.of(run("r1", MagratheaRunStatus.DONE)));
+
+        assertThat(source.get("acme", "proj", "r1").orElseThrow().getWaitingOnInboxItemId())
+                .isNull();
+        verify(gateAnswers, never()).findOpenGateItem(any(), any());
     }
 
     @Test

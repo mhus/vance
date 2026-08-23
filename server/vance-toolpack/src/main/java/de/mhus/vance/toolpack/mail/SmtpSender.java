@@ -53,8 +53,13 @@ public final class SmtpSender {
      * callers must not mutate the array afterwards, and a record with an
      * array component has no meaningful {@code equals}; neither matters
      * for a single-shot send payload.
+     *
+     * <p>{@code mimeType} is nullable on purpose: a caller that does not
+     * know the type says so, and {@code application/octet-stream} is filled
+     * in at send time. The package is {@code @NullMarked}, so leaving it
+     * unannotated declared the opposite of what the sender implements.
      */
-    public record Attachment(String filename, String mimeType, byte[] bytes) {
+    public record Attachment(String filename, @Nullable String mimeType, byte[] bytes) {
     }
 
     /** Payload for one outgoing message. */
@@ -197,12 +202,11 @@ public final class SmtpSender {
     }
 
     private static MimeBodyPart attachmentPart(Attachment a) throws MessagingException {
-        if (a.filename() == null || a.filename().isBlank()) {
+        // Blank, not null: the package is @NullMarked, so a null filename or
+        // null bytes is a contract violation the caller has to fix, while an
+        // empty name is a value a form can produce.
+        if (a.filename().isBlank()) {
             throw new IllegalArgumentException("attachment: 'filename' is required");
-        }
-        if (a.bytes() == null) {
-            throw new IllegalArgumentException(
-                    "attachment '" + a.filename() + "': 'bytes' is required");
         }
         String mimeType = a.mimeType() == null || a.mimeType().isBlank()
                 ? "application/octet-stream"

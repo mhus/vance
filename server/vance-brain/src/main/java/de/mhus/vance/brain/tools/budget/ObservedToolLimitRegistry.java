@@ -38,6 +38,24 @@ public class ObservedToolLimitRegistry {
     /** Sentinel for "no limit was known before this call" — every real limit is positive. */
     private static final int NONE = -1;
 
+    /**
+     * Smallest number this class will believe is a tools-array cap.
+     *
+     * <p>The mandatory floor ({@code tool_list} + {@code tool_description})
+     * plus the engine's own action tool already needs three slots, so a
+     * surface below that cannot be built at all. Adopting a smaller number
+     * would not degrade the turn, it would <b>end</b> it: {@code ToolTriage}
+     * throws {@code ToolBudgetException} when the limit cannot hold the
+     * floor, and this registry has no TTL — every following turn of that
+     * model on this pod would fail the same way until a restart.
+     *
+     * <p>Such a number is not hypothetical: {@code parseLimit} takes the
+     * first {@code maximum length N} in a folded cause chain, and a
+     * multi-error body can put a different field's limit in front of the
+     * one about {@code tools}.
+     */
+    private static final int MIN_PLAUSIBLE_LIMIT = 4;
+
     private final Map<String, Integer> observed = new ConcurrentHashMap<>();
 
     /**
@@ -68,6 +86,9 @@ public class ObservedToolLimitRegistry {
             return OptionalInt.empty();
         }
         int limit = parsed.getAsInt();
+        if (!plausible(limit, requestedCount, modelLabel, errorText)) {
+            return OptionalInt.empty();
+        }
         String key = normalize(modelLabel);
         // Atomic min. Two turns can be rejected concurrently by the same
         // endpoint, and a get-then-put would let the larger of the two land
@@ -105,10 +126,48 @@ public class ObservedToolLimitRegistry {
         return version.get();
     }
 
-    /** Test / admin hook: forget everything learned so far. */
-    public void clear() {
+    /**
+     * Forget everything learned so far.
+     *
+     * <p>Reachable from the outside on purpose
+     * ({@code POST /brain/{tenant}/admin/ai-models/forget-tool-limits}):
+     * a learned value is in-memory, has no TTL and is deliberately
+     * "smallest ever seen", so a once-mislearned cap would otherwise stand
+     * until the pod restarts. Bumps the version, so the next turn resolves
+     * from the catalog again instead of a stale memo.
+     *
+     * @return how many endpoint entries were dropped
+     */
+    public int clear() {
+        int size = observed.size();
         observed.clear();
         version.incrementAndGet();
+        return size;
+    }
+
+    /**
+     * Is {@code limit} believable as this endpoint's tools cap?
+     *
+     * <p>Two checks, both about the number itself rather than about the
+     * endpoint. It has to be small enough to explain the rejection: the
+     * request carried {@code requestedCount} schemas and was refused for
+     * being too long, so a "limit" at or above that count describes a
+     * different field. And it has to be large enough to build a surface at
+     * all ({@link #MIN_PLAUSIBLE_LIMIT}). An implausible number is dropped
+     * rather than stored, because a wrong value here is permanent for the
+     * life of the pod.
+     */
+    private static boolean plausible(
+            int limit, int requestedCount, String modelLabel, String errorText) {
+        if (limit >= MIN_PLAUSIBLE_LIMIT && (requestedCount <= 0 || limit < requestedCount)) {
+            return true;
+        }
+        log.error("Tool-surface: endpoint '{}' rejected {} tool schemas and the message names "
+                        + "maximum length {} — not believable as a tools cap, ignoring it. Set "
+                        + "'maxTools:' in the model document (or the provider's _provider.yaml) "
+                        + "to fix this permanently. Message: {}",
+                modelLabel, requestedCount, limit, abbreviate(errorText));
+        return false;
     }
 
     private static String normalize(String label) {

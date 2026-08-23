@@ -120,6 +120,11 @@ public class KitStatusTool implements Tool {
         if (source.getInstalledBy() != null) {
             origin.put("installedBy", source.getInstalledBy());
         }
+        // Deliberately not the provisioning stamp or the params: both are
+        // machine state for the update path, and neither answers a question a
+        // model asked. Keeping them out also keeps operator-authored text —
+        // including any {{secret:…}} reference a params block carries — out of
+        // the prompt.
         return origin;
     }
 }

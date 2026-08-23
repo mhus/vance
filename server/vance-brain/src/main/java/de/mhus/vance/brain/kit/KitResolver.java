@@ -41,6 +41,9 @@ public class KitResolver {
 
     private final KitSourceLoaders sourceLoaders;
     private final KitWorkspace workspace;
+    /** Only to answer "does this inherit come from the same source" — see
+     *  {@link #accessFor}. */
+    private final KitSourceRegistry sources;
 
     /**
      * Per-layer scan: relative paths of every artefact a single kit
@@ -94,9 +97,13 @@ public class KitResolver {
      * Resolve {@code source} against its inherits and build the merged
      * tree. {@code access} authenticates remote clones; layers may
      * supply their own auth in the future, but v1 reuses the top-level
-     * credential across all inherits (a {@code KitException} is logged as
-     * warning if a private inherit fails to clone — the caller decides
-     * whether to abort).
+     * credential across all inherits.
+     *
+     * <p>An inherit that cannot be loaded aborts the whole resolve
+     * ({@code KitException}) — kits.md §11, no partial import. It used to be a
+     * warning nobody read, which turned an unreachable inherit host into an
+     * install missing a layer, and on {@code --prune} into the deletion of that
+     * layer's documents.
      */
     public ResolvedKit resolve(KitAccess access, KitInheritDto source) {
         List<Path> tmp = new ArrayList<>();
@@ -121,8 +128,8 @@ public class KitResolver {
         //    top layer last. We build a stack-style list so DFS-order
         //    becomes the desired application order.
         List<KitRepoLoader.LoadedKit> mergeOrder = new ArrayList<>();
-        collectInherits(access, top, visited, onPath, resolvedNames, tmp, warnings,
-                mergeOrder);
+        collectInherits(access, topResult.config().getId(), top, visited, onPath,
+                resolvedNames, tmp, mergeOrder);
         mergeOrder.add(top); // top layer applied last → wins
 
         // 2. Build the merged tree. Each layer is copy-on-top: same
@@ -161,19 +168,25 @@ public class KitResolver {
 
     private static OwnershipResult computeOwnership(
             List<KitRepoLoader.LoadedKit> mergeOrder, String topLayerName) {
-        // Scan each layer's declared paths once.
-        LinkedHashMap<String, LayerArtefacts> perLayerScan = new LinkedHashMap<>();
+        // Scan each layer's declared paths once, indexed by position rather
+        // than by descriptor name: the name is explicitly not an identifier
+        // (kits.md §4.1 — two vendors may both ship a kit called `security`),
+        // and a name-keyed map silently made the second layer's scan stand in
+        // for the first one's.
+        List<LayerArtefacts> perLayerScan = new ArrayList<>(mergeOrder.size());
+        LinkedHashSet<String> layerNames = new LinkedHashSet<>();
         for (KitRepoLoader.LoadedKit layer : mergeOrder) {
-            perLayerScan.put(layer.descriptor().getName(), scanLayer(layer.root()));
+            perLayerScan.add(scanLayer(layer.root()));
+            layerNames.add(layer.descriptor().getName());
         }
 
         // Walk in merge order, last-writer-wins per (category, path).
         Map<String, String> docOwner = new LinkedHashMap<>();
         Map<String, String> settingOwner = new LinkedHashMap<>();
         Map<String, String> toolOwner = new LinkedHashMap<>();
-        for (KitRepoLoader.LoadedKit layer : mergeOrder) {
-            String name = layer.descriptor().getName();
-            LayerArtefacts s = perLayerScan.get(name);
+        for (int i = 0; i < mergeOrder.size(); i++) {
+            String name = mergeOrder.get(i).descriptor().getName();
+            LayerArtefacts s = perLayerScan.get(i);
             for (String d : s.documents()) docOwner.put(d, name);
             for (String k : s.settings()) settingOwner.put(k, name);
             for (String t : s.tools()) toolOwner.put(t, name);
@@ -182,7 +195,7 @@ public class KitResolver {
         // Invert: build per-layer artefact lists out of the owner maps.
         LayerArtefacts topArtefacts = LayerArtefacts.empty();
         LinkedHashMap<String, LayerArtefacts> inheritArtefacts = new LinkedHashMap<>();
-        for (String layerName : perLayerScan.keySet()) {
+        for (String layerName : layerNames) {
             List<String> docs = ownedFor(docOwner, layerName);
             List<String> settings = ownedFor(settingOwner, layerName);
             List<String> tools = ownedFor(toolOwner, layerName);
@@ -239,12 +252,12 @@ public class KitResolver {
 
     private void collectInherits(
             KitAccess access,
+            String topSourceId,
             KitRepoLoader.LoadedKit layer,
             Set<String> visited,
             Set<String> onPath,
             LinkedHashSet<String> resolvedNames,
             List<Path> tmp,
-            List<String> warnings,
             List<KitRepoLoader.LoadedKit> mergeOrder) {
         List<KitInheritDto> inherits = layer.descriptor().getInherits();
         if (inherits == null || inherits.isEmpty()) return;
@@ -266,12 +279,22 @@ public class KitResolver {
                 Path dir = workspace.allocate("kit-inherit");
                 tmp.add(dir);
                 KitRepoLoader.LoadedKit loaded;
+                KitAccess layerAccess = accessFor(access, topSourceId, parent);
                 try {
-                    loaded = sourceLoaders.load(access, parent, dir);
+                    loaded = sourceLoaders.load(layerAccess, parent, dir);
                 } catch (KitException e) {
-                    warnings.add("failed to load inherit " + key + ": " + e.getMessage());
-                    log.warn("inherit load failed: {}", e.getMessage());
-                    continue;
+                    // Hard failure, not a warning. Nobody read the warnings —
+                    // the operation counted as successful — and the build tree
+                    // was then assembled *without* this layer. On an
+                    // `update --prune` every artefact the record attributes to
+                    // the missing layer is absent from the scan, so prune
+                    // deletes it: a thirty-second outage at the inherit's host
+                    // would wipe a whole layer's documents out of the project.
+                    // kits.md §11 says it plainly — no partial import, the whole
+                    // kit including its inherits or nothing.
+                    throw new KitException("failed to load inherit " + key
+                            + " — refusing a partial import (a missing layer would look"
+                            + " like artefacts the kit dropped): " + e.getMessage(), e);
                 }
                 // Spec kits.md §3.2 — sealed kits refuse to be inherited
                 // from. Hard fail so the user gets the actual reason rather
@@ -281,14 +304,51 @@ public class KitResolver {
                             + "' is sealed and cannot be inherited from (referenced as "
                             + key + ")");
                 }
-                collectInherits(access, loaded, visited, onPath, resolvedNames,
-                        tmp, warnings, mergeOrder);
+                collectInherits(layerAccess, topSourceId, loaded, visited, onPath,
+                        resolvedNames, tmp, mergeOrder);
                 mergeOrder.add(loaded);
                 resolvedNames.add(loaded.descriptor().getName());
             } finally {
                 onPath.remove(key);
             }
         }
+    }
+
+    /**
+     * The credential an inherit layer may be fetched with.
+     *
+     * <p>The token travels only as far as the source it belongs to. For a git
+     * kit the {@code inherits:} list is repository content somebody chose; for
+     * an {@code ode} kit the host composes it <b>per request</b>, so passing
+     * the top-level token down let the far end decide where our bearer token
+     * goes — {@code GitKitSourceLoader} hands it straight to JGit as a
+     * credential, so an inherit pointing at {@code attacker.example} would have
+     * been an exfiltration of the token in a git clone.
+     *
+     * <p>Compared over the resolved source id, not over the url: that is the
+     * unit the credential was configured for, and it keeps a host-level source
+     * covering several of its own repositories working. A layer from anywhere
+     * else is fetched anonymously — a private inherit under a different source
+     * then fails to clone, and that is the correct, visible outcome rather than
+     * a silent credential hand-off.
+     */
+    private KitAccess accessFor(KitAccess access, String topSourceId, KitInheritDto parent) {
+        if (access.token() == null || access.token().isBlank()) return access;
+        String parentSourceId;
+        try {
+            parentSourceId = sources.resolve(access.tenantId(), parent.getUrl()).getId();
+        } catch (KitException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            log.debug("Could not resolve a kit source for inherit '{}': {}",
+                    parent.getUrl(), e.toString());
+            return access.withToken(null);
+        }
+        if (topSourceId.equals(parentSourceId)) return access;
+        log.debug("kit inherit '{}' resolves to source '{}' rather than '{}' — fetching it"
+                + " without the top layer's credential", parent.getUrl(), parentSourceId,
+                topSourceId);
+        return access.withToken(null);
     }
 
     private static void markVisited(Set<String> visited, KitInheritDto source) {

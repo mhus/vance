@@ -320,16 +320,20 @@ public class SmtpShareHandler implements ShareHandler {
      * own line as a bare URL, which every mail client makes clickable without
      * us handing it any markup.
      */
-    private static String bodyOf(ShareScope scope, String reason) {
+    static String bodyOf(ShareScope scope, String reason) {
         StringBuilder out = new StringBuilder(reason.strip());
         String snippet = scope.subject().snippet();
         if (snippet != null) {
             if (out.length() > 0) out.append("\n\n");
-            for (String line : snippet.split("\n", -1)) {
-                out.append("> ").append(line).append('\n');
+            // Separator between lines rather than after them: trimming a
+            // trailing newline afterwards only ever worked because the defang
+            // guarantees the snippet has none, and a change there would have
+            // turned it into an off-by-one on an empty buffer.
+            String[] lines = snippet.split("\n", -1);
+            for (int i = 0; i < lines.length; i++) {
+                if (i > 0) out.append('\n');
+                out.append("> ").append(lines[i]);
             }
-            // Drop the trailing newline the loop leaves behind.
-            out.setLength(out.length() - 1);
         }
         String link = scope.subject().link();
         if (link != null) {

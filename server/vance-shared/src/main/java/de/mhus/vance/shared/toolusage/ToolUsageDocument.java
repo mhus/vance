@@ -31,6 +31,16 @@ import org.springframework.data.mongodb.core.mapping.Document;
  *
  * <p>{@code family} is denormalised so an operator can group by it in a
  * Mongo query without re-deriving the name rule.
+ *
+ * <p><b>No retention, deliberately.</b> Nothing deletes a row — not even
+ * for a {@code _user_<login>} project whose user is gone. Cardinality is
+ * (tenant × project × recipe × tool) and both repository queries are
+ * covered by the unique index, so an old row costs storage, not query
+ * time; and a row that is never written again simply stops influencing
+ * the ranking, because ordering is comparative. There is no project-delete
+ * path in the tree either, so a TTL here would be the only cleanup in a
+ * system that has none. When one arrives, pruning this collection belongs
+ * in it.
  */
 @Document(collection = "tool_usage_stats")
 @CompoundIndexes({

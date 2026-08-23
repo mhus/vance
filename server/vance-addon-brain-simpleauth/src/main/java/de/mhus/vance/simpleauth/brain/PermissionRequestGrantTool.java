@@ -9,6 +9,7 @@ import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -43,6 +44,25 @@ public class PermissionRequestGrantTool implements Tool {
     @Override
     public boolean primary() {
         return false;
+    }
+
+    /**
+     * Same treatment as the read-only {@code permission_grant_list}, and
+     * for a stronger reason: this one puts a CRITICAL item in an admin's
+     * inbox. {@code primary()} only steers engines without an allow-list —
+     * {@code ContextToolsApi.classify} reads {@link #deferred()} — so
+     * without both flags the full schema of a write-initiating tool sits
+     * in every classified turn's manifest while the harmless read tool is
+     * correctly held back.
+     */
+    @Override
+    public Set<String> labels() {
+        return Set.of("executive");
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
     }
 
     @Override

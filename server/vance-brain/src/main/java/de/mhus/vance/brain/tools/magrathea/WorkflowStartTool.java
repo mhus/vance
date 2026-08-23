@@ -1,6 +1,9 @@
 package de.mhus.vance.brain.tools.magrathea;
 
 import de.mhus.vance.brain.magrathea.MagratheaWorkflowService;
+import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowParseException;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
@@ -25,7 +28,9 @@ import org.springframework.stereotype.Component;
  * <p><b>Two ways in, one of them headless either way.</b> {@code name}
  * goes through the cascade, {@code path} names one document wherever it
  * lies — the same pair the engine offers, because an agent that can only
- * say one of them starts copying files to say the other. What the tool
+ * say one of them starts copying files to say the other. Wherever it lies,
+ * the plan must still be one an agent could not have authored — see
+ * {@link #requireAuthoredPlan}. What the tool
  * cannot do is make somebody wait for the run: it belongs to the project,
  * and everything the plan needs from a person goes to the inbox. A plan
  * whose questions should reach the conversation is spawned as a worker on
@@ -58,7 +63,10 @@ public class WorkflowStartTool implements Tool {
                 "description", "Document path of the plan inside this project, "
                         + "e.g. 'workflows/helloworld.yaml'. Starts exactly that "
                         + "document — no cascade, no copying required. Give either "
-                        + "'name' or 'path', not both."));
+                        + "'name' or 'path', not both. The document must be trusted "
+                        + "to execute: under _vance/workflows/, or marked "
+                        + "'$meta.privileged: true' by an administrator. A plan you "
+                        + "wrote yourself is not startable this way."));
         props.put("params", Map.of(
                 "type", "object",
                 "description", "Free-form caller params, validated against the "
@@ -74,6 +82,7 @@ public class WorkflowStartTool implements Tool {
     }
 
     private final MagratheaWorkflowService workflowService;
+    private final DocumentService documentService;
 
     @Override public String name() { return "workflow_start"; }
 
@@ -125,6 +134,9 @@ public class WorkflowStartTool implements Tool {
                             + "address one plan");
         }
         Map<String, Object> callerParams = readParamsMap(params);
+        if (path != null) {
+            requireAuthoredPlan(ctx.tenantId(), ctx.projectId(), path);
+        }
 
         String runId;
         try {
@@ -144,6 +156,46 @@ public class WorkflowStartTool implements Tool {
         result.put("workflowName", name != null ? name : stemOf(path));
         if (path != null) result.put("workflowPath", path);
         return result;
+    }
+
+    /**
+     * A plan an agent may run must be one an agent could not have written.
+     *
+     * <p>The name route had that property for free: {@code _vance/workflows/}
+     * is a reserved prefix, so writing there needs ADMIN (R4). The path route
+     * points anywhere in the project, and {@code documents/foo.yaml} is
+     * writable by any WRITER — including by the calling agent, one
+     * {@code doc_write} earlier. A plan is not inert data: {@code shell_task}
+     * runs a command through the {@code ExecManager} and {@code tool_task}
+     * calls the dispatcher directly, neither of which passes the recipe's
+     * tool filter. Self-authoring a plan would therefore be a way around
+     * exactly the tool set the recipe took away.
+     *
+     * <p>So the plan has to carry authority from somewhere the agent does not
+     * reach: it lives under the workflow prefix (ADMIN to write), or it is
+     * marked {@code $meta.privileged} — which is itself ADMIN to set and
+     * already the codebase's word for "this document may execute on
+     * somebody's behalf" ({@code DocumentService.enforcePrivilegedAdmin},
+     * Ursa's {@code runAs} gate). The REST route is untouched: there a person
+     * with {@code Project WRITE} is asking, and location was never a
+     * condition of execution there ({@code workflows.md} §8.7).
+     */
+    private void requireAuthoredPlan(String tenantId, String projectId, String path) {
+        if (path.startsWith(MagratheaWorkflowLoader.WORKFLOW_PATH_PREFIX)) {
+            return;
+        }
+        DocumentDocument doc = documentService.findByPath(tenantId, projectId, path)
+                .orElseThrow(() -> new ToolException(
+                        "No document at '" + path + "' in project '" + projectId + "'"));
+        if (!doc.isPrivileged()) {
+            throw new ToolException(
+                    "Refusing to start '" + path + "': a plan started from a tool must be "
+                            + "trusted to execute. Either move it to "
+                            + MagratheaWorkflowLoader.WORKFLOW_PATH_PREFIX
+                            + "<name>.yaml and start it by 'name', or have an administrator "
+                            + "mark it with '$meta.privileged: true'. A person can start any "
+                            + "plan document from the workflow screen.");
+        }
     }
 
     private static @org.jspecify.annotations.Nullable String trimmedOrNull(

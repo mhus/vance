@@ -3,6 +3,7 @@ package de.mhus.vance.brain.zarniwoop.protocols;
 import de.mhus.vance.brain.tools.web.ImageValidatorService;
 import de.mhus.vance.brain.tools.web.YouTubeValidatorService;
 import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.research.ProviderInstanceConfig;
 import de.mhus.vance.toolpack.research.SearchModality;
 import de.mhus.vance.toolpack.research.SearchProtocol;
@@ -33,6 +34,7 @@ public class SerperProtocol implements SearchProtocol {
     public static final String ID = "serper";
 
     private final SettingService settings;
+    private final SecretResolver secretResolver;
     private final ObjectMapper objectMapper;
     private final SerperHttpClient http;
     private final ImageValidatorService imageValidator;
@@ -41,10 +43,11 @@ public class SerperProtocol implements SearchProtocol {
 
     @Autowired
     public SerperProtocol(SettingService settings,
+                          SecretResolver secretResolver,
                           ObjectMapper objectMapper,
                           ImageValidatorService imageValidator,
                           YouTubeValidatorService youtubeValidator) {
-        this(settings, objectMapper,
+        this(settings, secretResolver, objectMapper,
                 new SerperHttpClient.JdkSerperHttpClient(),
                 imageValidator, youtubeValidator,
                 new SerperPdfHeadProbe.JdkPdfHeadProbe());
@@ -52,12 +55,14 @@ public class SerperProtocol implements SearchProtocol {
 
     /** Test-seam constructor — accepts a recording HTTP client + custom probe. */
     SerperProtocol(SettingService settings,
+                   SecretResolver secretResolver,
                    ObjectMapper objectMapper,
                    SerperHttpClient http,
                    ImageValidatorService imageValidator,
                    YouTubeValidatorService youtubeValidator,
                    SerperPdfHeadProbe pdfHeadProbe) {
         this.settings = settings;
+        this.secretResolver = secretResolver;
         this.objectMapper = objectMapper;
         this.http = http;
         this.imageValidator = imageValidator;
@@ -100,7 +105,7 @@ public class SerperProtocol implements SearchProtocol {
                     "SerperProtocol cannot instantiate config with protocol '"
                             + cfg.protocolId() + "'");
         }
-        return new SerperInstance(cfg, settings, objectMapper, http,
+        return new SerperInstance(cfg, settings, secretResolver, objectMapper, http,
                 imageValidator, youtubeValidator, pdfHeadProbe);
     }
 }

@@ -68,7 +68,11 @@ import org.springframework.stereotype.Service;
  * applies to <em>both</em> paths. Once connectors can resolve PASSWORD, the type
  * no longer keeps a reference away from {@code ai.provider.*.apiKey} — and a
  * connector document declares its target URL next to its headers. Reserved keys
- * are refused by name, before any scope is consulted.
+ * are refused by name, before any scope is consulted. The {@code vault:} scope is
+ * the one exception <em>at this layer</em>, because the key belongs to the
+ * vault's namespace rather than ours; the settings-backed vault
+ * ({@code SettingsVaultProvider}), whose keys <em>are</em> setting keys, runs the
+ * same policy itself.
  *
  * <p>Unresolved references substitute to the empty string with a
  * {@code WARN} log line — REST calls that depend on the auth header
@@ -160,10 +164,16 @@ public class SettingsSecretResolver implements SecretResolver {
             // pointing an Authorization header at ai.provider.*.apiKey and
             // sending it to whatever URL that same document declares.
             //
-            // Not applied to `vault:` — that key names an entry in the vault's
-            // own namespace, not a setting, and its resolution reads HIDDEN
-            // settings at most. Matching setting patterns against it would
-            // deny an unrelated key that merely spells the same.
+            // Not applied to `vault:` *here* — that key names an entry in the
+            // vault's own namespace, and an Infisical secret that happens to be
+            // called `ai.provider.openai.apiKey` is not the setting of that
+            // name; denying it would be a refusal based on a coincidence of
+            // spelling. The exception is only honest as long as the namespace
+            // really is foreign, which stopped being true for the default
+            // installation when SettingsVaultProvider became the fallback — so
+            // that provider applies the very same policy to the keys it reads,
+            // where they *are* setting keys. The barrier holds on both paths;
+            // it just sits at the place that knows whose namespace it is.
             referenceKeyPolicy.requireReferenceReadable(scoped.key());
         }
         return switch (scoped.scope()) {

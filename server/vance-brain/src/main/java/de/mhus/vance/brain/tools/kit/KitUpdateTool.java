@@ -106,7 +106,7 @@ public class KitUpdateTool implements Tool {
         }
         String projectId = KitToolSupport.requireProjectAuthorized(ctx,
                 KitToolSupport.optionalString(params, "project"),
-                permissionService, contextFactory, de.mhus.vance.shared.permission.Action.WRITE);
+                permissionService, contextFactory, de.mhus.vance.shared.permission.Action.ADMIN);
         String token = KitToolSupport.optionalString(params, "token");
         String vaultPassword = KitToolSupport.optionalString(params, "vault_password");
         boolean prune = KitToolSupport.optionalBoolean(params, "prune");

@@ -142,14 +142,35 @@ public class IssuesApplication implements VanceApplication {
         String folder = IssuesFolderReader.normaliseFolder(ctx.folder());
         String title = ctx.intake().title();
         if (title == null || title.isBlank()) title = "Shared item";
+
+        // Read before writing. Scanning afterwards — only to fetch a label —
+        // meant that a manifest deleted in the meantime turned into a
+        // ToolException *after* the issue existed: the façade maps only the
+        // Share* exceptions, so the user saw HTTP 500, shared again, and got
+        // a second issue with a new number.
+        String label = appLabel(
+                folderReader.scan(ctx.tenantId(), ctx.projectName(), folder), folder);
         issuesService.createIssue(ctx.tenantId(), ctx.projectName(), folder, title,
                 null, null, null, ctx.body(), ctx.userId());
 
-        IssuesFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), ctx.projectName(), folder);
-        String label = scan.config().title();
-        if (label == null || label.isBlank()) label = leafFolderName(folder);
         // Always created: an issue gets its own number, nothing is merged.
         return new ShareIntakeResult(true, label);
+    }
+
+    /**
+     * The name the chooser showed. That list is built from the starred
+     * item's title, which falls back to the <em>document</em> title of the
+     * manifest — and {@code issues_app_create} without a {@code title}
+     * writes no {@code title:} line at all while setting the document title
+     * to "Issues". Reading only the YAML field therefore produced "Added to
+     * &lt;folder&gt;" under a chooser entry that said "Issues".
+     */
+    private static String appLabel(IssuesFolderReader.Scan scan, String folder) {
+        String docTitle = scan.manifest().getTitle();
+        if (docTitle != null && !docTitle.isBlank()) return docTitle;
+        String configured = scan.config().title();
+        if (configured != null && !configured.isBlank()) return configured;
+        return leafFolderName(folder);
     }
 
     @Override

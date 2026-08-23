@@ -114,6 +114,38 @@ class LinksIndexTest {
         assertThat(md).contains("Auto-generated");
     }
 
+    @Test
+    void aMultilineTitleBecomesOneLineSoTheMarkdownLinkSurvives() {
+        // Escaping keeps a `]` from ending the label early, but a newline ends
+        // the list item itself: the rest of the title lands as a loose
+        // paragraph next to a bare URL in brackets. And the title is precisely
+        // the field that comes off the foreign page.
+        LinksConfig config = new LinksConfig(List.of(), List.of(
+                entry("https://a.example/", "Async Rust\n\nrevisited", null)),
+                LinksConfig.DEFAULT_INDEX);
+
+        String md = LinksApplication.renderIndex(config, "Reading");
+
+        assertThat(md).contains("- [Async Rust revisited](https://a.example/)");
+    }
+
+    @Test
+    void aBackslashInTheManifestTitleStaysAValidYamlScalar() {
+        // `title: "Docs\Links — Index"` is an invalid escape sequence, and a
+        // generated page whose $meta does not parse is no longer a workpage.
+        String md = LinksApplication.renderIndex(LinksConfig.empty(), "Docs\\Links");
+
+        assertThat(md).contains("title: \"Docs\\\\Links — Index\"");
+    }
+
+    @Test
+    void aMultilineManifestTitleDoesNotSplitTheHeader() {
+        String md = LinksApplication.renderIndex(LinksConfig.empty(), "Reading\nlist");
+
+        assertThat(md).contains("title: \"Reading list — Index\"");
+        assertThat(md).contains("# Reading list\n");
+    }
+
     private static LinkEntry entry(String url, String title, String group) {
         return new LinkEntry(url, title, null, null, group, List.of(), null, null);
     }

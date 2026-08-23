@@ -25,7 +25,7 @@ const variables = computed(() => Object.entries(props.detail.variables ?? {}));
 /** Where a link points, per rel. The run view never renders those itself. */
 function href(rel: string, target: string): string {
   const project = encodeURIComponent(props.projectId);
-  if (rel === 'session') return `/chat.html?project=${project}&session=${encodeURIComponent(target)}`;
+  if (rel === 'session') return `/chat.html?project=${project}&sessionId=${encodeURIComponent(target)}`;
   // definition / document both open in Cortex by path.
   return `/cortex.html?project=${project}&path=${encodeURIComponent(target)}`;
 }

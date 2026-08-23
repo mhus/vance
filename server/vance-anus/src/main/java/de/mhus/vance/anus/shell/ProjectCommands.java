@@ -3,6 +3,7 @@ package de.mhus.vance.anus.shell;
 import de.mhus.vance.anus.access.RequiresAuth;
 import de.mhus.vance.anus.brain.AnusBrainClient;
 import de.mhus.vance.anus.brain.AnusBrainClient.Response;
+import de.mhus.vance.shared.project.LifecycleType;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import java.util.Arrays;
@@ -138,12 +139,23 @@ public class ProjectCommands {
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "name", shortName = 'n', required = true) String name,
             @Option(longName = "value", shortName = 'v', required = true) String value) {
+        // Parsed here rather than concatenated into the body: an unknown or
+        // quote-carrying value would otherwise travel as malformed JSON and
+        // come back as an unexplained 400 instead of a CLI message naming
+        // the choices.
+        LifecycleType parsed;
+        try {
+            parsed = LifecycleType.valueOf(value.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return "Set lifecycle-type FAILED — unknown value '" + value.trim()
+                    + "'. Expected one of: " + Arrays.toString(LifecycleType.values());
+        }
         // Brain-orchestrated like suspend/resume: the value decides whether the
         // cluster keeps the project placed, so the Brain has to see the change
         // rather than find it later in the document.
         Response response = brainClient.post(
                 tenant, "/brain/" + tenant + "/admin/projects/" + name + "/lifecycle-type",
-                "{\"lifecycleType\":\"" + value.trim().toUpperCase() + "\"}");
+                "{\"lifecycleType\":\"" + parsed.name() + "\"}");
         return formatResponse("Set lifecycle-type", tenant, name, response);
     }
 

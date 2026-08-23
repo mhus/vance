@@ -140,5 +140,49 @@ class TrillianPeerLifecycleTest {
 
         assertThat(now).isEqualTo(ThinkProcessStatus.PAUSED);
         verify(thinkProcessService, never()).updateStatus(any(), any());
+        verify(thinkProcessService, never()).requestHalt(any());
+    }
+
+    @Test
+    void pausePeer_raisesTheHaltFlag_soAMidTurnLoopBailsOut() {
+        // The status write runs on the peer's lane and therefore behind the
+        // very turn being stopped. The out-of-band flag is the only channel
+        // a running engine reads in time.
+        api.pausePeer(peer(ThinkProcessStatus.RUNNING));
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(thinkProcessService);
+        order.verify(thinkProcessService).requestHalt(PEER_ID);
+        order.verify(thinkProcessService).updateStatus(PEER_ID, ThinkProcessStatus.PAUSED);
+        order.verify(thinkProcessService).clearHalt(PEER_ID);
+    }
+
+    @Test
+    void pausePeer_doesNotWaitForTheLane() {
+        // `//trillian stop` runs inline on the WebSocket receive thread
+        // (TrillianCommandHandler.runsOnLane() == false). Waiting for the
+        // peer lane there means waiting for exactly the turn being stopped
+        // — the client hears nothing for the length of a model call.
+        // doReturn, not when(...): re-stubbing with when() calls the mock for
+        // real, which would run setUp's inline answer with null arguments.
+        org.mockito.Mockito.doReturn(new CompletableFuture<>())
+                .when(laneScheduler)
+                .submit(anyString(), ArgumentMatchers.<Callable<Object>>any());
+
+        ThinkProcessStatus now = org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(
+                java.time.Duration.ofSeconds(2),
+                () -> api.pausePeer(peer(ThinkProcessStatus.RUNNING)));
+
+        assertThat(now).isEqualTo(ThinkProcessStatus.PAUSED);
+        verify(thinkProcessService).requestHalt(PEER_ID);
+    }
+
+    @Test
+    void resumePeer_clearsTheHaltFlag() {
+        // A pause that never reached a turn leaves the flag standing; an
+        // un-paused peer would then bail at the first loop-head check of
+        // the turn it was just woken for.
+        api.resumePeer(peer(ThinkProcessStatus.PAUSED));
+
+        verify(thinkProcessService).clearHalt(PEER_ID);
     }
 }

@@ -54,10 +54,14 @@ public interface RunSource {
     Optional<RunDetailDto> get(String tenantId, String projectId, String nativeId);
 
     /**
-     * What may be done to this run right now. Default: nothing, which is
-     * the honest answer for every source in v1 — the read surface ships
-     * before the control surface, and a source that cannot stop anything
-     * should not offer a button that throws.
+     * What may be done to this run right now — derived from the run's
+     * current state, not declared per source
+     * ({@code specification/public/runs-view.md} §6). All three built-in
+     * sources override it.
+     *
+     * <p>Default: nothing, which is the honest answer for a source that
+     * cannot control anything — a button that throws is worse than no
+     * button, and {@link #perform} below is what it would have called.
      */
     default Set<RunAction> allowedActions(String tenantId, String projectId, String nativeId) {
         return Set.of();
@@ -84,8 +88,9 @@ public interface RunSource {
      * <p>Override when some of your runs sit behind something narrower — a
      * session, a document, one person's conversation. The paragraph on
      * authorisation above says that is the source's job; this is where the
-     * job gets done, and the registry applies it to both listing and
-     * lookup so a source cannot secure one and forget the other.
+     * job gets done, and the registry applies it to listing, lookup,
+     * {@link #allowedActions} and {@link #perform} alike, so a source cannot
+     * secure one and forget the other.
      */
     default boolean visibleTo(
             de.mhus.vance.shared.permission.SecurityContext subject,

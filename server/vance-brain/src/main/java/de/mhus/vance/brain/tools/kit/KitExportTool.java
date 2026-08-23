@@ -92,10 +92,11 @@ public class KitExportTool implements Tool {
         }
         String projectId = KitToolSupport.requireProjectAuthorized(ctx,
                 KitToolSupport.optionalString(params, "project"),
-                permissionService, contextFactory, de.mhus.vance.shared.permission.Action.READ);
+                permissionService, contextFactory, de.mhus.vance.shared.permission.Action.ADMIN);
         KitExportRequestDto request = KitExportRequestDto.builder()
                 .projectId(projectId)
-                .url(KitToolSupport.optionalString(params, "url"))
+                .url(KitToolSupport.requireRemoteUrlIfPresent(
+                        KitToolSupport.optionalString(params, "url"), "kit_export"))
                 .path(KitToolSupport.optionalString(params, "path"))
                 .branch(KitToolSupport.optionalString(params, "branch"))
                 .token(KitToolSupport.optionalString(params, "token"))

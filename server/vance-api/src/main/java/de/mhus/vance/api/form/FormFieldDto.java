@@ -131,6 +131,20 @@ public class FormFieldDto {
      * time. When falsy, the field is hidden in the UI and treated as
      * absent for required/bindsTo enforcement (its value remains in
      * the Pebble context though). {@code null} = always visible.
+     *
+     * <p>Enforcement is split, because the expression can only be evaluated
+     * where a Pebble renderer and the full value context exist:
+     * <ul>
+     *   <li><b>bindsTo</b> — exactly: the apply-time plan builder evaluates the
+     *       expression and skips the binding of a field that came out falsy.</li>
+     *   <li><b>required</b> — conservatively: the structural validator is
+     *       renderer-free, so it exempts <em>every</em> field carrying a
+     *       {@code showIf} from the required check rather than guessing. A
+     *       conditional field is therefore never rejected as missing, whether or
+     *       not its condition happens to hold.</li>
+     * </ul>
+     * Marking a conditional field {@code required} is consequently a statement of
+     * intent for the UI, not a server-side guarantee.
      */
     private @Nullable String showIf;
 

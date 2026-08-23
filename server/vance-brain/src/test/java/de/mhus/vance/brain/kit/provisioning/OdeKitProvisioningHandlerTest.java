@@ -233,6 +233,22 @@ class OdeKitProvisioningHandlerTest {
     }
 
     @Test
+    void discover_mailtoUrl_failsAsAKitExceptionNotAn500() {
+        // SafeLink's allow-list includes mailto: — it answers "may a human be
+        // shown this". As a request target it would reach
+        // HttpRequest.newBuilder and throw an IllegalArgumentException nobody
+        // catches, i.e. a 500 instead of the explained 400.
+        KitProvisioningContext ctx = new KitProvisioningContext("acme", "sales",
+                new KitProvisioningEntry("ode", "mailto:ops@example.com", null,
+                        KitProvisioningAuthority.NOTIFY, Map.of()));
+
+        assertThatThrownBy(() -> handler.discover(ctx))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("not an http(s) endpoint");
+        assertThat(authHeaders).isEmpty();
+    }
+
+    @Test
     void discover_trailingSlashInUrl_stillReachesTheEndpoint() {
         KitProvisioningContext ctx = new KitProvisioningContext("acme", "sales",
                 new KitProvisioningEntry("ode", baseUrl() + "/", null,

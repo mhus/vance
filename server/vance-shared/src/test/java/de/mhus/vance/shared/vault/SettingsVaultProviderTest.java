@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.settings.SecretAccessDeniedException;
+import de.mhus.vance.shared.settings.SecretReferenceKeyPolicy;
 import de.mhus.vance.shared.settings.SettingService;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -31,7 +32,8 @@ class SettingsVaultProviderTest {
             new VaultBinding(SettingsVaultProvider.TYPE, "", Map.of(), null);
 
     private final SettingService settingService = mock(SettingService.class);
-    private final SettingsVaultProvider provider = new SettingsVaultProvider(settingService);
+    private final SettingsVaultProvider provider = new SettingsVaultProvider(
+            settingService, new SecretReferenceKeyPolicy("ai.provider.*,vault.*"));
 
     @Test
     void it_registers_under_the_settings_type_and_needs_no_endpoint() {
@@ -64,6 +66,44 @@ class SettingsVaultProviderTest {
         assertThatThrownBy(() ->
                 provider.readSecret(BINDING, SCOPE, "ai.provider.default.apiKey"))
                 .isInstanceOf(SecretAccessDeniedException.class);
+    }
+
+    @Test
+    void read_of_a_reserved_key_is_refused_by_name_before_any_lookup() {
+        // The second barrier, and the reason it has to sit *here*: the resolver
+        // exempts the whole `vault:` scope from the key deny-list, on the
+        // reasoning that a vault key names an entry in a foreign namespace. That
+        // reasoning stopped covering the default installation the moment this
+        // provider became the fallback — the key it gets *is* a setting key.
+        // Without this, a provider key mis-typed as HIDDEN (the realistic
+        // mis-pick in the admin UI) would be readable through
+        // {{secret:vault:ai.provider.openai.apiKey}} while the identical
+        // {{secret:project:…}} reference is refused.
+        assertThatThrownBy(() ->
+                provider.readSecret(BINDING, SCOPE, "ai.provider.openai.apiKey"))
+                .isInstanceOf(SecretAccessDeniedException.class)
+                .hasMessageContaining("ai.provider.openai.apiKey");
+
+        verify(settingService, never()).getReferenceSecretCascade(
+                eq(TENANT), eq(PROJECT), eq(null), eq("ai.provider.openai.apiKey"));
+    }
+
+    @Test
+    void read_of_the_vault_binding_itself_is_refused() {
+        // vault.* is on the same list: the binding credential must not be
+        // resolvable through the vault it configures.
+        assertThatThrownBy(() -> provider.readSecret(BINDING, SCOPE, "vault.clientSecret"))
+                .isInstanceOf(SecretAccessDeniedException.class);
+    }
+
+    @Test
+    void read_of_an_ordinary_key_is_untouched_by_the_deny_list() {
+        when(settingService.getReferenceSecretCascade(TENANT, PROJECT, null, "kit.token.acme"))
+                .thenReturn("tok");
+
+        // kit.token.* is deliberately absent from the reference deny-list —
+        // provisioning resolves exactly that key. The guard must not widen.
+        assertThat(provider.readSecret(BINDING, SCOPE, "kit.token.acme")).isEqualTo("tok");
     }
 
     @Test

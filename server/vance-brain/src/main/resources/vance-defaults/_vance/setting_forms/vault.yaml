@@ -55,12 +55,16 @@ fields:
       - value: "infisical"
         label: { de: "Infisical", en: "Infisical" }
 
-  # ─── Connection ──────────────────────────────────────────────────
+  # ─── Connection (Infisical only) ─────────────────────────────────
+  # None of the fields below carries `required: true`, on purpose: the
+  # form validator is unaware of `showIf`, so a required Infisical field
+  # would make the form unsavable for the default provider `settings` —
+  # the one that needs no connection at all. Their necessity is stated in
+  # the help texts and enforced by the provider at resolve time.
 
   - name: baseUrl
     showIf: "type == 'infisical'"
     type: string
-    required: true
     defaultValue: "https://app.infisical.com"
     label:
       de: "Basis-URL"
@@ -76,27 +80,29 @@ fields:
   - name: project
     showIf: "type == 'infisical'"
     type: string
-    required: true
     label:
       de: "Projekt-ID"
       en: "Project ID"
     help:
-      de: "Infisical Project- (Workspace-) ID, aus der Secrets gelesen werden."
-      en: "Infisical project (workspace) ID to read secrets from."
+      de: "Infisical Project- (Workspace-) ID, aus der Secrets gelesen werden.
+           Pflicht, wenn `Infisical` gewählt ist."
+      en: "Infisical project (workspace) ID to read secrets from. Required
+           when `Infisical` is selected."
     bindsTo:
       key: "vault.project"
 
   - name: environment
     showIf: "type == 'infisical'"
     type: string
-    required: true
     defaultValue: "prod"
     label:
       de: "Environment"
       en: "Environment"
     help:
-      de: "Infisical-Environment-Slug, z.B. `prod`, `staging`, `dev`."
-      en: "Infisical environment slug, e.g. `prod`, `staging`, `dev`."
+      de: "Infisical-Environment-Slug, z.B. `prod`, `staging`, `dev`.
+           Pflicht, wenn `Infisical` gewählt ist."
+      en: "Infisical environment slug, e.g. `prod`, `staging`, `dev`. Required
+           when `Infisical` is selected."
     bindsTo:
       key: "vault.environment"
 
@@ -118,33 +124,34 @@ fields:
   - name: clientId
     showIf: "type == 'infisical'"
     type: string
-    required: true
     label:
       de: "Machine-Identity Client-ID"
       en: "Machine identity client ID"
     help:
       de: "Client-ID der Infisical Machine Identity (Universal Auth). Die
            Identity braucht mindestens Read-Zugriff auf das Projekt/Environment.
-           Write-Zugriff nur, wenn Secret-Generierung/-Schreiben genutzt wird."
+           Write-Zugriff nur, wenn Secret-Generierung/-Schreiben genutzt wird.
+           Pflicht, wenn `Infisical` gewählt ist."
       en: "Client ID of the Infisical machine identity (Universal Auth). The
            identity needs at least read access to the project/environment.
-           Write access only if secret generation/writing is used."
+           Write access only if secret generation/writing is used. Required
+           when `Infisical` is selected."
     bindsTo:
       key: "vault.clientId"
 
   - name: clientSecret
     showIf: "type == 'infisical'"
     type: password
-    required: true
     label:
       de: "Machine-Identity Client-Secret"
       en: "Machine identity client secret"
     help:
       de: "Client-Secret der Machine Identity. Verschlüsselt gespeichert,
            nie zurückgelesen. Leer lassen, um ein bestehendes Secret nicht
-           zu überschreiben."
+           zu überschreiben. Pflicht, wenn `Infisical` gewählt ist."
       en: "Client secret of the machine identity. Stored encrypted, never
-           read back. Leave empty to keep an existing secret unchanged."
+           read back. Leave empty to keep an existing secret unchanged.
+           Required when `Infisical` is selected."
     bindsTo:
       key: "vault.clientSecret"
 

@@ -30,6 +30,7 @@ class ModelCatalogAdminControllerTest {
     private ModelCatalog catalog;
     private ModelDiscoveryService discoveryService;
     private RequestAuthority authority;
+    private de.mhus.vance.brain.tools.budget.ObservedToolLimitRegistry observedToolLimits;
     private ModelCatalogAdminController controller;
     private HttpServletRequest request;
 
@@ -40,7 +41,9 @@ class ModelCatalogAdminControllerTest {
         catalog = new ModelCatalog(documentService, new ModelQuirks());
         discoveryService = mock(ModelDiscoveryService.class);
         authority = mock(RequestAuthority.class);
-        controller = new ModelCatalogAdminController(catalog, discoveryService, authority);
+        observedToolLimits = new de.mhus.vance.brain.tools.budget.ObservedToolLimitRegistry();
+        controller = new ModelCatalogAdminController(
+                catalog, discoveryService, observedToolLimits, authority);
         request = mock(HttpServletRequest.class);
     }
 
@@ -48,6 +51,23 @@ class ModelCatalogAdminControllerTest {
     void refresh_enforces_admin_authority_on_tenant() {
         controller.refresh(TENANT, request);
 
+        verify(authority).enforce(eq(request),
+                eq(new Resource.Tenant(TENANT)),
+                eq(Action.ADMIN));
+    }
+
+    @Test
+    void forgetToolLimits_dropsWhatThePodLearned_andSaysHowMuch() {
+        // The registry has no TTL and keeps the smallest value ever seen,
+        // so a mis-parsed number would otherwise cap that model until the
+        // pod restarts. This is the way back.
+        observedToolLimits.learnFrom("openai:gpt-x", "maximum length 128", 163);
+
+        ModelCatalogAdminController.ForgetToolLimitsResult result =
+                controller.forgetToolLimits(TENANT, request);
+
+        assertThat(result.forgotten()).isEqualTo(1);
+        assertThat(observedToolLimits.observedFor("openai:gpt-x")).isEmpty();
         verify(authority).enforce(eq(request),
                 eq(new Resource.Tenant(TENANT)),
                 eq(Action.ADMIN));

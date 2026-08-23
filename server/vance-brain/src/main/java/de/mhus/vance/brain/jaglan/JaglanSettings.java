@@ -3,11 +3,18 @@ package de.mhus.vance.brain.jaglan;
 /**
  * Setting keys for mount configuration.
  *
- * <p>Project-scoped and deliberately <b>not</b> cascading to {@code _tenant}:
- * a mount makes foreign content appear under a project path, and the decision
- * which project sees which source belongs to that project alone. It also keeps
- * {@code lookupCascade} and {@code listByPrefixCascade} — 100-plus call sites
- * between them — free of any mount awareness.
+ * <p><b>Two cascades, not to be confused.</b> These <i>settings</i> cascade
+ * {@code _tenant} → project, like Zarniwoop's and Centauri's: a mount
+ * configured in {@code _tenant} applies to <b>every</b> project of the tenant
+ * (a house library is configured once), and a project overrides the same mount
+ * name or switches it off for itself with {@code .enabled=false}. The
+ * consequence is worth knowing — a {@code _tenant} mount shows up in
+ * {@code _user_*} projects too; whoever does not want that configures per
+ * project.
+ *
+ * <p>The <i>documents</i> do not cascade: {@code _ext} paths never appear in
+ * {@code lookupCascade} or {@code listByPrefixCascade} (100-plus call sites
+ * between them), which stay free of any mount awareness.
  */
 public final class JaglanSettings {
 

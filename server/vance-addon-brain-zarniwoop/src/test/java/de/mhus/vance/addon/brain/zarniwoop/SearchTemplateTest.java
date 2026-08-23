@@ -73,15 +73,35 @@ class SearchTemplateTest {
 
     @Test
     void rendered_numberArrivesAsANumberNotAQuotedString() {
-        // The form field is a string (that is what the form engine offers), so
-        // the template has to hand YAML something it reads back as a number.
-        // SearchConfig tolerates both, but a quoted count here would mean the
-        // manifest and the app disagree about the type on every read.
+        // The template puts the count at a bare YAML integer position, so the
+        // rendered manifest has to read back as a number. SearchConfig
+        // tolerates both, but a quoted count here would mean the manifest and
+        // the app disagree about the type on every read. The form field is
+        // typed `integer` so that nothing but a number can reach this spot.
         Map<String, Object> vars = new HashMap<>();
         vars.put("title", "Suche");
         vars.put("defaultNum", "7");
 
         assertThat(render(vars)).contains("defaultNum: 7");
+    }
+
+    @Test
+    void rendered_titleWithQuotesStaysValidYaml() {
+        // Free text goes straight into a YAML scalar. Before the template
+        // quoted defensively, `"Später" lesen` produced `title: ""Später"
+        // lesen"` — a manifest that no longer parses, written without a
+        // complaint because the application kind has no validate.
+        String hostile = "\"Später\" lesen \\ it's fine";
+        Map<String, Object> vars = new HashMap<>();
+        vars.put("title", hostile);
+        vars.put("description", "a 'quoted' one");
+        vars.put("defaultModality", "news");
+
+        ApplicationDocument doc = parse(render(vars));
+
+        assertThat(doc.title()).isEqualTo(hostile);
+        assertThat(doc.description()).isEqualTo("a 'quoted' one");
+        assertThat(SearchConfig.from(doc).defaultModality()).isEqualTo(SearchModality.NEWS);
     }
 
     // ── helpers ──────────────────────────────────────────────────────

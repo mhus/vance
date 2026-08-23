@@ -148,17 +148,31 @@ public class OdeKitSourceLoader implements KitSourceLoader {
                     + " should build (source " + config.getId() + ")");
         }
 
+        // The *reference's* url, not the source configuration's. Sources are
+        // matched by longest url prefix, so a host configured once as
+        // `https://crm.example` legitimately covers a reference to
+        // `https://crm.example/tenants/acme` — building from the configuration
+        // url would then POST to the wrong tenant's endpoint (or a 404), and
+        // the tool base url baked into the delivered kit would name a host we
+        // never talked to. The configuration keeps deciding type, policy and
+        // key; the reference decides the address. Spec §12a.6: "the url we
+        // reached it under".
+        String referenceUrl = StringUtils.isNotBlank(source.getUrl())
+                ? source.getUrl() : config.getUrl();
         // Checked once, here, because the same string is both the request
         // target and a value substituted into files that become tool
-        // definitions. A `javascript:` base url is nonsense in either role.
+        // definitions. A `javascript:` base url is nonsense in either role;
+        // SafeLink also passes `mailto:`, which is fine to show a human and
+        // not a request target, so http(s) is required on top.
         String accessUrl;
         try {
-            accessUrl = SafeLink.require(KitArchive.trimTrailingSlash(config.getUrl()));
+            accessUrl = requireHttpEndpoint(
+                    SafeLink.require(KitArchive.trimTrailingSlash(referenceUrl)), config);
         } catch (SafeLink.UnsafeLinkException e) {
             throw new KitException("ode source '" + config.getId()
                     + "' has a url that is not usable as an endpoint: " + e.getMessage(), e);
         }
-        URI uri = URI.create(accessUrl + BUILD_PATH);
+        URI uri = endpoint(accessUrl, BUILD_PATH, config);
         String body = serialise(new BuildRequest(
                 kitId,
                 StringUtils.trimToNull(instance.getName()),
@@ -172,10 +186,18 @@ public class OdeKitSourceLoader implements KitSourceLoader {
         log.debug("OdeKitSourceLoader: building '{}' at {} for {}/{}",
                 kitId, uri, access.tenantId(), access.projectId());
 
-        HttpRequest.Builder request = HttpRequest.newBuilder(uri)
-                .timeout(TIMEOUT)
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body));
+        HttpRequest.Builder request;
+        try {
+            request = HttpRequest.newBuilder(uri)
+                    .timeout(TIMEOUT)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body));
+        } catch (IllegalArgumentException e) {
+            // Hostless or otherwise unusable target — same reasoning as
+            // endpoint(): a named KitException beats an unhandled 500.
+            throw new KitException("ode source '" + config.getId() + "' url '" + accessUrl
+                    + "' is not a usable request target: " + e.getMessage(), e);
+        }
         // Optional on purpose: a company host on an internal network is a
         // legitimate configuration, and a library's „no token, no tenant"
         // reasoning does not transfer — the tenant is in the body.
@@ -259,6 +281,12 @@ public class OdeKitSourceLoader implements KitSourceLoader {
 
         Map<String, Object> context = new LinkedHashMap<>();
         context.put("accessUrl", accessUrl);
+        // Declared in planning/kit-ode-provisioning.md §4 as part of the fixed
+        // variable set and missing here: with strictVariables=false a template
+        // saying {{ installId }} rendered empty instead of failing, which is
+        // the right behaviour for a typo and the wrong one for a documented
+        // variable.
+        context.put("installId", access.installId());
         context.put("tenant", access.tenantId());
         context.put("project", access.projectId());
         context.put("instance", StringUtils.trimToNull(instance.getName()));
@@ -292,6 +320,40 @@ public class OdeKitSourceLoader implements KitSourceLoader {
             }
         }
         log.debug("OdeKitSourceLoader: rendered {} declared file(s)", declared.size());
+    }
+
+    /**
+     * {@link SafeLink} answers "may I put this in front of a person" and lets
+     * {@code mailto:} through. Here the url is a POST target:
+     * {@code HttpRequest.newBuilder} would throw an
+     * {@code IllegalArgumentException} that nothing catches, so the caller sees
+     * a 500 instead of the explained 400.
+     */
+    /**
+     * Build the request target, naming the problem if the url will not parse.
+     *
+     * <p>{@code SafeLink} no longer parses its input as a {@code java.net.URI}
+     * — that strictness rejected legitimate addresses, and its question was
+     * never "is this a usable request target" anyway. So the check belongs
+     * here, where an {@code IllegalArgumentException} would otherwise surface
+     * as an unhandled 500 rather than the explained 400.
+     */
+    private static URI endpoint(String base, String path, KitSourceDto config) {
+        try {
+            return URI.create(base + path);
+        } catch (IllegalArgumentException e) {
+            throw new KitException("ode source '" + config.getId() + "' url '" + base
+                    + "' is not a usable request target: " + e.getMessage(), e);
+        }
+    }
+
+    private static String requireHttpEndpoint(String url, KitSourceDto config) {
+        String lower = url.toLowerCase(java.util.Locale.ROOT);
+        if (!lower.startsWith("http://") && !lower.startsWith("https://")) {
+            throw new KitException("ode source '" + config.getId() + "' url '" + url
+                    + "' is not an http(s) endpoint");
+        }
+        return url;
     }
 
     private String serialise(BuildRequest payload, KitSourceDto config) {

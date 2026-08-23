@@ -1,13 +1,19 @@
 package de.mhus.vance.addon.brain.links;
 
 import de.mhus.vance.api.web.LinkPreviewDto;
+import de.mhus.vance.brain.prompt.UntrustedContent;
 import de.mhus.vance.brain.tools.web.LinkPreviewService;
 import de.mhus.vance.toolpack.ToolException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.SequencedSet;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -28,10 +34,45 @@ import org.springframework.stereotype.Component;
  * something more specific is {@code title}: clearing it re-derives the
  * snapshot from the page, because a title is the field we promised to keep
  * readable even when the site is gone.
+ *
+ * <p><b>Mutations of one manifest are serialised.</b> Read-modify-write on a
+ * whole document has no field-level merge and no optimistic guard —
+ * {@code DocumentService.update} re-reads the row by id and writes over it, so
+ * the version the caller loaded is never compared. Two actors adding a link at
+ * the same time both read <i>n</i> entries and both write <i>n+1</i>: the first
+ * one written is gone, with no error and no trace. That is not a hypothetical
+ * here, because a links app is the app an agent and a person typically fill in
+ * together. The lock is per {@code (tenant, project, folder)} and JVM-local —
+ * enough, because a project's documents are served by its home pod, and the
+ * honest alternative (a version on the update funnel) is a change to
+ * {@code DocumentService}, not to this app.
  */
 @Component
 @Slf4j
 public class LinksManifestOps {
+
+    /**
+     * Longest title snapshot kept for a card. A card label, not a page: the
+     * page itself is one {@code web_fetch} away and always current.
+     */
+    static final int MAX_TITLE_CHARS = 300;
+
+    /**
+     * Striped rather than one lock per manifest: a map keyed by folder would
+     * have to be pruned, and a manifest mutation is short enough that the
+     * occasional collision between two unrelated folders costs nothing.
+     */
+    private static final int LOCK_STRIPES = 32;
+
+    private static final ReentrantLock[] LOCKS = newLocks();
+
+    private static ReentrantLock[] newLocks() {
+        ReentrantLock[] locks = new ReentrantLock[LOCK_STRIPES];
+        for (int i = 0; i < LOCK_STRIPES; i++) {
+            locks[i] = new ReentrantLock();
+        }
+        return locks;
+    }
 
     private final LinksStore store;
     private final LinkPreviewService linkPreview;
@@ -68,6 +109,12 @@ public class LinksManifestOps {
      */
     public boolean addEntry(String tenantId, String projectId, String folder,
                             String url, LinkFields fields, @Nullable String userId) {
+        return mutate(tenantId, projectId, folder,
+                () -> addEntryLocked(tenantId, projectId, folder, url, fields, userId));
+    }
+
+    private boolean addEntryLocked(String tenantId, String projectId, String folder,
+                                   String url, LinkFields fields, @Nullable String userId) {
         LinksStore.Loaded loaded = store.load(tenantId, projectId, folder);
         String id = LinkUrls.identity(url);
         if (find(loaded.config().entries(), id) != null) {
@@ -81,7 +128,7 @@ public class LinksManifestOps {
             title = fetchTitle(id, tenantId, projectId);
         }
         LinkEntry entry = new LinkEntry(id, title,
-                blankToNull(fields.teaser()), blankToNull(fields.image()), group,
+                blankToNull(fields.teaser()), blankToNull(checkedImage(fields.image())), group,
                 fields.tags() == null ? List.of() : cleanTags(fields.tags()),
                 blankToNull(fields.note()), Instant.now());
 
@@ -95,6 +142,12 @@ public class LinksManifestOps {
     /** Remove the entry with this URL. Unknown URL is an error, not a no-op. */
     public void removeEntry(String tenantId, String projectId, String folder,
                             String url, @Nullable String userId) {
+        mutateVoid(tenantId, projectId, folder,
+                () -> removeEntryLocked(tenantId, projectId, folder, url, userId));
+    }
+
+    private void removeEntryLocked(String tenantId, String projectId, String folder,
+                                   String url, @Nullable String userId) {
         LinksStore.Loaded loaded = store.load(tenantId, projectId, folder);
         String id = LinkUrls.identity(url);
         List<LinkEntry> entries = new ArrayList<>(loaded.config().entries());
@@ -111,6 +164,12 @@ public class LinksManifestOps {
      */
     public void updateEntry(String tenantId, String projectId, String folder,
                             String url, LinkFields fields, @Nullable String userId) {
+        mutateVoid(tenantId, projectId, folder,
+                () -> updateEntryLocked(tenantId, projectId, folder, url, fields, userId));
+    }
+
+    private void updateEntryLocked(String tenantId, String projectId, String folder,
+                                   String url, LinkFields fields, @Nullable String userId) {
         LinksStore.Loaded loaded = store.load(tenantId, projectId, folder);
         String id = LinkUrls.identity(url);
         LinkEntry current = find(loaded.config().entries(), id);
@@ -126,7 +185,7 @@ public class LinksManifestOps {
                 id,
                 title,
                 patch(current.teaser(), fields.teaser()),
-                patch(current.image(), fields.image()),
+                patch(current.image(), checkedImage(fields.image())),
                 patch(current.group(), fields.group()),
                 fields.tags() == null ? current.tags() : cleanTags(fields.tags()),
                 patch(current.note(), fields.note()),
@@ -159,6 +218,12 @@ public class LinksManifestOps {
      */
     public void reorder(String tenantId, String projectId, String folder,
                         List<String> orderedUrls, @Nullable String userId) {
+        mutateVoid(tenantId, projectId, folder,
+                () -> reorderLocked(tenantId, projectId, folder, orderedUrls, userId));
+    }
+
+    private void reorderLocked(String tenantId, String projectId, String folder,
+                               List<String> orderedUrls, @Nullable String userId) {
         LinksStore.Loaded loaded = store.load(tenantId, projectId, folder);
         List<LinkEntry> remaining = new ArrayList<>(loaded.config().entries());
         List<LinkEntry> ordered = new ArrayList<>();
@@ -188,6 +253,12 @@ public class LinksManifestOps {
      */
     public void setGroups(String tenantId, String projectId, String folder,
                           List<String> groups, @Nullable String userId) {
+        mutateVoid(tenantId, projectId, folder,
+                () -> setGroupsLocked(tenantId, projectId, folder, groups, userId));
+    }
+
+    private void setGroupsLocked(String tenantId, String projectId, String folder,
+                                 List<String> groups, @Nullable String userId) {
         LinksStore.Loaded loaded = store.load(tenantId, projectId, folder);
         SequencedSet<String> next = new LinkedHashSet<>();
         for (String g : groups) {
@@ -210,22 +281,34 @@ public class LinksManifestOps {
      */
     public void renameGroup(String tenantId, String projectId, String folder,
                             String from, @Nullable String to, @Nullable String userId) {
+        mutateVoid(tenantId, projectId, folder,
+                () -> renameGroupLocked(tenantId, projectId, folder, from, to, userId));
+    }
+
+    private void renameGroupLocked(String tenantId, String projectId, String folder,
+                                   String from, @Nullable String to, @Nullable String userId) {
         String source = blankToNull(from);
         if (source == null) throw new ToolException("from is required");
         String target = blankToNull(to);
         LinksStore.Loaded loaded = store.load(tenantId, projectId, folder);
 
-        List<LinkEntry> entries = new ArrayList<>();
+        List<LinkEntry> relabelled = new ArrayList<>();
         boolean touched = false;
         for (LinkEntry e : loaded.config().entries()) {
             if (source.equals(e.group())) {
-                entries.add(new LinkEntry(e.url(), e.title(), e.teaser(), e.image(),
+                relabelled.add(new LinkEntry(e.url(), e.title(), e.teaser(), e.image(),
                         target, e.tags(), e.note(), e.addedAt()));
                 touched = true;
             } else {
-                entries.add(e);
+                relabelled.add(e);
             }
         }
+        // Relabelling alone can break the group-contiguous invariant of §2.3
+        // that every other path upholds actively: merging A into a Y whose
+        // block sits further down ([a1(A), x(X), y(Y)], A → Y) leaves
+        // [Y, X, Y]. A pure rename is already contiguous, so this is a no-op
+        // there.
+        List<LinkEntry> entries = regroup(relabelled);
         SequencedSet<String> groups = new LinkedHashSet<>();
         boolean declared = false;
         for (String g : loaded.config().groups()) {
@@ -247,17 +330,58 @@ public class LinksManifestOps {
 
     // ── helpers ───────────────────────────────────────────────────
 
+    /** Run one read-modify-write of a single manifest under its stripe. */
+    private static <T> T mutate(String tenantId, String projectId, String folder,
+                                Supplier<T> body) {
+        ReentrantLock lock = lockFor(tenantId, projectId, folder);
+        lock.lock();
+        try {
+            return body.get();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** {@link #mutate} for a mutation with nothing to report back. */
+    private static void mutateVoid(String tenantId, String projectId, String folder,
+                                   Runnable body) {
+        ReentrantLock lock = lockFor(tenantId, projectId, folder);
+        lock.lock();
+        try {
+            body.run();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private static ReentrantLock lockFor(String tenantId, String projectId, String folder) {
+        String key = LinksStore.normaliseFolder(folder);
+        return LOCKS[Math.floorMod(Objects.hash(tenantId, projectId, key), LOCK_STRIPES)];
+    }
+
     /**
      * The title the page calls itself, fetched once. A failed preview is a
      * normal answer here, not an error: the card falls back to the hostname
      * and the reader can type a title. Adding a link must not depend on the
      * link being reachable right now.
+     *
+     * <p><b>The value is shaped before it is stored.</b> It is the one piece
+     * of foreign text this app persists — {@code og:title} of a page nobody
+     * here controls, and {@link LinkPreviewService} caps the body it reads but
+     * not the meta value it pulls out of it. Everything downstream assumes a
+     * card label: the generated index puts it inside a markdown link, and the
+     * app-context block puts it in a {@code - key: value} list. A newline
+     * breaks both, and a 50-KB title is carried by every later read.
      */
     private @Nullable String fetchTitle(String url, String tenantId, String projectId) {
         try {
             LinkPreviewDto dto = linkPreview.preview(url, tenantId, projectId, null);
-            String title = dto.getTitle();
-            return title == null || title.isBlank() ? null : title.trim();
+            String raw = dto.getTitle();
+            String title = UntrustedContent.collapseWhitespace(raw == null ? "" : raw);
+            if (title.isEmpty()) return null;
+            return title.length() > MAX_TITLE_CHARS
+                    ? title.substring(0, MAX_TITLE_CHARS) + "…"
+                    : title;
         } catch (RuntimeException e) {
             log.debug("LinksManifestOps: no title for {} ({})", url, e.toString());
             return null;
@@ -307,16 +431,56 @@ public class LinksManifestOps {
         return null;
     }
 
+    /**
+     * A stored picture has to survive the same question the link itself
+     * answers: is this something a browser may be pointed at? {@code url} runs
+     * through {@link LinkUrls#identity} because the client's {@code safeUrl}
+     * guard is the second line and not the first — and that reasoning does not
+     * stop at the picture. The tool path never offered the field, so this
+     * closes the REST path.
+     *
+     * <p>{@code null} and blank pass through unchanged: the caller's null/blank
+     * convention decides what they mean, not this check.
+     */
+    private static @Nullable String checkedImage(@Nullable String image) {
+        if (image == null || image.isBlank()) return image;
+        String s = image.trim();
+        if (!LinkUrls.isHttp(s)) {
+            throw new ToolException("image must be an http(s) URL — got '" + s + "'");
+        }
+        return s;
+    }
+
     /** {@code null} keeps the current value, blank clears it. */
     private static @Nullable String patch(@Nullable String current, @Nullable String given) {
         if (given == null) return current;
         return given.isBlank() ? null : given.trim();
     }
 
+    /**
+     * Rebuild the flat list group-contiguous, keeping the first-appearance
+     * order of the groups and the order inside each. A no-op on a list that is
+     * already contiguous, which every other mutation keeps it.
+     */
+    private static List<LinkEntry> regroup(List<LinkEntry> entries) {
+        Map<String, List<LinkEntry>> buckets = new LinkedHashMap<>();
+        for (LinkEntry e : entries) {
+            buckets.computeIfAbsent(groupKey(e.group()), k -> new ArrayList<>()).add(e);
+        }
+        List<LinkEntry> out = new ArrayList<>(entries.size());
+        for (List<LinkEntry> bucket : buckets.values()) {
+            out.addAll(bucket);
+        }
+        return out;
+    }
+
     private static boolean equalGroup(@Nullable String a, @Nullable String b) {
-        String x = a == null || a.isBlank() ? "" : a;
-        String y = b == null || b.isBlank() ? "" : b;
-        return x.equals(y);
+        return groupKey(a).equals(groupKey(b));
+    }
+
+    /** Ungrouped is the empty string, whichever way it was written. */
+    private static String groupKey(@Nullable String group) {
+        return group == null || group.isBlank() ? "" : group;
     }
 
     private static List<String> cleanTags(List<String> tags) {

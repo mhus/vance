@@ -53,6 +53,15 @@ public class OdeKitProvisioningHandler implements KitProvisioningHandler {
      */
     static final Duration TIMEOUT = Duration.ofSeconds(20);
 
+    /**
+     * Ceiling on the capabilities answer. The timeout bounds how long a host
+     * may take, not how much it may send — and this runs unattended, against
+     * hosts we do not own, on a schedule. A list of kit ids and revisions that
+     * does not fit in a megabyte is not a list we should be reading into the
+     * heap.
+     */
+    static final int MAX_RESPONSE_BYTES = 1024 * 1024;
+
     private final ObjectMapper objectMapper;
     private final KitSourceRegistry sources;
 
@@ -70,26 +79,44 @@ public class OdeKitProvisioningHandler implements KitProvisioningHandler {
         KitProvisioningEntry entry = context.entry();
         String base = trimTrailingSlash(entry.url());
         try {
-            base = SafeLink.require(base);
+            base = requireHttpEndpoint(SafeLink.require(base));
         } catch (SafeLink.UnsafeLinkException e) {
             throw new KitException("provisioning entry " + entry
                     + " has a url that is not usable as an endpoint: " + e.getMessage(), e);
         }
         requireOdeSource(context.tenantId(), entry, base);
 
-        URI uri = URI.create(base + CAPABILITIES_PATH);
+        URI uri = endpoint(base, CAPABILITIES_PATH);
 
-        HttpRequest.Builder request = HttpRequest.newBuilder(uri)
-                .timeout(TIMEOUT)
-                .header("Accept", "application/json")
-                .GET();
+        HttpRequest.Builder request;
+        try {
+            request = HttpRequest.newBuilder(uri)
+                    .timeout(TIMEOUT)
+                    .header("Accept", "application/json")
+                    .GET();
+        } catch (IllegalArgumentException e) {
+            // Hostless or otherwise unusable target — same reasoning as
+            // endpoint() below: a named 400 beats an unhandled 500.
+            throw new KitException("provisioning url '" + base
+                    + "' is not a usable request target: " + e.getMessage(), e);
+        }
         if (StringUtils.isNotBlank(entry.token())) {
             request.header("Authorization", "Bearer " + entry.token());
         }
 
-        HttpResponse<String> response;
+        HttpResponse<java.io.InputStream> response;
+        String body;
         try {
-            response = http.send(request.build(), HttpResponse.BodyHandlers.ofString());
+            response = http.send(request.build(), HttpResponse.BodyHandlers.ofInputStream());
+            try (java.io.InputStream in = response.body()) {
+                // Status first: a failure body is not worth reading, and
+                // reading it would let a huge error page replace the
+                // explanation describeFailure is about to give.
+                if (response.statusCode() != 200) {
+                    throw new KitException(describeFailure(response.statusCode(), base));
+                }
+                body = readCapped(in, base);
+            }
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             // toString, not getMessage: several IOException types carry no
@@ -97,13 +124,10 @@ public class OdeKitProvisioningHandler implements KitProvisioningHandler {
             // block exists to avoid saying.
             throw new KitException("ode host at " + base + " is not reachable: " + e, e);
         }
-        if (response.statusCode() != 200) {
-            throw new KitException(describeFailure(response.statusCode(), base));
-        }
 
         JsonNode root;
         try {
-            root = objectMapper.readTree(response.body());
+            root = objectMapper.readTree(body);
         } catch (RuntimeException e) {
             throw new KitException("ode host at " + base + " answered something that is not"
                     + " json when asked what it offers", e);
@@ -167,6 +191,53 @@ public class OdeKitProvisioningHandler implements KitProvisioningHandler {
         };
     }
 
+    /**
+     * {@link SafeLink} answers "may I put this in front of a person" and its
+     * allow-list therefore includes {@code mailto:}. Here the url is a request
+     * target, and {@code HttpRequest.newBuilder} rejects a non-http scheme with
+     * an {@code IllegalArgumentException} — which nothing catches, so a
+     * {@code mailto:} in the provisioning document arrived at the caller as a
+     * bare 500 instead of the explained 400 {@code KitAdminController.kitError}
+     * produces.
+     */
+    private static String requireHttpEndpoint(String url) {
+        String lower = url.toLowerCase(java.util.Locale.ROOT);
+        if (!lower.startsWith("http://") && !lower.startsWith("https://")) {
+            throw new KitException("provisioning url '" + url + "' is not an http(s) endpoint");
+        }
+        return url;
+    }
+
+    /**
+     * Build the request target, naming the problem if the url will not parse.
+     *
+     * <p>{@code SafeLink} answers "may a human be shown this" and no longer
+     * parses the url as a {@code java.net.URI} — deliberately, because that
+     * strictness rejected legitimate addresses. So this is the place that has
+     * to say so: {@code URI.create} and {@code HttpRequest.newBuilder} both
+     * throw {@code IllegalArgumentException}, which nothing above catches and
+     * which reaches the caller as a 500 instead of the explained 400.
+     */
+    private static URI endpoint(String base, String path) {
+        try {
+            return URI.create(base + path);
+        } catch (IllegalArgumentException e) {
+            throw new KitException("provisioning url '" + base
+                    + "' is not a usable request target: " + e.getMessage(), e);
+        }
+    }
+
+    /** Read at most {@link #MAX_RESPONSE_BYTES}, refusing anything longer. */
+    private static String readCapped(java.io.InputStream in, String base) throws IOException {
+        byte[] bytes = in.readNBytes(MAX_RESPONSE_BYTES + 1);
+        if (bytes.length > MAX_RESPONSE_BYTES) {
+            throw new KitException("ode host at " + base + " answered with more than "
+                    + MAX_RESPONSE_BYTES + " bytes when asked what it offers — refusing to"
+                    + " read it");
+        }
+        return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
     private static @org.jspecify.annotations.Nullable String text(JsonNode node, String field) {
         JsonNode value = node.get(field);
         return value == null || value.isNull() ? null : value.asString();
@@ -192,6 +263,11 @@ public class OdeKitProvisioningHandler implements KitProvisioningHandler {
         KitSourceType type;
         try {
             type = sources.resolve(tenantId, base).getType();
+        } catch (KitException e) {
+            // An unreadable kit-sources.yaml is not a diagnostic hiccup — it is
+            // the file that decides signature policy, and the fetch would fail
+            // on it anyway. Say so here, where the message still names the entry.
+            throw e;
         } catch (RuntimeException e) {
             // Resolution is somebody else's logic; failing the whole entry over
             // a diagnostic lookup would be the wrong trade.

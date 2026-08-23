@@ -1,5 +1,11 @@
 package de.mhus.vance.brain.tools.workspace;
 
+import de.mhus.vance.shared.workspace.WorkspaceException;
+import de.mhus.vance.shared.workspace.WorkspaceService;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -49,5 +55,45 @@ final class WorkspaceSubPath {
         if (!p.startsWith(prefix)) return null;
         String under = p.substring(prefix.length());
         return under.isEmpty() ? null : under;
+    }
+
+    /**
+     * Rejects a {@code path} that names nothing, before the subtree filter
+     * turns it into an empty result.
+     *
+     * <p>The filter above is a string comparison, so a mistyped
+     * {@code path} matches no entry and the tool answers "0 files" /
+     * "no entries" — which a model reads as "the directory is empty", not
+     * as "you got the name wrong". The CLIENT halves of the same wrappers
+     * fail loudly here, and {@code FileListTool}'s troubleshooting hint
+     * promises the "Not a directory" message, so the WORK halves have to
+     * be able to produce it.
+     *
+     * @param requireDirectory {@code true} for the tools that walk a
+     *        subtree; {@code false} where a file-valued {@code path} is a
+     *        legitimate single-file mode ({@code work_file_count})
+     */
+    static void requirePresent(
+            WorkspaceService workspace,
+            ToolInvocationContext ctx,
+            String dirName,
+            @Nullable String path,
+            boolean requireDirectory) {
+        if (path == null) return;
+        Path abs;
+        try {
+            abs = workspace.resolve(ctx.tenantId(), ctx.projectId(), dirName, path);
+        } catch (WorkspaceException e) {
+            throw new ToolException(e.getMessage(), e);
+        }
+        if (Files.isDirectory(abs)) return;
+        if (!Files.exists(abs)) {
+            throw new ToolException("No such path: '" + path + "' in workspace dir '"
+                    + dirName + "'");
+        }
+        if (requireDirectory) {
+            throw new ToolException("Not a directory: '" + path
+                    + "' names a file — use file_read to read it.");
+        }
     }
 }

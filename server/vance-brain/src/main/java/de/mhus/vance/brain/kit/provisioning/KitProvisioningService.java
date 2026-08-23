@@ -120,10 +120,19 @@ public class KitProvisioningService {
                 // between the two would otherwise be lost, which is the whole
                 // failure this method exists to avoid.
                 Boolean again = inFlight.replace(key, Boolean.FALSE);
-                if (!Boolean.TRUE.equals(again)) return;
+                if (Boolean.TRUE.equals(again)) continue;
+                // Conditional remove, and another round if it fails. An
+                // unconditional remove in a finally block re-opened the very
+                // window this loop closes: a second trigger arriving between
+                // the replace above and the removal reads "already running",
+                // sets TRUE — and the removal then throws that TRUE away.
+                if (inFlight.remove(key, Boolean.FALSE)) return;
             }
-        } finally {
+        } catch (RuntimeException | Error e) {
+            // The loop owns the removal on its normal exits; an unexpected
+            // throw must not leave the project marked as running forever.
             inFlight.remove(key);
+            throw e;
         }
     }
 

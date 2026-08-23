@@ -59,6 +59,7 @@ public class ClusterService {
     private final LocationService locationService;
     private final ClusterNodeNameGenerator nameGenerator;
     private final ClusterProperties properties;
+    private final ClusterTimeWindows timeWindows;
 
     @Value("${vance.build.version:dev}")
     private String buildVersion;
@@ -166,7 +167,7 @@ public class ClusterService {
      * endpoint, <em>without</em> a liveness check. Returns empty only if
      * the name is unknown. Use this for admin/display and self-identity
      * comparisons — for cross-pod <em>routing</em> use
-     * {@link #resolveLiveEndpoint} so a dead pod's stale endpoint is never
+     * {@link #resolveEndpointByPodId} so a dead pod's stale endpoint is never
      * dialled.
      */
     public Optional<String> resolveEndpoint(String nodeNameOrEndpoint) {
@@ -177,19 +178,26 @@ public class ClusterService {
      * Resolves the endpoint of a pod by its {@code podId} — the routing
      * primitive for cross-pod hops.
      *
-     * <p>No liveness check here, and none needed: the caller arrives with a
-     * pod id taken from a <em>valid ownership lease</em>, and a valid lease
-     * means the holder renewed it moments ago, which means it is alive and its
-     * endpoint row is fresh (the heartbeat republishes the address when the
-     * host's IP changes). Liveness moved into the lease, so routing no longer
-     * joins against {@code brain_pods} to ask whether a name still means
-     * anything — it only asks where the pod is.
+     * <p><b>The liveness gate is here on purpose.</b> The caller arrives with a
+     * pod id taken from a valid ownership lease, and it is tempting to conclude
+     * that the holder must therefore be alive. It does not follow: ownership
+     * and liveness are two questions with two clocks
+     * ({@link ClusterTimeWindows}), and the lease TTL is the longer of the two
+     * by default. A {@code kill -9}'d holder keeps a valid lease for up to
+     * {@code leaseTtl} while its {@code brain_pods} row sits at
+     * {@code RUNNING} with a dead {@code host:port} — every hop routed there
+     * turns into a connect timeout. So the lease answers "whose is it" and this
+     * answers "does that still mean anything", and routing needs both.
      *
-     * <p>Empty means the row is gone (admin purge, cleanup sweep). Callers
-     * treat that like "no owner": adopt locally, or surface a {@code 409}.
+     * <p>Empty means the row is gone (admin purge, cleanup sweep), stopped, or
+     * stale. Callers treat all of that like "no owner": adopt locally, or
+     * surface a {@code 409}.
      */
     public Optional<String> resolveEndpointByPodId(String podId) {
+        Instant now = Instant.now();
         return brainPodService.findByPodId(podId)
+                .filter(pod -> pod.getStatus() != PodStatus.STOPPED)
+                .filter(pod -> !brainPodService.isStale(pod, now, timeWindows.podLiveness()))
                 .map(BrainPodDocument::getEndpoint)
                 .filter(endpoint -> !endpoint.isBlank());
     }
@@ -205,7 +213,7 @@ public class ClusterService {
      */
     public Set<String> liveClusterNodeNames() {
         return brainPodService.listLiveClusterNodeNames(
-                properties.getId(), properties.getStaleAfter());
+                properties.getId(), timeWindows.podLiveness());
     }
 
     /**
@@ -252,15 +260,33 @@ public class ClusterService {
      * single place brain code reads this from, so the claim path, the renewal
      * tick and every {@code ProjectOwnership} caller cannot drift apart.
      */
-    public Duration leaseTtl() { return properties.getLease().getTtl(); }
+    public Duration leaseTtl() { return timeWindows.leaseTtl(); }
+
+    /**
+     * How long a derived routing answer may be cached before it has to be
+     * re-derived. See {@link ClusterTimeWindows#routingAnswerMaxAge()} — it is
+     * the shorter of the two gates {@link #resolveEndpointByPodId} applies, so
+     * a cache in front of that call cannot outlive either of them.
+     */
+    public Duration routingAnswerMaxAge() { return timeWindows.routingAnswerMaxAge(); }
 
     public boolean isStale(BrainPodDocument doc, Instant now) {
-        return brainPodService.isStale(doc, now, properties.getStaleAfter());
+        return brainPodService.isStale(doc, now, timeWindows.podLiveness());
     }
 
     // ─── internals ──────────────────────────────────────────────────
 
-    private String resolveNodeName() {
+    /**
+     * Picks the node name once, on whichever thread asks first.
+     *
+     * <p>{@code synchronized} because the unconfigured branch generates a
+     * <em>random</em> name: check-then-act on a volatile field lets two threads
+     * both see the empty field, generate two different names, and hand one of
+     * them out to a caller that will never see it in the registry. The claim
+     * path denormalises this name onto the lease, so the callers are no longer
+     * just the boot thread.
+     */
+    private synchronized String resolveNodeName() {
         if (nodeName.isEmpty()) {
             String configured = properties.getNodeName();
             nodeName = (configured != null && !configured.isBlank())
@@ -268,6 +294,11 @@ public class ClusterService {
                     : nameGenerator.generate();
         }
         return nodeName;
+    }
+
+    /** Re-roll after a name collision. Same lock as {@link #resolveNodeName}. */
+    private synchronized void replaceNodeName(String fresh) {
+        nodeName = fresh;
     }
 
     private void registerWithRetry(BrainPodDocument doc) {
@@ -286,7 +317,7 @@ public class ClusterService {
                 String fresh = nameGenerator.generate();
                 log.warn("ClusterService: nodeName '{}' taken — retrying as '{}' (attempt {}/{})",
                         nodeName, fresh, attempt, retries);
-                nodeName = fresh;
+                replaceNodeName(fresh);
                 doc.setNodeName(fresh);
             }
         }

@@ -71,9 +71,20 @@ public class KitExporter {
         try (WriteableTarget clone =
                      repoLoader.openForWrite(url, branch, request.getToken(), clonePath)) {
             Path workTree = clone.workTree();
-            Path kitRoot = subPath == null || subPath.isBlank()
-                    ? workTree
-                    : workTree.resolve(subPath);
+            // Containment before createDirectories, not after: an unchecked
+            // `path: ../../..` used to escape the work tree, and every guard
+            // further down compares against docsRoot / settingsRoot, which are
+            // derived from this very kitRoot — so they confirmed a location
+            // that had already left the repository. Same rule as
+            // KitRepoLoader.subPath, which is where the comment in
+            // writeDocuments says this is mirrored from.
+            Path kitRoot = workTree;
+            if (subPath != null && !subPath.isBlank()) {
+                kitRoot = workTree.resolve(subPath).normalize();
+                if (!kitRoot.startsWith(workTree.normalize())) {
+                    throw new KitException("kit path escapes repo root: " + subPath);
+                }
+            }
             try {
                 Files.createDirectories(kitRoot);
             } catch (IOException e) {
@@ -191,20 +202,53 @@ public class KitExporter {
         return written;
     }
 
+    /**
+     * Refresh {@code kit.yaml} in the clone — <b>update, not regenerate</b>.
+     *
+     * <p>The manifest carries name, description, version, inherits and the
+     * encrypted-secrets flag, and nothing else. Building a fresh descriptor
+     * out of it therefore deleted every other field the author had written:
+     * {@code sealed}, {@code installable}, {@code artifact}, {@code policy},
+     * {@code vendor}, {@code license}, {@code homepage}, {@code render}. §3.2
+     * says those flags travel with the repository — and the export was the one
+     * operation that removed them from it, silently, on the way back.
+     *
+     * <p>So the existing file in the clone is the base and the manifest's five
+     * fields are laid on top. An absent or unparseable {@code kit.yaml} (a
+     * project promoted to a source in a fresh repository) falls back to the
+     * generated form, which is what the manifest can honestly state.
+     */
     private void writeDescriptor(KitManifestDto manifest, Path kitRoot) {
-        KitDescriptorDto descriptor = KitDescriptorDto.builder()
-                .name(manifest.getKit().getName())
-                .description(manifest.getKit().getDescription())
-                .version(manifest.getKit().getVersion())
-                .inherits(new ArrayList<>(manifest.getInherits()))
-                .hasEncryptedSecrets(manifest.isHasEncryptedSecrets())
-                .build();
         Path file = kitRoot.resolve("kit.yaml");
+        KitDescriptorDto descriptor = readExistingDescriptor(file);
+        // builder().build(), not new KitDescriptorDto(): the @Builder.Default
+        // fields (installable = true) are only applied on the builder path.
+        if (descriptor == null) descriptor = KitDescriptorDto.builder().build();
+        descriptor.setName(manifest.getKit().getName());
+        descriptor.setDescription(manifest.getKit().getDescription());
+        descriptor.setVersion(manifest.getKit().getVersion());
+        descriptor.setInherits(new ArrayList<>(manifest.getInherits()));
+        descriptor.setHasEncryptedSecrets(manifest.isHasEncryptedSecrets());
         try {
             Files.writeString(file, KitYamlMapper.writeDescriptor(descriptor),
                     StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new KitException("failed to write kit.yaml", e);
+        }
+    }
+
+    /** The descriptor already in the clone, or null when there is none we can read. */
+    private @Nullable KitDescriptorDto readExistingDescriptor(Path file) {
+        if (!Files.isRegularFile(file)) return null;
+        try {
+            return KitYamlMapper.parseDescriptor(Files.readString(file));
+        } catch (IOException | KitException e) {
+            // A broken kit.yaml in the target repo must not block the export —
+            // overwriting it with a valid one is the more useful outcome, and
+            // the author sees the loss in the diff they are about to review.
+            log.warn("KitExporter: existing kit.yaml at {} is unreadable ({}) — "
+                    + "writing a freshly generated one", file, e.getMessage());
+            return null;
         }
     }
 

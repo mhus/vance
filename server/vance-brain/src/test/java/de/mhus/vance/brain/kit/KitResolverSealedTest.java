@@ -33,6 +33,7 @@ class KitResolverSealedTest {
 
     private KitSourceLoaders sourceLoaders;
     private KitWorkspace workspace;
+    private KitSourceRegistry sources;
     private KitResolver resolver;
 
     @BeforeEach
@@ -44,7 +45,13 @@ class KitResolverSealedTest {
         // any code that reads them, so non-existent paths are fine.
         when(workspace.allocate(any())).thenReturn(Paths.get("/tmp/kit-fake"));
 
-        resolver = new KitResolver(sourceLoaders, workspace);
+        sources = mock(KitSourceRegistry.class);
+        // Every url belongs to the same source here — the credential-scoping
+        // rule has its own test, this one is about `sealed`.
+        when(sources.resolve(any(), any())).thenReturn(KitSourceDto.builder()
+                .id("test-source").type(KitSourceType.GIT).url("file:///fake").build());
+
+        resolver = new KitResolver(sourceLoaders, workspace, sources);
     }
 
     @Test

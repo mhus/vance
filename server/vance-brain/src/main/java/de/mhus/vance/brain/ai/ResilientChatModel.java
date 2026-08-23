@@ -66,6 +66,17 @@ import org.slf4j.LoggerFactory;
  * fatal behind a synchronous HTTP event whose caller gave up long before.
  * Without a deadline the retries continue after the answer has become
  * worthless.
+ *
+ * <p><b>One budget, however many layers.</b> A multi-entry chain nests two
+ * of these: {@code StandardAiChat} wraps every entry in its own single-entry
+ * instance, and {@link ChainedAiChat} puts an advance-only one around all of
+ * them. Both are configured from the same {@code AiChatOptions}, so a
+ * duration measured from each instance's own first attempt would be spent
+ * once per entry — entry 1 stopping just short of the budget, entry 2
+ * starting over with a full one, and a 90-second promise answering after
+ * 180. The duration is therefore converted into one absolute end-of-budget
+ * when the outermost instance is entered, and the nested one inherits that
+ * instant instead of computing its own ({@link #ACTIVE_DEADLINE_NANOS}).
  */
 public class ResilientChatModel implements ChatModel {
 
@@ -98,6 +109,25 @@ public class ResilientChatModel implements ChatModel {
         return new AiChatException(
                 atOutputCap ? EMPTY_AT_OUTPUT_CAP_MESSAGE : EMPTY_RESPONSE_MESSAGE);
     }
+
+    /**
+     * End of the current call's budget as a {@link System#nanoTime()}
+     * reading, held for the duration of one {@link #chat(ChatRequest)}.
+     *
+     * <p>Thread-scoped because that is exactly the scope of a synchronous
+     * call: {@code chat} blocks, and every decorator between the outer and
+     * the inner instance ({@code SanitizingChatModel},
+     * {@code LoggingChatModel}) is a pass-through on the same thread. The
+     * langchain4j {@link ChatModel} contract carries no place to hand a
+     * deadline down, and the nested instance is built before the outer one
+     * exists, so there is nothing to pass it through at construction time
+     * either.
+     *
+     * <p>Set by whichever instance finds it absent, cleared by that same
+     * instance. A nested instance therefore reads the outer one's instant
+     * and never installs its own.
+     */
+    private static final ThreadLocal<Long> ACTIVE_DEADLINE_NANOS = new ThreadLocal<>();
 
     private final List<SyncChainEntry> chain;
     private final @Nullable Consumer<String> userNotifier;
@@ -139,7 +169,31 @@ public class ResilientChatModel implements ChatModel {
 
     @Override
     public ChatResponse chat(ChatRequest request) {
-        long startNanos = System.nanoTime();
+        Long inherited = ACTIVE_DEADLINE_NANOS.get();
+        if (inherited != null) {
+            // Nested inside another instance's call — its budget is the
+            // budget. Installing our own would restart the clock.
+            return chatWithin(request, inherited);
+        }
+        if (deadline == null) {
+            return chatWithin(request, null);
+        }
+        long deadlineAtNanos = System.nanoTime() + deadline.toNanos();
+        ACTIVE_DEADLINE_NANOS.set(deadlineAtNanos);
+        try {
+            return chatWithin(request, deadlineAtNanos);
+        } finally {
+            ACTIVE_DEADLINE_NANOS.remove();
+        }
+    }
+
+    /**
+     * The retry / chain loop, running against an already-decided budget.
+     *
+     * @param deadlineAtNanos {@link System#nanoTime()} reading at which
+     *                        trying stops, or {@code null} for unbounded
+     */
+    private ChatResponse chatWithin(ChatRequest request, @Nullable Long deadlineAtNanos) {
         Throwable lastError = null;
         ChatResponse lastEmpty = null;
         SyncChainEntry lastEmptyFrom = null;
@@ -171,7 +225,7 @@ public class ResilientChatModel implements ChatModel {
                         notifyChainAdvance(entry, chainIdx, error);
                         break;
                     }
-                    if (!sleepBeforeRetry(entry, attempt, startNanos, error)) {
+                    if (!sleepBeforeRetry(entry, attempt, deadlineAtNanos, error)) {
                         throw exhausted(lastError);
                     }
                     continue;
@@ -206,15 +260,15 @@ public class ResilientChatModel implements ChatModel {
                     notifyChainAdvance(entry, chainIdx, cause);
                     break;
                 }
-                if (!sleepBeforeRetry(entry, attempt, startNanos, cause)) {
+                if (!sleepBeforeRetry(entry, attempt, deadlineAtNanos, cause)) {
                     reportAnsweredBy(entry);
                     return response;
                 }
             }
 
-            if (deadlineExpired(startNanos) && chainIdx + 1 < chain.size()) {
-                log.warn("ResilientChatModel: deadline {} reached — not advancing to '{}'",
-                        deadline, chain.get(chainIdx + 1).label());
+            if (deadlineExpired(deadlineAtNanos) && chainIdx + 1 < chain.size()) {
+                log.warn("ResilientChatModel: call deadline reached — not advancing to '{}'",
+                        chain.get(chainIdx + 1).label());
                 break;
             }
         }
@@ -245,18 +299,18 @@ public class ResilientChatModel implements ChatModel {
      * is spent already, or sleeping would spend it.
      */
     private boolean sleepBeforeRetry(SyncChainEntry entry, int attempt,
-            long startNanos, Throwable error) {
+            @Nullable Long deadlineAtNanos, Throwable error) {
         long backoffMs = entry.policy().backoffFor(attempt).toMillis();
-        if (deadline != null) {
-            long remainingMs = deadline.toMillis()
-                    - Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
+        if (deadlineAtNanos != null) {
+            long remainingMs =
+                    Duration.ofNanos(deadlineAtNanos - System.nanoTime()).toMillis();
             if (remainingMs <= backoffMs) {
                 // Deliberately not "sleep for whatever is left": the retry
                 // would start with no time to complete, so it only delays
                 // the failure the caller is already waiting for.
-                log.warn("ResilientChatModel '{}': deadline {} leaves {}ms — "
+                log.warn("ResilientChatModel '{}': deadline leaves {}ms — "
                                 + "stopping instead of retrying in {}ms",
-                        entry.label(), deadline, Math.max(remainingMs, 0), backoffMs);
+                        entry.label(), Math.max(remainingMs, 0), backoffMs);
                 return false;
             }
         }
@@ -285,9 +339,10 @@ public class ResilientChatModel implements ChatModel {
                 : "give up (last entry)";
     }
 
-    private boolean deadlineExpired(long startNanos) {
-        return deadline != null
-                && System.nanoTime() - startNanos >= deadline.toNanos();
+    private static boolean deadlineExpired(@Nullable Long deadlineAtNanos) {
+        // Subtract rather than compare: nanoTime has an arbitrary origin
+        // and both readings can straddle the long wrap-around.
+        return deadlineAtNanos != null && System.nanoTime() - deadlineAtNanos >= 0;
     }
 
     private AiChatException exhausted(@Nullable Throwable lastError) {

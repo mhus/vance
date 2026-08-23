@@ -4,7 +4,6 @@ import de.mhus.vance.api.kit.KitDescriptorDto;
 import de.mhus.vance.api.kit.KitSignatureDto;
 import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.kit.KitTreeHash;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
@@ -122,10 +121,5 @@ public final class KitSignature {
      */
     private static String nullToEmpty(@Nullable String value) {
         return value == null ? "" : value;
-    }
-
-    /** UTF-8, spelled out because the payload must not depend on a platform default. */
-    static byte[] utf8(String s) {
-        return s.getBytes(StandardCharsets.UTF_8);
     }
 }

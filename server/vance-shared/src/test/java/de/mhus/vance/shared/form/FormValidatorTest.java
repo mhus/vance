@@ -154,6 +154,89 @@ class FormValidatorTest {
                 .doesNotThrowAnyException();
     }
 
+    // ──────────────── showIf: conditional fields are not "required" ────────────────
+
+    @Test
+    void requiredField_behindShowIf_blankSubmission_isAccepted() {
+        // The vault form: the provider select defaults to `settings`, which needs
+        // no connection, so every Infisical-only field arrives blank. Reporting
+        // `required` for them made the form return 422 on every save — while the
+        // apply-time planner, which does evaluate the expression, would have
+        // skipped their bindings entirely.
+        FormFieldDto conditional = FormFieldDto.builder()
+                .name("baseUrl").type("string").required(true)
+                .showIf("type == 'infisical'")
+                .label(Map.of("en", "Base URL")).build();
+
+        assertThatCode(() -> validator.validate(
+                List.of(conditional), Map.of("type", "settings")))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void requiredField_behindShowIf_stillTypeChecksWhatIsSubmitted() {
+        // Exempt from required-presence, not from validation: a value that IS
+        // there is checked as strictly as any other.
+        FormFieldDto conditional = FormFieldDto.builder()
+                .name("port").type("integer").required(true)
+                .integerMin(1).integerMax(65535)
+                .showIf("type == 'infisical'")
+                .label(Map.of("en", "Port")).build();
+
+        assertThatThrownBy(() -> validator.validate(
+                List.of(conditional), Map.of("port", "99999")))
+                .isInstanceOf(FormValidationException.class)
+                .hasMessageContaining("above_max");
+    }
+
+    @Test
+    void requiredField_withWriteIfButNoShowIf_staysRequired() {
+        // writeIf decides whether the target setting is written or deleted — it
+        // says nothing about whether the user was shown a box to fill in. Only
+        // showIf exempts.
+        FormFieldDto field = FormFieldDto.builder()
+                .name("token").type("string").required(true)
+                .writeIf("enabled")
+                .label(Map.of("en", "Token")).build();
+
+        assertThatThrownBy(() -> validator.validate(List.of(field), Map.of()))
+                .isInstanceOf(FormValidationException.class)
+                .hasMessageContaining("required");
+    }
+
+    @Test
+    void requiredField_withBlankShowIf_staysRequired() {
+        // A blank expression is not a condition. Treating it as one would turn a
+        // YAML typo into a silently unenforced field.
+        FormFieldDto field = FormFieldDto.builder()
+                .name("title").type("string").required(true)
+                .showIf("   ")
+                .label(Map.of("en", "Title")).build();
+
+        assertThatThrownBy(() -> validator.validate(List.of(field), Map.of()))
+                .isInstanceOf(FormValidationException.class)
+                .hasMessageContaining("required");
+    }
+
+    @Test
+    void unconditionalSiblingOfAConditionalField_isStillRequired() {
+        // The exemption is per field, not per form — the unconditional half of a
+        // setting form keeps its enforcement.
+        FormFieldDto type = FormFieldDto.builder()
+                .name("type").type("string").required(true)
+                .label(Map.of("en", "Provider")).build();
+        FormFieldDto conditional = FormFieldDto.builder()
+                .name("baseUrl").type("string").required(true)
+                .showIf("type == 'infisical'")
+                .label(Map.of("en", "Base URL")).build();
+
+        assertThatThrownBy(() -> validator.validate(List.of(type, conditional), Map.of()))
+                .isInstanceOf(FormValidationException.class)
+                .satisfies(ex -> assertThat(((FormValidationException) ex).getErrors())
+                        .singleElement()
+                        .satisfies(e -> assertThat(e.field()).isEqualTo("type")));
+    }
+
     @Test
     void unknownType_isError() {
         FormFieldDto field = FormFieldDto.builder()

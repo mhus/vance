@@ -145,6 +145,11 @@ public class AiChatOptions {
      *
      * <p>Bounds how long we keep <em>trying</em>; a request already in
      * flight runs to its own HTTP timeout.
+     *
+     * <p><b>One budget, however many layers.</b> A multi-entry chain
+     * stacks two {@link ResilientChatModel}s and both receive this same
+     * duration; the decorator turns it into one absolute end-of-budget per
+     * call, which a nested instance inherits rather than restarting.
      */
     private @Nullable Duration syncCallDeadline;
 

@@ -86,10 +86,11 @@ parameters:
     # name: "X-API-Key"
     # value: "{{secret:tenant:example.api.key}}"
 
-    # Any referenced *setting* must be typed HIDDEN, not PASSWORD — a
-    # PASSWORD target fails with a named error. See
-    # manual_read('vault-secrets'). OAuth access tokens are exempt (they
-    # go through the refresher, not a setting read).
+    # Any referenced *setting* should be typed PASSWORD — the type for
+    # connector credentials, which this connector resolves. HIDDEN only
+    # when a script or compose task must resolve the same value itself.
+    # See manual_read('vault-secrets'). OAuth access tokens are exempt
+    # (they go through the refresher, not a setting read).
 
   # TLS controls — only for non-public endpoints.
   tls:

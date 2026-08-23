@@ -9,20 +9,22 @@ import java.util.Set;
 import de.mhus.vance.api.mount.MountedSource;
 import de.mhus.vance.brain.tools.kinds.KindToolSupport;
 import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.document.jaglan.JaglanShellService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
  * Ask the mounted sources to search their own catalogues.
  *
- * <p><b>Not the same thing as {@code doc_search}.</b> That one queries our
- * Mongo and our embeddings; mounted content is in neither — indexing a foreign
- * library into our own vector store is not something we do. What the library
- * *can* do is search itself, usually far better than a tree walk would, so
- * this delegates.
+ * <p><b>Not the same thing as {@code doc_find} / {@code doc_grep} /
+ * {@code memory_search}.</b> Those query our Mongo and our embeddings; mounted
+ * content is in neither — indexing a foreign library into our own vector store
+ * is not something we do. What the library *can* do is search itself, usually
+ * far better than a tree walk would, so this delegates.
  *
  * <p>The consequence worth stating in the tool description: a mount that
  * declares no search capability contributes nothing here, and that is
@@ -54,15 +56,29 @@ public class MountSearchTool implements Tool {
 
     private final KindToolSupport support;
 
+    /**
+     * Asked per mount, because the outcome is the point.
+     *
+     * <p>{@code DocumentService.searchMounted} is the convenient call and
+     * would be the natural one, but it concatenates the hits of every mount
+     * and drops each mount's {@code MountSearchOutcome} on the way — leaving
+     * this tool unable to tell "asked, found nothing" from "never asked",
+     * which is the one distinction {@code notSearched} exists to report.
+     * Optional the same way {@code DocumentService} holds it: a process
+     * without Mongo-backed mount support has no bean, and then this project
+     * has no mounts either.
+     */
+    private final ObjectProvider<JaglanShellService> shellServiceProvider;
+
     @Override public String name() { return "mount_search"; }
 
     @Override public String description() {
         return "Search inside mounted external sources (document libraries, archives) by asking "
                 + "them to search their own catalogue. Use for content under '_ext/…', which "
-                + "doc_search does NOT cover — mounted files are not indexed here. Returns paths "
-                + "you can then read with doc_read. Mounts that do not support search are listed "
-                + "in `notSearched`: for those, browse with mount_list instead of concluding the "
-                + "file does not exist.";
+                + "doc_find, doc_grep and memory_search do NOT cover — mounted files are not "
+                + "indexed here. Returns paths you can then read with doc_read. Mounts that do "
+                + "not support search are listed in `notSearched`: for those, browse with "
+                + "mount_list instead of concluding the file does not exist.";
     }
 
     @Override public boolean primary() { return false; }
@@ -93,42 +109,68 @@ public class MountSearchTool implements Tool {
 
         List<MountedSource> mounts = support.documentService()
                 .listMounts(ctx.tenantId(), project.getName());
-        if (mounts.isEmpty()) {
+        JaglanShellService shellService = shellServiceProvider.getIfAvailable();
+        if (mounts.isEmpty() || shellService == null) {
             out.put("count", 0);
             out.put("results", List.of());
             out.put("hint", "This project has no mounted external sources.");
             return out;
         }
 
-        List<DocumentDocument> hits = support.documentService()
-                .searchMounted(ctx.tenantId(), project.getName(), mount, query, limit);
-
-        List<Map<String, Object>> rows = new ArrayList<>(hits.size());
-        for (DocumentDocument doc : hits) {
-            Map<String, Object> r = new LinkedHashMap<>();
-            r.put("path", doc.getPath());
-            r.put("name", doc.getName());
-            if (doc.getTitle() != null) r.put("title", doc.getTitle());
-            if (doc.getMimeType() != null) r.put("mimeType", doc.getMimeType());
-            r.put("size", doc.getSize());
-            rows.add(r);
+        if (mount != null && mounts.stream().noneMatch(m -> mount.equals(m.name()))) {
+            // A misspelled mount name would otherwise return an empty result
+            // set — indistinguishable from "the source has nothing".
+            out.put("error", "no mount named '" + mount + "' in this project");
+            out.put("mounts", mounts.stream().map(MountedSource::name).toList());
+            return out;
         }
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        // Which mounts could not contribute, and why. A silent omission here
+        // is the difference between "not found" and "not looked for" — and
+        // the second one is what makes an agent conclude the file is absent.
+        List<String> notSearched = new ArrayList<>();
+
+        for (MountedSource source : mounts) {
+            if (mount != null && !mount.equals(source.name())) continue;
+            if (rows.size() >= limit) {
+                // Named rather than dropped: the earlier mounts filled the
+                // budget, so this one was never asked and its silence means
+                // nothing about what it holds.
+                notSearched.add(source.name() + " (result limit reached before it was asked)");
+                continue;
+            }
+            JaglanShellService.MountSearch result = shellService.searchInMount(
+                    ctx.tenantId(), project.getName(), source.name(), query,
+                    limit - rows.size());
+            switch (result.outcome()) {
+                case DELEGATED -> {
+                    for (DocumentDocument doc : result.hits()) rows.add(row(doc));
+                }
+                case UNSUPPORTED -> notSearched.add(source.name()
+                        + " (does not support search — browse it with mount_list)");
+                case UNAVAILABLE -> notSearched.add(source.name() + " ("
+                        + (source.statusText() == null ? "did not answer" : source.statusText())
+                        + ")");
+            }
+        }
+
         out.put("query", query);
         out.put("count", rows.size());
         out.put("results", rows);
-
-        // Which mounts could not contribute, and why. A silent omission here
-        // is the difference between "not found" and "not looked for".
-        List<String> notSearched = new ArrayList<>();
-        for (MountedSource source : mounts) {
-            if (mount != null && !mount.equals(source.name())) continue;
-            if (source.statusText() != null) {
-                notSearched.add(source.name() + " (" + source.statusText() + ")");
-            }
-        }
         if (!notSearched.isEmpty()) {
             out.put("notSearched", notSearched);
         }
         return out;
+    }
+
+    private static Map<String, Object> row(DocumentDocument doc) {
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("path", doc.getPath());
+        r.put("name", doc.getName());
+        if (doc.getTitle() != null) r.put("title", doc.getTitle());
+        if (doc.getMimeType() != null) r.put("mimeType", doc.getMimeType());
+        r.put("size", doc.getSize());
+        return r;
     }
 }

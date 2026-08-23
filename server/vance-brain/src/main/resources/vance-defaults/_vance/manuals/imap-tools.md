@@ -75,8 +75,10 @@ parameters:
   password: "{{secret:user:imap.password}}"
 ```
 
-The referenced settings must be typed **`HIDDEN`** (encrypted, but resolvable
-through a reference), not `PASSWORD` — see `manual_read('vault-secrets')`.
+The referenced settings should be typed **`PASSWORD`** — the type for connector
+credentials, which the IMAP connector resolves. `HIDDEN` only when a script or a
+compose task has to resolve the same value itself; never ask for a working
+`PASSWORD` setting to be re-typed. See `manual_read('vault-secrets')`.
 
 ## Minimal config
 

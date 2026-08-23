@@ -7,7 +7,12 @@ authType: api-key
 # `array_above_max_length`, and every chain entry behind the same
 # endpoint fails identically. Observed 2026-08-12 with 163 schemas.
 # Endpoint property, not a model property — hence the provider default;
-# a single model overrides it with its own `maxTools:`. Gateways on this
-# wire type (Cortecs, OpenRouter, vLLM, …) inherit it; one that allows
-# more can raise it per tenant in its own `_provider.yaml`.
+# a single model overrides it with its own `maxTools:`.
+#
+# This file is keyed by the *instance* name (the directory it sits in),
+# not by `wireType`. So it applies to an instance literally called
+# `openai` and to nothing else: a gateway configured as
+# `ai.provider.cortecs.type=openai` does NOT inherit this cap — it needs
+# its own `_vance/model/cortecs/_provider.yaml` with the limit that
+# gateway actually enforces (which may be higher, or absent).
 maxTools: 128

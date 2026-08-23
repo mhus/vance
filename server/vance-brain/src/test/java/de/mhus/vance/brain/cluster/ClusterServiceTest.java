@@ -58,7 +58,8 @@ class ClusterServiceTest {
         when(nameGenerator.generate()).thenReturn(NODE_NAME);
 
         service = new ClusterService(
-                brainPodService, projectService, locationService, nameGenerator, properties);
+                brainPodService, projectService, locationService, nameGenerator, properties,
+                new ClusterTimeWindows(properties));
         ReflectionTestUtils.setField(service, "buildVersion", "1.0.0-test");
     }
 
@@ -137,6 +138,51 @@ class ClusterServiceTest {
                         eq(PodStatus.RUNNING), eq(ENDPOINT),
                         eq(List.of("acme/instant-hole", "acme/rocket-skates")),
                         anyInt(), anyInt(), anyInt());
+    }
+
+    // ─── routing: ownership and liveness are two gates ──────────────
+
+    private BrainPodDocument holderRow(PodStatus status) {
+        return BrainPodDocument.builder()
+                .clusterId(CLUSTER)
+                .podId("pod-holder")
+                .nodeName("ford-prefect")
+                .endpoint("10.0.0.9:8080")
+                .status(status)
+                .lastHeartbeatAt(Instant.now())
+                .build();
+    }
+
+    @Test
+    void resolveEndpointByPodId_returnsEndpointForLiveHolder() {
+        BrainPodDocument row = holderRow(PodStatus.RUNNING);
+        when(brainPodService.findByPodId("pod-holder")).thenReturn(java.util.Optional.of(row));
+        when(brainPodService.isStale(eq(row), any(Instant.class), any(Duration.class)))
+                .thenReturn(false);
+
+        assertThat(service.resolveEndpointByPodId("pod-holder")).contains("10.0.0.9:8080");
+    }
+
+    @Test
+    void resolveEndpointByPodId_crashedHolderWithValidLease_resolvesToNothing() {
+        // kill -9: the row stays at RUNNING with its old address while the
+        // lease is still valid for up to leaseTtl. Ownership says "his",
+        // liveness has to say "not any more" — otherwise every hop to this
+        // project is a connect timeout until the lease expires.
+        BrainPodDocument row = holderRow(PodStatus.RUNNING);
+        when(brainPodService.findByPodId("pod-holder")).thenReturn(java.util.Optional.of(row));
+        when(brainPodService.isStale(eq(row), any(Instant.class), eq(Duration.ofMinutes(2))))
+                .thenReturn(true);
+
+        assertThat(service.resolveEndpointByPodId("pod-holder")).isEmpty();
+    }
+
+    @Test
+    void resolveEndpointByPodId_stoppedHolder_resolvesToNothing() {
+        BrainPodDocument row = holderRow(PodStatus.STOPPED);
+        when(brainPodService.findByPodId("pod-holder")).thenReturn(java.util.Optional.of(row));
+
+        assertThat(service.resolveEndpointByPodId("pod-holder")).isEmpty();
     }
 
     @Test

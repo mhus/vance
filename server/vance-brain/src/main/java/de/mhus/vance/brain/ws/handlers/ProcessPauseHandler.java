@@ -111,8 +111,13 @@ public class ProcessPauseHandler implements WsHandler {
                 progressEmitter.emitStatus(target, StatusTag.ENGINE_HALT_REQUESTED,
                         target.getName() + " pause requested");
                 try {
-                    sessionLifecycle.pauseProcess(target);
-                    paused = List.of(target.getName());
+                    // pauseProcess honours isInterruptible: a process that is IDLE or
+                    // BLOCKED is not mid-turn and is left alone, and says so by
+                    // returning false. Reporting it as paused would tell the client
+                    // something that did not happen.
+                    paused = sessionLifecycle.pauseProcess(target)
+                            ? List.of(target.getName())
+                            : List.of();
                 } catch (RuntimeException ex) {
                     sender.sendError(wsSession, envelope, 500,
                             "Pause failed: " + ex.getMessage());

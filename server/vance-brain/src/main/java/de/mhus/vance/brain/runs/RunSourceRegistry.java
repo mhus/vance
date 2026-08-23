@@ -111,27 +111,43 @@ public class RunSourceRegistry {
     /**
      * What may be done to this run right now — routed to its source, and
      * empty for anything unknown so a caller cannot learn what exists.
+     *
+     * <p>Invisible counts as unknown: a run the subject may not see offers
+     * no verbs, for the same reason {@link #get} reports it as absent.
      */
-    public Set<RunAction> allowedActions(String tenantId, String projectId, @Nullable String composite) {
+    public Set<RunAction> allowedActions(
+            de.mhus.vance.shared.permission.SecurityContext subject,
+            String tenantId, String projectId, @Nullable String composite) {
         RunId id = RunId.parse(composite);
         if (id == null) return Set.of();
         RunSource source = byId.get(id.source());
         if (source == null) return Set.of();
+        if (!source.visibleTo(subject, tenantId, projectId, id.nativeId())) return Set.of();
         return source.allowedActions(tenantId, projectId, id.nativeId());
     }
 
     /**
      * Perform an action on a run.
      *
-     * @throws IllegalArgumentException when the id names no known source
-     *         or the source does not know the run
+     * <p>Filtered by {@code visibleTo} like every read: a source that hides
+     * a run from this subject must not act on it for them either — an
+     * invisible run that can still be stopped is the worst of both, the
+     * effect lands and the response is a 404. Indistinguishable from
+     * "unknown" on purpose.
+     *
+     * @throws IllegalArgumentException when the id names no known source,
+     *         the source does not know the run, or the subject may not see it
      */
-    public void perform(String tenantId, String projectId, @Nullable String composite,
+    public void perform(de.mhus.vance.shared.permission.SecurityContext subject,
+                        String tenantId, String projectId, @Nullable String composite,
                         RunAction action, String reason) {
         RunId id = RunId.parse(composite);
         if (id == null) throw new IllegalArgumentException("Malformed run id: " + composite);
         RunSource source = byId.get(id.source());
         if (source == null) throw new IllegalArgumentException("Unknown run source in: " + composite);
+        if (!source.visibleTo(subject, tenantId, projectId, id.nativeId())) {
+            throw new IllegalArgumentException("No such run: " + composite);
+        }
         source.perform(tenantId, projectId, id.nativeId(), action, reason);
     }
 

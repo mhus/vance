@@ -182,7 +182,10 @@ public class MagratheaWorkflowController {
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("workflowRunId", runId);
-        result.put("workflowName", body.getPath());
+        // The stem, not the path: that is the name the service journalled
+        // and the only one `GET /workflows/runs?workflow=<name>` matches.
+        result.put("workflowName",
+                MagratheaWorkflowService.workflowNameFromPath(body.getPath()));
         return result;
     }
 

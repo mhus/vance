@@ -230,6 +230,52 @@ class VaultServiceTest {
                 .hasMessageContaining("Multiple vault providers");
     }
 
+    // ─────── metrics ───────
+
+    @Test
+    void readSecret_countsExactlyOneOutcome_evenOnTheSettingsFallback() {
+        // vance.vault.reads carries the *result* of a call, and every one of its
+        // outcomes is terminal — so one call must produce one increment, or
+        // success/sum(outcomes) stops being a success rate. Counting the
+        // (non-terminal) "no external manager bound" fact on the same series
+        // doubled every read in the default installation.
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        RecordingProvider settings = new RecordingProvider(SettingsVaultProvider.TYPE);
+        settings.store.put("k", "v");
+        new VaultService(settingService, List.of(settings), new MetricService(registry))
+                .readSecret(SCOPE, "k");
+
+        assertThat(totalCount(registry, VaultService.METRIC_READS)).isEqualTo(1.0);
+        assertThat(count(registry, VaultService.METRIC_READS, "success")).isEqualTo(1.0);
+        // The binding fact lives on its own series and stays observable.
+        assertThat(count(registry, VaultService.METRIC_BINDINGS, "settings")).isEqualTo(1.0);
+    }
+
+    @Test
+    void readSecret_boundVault_isCountedAsExternal() {
+        setting(PROJECT, "vault.type", "infisical");
+        setting(PROJECT, "vault.baseUrl", "https://vault.example.tld");
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        RecordingProvider infisical = new RecordingProvider("infisical");
+        infisical.store.put("k", "v");
+        new VaultService(settingService, List.of(infisical), new MetricService(registry))
+                .readSecret(SCOPE, "k");
+
+        assertThat(count(registry, VaultService.METRIC_BINDINGS, "external")).isEqualTo(1.0);
+        assertThat(count(registry, VaultService.METRIC_BINDINGS, "settings")).isEqualTo(0.0);
+        assertThat(totalCount(registry, VaultService.METRIC_READS)).isEqualTo(1.0);
+    }
+
+    private static double count(SimpleMeterRegistry registry, String name, String outcome) {
+        return registry.find(name).tag("outcome", outcome).counters().stream()
+                .mapToDouble(io.micrometer.core.instrument.Counter::count).sum();
+    }
+
+    private static double totalCount(SimpleMeterRegistry registry, String name) {
+        return registry.find(name).counters().stream()
+                .mapToDouble(io.micrometer.core.instrument.Counter::count).sum();
+    }
+
     @Test
     void isConfigured_reflectsTypeSetting() {
         VaultService svc = serviceWith(new RecordingProvider("infisical"));

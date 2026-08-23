@@ -32,8 +32,13 @@ class ThinkProcessRunSourceTest {
             mock(de.mhus.vance.brain.session.SessionLifecycleService.class);
     private final de.mhus.vance.brain.thinkengine.ProcessEventEmitter emitter =
             mock(de.mhus.vance.brain.thinkengine.ProcessEventEmitter.class);
+    private final de.mhus.vance.shared.session.SessionService sessions =
+            mock(de.mhus.vance.shared.session.SessionService.class);
+    private final de.mhus.vance.shared.permission.PermissionService permissions =
+            mock(de.mhus.vance.shared.permission.PermissionService.class);
     private final ThinkProcessRunSource source = new ThinkProcessRunSource(
-            processes, engines, JsonMapper.builder().build(), lifecycle, emitter);
+            processes, engines, JsonMapper.builder().build(), lifecycle, emitter,
+            sessions, permissions);
 
     // Built outside any when(...) — stubbing a mock while another stubbing
     // is open is what Mockito calls UnfinishedStubbing.
@@ -127,6 +132,10 @@ class ThinkProcessRunSourceTest {
     void offersActionsThatFitTheState() {
         assertThat(actionsOf(ThinkProcessStatus.RUNNING))
                 .containsExactlyInAnyOrder(RunAction.PAUSE, RunAction.STOP);
+        // Not pausable: SessionLifecycleService only pauses what is
+        // interruptible, so a PAUSE button here would do nothing at all.
+        assertThat(actionsOf(ThinkProcessStatus.IDLE)).containsExactly(RunAction.STOP);
+        assertThat(actionsOf(ThinkProcessStatus.BLOCKED)).containsExactly(RunAction.STOP);
         assertThat(actionsOf(ThinkProcessStatus.PAUSED))
                 .containsExactlyInAnyOrder(RunAction.RESUME, RunAction.STOP);
         // A session-owned hold is not the user's to lift here; offering
@@ -168,6 +177,67 @@ class ThinkProcessRunSourceTest {
         assertThatThrownBy(() -> source.perform("acme", "proj", "p1", RunAction.STOP, "why"))
                 .isInstanceOf(IllegalArgumentException.class);
         verify(lifecycle, never()).stopProcess(any());
+    }
+
+    // ──────────── whose run it is ────────────
+    //
+    // A process belongs to a person through its session, which is narrower
+    // than the project the caller was checked against. Without this, a plain
+    // project member saw (and could stop) everyone else's Marvin runs, goal
+    // text included.
+
+    @Test
+    void aRunOfSomebodyElsesSessionIsNotVisible() {
+        when(processes.findById("p1")).thenReturn(Optional.of(process("p1", "marvin")));
+        when(sessions.findBySessionId("sess-1")).thenReturn(Optional.of(sessionOf("alice", false)));
+        when(permissions.check(any(), any(), any())).thenReturn(false);
+
+        assertThat(source.visibleTo(subject("bob"), "acme", "proj", "p1")).isFalse();
+    }
+
+    @Test
+    void theSessionOwnerSeesTheirOwnRun() {
+        when(processes.findById("p1")).thenReturn(Optional.of(process("p1", "marvin")));
+        when(sessions.findBySessionId("sess-1")).thenReturn(Optional.of(sessionOf("alice", false)));
+
+        assertThat(source.visibleTo(subject("alice"), "acme", "proj", "p1")).isTrue();
+        verify(permissions, never()).check(any(), any(), any());
+    }
+
+    @Test
+    void aProjectAdminSeesEveryRunOfTheProject() {
+        when(processes.findById("p1")).thenReturn(Optional.of(process("p1", "marvin")));
+        when(sessions.findBySessionId("sess-1")).thenReturn(Optional.of(sessionOf("alice", false)));
+        when(permissions.check(any(), any(), eq(de.mhus.vance.shared.permission.Action.ADMIN)))
+                .thenReturn(true);
+
+        assertThat(source.visibleTo(subject("bob"), "acme", "proj", "p1")).isTrue();
+    }
+
+    @Test
+    void aSystemSessionsRunStaysVisible() {
+        // Scheduler and agrajag work belongs to the project, not to a person
+        // — hiding it would hide the project's own automation from it.
+        when(processes.findById("p1")).thenReturn(Optional.of(process("p1", "marvin")));
+        when(sessions.findBySessionId("sess-1")).thenReturn(Optional.of(sessionOf("_system", true)));
+
+        assertThat(source.visibleTo(subject("bob"), "acme", "proj", "p1")).isTrue();
+    }
+
+    private static de.mhus.vance.shared.permission.SecurityContext subject(String user) {
+        return de.mhus.vance.shared.permission.SecurityContext.user(user, "acme", List.of());
+    }
+
+    private static de.mhus.vance.shared.session.SessionDocument sessionOf(
+            String owner, boolean system) {
+        de.mhus.vance.shared.session.SessionDocument s =
+                new de.mhus.vance.shared.session.SessionDocument();
+        s.setSessionId("sess-1");
+        s.setTenantId("acme");
+        s.setProjectId("proj");
+        s.setUserId(owner);
+        s.setSystem(system);
+        return s;
     }
 
     private java.util.Set<RunAction> actionsOf(ThinkProcessStatus status) {

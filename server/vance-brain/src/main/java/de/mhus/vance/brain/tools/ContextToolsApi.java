@@ -115,6 +115,21 @@ public final class ContextToolsApi implements ToolBus {
     private final Set<String> allowed;
     private final Set<String> primary;
     private final Set<String> deferred;
+    /**
+     * The subset of {@link #deferred} that the budget stage pushed there
+     * this turn — everything else in {@code deferred} follows from engine
+     * + recipe + mode + profile and is therefore the same on every turn.
+     *
+     * <p>Kept apart only for prompt rendering: the discovery block is part
+     * of the static system prefix that carries the prompt-cache marker,
+     * and this half is <em>not</em> stable. It moves whenever an
+     * activation, a usage count or a skill re-fit changes the ranking, so
+     * folding it into the static block would invalidate the whole cached
+     * prefix — the very cost the alphabetical tool array is sorted to
+     * avoid. See {@link #demotedDiscoveryBlockMarkdown()} and
+     * {@code specification/public/server-tools.md} §14.
+     */
+    private final Set<String> demoted;
     private final Set<String> activatedDeferred;
     private final ToolInvocationListener listener;
     private final java.util.function.Consumer<String> activationRefresh;
@@ -325,6 +340,7 @@ public final class ContextToolsApi implements ToolBus {
         this.attachmentSink = attachmentSink == null
                 ? de.mhus.vance.brain.ai.attachment.ToolAttachmentSink.NOOP : attachmentSink;
         this.budgetContext = null;
+        this.demoted = Set.of();
     }
 
     /**
@@ -334,6 +350,7 @@ public final class ContextToolsApi implements ToolBus {
     private ContextToolsApi(ContextToolsApi src,
             Set<String> allowed, Set<String> primary,
             Set<String> deferred, Set<String> activatedDeferred,
+            Set<String> demoted,
             @org.jspecify.annotations.Nullable BudgetContext budgetContext) {
         this.dispatcher = src.dispatcher;
         this.ctx = src.ctx;
@@ -342,6 +359,12 @@ public final class ContextToolsApi implements ToolBus {
         this.deferred = deferred == null ? Set.of() : Set.copyOf(deferred);
         this.activatedDeferred = activatedDeferred == null
                 ? Set.of() : Set.copyOf(activatedDeferred);
+        // Demotion only ever names tools that ended up deferred; keeping
+        // the two consistent here means no renderer has to re-check it.
+        Set<String> demotedCopy = demoted == null
+                ? new LinkedHashSet<>() : new LinkedHashSet<>(demoted);
+        demotedCopy.retainAll(this.deferred);
+        this.demoted = Set.copyOf(demotedCopy);
         this.listener = src.listener;
         this.activationRefresh = src.activationRefresh;
         this.historyTagBuilder = src.historyTagBuilder;
@@ -362,11 +385,31 @@ public final class ContextToolsApi implements ToolBus {
     public ContextToolsApi withBudget(
             @org.jspecify.annotations.Nullable ToolBudget budget,
             ToolTriage.@org.jspecify.annotations.Nullable Hints familyHints) {
-        if (budget == null || !budget.hasLimit()) return this;
-        BudgetContext bc = new BudgetContext(
-                budget, familyHints == null ? ToolTriage.Hints.EMPTY : familyHints);
+        return withBudget(budget, familyHints, Set.of());
+    }
+
+    /**
+     * As {@link #withBudget(ToolBudget, ToolTriage.Hints)}, plus the names
+     * {@link #classify} demoted while fitting the surface to the cap
+     * ({@link Classification#demoted()}).
+     *
+     * <p>They are already inside {@code deferred} and stay callable; the
+     * set is carried only so the prompt renderer can keep them out of the
+     * cache-anchored half of the discovery block — see {@link #demoted}.
+     */
+    public ContextToolsApi withBudget(
+            @org.jspecify.annotations.Nullable ToolBudget budget,
+            ToolTriage.@org.jspecify.annotations.Nullable Hints familyHints,
+            @org.jspecify.annotations.Nullable Set<String> demotedByBudget) {
+        boolean hasDemoted = demotedByBudget != null && !demotedByBudget.isEmpty();
+        if ((budget == null || !budget.hasLimit()) && !hasDemoted) return this;
+        BudgetContext bc = budget == null || !budget.hasLimit() ? budgetContext
+                : new BudgetContext(
+                        budget, familyHints == null ? ToolTriage.Hints.EMPTY : familyHints);
+        Set<String> merged = new LinkedHashSet<>(demoted);
+        if (hasDemoted) merged.addAll(demotedByBudget);
         return new ContextToolsApi(
-                this, allowed, primary, deferred, activatedDeferred, bc);
+                this, allowed, primary, deferred, activatedDeferred, merged, bc);
     }
 
     /** All tools visible in this scope (after the engine's allow-filter). */
@@ -406,9 +449,16 @@ public final class ContextToolsApi implements ToolBus {
     }
 
     /**
-     * Markdown rendering of {@link #listDeferredForDiscovery()} for
-     * direct inclusion in the engine system prompt. Empty string when
-     * no deferred tools exist (caller can skip the block entirely).
+     * Markdown rendering of the <b>cache-stable</b> part of
+     * {@link #listDeferredForDiscovery()} for direct inclusion in the
+     * engine's static system prefix. Empty string when nothing qualifies
+     * (caller can skip the block entirely).
+     *
+     * <p>Tools the budget stage demoted this turn are deliberately
+     * <em>not</em> here — they belong in
+     * {@link #demotedDiscoveryBlockMarkdown()}, which the engine renders
+     * as a dynamic message. Nothing disappears; it just moves out of the
+     * cached prefix.
      *
      * <p>Tools are grouped by pack-prefix (the substring before
      * {@code __}) so a multi-tool pack like {@code gmail_rest} renders
@@ -426,25 +476,59 @@ public final class ContextToolsApi implements ToolBus {
      * just appear as plain bullets.
      */
     public String discoveryBlockMarkdown() {
-        // Pull the deferred-bucket tools directly from the dispatcher
-        // so we have access to Tool#promptHint() — ToolSpec carries
-        // searchHint + description but not the pack-level recipe.
-        java.util.List<ToolDispatcher.Resolved> deferredResolved = new java.util.ArrayList<>();
-        for (ToolDispatcher.Resolved r : dispatcher.resolveAll(ctx)) {
-            if (deferred.contains(r.tool().name())) deferredResolved.add(r);
-        }
-        if (deferredResolved.isEmpty()) return "";
-        deferredResolved.sort(java.util.Comparator.comparing(r -> r.tool().name()));
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("\n\n## Available deferred tools\n\n")
-                .append("These tools are listed by name + hint only (full schemas "
+        Set<String> stable = new LinkedHashSet<>(deferred);
+        stable.removeAll(demoted);
+        return renderDiscoveryBlock(stable,
+                "\n\n## Available deferred tools\n\n"
+                        + "These tools are listed by name + hint only (full schemas "
                         + "are kept out of the manifest to save tokens). You can "
                         + "call them directly — the engine activates them on first "
                         + "use. If you need the full parameter schema first, call "
                         + "`tool_description(names=[\"<name>\", ...])` — pass every "
                         + "candidate in one call. `tool_list` shows the complete "
                         + "name inventory including anything omitted here.\n");
+    }
+
+    /**
+     * The volatile half of the discovery block: the tools the budget
+     * stage moved out of the manifest this turn.
+     *
+     * <p>Rendered separately from {@link #discoveryBlockMarkdown()} so the
+     * engine can put it in its own dynamic system message. Membership
+     * here follows activation recency and measured usage, so it changes
+     * between turns; appending it to the cache-anchored prefix would cost
+     * a full re-read of engine prompt + recipe prefix + manual hooks
+     * every time the ranking shifts. Empty string when the budget cut
+     * nothing — the common case.
+     */
+    public String demotedDiscoveryBlockMarkdown() {
+        return renderDiscoveryBlock(demoted,
+                "\n\n## Tools not in this turn's manifest\n\n"
+                        + "These are also available, but their schemas did not fit "
+                        + "the endpoint's tool limit this turn. Calling one by name "
+                        + "works — the engine activates it on first use. Use "
+                        + "`tool_description(names=[\"<name>\", ...])` when you need "
+                        + "the parameters first.\n");
+    }
+
+    /**
+     * Shared renderer for both halves of the discovery block —
+     * {@code names} must be a subset of {@link #deferred}.
+     */
+    private String renderDiscoveryBlock(Set<String> names, String header) {
+        if (names.isEmpty()) return "";
+        // Pull the tools directly from the dispatcher so we have access
+        // to Tool#promptHint() — ToolSpec carries searchHint +
+        // description but not the pack-level recipe.
+        java.util.List<ToolDispatcher.Resolved> deferredResolved = new java.util.ArrayList<>();
+        for (ToolDispatcher.Resolved r : dispatcher.resolveAll(ctx)) {
+            if (names.contains(r.tool().name())) deferredResolved.add(r);
+        }
+        if (deferredResolved.isEmpty()) return "";
+        deferredResolved.sort(java.util.Comparator.comparing(r -> r.tool().name()));
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(header);
 
         // Group by pack-prefix (substring before the first "__").
         // Insertion order = sort order = stable for prompt-cache markers.
@@ -933,6 +1017,13 @@ public final class ContextToolsApi implements ToolBus {
      * — and the overflow moves to deferred. Without this the surface
      * would silently exceed the cap and the provider would answer 400,
      * which is exactly the failure the budget exists to prevent.
+     *
+     * <p>An extra that was <em>already</em> deferred (say the model
+     * activated it earlier this session) leaves the deferred bucket on
+     * the way in. Otherwise it would sit in both buckets at once: counted
+     * twice by the triage, so the surface looks a slot larger than it is,
+     * and rendered into the discovery block while its full schema is
+     * already in the manifest.
      */
     public ContextToolsApi withAdditional(Set<String> extra) {
         if (allowed.isEmpty() || extra == null || extra.isEmpty()) {
@@ -945,11 +1036,15 @@ public final class ContextToolsApi implements ToolBus {
             if (mergedAllowed.add(e)) changed = true;
             if (mergedPrimary.add(e)) changed = true;
         }
+        Set<String> mergedDeferred = new LinkedHashSet<>(deferred);
+        Set<String> mergedActivated = new LinkedHashSet<>(activatedDeferred);
+        if (mergedDeferred.removeAll(extra)) changed = true;
+        mergedActivated.removeAll(extra);
         if (!changed) return this;
         if (budgetContext == null) {
-            return copyWith(mergedAllowed, mergedPrimary, deferred, activatedDeferred);
+            return copyWith(mergedAllowed, mergedPrimary, mergedDeferred, mergedActivated);
         }
-        return refitToBudget(mergedAllowed, mergedPrimary, extra);
+        return refitToBudget(mergedAllowed, mergedPrimary, mergedDeferred, mergedActivated, extra);
     }
 
     /**
@@ -959,7 +1054,8 @@ public final class ContextToolsApi implements ToolBus {
      * not mutated, so a later re-fit starts from the same baseline.
      */
     private ContextToolsApi refitToBudget(
-            Set<String> mergedAllowed, Set<String> mergedPrimary, Set<String> priorityNames) {
+            Set<String> mergedAllowed, Set<String> mergedPrimary,
+            Set<String> deferredIn, Set<String> activatedIn, Set<String> priorityNames) {
         BudgetContext bc = budgetContext;
         Set<String> keep = new LinkedHashSet<>(bc.hints().keep());
         keep.addAll(priorityNames);
@@ -969,17 +1065,22 @@ public final class ContextToolsApi implements ToolBus {
         Set<String> floor = new LinkedHashSet<>(MANDATORY_TOOLS);
         floor.retainAll(mergedPrimary);
         ToolTriage.Result triaged = ToolTriage.apply(
-                mergedPrimary, activatedDeferred, floor, hints, bc.budget());
+                mergedPrimary, activatedIn, floor, hints, bc.budget());
         if (!triaged.changed()) {
-            return copyWith(mergedAllowed, mergedPrimary, deferred, activatedDeferred);
+            return copyWith(mergedAllowed, mergedPrimary, deferredIn, activatedIn);
         }
-        Set<String> mergedDeferred = new LinkedHashSet<>(deferred);
+        Set<String> mergedDeferred = new LinkedHashSet<>(deferredIn);
+        Set<String> mergedDemoted = new LinkedHashSet<>(demoted);
         for (String name : triaged.demoted()) {
-            if (mergedPrimary.contains(name)) mergedDeferred.add(name);
+            if (mergedPrimary.contains(name)) {
+                mergedDeferred.add(name);
+                mergedDemoted.add(name);
+            }
         }
         logDemotion(ctx, triaged,
                 mergedPrimary.size() + activatedDeferred.size(), bc.budget());
-        return copyWith(mergedAllowed, triaged.primary(), mergedDeferred, triaged.activated());
+        return copyWith(mergedAllowed, triaged.primary(), mergedDeferred,
+                triaged.activated(), mergedDemoted);
     }
 
     /**
@@ -993,8 +1094,16 @@ public final class ContextToolsApi implements ToolBus {
     private ContextToolsApi copyWith(
             Set<String> newAllowed, Set<String> newPrimary,
             Set<String> newDeferred, Set<String> newActivated) {
+        return copyWith(newAllowed, newPrimary, newDeferred, newActivated, demoted);
+    }
+
+    /** {@link #copyWith} with an explicit budget-demoted set. */
+    private ContextToolsApi copyWith(
+            Set<String> newAllowed, Set<String> newPrimary,
+            Set<String> newDeferred, Set<String> newActivated, Set<String> newDemoted) {
         return new ContextToolsApi(
-                this, newAllowed, newPrimary, newDeferred, newActivated, budgetContext);
+                this, newAllowed, newPrimary, newDeferred, newActivated,
+                newDemoted, budgetContext);
     }
 
     /**
@@ -1337,6 +1446,7 @@ public final class ContextToolsApi implements ToolBus {
 
         // Budget stage — last, so it sees the final buckets and can never
         // be undone by a later overlay.
+        Set<String> demotedToDeferred = Set.of();
         if (budget != null && budget.hasLimit()) {
             Set<String> floor = new LinkedHashSet<>(MANDATORY_TOOLS);
             floor.retainAll(primary);
@@ -1344,15 +1454,16 @@ public final class ContextToolsApi implements ToolBus {
                     primary, activated, floor,
                     hintsFrom(filter, familyHints), budget);
             if (triaged.changed()) {
-                Set<String> demotedToDeferred = new LinkedHashSet<>(triaged.demoted());
-                demotedToDeferred.retainAll(primary);
-                deferred.addAll(demotedToDeferred);
+                Set<String> cut = new LinkedHashSet<>(triaged.demoted());
+                cut.retainAll(primary);
+                deferred.addAll(cut);
+                demotedToDeferred = cut;
                 logDemotion(ctx, triaged, primary.size() + activated.size(), budget);
                 primary = triaged.primary();
                 activated = triaged.activated();
             }
         }
-        return new Classification(effective, primary, deferred, activated);
+        return new Classification(effective, primary, deferred, activated, demotedToDeferred);
     }
 
     /**
@@ -1407,7 +1518,8 @@ public final class ContextToolsApi implements ToolBus {
         demotedToDeferred.retainAll(primary);
         deferred.addAll(demotedToDeferred);
         logDemotion(ctx, triaged, primary.size() + activated.size(), budget);
-        return new Classification(all, triaged.primary(), deferred, triaged.activated());
+        return new Classification(all, triaged.primary(), deferred, triaged.activated(),
+                demotedToDeferred);
     }
 
     /**
@@ -1466,12 +1578,26 @@ public final class ContextToolsApi implements ToolBus {
 
     /**
      * Result of {@link #classify}. Holds the four sets the engine
-     * passes into the {@link ContextToolsApi} constructor.
+     * passes into the {@link ContextToolsApi} constructor, plus
+     * {@link #demoted}.
+     *
+     * @param demoted the subset of {@link #deferred} that the budget
+     *        stage put there — already inside {@code deferred}, listed
+     *        separately only so the engine can keep the volatile half of
+     *        the discovery block out of its cached system prefix. Pass it
+     *        on via {@link #withBudget(ToolBudget, ToolTriage.Hints, Set)}.
      */
     public record Classification(
             Set<String> allowed,
             Set<String> primary,
             Set<String> deferred,
-            Set<String> activatedDeferred) {
+            Set<String> activatedDeferred,
+            Set<String> demoted) {
+
+        /** Nothing was demoted — the common case outside the budget stage. */
+        public Classification(Set<String> allowed, Set<String> primary,
+                Set<String> deferred, Set<String> activatedDeferred) {
+            this(allowed, primary, deferred, activatedDeferred, Set.of());
+        }
     }
 }

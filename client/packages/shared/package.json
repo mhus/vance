@@ -34,6 +34,8 @@
   ],
   "scripts": {
     "build": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
@@ -42,7 +44,8 @@
   },
   "devDependencies": {
     "typescript": "7.0.2",
-    "@types/js-yaml": "^4.0.9"
+    "@types/js-yaml": "^4.0.9",
+    "vitest": "^4.1.10"
   },
   "peerDependenciesMeta": {
     "vue": {

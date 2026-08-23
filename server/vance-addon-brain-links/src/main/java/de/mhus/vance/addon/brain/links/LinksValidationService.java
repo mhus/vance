@@ -217,7 +217,7 @@ public class LinksValidationService {
             // A picture the browser will refuse to load renders as nothing, and
             // "no picture" is indistinguishable from "the page has none".
             String image = str(map.get("image"));
-            if (image != null && !isHttp(image)) {
+            if (image != null && !LinkUrls.isHttp(image)) {
                 out.add(Finding.warning(loc + ".image", "image-not-http",
                         "`image` is not an http(s) URL, so nothing is shown. "
                                 + "Leave it out to use the page's own preview picture."));
@@ -281,11 +281,6 @@ public class LinksValidationService {
     }
 
     // ── helpers ───────────────────────────────────────────────────
-
-    private static boolean isHttp(String s) {
-        String v = s.trim().toLowerCase();
-        return v.startsWith("http://") || v.startsWith("https://");
-    }
 
     private static @Nullable String str(@Nullable Object v) {
         return v instanceof String s && !s.isBlank() ? s.trim() : null;

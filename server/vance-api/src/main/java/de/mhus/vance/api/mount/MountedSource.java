@@ -21,8 +21,9 @@ import org.jspecify.annotations.Nullable;
  *                    {@code _ext/<name>/...}, and therefore identity: it is
  *                    part of the derived document id, so renaming is not
  *                    supported (create new, remove old)
- * @param displayName label for configuration UI and logs; falls back to
- *                    {@code name}
+ * @param displayName label for configuration UI and logs, {@code null} when
+ *                    the source declares none — callers fall back to
+ *                    {@code name} themselves
  * @param protocolId  which protocol serves this mount, for diagnostics
  * @param access      what the source allows, {@code UNKNOWN} when the
  *                    capabilities are not cached yet or it is unreachable
@@ -79,10 +80,5 @@ public record MountedSource(
             // expires the instant it is written.
             metadataTtl = DEFAULT_TTL;
         }
-    }
-
-    /** Label for UI — {@code displayName} when set, else the mount name. */
-    public String label() {
-        return displayName == null || displayName.isBlank() ? name : displayName;
     }
 }

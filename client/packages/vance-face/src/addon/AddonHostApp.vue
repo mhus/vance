@@ -3,17 +3,7 @@ import { markRaw, onMounted, shallowRef } from 'vue';
 import type { Component } from 'vue';
 import { loadRemote, registerRemotes } from '@module-federation/runtime';
 import { EditorShell, VAlert } from '@/components';
-
-interface AddonTile {
-  label?: string;
-  description?: string;
-  minLevel?: string;
-}
-interface AddonEntry {
-  name: string;
-  path: string;
-  tile?: AddonTile;
-}
+import { addonRemoteEntry, addonRemoteName, loadAddonManifest } from '@/platform/addonManifest';
 
 const title = shallowRef<string>('Addon');
 const area = shallowRef<Component | null>(null);
@@ -35,14 +25,8 @@ onMounted(async () => {
     }
 
     // Presence gate: only addons the server reports as installed are loadable.
-    let addons: AddonEntry[] = [];
-    try {
-      const res = await fetch('/face/addons', { headers: { Accept: 'application/json' } });
-      if (res.ok) addons = (await res.json()) as AddonEntry[];
-    } catch {
-      // fall through — treated as "not available"
-    }
-    const entry = addons.find((a) => a.name === id);
+    // An unreachable manifest reads as an empty list — "not available".
+    const entry = (await loadAddonManifest()).find((a) => a.name === id);
     if (!entry) {
       error.value = `Addon '${id}' is not available in this deployment.`;
       return;
@@ -50,10 +34,12 @@ onMounted(async () => {
     title.value = entry.tile?.label ?? id;
 
     registerRemotes(
-      [{ name: `vance_addon_${id}`, entry: `/addons/${id}/remoteEntry.js`, type: 'module' as const }],
+      [{ name: addonRemoteName(id), entry: addonRemoteEntry(id), type: 'module' as const }],
       { force: true },
     );
-    const mod = await loadRemote<{ default?: Component } | Component>(`vance_addon_${id}/area`);
+    const mod = await loadRemote<{ default?: Component } | Component>(
+      `${addonRemoteName(id)}/area`,
+    );
     const resolved = (mod as { default?: Component })?.default ?? (mod as Component);
     if (!resolved) {
       error.value = `Addon '${id}' does not expose an area.`;

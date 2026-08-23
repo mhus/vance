@@ -112,7 +112,11 @@ async function run(
           </div>
         </div>
         <div v-if="rejecting === `vendor:${vendor.name}`" class="mt-2 flex gap-2">
-          <VInput v-model="reason" label="Reason" class="grow" />
+          <!-- Width on a wrapper, not on the field: VInput's root already
+               carries w-full, and a second width class squeezes the button. -->
+          <div class="grow">
+            <VInput v-model="reason" label="Reason" />
+          </div>
           <VButton
             size="sm"
             :disabled="loading || !reason"
@@ -180,7 +184,11 @@ async function run(
           v-if="rejecting === `release:${release.vendorName}/${release.kitId}/${release.version}`"
           class="mt-2 flex gap-2"
         >
-          <VInput v-model="reason" label="Reason" class="grow" />
+          <!-- Width on a wrapper, not on the field: VInput's root already
+               carries w-full, and a second width class squeezes the button. -->
+          <div class="grow">
+            <VInput v-model="reason" label="Reason" />
+          </div>
           <VButton
             size="sm"
             :disabled="loading || !reason"

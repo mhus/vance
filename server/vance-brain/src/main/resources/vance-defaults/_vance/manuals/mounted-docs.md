@@ -1,6 +1,6 @@
 ---
 triggers: _ext, mounted, mount, external library, book library, pdf library, external files, aus der bibliothek, externe dateien, gemountet, mount_list, mount_search, archive folder, is that file available
-summary: Read files that live in an external source (document library, archive, media store) but appear under _ext/<mount>/ in this project. doc_search does NOT cover them — use mount_list / mount_search to find them, then the ordinary doc_read.
+summary: Read files that live in an external source (document library, archive, media store) but appear under _ext/<mount>/ in this project. doc_find / doc_grep / memory_search do NOT cover them — use mount_list / mount_search to find them, then the ordinary doc_read.
 ---
 # Mounted documents — files that live somewhere else
 
@@ -12,14 +12,15 @@ _ext/<mount>/<path inside the source>
 ```
 
 and you read them with the **ordinary** document tools — `doc_read`,
-`doc_meta`, embeds, links. Nothing is copied into Vance; the bytes are
+`doc_info`, embeds, links. Nothing is copied into Vance; the bytes are
 fetched from the source each time.
 
 ## The one thing that will trip you up
 
-`doc_search` and `doc_list_in_folder` **do not see mounted files.** They
-scan `documents/` by default, and `_ext/` is deliberately outside it — a
-foreign library must not turn up in every search for a note.
+`doc_find`, `doc_grep`, `memory_search` and `doc_list_in_folder` **do not
+see mounted files.** They scan `documents/` by default, and `_ext/` is
+deliberately outside it — a foreign library must not turn up in every
+search for a note.
 
 So: **never say a file is unavailable, or that the project has no such
 document, before calling `mount_list`.** If the user mentions a library, an

@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One mounted external source, as a client sees it.
@@ -33,7 +34,7 @@ public class MountDto {
     private String name;
 
     /** Label the source prefers; {@code null} means use {@link #name}. */
-    private String displayName;
+    private @Nullable String displayName;
 
     /** Which protocol serves it, for diagnostics. */
     private String protocolId;
@@ -49,13 +50,13 @@ public class MountDto {
      * How much the source says it holds; {@code null} means it does not say.
      * Not zero — a client showing 0 for an unknown size reads as "empty".
      */
-    private Long itemCount;
+    private @Nullable Long itemCount;
 
     /**
      * Why the source is not answering, when it is not. {@code null} when
      * everything is fine, which is the common case.
      */
-    private String statusText;
+    private @Nullable String statusText;
 
     /**
      * Whether a search can be handed to this source. Clients use it to decide

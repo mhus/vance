@@ -187,11 +187,16 @@ export function parseWorkflowGraph(body: string): WorkflowGraph {
     collectEdges(name, raw, edges);
   }
 
-  // Second pass: any edge target that was never declared becomes a ghost
-  // node, so the drawing shows the break.
+  // Second pass: any edge target without a node becomes a ghost node, so the
+  // drawing shows the break. The set is built from the states that actually
+  // made it into a node, not from the declared keys: an entry skipped above
+  // (not a mapping) is declared but has no node, and an edge into it would
+  // otherwise be handed to VueFlow with a target that does not exist — VueFlow
+  // drops such an edge silently, which is exactly what the ghost avoids.
+  const nodeNames = new Set(states.map((s) => s.name));
   const declaredSet = new Set(declared);
   for (const edge of edges) {
-    if (declaredSet.has(edge.target)) continue;
+    if (nodeNames.has(edge.target)) continue;
     edge.dangling = true;
     if (!missing.has(edge.target)) {
       missing.set(edge.target, {
@@ -204,7 +209,9 @@ export function parseWorkflowGraph(body: string): WorkflowGraph {
         missing: true,
       });
       problems.push(
-        `state '${edge.source}' points to undeclared state '${edge.target}'`,
+        declaredSet.has(edge.target)
+          ? `state '${edge.source}' points to unusable state '${edge.target}'`
+          : `state '${edge.source}' points to undeclared state '${edge.target}'`,
       );
     }
   }

@@ -107,9 +107,10 @@ export async function submitReview(
 /**
  * Buy a kit.
  *
- * Asks for the store password, unlike everything else here: the store
- * accepts this installation's link token for leaving a review and for
- * nothing that spends money. The brain uses it once and closes the session.
+ * Asks for the store password, unlike most of what is here: this
+ * installation's link is taken for reading and managing, but not for
+ * spending money or entering an agreement. The brain uses the password once
+ * and closes the session.
  */
 export async function buy(
   projectId: string,
@@ -194,28 +195,36 @@ export async function renewPublishing(
 // ──────────────────── money ────────────────────
 
 export async function loadMoney(projectId: string, sourceId: string): Promise<MoneyView> {
-  return brainFetch<MoneyView>('GET', `${base(projectId)}/operator/money?sourceId=${sourceId}`);
+  const query = new URLSearchParams({ sourceId }).toString();
+  return brainFetch<MoneyView>('GET', `${base(projectId)}/operator/money?${query}`);
 }
 
 export async function payVendor(
   projectId: string, sourceId: string, vendorName: string,
 ): Promise<Payout> {
+  // Path segment encoded, like every other call here. A '/' in a name
+  // would otherwise move this request from "pay" to "release".
+  const query = new URLSearchParams({ sourceId }).toString();
   return brainFetch<Payout>(
-    'POST', `${base(projectId)}/operator/payouts/${vendorName}?sourceId=${sourceId}`);
+    'POST',
+    `${base(projectId)}/operator/payouts/${encodeURIComponent(vendorName)}?${query}`);
 }
 
 export async function releasePayout(
   projectId: string, sourceId: string, payoutName: string,
 ): Promise<Payout> {
+  const query = new URLSearchParams({ sourceId }).toString();
   return brainFetch<Payout>(
-    'POST', `${base(projectId)}/operator/payouts/${payoutName}/release?sourceId=${sourceId}`);
+    'POST',
+    `${base(projectId)}/operator/payouts/${encodeURIComponent(payoutName)}/release?${query}`);
 }
 
 export async function reconcilePayouts(
   projectId: string, sourceId: string,
 ): Promise<ReconcileResult> {
+  const query = new URLSearchParams({ sourceId }).toString();
   return brainFetch<ReconcileResult>(
-    'POST', `${base(projectId)}/operator/payouts-reconcile?sourceId=${sourceId}`);
+    'POST', `${base(projectId)}/operator/payouts-reconcile?${query}`);
 }
 
 export async function refundOrder(
@@ -261,9 +270,22 @@ export async function reissueCreditNote(
  * credential in the address bar and in the history.
  */
 async function openPdf(path: string): Promise<void> {
-  const { blob } = await brainFetchBlob(path);
+  const { blob, filename } = await brainFetchBlob(path);
   const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
+  // The name the store suggested, carried through: a blob URL saves as a
+  // UUID otherwise, and an invoice filed under a random name is an invoice
+  // nobody finds again. An anchor rather than window.open because only the
+  // anchor takes a download name.
+  if (filename) {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.click();
+  } else {
+    window.open(url, '_blank', 'noopener');
+  }
   // Revoked late: revoking straight away can beat the new tab to the file.
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }

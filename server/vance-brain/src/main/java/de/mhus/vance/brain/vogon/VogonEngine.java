@@ -173,7 +173,7 @@ public class VogonEngine implements ThinkEngine {
      */
     @Override
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        if (!readyToStart(process)) {
+        if (deferStart(process)) {
             log.debug("Vogon id='{}' waiting for its task before starting a plan",
                     process.getId());
             thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
@@ -183,13 +183,35 @@ public class VogonEngine implements ThinkEngine {
     }
 
     /**
-     * True when the plan is named and has every required parameter — the case
-     * where nothing has to be read out of prose.
+     * Can waiting for the task message still change the outcome?
+     *
+     * <p>Not every unready start is an incomplete one, and the difference
+     * matters: deferring a start that is already broken leaves a process
+     * standing IDLE forever with no run, no journal and no deadline behind
+     * it — the Magrathea watchdog never sees it, because there is no task,
+     * and whoever delegated to it waits for something that cannot end. The
+     * spec asks for the opposite ({@code vogon-engine.md} §2): a spawn that
+     * cannot work fails at once and the process is closed.
+     *
+     * <p>So deferring happens only where a sentence could still supply the
+     * missing piece. It does not happen when
+     * {@code params.intake: none} says this plan is never fed from prose,
+     * and it does not happen when a plan <em>was</em> declared and does not
+     * resolve — a typo in {@code workflow:} or a plan document that fails to
+     * parse will not resolve later either.
      */
-    private boolean readyToStart(ThinkProcessDocument process) {
-        var plan = namedPlan(process);
-        if (plan.isEmpty()) return false;
-        return VogonIntake.missingRequired(plan.get(), callerParams(process)).isEmpty();
+    private boolean deferStart(ThinkProcessDocument process) {
+        if (VogonIntake.INTAKE_NONE.equalsIgnoreCase(stringParam(process, PARAM_INTAKE))) {
+            return false;
+        }
+        Optional<de.mhus.vance.shared.magrathea.ResolvedMagratheaWorkflow> plan =
+                namedPlan(process);
+        if (plan.isEmpty()) {
+            // Nothing resolved: wait only when nothing was declared either.
+            return declaredPath(process) == null && declaredName(process) == null;
+        }
+        // Resolved: wait only while a required parameter is still missing.
+        return !VogonIntake.missingRequired(plan.get(), callerParams(process)).isEmpty();
     }
 
     /** The plan this process names, by path or by name, if it names one. */
@@ -244,6 +266,21 @@ public class VogonEngine implements ThinkEngine {
                 : name == null
                         ? Optional.<de.mhus.vance.shared.magrathea.ResolvedMagratheaWorkflow>empty()
                         : intake.loadPlan(process.getTenantId(), process.getProjectId(), name);
+
+        // A declared plan that does not resolve is a start error, not a
+        // question for a model. Falling through here ran the plan-choice
+        // stage — a LightLlm call over every resolvable plan — whose answer
+        // was then thrown away, because the declared name wins again below;
+        // and when the model answered path-shaped, the run started the
+        // document *it* picked instead of the one that was declared.
+        if ((path != null || name != null) && plan.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Vogon cannot resolve the plan it was given: "
+                            + (path != null
+                                    ? PARAM_WORKFLOW_PATH + "='" + path + "'"
+                                    : PARAM_WORKFLOW + "='" + name + "'")
+                            + " — no such plan here, or the plan document does not parse.");
+        }
 
         // Only ask about the plan when neither form was declared.
         VogonIntake.Outcome intook = intake.resolve(
@@ -423,6 +460,16 @@ public class VogonEngine implements ThinkEngine {
      * open, the inbox item is still there, and the person can say it
      * differently or use the form. Not understanding a sentence is a normal
      * outcome, not a failure.
+     *
+     * <p><b>Only a person may answer a gate this way.</b> A
+     * {@code UserChatInput} is not proof of one: an orchestrator steering a
+     * child through {@code process_message} sends the same type with
+     * {@code fromUser = "process:<id>"}, and a trigger spawn sends its
+     * source tag. Falling back to the session owner when the sender was not
+     * a user meant an agent's "ok" was written into the inbox item stamped
+     * as the owner's approval. Whether that person may actually answer
+     * <em>this</em> item is decided in {@code MagratheaGateChatAnswerService};
+     * here we only make sure a name is not invented.
      */
     private void onUserSaid(ThinkProcessDocument process, SteerMessage.UserChatInput input) {
         String text = input.content();
@@ -431,19 +478,40 @@ public class VogonEngine implements ThinkEngine {
         String runId = runId(process);
         if (runId == null) {
             // No run yet means start() deferred it: this message is the job.
+            // Any sender may deliver that — it is a task, not a decision.
             beginRun(process, text);
             return;
         }
 
+        if (!isHumanSender(input.fromUser())) {
+            log.debug("Vogon id='{}' — '{}' is not a person, so it cannot answer a gate",
+                    process.getId(), input.fromUser());
+            return;
+        }
         boolean answered = gateChatAnswerService.tryAnswer(
-                process.getTenantId(), runId, text,
-                input.fromUser() != null ? input.fromUser() : startedBy(process));
+                process.getTenantId(), runId, text, input.fromUser());
         if (answered) {
             thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         } else {
             log.debug("Vogon id='{}' — nothing in run '{}' was waiting for that",
                     process.getId(), runId);
         }
+    }
+
+    /**
+     * Does {@code fromUser} name a person?
+     *
+     * <p>The three non-human forms the field can take, all of which reach a
+     * Vogon process through the same {@code UserChatInput}: {@code null} or
+     * blank (nobody said who), {@code process:<id>} (an orchestrator using
+     * {@code process_message}), and the service-account / system markers
+     * {@code _name} and {@code @system}. A user name is a
+     * {@code UserDocument.name} and is none of those.
+     */
+    private static boolean isHumanSender(@Nullable String fromUser) {
+        if (fromUser == null || fromUser.isBlank()) return false;
+        String from = fromUser.trim();
+        return !from.startsWith("process:") && !from.startsWith("_") && !from.startsWith("@");
     }
 
     /**
@@ -611,7 +679,13 @@ public class VogonEngine implements ThinkEngine {
 
     /**
      * Caller params for the plan: everything on the process except the
-     * fields that address the plan itself.
+     * fields that steer Vogon itself.
+     *
+     * <p>{@link #PARAM_INTAKE} is one of them: it says how the plan is to be
+     * <em>found</em>, not what it runs with. Left in, it travelled into
+     * {@code StartRecord.params} and — as soon as a plan happened to declare
+     * a parameter called {@code intake} — overwrote that parameter's default
+     * with the word {@code none}.
      */
     private static Map<String, Object> callerParams(ThinkProcessDocument process) {
         Map<String, Object> raw = process.getEngineParams();
@@ -620,6 +694,7 @@ public class VogonEngine implements ThinkEngine {
         out.remove(PARAM_WORKFLOW);
         out.remove(PARAM_WORKFLOW_PATH);
         out.remove(PARAM_RUN_ID);
+        out.remove(PARAM_INTAKE);
         return out;
     }
 

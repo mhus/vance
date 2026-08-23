@@ -64,6 +64,33 @@ final class KitToolSupport {
         return Boolean.parseBoolean(v.toString().trim());
     }
 
+    /**
+     * Refuse a non-remote target for an LLM-driven operation.
+     *
+     * <p>Shared by install (read side) and export (write side). Export needs it
+     * for the harder reason: {@code KitRepoLoader.openForWrite} accepts a
+     * {@code file://} or absolute path and {@code FolderWriteableTarget}
+     * creates the directory if it has to, so a local url turns the export into
+     * "write project documents — including re-encrypted PASSWORD settings —
+     * anywhere on the brain's filesystem".
+     *
+     * @param url  the caller-supplied url, may be {@code null} (then nothing is
+     *             overridden and the manifest's own origin applies)
+     * @param tool tool name for the message
+     */
+    static @Nullable String requireRemoteUrlIfPresent(@Nullable String url, String tool) {
+        if (url == null) return null;
+        String t = url.trim();
+        boolean remote = t.startsWith("https://") || t.startsWith("http://")
+                || t.startsWith("git@") || t.startsWith("ssh://");
+        if (!remote) {
+            throw new ToolException(
+                    "kit target must be a remote repo (https://, git@, ssh://); "
+                    + "file:// and local filesystem paths are not allowed for " + tool);
+        }
+        return url;
+    }
+
     static KitInheritDto sourceFrom(Map<String, Object> params) {
         String url = requireString(params, "url");
         // LLM-driven installs must not turn into an arbitrary local-directory
@@ -71,14 +98,7 @@ final class KitToolSupport {
         // git transport (https/http/git@/ssh). Local-folder sources stay
         // available to non-LLM paths (anus bootstrap) that call KitRepoLoader
         // directly, which don't go through this tool helper.
-        String t = url.trim();
-        boolean remote = t.startsWith("https://") || t.startsWith("http://")
-                || t.startsWith("git@") || t.startsWith("ssh://");
-        if (!remote) {
-            throw new ToolException(
-                    "kit source must be a remote repo (https://, git@, ssh://); "
-                    + "file:// and local filesystem paths are not allowed for kit_install");
-        }
+        requireRemoteUrlIfPresent(url, "kit_install");
         return KitInheritDto.builder()
                 .url(url)
                 .path(optionalString(params, "path"))
@@ -118,7 +138,8 @@ final class KitToolSupport {
     static Map<String, Object> sourceSchemaProps() {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("url", Map.of("type", "string",
-                "description", "Source repo URL (https://, file://, or absolute path)"));
+                "description", "Source repo URL. Must be remote (https://, git@, ssh://) — "
+                        + "file:// and local filesystem paths are refused on the tool surface."));
         props.put("path", Map.of("type", "string",
                 "description", "Sub-path inside the repo. Defaults to repo root."));
         props.put("branch", Map.of("type", "string",

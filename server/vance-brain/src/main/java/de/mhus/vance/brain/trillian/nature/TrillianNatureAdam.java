@@ -64,11 +64,13 @@ public class TrillianNatureAdam extends TrillianNatureBase {
      */
     static final int MAX_ASK_PROBES = 3;
 
-    /** engineParamOverrides key on the *worker*: re-checks offered. */
-    static final String PARAM_ASK_PROBES = "trillianAskProbes";
-
-    /** engineParamOverrides key on the *worker*: when the breaker opened. */
-    static final String PARAM_ASK_OPENED_AT = "trillianAskOpenedAt";
+    /**
+     * The two breaker keys live with {@link TrillianAskTool}, which opens
+     * the question the budget belongs to and resets them when a different
+     * one is raised. Adam only reads and advances them.
+     */
+    static final String PARAM_ASK_PROBES = TrillianAskTool.PARAM_ASK_PROBES;
+    static final String PARAM_ASK_OPENED_AT = TrillianAskTool.PARAM_ASK_OPENED_AT;
 
     /**
      * How long the breaker stays shut before allowing one further probe.
@@ -382,7 +384,7 @@ public class TrillianNatureAdam extends TrillianNatureBase {
             try {
                 switch (finding.kind()) {
                     case WORKER_WAITING -> {
-                        if (isStateBlocker(worker)) {
+                        if (probeWorthwhile(worker)) {
                             applyProbeDecision(worker, probeDecision(worker, now));
                         }
                     }
@@ -421,7 +423,7 @@ public class TrillianNatureAdam extends TrillianNatureBase {
      */
     private SelfCheckFinding waitingFinding(ThinkProcessDocument worker, Instant now) {
         String waited = since(worker.getUpdatedAt(), now);
-        String detail = isStateBlocker(worker) && probeDecision(worker, now).granted()
+        String detail = probeWorthwhile(worker) && probeDecision(worker, now).granted()
                 ? "parked since " + waited + ", blocked by a state that may have "
                         + "changed since. Before asking the human again, process_steer it "
                         + "once with a short nudge to re-check its obstacle and carry on if "
@@ -431,6 +433,28 @@ public class TrillianNatureAdam extends TrillianNatureBase {
                         + "waited.";
         return new SelfCheckFinding(
                 SelfCheckFinding.Kind.WORKER_WAITING, nameOf(worker), worker.getId(), detail);
+    }
+
+    /**
+     * Whether nudging this worker to look again could mean anything.
+     *
+     * <p>Both halves are needed. The blocker says the obstacle was a
+     * state; the pending marker says a question is still open at all. A
+     * worker that asked once, was answered, carried on and then parked on
+     * a natural stop still carries the blocker of the question it long
+     * since resolved — nudging that one to "re-check its obstacle" is
+     * advice about nothing, and it spends a probe doing it.
+     */
+    private boolean probeWorthwhile(ThinkProcessDocument worker) {
+        return awaitsAnswer(worker) && isStateBlocker(worker);
+    }
+
+    /** Whether an unanswered {@code trillian_ask} question is open. */
+    private boolean awaitsAnswer(ThinkProcessDocument worker) {
+        Map<String, Object> overrides = worker.getEngineParamOverrides();
+        Object raw = overrides == null ? null
+                : overrides.get(de.mhus.vance.brain.trillian.TrillianWorkerEngine.PARAM_ASK_PENDING);
+        return Boolean.TRUE.equals(raw);
     }
 
     private boolean isStateBlocker(ThinkProcessDocument worker) {
@@ -468,8 +492,9 @@ public class TrillianNatureAdam extends TrillianNatureBase {
             return new ProbeDecision(false, null, null);
         }
         // Half-open: one trial, and the cool-down restarts whatever it
-        // finds. Success ends the episode anyway — the worker finishes
-        // and closes — so there is nothing to reset on the way out.
+        // finds. Success ends the episode on its own — the worker carries
+        // on, the pending marker goes with its next turn, and a later,
+        // different question resets the budget in TrillianAskTool.
         return new ProbeDecision(true, null, now.toEpochMilli());
     }
 

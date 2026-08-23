@@ -119,11 +119,13 @@ class MilliwaysServiceTest {
     }
 
     @Test
-    void listHandlers_enforcesDocumentRead_notProjectRead() {
+    void listHandlers_enforcesProjectReadAndDocumentRead() {
         MilliwaysService service = serviceWith(new StubHandler("inbox", ShareAvailability.ready()));
 
         service.listHandlers(target());
 
+        verify(permissionService).enforce(
+                MARA, new Resource.Project(TENANT, PROJECT), Action.READ);
         verify(permissionService).enforce(
                 MARA, new Resource.Document(TENANT, PROJECT, PATH), Action.READ);
     }
@@ -266,7 +268,7 @@ class MilliwaysServiceTest {
     }
 
     @Test
-    void resolve_subjectWithoutDocument_authorizesNothingAndResolvesNothing() {
+    void resolve_subjectWithoutDocument_authorizesTheProjectAndResolvesNothing() {
         StubHandler handler = new StubHandler("inbox", ShareAvailability.ready());
         MilliwaysService service = serviceWith(handler);
 
@@ -274,10 +276,79 @@ class MilliwaysServiceTest {
 
         assertThat(handler.seen).isNotNull();
         assertThat(handler.seen.scope().document()).isNull();
-        // Nothing to check: the link and the snippet came from the sharer.
-        verify(permissionService, never())
-                .enforce(any(SecurityContext.class), any(Resource.class), any());
+        // The link and the snippet came from the sharer, so there is nothing
+        // to check about them — but the project the act happens in still has
+        // to be one the sharer belongs to.
+        verify(permissionService).enforce(
+                MARA, new Resource.Project(TENANT, PROJECT), Action.READ);
+        verify(permissionService, never()).enforce(
+                any(SecurityContext.class), any(Resource.Document.class), any());
         verify(documentService, never()).findByPath(any(), any(), any());
+    }
+
+    @Test
+    void resolve_documentlessSubjectInAForeignProject_isDenied() {
+        // The regression this guards: `projectId` arrives in the request body
+        // and picks the relay. Without a project check a user with no grant on
+        // `finance` could list its SMTP packs — From addresses included — and
+        // then send arbitrary text through its credentials.
+        StubHandler handler = new StubHandler("smtp", ShareAvailability.ready());
+        MilliwaysService service = serviceWith(handler);
+        denyProjectRead();
+
+        assertThatThrownBy(() -> service.form("smtp", target(linkSubject())))
+                .isInstanceOf(PermissionDeniedException.class);
+        assertThatThrownBy(() -> service.share("smtp", target(linkSubject()), Map.of()))
+                .isInstanceOf(PermissionDeniedException.class);
+
+        assertThat(handler.seen).isNull();
+    }
+
+    @Test
+    void share_handlerDeniesPermission_isAuditedAsDeniedNotFailed() {
+        // `failed` is the "the way out is dead" alarm; an authorization
+        // refusal inside a handler must not be counted into it.
+        MilliwaysService service = serviceWith(new RefusingHandler("app",
+                new PermissionDeniedException(
+                        MARA, new Resource.Project(TENANT, "other"), Action.WRITE)));
+
+        assertThatThrownBy(() -> service.share("app", target(), Map.of()))
+                .isInstanceOf(PermissionDeniedException.class);
+
+        assertThat(auditOutcome()).isEqualTo("denied");
+        assertThat(shareCount("app", "denied")).isEqualTo(1.0);
+        assertThat(noShareCount("app", "failed")).isTrue();
+    }
+
+    @Test
+    void share_handlerBecomesUnavailableMidFlight_isCountedUnavailableAndNotAudited() {
+        // The pack disappeared between availability() and share(). Same
+        // classification as the check above — not a refusal.
+        MilliwaysService service = serviceWith(new RefusingHandler("smtp",
+                new ShareUnavailableException("No SMTP pack configured in this project")));
+
+        assertThatThrownBy(() -> service.share("smtp", target(), Map.of()))
+                .isInstanceOf(ShareUnavailableException.class);
+
+        verify(auditService, never()).record(any(AuditEventDto.class));
+        assertThat(shareCount("smtp", "unavailable")).isEqualTo(1.0);
+        assertThat(noShareCount("smtp", "denied")).isTrue();
+    }
+
+    @Test
+    void share_audit_reportsTheSanitisedSubject_notTheRawOne() {
+        // A whitespace-only snippet is "not present" after the defang. The
+        // audit trail answers "what left the house", so it must not claim a
+        // quote no handler ever saw.
+        MilliwaysService service = serviceWith(new StubHandler("inbox", ShareAvailability.ready()));
+
+        service.share("inbox", target(new ShareSubject(
+                null, "https://example.com/hit", "  \n ", null)), Map.of());
+
+        ArgumentCaptor<AuditEventDto> captor = forClass(AuditEventDto.class);
+        verify(auditService).record(captor.capture());
+        assertThat(captor.getValue().getDetails())
+                .containsEntry("subject", List.of("link"));
     }
 
     @Test
@@ -400,7 +471,14 @@ class MilliwaysServiceTest {
         doThrow(new PermissionDeniedException(
                 MARA, new Resource.Document(TENANT, PROJECT, PATH), Action.READ))
                 .when(permissionService)
-                .enforce(any(SecurityContext.class), any(Resource.class), eq(Action.READ));
+                .enforce(any(SecurityContext.class), any(Resource.Document.class), eq(Action.READ));
+    }
+
+    private void denyProjectRead() {
+        doThrow(new PermissionDeniedException(
+                MARA, new Resource.Project(TENANT, PROJECT), Action.READ))
+                .when(permissionService)
+                .enforce(any(SecurityContext.class), any(Resource.Project.class), eq(Action.READ));
     }
 
     private double shareCount(String handlerId, String outcome) {
@@ -409,6 +487,13 @@ class MilliwaysServiceTest {
                 .tags("handler", handlerId, "outcome", outcome)
                 .counter()
                 .count();
+    }
+
+    /** True when that counter was never even registered. */
+    private boolean noShareCount(String handlerId, String outcome) {
+        return metricService.getRegistry().find(MilliwaysService.METRIC_SHARES)
+                .tags("handler", handlerId, "outcome", outcome)
+                .counter() == null;
     }
 
     private String auditOutcome() {

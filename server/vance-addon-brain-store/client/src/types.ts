@@ -49,6 +49,15 @@ export interface StoreSourceView {
   reachable: boolean;
   /** Why the store could not be asked. Only set when `reachable` is false. */
   problem?: string | null;
+  /**
+   * Whether the states below reflect what this account actually owns.
+   *
+   * <p>False means the delivery service did not answer: an entry showing
+   * `OFFERED` may well be owned already, so buying it would pay twice.
+   * True without an account is not a contradiction — there are no
+   * entitlements to be unsure about.
+   */
+  ownershipKnown: boolean;
   entries: StoreEntry[];
 }
 

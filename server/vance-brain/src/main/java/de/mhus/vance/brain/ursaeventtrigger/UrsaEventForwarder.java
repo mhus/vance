@@ -30,15 +30,30 @@ import org.springframework.web.server.ResponseStatusException;
  * the receiving pod authenticates the trigger itself instead of trusting the
  * hop. The internal token is sent too, but as a statement about the hop, not
  * as the authorisation for the event.
+ *
+ * <p><b>The marker is a claim, so it is verified.</b> {@code /brain/**} never
+ * passes through {@code InternalAccessFilter} (that filter only guards
+ * {@code /internal/**}), so nothing else in the chain looks at the internal
+ * token on this route. {@link #isTrustedHop} therefore does it here: a
+ * {@link #FORWARDED_HEADER} that does not come with the shared secret is
+ * treated as absent, and the receiving pod resolves the owner as usual. That
+ * degradation is safe — a pod that is itself the owner finds itself and runs
+ * locally — while trusting the bare header would let any caller skip the
+ * bring-up and put the work on a lane that is not there.
  */
 @Component
 @Slf4j
 public class UrsaEventForwarder {
 
-    /** Present on a request that was already routed once. Never set by callers. */
+    /**
+     * Present on a request that was already routed once. Only honoured when
+     * {@link #INTERNAL_TOKEN_HEADER} proves the hop — see
+     * {@link #isTrustedHop(String, String)}.
+     */
     public static final String FORWARDED_HEADER = "X-Vance-Event-Forwarded";
 
-    private static final String INTERNAL_TOKEN_HEADER = "X-Vance-Internal-Token";
+    /** Shared pod-to-pod secret, mirroring {@code InternalAccessFilter}. */
+    public static final String INTERNAL_TOKEN_HEADER = "X-Vance-Internal-Token";
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
     /**
      * Generous: the owner pod may still be finishing its bring when the request
@@ -48,6 +63,7 @@ public class UrsaEventForwarder {
     private static final Duration READ_TIMEOUT = Duration.ofSeconds(120);
 
     private final RestClient.Builder restClientBuilder;
+    private final byte[] expectedInternalToken;
 
     public UrsaEventForwarder(
             @org.springframework.beans.factory.annotation.Value("${vance.internal.token:}")
@@ -57,10 +73,34 @@ public class UrsaEventForwarder {
                 .build();
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
         factory.setReadTimeout(READ_TIMEOUT);
+        this.expectedInternalToken = internalToken == null
+                ? new byte[0]
+                : internalToken.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         this.restClientBuilder = RestClient.builder()
                 .requestFactory(factory)
                 .defaultHeader(FORWARDED_HEADER, "1")
                 .defaultHeader(INTERNAL_TOKEN_HEADER, internalToken == null ? "" : internalToken);
+    }
+
+    /**
+     * Whether this request really came from another pod's {@link #forward}.
+     *
+     * <p>Both headers have to be there: the marker says what the request is,
+     * the internal token says who is allowed to say it. The token is compared
+     * in constant time, like {@code InternalAccessFilter} does on
+     * {@code /internal/**} — the same secret, so the same care.
+     *
+     * <p>An unconfigured {@code vance.internal.token} trusts nothing. That is
+     * the single-pod case, where nothing forwards in the first place.
+     */
+    public boolean isTrustedHop(
+            @Nullable String forwardedHeader, @Nullable String presentedToken) {
+        if (forwardedHeader == null) return false;
+        if (presentedToken == null || presentedToken.isEmpty() || expectedInternalToken.length == 0) {
+            return false;
+        }
+        byte[] presented = presentedToken.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        return java.security.MessageDigest.isEqual(presented, expectedInternalToken);
     }
 
     /**

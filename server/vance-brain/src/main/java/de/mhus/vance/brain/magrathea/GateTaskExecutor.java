@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.bson.types.ObjectId;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -113,7 +114,23 @@ public class GateTaskExecutor implements MagratheaTypeExecutor {
         payload.put("workflowState", state.name());
         if (!options.isEmpty()) payload.put("options", options);
 
+        // The id is minted here, not by the insert, so the task can carry the
+        // link *before* the item exists to be answered. Linking afterwards
+        // left a window between "row is findable" and "task knows about it":
+        // an answer arriving inside it finds no task
+        // (MagratheaInboxCompletionListener logs "has no linked task"), the
+        // completion is dropped and the run stands at a gate that can never
+        // be answered again — the item is already ANSWERED. Milliseconds
+        // wide, but a client that reads the item from the change feed rather
+        // than from a listing is inside it, and so is the E2E test that polls
+        // Mongo directly. The auto-default path closes it altogether:
+        // InboxItemService.create publishes the answered-event *inside*
+        // create(), so for a LOW item with a `default:` the old order could
+        // never have worked.
+        String itemId = new ObjectId().toHexString();
+
         InboxItemDocument toCreate = InboxItemDocument.builder()
+                .id(itemId)
                 .tenantId(context.tenantId())
                 .originatorUserId(firstNonBlank(context.startedBy(), SYSTEM_USER))
                 .assignedToUserId(assignedTo)
@@ -126,9 +143,15 @@ public class GateTaskExecutor implements MagratheaTypeExecutor {
                 .requiresAction(true)
                 .build();
 
-        InboxItemDocument created;
+        // Link first. A link to an item that does not exist yet resolves
+        // nothing and is therefore harmless; a missing link to an item that
+        // already does loses the answer. If the create below fails the task
+        // completes as a failure right away, which unsets `runStatus`, and
+        // the id it points at was never written — nothing can ever match it.
+        taskService.linkInboxItem(context.taskId(), itemId);
+
         try {
-            created = inboxItemService.create(toCreate);
+            inboxItemService.create(toCreate);
         } catch (RuntimeException ex) {
             log.warn("Magrathea gate_task '{}' inbox create failed: {}",
                     state.name(), ex.getMessage());
@@ -136,9 +159,8 @@ public class GateTaskExecutor implements MagratheaTypeExecutor {
                     "Inbox create failed: " + ex.getMessage()));
         }
 
-        taskService.linkInboxItem(context.taskId(), created.getId());
         log.info("Magrathea gate_task '{}' inbox item created id='{}' assignedTo='{}'",
-                state.name(), created.getId(), assignedTo);
+                state.name(), itemId, assignedTo);
 
         timeoutScheduler.arm(context, state);
 

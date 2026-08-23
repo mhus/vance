@@ -60,10 +60,6 @@ public class EngineCommandDispatcher {
     }
 
     /**
-     * Routes {@code command} to its handler. Never throws — every failure
-     * mode maps onto an {@link EngineCommandResult}.
-     */
-    /**
      * Whether the handler for {@code verb} opts out of the addressed
      * process's lane.
      *
@@ -78,6 +74,10 @@ public class EngineCommandDispatcher {
         return handler != null && !handler.runsOnLane();
     }
 
+    /**
+     * Routes {@code command} to its handler. Never throws — every failure
+     * mode maps onto an {@link EngineCommandResult}.
+     */
     public EngineCommandResult dispatch(ThinkProcessDocument process, EngineCommand command) {
         String verb = command.name();
         EngineCommandHandler handler = handlers.get(verb);

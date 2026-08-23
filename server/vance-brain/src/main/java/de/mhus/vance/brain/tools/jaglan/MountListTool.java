@@ -10,10 +10,12 @@ import de.mhus.vance.api.mount.MountedSource;
 import de.mhus.vance.brain.tools.kinds.KindToolSupport;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.jaglan.JaglanPaths;
+import de.mhus.vance.shared.document.jaglan.JaglanShellService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
@@ -50,14 +52,25 @@ public class MountListTool implements Tool {
 
     private final KindToolSupport support;
 
+    /**
+     * For the folder-scoped failure record only.
+     *
+     * <p>The rows of a folder whose last refresh failed are still returned —
+     * that is the point of keeping them — but they are older than they look,
+     * and the per-mount {@code statusText} does not cover it: that one comes
+     * from the capabilities cache, so a source that describes itself happily
+     * and cannot list <i>this</i> folder reports nothing at all.
+     */
+    private final ObjectProvider<JaglanShellService> shellServiceProvider;
+
     @Override public String name() { return "mount_list"; }
 
     @Override public String description() {
         return "List mounted external sources, or browse inside one. Mounted documents live under "
-                + "'_ext/<mount>/…' and are NOT found by doc_search or doc_list_in_folder, which "
-                + "only scan 'documents/' — use this to discover them. Omit `path` for the list of "
-                + "mounts; pass a folder path for its contents. Read the files themselves with the "
-                + "ordinary doc_read once you know their path.";
+                + "'_ext/<mount>/…' and are NOT found by doc_find, doc_grep, memory_search or "
+                + "doc_list_in_folder, which only scan 'documents/' — use this to discover them. "
+                + "Omit `path` for the list of mounts; pass a folder path for its contents. Read "
+                + "the files themselves with the ordinary doc_read once you know their path.";
     }
 
     @Override public boolean primary() { return false; }
@@ -104,9 +117,17 @@ public class MountListTool implements Tool {
             return out;
         }
 
-        if (!JaglanPaths.isMounted(path)) {
-            out.put("error", "path must be inside the mount namespace, e.g. '"
-                    + JaglanPaths.PREFIX + "<mount>/…'");
+        String mountName;
+        String folderInMount;
+        try {
+            // Checked, not caught downstream: '_ext/' alone is inside the
+            // namespace but names no mount, and the document layer answers
+            // that with an IllegalArgumentException rather than a tool error.
+            mountName = JaglanPaths.mountNameOf(path);
+            folderInMount = JaglanPaths.pathInMount(path);
+        } catch (IllegalArgumentException e) {
+            out.put("error", "path must name a mount, e.g. '"
+                    + JaglanPaths.PREFIX + "<mount>/…' — omit `path` to list the mounts");
             return out;
         }
 
@@ -130,6 +151,19 @@ public class MountListTool implements Tool {
         out.put("path", path);
         out.put("count", rows.size());
         out.put("entries", rows);
+
+        // Say when the listing is older than it looks. Without this a folder
+        // whose refresh failed is indistinguishable from a fresh one, and an
+        // agent reads a stale — possibly empty — listing as the truth.
+        JaglanShellService shellService = shellServiceProvider.getIfAvailable();
+        JaglanShellService.FolderFailure failure = shellService == null ? null
+                : shellService.folderFailure(
+                        ctx.tenantId(), project.getName(), mountName, folderInMount);
+        if (failure != null) {
+            out.put("status", "last refresh failed: " + failure.message()
+                    + " — these entries may be out of date");
+            out.put("staleSince", failure.at().toString());
+        }
         return out;
     }
 }

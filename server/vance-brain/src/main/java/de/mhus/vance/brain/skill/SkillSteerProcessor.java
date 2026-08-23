@@ -173,8 +173,12 @@ public class SkillSteerProcessor {
         // rendered prompt. Throws SkillArgumentException.
         SkillArgumentBinder.bind(skill, args);
 
+        // isActive: not only the recursion guard. A process that already
+        // carries the skill is the worker itself being re-invoked (the
+        // public entry point allows spawning), and it has nothing to spawn
+        // — pinned by SkillSteerProcessorSpawnTest.
         if (skill.run().spawns() && allowSpawn && !isActive(process, skillName)) {
-            return spawnAndActivate(process, skill, runAction, rawArgs, args, senderUserId);
+            return spawnAndActivate(process, skill, oneShot, runAction, rawArgs, args, senderUserId);
         }
 
         if (skill.lifecycle() == SkillLifecycle.SHOT) {
@@ -260,6 +264,11 @@ public class SkillSteerProcessor {
      * and surprising. The explicit {@code /skill} route is the only way
      * in — {@code SkillLoader} warns about triggers on a spawn skill.
      *
+     * @param oneShot the caller's {@code --once}, passed on: {@code run}
+     *   decides the <em>place</em>, {@code --once} the <em>duration</em>,
+     *   and the two are orthogonal ({@code SkillRun}). Dropping it here
+     *   registered the skill sticky on the child even though the caller
+     *   asked for a single use.
      * @param rawArgs the unstripped trailing text, passed on so the child
      *   activation applies the same consume rules (bound into the
      *   template, or injected as a user message on the <em>child</em>)
@@ -268,6 +277,7 @@ public class SkillSteerProcessor {
     private ActivationResult spawnAndActivate(
             ThinkProcessDocument process,
             ResolvedSkill skill,
+            boolean oneShot,
             boolean runAction,
             @Nullable String rawArgs,
             @Nullable String args,
@@ -279,7 +289,7 @@ public class SkillSteerProcessor {
             return new ActivationResult(skill, false, mutableActive(process));
         }
         String childId = skillSpawnRunner.spawn(process, skill, child ->
-                activate(child, skill.name(), /*oneShot*/ false, /*runAction*/ true,
+                activate(child, skill.name(), oneShot, /*runAction*/ true,
                         rawArgs, senderUserId, /*allowSpawn*/ false));
         log.info("Skill activate id='{}' name='{}' run=spawn recipe='{}' → child id='{}'"
                         + " (caller unchanged{})",

@@ -11,4 +11,5 @@ export interface KitOriginDto {
   installedAt?: Date;
   installedBy?: string;
   provisioningStamp?: string;
+  params?: Record<string, any>;
 }

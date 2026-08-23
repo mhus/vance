@@ -2,6 +2,7 @@ package de.mhus.vance.toolpack.feed;
 
 import de.mhus.vance.toolpack.facet.FacetSelection;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -80,8 +81,14 @@ public record FeedFilter(
     public FeedFilter {
         text = blankToNull(text);
         languages = languages == null ? Set.of() : normalize(languages);
-        include = include == null ? List.of() : List.copyOf(include);
-        exclude = exclude == null ? List.of() : List.copyOf(exclude);
+        // Blank terms are dropped rather than kept: `contains` refuses an empty
+        // needle, so a single `include = [""]` — reachable over REST and over
+        // `feed_read`, only the manifest path filtered it — made every entry
+        // fail the include check and emptied the feed with nothing to explain
+        // it. `languages` was normalised here from the start; these two were
+        // not, and the asymmetry was the whole bug.
+        include = normalizeTerms(include);
+        exclude = normalizeTerms(exclude);
         facets = FacetSelection.normalize(facets);
     }
 
@@ -248,6 +255,20 @@ public record FeedFilter(
         String lower = raw.trim().toLowerCase(Locale.ROOT);
         int cut = lower.indexOf('-');
         return cut > 0 ? lower.substring(0, cut) : lower;
+    }
+
+    /** Trimmed keyword list without blanks — see the compact constructor. */
+    private static List<String> normalizeTerms(@Nullable List<String> raw) {
+        if (raw == null) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>(raw.size());
+        for (String s : raw) {
+            if (s != null && !s.isBlank()) {
+                out.add(s.trim());
+            }
+        }
+        return List.copyOf(out);
     }
 
     private static Set<String> normalize(Set<String> raw) {

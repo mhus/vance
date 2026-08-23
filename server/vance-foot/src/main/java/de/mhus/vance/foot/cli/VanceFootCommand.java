@@ -387,6 +387,25 @@ public class VanceFootCommand implements Callable<Integer> {
             return 2;
         }
 
+        // Both startup session pickers — the -c local-history picker below and
+        // the --resume server picker further down — are Lanterna fullscreen
+        // excursions, and InterfaceService.runFullscreen needs a registered
+        // JLine terminal. The REPL only builds one in repl.run(), which is at
+        // the very bottom of this method, so without this the pickers could
+        // never open. Idempotent: repl.run() reuses this terminal.
+        // (--last skips the picker, --no-ui has no user to show it to.)
+        if (!noUi && (continueSession || ((resume || eddie) && !last))) {
+            try {
+                repl.ensureTerminal();
+            } catch (Exception e) {
+                // No usable TTY. The pickers degrade on their own (newest
+                // local entry / "--last" hint) and repl.run() will report the
+                // real failure if it still can't build one.
+                terminal.println(Verbosity.VERBOSE,
+                        "Could not open a terminal for the session picker: %s", e.getMessage());
+            }
+        }
+
         // -c/--continue: resume a session from this directory's local history
         // (written to .vancetope/session.yaml on every bootstrap). Resolve it
         // into the existing selectors:
@@ -456,7 +475,12 @@ public class VanceFootCommand implements Callable<Integer> {
                                 terminal.info("Opening full session picker.");
                             }
                             case NEW_SESSION -> {
-                                // Leave sessionId null — bootstrap starts fresh.
+                                // Leave the local sessionId null AND drop a
+                                // configured vance.bootstrap.session-id — a
+                                // pinned session in application.yaml /
+                                // .vancetope/config.yaml would otherwise
+                                // survive the choice and resume anyway.
+                                config.getBootstrap().setSessionId(null);
                                 terminal.info("Starting a new session.");
                             }
                             case CANCEL -> {

@@ -15,13 +15,18 @@ import de.mhus.vance.api.inbox.ResolvedBy;
 import de.mhus.vance.api.magrathea.MagratheaTaskRunStatus;
 import de.mhus.vance.api.magrathea.MagratheaTaskStatus;
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
 import de.mhus.vance.shared.inbox.InboxItemService;
 import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
+import de.mhus.vance.shared.permission.PermissionService;
+import de.mhus.vance.shared.permission.SecurityContext;
+import de.mhus.vance.shared.session.SessionService;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -29,9 +34,20 @@ class MagratheaGateChatAnswerServiceTest {
 
     private final MagratheaTaskService taskService = mock(MagratheaTaskService.class);
     private final InboxItemService inboxItemService = mock(InboxItemService.class);
+    private final SecurityContextFactory securityContexts = mock(SecurityContextFactory.class);
+    private final PermissionService permissionService = mock(PermissionService.class);
 
     private final MagratheaGateChatAnswerService service =
-            new MagratheaGateChatAnswerService(taskService, inboxItemService);
+            new MagratheaGateChatAnswerService(
+                    taskService, inboxItemService, securityContexts, permissionService);
+
+    @BeforeEach
+    void allowByDefault() {
+        when(securityContexts.forToolSubject(any(), any()))
+                .thenAnswer(inv -> SecurityContext.user(
+                        inv.getArgument(1), inv.getArgument(0), List.of()));
+        when(permissionService.check(any(), any(), any())).thenReturn(true);
+    }
 
     private static MagratheaTaskDocument waitingTask() {
         return MagratheaTaskDocument.builder()
@@ -115,6 +131,29 @@ class MagratheaGateChatAnswerServiceTest {
         when(inboxItemService.findById("t", "item-1")).thenReturn(Optional.of(answered));
 
         assertThat(service.tryAnswer("t", "run-1", "ja", "alice")).isFalse();
+        verify(inboxItemService, never()).answer(any(), any(), any(), any());
+    }
+
+    @Test
+    void tryAnswer_speakerMayNotAnswerThatItem_leavesTheGateOpen() {
+        when(taskService.findByRun("run-1")).thenReturn(List.of(waitingTask()));
+        InboxItemDocument item = pendingItem(InboxItemType.APPROVAL, Map.of());
+        item.setAssignedToUserId("marvin");
+        when(inboxItemService.findById("t", "item-1")).thenReturn(Optional.of(item));
+        when(permissionService.check(any(), any(), any())).thenReturn(false);
+
+        assertThat(service.tryAnswer("t", "run-1", "ja", "trillian")).isFalse();
+        verify(inboxItemService, never()).answer(any(), any(), any(), any());
+    }
+
+    @Test
+    void tryAnswer_systemSpeaker_isRefusedWithoutAsking() {
+        when(taskService.findByRun("run-1")).thenReturn(List.of(waitingTask()));
+        when(inboxItemService.findById("t", "item-1"))
+                .thenReturn(Optional.of(pendingItem(InboxItemType.APPROVAL, Map.of())));
+
+        assertThat(service.tryAnswer("t", "run-1", "ja", SessionService.SYSTEM_OWNER)).isFalse();
+        verify(permissionService, never()).check(any(), any(), any());
         verify(inboxItemService, never()).answer(any(), any(), any(), any());
     }
 

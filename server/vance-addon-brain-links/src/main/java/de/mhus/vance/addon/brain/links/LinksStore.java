@@ -47,6 +47,18 @@ public class LinksStore {
             ApplicationDocument manifestDoc,
             LinksConfig config) {}
 
+    /**
+     * Load the manifest of a link list.
+     *
+     * <p><b>The identity check belongs here and not in the callers.</b>
+     * {@link #saveConfig} writes {@code app: links} back unconditionally, so a
+     * mutation aimed at somebody else's app folder would convert their
+     * manifest — the {@code workbook:} block would survive as ballast, the kind
+     * lookup {@code application:workbook} would stop matching, and the caller
+     * would be told {@code added: true}. One check on the read side covers all
+     * six mutations, {@code scan} and {@code refresh}; {@code create()} has its
+     * own guard because there is nothing to read yet.
+     */
     public Loaded load(String tenantId, String projectId, String folder) {
         String normalised = normaliseFolder(folder);
         String manifestPath = manifestPath(normalised);
@@ -54,6 +66,11 @@ public class LinksStore {
                 .orElseThrow(() -> new ToolException(
                         "No links manifest at '" + manifestPath + "'."));
         ApplicationDocument parsed = parse(doc);
+        String app = parsed.app();
+        if (!app.isBlank() && !LinksConfig.BLOCK.equals(app)) {
+            throw new ToolException("'" + normalised + "' is an app: " + app
+                    + ", not a link list — refusing to overwrite its manifest.");
+        }
         return new Loaded(normalised, doc, parsed, LinksConfig.from(parsed));
     }
 

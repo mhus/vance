@@ -27,6 +27,11 @@ import org.springframework.stereotype.Service;
  * one exactly-once guard ({@code InboxItemService.answer} ignores a second
  * answer to an already-answered item).
  *
+ * <p>Same answer means same gate in front of it: whoever speaks must be
+ * allowed to answer <em>that item</em> ({@code Resource.InboxItem} +
+ * {@code WRITE}, the check both form surfaces run). An item assigned
+ * elsewhere stays open no matter what is said in the conversation.
+ *
  * <p>An utterance that cannot be read as an answer changes nothing. The
  * gate stays open, the question can be repeated, and the person can still
  * use the form. Being unable to interpret a sentence is a normal outcome
@@ -43,20 +48,29 @@ public class MagratheaGateChatAnswerService {
 
     private final MagratheaTaskService taskService;
     private final InboxItemService inboxItemService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory securityContexts;
+    private final de.mhus.vance.shared.permission.PermissionService permissionService;
 
     /**
      * Try to answer whatever gate {@code workflowRunId} is waiting at, using
      * {@code text} as the person's reply.
      *
      * @return true when the text was read as an answer and the gate was
-     *         closed with it; false when there was no waiting gate or the
-     *         text was not an answer — in both cases nothing changed
+     *         closed with it; false when there was no waiting gate, the
+     *         speaker may not answer it, or the text was not an answer — in
+     *         every case nothing changed
      */
     public boolean tryAnswer(
             String tenantId, String workflowRunId, String text, String answeredBy) {
         Optional<InboxItemDocument> maybeItem = findOpenGateItem(tenantId, workflowRunId);
         if (maybeItem.isEmpty()) return false;
         InboxItemDocument item = maybeItem.get();
+
+        if (!mayAnswer(tenantId, item, answeredBy)) {
+            log.info("Magrathea run {} gate '{}' — '{}' may not answer it; gate stays open",
+                    workflowRunId, item.getId(), answeredBy);
+            return false;
+        }
 
         List<String> options = GateChatAnswerParser.optionsOf(item.getPayload());
         Optional<AnswerPayload> parsed =
@@ -77,6 +91,39 @@ public class MagratheaGateChatAnswerService {
         log.info("Magrathea run {} gate '{}' answered from chat by '{}'",
                 workflowRunId, item.getId(), answeredBy);
         return true;
+    }
+
+    /**
+     * The gate in front of the gate: may this person answer this item at all?
+     *
+     * <p>The form route asks it at both surfaces ({@code InboxAnswerHandler},
+     * {@code InboxController}) and {@code InboxItemService.answer} asks
+     * nothing — so writing "the same answer the form would have written"
+     * without this check writes it past the one rule the form has. An item
+     * assigned to a team or to somebody else must not close because a
+     * bystander in the conversation said "ok".
+     *
+     * <p>Asked through {@code PermissionService} rather than by comparing the
+     * assignee here: who may act on an inbox item is the resolver's rule (R5
+     * — assignee or a shared team), and an enforcement point that reimplements
+     * it is one that drifts from it.
+     *
+     * <p>A blank or system speaker is refused outright. It would otherwise
+     * resolve to the SYSTEM subject, which passes every check — and a gate
+     * that a scheduler-authored line can close is not a gate.
+     */
+    private boolean mayAnswer(String tenantId, InboxItemDocument item, String answeredBy) {
+        if (answeredBy.isBlank()
+                || de.mhus.vance.shared.session.SessionService.SYSTEM_OWNER.equals(answeredBy)) {
+            return false;
+        }
+        return permissionService.check(
+                securityContexts.forToolSubject(tenantId, answeredBy),
+                new de.mhus.vance.shared.permission.Resource.InboxItem(
+                        item.getTenantId() == null ? tenantId : item.getTenantId(),
+                        item.getId() == null ? "" : item.getId(),
+                        item.getAssignedToUserId() == null ? "" : item.getAssignedToUserId()),
+                de.mhus.vance.shared.permission.Action.WRITE);
     }
 
     /** The still-pending gate item of this run, if it is sitting at one. */

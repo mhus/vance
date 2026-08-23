@@ -286,15 +286,36 @@ class TrillianNatureAdamTest {
     void aStateBlocker_getsAReCheckBeforeTheHumanIsDisturbed() {
         // A lock can be gone by now, and looking costs one worker turn
         // against a human's attention.
-        ThinkProcessDocument parked = childProcess("ask-worker", ThinkProcessStatus.IDLE);
-        parked.setEngineParamOverrides(new LinkedHashMap<>(Map.of(
-                de.mhus.vance.brain.trillian.tools.TrillianAskTool.PARAM_ASK_BLOCKER, "state")));
+        ThinkProcessDocument parked = parkedOnStateQuestion("ask-worker");
         when(thinkProcessService.findByParentProcessId("loop-1"))
                 .thenReturn(java.util.List.of(parked));
 
         SelfCheckFinding finding = adam().selfCheckFindings(loopProcess()).get(0);
 
         assertThat(finding.detail()).contains("process_steer").contains("re-check");
+    }
+
+    @Test
+    void aWorkerThatCarriedOnAfterAsking_isNotNudgedAboutItsOldObstacle() {
+        // It asked about a locked file, was answered, worked on and parked
+        // on a natural stop. The blocker of the resolved question is still
+        // written down; advising a re-check of it would be advice about
+        // nothing — and it would spend a probe saying so.
+        ThinkProcessDocument parked = childProcess("ask-worker", ThinkProcessStatus.IDLE);
+        parked.setEngineParamOverrides(new LinkedHashMap<>(Map.of(
+                de.mhus.vance.brain.trillian.tools.TrillianAskTool.PARAM_ASK_BLOCKER, "state")));
+        when(thinkProcessService.findByParentProcessId("loop-1"))
+                .thenReturn(java.util.List.of(parked));
+        when(thinkProcessService.findById("child-ask-worker"))
+                .thenReturn(java.util.Optional.of(parked));
+
+        TrillianNatureAdam adam = adam();
+        java.util.List<SelfCheckFinding> findings = adam.selfCheckFindings(loopProcess());
+        adam.selfCheckDelivered(loopProcess(), findings);
+
+        assertThat(findings.get(0).detail()).doesNotContain("re-check");
+        verify(thinkProcessService, never()).setEngineParamOverride(
+                any(), eq(TrillianNatureAdam.PARAM_ASK_PROBES), any());
     }
 
     @Test
@@ -316,10 +337,9 @@ class TrillianNatureAdamTest {
     void aStateThatNeverChanges_becomesADecision() {
         // The circuit opens: after three rounds it has behaved like a
         // decision long enough to be treated as one.
-        ThinkProcessDocument parked = childProcess("ask-worker", ThinkProcessStatus.IDLE);
-        parked.setEngineParamOverrides(new LinkedHashMap<>(Map.of(
-                de.mhus.vance.brain.trillian.tools.TrillianAskTool.PARAM_ASK_BLOCKER, "state",
-                TrillianNatureAdam.PARAM_ASK_PROBES, TrillianNatureAdam.MAX_ASK_PROBES)));
+        ThinkProcessDocument parked = parkedOnStateQuestion("ask-worker");
+        parked.getEngineParamOverrides().put(
+                TrillianNatureAdam.PARAM_ASK_PROBES, TrillianNatureAdam.MAX_ASK_PROBES);
         when(thinkProcessService.findByParentProcessId("loop-1"))
                 .thenReturn(java.util.List.of(parked));
 
@@ -333,14 +353,14 @@ class TrillianNatureAdamTest {
         // Half-open: a lock that survived three rounds can still be gone
         // by the afternoon, and never looking again would make "give up"
         // mean "give up permanently".
-        ThinkProcessDocument parked = childProcess("ask-worker", ThinkProcessStatus.IDLE);
-        parked.setEngineParamOverrides(new LinkedHashMap<>(Map.of(
-                de.mhus.vance.brain.trillian.tools.TrillianAskTool.PARAM_ASK_BLOCKER, "state",
-                TrillianNatureAdam.PARAM_ASK_PROBES, TrillianNatureAdam.MAX_ASK_PROBES,
+        ThinkProcessDocument parked = parkedOnStateQuestion("ask-worker");
+        parked.getEngineParamOverrides().put(
+                TrillianNatureAdam.PARAM_ASK_PROBES, TrillianNatureAdam.MAX_ASK_PROBES);
+        parked.getEngineParamOverrides().put(
                 TrillianNatureAdam.PARAM_ASK_OPENED_AT,
                 java.time.Instant.now()
                         .minus(TrillianNatureAdam.ASK_PROBE_COOLDOWN)
-                        .minusSeconds(60).toEpochMilli())));
+                        .minusSeconds(60).toEpochMilli());
         when(thinkProcessService.findByParentProcessId("loop-1"))
                 .thenReturn(java.util.List.of(parked));
         when(thinkProcessService.findById("child-ask-worker"))
@@ -364,9 +384,7 @@ class TrillianNatureAdamTest {
         // The heartbeat asks on every due tick, including the ones that
         // end in no wakeup at all. A probe spent on a report nobody got
         // is a probe gone.
-        ThinkProcessDocument parked = childProcess("ask-worker", ThinkProcessStatus.IDLE);
-        parked.setEngineParamOverrides(new LinkedHashMap<>(Map.of(
-                de.mhus.vance.brain.trillian.tools.TrillianAskTool.PARAM_ASK_BLOCKER, "state")));
+        ThinkProcessDocument parked = parkedOnStateQuestion("ask-worker");
         ThinkProcessDocument stuck = childProcess("looper", ThinkProcessStatus.BLOCKED);
         stuck.setEngineParamOverrides(new LinkedHashMap<>(Map.of(
                 TrillianNatureAdam.PARAM_BLOCKED_SEEN,
@@ -383,11 +401,11 @@ class TrillianNatureAdamTest {
 
     @Test
     void anOpenBreakerStaysShut_whileTheCooldownRuns() {
-        ThinkProcessDocument parked = childProcess("ask-worker", ThinkProcessStatus.IDLE);
-        parked.setEngineParamOverrides(new LinkedHashMap<>(Map.of(
-                de.mhus.vance.brain.trillian.tools.TrillianAskTool.PARAM_ASK_BLOCKER, "state",
-                TrillianNatureAdam.PARAM_ASK_PROBES, TrillianNatureAdam.MAX_ASK_PROBES,
-                TrillianNatureAdam.PARAM_ASK_OPENED_AT, java.time.Instant.now().toEpochMilli())));
+        ThinkProcessDocument parked = parkedOnStateQuestion("ask-worker");
+        parked.getEngineParamOverrides().put(
+                TrillianNatureAdam.PARAM_ASK_PROBES, TrillianNatureAdam.MAX_ASK_PROBES);
+        parked.getEngineParamOverrides().put(
+                TrillianNatureAdam.PARAM_ASK_OPENED_AT, java.time.Instant.now().toEpochMilli());
         when(thinkProcessService.findByParentProcessId("loop-1"))
                 .thenReturn(java.util.List.of(parked));
 
@@ -506,6 +524,15 @@ class TrillianNatureAdamTest {
     private static ThinkProcessDocument childProcess(
             String name, ThinkProcessStatus status) {
         return childProcess(name, status, /*minutesAgo*/ 2);
+    }
+
+    /** A worker parked on an unanswered question about a state. */
+    private static ThinkProcessDocument parkedOnStateQuestion(String name) {
+        ThinkProcessDocument parked = childProcess(name, ThinkProcessStatus.IDLE);
+        parked.setEngineParamOverrides(new LinkedHashMap<>(Map.of(
+                de.mhus.vance.brain.trillian.tools.TrillianAskTool.PARAM_ASK_BLOCKER, "state",
+                de.mhus.vance.brain.trillian.TrillianWorkerEngine.PARAM_ASK_PENDING, true)));
+        return parked;
     }
 
     private static ThinkProcessDocument childProcess(

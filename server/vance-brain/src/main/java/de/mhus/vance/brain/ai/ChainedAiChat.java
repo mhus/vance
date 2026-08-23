@@ -18,6 +18,13 @@ import java.util.function.Consumer;
  * so the inner retries happen there. The outer policy here is "advance only" —
  * try once per entry, on any error move on, no further retries.
  *
+ * <p>The sync deadline is configured on both levels from the same
+ * {@link AiChatOptions}, and that is deliberate rather than a duplicate:
+ * {@link ResilientChatModel} turns the duration into one absolute
+ * end-of-budget per call, which the nested instance inherits. Two instances
+ * each timing the same duration from their own first attempt would let a
+ * 90-second budget answer after 180.
+ *
  * <p>Both sides chain. That was not always true: the sync side used to
  * hand out the primary entry alone, on the reasoning that engines drive
  * their tool loops through {@link #streamingChatModel()}. But plenty does

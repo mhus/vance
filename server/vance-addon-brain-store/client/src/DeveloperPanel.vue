@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import {
   VAlert, VButton, VCard, VEmptyState, VInput, VSelect, VTextarea,
 } from '@vance/components';
+import { safeUrl } from '@vance/shared';
 import {
   applyVendor, claimDomain, createKit, loadDeveloper, loadProjects, loadVendorMoney,
   openCreditNotePdf, publish, renewPublishing, setPayoutAccount, verifyDomain,
@@ -221,8 +222,15 @@ async function submitRenewal(vendorName: string): Promise<void> {
       renewCountry.value, renewVatId.value || undefined,
     );
     if (order.redirectUrl) {
+      // Remote text steering the browser — same check as the buy path in
+      // StoreArea: a `javascript:` URL would run on the brain's origin.
+      const target = safeUrl(order.redirectUrl);
+      if (!target) {
+        error.value = 'The store answered with a payment link this browser will not open.';
+        return;
+      }
       notice.value = 'Continue the payment in the window that just opened.';
-      window.open(order.redirectUrl, '_blank', 'noopener');
+      window.open(target, '_blank', 'noopener');
     } else {
       notice.value = `${vendorName} may publish again.`;
     }

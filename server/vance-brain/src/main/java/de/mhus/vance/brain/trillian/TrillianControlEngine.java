@@ -20,6 +20,7 @@ import de.mhus.vance.brain.memory.MemoryCompactionService;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.PromptContextBuilder;
 import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
+import de.mhus.vance.brain.thinkengine.OrchestratorInterrupt;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
@@ -323,11 +324,24 @@ public class TrillianControlEngine implements ThinkEngine {
 
             boolean emptyRetryUsed = false;
             for (int iter = 0; iter < MAX_TOOL_LOOP_ITERATIONS; iter++) {
-                ThinkProcessStatus current = readCurrentStatus(process);
-                if (current == ThinkProcessStatus.SUSPENDED
-                        || current == ThinkProcessStatus.CLOSED) {
+                // ESC / `/pause` / `//trillian stop` reach a mid-turn engine
+                // through two channels, and reading only one of them means
+                // the interrupt lands a whole turn late: the status flip is
+                // a lane task that cannot run while this turn holds the
+                // lane, so the out-of-band halt flag is the only signal that
+                // arrives in time. Same probe every other engine uses.
+                OrchestratorInterrupt.Kind interrupt =
+                        OrchestratorInterrupt.probe(thinkProcessService, process.getId());
+                if (interrupt == OrchestratorInterrupt.Kind.HALT) {
+                    log.info("TrillianControl id='{}' halt requested — exiting turn (PAUSED)",
+                            process.getId());
+                    thinkProcessService.clearHalt(process.getId());
+                    exitStatus = ThinkProcessStatus.PAUSED;
+                    return;
+                }
+                if (interrupt == OrchestratorInterrupt.Kind.STATUS) {
                     log.info("TrillianControl id='{}' external interrupt (status={}) — exiting",
-                            process.getId(), current);
+                            process.getId(), readCurrentStatus(process));
                     exitStatus = null;
                     return;
                 }

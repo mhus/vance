@@ -73,23 +73,33 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
      */
     private static final int EMPTY_MAX_ATTEMPTS = 3;
 
-    /**
-     * Synthetic cause used purely for log / notifier messages when an
-     * empty completion drives a retry or chain-advance. Never thrown to
-     * the caller — the empty response itself is delivered on exhaustion.
-     */
-    private static final AiChatException EMPTY_RESPONSE = new AiChatException(
-            "streaming completed with an empty response (neither text nor a tool call)");
+    private static final String EMPTY_RESPONSE_MESSAGE =
+            "streaming completed with an empty response (neither text nor a tool call)";
+
+    private static final String EMPTY_AT_OUTPUT_CAP_MESSAGE =
+            "streaming hit the output-token cap before emitting text or a tool call "
+                    + "(finish=LENGTH) — raise maxTokens or reduce reasoning effort";
 
     /**
-     * Variant of {@link #EMPTY_RESPONSE} for the deterministic case: the
-     * completion is empty <em>and</em> reports {@link FinishReason#LENGTH},
-     * i.e. the output-token cap was reached before any visible content.
-     * Also never thrown to the caller.
+     * Synthetic cause used purely for log / notifier messages when an empty
+     * completion drives a retry or chain-advance. Never thrown to the caller
+     * — the empty response itself is delivered on exhaustion. The
+     * {@code atOutputCap} variant names the deterministic case: empty
+     * <em>and</em> {@link FinishReason#LENGTH}, i.e. the output-token cap was
+     * reached before any visible content.
+     *
+     * <p>Built per occurrence, not held as a constant — the same reason the
+     * sync twin gives in {@code ResilientChatModel.emptyResponse(boolean)}. A
+     * shared {@link Throwable} carries the stack trace of whenever the class
+     * happened to be initialised, so the one place a reader looks to find out
+     * which call produced the empty reply points at class loading instead. It
+     * is also mutable state shared across threads the moment anything calls
+     * {@code addSuppressed} on it, and streaming turns arrive concurrently.
      */
-    private static final AiChatException EMPTY_AT_OUTPUT_CAP = new AiChatException(
-            "streaming hit the output-token cap before emitting text or a tool call "
-                    + "(finish=LENGTH) — raise maxTokens or reduce reasoning effort");
+    private static AiChatException emptyResponse(boolean atOutputCap) {
+        return new AiChatException(
+                atOutputCap ? EMPTY_AT_OUTPUT_CAP_MESSAGE : EMPTY_RESPONSE_MESSAGE);
+    }
 
     /**
      * Single shared scheduler — used only to delay the retry trigger.
@@ -319,7 +329,7 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
         // visible. Re-issuing the same request reproduces it exactly, so
         // skip straight to chain-advance / delivery.
         boolean atOutputCap = isAtOutputCap(complete);
-        AiChatException cause = atOutputCap ? EMPTY_AT_OUTPUT_CAP : EMPTY_RESPONSE;
+        AiChatException cause = emptyResponse(atOutputCap);
         int maxAttempts = Math.min(entry.policy().maxAttempts(), EMPTY_MAX_ATTEMPTS);
         if (!atOutputCap && attempt < maxAttempts) {
             long backoffMs = entry.policy().backoffFor(attempt).toMillis();

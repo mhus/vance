@@ -28,7 +28,6 @@ class JaglanCapabilitiesTest {
 
         assertThat(caps.metadataTtl()).isEqualTo(JaglanCapabilities.MIN_TTL);
         assertThat(caps.metadataTtl()).isNotEqualTo(JaglanCapabilities.DEFAULT_TTL);
-        assertThat(caps.cachingDiscouraged()).isTrue();
     }
 
     @Test
@@ -46,10 +45,8 @@ class JaglanCapabilitiesTest {
 
     @Test
     void statedTtlAboveTheFloor_isKept() {
-        JaglanCapabilities caps = withTtl(Duration.ofMinutes(42));
-
-        assertThat(caps.metadataTtl()).isEqualTo(Duration.ofMinutes(42));
-        assertThat(caps.cachingDiscouraged()).isFalse();
+        assertThat(withTtl(Duration.ofMinutes(42)).metadataTtl())
+                .isEqualTo(Duration.ofMinutes(42));
     }
 
     @Test

@@ -24,10 +24,10 @@ import org.springframework.web.server.ResponseStatusException;
  *
  * <p>Project-scoped, because that is the axis both sources share — a
  * Magrathea run belongs to a project outright, a ThinkProcess through its
- * session. <b>This is the only authorisation in the path</b>: the project
- * check happens here, the sources confine themselves to the scope they are
- * handed and check nothing further. A source whose runs live behind a
- * narrower resource has to enforce that itself — see {@link RunSource}.
+ * session. The project check happens here and nowhere else; a source whose
+ * runs live behind a narrower resource answers {@code RunSource.visibleTo}
+ * for them, which the registry applies to reads <em>and</em> actions alike
+ * — see {@link RunSource}.
  */
 @RestController
 @RequestMapping("/brain/{tenant}/runs")
@@ -95,7 +95,7 @@ public class RunController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown run action: " + action);
         }
         try {
-            registry.perform(tenant, projectId, runId, parsed,
+            registry.perform(authority.contextOf(request), tenant, projectId, runId, parsed,
                     reason == null || reason.isBlank() ? "run view" : reason);
         } catch (IllegalArgumentException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage(), ex);

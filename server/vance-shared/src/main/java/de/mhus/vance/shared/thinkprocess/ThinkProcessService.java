@@ -258,7 +258,7 @@ public class ThinkProcessService {
      * {@code status=IDLE}, no {@code closeReason}, no {@code boundProfile},
      * no delegation pointer, {@code haltRequested=false}, read-state and
      * deferred-tool activations dropped, worker links cleared,
-     * post-completion-hook counter zeroed, optimistic-lock {@code version}
+     * {@code guardRounds} back to zero, optimistic-lock {@code version}
      * reset. {@code parentProcessId} is cleared — a duplicated chat
      * process is always top-level in its new session.
      *
@@ -383,18 +383,32 @@ public class ThinkProcessService {
      * processes never count.
      *
      * <p>Reads the session's processes in one query and folds them in
-     * memory — cheap enough for the status-change hot path, and it keeps
-     * the four numbers consistent with each other (four separate
-     * count-queries could observe different transitions).
+     * memory — one round-trip keeps the four numbers consistent with each
+     * other (four separate count-queries could observe different
+     * transitions).
+     *
+     * <p><b>Projected to {@code status} and {@code name}.</b> This runs on
+     * every status transition, and {@code RUNNING↔IDLE} flips once per turn
+     * per process. Materialising whole documents meant a Marvin session with
+     * forty workers read forty rows — each with its embedded
+     * {@code pendingMessages} queue, {@code engineParams}, {@code shownOnce}
+     * and {@code activeSkills} — on every turn of every worker, to produce
+     * three integers. The coalescing filter downstream suppresses the WS
+     * frame, not the query.
      *
      * @see ProcessCounts
      */
     public ProcessCounts countBySession(
             String tenantId, String sessionId, @Nullable String excludeName) {
+        Query query = new Query()
+                .addCriteria(Criteria.where("tenantId").is(tenantId))
+                .addCriteria(Criteria.where("sessionId").is(sessionId));
+        query.fields().include("status").include("name");
+
         int running = 0;
         int waiting = 0;
         int blocked = 0;
-        for (ThinkProcessDocument doc : repository.findByTenantIdAndSessionId(tenantId, sessionId)) {
+        for (ThinkProcessDocument doc : mongoTemplate.find(query, ThinkProcessDocument.class)) {
             if (excludeName != null && excludeName.equals(doc.getName())) {
                 continue;
             }

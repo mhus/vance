@@ -49,6 +49,7 @@ public class UrsaEventController {
 
     private final UrsaEventService eventService;
     private final ObjectMapper objectMapper;
+    private final UrsaEventForwarder forwarder;
 
     @GetMapping("/brain/{tenant}/event/{project}/{event}")
     public EventTriggerResponse triggerGet(
@@ -82,9 +83,28 @@ public class UrsaEventController {
     /**
      * True when another pod routed this request here. Such a request is run
      * locally without resolving the owner again — see {@link UrsaEventForwarder}.
+     *
+     * <p>The marker alone is not enough: this route is JWT-free and never
+     * passes {@code InternalAccessFilter}, so an external caller could set the
+     * header and skip the owner resolution. The hop has to prove itself with
+     * the internal token; an unproven marker is ignored (and logged), which
+     * puts the request back on the ordinary routing path rather than failing
+     * it.
      */
-    private static boolean isForwarded(HttpServletRequest request) {
-        return request.getHeader(UrsaEventForwarder.FORWARDED_HEADER) != null;
+    private boolean isForwarded(HttpServletRequest request) {
+        String marker = request.getHeader(UrsaEventForwarder.FORWARDED_HEADER);
+        if (marker == null) {
+            return false;
+        }
+        boolean trusted = forwarder.isTrustedHop(
+                marker, request.getHeader(UrsaEventForwarder.INTERNAL_TOKEN_HEADER));
+        if (!trusted) {
+            log.warn("Ignoring {} on {} {} — no valid internal token, treating the request "
+                            + "as un-routed",
+                    UrsaEventForwarder.FORWARDED_HEADER,
+                    request.getMethod(), request.getRequestURI());
+        }
+        return trusted;
     }
 
     /**

@@ -199,16 +199,6 @@ public final class JaglanPaths {
     }
 
     /**
-     * The parent folder of a mount-relative path, empty string for a direct
-     * child of the mount root.
-     */
-    public static String parentInMount(@Nullable String pathInMount) {
-        String normalized = normalizeInMountPath(pathInMount);
-        int slash = normalized.lastIndexOf('/');
-        return slash < 0 ? "" : normalized.substring(0, slash);
-    }
-
-    /**
      * Normalise a mount-relative path: strip surrounding slashes, collapse
      * repeated ones, and refuse traversal.
      *

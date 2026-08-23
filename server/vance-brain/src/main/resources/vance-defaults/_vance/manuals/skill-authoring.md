@@ -132,7 +132,7 @@ context, and mixes up the roles.
 ```yaml
 run:
   target: spawn          # inline (default) | spawn
-  recipe: code-review    # required — the worker's engine lane
+  recipe: code-read      # required — the worker's engine lane
   inherit: none          # default for spawn
 action: |
   Review the current code changes now. Gather the diff first, then report.

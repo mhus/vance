@@ -50,6 +50,29 @@ public class TrillianAskTool implements Tool {
     /** engineParamOverrides key on the worker: which kind of obstacle. */
     public static final String PARAM_ASK_BLOCKER = "trillianAskBlocker";
 
+    /**
+     * engineParamOverrides key on the worker: which question is open.
+     *
+     * <p>A fingerprint of the question text, not the text itself — the
+     * only thing anyone asks of it is whether the question that just came
+     * back is the one that was already there.
+     */
+    public static final String PARAM_ASK_QUESTION = "trillianAskQuestion";
+
+    /**
+     * engineParamOverrides key on the worker: re-checks already offered
+     * for the open question.
+     *
+     * <p>Lives with the tool that opens the question rather than with the
+     * Nature that spends the budget: the budget belongs to the question,
+     * and the question is raised here. A Nature reads and advances it
+     * (see {@code TrillianNatureAdam}); nobody else writes it.
+     */
+    public static final String PARAM_ASK_PROBES = "trillianAskProbes";
+
+    /** engineParamOverrides key on the worker: when the breaker opened. */
+    public static final String PARAM_ASK_OPENED_AT = "trillianAskOpenedAt";
+
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
             "properties", Map.of(
@@ -128,9 +151,14 @@ public class TrillianAskTool implements Tool {
             throw new ToolException("trillian_ask is only available inside a Trillian worker");
         }
 
+        @Nullable ThinkProcessDocument process =
+                thinkProcessService.findById(ctx.processId()).orElse(null);
+
         // The marker has to be set before the engine reaches its exit
         // branch — it is the only thing distinguishing this exit from a
-        // finished one.
+        // finished one. It stays set while the worker is parked and is
+        // cleared by TrillianWorkerEngine when the worker runs again,
+        // which is what makes "is a question open?" answerable.
         thinkProcessService.setEngineParamOverride(
                 ctx.processId(), TrillianWorkerEngine.PARAM_ASK_PENDING, true);
         // Whether a second attempt could mean anything is knowable now and
@@ -140,6 +168,7 @@ public class TrillianAskTool implements Tool {
         // than a skipped one.
         thinkProcessService.setEngineParamOverride(
                 ctx.processId(), PARAM_ASK_BLOCKER, blocker(params));
+        startOrContinueEpisode(ctx.processId(), process, text);
 
         // Persist and then hand the question to the parent.
         //
@@ -150,8 +179,6 @@ public class TrillianAskTool implements Tool {
         // that closed: the loop waits, the human hears nothing, and
         // nothing in the system looks wrong.
         try {
-            ThinkProcessDocument process =
-                    thinkProcessService.findById(ctx.processId()).orElse(null);
             if (process != null) {
                 chatMessageService.append(ChatMessageDocument.builder()
                         .tenantId(process.getTenantId())
@@ -198,6 +225,52 @@ public class TrillianAskTool implements Tool {
         out.put("note", "You are now waiting. The answer will arrive as a new "
                 + "message and you continue from here — do not repeat the work.");
         return out;
+    }
+
+    /**
+     * Records which question is open and, when it is a new one, gives it
+     * a fresh re-check budget.
+     *
+     * <p>The budget hangs on the question, not on the process. A worker
+     * that spent its three probes on a locked file, got an answer, worked
+     * on and then met a <em>different</em> obstacle would otherwise
+     * inherit an exhausted breaker: the cheap re-check the second obstacle
+     * deserves never happens, and the only thing left is the two-hour
+     * probe.
+     *
+     * <p>The same question coming back keeps its budget — that is the case
+     * the breaker exists for. "Same" is decided on the text, because
+     * nothing else distinguishes a re-ask after a nudge from a new
+     * question raised in the same turn the previous answer arrived.
+     */
+    private void startOrContinueEpisode(
+            String processId, @Nullable ThinkProcessDocument process, String question) {
+        String fingerprint = fingerprintOf(question);
+        if (fingerprint.equals(currentQuestion(process))) {
+            return;
+        }
+        thinkProcessService.setEngineParamOverride(processId, PARAM_ASK_QUESTION, fingerprint);
+        thinkProcessService.setEngineParamOverride(processId, PARAM_ASK_PROBES, null);
+        thinkProcessService.setEngineParamOverride(processId, PARAM_ASK_OPENED_AT, null);
+    }
+
+    private static @Nullable String currentQuestion(@Nullable ThinkProcessDocument process) {
+        Map<String, Object> overrides =
+                process == null ? null : process.getEngineParamOverrides();
+        Object raw = overrides == null ? null : overrides.get(PARAM_ASK_QUESTION);
+        return raw instanceof String s ? s : null;
+    }
+
+    /**
+     * Whitespace and case are noise here: a model that re-asks the same
+     * thing rarely re-types it byte for byte. A collision would only cost
+     * one question the fresh budget it deserved, which is why a plain
+     * string hash is enough.
+     */
+    static String fingerprintOf(String question) {
+        String normalised = question.replaceAll("\\s+", " ").strip()
+                .toLowerCase(java.util.Locale.ROOT);
+        return Integer.toHexString(normalised.hashCode());
     }
 
     /** {@code state} only when it says so; everything else is a decision. */

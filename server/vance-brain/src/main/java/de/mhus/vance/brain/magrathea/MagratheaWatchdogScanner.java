@@ -1,8 +1,12 @@
 package de.mhus.vance.brain.magrathea;
 
 import de.mhus.vance.brain.cluster.ClusterMasterService;
+import de.mhus.vance.shared.magrathea.MagratheaJournalService;
+import de.mhus.vance.shared.magrathea.MagratheaStateSpec;
 import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
+import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
+import de.mhus.vance.shared.magrathea.journal.StartRecord;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashSet;
@@ -67,6 +71,8 @@ public class MagratheaWatchdogScanner {
     private final MagratheaTaskService taskService;
     private final MagratheaWorkflowService workflowService;
     private final MagratheaProperties properties;
+    private final MagratheaJournalService journalService;
+    private final MagratheaWorkflowLoader workflowLoader;
     /** Absent when the cluster-master feature is off — then this pod is alone. */
     private final ObjectProvider<ClusterMasterService> masterServiceProvider;
 
@@ -96,7 +102,13 @@ public class MagratheaWatchdogScanner {
         Set<String> seen = new LinkedHashSet<>();
         for (MagratheaTaskDocument task : stalled) {
             String runId = task.getWorkflowRunId();
-            if (runId == null || !seen.add(runId)) continue;
+            if (runId == null) continue;
+            if (waitsForever(task)) {
+                log.debug("Magrathea watchdog: run {} state '{}' declared timeoutSeconds: 0 "
+                        + "— left standing", runId, task.getStateName());
+                continue;
+            }
+            if (!seen.add(runId)) continue;
             String reason = "watchdog: no progress for " + ceiling
                     + " (task '" + task.getStateName() + "' " + task.getStatus() + ")";
             try {
@@ -111,6 +123,43 @@ public class MagratheaWatchdogScanner {
                 log.warn("Magrathea watchdog: could not fail stalled run {}: {}",
                         runId, ex.toString());
             }
+        }
+    }
+
+    /**
+     * True when the task's frozen state declared {@code timeoutSeconds: 0} —
+     * the one way an author says "this one really may wait forever".
+     *
+     * <p>The deadline scheduler already honours that zero; without the same
+     * exemption here the two nets contradicted each other, and the watchdog
+     * won: a gate deliberately left open until somebody comes was failed
+     * after the ceiling with the reason "no progress", i.e. reported as a
+     * defect when it was the written intent. Cost is one journal read plus
+     * one YAML parse per candidate, on an hourly master-only scan of at most
+     * {@value #SCAN_BATCH} rows.
+     *
+     * <p>An unreadable plan is <em>not</em> treated as an opt-out: a run
+     * whose frozen definition cannot be parsed is exactly the kind of defect
+     * this net exists for, and inventing a waiver from a failure would make
+     * the last net disappear where it is needed most.
+     */
+    private boolean waitsForever(MagratheaTaskDocument task) {
+        try {
+            StartRecord start = journalService.readLast(
+                    task.getTenantId(), task.getProjectId(),
+                    task.getWorkflowRunId(), StartRecord.class).orElse(null);
+            if (start == null) return false;
+            MagratheaStateSpec state = workflowLoader
+                    .validateYaml(start.getWorkflowName(), start.getDefinitionYaml())
+                    .states()
+                    .get(task.getStateName());
+            return state != null
+                    && state.timeoutSeconds() != null
+                    && state.timeoutSeconds() <= 0;
+        } catch (RuntimeException ex) {
+            log.debug("Magrathea watchdog: could not read the frozen plan of run {}: {}",
+                    task.getWorkflowRunId(), ex.toString());
+            return false;
         }
     }
 

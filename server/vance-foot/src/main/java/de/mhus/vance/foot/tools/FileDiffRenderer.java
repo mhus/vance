@@ -39,13 +39,25 @@ import org.jspecify.annotations.Nullable;
  */
 public final class FileDiffRenderer {
 
+    /**
+     * JLine's package-private {@code AttributedStyle.FG_COLOR} — the 24 bits
+     * holding the foreground colour value ({@code 0xFFFFFF << 15}).
+     */
+    private static final long FG_COLOR = 0xFFFFFFL << 15;
+    /**
+     * JLine's package-private {@code F_FOREGROUND_IND | F_FOREGROUND_RGB} —
+     * the flags saying whether {@link #FG_COLOR} is a palette index or a
+     * 24-bit RGB triple. Zero means "no foreground set at all".
+     */
+    private static final long F_FOREGROUND = 0x100L | 0x200L;
+
     private final ChatTerminal terminal;
     private final @Nullable AttributedStyle addStyle;
     private final @Nullable AttributedStyle removeStyle;
     private final @Nullable AttributedStyle contextStyle;
     private final @Nullable AttributedStyle markerStyle;
     private final SourceSyntaxHighlighter syntaxHighlighter;
-    private int contextLines;
+    private final int contextLines;
     private final int maxLines;
 
     public FileDiffRenderer(ChatTerminal terminal, FootConfig.ToolOutput cfg,
@@ -250,12 +262,31 @@ public final class FileDiffRenderer {
         terminal.printlnStyled(Verbosity.INFO, sb.toAttributedString());
     }
 
+    /**
+     * Overlays the syntax highlighter's foreground colour onto a diff row
+     * style, keeping that row's background and attributes.
+     *
+     * <p>A JLine foreground is two things: the colour value
+     * ({@link #FG_COLOR}) and the flag saying how to read it
+     * ({@link #F_FOREGROUND}). Both have to travel together. Copying the
+     * value alone turned every {@code fg:#rrggbb} token into a palette index,
+     * and — worse — for the characters the lexer does <em>not</em> tokenise
+     * (identifiers, punctuation) it cleared the row's colour bits while
+     * leaving the row's "indexed foreground" flag standing — colour index 0,
+     * i.e. black, which on a dark terminal made most of the diff context
+     * invisible instead of the configured {@code fg:bright-black}. So: a
+     * token without a foreground leaves {@code base} untouched, a token with
+     * one replaces value and flag.
+     */
     static AttributedStyle mergeForeground(AttributedStyle base, AttributedStyle foreground) {
-        long foregroundBits = foreground.getStyle() & 0x7fffff8000L;
-        long foregroundMask = foreground.getMask() & 0x100L;
+        long flags = foreground.getStyle() & F_FOREGROUND;
+        if (flags == 0) {
+            return base;
+        }
         return new AttributedStyle(
-                (base.getStyle() & ~0x7fffff8000L) | foregroundBits,
-                base.getMask() | foregroundMask);
+                (base.getStyle() & ~(FG_COLOR | F_FOREGROUND))
+                        | (foreground.getStyle() & FG_COLOR) | flags,
+                (base.getMask() & ~F_FOREGROUND) | flags);
     }
 
     private static String formatLineNum(int n) {

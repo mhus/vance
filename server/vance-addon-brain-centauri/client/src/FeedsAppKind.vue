@@ -148,6 +148,12 @@ async function toggleMark(item: FeedItemView): Promise<void> {
   }
   marked.value = key;
   if (details.value[key] || detailLoading.value === key) return;
+  // `carriesFullBody` means „a list entry is everything there is". Asking such
+  // a source for the entry again is a round trip that can only 404, and it
+  // lands in `vance.centauri.item{outcome=unknown}` — the metric that is
+  // supposed to count entries that fell out of the stream, drowned out by
+  // sources that never had a body to fetch.
+  if (carriesFullBody(item.sourceId)) return;
   detailLoading.value = key;
   try {
     const full = await loadItem(props.document.projectId, item.sourceId, item.id);
@@ -212,9 +218,22 @@ let observer: IntersectionObserver | null = null;
 const configuredStreams = computed(() => config.value?.streams ?? []);
 
 /**
- * The reader's current facet selection — transient, and deliberately not the
- * stored one until „Save as filter" says so. Browsing is not configuring.
+ * Sources the server could not describe. `capabilities === null` is the
+ * server's way of saying "listed, but unusable" — it keeps the row rather than
+ * dropping it, because a source missing from the list reads as one that was
+ * never configured. Nothing rendered that, so a wrong API key looked like an
+ * empty feed with no explanation anywhere.
  */
+const unusableSources = computed(() => sources.value.filter((s) => !s.capabilities));
+
+/** Source picker options, with the unusable ones named as such. */
+const sourceOptions = computed(() =>
+  sources.value.map((s) => ({
+    value: s.id,
+    label: s.capabilities ? s.displayName : `${s.displayName} (unavailable)`,
+  })),
+);
+
 /**
  * Facets offered by the configured sources.
  *
@@ -651,9 +670,12 @@ async function nextPage(emptyRounds = 0): Promise<void> {
     const page = await loadPage(props.document.projectId, {
       folder: folder.value,
       streams: [],
-      // No filter in the body: everything the reader set lives in the stored
-      // configuration, and the server reads it from there.
-      filter: undefined,
+      // The filter as it stands in the form, which is not always the stored
+      // one: toggling a facet value edits `config.filter` and „Save as filter"
+      // is what makes it permanent. Sending it means browsing a facet works
+      // before saving — the server overrides the stored filter with this when
+      // it is present, and falls back to the stored one when it is not.
+      filter: config.value?.filter,
       pageSize: config.value?.pageSize ?? 20,
       cursor: cursor.value ?? undefined,
       direction: 'older',
@@ -680,31 +702,49 @@ async function nextPage(emptyRounds = 0): Promise<void> {
 }
 
 async function clip(item: FeedItemView): Promise<void> {
-  const target = `${folder.value}/clips/${slug(item.title)}`;
+  // The entry's own id is part of the path, not just its headline. Wikipedia
+  // recent-changes names every entry after the article, so clipping two edits
+  // to „Berlin" produced one path twice — the second one 409ed and the card
+  // said „Clipped", pointing at somebody else's change. Two sources with the
+  // same headline collided the same way.
+  const target = `${folder.value}/clips/${slug(item.title)}-${slug(item.id)}`;
+  // The detail, when the reader opened the card: the body was fetched, is on
+  // screen, and is exactly the part a source with `carriesFullBody: false`
+  // does not put in the teaser. Clipping the teaser instead throws away the
+  // thing the reader wanted to keep, and it was already in the browser.
+  const it = shown(item);
   try {
     const result = await clipItem(props.document.projectId, {
       targetPath: target,
-      title: item.title,
-      url: item.url,
-      publishedAt: item.publishedAt,
-      summary: item.summary,
-      body: undefined,
-      author: item.author,
-      language: item.language,
-      sourceId: item.sourceId,
+      title: it.title,
+      url: it.url,
+      publishedAt: it.publishedAt,
+      summary: it.summary,
+      body: it.body ?? undefined,
+      author: it.author,
+      language: it.language,
+      sourceId: it.sourceId,
     });
     clipped.value = { ...clipped.value, [entryKey(item)]: result.path };
   } catch (e) {
-    // 409 means this entry is already in the folder — an outcome, not a
-    // failure. The server answers it with the path that is in the way, so the
-    // honest reaction is to mark the card clipped rather than to show the
-    // reader a raw error body for something that already worked.
+    // 409 means this exact entry is already in the folder — an outcome, not a
+    // failure. The path carries the entry id, so a conflict really is the same
+    // entry and not a headline that happens to match.
     if (e instanceof RestError && e.status === 409) {
       clipped.value = { ...clipped.value, [entryKey(item)]: target };
       return;
     }
     error.value = String(e);
   }
+}
+
+/**
+ * Whether this source declared that a list entry is already the whole thing.
+ * Unknown source → false, so an undescribable source is asked rather than
+ * silently treated as complete.
+ */
+function carriesFullBody(sourceId: string): boolean {
+  return sources.value.find((s) => s.id === sourceId)?.capabilities?.carriesFullBody === true;
 }
 
 /** Which signals this entry's source declared. Empty = the buttons stay hidden. */
@@ -971,9 +1011,9 @@ function slug(title: string): string {
                 <span v-if="item.selector">· {{ item.selector }}</span>
                 <span>· {{ when(item.publishedAt) }}</span>
                 <span v-if="item.language">· {{ item.language }}</span>
-                <span v-if="shown(item).extras?.originPlace">
-                  · {{ shown(item).extras.originPlace }}
-                </span>
+                <!-- No hardcoded extras key here: `extraFields` is the channel
+                     (see extraRows). A source that declares originPlace would
+                     otherwise render it twice, once without its own label. -->
                 <span v-if="item.author">· {{ item.author }}</span>
               </div>
               <!-- Through link(): `url` is written by the feed source, and a
@@ -1123,6 +1163,15 @@ function slug(title: string): string {
             <VButton variant="ghost" @click="reloadSources(true)">Reload sources</VButton>
           </div>
           <div v-else class="flex flex-col gap-2">
+            <!-- A source that could not be described is reported, not hidden:
+                 the server keeps it in the list precisely so this form can say
+                 why it is unusable. Without this the reader sees a selectable
+                 option with an empty selector dropdown and an empty feed. -->
+            <VAlert v-for="s in unusableSources" :key="s.id" variant="warning">
+              <b>{{ s.displayName }}</b> cannot be asked right now
+              — {{ s.error ?? 'it declared nothing this version understands' }}.
+              Check <code>centauri.endpoint.{{ s.id }}.*</code>, then reload sources.
+            </VAlert>
             <div
               v-for="(stream, index) in config.streams"
               :key="index"
@@ -1130,7 +1179,7 @@ function slug(title: string): string {
             >
               <VSelect
                 :model-value="stream.source"
-                :options="sources.map((s) => ({ value: s.id, label: s.displayName }))"
+                :options="sourceOptions"
                 @update:model-value="(v: string | null) => changeSource(stream, v ?? '')"
               />
               <VInput

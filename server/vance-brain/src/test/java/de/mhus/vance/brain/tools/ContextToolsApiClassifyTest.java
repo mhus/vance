@@ -651,6 +651,95 @@ class ContextToolsApiClassifyTest {
                 .containsExactlyInAnyOrder("doc_read", "skill_alpha");
     }
 
+    // ─── the discovery block splits along the cache boundary ───
+
+    @Test
+    void budgetDemotedTools_areReportedSeparatelyFromTheRecipeDeferredOnes() {
+        // Membership of the demoted set follows activation recency and
+        // measured usage, so it moves between turns. The recipe-derived
+        // deferred set does not. They have to be renderable apart, or the
+        // volatile half busts the cache marker on the static prefix.
+        stubResolve("doc_read", false);
+        stubResolve("gmail_rest__a", false);
+        stubResolve("always_deferred", true);
+
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx,
+                Set.of("doc_read", "gmail_rest__a", "always_deferred"),
+                RecipeResolver.ToolFilter.EMPTY, Set.of(), null, null,
+                new ToolBudget(1, 0), null);
+
+        assertThat(c.demoted()).containsExactly("gmail_rest__a");
+        assertThat(c.deferred()).contains("always_deferred", "gmail_rest__a");
+    }
+
+    @Test
+    void demotedTools_leaveTheCacheAnchoredDiscoveryBlock_butStayListed() {
+        stubResolve("doc_read", false);
+        stubResolve("gmail_rest__a", false);
+        stubResolve("always_deferred", true);
+        when(dispatcher.resolveAll(any())).thenReturn(List.of(
+                resolved("doc_read"), resolved("gmail_rest__a"),
+                resolved("always_deferred", true)));
+
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx,
+                Set.of("doc_read", "gmail_rest__a", "always_deferred"),
+                RecipeResolver.ToolFilter.EMPTY, Set.of(), null, null,
+                new ToolBudget(1, 0), null);
+        ContextToolsApi api = new ContextToolsApi(
+                dispatcher, ctx, c.allowed(), c.primary(), c.deferred(), c.activatedDeferred(),
+                ToolInvocationListener.NOOP)
+                .withBudget(new ToolBudget(1, 0), null, c.demoted());
+
+        assertThat(api.discoveryBlockMarkdown())
+                .contains("always_deferred")
+                .doesNotContain("gmail_rest__a");
+        // Nothing disappears — it just moves to the dynamic message.
+        assertThat(api.demotedDiscoveryBlockMarkdown())
+                .contains("gmail_rest__a")
+                .doesNotContain("always_deferred");
+    }
+
+    @Test
+    void withoutADemotion_theDynamicBlockIsEmpty() {
+        stubResolve("deferred_tool", true);
+        when(dispatcher.resolveAll(any())).thenReturn(List.of(resolved("deferred_tool", true)));
+
+        ContextToolsApi api = new ContextToolsApi(
+                dispatcher, ctx,
+                Set.of("deferred_tool"), Set.of(), Set.of("deferred_tool"), Set.of(),
+                ToolInvocationListener.NOOP);
+
+        assertThat(api.discoveryBlockMarkdown()).contains("deferred_tool");
+        assertThat(api.demotedDiscoveryBlockMarkdown()).isEmpty();
+    }
+
+    @Test
+    void withAdditional_removesAnAlreadyActivatedExtra_fromTheDeferredBucket() {
+        // Otherwise the tool sits in the manifest and in the discovery
+        // block at once, and the triage counts it twice.
+        stubResolve("doc_read", false);
+        stubResolve("skill_alpha", true);
+        when(dispatcher.resolveAll(any())).thenReturn(List.of(
+                resolved("doc_read"), resolved("skill_alpha", true)));
+
+        ContextToolsApi base = new ContextToolsApi(
+                dispatcher, ctx,
+                /*allowed*/ Set.of("doc_read", "skill_alpha"),
+                /*primary*/ Set.of("doc_read"),
+                /*deferred*/ Set.of("skill_alpha"),
+                /*activatedDeferred*/ Set.of("skill_alpha"),
+                ToolInvocationListener.NOOP)
+                .withBudget(new ToolBudget(50, 1), null);
+
+        ContextToolsApi withSkill = base.withAdditional(Set.of("skill_alpha"));
+
+        assertThat(withSkill.primary()).contains("skill_alpha");
+        assertThat(withSkill.deferred()).doesNotContain("skill_alpha");
+        assertThat(withSkill.discoveryBlockMarkdown()).doesNotContain("skill_alpha");
+    }
+
     private void stubResolve(String name, boolean deferred) {
         when(dispatcher.resolve(eq(name), any())).thenReturn(Optional.of(resolved(name, deferred)));
     }

@@ -135,9 +135,18 @@ const available = computed<string[]>(() => {
   return MODALITY_ORDER.filter((m) => set.has(m));
 });
 
-/** Endpoints that can serve the current modality — the pin list for expert tier. */
+/**
+ * Endpoints that can serve the current modality — the pin list for expert tier.
+ *
+ * `READY` first, like `available` and `offeredFacets`. Without it a source in
+ * cooldown still offered its expert switch and its pin entry, and pinning it
+ * produced a guaranteed empty result: `resolveProviders` drops an unusable
+ * instance, so the tab that had just returned hits answered „no provider
+ * instance available". Optional must never mean unreliable.
+ */
 const pinnable = computed(() =>
   providers.value
+    .filter((p) => p.availability === 'READY')
     .filter((p) => (p.modalities ?? []).some((m) => m.toLowerCase() === modality.value))
     .filter((p) => (p.tiers ?? []).some((t) => t.toUpperCase() === 'EXPERT'))
     .map((p) => ({ value: p.id, label: p.displayName ?? p.id })),
@@ -829,6 +838,13 @@ function message(e: unknown): string {
 
         <!-- Curated results -->
         <div v-if="curated" class="flex flex-col gap-2">
+          <!-- The question this block answers, because it outlives the search
+               box: an investigate stays on screen while the query is retyped,
+               and without the line the reader is looking at an answer to
+               something else. -->
+          <p v-if="curatedQuery" class="text-sm font-semibold">
+            Curated answer for: {{ curatedQuery }}
+          </p>
           <VAlert v-if="curated.gaps.length > 0" variant="info">
             <!-- What it could NOT answer is the useful part, and a summary
                  would swallow it. -->

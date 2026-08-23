@@ -194,6 +194,25 @@ class VogonIntakeTest {
     }
 
     @Test
+    void aDeclaredButUnresolvablePlan_isNotHandedToAModelToReplace() {
+        // The caller named a plan; it just did not resolve. Deriving
+        // "needs a plan" from `plan == null` alone ran the choice stage
+        // anyway: an enum call over every resolvable plan whose answer the
+        // start path then discarded, because the declared name wins there —
+        // and when the model answered path-shaped, it did *not* discard it
+        // and started the document the model picked instead.
+        when(lightLlmProvider.getIfAvailable()).thenReturn(lightLlm);
+        when(workflowLoader.listAll(any(), any())).thenReturn(List.of(plan()));
+
+        VogonIntake.Outcome out = intake.resolve("t", "p", null, "relase",
+                Map.of(), "please do a release", null);
+
+        assertThat(out.planName()).isEqualTo("relase");
+        assertThat(out.planPath()).isNull();
+        verify(lightLlm, never()).callForJson(any());
+    }
+
+    @Test
     void noPlansAtAll_yieldsNoPlanRatherThanAGuess() {
         when(workflowLoader.listAll(any(), any())).thenReturn(List.of());
         when(lightLlmProvider.getIfAvailable()).thenReturn(lightLlm);

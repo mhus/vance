@@ -6,10 +6,12 @@ import de.mhus.vance.toolpack.facet.FacetValue;
 import de.mhus.vance.brain.centauri.CentauriNote;
 import de.mhus.vance.brain.centauri.CentauriPage;
 import de.mhus.vance.brain.centauri.CentauriPageRequest;
+import de.mhus.vance.brain.centauri.CentauriGateService;
 import de.mhus.vance.brain.centauri.CentauriService;
 import de.mhus.vance.brain.centauri.FeedCapabilitiesCache;
 import de.mhus.vance.brain.centauri.FeedSourceFactory;
 import de.mhus.vance.brain.centauri.FeedStream;
+import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
@@ -73,7 +75,14 @@ public class CentauriAppController {
 
     private static final String MD_MIME = "text/markdown";
 
+    /**
+     * Streams a preview request may name. A stored configuration is the
+     * reader's own and stays uncapped; a request body is not.
+     */
+    static final int MAX_PREVIEW_STREAMS = 20;
+
     private final CentauriService centauriService;
+    private final CentauriGateService gateService;
     private final FeedSourceFactory sourceFactory;
     private final FeedCapabilitiesCache capabilitiesCache;
     private final FeedsApplication application;
@@ -146,10 +155,19 @@ public class CentauriAppController {
                                                 @Nullable String parent,
                                                 HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
-        FeedSourceInstance instance =
-                sourceFactory.find(scope(tenant, projectId, request), sourceId);
+        FeedScope scope = scope(tenant, projectId, request);
+        FeedSourceInstance instance = sourceFactory.find(scope, sourceId);
+        // Refuse rather than answer with an empty list. "Nothing below this" and
+        // "we did not ask" look the same in the picker, and only one of them is
+        // something the reader can act on.
         if (instance == null) {
-            return List.of();
+            throw new CentauriException("unknown feed source '" + sourceId + "'");
+        }
+        // The same gate every other outbound path applies. Without it a source
+        // in cooldown is called again on every open of the facet picker — which
+        // is the one thing a cooldown exists to prevent.
+        if (gateService.check(scope, sourceId).isPresent()) {
+            throw new CentauriException("feed source '" + sourceId + "' is not available");
         }
         List<FeedFacetValueView> out = new ArrayList<>();
         for (FacetValue value : instance.listFacetValues(key, parent)) {
@@ -189,10 +207,10 @@ public class CentauriAppController {
                                  @RequestParam String projectId,
                                  @RequestParam String folder,
                                  HttpServletRequest request) {
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
-        return toView(FeedsApplication.normaliseFolder(folder),
-                application.readManifest(tenant, projectId, folder).title(),
-                application.readConfig(tenant, projectId, folder));
+        String normalised = manifestFolder(tenant, projectId, folder, request, Action.READ);
+        return toView(normalised,
+                application.readManifest(tenant, projectId, normalised).title(),
+                application.readConfig(tenant, projectId, normalised));
     }
 
     @PutMapping("/brain/{tenant}/addon/centauri/config")
@@ -201,9 +219,31 @@ public class CentauriAppController {
                                      @RequestParam String folder,
                                      @RequestBody FeedConfigView body,
                                      HttpServletRequest request) {
-        authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
-        application.writeConfig(tenant, projectId, folder, fromView(body), currentUser(request));
-        return config(tenant, projectId, folder, request);
+        String normalised = manifestFolder(tenant, projectId, folder, request, Action.WRITE);
+        application.writeConfig(tenant, projectId, normalised, fromView(body),
+                currentUser(request));
+        return config(tenant, projectId, normalised, request);
+    }
+
+    /**
+     * Authorise the manifest this call is about, not just the project it lives
+     * in — and authorise the path that will actually be touched.
+     *
+     * <p>Same lesson as the clip endpoint, which the manifest path did not
+     * inherit. A project-level check plus a caller-supplied {@code folder} lets
+     * a WRITER reach {@code _vance/…/_app.yaml}, and the document layer is no
+     * backstop: it derives the write actor from the target path and vouches for
+     * reserved ones as system writes, so the reserved-namespace rule (R4) is
+     * never asked. The project check stays — a document grant is not a licence
+     * to use the app at all.
+     */
+    private String manifestFolder(String tenant, String projectId, String folder,
+                                  HttpServletRequest request, Action action) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), action);
+        String normalised = FeedsApplication.normaliseFolder(folder);
+        authority.enforce(request, new Resource.Document(tenant, projectId,
+                normalised + "/" + VanceApplication.APP_MANIFEST), action);
+        return normalised;
     }
 
     /**
@@ -223,6 +263,18 @@ public class CentauriAppController {
         int pageSize;
         if (body.streams() != null && !body.streams().isEmpty()) {
             // Explicit streams: a preview before anything is stored.
+            //
+            // Capped, unlike the stored branch. The dispatcher spends one
+            // virtual thread and one outbound request per stream and lets the
+            // count follow the reader's configuration — but a request body is
+            // not a configuration, and five hundred copies of one stream is
+            // five hundred parallel calls against a metered foreign service
+            // under the operator's credentials, for a caller who needs nothing
+            // but project READ.
+            if (body.streams().size() > MAX_PREVIEW_STREAMS) {
+                throw new IllegalArgumentException("at most " + MAX_PREVIEW_STREAMS
+                        + " streams can be previewed at once, got " + body.streams().size());
+            }
             streams = new ArrayList<>();
             for (FeedStreamView view : body.streams()) {
                 streams.add(new FeedStream(view.source(), view.selector()));
@@ -230,9 +282,18 @@ public class CentauriAppController {
             filter = fromView(body.filter()).toFilter(Instant.now());
             pageSize = body.pageSize();
         } else {
-            FeedsConfig stored = application.readConfig(tenant, projectId, requireFolder(body));
+            String folder = manifestFolder(
+                    tenant, projectId, requireFolder(body), request, Action.READ);
+            FeedsConfig stored = application.readConfig(tenant, projectId, folder);
             streams = stored.streams();
-            filter = stored.toFilter(Instant.now());
+            // A filter in the body overrides the stored one rather than being
+            // dropped. Without this there is no way to run a transient facet
+            // selection against the saved streams — the reader would have to
+            // "Save as filter" before seeing what the filter does, which is the
+            // opposite of what the client's own comment promises.
+            filter = body.filter() == null
+                    ? stored.toFilter(Instant.now())
+                    : fromView(body.filter()).toFilter(Instant.now());
             pageSize = body.pageSize() > 0 ? body.pageSize() : stored.pageSize();
         }
 
@@ -495,7 +556,7 @@ public class CentauriAppController {
      * breaks as their YAML escapes, then anything else below the printable
      * range as a numeric escape.
      */
-    private static String yaml(String raw) {
+    static String yaml(String raw) {
         StringBuilder out = new StringBuilder(raw.length() + 2).append('"');
         for (int i = 0; i < raw.length(); i++) {
             char c = raw.charAt(i);
@@ -526,7 +587,7 @@ public class CentauriAppController {
      * shape of the bug this method exists to prevent; a clip target is a name
      * someone picked in a dialog and has no business containing one.
      */
-    private static String normalisePath(String raw) {
+    static String normalisePath(String raw) {
         String path = raw == null ? "" : raw.trim();
         while (path.startsWith("/")) {
             path = path.substring(1);
@@ -553,7 +614,7 @@ public class CentauriAppController {
         return body.folder();
     }
 
-    private static FeedDirection direction(@Nullable String raw) {
+    static FeedDirection direction(@Nullable String raw) {
         if (raw == null || raw.isBlank()) {
             return FeedDirection.OLDER;
         }

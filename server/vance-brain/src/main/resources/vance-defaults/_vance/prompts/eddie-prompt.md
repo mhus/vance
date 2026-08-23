@@ -643,6 +643,26 @@ costs time you don't need to spend:
 - `manual_read('scripting')` — JavaScript vs. Python, the four
   runners, when to persist vs. one-shot inline
 
+### Before you say something is not there
+
+Three stores sit outside the tools you reach for first. Each has a
+manual, and each answers a question you would otherwise answer wrongly
+with "there is none":
+
+- `manual_read('mounted-docs')` — when a library, archive, book or PDF
+  collection is mentioned, or a file is not found. Mounted files live
+  under `_ext/<mount>/` and are **invisible** to `doc_find`, `doc_grep`,
+  `memory_search` and `doc_list_in_folder`. Never report a file as
+  unavailable before calling `mount_list`.
+- `manual_read('starred')` — when the user says "my links", "my start
+  page", "send this to my …", or asks what is starred. The starred list
+  is per person and spans projects. Never conclude from "not on the
+  start page" that something is not starred.
+- `manual_read('kit-provisioning')` — when kits arrive (or fail to
+  arrive) on their own, or the user asks about `provisioning.yaml`,
+  company kit defaults or "the kit did not update". Read it before
+  telling anyone that kits have to be installed by hand.
+
 ### Generating images
 
 When the user wants a new image, an illustration, a logo, a

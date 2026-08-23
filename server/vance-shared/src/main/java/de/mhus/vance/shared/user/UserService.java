@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.user;
 
+import de.mhus.vance.shared.permission.PermissionBootstrap;
 import de.mhus.vance.shared.session.SessionService;
 import java.time.Duration;
 import java.time.Instant;
@@ -8,6 +9,7 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -73,6 +75,11 @@ public class UserService {
 
     private final UserRepository repository;
     private final MongoTemplate mongoTemplate;
+    /**
+     * Optional: present only when a permission provider stores its grants inside
+     * Vance (the bundled simple-auth). See {@link #delete}.
+     */
+    private final ObjectProvider<PermissionBootstrap> permissionBootstrapProvider;
 
     public Optional<UserDocument> findByTenantAndName(String tenantId, String name) {
         return repository.findByTenantIdAndName(tenantId, name);
@@ -339,14 +346,30 @@ public class UserService {
     }
 
     /**
-     * Hard-deletes a user. Memberships in teams are left untouched —
-     * callers concerned about referential integrity should clean those
-     * up via {@code TeamService.removeMember} before / after.
+     * Hard-deletes a user, together with every permission grant held under that
+     * name in the tenant.
+     *
+     * <p><b>Why grants are part of the delete and team memberships are not.</b>
+     * A grant is keyed on the <em>username</em>, not on the Mongo id, so it does
+     * not disappear with the document — and a login can come back: service
+     * accounts follow a naming scheme ({@code _daemon-prod-01}) and human logins
+     * get reused. A left-behind TENANT-ADMIN grant would then be inherited,
+     * silently, by whoever is created next under the same name, without anybody
+     * having granted anything. A team membership carries no authority
+     * ({@code ProjectDocument.teamIds} is organisational), so it stays the
+     * caller's business — clean it up via {@code TeamService.removeMember}.
+     *
+     * <p>Revocation runs <em>before</em> the document is removed, so a failing
+     * grant store aborts the delete rather than leaving the grant without its
+     * subject. It is a no-op when no permission provider owns grant storage
+     * (enterprise governor, or none at all) — the same {@code ifAvailable}
+     * convention every {@link PermissionBootstrap} consumer uses.
      */
     public void delete(String tenantId, String name) {
         UserDocument user = repository.findByTenantIdAndName(tenantId, name)
                 .orElseThrow(() -> new UserNotFoundException(
                         "User '" + name + "' not found in tenant '" + tenantId + "'"));
+        permissionBootstrapProvider.ifAvailable(pb -> pb.revokeAll(tenantId, name));
         repository.delete(user);
         log.info("Deleted user tenantId='{}' name='{}'", tenantId, name);
     }

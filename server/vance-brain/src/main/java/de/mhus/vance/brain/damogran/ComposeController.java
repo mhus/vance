@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.damogran;
 
+import de.mhus.vance.brain.session.SessionAccess;
 import de.mhus.vance.brain.tools.exec.ExecManager;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
@@ -254,9 +255,10 @@ public class ComposeController {
 
     /**
      * Resolve the process the compose should run under. When a {@code sessionId}
-     * is given and the session belongs to this tenant/project, use its primary
-     * chat process (variant a — shared WorkTarget + tool surface with the chat;
-     * that process already exists, so no waste).
+     * is given, the session belongs to this tenant/project and the caller may
+     * use it (their own, or shared by its owner), use its primary chat process
+     * (variant a — shared WorkTarget + tool surface with the chat; that process
+     * already exists, so no waste).
      *
      * <p>Without a usable chat process the session process is created <b>on
      * demand only</b>: a compose provisions one solely when its {@code session:}
@@ -274,8 +276,16 @@ public class ComposeController {
             String tenant, String projectId, DamogranManifest manifest,
             RunRequest body, HttpServletRequest httpRequest) {
         if (body.sessionId() != null && !body.sessionId().isBlank()) {
+            // Tenant and project are not enough: running under a session's
+            // chat process re-points that agent's WorkTarget and registers it
+            // as exec owner (waking it with EXEC_FINISHED). A session the
+            // caller neither owns nor was invited into (allowMultipleClients)
+            // is therefore not a carrier they may pick — the same rule the
+            // shared-key branch below already applies.
+            String caller = currentUser(httpRequest);
             String chatProcess = sessionService.findBySessionId(body.sessionId().trim())
                     .filter(s -> tenant.equals(s.getTenantId()) && projectId.equals(s.getProjectId()))
+                    .filter(s -> SessionAccess.mayAccess(s, caller))
                     .map(SessionDocument::getChatProcessId)
                     .orElse(null);
             if (chatProcess != null && !chatProcess.isBlank()) {

@@ -303,6 +303,28 @@ class JaglanShellServiceTest {
     }
 
     @Test
+    void upsertedShell_readOnlyMountWithEntryAccessUnknown_stillLocks() {
+        // The `ode` wire contract has no per-entry access: that side declares
+        // it once for the whole source and every entry arrives UNKNOWN. Taking
+        // the entry's word for it left a read-only library completely
+        // unlocked, so the protection §6 promises existed only for `local`.
+        when(port.mounts(TENANT, PROJECT)).thenReturn(List.of(source(MountAccess.RO)));
+        mongoReturns(null);
+        when(port.stat(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(Optional.of(new MountedStat(
+                        IN_MOUNT, false, 10, "application/pdf", null, null, MountAccess.UNKNOWN)));
+
+        service.resolve(TENANT, PROJECT, DOC_PATH);
+
+        Object locked = capturedShellUpdate().getUpdateObject()
+                .get("$set", org.bson.Document.class).get("lockedFor");
+        assertThat(locked.toString())
+                .contains(WriterRole.AI.name())
+                .contains(WriterRole.USER.name())
+                .contains(WriterRole.KIT.name());
+    }
+
+    @Test
     void upsertedShell_unknownAccessStaysWritable() {
         when(port.mounts(TENANT, PROJECT)).thenReturn(List.of(source(MountAccess.UNKNOWN)));
         mongoReturns(null);
@@ -314,9 +336,28 @@ class JaglanShellServiceTest {
 
         // Locking on UNKNOWN would turn a brief outage into a lock nobody can
         // explain; the source still refuses at write time if it must.
-        Object locked = capturedShellUpdate().getUpdateObject()
-                .get("$set", org.bson.Document.class).get("lockedFor");
-        assertThat(locked.toString()).doesNotContain(WriterRole.USER.name());
+        org.bson.Document update = capturedShellUpdate().getUpdateObject();
+        assertThat(update.get("$set", org.bson.Document.class)).doesNotContainKey("lockedFor");
+        assertThat(update.get("$setOnInsert", org.bson.Document.class).get("lockedFor").toString())
+                .doesNotContain(WriterRole.USER.name());
+    }
+
+    @Test
+    void upsertedShell_writableMount_doesNotOverwriteAUserSetLock() {
+        when(port.mounts(TENANT, PROJECT)).thenReturn(List.of(source(MountAccess.RW)));
+        mongoReturns(null);
+        when(port.stat(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(Optional.of(stat()));
+
+        service.resolve(TENANT, PROJECT, DOC_PATH);
+
+        // Seeded, never re-set: a lock placed through PATCH /lock that is gone
+        // after the next stat is the "setting that vanished on reload" §9 calls
+        // worse than a refusal.
+        org.bson.Document update = capturedShellUpdate().getUpdateObject();
+        assertThat(update.get("$set", org.bson.Document.class)).doesNotContainKey("lockedFor");
+        assertThat(update.get("$setOnInsert", org.bson.Document.class))
+                .containsKey("lockedFor");
     }
 
     @Test
@@ -425,17 +466,105 @@ class JaglanShellServiceTest {
     }
 
     @Test
-    void isFolderKnown_distinguishesEmptyFromNeverListed() {
-        when(mongoTemplate.findById(anyString(), eq(JaglanFolderState.class))).thenReturn(null);
-        assertThat(service.isFolderKnown(TENANT, PROJECT, MOUNT, "books")).isFalse();
-
+    void folderFailure_afterASuccessfulListing_isNull() {
         JaglanFolderState listed = JaglanFolderState.builder()
                 .listedAt(Instant.now()).entryCount(0).build();
         when(mongoTemplate.findById(anyString(), eq(JaglanFolderState.class))).thenReturn(listed);
-        assertThat(service.isFolderKnown(TENANT, PROJECT, MOUNT, "books")).isTrue();
+
+        assertThat(service.folderFailure(TENANT, PROJECT, MOUNT, "books")).isNull();
+    }
+
+    @Test
+    void folderFailure_reportsWhyTheLastRefreshFailed() {
+        // The rows of a failed refresh are still served — deliberately — so
+        // something has to say they are older than they look. The per-mount
+        // status line does not: it comes from the capabilities cache, which is
+        // silent about a source that describes itself and cannot list a folder.
+        Instant failedAt = Instant.now().minusSeconds(4);
+        JaglanFolderState state = JaglanFolderState.builder()
+                .listedAt(Instant.now().minusSeconds(600))
+                .failedAt(failedAt).failureMessage("connect timeout")
+                .build();
+        when(mongoTemplate.findById(anyString(), eq(JaglanFolderState.class))).thenReturn(state);
+
+        JaglanShellService.FolderFailure failure =
+                service.folderFailure(TENANT, PROJECT, MOUNT, "books");
+
+        assertThat(failure).isNotNull();
+        assertThat(failure.message()).isEqualTo("connect timeout");
+        assertThat(failure.at()).isEqualTo(failedAt);
+    }
+
+    // ─── counts ─────────────────────────────────────────────────────────
+
+    @Test
+    void mountFolders_documentCount_countsDirectFilesOnly() {
+        // The number sits next to subfolderCount, so the two have to describe
+        // the same object: counting every row under the prefix mixed in the
+        // folder rows and everything a deeper browse had already pulled in.
+        JaglanFolderState fresh = JaglanFolderState.builder()
+                .listedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(60))
+                .build();
+        when(mongoTemplate.findById(anyString(), eq(JaglanFolderState.class))).thenReturn(fresh);
+        when(mongoTemplate.find(any(Query.class), eq(DocumentDocument.class)))
+                .thenReturn(List.of());
+        when(mongoTemplate.count(any(Query.class), eq(DocumentDocument.class))).thenReturn(3L);
+
+        List<JaglanShellService.MountFolderView> folders = service.mountFolders(TENANT, PROJECT);
+
+        assertThat(folders).singleElement()
+                .extracting(JaglanShellService.MountFolderView::documentCount)
+                .isEqualTo(3);
+        ArgumentCaptor<Query> captor = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).count(captor.capture(), eq(DocumentDocument.class));
+        String query = captor.getValue().getQueryObject().toString();
+        assertThat(query).contains("[^/]+$");
+        assertThat(query).contains("mountDirectory");
     }
 
     // ─── mounts + eviction ──────────────────────────────────────────────
+
+    @Test
+    void resolve_mountNoLongerConfigured_dropsItsRows() {
+        // A mount removed from the settings otherwise leaves a browsable tree
+        // of readable metadata whose content can never be fetched again, with
+        // no way to get rid of it — the second of the two ways §2.2 allows a
+        // shell row to disappear.
+        when(port.mounts(TENANT, PROJECT)).thenReturn(List.of());
+        mongoReturns(row(Instant.now().plusSeconds(120)));
+
+        assertThat(service.resolve(TENANT, PROJECT, DOC_PATH)).isEmpty();
+
+        verify(mongoTemplate).remove(any(Query.class), eq(DocumentDocument.class));
+        verify(mongoTemplate).remove(any(Query.class), eq(JaglanFolderState.class));
+    }
+
+    @Test
+    void resolve_mountListUnavailable_keepsTheRows() {
+        // "We cannot find out" must not read as "it is gone" — the answer
+        // drives a delete, so anything short of a positive list leaves the
+        // rows alone.
+        when(port.mounts(anyString(), anyString()))
+                .thenThrow(new IllegalStateException("settings unreadable"));
+        mongoReturns(row(Instant.now().plusSeconds(120)));
+
+        assertThat(service.resolve(TENANT, PROJECT, DOC_PATH)).isPresent();
+        verify(mongoTemplate, never()).remove(any(Query.class), eq(JaglanFolderState.class));
+    }
+
+    @Test
+    void listFolder_mountNoLongerConfigured_dropsItsRows() {
+        when(port.mounts(TENANT, PROJECT)).thenReturn(List.of());
+        JaglanFolderState state = JaglanFolderState.builder()
+                .listedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(120))
+                .build();
+        when(mongoTemplate.findById(anyString(), eq(JaglanFolderState.class))).thenReturn(state);
+
+        assertThat(service.listFolder(TENANT, PROJECT, MOUNT, "books", false)).isEmpty();
+
+        verify(port, never()).list(anyString(), anyString(), anyString(), anyString());
+        verify(mongoTemplate).remove(any(Query.class), eq(JaglanFolderState.class));
+    }
 
     @Test
     void mounts_portFailure_isAnEmptyListNotAnException() {

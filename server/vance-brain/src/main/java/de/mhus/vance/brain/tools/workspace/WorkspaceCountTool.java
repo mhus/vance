@@ -123,6 +123,13 @@ public class WorkspaceCountTool implements Tool {
                 throw new ToolException(e.getMessage(), e);
             }
         }
+        if (!singleFile) {
+            // Not a file: then it has to be an existing directory. Falling
+            // through with a mistyped path would answer "0 files", which
+            // reads as "the directory is empty".
+            WorkspaceSubPath.requirePresent(
+                    workspace, ctx, dirName, pathArg, /*requireDirectory*/ true);
+        }
         String prefix = singleFile ? "" : WorkspaceSubPath.prefix(pathArg);
         List<String> files;
         if (singleFile) {

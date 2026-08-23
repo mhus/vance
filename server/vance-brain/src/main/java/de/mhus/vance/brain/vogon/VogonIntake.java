@@ -136,8 +136,17 @@ public class VogonIntake {
             @Nullable String taskText,
             @Nullable String intakeMode) {
 
-        boolean needsPlan = plan == null;
-        List<String> missing = needsPlan ? List.of() : missingRequired(plan, callerParams);
+        // "Needs a plan" is about what the caller <em>declared</em>, not about
+        // what resolved. Deriving it from `plan == null` alone meant that a
+        // declared name which does not resolve — a typo, an unparseable plan
+        // document — was answered by asking a model to pick one instead, and
+        // the answer was then discarded because the declared name wins at the
+        // start. Worse, a path-shaped answer was not discarded: it started the
+        // document the model chose. An unresolvable declared plan is a start
+        // error (the caller raises it), never a question.
+        boolean planDeclared = planName != null && !planName.isBlank();
+        boolean needsPlan = plan == null && !planDeclared;
+        List<String> missing = plan == null ? List.of() : missingRequired(plan, callerParams);
 
         // Nothing to work out: the caller was precise, or there is a plan and
         // it already has everything it asked for.
@@ -439,7 +448,10 @@ public class VogonIntake {
         try {
             return workflowLoader.load(tenantId, projectId, name);
         } catch (RuntimeException ex) {
-            log.debug("Vogon intake could not load plan '{}': {}", name, ex.toString());
+            // Warn, not debug: a plan that exists but does not parse ends the
+            // spawn, and "no such plan" is the only message the caller gets.
+            // Hiding the parse error at debug left the real cause invisible.
+            log.warn("Vogon intake could not load plan '{}': {}", name, ex.toString());
             return Optional.empty();
         }
     }
@@ -457,7 +469,7 @@ public class VogonIntake {
                     .map(doc -> MagratheaWorkflowLoader.parseYaml(
                             planNameFromPath(path), documentService.readContent(doc)));
         } catch (RuntimeException ex) {
-            log.debug("Vogon intake could not read plan at '{}': {}", path, ex.toString());
+            log.warn("Vogon intake could not read plan at '{}': {}", path, ex.toString());
             return Optional.empty();
         }
     }

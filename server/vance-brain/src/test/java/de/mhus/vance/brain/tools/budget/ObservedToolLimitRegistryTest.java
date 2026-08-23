@@ -77,4 +77,37 @@ class ObservedToolLimitRegistryTest {
         assertThat(registry.observedFor("anthropic:claude")).isEmpty();
         assertThat(registry.observedFor("")).isEmpty();
     }
+
+    @Test
+    void anImplausiblySmallNumber_isNotLearned() {
+        // A multi-error body can put another field's "maximum length" in
+        // front of the one about tools, and parseLimit takes the first hit.
+        // Believing a 2 here would make ToolTriage throw ToolBudgetException
+        // on every following turn of this model — with no TTL and no reset.
+        assertThat(registry.learnFrom("openai:m",
+                "Invalid 'name': string too long, maximum length 2. "
+                        + "Invalid 'tools': array too long, maximum length 128", 163))
+                .isEmpty();
+        assertThat(registry.observedFor("openai:m")).isEmpty();
+    }
+
+    @Test
+    void aLimitAtOrAboveTheRejectedCount_isNotLearned() {
+        // The request carried 163 schemas and was refused for being too
+        // long, so 200 cannot be the cap that refused it.
+        assertThat(registry.learnFrom("openai:m", "maximum length 200", 163)).isEmpty();
+        assertThat(registry.observedFor("openai:m")).isEmpty();
+    }
+
+    @Test
+    void clear_forgetsEverythingAndReportsHowMuch() {
+        registry.learnFrom("openai:a", BODY, 163);
+        registry.learnFrom("openai:b", BODY, 163);
+        long version = registry.version();
+
+        assertThat(registry.clear()).isEqualTo(2);
+
+        assertThat(registry.observedFor("openai:a")).isEmpty();
+        assertThat(registry.version()).isGreaterThan(version);
+    }
 }

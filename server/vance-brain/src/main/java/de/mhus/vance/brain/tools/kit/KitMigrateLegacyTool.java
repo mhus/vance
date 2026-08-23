@@ -85,7 +85,7 @@ public class KitMigrateLegacyTool implements Tool {
         }
         String projectId = KitToolSupport.requireProjectAuthorized(ctx,
                 KitToolSupport.optionalString(params, "project"),
-                permissionService, contextFactory, de.mhus.vance.shared.permission.Action.WRITE);
+                permissionService, contextFactory, de.mhus.vance.shared.permission.Action.ADMIN);
         KitLegacyMigrator.Result result = kitService.migrateLegacy(
                 ctx.tenantId(), projectId,
                 KitToolSupport.optionalBoolean(params, "keep_as_kit_source"),

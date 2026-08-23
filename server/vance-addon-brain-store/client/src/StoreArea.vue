@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue';
 import {
   VAlert, VButton, VCard, VEmptyState, VInput, VSelect, VTextarea,
 } from '@vance/components';
+import { safeUrl } from '@vance/shared';
 import {
   buy, install, loadOverview, loadReviews,
   loadSurfaces, loadWithdrawalNotice, submitReview,
@@ -402,11 +403,20 @@ async function confirmBuy(entry: StoreEntry): Promise<void> {
       withdrawalAccepted.value ? withdrawalNotice.value?.version ?? undefined : undefined,
     );
     if (order.redirectUrl) {
+      // Text from the store, on its way into navigation — the one place in
+      // this addon where remote content steers the browser. A `javascript:`
+      // URL here would run on the brain's own origin, which is the very
+      // thing keeping the token server-side is meant to prevent.
+      const target = safeUrl(order.redirectUrl);
+      if (!target) {
+        error.value = 'The store answered with a payment link this browser will not open.';
+        return;
+      }
       // A priced kit with a real provider. Nothing is owned yet.
       notice.value = 'Continue the payment in the window that just opened.'
         + ' This page updates by itself once it goes through.';
       watchForPayment(entry);
-      window.open(order.redirectUrl, '_blank', 'noopener');
+      window.open(target, '_blank', 'noopener');
     } else {
       notice.value = `Done — ${entry.displayName} is yours.`;
     }
@@ -546,6 +556,17 @@ onUnmounted(() => {
       </div>
       <div v-else-if="!activeView.accountId" class="text-sm opacity-70 mt-1">
         Sign in to this store in your profile to see what you own.
+      </div>
+      <!--
+        "Not known to be owned" is not "not owned". When the delivery
+        service did not answer, an entry sits here as OFFERED although it
+        may be paid for already — and the order goes through the store
+        account, which has no duplicate guard. So the reason is said out
+        loud and the buy buttons stay down until it can be answered.
+      -->
+      <div v-else-if="!activeView.ownershipKnown" class="text-sm opacity-70 mt-1">
+        Could not check what you already own — buying is off until this store
+        answers again. Everything else still works.
       </div>
 
       <div v-if="activeView.reachable" class="mt-4">
@@ -768,7 +789,11 @@ onUnmounted(() => {
             <VButton
               v-if="entry.state === 'OFFERED'"
               size="sm"
-              :disabled="busyPath === entry.path || !activeView.accountId"
+              :disabled="busyPath === entry.path || !activeView.accountId
+                || !activeView.ownershipKnown"
+              :title="!activeView.ownershipKnown
+                ? 'The store could not say what you already own — buying now could pay twice.'
+                : undefined"
               @click="openBuy(entry)"
             >
               {{ actionOf(entry) }}

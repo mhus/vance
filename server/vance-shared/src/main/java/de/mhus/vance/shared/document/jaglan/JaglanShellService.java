@@ -67,6 +67,10 @@ public class JaglanShellService {
     /** Key is {@code tenant|project|mount}; value is when to try again. */
     private final Map<String, Instant> outages = new ConcurrentHashMap<>();
 
+    /** What a read-only source's row carries — every writer refused. */
+    private static final Set<WriterRole> MOUNT_LOCK =
+            Set.of(WriterRole.AI, WriterRole.USER, WriterRole.KIT);
+
     public JaglanShellService(
             MongoTemplate mongoTemplate, ObjectProvider<JaglanPort> portProvider) {
         this.mongoTemplate = mongoTemplate;
@@ -141,6 +145,17 @@ public class JaglanShellService {
         Instant now = Instant.now();
 
         DocumentDocument cached = mongoTemplate.findById(id, DocumentDocument.class);
+        if (cached != null && isUnconfigured(tenantId, projectId, mount)) {
+            // The mount was removed from the configuration. Its rows are the
+            // second way a shell row is allowed to disappear (see §2.2): left
+            // alone they stay a browsable tree of readable metadata whose
+            // content can never be fetched again, and nothing else would ever
+            // clear them.
+            log.info("Jaglan: mount '{}' is no longer configured in {}/{} — dropping its rows",
+                    mount, tenantId, projectId);
+            evictMount(tenantId, projectId, mount);
+            return Optional.empty();
+        }
         if (cached != null && isFresh(cached, now)) {
             return Optional.of(decorate(cached, tenantId, projectId, mount));
         }
@@ -172,7 +187,8 @@ public class JaglanShellService {
             return Optional.empty();
         }
         Duration ttl = ttlFor(tenantId, projectId, mount);
-        DocumentDocument row = upsertShell(tenantId, projectId, mount, stat.get(), ttl, now);
+        DocumentDocument row = upsertShell(tenantId, projectId, mount, stat.get(), ttl,
+                accessOf(tenantId, projectId, mount), now);
         return Optional.of(decorate(row, tenantId, projectId, mount));
     }
 
@@ -191,6 +207,15 @@ public class JaglanShellService {
         String stateId = JaglanPaths.folderStateId(tenantId, projectId, mount, folderInMount);
         JaglanFolderState state = mongoTemplate.findById(stateId, JaglanFolderState.class);
 
+        if (state != null && isUnconfigured(tenantId, projectId, mount)) {
+            // Same reasoning as in resolve(): an unconfigured mount leaves a
+            // ghost tree behind, and a listing is where it is noticed.
+            log.info("Jaglan: mount '{}' is no longer configured in {}/{} — dropping its rows",
+                    mount, tenantId, projectId);
+            evictMount(tenantId, projectId, mount);
+            return List.of();
+        }
+
         boolean usable = !force && state != null && state.isFresh(now);
         if (!usable && !isInOutage(tenantId, projectId, mount, now)) {
             JaglanPort port = portProvider.getIfAvailable();
@@ -199,8 +224,9 @@ public class JaglanShellService {
                     List<MountedStat> entries =
                             port.list(tenantId, projectId, mount, folderInMount);
                     Duration ttl = ttlFor(tenantId, projectId, mount);
+                    MountAccess mountAccess = accessOf(tenantId, projectId, mount);
                     for (MountedStat entry : entries) {
-                        upsertShell(tenantId, projectId, mount, entry, ttl, now);
+                        upsertShell(tenantId, projectId, mount, entry, ttl, mountAccess, now);
                     }
                     pruneVanished(tenantId, projectId, mount, folderInMount, entries);
                     writeFolderState(stateId, tenantId, projectId, mount, folderInMount,
@@ -243,7 +269,7 @@ public class JaglanShellService {
             Integer documents = null;
             Integer subfolders = null;
             if (isRootListingFresh(tenantId, projectId, source.name(), now)) {
-                documents = countKnownDescendants(tenantId, projectId, source.name());
+                documents = countKnownRootFiles(tenantId, projectId, source.name());
                 subfolders = countKnownRootSubfolders(tenantId, projectId, source.name());
             } else if (source.itemCount() != null) {
                 documents = (int) Math.min(source.itemCount(), Integer.MAX_VALUE);
@@ -266,12 +292,24 @@ public class JaglanShellService {
         return state != null && state.isFresh(now);
     }
 
-    private int countKnownDescendants(String tenantId, String projectId, String mount) {
+    /**
+     * Files directly inside the mount root.
+     *
+     * <p>Direct children only, and directory rows excluded — the number sits
+     * next to {@code subfolderCount}, so the two have to describe the same
+     * object. Counting every row under the prefix mixed in the folder rows
+     * (already counted as subfolders) and everything a deeper browse had
+     * pulled in, which made "5 documents" appear next to "2 folders" for a
+     * root holding three files.
+     */
+    private int countKnownRootFiles(String tenantId, String projectId, String mount) {
         String prefix = JaglanPaths.mountRootPath(mount) + "/";
+        String childRegex = "^" + java.util.regex.Pattern.quote(prefix) + "[^/]+$";
         return (int) mongoTemplate.count(
                 Query.query(Criteria.where("tenantId").is(tenantId)
                         .and("projectId").is(projectId)
-                        .and("path").regex("^" + java.util.regex.Pattern.quote(prefix))),
+                        .and("path").regex(childRegex)
+                        .and("mountDirectory").ne(true)),
                 DocumentDocument.class);
     }
 
@@ -367,10 +405,12 @@ public class JaglanShellService {
             return new MountSearch(List.of(), result.outcome());
         }
         Duration ttl = ttlFor(tenantId, projectId, mount);
+        MountAccess mountAccess = accessOf(tenantId, projectId, mount);
         List<DocumentDocument> rows = new ArrayList<>(result.hits().size());
         for (MountedStat hit : result.hits()) {
             if (rows.size() >= limit) break;
-            rows.add(decorate(upsertShell(tenantId, projectId, mount, hit, ttl, now),
+            rows.add(decorate(
+                    upsertShell(tenantId, projectId, mount, hit, ttl, mountAccess, now),
                     tenantId, projectId, mount));
         }
         return new MountSearch(rows, MountSearchOutcome.DELEGATED);
@@ -379,17 +419,43 @@ public class JaglanShellService {
     /** Hits plus what actually happened. */
     public record MountSearch(List<DocumentDocument> hits, MountSearchOutcome outcome) {}
 
-    /** {@code true} when this folder has been listed at least once. */
-    public boolean isFolderKnown(
+    /**
+     * Why the last attempt to refresh this mount folder failed, or
+     * {@code null} when the last one succeeded.
+     *
+     * <p>The rows of a folder whose refresh failed are still returned — that
+     * is the point of keeping them — but they are <b>older than they look</b>,
+     * and nothing else says so. The per-mount status line in
+     * {@code MountedSource} answers a different question: it comes from the
+     * capabilities cache's failure memory, so it is silent about a source that
+     * describes itself happily and cannot list this one folder.
+     *
+     * @param folderInMount mount-relative folder, empty string for the root
+     */
+    public @Nullable FolderFailure folderFailure(
             String tenantId, String projectId, String mount, String folderInMount) {
         JaglanFolderState state = mongoTemplate.findById(
                 JaglanPaths.folderStateId(tenantId, projectId, mount, folderInMount),
                 JaglanFolderState.class);
-        return state != null && state.getListedAt() != null;
+        if (state == null || state.getFailureMessage() == null || state.getFailedAt() == null) {
+            return null;
+        }
+        return new FolderFailure(state.getFailedAt(), state.getFailureMessage());
     }
 
-    /** Drop every shell row and folder marker of a mount — used when a mount
-     *  is removed from the configuration, and by the explicit full refresh. */
+    /** When a folder listing last failed, and what it said. */
+    public record FolderFailure(Instant at, String message) {}
+
+    /**
+     * Drop every shell row and folder marker of a mount.
+     *
+     * <p>Called when the mount is gone from the configuration — the second of
+     * the two ways a shell row may disappear (the first is a listing pruning
+     * an entry the source no longer reports). Deliberately <b>not</b> part of
+     * {@link #refreshMounts}: re-reading the configuration says nothing about
+     * content, and dropping everything on a "did I type the setting right"
+     * click would re-stat whatever the project had ever browsed.
+     */
     public void evictMount(String tenantId, String projectId, String mount) {
         String prefix = JaglanPaths.mountRootPath(mount) + "/";
         mongoTemplate.remove(Query.query(Criteria.where("tenantId").is(tenantId)
@@ -413,10 +479,13 @@ public class JaglanShellService {
      * <i>insert</i> the first time (version still null) and two pods listing
      * the same folder at once would collide on the primary key. The upsert
      * makes concurrent listings idempotent instead of racy.
+     *
+     * @param mountAccess what the mount as a whole allows — the fallback for
+     *                    an entry that states no access of its own
      */
     private DocumentDocument upsertShell(
             String tenantId, String projectId, String mount,
-            MountedStat stat, Duration ttl, Instant now) {
+            MountedStat stat, Duration ttl, MountAccess mountAccess, Instant now) {
 
         String path = JaglanPaths.documentPath(mount, stat.path());
         String id = JaglanPaths.documentId(tenantId, projectId, mount, stat.path());
@@ -450,10 +519,6 @@ public class JaglanShellService {
                 .set("summaryDirty", false)
                 .set("ragEnabled", Boolean.FALSE)
                 .set("ragDirty", false)
-                // A read-only source is expressed through the existing soft
-                // lock, so every write surface already refuses it with a
-                // message instead of each one needing its own mount check.
-                .set("lockedFor", lockFor(stat.access()))
                 .setOnInsert("createdAt", now)
                 .setOnInsert("createdBy", "_jaglan")
                 // Derived rather than random so a purged-and-rewritten row
@@ -462,6 +527,25 @@ public class JaglanShellService {
                 // Without this the first save() after an upsert would see a
                 // null version and try to insert a row that already exists.
                 .setOnInsert("version", 0L);
+
+        // A read-only source is expressed through the existing soft lock, so
+        // every write surface already refuses it with a message instead of
+        // each one needing its own mount check.
+        //
+        // Asymmetric on purpose. Read-only is enforced on every refresh: it is
+        // the source's standing answer, and a row that lost its lock between
+        // two listings would be writable for as long as the window lasts. The
+        // writable case only seeds the field, because there the value is the
+        // *user's* — a lock set through PATCH /lock that vanished on the next
+        // stat is exactly the "setting that is gone after a reload" §9 calls
+        // worse than a rejection. The cost is a mount that flips RO → RW
+        // keeping its locks until someone clears them; that direction is rare,
+        // visible, recoverable in the UI, and errs towards refusing a write.
+        if (effectiveAccess(stat, mountAccess) == MountAccess.RO) {
+            update.set("lockedFor", MOUNT_LOCK);
+        } else {
+            update.setOnInsert("lockedFor", Set.of());
+        }
 
         mongoTemplate.upsert(Query.query(Criteria.where("_id").is(id)),
                 update, DocumentDocument.class);
@@ -589,13 +673,57 @@ public class JaglanShellService {
                 .orElse(MountedSource.DEFAULT_TTL);
     }
 
-    private static Set<WriterRole> lockFor(MountAccess access) {
-        // RW and UNKNOWN both stay writable: refusing a write because the
-        // source was briefly unreachable would turn an outage into a lock the
-        // user cannot explain. The source refuses at write time if it must.
-        return access == MountAccess.RO
-                ? Set.of(WriterRole.AI, WriterRole.USER, WriterRole.KIT)
-                : Set.of();
+    /** What the mount as a whole allows, {@code UNKNOWN} when unresolvable. */
+    private MountAccess accessOf(String tenantId, String projectId, String mount) {
+        return findMount(tenantId, projectId, mount)
+                .map(MountedSource::access)
+                .orElse(MountAccess.UNKNOWN);
+    }
+
+    /**
+     * The access that decides the lock: what the entry states, and when it
+     * states nothing, what the mount states.
+     *
+     * <p>The fallback is load-bearing rather than tidy. Per-entry access is
+     * not part of the {@code ode} wire contract — that side declares access
+     * once for the whole source and every entry arrives {@code UNKNOWN} — so
+     * without it a read-only {@code ode} library would lock nothing at all,
+     * and the protection §6 promises would exist only for {@code local}.
+     *
+     * <p>{@code UNKNOWN} on both levels still stays writable: refusing a write
+     * because the source was briefly unreachable would turn an outage into a
+     * lock the user cannot explain. The source refuses at write time if it must.
+     */
+    private static MountAccess effectiveAccess(MountedStat stat, MountAccess mountAccess) {
+        return stat.access() == MountAccess.UNKNOWN ? mountAccess : stat.access();
+    }
+
+    /**
+     * {@code true} when this project has a resolvable mount list that does
+     * <b>not</b> contain {@code mount}.
+     *
+     * <p>Deliberately not {@code !findMount(...).isPresent()}: that folds
+     * "there are no mounts here" together with "we could not find out", and
+     * the answer drives a delete. {@link #mounts} answers an empty list for a
+     * process without Jaglan and for a broken configuration alike, so the
+     * question is asked against the port directly and any doubt reads as
+     * "leave the rows alone".
+     */
+    private boolean isUnconfigured(String tenantId, String projectId, String mount) {
+        JaglanPort port = portProvider.getIfAvailable();
+        if (port == null) return false;
+        List<MountedSource> configured;
+        try {
+            configured = port.mounts(tenantId, projectId);
+        } catch (RuntimeException e) {
+            log.warn("Cannot tell whether mount '{}' is still configured in {}/{}: {}",
+                    mount, tenantId, projectId, e.toString());
+            return false;
+        }
+        for (MountedSource source : configured) {
+            if (source.name().equals(mount)) return false;
+        }
+        return true;
     }
 
     private static String nameOf(String path) {

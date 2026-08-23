@@ -90,6 +90,23 @@ describe('useFollowUpSuggestion', () => {
     expect(brainFetch.mock.calls.length).toBe(afterFirstPass + 1);
   });
 
+  it('asks for nothing and drops the ghost once the transcript has no anchor', async () => {
+    // What the caller reports the moment the user sends: the conversation tail
+    // is now their own message, so there is nothing to suggest a reply to.
+    // Neither a request nor a leftover ghost may survive that.
+    const s = setup();
+    await turn(s.conversationContext, context('m1', 'ASSISTANT:\nready?'));
+    expect(s.activeSuggestion.value).toBe('sure, go ahead');
+    const before = brainFetch.mock.calls.length;
+
+    s.conversationContext.value = null;
+    await nextTick();
+    await Promise.resolve();
+
+    expect(brainFetch.mock.calls.length).toBe(before);
+    expect(s.activeSuggestion.value).toBeNull();
+  });
+
   it('hides an accepted suggestion for the same transcript', async () => {
     const s = setup();
     await turn(s.conversationContext, context('m1', 'ASSISTANT:\nready?'));

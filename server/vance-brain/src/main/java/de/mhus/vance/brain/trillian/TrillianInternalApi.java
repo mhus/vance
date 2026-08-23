@@ -356,19 +356,52 @@ public class TrillianInternalApi {
     }
 
     /**
-     * Pauses the peer worker loop. Runs the status change on the
-     * <b>peer's</b> lane, not the caller's — the mutated process is the
-     * peer, so that is where serialization belongs, and it keeps the
-     * pause working while the caller's own lane is busy.
+     * How long a caller waits for a peer-lane status write before giving
+     * up on the confirmation. The write itself stays queued — the wait is
+     * only about how long a request thread stays bound to it. Generous
+     * enough that a healthy lane always confirms, short enough that a
+     * wedged one cannot hold a WebSocket thread for a whole model call.
+     */
+    private static final long LANE_WAIT_SECONDS = 10;
+
+    /**
+     * Pauses the peer worker loop.
+     *
+     * <p><b>Does not wait for the peer's lane.</b> The whole point of
+     * {@code //trillian stop} is availability while a turn is stuck
+     * ({@code specification/trillian-engine.md} §6a), and
+     * {@code TrillianCommandHandler.runsOnLane()} is {@code false} — the
+     * command runs inline on the WebSocket receive thread. Waiting for a
+     * lane task there means waiting for exactly the turn that is being
+     * stopped, on exactly the thread that has to answer the client.
+     *
+     * <p>So the halt flag goes out first, out-of-band and immediately:
+     * that is the channel a mid-turn engine reads (see
+     * {@code OrchestratorInterrupt}), and it is what makes the stop take
+     * effect within the current turn instead of after it. The queued lane
+     * task then writes {@code PAUSED} and clears the flag at the next safe
+     * boundary — same shape as
+     * {@code SessionLifecycleService.pauseActiveInSession}, minus the
+     * join.
      *
      * <p>Idempotent: an already PAUSED or CLOSED peer is returned
      * unchanged.
      *
-     * @return the peer's status after the call
+     * @return the status the peer is being taken to — {@code PAUSED}
+     *         unless the call was a no-op
      */
     public ThinkProcessStatus pausePeer(ThinkProcessDocument peer) {
-        return setPeerStatus(peer, ThinkProcessStatus.PAUSED,
-                java.util.Set.of(ThinkProcessStatus.PAUSED, ThinkProcessStatus.CLOSED));
+        ThinkProcessStatus current = peer.getStatus();
+        if (current == ThinkProcessStatus.PAUSED || current == ThinkProcessStatus.CLOSED) {
+            return current;
+        }
+        thinkProcessService.requestHalt(peer.getId());
+        laneScheduler.submit(peer.getId(), () -> {
+            thinkProcessService.updateStatus(peer.getId(), ThinkProcessStatus.PAUSED);
+            thinkProcessService.clearHalt(peer.getId());
+            return null;
+        });
+        return ThinkProcessStatus.PAUSED;
     }
 
     /**
@@ -389,6 +422,11 @@ public class TrillianInternalApi {
         if (current == ThinkProcessStatus.CLOSED || current == ThinkProcessStatus.RUNNING) {
             return current;
         }
+        // A pause may have left the out-of-band halt flag set (the lane task
+        // that clears it runs after the paused turn, and a pause that never
+        // reached a turn leaves it standing). Un-pausing without clearing it
+        // hands the peer a turn that bails at its first loop-head check.
+        thinkProcessService.clearHalt(peer.getId());
         // Leaves a non-PAUSED peer's status alone (setPeerStatus is a no-op for
         // CLOSED, and IDLE → IDLE is a write we don't need), then wakes it.
         ThinkProcessStatus now = current == ThinkProcessStatus.IDLE
@@ -399,6 +437,17 @@ public class TrillianInternalApi {
         return now;
     }
 
+    /**
+     * Writes a status on the peer's lane and waits — bounded — for it to
+     * land. The mutated process is the peer, so that is where
+     * serialization belongs.
+     *
+     * <p>The wait is capped at {@link #LANE_WAIT_SECONDS}: callers reach
+     * this from a WebSocket receive thread, and an unbounded {@code get()}
+     * on a busy lane binds that thread for the length of a model call.
+     * A timeout is not a failure — the task stays queued and the write
+     * still happens — so the target status is returned either way.
+     */
     private ThinkProcessStatus setPeerStatus(
             ThinkProcessDocument peer, ThinkProcessStatus target,
             java.util.Set<ThinkProcessStatus> noOpWhen) {
@@ -410,11 +459,15 @@ public class TrillianInternalApi {
             laneScheduler.submit(peer.getId(), () -> {
                 thinkProcessService.updateStatus(peer.getId(), target);
                 return null;
-            }).get();
+            }).get(LANE_WAIT_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(
                     "Interrupted setting peer '" + peer.getId() + "' to " + target, ie);
+        } catch (java.util.concurrent.TimeoutException te) {
+            log.warn("Trillian: peer '{}' lane did not confirm {} within {}s — "
+                            + "the write stays queued",
+                    peer.getId(), target, LANE_WAIT_SECONDS);
         } catch (java.util.concurrent.ExecutionException ee) {
             Throwable cause = ee.getCause() == null ? ee : ee.getCause();
             throw new IllegalStateException(
@@ -508,7 +561,22 @@ public class TrillianInternalApi {
 
     /**
      * Sets a single attribute on the peer (Trillian-User) process.
-     * Atomically read-modify-writes the {@code engineParams} map.
+     *
+     * <p><b>Not atomic.</b> The peer is read, the attribute map rebuilt,
+     * and the whole {@code engineParams} written back with
+     * {@code ThinkProcessService.replaceEngineParams} — a full replace,
+     * no version, no {@code $set} on the nested path. Two writers racing
+     * (the {@code //trillian attr} command runs on the WebSocket receive
+     * thread, {@code user_attr_set} on the Control lane) means last write
+     * wins, and the loser's attribute — or, worse, a concurrent change to
+     * an unrelated {@code engineParams} key such as {@code peerProcessId}
+     * — is silently rolled back to the snapshot this call read.
+     *
+     * <p>Tolerated because Control's tool calls run sequentially within a
+     * turn, so the two paths practically do not overlap. Closing it for
+     * real needs an atomic nested write on
+     * {@code engineParams.attributes.<key>} in {@code ThinkProcessService}
+     * (the dot-sanitising the key needs is already here).
      *
      * @return {@code true} when the peer existed and was updated
      */

@@ -162,11 +162,25 @@ public class GtdApplication implements VanceApplication {
         gtdService.capture(ctx.tenantId(), ctx.projectName(), folder, scan.config(),
                 title, ctx.body(), ctx.userId());
 
-        String label = scan.config().title();
-        if (label == null || label.isBlank()) label = leafFolderName(folder);
         // Always created: capture makes the path unique rather than merging, so
         // there is no "already there" for an inbox.
-        return new ShareIntakeResult(true, label);
+        return new ShareIntakeResult(true, appLabel(scan, folder));
+    }
+
+    /**
+     * The name the chooser showed. That list is built from the starred
+     * item's title, which falls back to the <em>document</em> title of the
+     * manifest — and {@code gtd_app_create} without a {@code title} writes
+     * no {@code title:} line at all while setting the document title to
+     * "GTD". Reading only the YAML field therefore produced "Added to
+     * &lt;folder&gt;" under a chooser entry that said "GTD".
+     */
+    private static String appLabel(GtdFolderReader.Scan scan, String folder) {
+        String docTitle = scan.manifest().getTitle();
+        if (docTitle != null && !docTitle.isBlank()) return docTitle;
+        String configured = scan.config().title();
+        if (configured != null && !configured.isBlank()) return configured;
+        return leafFolderName(folder);
     }
 
     @Override

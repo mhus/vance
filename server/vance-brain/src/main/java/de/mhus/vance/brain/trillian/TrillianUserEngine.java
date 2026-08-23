@@ -20,6 +20,7 @@ import de.mhus.vance.brain.memory.MemoryCompactionService;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.PromptContextBuilder;
 import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
+import de.mhus.vance.brain.thinkengine.OrchestratorInterrupt;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
@@ -172,6 +173,7 @@ public class TrillianUserEngine implements ThinkEngine {
     private final SystemPromptComposer systemPromptComposer;
     private final TrillianNatureRegistry natureRegistry;
     private final TrillianWakeupService wakeupService;
+    private final TrillianInternalApi trillianApi;
     private final ModelCatalog modelCatalog;
     private final MemoryContextLoader memoryContextLoader;
     private final MemoryCompactionService memoryCompactionService;
@@ -340,12 +342,30 @@ public class TrillianUserEngine implements ThinkEngine {
             log.debug("TrillianUser id='{}' model='{}' tools={} historyMsgs={}",
                     process.getId(), modelAlias, toolSpecs.size(), messages.size());
 
+            // What this turn owes an answer for. Tracked so the iteration
+            // cap below can say so instead of dropping the task: the human
+            // saw "Queued (taskId=…)" and would otherwise never hear
+            // anything again.
+            List<String> openTasks = new ArrayList<>(openTaskIds(drained));
+
             for (int iter = 0; iter < MAX_TOOL_LOOP_ITERATIONS; iter++) {
-                ThinkProcessStatus current = readCurrentStatus(process);
-                if (current == ThinkProcessStatus.SUSPENDED
-                        || current == ThinkProcessStatus.CLOSED) {
+                // Both interrupt channels, same as every other engine: the
+                // status flip queues behind this very turn on the lane, so
+                // the out-of-band halt flag is the only one that arrives
+                // while the loop is still running. `//trillian stop` and the
+                // session pause cascade both set it.
+                OrchestratorInterrupt.Kind interrupt =
+                        OrchestratorInterrupt.probe(thinkProcessService, process.getId());
+                if (interrupt == OrchestratorInterrupt.Kind.HALT) {
+                    log.info("TrillianUser id='{}' halt requested — exiting turn (PAUSED)",
+                            process.getId());
+                    thinkProcessService.clearHalt(process.getId());
+                    exitStatus = ThinkProcessStatus.PAUSED;
+                    return;
+                }
+                if (interrupt == OrchestratorInterrupt.Kind.STATUS) {
                     log.info("TrillianUser id='{}' external interrupt (status={}) — exiting",
-                            process.getId(), current);
+                            process.getId(), readCurrentStatus(process));
                     exitStatus = null;
                     return;
                 }
@@ -391,18 +411,27 @@ public class TrillianUserEngine implements ThinkEngine {
                 }
 
                 messages.add(reply);
-                if (log.isTraceEnabled()) {
-                    for (ToolExecutionRequest call : reply.toolExecutionRequests()) {
+                for (ToolExecutionRequest call : reply.toolExecutionRequests()) {
+                    if (log.isTraceEnabled()) {
                         log.trace("TrillianUser id='{}' iter={} ▶ tool '{}' args={}",
                                 process.getId(), iter, call.name(),
                                 shortenArgs(call.arguments()));
+                    }
+                    // The loop reported this one itself — whatever the
+                    // outcome, Control has heard about it and the iteration
+                    // cap must not send a second, contradicting verdict.
+                    String reported = reportedTaskId(call);
+                    if (reported != null) {
+                        openTasks.remove(reported);
                     }
                 }
                 executeToolBatch(reply.toolExecutionRequests(),
                         tools, messages, process.getId());
             }
-            log.warn("TrillianUser id='{}' exceeded {} tool-loop iterations — surfacing IDLE",
-                    process.getId(), MAX_TOOL_LOOP_ITERATIONS);
+            log.warn("TrillianUser id='{}' exceeded {} tool-loop iterations — surfacing IDLE "
+                            + "({} unreported task(s))",
+                    process.getId(), MAX_TOOL_LOOP_ITERATIONS, openTasks.size());
+            reportStalledTasks(process, openTasks);
             exitStatus = ThinkProcessStatus.IDLE;
         } catch (RuntimeException ex) {
             log.warn("TrillianUser id='{}' turn aborted: {}", process.getId(), ex.toString());
@@ -428,6 +457,96 @@ public class TrillianUserEngine implements ThinkEngine {
             } catch (RuntimeException wakeupEx) {
                 log.warn("TrillianUser id='{}' could not arm self-check: {}",
                         process.getId(), wakeupEx.toString());
+            }
+        }
+    }
+
+    /**
+     * Tools through which the loop reports a task's outcome. A call to
+     * one of them means Control has been told, so the iteration cap owes
+     * that task nothing.
+     */
+    private static final Set<String> TASK_CONCLUDING_TOOLS =
+            Set.of("task_complete", "task_failed", "task_needs_input");
+
+    /**
+     * The task ids this turn was woken for — every {@code task_request}
+     * among the drained events.
+     *
+     * <p>Only this turn's: a request drained two turns ago lives in chat
+     * history, not in a field, and guessing which of those are still open
+     * would produce false failures for work that finished long ago.
+     */
+    static List<String> openTaskIds(List<SteerMessage> drained) {
+        List<String> ids = new ArrayList<>();
+        for (SteerMessage m : drained) {
+            if (!(m instanceof SteerMessage.ProcessEvent pe)) {
+                continue;
+            }
+            Map<String, Object> payload = pe.payload();
+            if (payload == null) {
+                continue;
+            }
+            if (!TrillianInternalApi.TASK_EVENT_REQUEST.equals(
+                    payload.get(TrillianInternalApi.PAYLOAD_KEY_TASK_EVENT))) {
+                continue;
+            }
+            Object id = payload.get(TrillianInternalApi.PAYLOAD_KEY_TASK_ID);
+            if (id instanceof String s && !s.isBlank() && !ids.contains(s)) {
+                ids.add(s);
+            }
+        }
+        return ids;
+    }
+
+    /** The task id a reporting tool call names, or {@code null}. */
+    private @Nullable String reportedTaskId(ToolExecutionRequest call) {
+        if (!TASK_CONCLUDING_TOOLS.contains(call.name())) {
+            return null;
+        }
+        try {
+            Object v = parseArgs(call.arguments()).get("taskId");
+            return v instanceof String s && !s.isBlank() ? s : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Tells Control that a task died with the turn.
+     *
+     * <p>Falling out of the iteration cap used to be a log line and an
+     * IDLE status: the human had seen "Queued (taskId=…)" and never heard
+     * anything again, while the self-check could not fill the gap either
+     * — its findings are derived from spawned workers, and a task that
+     * never got one produces none.
+     *
+     * <p>Best-effort per task: a dispatch that fails must not cost the
+     * remaining ones their report.
+     */
+    private void reportStalledTasks(ThinkProcessDocument process, List<String> taskIds) {
+        if (taskIds.isEmpty()) {
+            return;
+        }
+        ThinkProcessDocument peer = trillianApi.findPeer(process.getId()).orElse(null);
+        if (peer == null) {
+            log.warn("TrillianUser id='{}' stalled with {} open task(s) and no Control peer "
+                    + "to report to", process.getId(), taskIds.size());
+            return;
+        }
+        String reason = "The user-loop ran out of its " + MAX_TOOL_LOOP_ITERATIONS
+                + " tool iterations before reaching a conclusion. Nothing was carried out for "
+                + "this task — raise it again if it still matters.";
+        for (String taskId : taskIds) {
+            try {
+                trillianApi.dispatchTaskEvent(
+                        process.getId(), peer.getId(),
+                        TrillianInternalApi.TASK_EVENT_FAILED, taskId,
+                        "Task failed: the user-loop stalled before it concluded",
+                        Map.of(TrillianInternalApi.PAYLOAD_KEY_REASON, reason));
+            } catch (RuntimeException e) {
+                log.warn("TrillianUser id='{}' could not report stalled task '{}': {}",
+                        process.getId(), taskId, e.toString());
             }
         }
     }

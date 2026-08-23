@@ -32,7 +32,10 @@ public class WakeupInTool implements Tool {
                             "type", "integer",
                             "description",
                             "Delay until the wakeup fires. Must be positive. "
-                                    + "Wall-clock seconds — pauses on the process do not stop the timer."),
+                                    + "Wall-clock seconds — the timer keeps running while the "
+                                    + "process is paused, but a wakeup that fires against a "
+                                    + "paused/suspended/closed process is dropped, not queued. "
+                                    + "Schedule a new one after resuming."),
                     "label", Map.of(
                             "type", "string",
                             "description",

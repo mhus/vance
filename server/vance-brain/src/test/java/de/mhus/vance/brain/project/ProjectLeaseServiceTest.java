@@ -108,6 +108,22 @@ class ProjectLeaseServiceTest {
     }
 
     @Test
+    void podlessProjects_doNotTriggerReconciliationAtAll() {
+        // Not just "survives reconciliation" — must not reach it. One connected
+        // user used to make the counts disagree forever, so every beat logged
+        // "a lease was taken away" and paid for the query behind it, which then
+        // skipped exactly the project that had raised the alarm.
+        registry.activate("acme", "_user_marvin");
+        registry.activate("acme", "test1");
+        when(projectService.renewLeases(eq(SELF_POD), any(Instant.class))).thenReturn(1L);
+
+        service.renewAndReconcile();
+
+        verify(projectService, never()).findByHomePodId(any());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
     void shutdown_releasesLeases() {
         when(projectService.releaseLeases(SELF_POD)).thenReturn(3L);
 

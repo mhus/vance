@@ -31,16 +31,16 @@ them to open Web-UI → Connected Accounts.
 | Form | Where the value comes from |
 |---|---|
 | `{{secret:<key>}}` | Cascade: think-process → project → `_tenant` |
-| `{{secret:user:<key>}}` | The connecting user's HIDDEN setting |
+| `{{secret:user:<key>}}` | The connecting user's encrypted setting |
 | `{{secret:user:oauth.<providerId>.access_token}}` | OAuth access token (auto-refresh) |
-| `{{secret:tenant:<key>}}` | Tenant-scope HIDDEN setting |
-| `{{secret:project:<key>}}` | Current-project HIDDEN setting |
+| `{{secret:tenant:<key>}}` | Tenant-scope encrypted setting |
+| `{{secret:project:<key>}}` | Current-project encrypted setting |
 
-A referenced setting must be typed **`HIDDEN`**, not `PASSWORD` — see
-`manual_read('vault-secrets')`. A PASSWORD-typed target fails with a named
-error telling the operator to re-type it. The OAuth access-token form is the
-exception: it goes through the refresher, not through a setting read, so its
-type does not matter.
+A referenced setting should be typed **`PASSWORD`** — the type for connector
+credentials, which a connector resolves. `HIDDEN` is for values a script or a
+compose task resolves itself; do not ask for a working `PASSWORD` setting to be
+re-typed. See `manual_read('vault-secrets')`. The OAuth access-token form is
+exempt either way: it goes through the refresher, not through a setting read.
 
 Use the OAuth form only with the literal pattern
 `oauth.<providerId>.access_token` — only this triggers the refresh

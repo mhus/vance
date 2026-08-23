@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.zarniwoop.protocols.SimpleHttpClient.Response;
 import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.research.ProviderInstanceConfig;
 import de.mhus.vance.toolpack.research.SearchHit;
 import de.mhus.vance.toolpack.research.SearchModality;
@@ -76,7 +77,7 @@ class PubMedProtocolTest {
 
     @Test
     void protocol_advertises_academic_modality() {
-        PubMedProtocol p = new PubMedProtocol(new ObjectMapper(), settings);
+        PubMedProtocol p = new PubMedProtocol(new ObjectMapper(), settings, passThroughSecrets());
         assertThat(p.modalitiesSupported()).containsExactly(SearchModality.ACADEMIC);
         assertThat(p.id()).isEqualTo("pubmed");
     }
@@ -85,7 +86,8 @@ class PubMedProtocolTest {
     void instance_reports_ready_even_with_blank_baseurl() {
         ProviderInstanceConfig blank = new ProviderInstanceConfig(
                 "pubmed", "pubmed", "", "", Map.of());
-        PubMedProtocol p = new PubMedProtocol(new ObjectMapper(), mock(SimpleHttpClient.class), settings);
+        PubMedProtocol p = new PubMedProtocol(
+                new ObjectMapper(), mock(SimpleHttpClient.class), settings, passThroughSecrets());
         assertThat(p.instantiate(blank).availability(SCOPE))
                 .isEqualTo(de.mhus.vance.toolpack.research.ProviderAvailability.READY);
     }
@@ -97,7 +99,8 @@ class PubMedProtocolTest {
                 .thenReturn(new Response(200, ESEARCH_JSON))
                 .thenReturn(new Response(200, ESUMMARY_JSON));
 
-        PubMedProtocol p = new PubMedProtocol(new ObjectMapper(), http, settings);
+        PubMedProtocol p = new PubMedProtocol(
+                new ObjectMapper(), http, settings, passThroughSecrets());
         SearchResult r = p.instantiate(CFG).search(
                 SearchRequest.normal("crispr crops", SearchModality.ACADEMIC, 5), SCOPE);
 
@@ -138,7 +141,8 @@ class PubMedProtocolTest {
                         {"esearchresult":{"count":"0","idlist":[]}}
                         """));
 
-        PubMedProtocol p = new PubMedProtocol(new ObjectMapper(), http, settings);
+        PubMedProtocol p = new PubMedProtocol(
+                new ObjectMapper(), http, settings, passThroughSecrets());
         SearchResult r = p.instantiate(CFG).search(
                 SearchRequest.normal("xyzzy", SearchModality.ACADEMIC, 5), SCOPE);
 
@@ -160,7 +164,8 @@ class PubMedProtocolTest {
                          "pubdate":"2024","source":"J","authors":[],
                          "articleids":[{"idtype":"pubmed","value":"1"}]}}}"""));
 
-        PubMedProtocol p = new PubMedProtocol(new ObjectMapper(), http, settings);
+        PubMedProtocol p = new PubMedProtocol(
+                new ObjectMapper(), http, settings, passThroughSecrets());
         p.instantiate(CFG_WITH_KEY).search(
                 SearchRequest.normal("q", SearchModality.ACADEMIC, 1), SCOPE);
 
@@ -196,7 +201,8 @@ class PubMedProtocolTest {
         when(settings.getDecryptedPasswordCascade(any(), any(), any(), any()))
                 .thenReturn("k3yFromSetting");
 
-        PubMedProtocol p = new PubMedProtocol(new ObjectMapper(), http, settings);
+        PubMedProtocol p = new PubMedProtocol(
+                new ObjectMapper(), http, settings, passThroughSecrets());
         p.instantiate(CFG).search(
                 SearchRequest.normal("q", SearchModality.ACADEMIC, 1), SCOPE);
 
@@ -209,12 +215,21 @@ class PubMedProtocolTest {
     @Test
     void search_returns_soft_failure_for_non_academic_modality() throws Exception {
         SimpleHttpClient http = mock(SimpleHttpClient.class);
-        PubMedProtocol p = new PubMedProtocol(new ObjectMapper(), http, settings);
+        PubMedProtocol p = new PubMedProtocol(
+                new ObjectMapper(), http, settings, passThroughSecrets());
         SearchResult r = p.instantiate(CFG).search(
                 SearchRequest.normal("q", SearchModality.WEB, 5), SCOPE);
 
         assertThat(r.ok()).isFalse();
         assertThat(r.errorMessage()).contains("WEB").contains("not supported");
         org.mockito.Mockito.verifyNoInteractions(http);
+    }
+
+    /**
+     * A resolver that hands back what it was given. Reference substitution has
+     * its own tests; here it must only not swallow a plain key.
+     */
+    private static SecretResolver passThroughSecrets() {
+        return (input, ctx) -> input;
     }
 }

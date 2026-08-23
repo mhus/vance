@@ -32,8 +32,11 @@ import org.bson.Document;
  * available guarantee, and it is why this runs now rather than after the
  * collection has aged.
  *
- * <p>Idempotent through a self-emptying filter: only rows that still carry
- * {@code costTotal} are touched. Not {@code runOnBaseline} — the collection is
+ * <p>Idempotent through a self-emptying filter: only rows that still carry one
+ * of the old fields are touched. It has to test both {@code costTotal} and
+ * {@code costFailed} — the writer takes one of two branches per attempt, so a
+ * day on which every attempt failed carries the second and never the first.
+ * Not {@code runOnBaseline} — the collection is
  * new enough that a database old enough to be baselined does not have it, and a
  * skipped run is visible (amounts read as zero) rather than silently wrong.
  */
@@ -74,9 +77,19 @@ public final class Migrator_2026_08_24_001_UsageDailyCostMicros implements Schem
             unset.add(rename[0]);
         }
 
+        // Either old field marks an unconverted row, and both are needed: the
+        // writer takes one of two branches per attempt, so a day on which every
+        // attempt failed has costFailed and never costTotal. Filtering on
+        // costTotal alone would skip exactly those rows — leaving a stale
+        // double behind that the mapper no longer reads, and restarting their
+        // failed cost from zero.
+        Document unconverted = new Document("$or", List.of(
+                new Document("costTotal", new Document("$exists", true)),
+                new Document("costFailed", new Document("$exists", true))));
+
         long modified = context.mongoTemplate().getDb().getCollection(COLLECTION)
                 .updateMany(
-                        new Document("costTotal", new Document("$exists", true)),
+                        unconverted,
                         List.of(new Document("$set", set), new Document("$unset", unset)))
                 .getModifiedCount();
 

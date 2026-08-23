@@ -93,7 +93,14 @@ public class BrainSchemaMigrations implements SchemaMigrationSource {
             // skipped run here shows up as amounts reading zero rather than as
             // a silently wrong total.
             new Registered("2026-08-24_001",
-                    Migrator_2026_08_24_001_UsageDailyCostMicros.class));
+                    Migrator_2026_08_24_001_UsageDailyCostMicros.class),
+            // Not runOnBaseline: a new database never had the two retired index
+            // names, and the replacements are created by the mapping context on
+            // every boot regardless. Being stamped without running is exactly
+            // right — and unlike most entries, skipping this one costs only two
+            // unused indexes, never a wrong read.
+            new Registered("2026-08-24_002",
+                    Migrator_2026_08_24_002_MegadodoFeedIndexes.class));
 
     @Override
     public List<Registered> migrations() {

@@ -31,20 +31,30 @@ import org.springframework.data.mongodb.core.mapping.Document;
  * <p>See {@code specification/public/megadodo-system.md}.
  */
 @Document(collection = "megadodo_events")
+// A shipped index name is effectively immutable: Mongo rejects re-creating an
+// existing name with a different key pattern (IndexKeySpecsConflict), and with
+// `auto-index-creation: true` that rejection lands during context startup — so a
+// migration cannot clean up first. The mapping context creates indexes while the
+// Mongo infrastructure comes up, and the migrator runs *after* MongoTemplate.
+// Reshaping therefore means a new name plus a migration that drops the old one;
+// see Migrator_2026_08_24_002_MegadodoFeedIndexes.
 @CompoundIndexes({
         // The paging sort is (timestamp desc, _id desc) — the tie-break has to
         // be in the index or the planner cannot satisfy the sort from it and
         // adds a blocking SORT stage over the whole match, which walks into the
         // 32 MB in-memory sort limit on a busy project. That failure would land
         // on the *read* side, where nothing swallows it.
-        @CompoundIndex(name = "feed_idx",
+        // Replaces the tie-break-less `feed_idx`.
+        @CompoundIndex(name = "feed_paged_idx",
                 def = "{ 'tenantId': 1, 'projectId': 1, 'timestamp': -1, '_id': -1 }"),
         // Same query without a projectId — the tenant-wide feed. It cannot use
         // the index above at all: with projectId absent from the filter,
         // timestamp is no longer the key immediately after the equality prefix.
         @CompoundIndex(name = "feed_tenant_idx",
                 def = "{ 'tenantId': 1, 'timestamp': -1, '_id': -1 }"),
-        @CompoundIndex(name = "trace_idx",
+        // Replaces `trace_idx`, which had no projectId between the trace and
+        // the sort key.
+        @CompoundIndex(name = "trace_scoped_idx",
                 def = "{ 'tenantId': 1, 'traceId': 1, 'projectId': 1, 'timestamp': 1 }"),
         @CompoundIndex(name = "ref_idx",
                 def = "{ 'tenantId': 1, 'refType': 1, 'refId': 1, 'timestamp': -1 }")

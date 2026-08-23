@@ -7,14 +7,22 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
- * The inbox visibility rule in one place: a user may see/touch an item when
- * they are its assignee, or share a team with the assignee.
+ * The inbox visibility rule for the REST surface: a user may see/touch an item
+ * when they are its assignee, or share a team with the assignee. Extracted from
+ * {@code InboxController} so the rule lives in one place per module.
  *
- * <p>Extracted from {@code InboxController} so the REST surface and the
- * permission provider's {@code Resource.InboxItem} rule (R5) evaluate
- * <em>identical</em> semantics — the WS handlers already enforce through the
- * abstract {@code Resource.InboxItem} gate; the provider resolves it with this
- * helper. See {@code planning/permission-system-concept.md} §4.1 (R5).
+ * <p><b>The same rule exists a second time</b>, in
+ * {@code MongoPermissionResolver#inboxAllowed} (rule R5), which is what the WS
+ * handlers hit through the abstract {@code Resource.InboxItem} gate. The
+ * duplication is forced by the module boundary — the resolver ships in
+ * {@code vance-addon-shared-simpleauth}, which builds on {@code vance-shared}
+ * and must not depend on {@code vance-brain}, so it cannot call this class.
+ * (An earlier plan was to extract this helper into shared for exactly that
+ * reason; it ended up in brain instead.)
+ *
+ * <p><b>Change both or neither.</b> The two copies are only useful while they
+ * agree: REST and WS would otherwise authorize the same request differently.
+ * See {@code planning/archive/permission-system-concept.md} §4.1 and §4.3 (R5).
  */
 @Component
 @RequiredArgsConstructor

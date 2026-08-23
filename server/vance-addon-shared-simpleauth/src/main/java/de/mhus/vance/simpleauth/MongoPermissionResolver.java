@@ -176,6 +176,18 @@ public class MongoPermissionResolver implements PermissionResolver {
 
     // ── Inbox (R5) ──
 
+    /**
+     * Rule R5: an item is accessible to its assignee, or to someone sharing a
+     * team with the assignee. An item without an assignee is never accessible.
+     *
+     * <p><b>The same rule exists a second time</b>, in
+     * {@code InboxAuthz#isAuthorized} (vance-brain), which the REST surface
+     * uses. The duplication is forced by the module boundary — this addon
+     * builds on {@code vance-shared} and must not depend on
+     * {@code vance-brain}. <b>Change both or neither:</b> the copies are only
+     * useful while they agree, or REST and WS authorize the same request
+     * differently.
+     */
     private boolean inboxAllowed(SecurityContext subject, Resource.InboxItem item) {
         String assignee = item.assignedToUserId();
         if (assignee == null || assignee.isBlank()) {

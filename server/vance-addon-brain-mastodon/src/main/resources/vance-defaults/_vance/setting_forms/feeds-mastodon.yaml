@@ -1,0 +1,202 @@
+title:
+  de: "Feeds — Mastodon"
+  en: "Feeds — Mastodon"
+description:
+  de: "Konfiguriert Mastodon-Server als Feed-Quellen (Centauri). Werte werden
+       tenant-weit geschrieben (`_tenant`) und gelten dadurch für alle Projekte.
+       Ein Server ist eine Quelle; mehrere Server in einem Feed ergeben einen
+       föderierten Strom. Welche Ströme ein Feed daraus liest (`hashtag:linux`,
+       `public:local`, …), wird im Feed selbst eingestellt, nicht hier.
+       Drei Plätze — weitere Server jederzeit per Raw-Setting unter
+       `centauri.endpoint.<id>.*` mit `protocol: mastodon`."
+  en: "Configures Mastodon servers as feed sources (Centauri). Values are
+       written tenant-wide (`_tenant`) and apply to all projects. One server is
+       one source; several servers in one feed make a federated stream. Which
+       streams a feed reads from them (`hashtag:linux`, `public:local`, …) is
+       set in the feed itself, not here. Three slots — further servers can
+       always be added as raw settings under `centauri.endpoint.<id>.*` with
+       `protocol: mastodon`."
+icon: newspaper
+category: integrations
+defaultScope: tenant
+
+# Three fixed slots rather than a repeating group, and that is a limitation
+# of the form engine rather than a preference: the endpoint id is part of the
+# setting KEY, and a form renders only the value as a template. Same reason
+# the Jaglan mounts have no form at all. The Feeds form does this for
+# wikipedia-de/-en already.
+
+fields:
+
+  # ─── Slot 1 ───────────────────────────────────────────────────────
+
+  - name: m1Enabled
+    type: boolean
+    defaultValue: "false"
+    label:
+      de: "Mastodon-Server 1 aktivieren"
+      en: "Enable Mastodon server 1"
+    help:
+      de: "Öffentliche Timelines eines Mastodon-Servers, ohne Konto. Achtung:
+           die Erlaubnis hängt am Endpunkt, nicht am Server — mastodon.social
+           serviert Hashtag-Timelines, aber nicht die öffentliche. Wenn ein
+           Strom nichts liefert, sagt der Hinweis im Feed, ob ein Token fehlt."
+      en: "The public timelines of a Mastodon server, no account needed. Note
+           that access is per endpoint, not per server — mastodon.social serves
+           hashtag timelines but refuses the public one. When a stream stays
+           empty, the note in the feed says whether a token is missing."
+    bindsTo:
+      key: "centauri.endpoint.mastodon-1.enabled"
+
+  - name: m1BaseUrl
+    type: string
+    defaultValue: "https://mastodon.social"
+    label:
+      de: "Server 1 Base-URL"
+      en: "Server 1 base URL"
+    help:
+      de: "Wurzel des Servers, z.B. `https://mastodon.social`. Das Protokoll
+           verweigert eine Quelle ohne Base-URL, deshalb vorbelegt statt
+           optional. Vorbelegt ist der größte Server — für ihn brauchst du
+           `hashtag:`-Ströme, seine öffentliche Timeline ist zu."
+      en: "Root of the server, e.g. `https://mastodon.social`. The protocol
+           refuses a source without a base URL, which is why this is
+           pre-filled rather than optional. Pre-filled with the largest server
+           — use `hashtag:` streams there, its public timeline is closed."
+    showIf:  "m1Enabled"
+    writeIf: "m1Enabled"
+    bindsTo:
+      key: "centauri.endpoint.mastodon-1.baseUrl"
+
+  - name: m1ApiKey
+    type: password
+    label:
+      de: "Server 1 App-Token (optional)"
+      en: "Server 1 app token (optional)"
+    help:
+      de: "Wird als `Authorization: Bearer …` gesendet. Nur nötig, wenn der
+           Server unauthentifizierten API-Zugriff abgeschaltet hat (Antwort 422
+           `This method requires an authenticated user`). Ein **App**-Token
+           genügt — kein Nutzerkonto, keine Anmeldung im Namen einer Person.
+           Leer lassen, um einen gespeicherten Token unverändert zu übernehmen."
+      en: "Sent as `Authorization: Bearer …`. Only needed when the server has
+           disabled unauthenticated API access (it answers 422 `This method
+           requires an authenticated user`). An **app** token is enough — no
+           user account, nothing acting in a person's name. Leave empty to keep
+           an already stored token."
+    showIf:  "m1Enabled"
+    writeIf: "m1Enabled"
+    bindsTo:
+      key: "centauri.endpoint.mastodon-1.apiKey"
+
+  # ─── Slot 2 ───────────────────────────────────────────────────────
+
+  - name: m2Enabled
+    type: boolean
+    defaultValue: "false"
+    label:
+      de: "Mastodon-Server 2 aktivieren"
+      en: "Enable Mastodon server 2"
+    help:
+      de: "Zweiter Server, damit ein Feed föderiert lesen kann — der Merge
+           mischt beide Ströme nach Erscheinungszeit."
+      en: "A second server so a feed can read across the fediverse — the merge
+           mixes both streams by the time entries appeared."
+    bindsTo:
+      key: "centauri.endpoint.mastodon-2.enabled"
+
+  - name: m2BaseUrl
+    type: string
+    defaultValue: "https://mstdn.social"
+    label:
+      de: "Server 2 Base-URL"
+      en: "Server 2 base URL"
+    help:
+      de: "Vorbelegt mit einem Server, dessen öffentliche Timeline offen ist —
+           gut, um `public:all` zum ersten Mal laufen zu sehen."
+      en: "Pre-filled with a server whose public timeline is open — useful for
+           seeing `public:all` work for the first time."
+    showIf:  "m2Enabled"
+    writeIf: "m2Enabled"
+    bindsTo:
+      key: "centauri.endpoint.mastodon-2.baseUrl"
+
+  - name: m2ApiKey
+    type: password
+    label:
+      de: "Server 2 App-Token (optional)"
+      en: "Server 2 app token (optional)"
+    help:
+      de: "Siehe Server 1."
+      en: "See server 1."
+    showIf:  "m2Enabled"
+    writeIf: "m2Enabled"
+    bindsTo:
+      key: "centauri.endpoint.mastodon-2.apiKey"
+
+  # ─── Slot 3 ───────────────────────────────────────────────────────
+
+  - name: m3Enabled
+    type: boolean
+    defaultValue: "false"
+    label:
+      de: "Mastodon-Server 3 aktivieren"
+      en: "Enable Mastodon server 3"
+    help:
+      de: "Dritter Platz, z.B. für einen fachlichen Server neben den großen."
+      en: "A third slot, e.g. for a topical server alongside the large ones."
+    bindsTo:
+      key: "centauri.endpoint.mastodon-3.enabled"
+
+  - name: m3BaseUrl
+    type: string
+    defaultValue: "https://troet.cafe"
+    label:
+      de: "Server 3 Base-URL"
+      en: "Server 3 base URL"
+    help:
+      de: "Vorbelegt mit einem deutschsprachigen Server; die Einträge tragen
+           ihre Sprache, sodass der Sprachfilter im Feed etwas zu filtern hat."
+      en: "Pre-filled with a German-language server; entries carry their
+           language, which gives the feed's language filter something to work
+           with."
+    showIf:  "m3Enabled"
+    writeIf: "m3Enabled"
+    bindsTo:
+      key: "centauri.endpoint.mastodon-3.baseUrl"
+
+  - name: m3ApiKey
+    type: password
+    label:
+      de: "Server 3 App-Token (optional)"
+      en: "Server 3 app token (optional)"
+    help:
+      de: "Siehe Server 1."
+      en: "See server 1."
+    showIf:  "m3Enabled"
+    writeIf: "m3Enabled"
+    bindsTo:
+      key: "centauri.endpoint.mastodon-3.apiKey"
+
+settings:
+
+  # Protocol pinning per endpoint — and this is what the toggles actually do.
+  # FeedSourceFactory skips an endpoint without `.protocol`, so deleting it
+  # (via writeIf) is what makes a disabled source disappear from the sources
+  # list. `.enabled` survives as the toggle state but has no effect once the
+  # endpoint is not instantiated at all.
+
+  - key: "centauri.endpoint.mastodon-1.protocol"
+    settingType: STRING
+    writeIf: "m1Enabled"
+    value: "mastodon"
+
+  - key: "centauri.endpoint.mastodon-2.protocol"
+    settingType: STRING
+    writeIf: "m2Enabled"
+    value: "mastodon"
+
+  - key: "centauri.endpoint.mastodon-3.protocol"
+    settingType: STRING
+    writeIf: "m3Enabled"
+    value: "mastodon"

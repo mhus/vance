@@ -10,6 +10,7 @@ import de.mhus.vance.toolpack.feed.FeedFilter;
 import de.mhus.vance.toolpack.feed.FeedItem;
 import de.mhus.vance.toolpack.feed.FeedPage;
 import de.mhus.vance.toolpack.feed.FeedScope;
+import de.mhus.vance.toolpack.feed.FeedSelectorMode;
 import de.mhus.vance.toolpack.feed.FeedSignalOutcome;
 import de.mhus.vance.toolpack.feed.FeedSignalRequest;
 import de.mhus.vance.toolpack.feed.FeedSourceInstance;
@@ -331,6 +332,18 @@ public class CentauriService {
                     long remainingNanos = Math.max(0L, deadlineNanos - System.nanoTime());
                     Fetched fetched = futures.get(i)
                             .get(remainingNanos, TimeUnit.NANOSECONDS);
+                    if (fetched.selectorComplaint() != null) {
+                        notes.add(new CentauriNote(p.stream().sourceId(), p.stream().selector(),
+                                CentauriNote.Kind.INVALID_SELECTOR,
+                                fetched.selectorComplaint()));
+                        // Settled: this selector will not become valid by
+                        // asking again, so the round may end on it.
+                        silences.add(FeedMerger.StreamSilence.settled(p.stream()));
+                        metrics.counter("vance.centauri.fetch",
+                                "source", p.instance().id(), "outcome", "invalid_selector")
+                                .increment();
+                        continue;
+                    }
                     if (fetched.page() == null) {
                         notes.add(new CentauriNote(p.stream().sourceId(), p.stream().selector(),
                                 CentauriNote.Kind.MISSING_FACET,
@@ -381,6 +394,13 @@ public class CentauriService {
         // source does not offer that facet", which is a claim the source never
         // made, and hid a permanently broken endpoint from the cooldown logic.
         FeedCapabilities caps = capabilities.get(scope, p.instance());
+        Optional<String> complaint = selectorComplaint(p.instance(), caps, p.stream().selector());
+        if (complaint.isPresent()) {
+            // Checked here rather than in the planning loop above for the same
+            // reason the facets are: capabilities may be a network call, and on
+            // the request thread that sits outside every timeout.
+            return Fetched.invalidSelector(complaint.get());
+        }
         List<String> missing = filter.undeclaredFacets(caps);
         if (!missing.isEmpty()) {
             // Not filtered locally and not silently ignored: an entry carries
@@ -404,6 +424,72 @@ public class CentauriService {
         // source never delivered and drops hits it found correctly.
         return Fetched.of(p.instance().fetch(fetch), pushdown);
     }
+
+    /**
+     * Complaints about the selectors of {@code streams}, for a caller about to
+     * <b>store</b> them — the REST config endpoint turns a non-empty result
+     * into a rejection.
+     *
+     * <p>Separate from the page path on purpose. A stored selector that cannot
+     * work is worth refusing outright, while the same selector arriving in a
+     * one-off request must not take the whole page down — there it becomes an
+     * {@link CentauriNote.Kind#INVALID_SELECTOR} note instead.
+     *
+     * <p>Streams whose source is not configured are skipped rather than
+     * reported: a feed may legitimately name a source somebody enables later,
+     * and the page path already says {@code UNKNOWN_SOURCE}.
+     */
+    public List<SelectorComplaint> validateSelectors(List<FeedStream> streams, FeedScope scope) {
+        List<SelectorComplaint> out = new ArrayList<>();
+        for (FeedStream stream : streams) {
+            FeedSourceInstance instance = factory.find(scope, stream.sourceId());
+            if (instance == null) {
+                continue;
+            }
+            try {
+                FeedCapabilities caps = capabilities.get(scope, instance);
+                selectorComplaint(instance, caps, stream.selector()).ifPresent(complaint ->
+                        out.add(new SelectorComplaint(
+                                stream.sourceId(), stream.selector(), complaint)));
+            } catch (RuntimeException e) {
+                // An unreachable source cannot judge its selectors, and that is
+                // no reason to refuse a save: the reader would be unable to fix
+                // their feed exactly when a source is down.
+                log.debug("Centauri: skipping selector check for '{}': {}",
+                        stream.sourceId(), e.toString());
+            }
+        }
+        return out;
+    }
+
+    /**
+     * The source's own objection to this selector, or empty.
+     *
+     * <p>Asked only of {@code FREEFORM} sources. For {@code ENUMERABLE} the
+     * authority is {@code listSelectors()} and a stored value may legitimately
+     * predate a taxonomy change; for {@code NONE} the selector is ignored by
+     * contract, and the SPI default — which rejects a blank string — would
+     * refuse exactly the sources that mode exists for.
+     */
+    private Optional<String> selectorComplaint(
+            FeedSourceInstance instance, FeedCapabilities caps, String selector) {
+        if (caps.selectorMode() != FeedSelectorMode.FREEFORM) {
+            return Optional.empty();
+        }
+        try {
+            return instance.validateSelector(selector);
+        } catch (RuntimeException e) {
+            // A validator that throws is a bug in the source, not a verdict on
+            // the selector. Reporting its message as the complaint at least
+            // names where the problem is.
+            log.warn("Centauri: validateSelector of '{}' raised: {}",
+                    instance.id(), e.toString());
+            return Optional.of("could not be checked: " + e);
+        }
+    }
+
+    /** One unusable selector, for the caller that is about to store it. */
+    public record SelectorComplaint(String sourceId, String selector, String complaint) { }
 
     /**
      * Hand a hard failure to the failure tracker, which classifies it and may
@@ -452,14 +538,25 @@ public class CentauriService {
     private record Fetched(
             @Nullable FeedPage page,
             FeedFilter pushdown,
-            List<String> missingFacets) {
+            List<String> missingFacets,
+            @Nullable String selectorComplaint) {
 
         static Fetched of(FeedPage page, FeedFilter pushdown) {
-            return new Fetched(page, pushdown, List.of());
+            return new Fetched(page, pushdown, List.of(), null);
         }
 
         static Fetched skipped(List<String> missingFacets) {
-            return new Fetched(null, FeedFilter.none(), missingFacets);
+            return new Fetched(null, FeedFilter.none(), missingFacets, null);
+        }
+
+        /**
+         * The source refused the selector. Like {@code skipped}, carried back
+         * as a value rather than thrown: it is the reader's typo, not a failure
+         * of the source, and must not reach the failure tracker or set a
+         * cooldown.
+         */
+        static Fetched invalidSelector(String complaint) {
+            return new Fetched(null, FeedFilter.none(), List.of(), complaint);
         }
     }
 }

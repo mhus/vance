@@ -30,6 +30,19 @@ public record CentauriNote(String sourceId, String selector, Kind kind, @Nullabl
         TIMED_OUT,
 
         /**
+         * The selector is not one this source can read — {@code detail} carries
+         * the source's own complaint, in words meant for a person.
+         *
+         * <p>Only free-text ({@code FREEFORM}) sources can produce this, and
+         * they are the only ones that need it: a hashtag typed with a trailing
+         * space, a {@code #} that should not be there, an invented scope. Until
+         * this existed such a stream simply came back empty, which reads as
+         * „nothing was posted" — a different statement entirely, and the one
+         * thing a reader cannot tell from a typo.
+         */
+        INVALID_SELECTOR,
+
+        /**
          * Left out because the reader selected a facet this source does not
          * declare — {@code detail} names the keys.
          *

@@ -220,7 +220,20 @@ public class CentauriAppController {
                                      @RequestBody FeedConfigView body,
                                      HttpServletRequest request) {
         String normalised = manifestFolder(tenant, projectId, folder, request, Action.WRITE);
-        application.writeConfig(tenant, projectId, normalised, fromView(body),
+        FeedsConfig incoming = fromView(body);
+        // Refuse a selector the source cannot read, rather than storing it and
+        // showing an empty stream forever. Only free-text sources can complain
+        // — see CentauriService.validateSelectors — and only about streams
+        // whose source is configured here.
+        List<CentauriService.SelectorComplaint> complaints =
+                centauriService.validateSelectors(incoming.streams(), scope(tenant, projectId, request));
+        if (!complaints.isEmpty()) {
+            CentauriService.SelectorComplaint first = complaints.get(0);
+            throw new IllegalArgumentException(
+                    first.sourceId() + " cannot read the stream '" + first.selector()
+                            + "': " + first.complaint());
+        }
+        application.writeConfig(tenant, projectId, normalised, incoming,
                 currentUser(request));
         return config(tenant, projectId, normalised, request);
     }

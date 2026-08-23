@@ -813,6 +813,10 @@ function sourceName(sourceId: string): string {
 
 async function persist(): Promise<void> {
   if (!config.value) return;
+  // Clear first: a save can now be refused (a free-text selector the source
+  // cannot read), and without this the rejection stayed on screen after the
+  // corrected save succeeded — reading as if the feed below it were broken.
+  error.value = null;
   try {
     config.value = await saveConfig(props.document.projectId, folder.value, config.value);
     tab.value = 'stream';
@@ -878,6 +882,13 @@ function noteText(note: FeedNoteView): string {
       return `${what}: paused after an earlier failure`;
     case 'TIMED_OUT':
       return `${what}: did not answer in time`;
+    case 'INVALID_SELECTOR':
+      // The source itself said why, in words meant for a person — showing that
+      // beats "failed", which is what this used to look like when a mistyped
+      // hashtag came back empty.
+      return `${what}: not a stream this source can read${
+        note.detail ? ` — ${note.detail}` : ''
+      }`;
     case 'MISSING_FACET':
       // Not a failure: the source was never asked, because it does not offer
       // the dimension that was selected. Saying so beats a quietly shorter

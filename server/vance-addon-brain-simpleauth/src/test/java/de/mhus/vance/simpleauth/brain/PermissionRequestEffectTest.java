@@ -13,11 +13,11 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
@@ -186,7 +186,7 @@ class PermissionRequestEffectTest {
 
     @Test
     void itemWithoutEffectRef_changesNothing() {
-        InboxItemDocument orphan = item("req-1");
+        MaximegalonDocument orphan = item("req-1");
         orphan.setEffectRef(null);
 
         assertThatCode(() -> effect.onApproved(orphan, answer())).doesNotThrowAnyException();
@@ -252,7 +252,7 @@ class PermissionRequestEffectTest {
 
     @Test
     void describe_withoutRefOrRequest_isEmpty() {
-        InboxItemDocument orphan = item("req-1");
+        MaximegalonDocument orphan = item("req-1");
         orphan.setEffectRef(null);
         assertThat(effect.describe(orphan)).isEmpty();
 
@@ -311,11 +311,11 @@ class PermissionRequestEffectTest {
 
     // ──── helpers ───────────────────────────────────────────────────────
 
-    private static InboxItemDocument item(String requestId) {
-        return InboxItemDocument.builder()
+    private static MaximegalonDocument item(String requestId) {
+        return MaximegalonDocument.builder()
                 .id("item-1")
                 .tenantId(TENANT)
-                .type(InboxItemType.APPROVAL)
+                .type(MaximegalonType.APPROVAL)
                 .effectType(PermissionRequestEffect.EFFECT_TYPE)
                 .effectRef(requestId)
                 .requiresAction(true)

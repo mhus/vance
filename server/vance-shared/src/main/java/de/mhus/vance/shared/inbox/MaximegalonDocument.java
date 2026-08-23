@@ -2,8 +2,8 @@ package de.mhus.vance.shared.inbox;
 
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.InboxItemStatus;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonStatus;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.inbox.ResolvedBy;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -24,10 +24,10 @@ import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 /**
- * Persistent inbox item — answers AND outputs ({@link InboxItemType}).
+ * Persistent inbox item — answers AND outputs ({@link MaximegalonType}).
  * See {@code specification/user-interaction.md} §3 for the full shape.
  */
-@Document(collection = "inbox_items")
+@Document(collection = "maximegalon_threads")
 @CompoundIndexes({
         @CompoundIndex(
                 name = "tenant_assigned_status_crit_idx",
@@ -43,7 +43,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class InboxItemDocument {
+public class MaximegalonDocument {
 
     @Id
     private @Nullable String id;
@@ -63,7 +63,7 @@ public class InboxItemDocument {
     /** Originating session-id (business id), for session-level filtering. */
     private @Nullable String originSessionId;
 
-    private InboxItemType type = InboxItemType.OUTPUT_TEXT;
+    private MaximegalonType type = MaximegalonType.OUTPUT_TEXT;
 
     @Builder.Default
     private Criticality criticality = Criticality.NORMAL;
@@ -101,7 +101,7 @@ public class InboxItemDocument {
     private @Nullable String effectRef;
 
     @Builder.Default
-    private InboxItemStatus status = InboxItemStatus.PENDING;
+    private MaximegalonStatus status = MaximegalonStatus.PENDING;
 
     /** {@code true} when the originating process expects an answer
      *  (asks). {@code false} for pure outputs. */
@@ -115,7 +115,7 @@ public class InboxItemDocument {
     private @Nullable String resolverReason;
 
     @Builder.Default
-    private List<InboxItemHistoryEntry> history = new ArrayList<>();
+    private List<MaximegalonHistoryEntry> history = new ArrayList<>();
 
     @Version
     private @Nullable Long version;

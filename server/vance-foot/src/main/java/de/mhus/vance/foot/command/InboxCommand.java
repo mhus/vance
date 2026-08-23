@@ -3,9 +3,9 @@ package de.mhus.vance.foot.command;
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.InboxAnswerRequest;
 import de.mhus.vance.api.inbox.InboxDelegateRequest;
-import de.mhus.vance.api.inbox.InboxItemDto;
+import de.mhus.vance.api.inbox.MaximegalonDto;
 import de.mhus.vance.api.inbox.InboxItemIdRequest;
-import de.mhus.vance.api.inbox.InboxItemStatus;
+import de.mhus.vance.api.inbox.MaximegalonStatus;
 import de.mhus.vance.api.inbox.InboxListRequest;
 import de.mhus.vance.api.inbox.InboxListResponse;
 import de.mhus.vance.api.ws.MessageType;
@@ -128,7 +128,7 @@ public class InboxCommand implements SlashCommand {
 
     private void list(boolean all) throws Exception {
         InboxListRequest req = InboxListRequest.builder()
-                .status(all ? null : InboxItemStatus.PENDING)
+                .status(all ? null : MaximegalonStatus.PENDING)
                 .build();
         InboxListResponse response = connection.request(
                 MessageType.INBOX_LIST,
@@ -143,7 +143,7 @@ public class InboxCommand implements SlashCommand {
         }
         terminal.info(String.format("%-24s %-10s %-12s %-7s %s",
                 "ID", "STATUS", "TYPE", "CRIT", "TITLE"));
-        for (InboxItemDto item : response.getItems()) {
+        for (MaximegalonDto item : response.getItems()) {
             terminal.info(String.format("%-24s %-10s %-12s %-7s %s",
                     Objects.toString(item.getId(), ""),
                     Objects.toString(item.getStatus(), ""),
@@ -162,10 +162,10 @@ public class InboxCommand implements SlashCommand {
             return;
         }
         String id = rest.get(0);
-        InboxItemDto item = connection.request(
+        MaximegalonDto item = connection.request(
                 MessageType.INBOX_ITEM,
                 InboxItemIdRequest.builder().itemId(id).build(),
-                InboxItemDto.class,
+                MaximegalonDto.class,
                 Duration.ofSeconds(10));
         if (item == null) {
             terminal.error("Item not found: " + id);
@@ -174,7 +174,7 @@ public class InboxCommand implements SlashCommand {
         renderItem(item);
     }
 
-    private void renderItem(InboxItemDto item) {
+    private void renderItem(MaximegalonDto item) {
         terminal.info("─── Inbox item ───");
         terminal.info("  id          " + item.getId());
         terminal.info("  type        " + item.getType()

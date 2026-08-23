@@ -9,15 +9,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.inbox.AnswerPayload;
-import de.mhus.vance.api.inbox.InboxItemStatus;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonStatus;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.inbox.ResolvedBy;
 import de.mhus.vance.api.magrathea.MagratheaTaskRunStatus;
 import de.mhus.vance.api.magrathea.MagratheaTaskStatus;
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.brain.permission.SecurityContextFactory;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import de.mhus.vance.shared.permission.PermissionService;
@@ -33,7 +33,7 @@ import org.mockito.ArgumentCaptor;
 class MagratheaGateChatAnswerServiceTest {
 
     private final MagratheaTaskService taskService = mock(MagratheaTaskService.class);
-    private final InboxItemService inboxItemService = mock(InboxItemService.class);
+    private final MaximegalonService inboxItemService = mock(MaximegalonService.class);
     private final SecurityContextFactory securityContexts = mock(SecurityContextFactory.class);
     private final PermissionService permissionService = mock(PermissionService.class);
 
@@ -63,12 +63,12 @@ class MagratheaGateChatAnswerServiceTest {
                 .build();
     }
 
-    private static InboxItemDocument pendingItem(InboxItemType type, Map<String, Object> payload) {
-        return InboxItemDocument.builder()
+    private static MaximegalonDocument pendingItem(MaximegalonType type, Map<String, Object> payload) {
+        return MaximegalonDocument.builder()
                 .id("item-1")
                 .tenantId("t")
                 .type(type)
-                .status(InboxItemStatus.PENDING)
+                .status(MaximegalonStatus.PENDING)
                 .title("ok?")
                 .payload(payload)
                 .build();
@@ -78,7 +78,7 @@ class MagratheaGateChatAnswerServiceTest {
     void tryAnswer_readableApproval_writesTheInboxAnswer() {
         when(taskService.findByRun("run-1")).thenReturn(List.of(waitingTask()));
         when(inboxItemService.findById("t", "item-1"))
-                .thenReturn(Optional.of(pendingItem(InboxItemType.APPROVAL, Map.of())));
+                .thenReturn(Optional.of(pendingItem(MaximegalonType.APPROVAL, Map.of())));
 
         boolean answered = service.tryAnswer("t", "run-1", "ja", "alice");
 
@@ -93,7 +93,7 @@ class MagratheaGateChatAnswerServiceTest {
     void tryAnswer_unreadableText_leavesTheGateOpen() {
         when(taskService.findByRun("run-1")).thenReturn(List.of(waitingTask()));
         when(inboxItemService.findById("t", "item-1"))
-                .thenReturn(Optional.of(pendingItem(InboxItemType.APPROVAL, Map.of())));
+                .thenReturn(Optional.of(pendingItem(MaximegalonType.APPROVAL, Map.of())));
 
         boolean answered = service.tryAnswer("t", "run-1", "what would that change?", "alice");
 
@@ -126,8 +126,8 @@ class MagratheaGateChatAnswerServiceTest {
     void tryAnswer_itemAlreadyAnswered_isIgnored() {
         // Someone used the form a moment earlier; there is nothing open.
         when(taskService.findByRun("run-1")).thenReturn(List.of(waitingTask()));
-        InboxItemDocument answered = pendingItem(InboxItemType.APPROVAL, Map.of());
-        answered.setStatus(InboxItemStatus.ANSWERED);
+        MaximegalonDocument answered = pendingItem(MaximegalonType.APPROVAL, Map.of());
+        answered.setStatus(MaximegalonStatus.ANSWERED);
         when(inboxItemService.findById("t", "item-1")).thenReturn(Optional.of(answered));
 
         assertThat(service.tryAnswer("t", "run-1", "ja", "alice")).isFalse();
@@ -137,7 +137,7 @@ class MagratheaGateChatAnswerServiceTest {
     @Test
     void tryAnswer_speakerMayNotAnswerThatItem_leavesTheGateOpen() {
         when(taskService.findByRun("run-1")).thenReturn(List.of(waitingTask()));
-        InboxItemDocument item = pendingItem(InboxItemType.APPROVAL, Map.of());
+        MaximegalonDocument item = pendingItem(MaximegalonType.APPROVAL, Map.of());
         item.setAssignedToUserId("marvin");
         when(inboxItemService.findById("t", "item-1")).thenReturn(Optional.of(item));
         when(permissionService.check(any(), any(), any())).thenReturn(false);
@@ -150,7 +150,7 @@ class MagratheaGateChatAnswerServiceTest {
     void tryAnswer_systemSpeaker_isRefusedWithoutAsking() {
         when(taskService.findByRun("run-1")).thenReturn(List.of(waitingTask()));
         when(inboxItemService.findById("t", "item-1"))
-                .thenReturn(Optional.of(pendingItem(InboxItemType.APPROVAL, Map.of())));
+                .thenReturn(Optional.of(pendingItem(MaximegalonType.APPROVAL, Map.of())));
 
         assertThat(service.tryAnswer("t", "run-1", "ja", SessionService.SYSTEM_OWNER)).isFalse();
         verify(permissionService, never()).check(any(), any(), any());
@@ -161,7 +161,7 @@ class MagratheaGateChatAnswerServiceTest {
     void tryAnswer_decisionUsesTheDeclaredOptions() {
         when(taskService.findByRun("run-1")).thenReturn(List.of(waitingTask()));
         when(inboxItemService.findById("t", "item-1")).thenReturn(Optional.of(
-                pendingItem(InboxItemType.DECISION,
+                pendingItem(MaximegalonType.DECISION,
                         Map.of("options", List.of("retry", "abort")))));
 
         assertThat(service.tryAnswer("t", "run-1", "abort", "alice")).isTrue();

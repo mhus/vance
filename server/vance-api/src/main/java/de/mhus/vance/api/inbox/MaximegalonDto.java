@@ -24,7 +24,7 @@ import org.jspecify.annotations.Nullable;
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @GenerateTypeScript("inbox")
-public class InboxItemDto {
+public class MaximegalonDto {
 
     private String id;
     private String tenantId;
@@ -34,7 +34,7 @@ public class InboxItemDto {
     private @Nullable String originProcessId;
     private @Nullable String originSessionId;
 
-    private InboxItemType type;
+    private MaximegalonType type;
     private Criticality criticality;
 
     @Builder.Default
@@ -52,7 +52,7 @@ public class InboxItemDto {
      */
     private @Nullable String effectType;
 
-    private InboxItemStatus status;
+    private MaximegalonStatus status;
     private boolean requiresAction;
     private @Nullable AnswerPayload answer;
     private @Nullable ResolvedBy resolvedBy;

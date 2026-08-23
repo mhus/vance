@@ -1,14 +1,14 @@
 package de.mhus.vance.brain.tools.inbox;
 
 import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -89,7 +89,7 @@ public class InboxPostTool implements Tool {
                                     "path", Map.of("type", "string")))),
             "required", List.of("targetUserId", "type", "title"));
 
-    private final InboxItemService inboxItemService;
+    private final MaximegalonService inboxItemService;
     private final DocumentService documentService;
     private final de.mhus.vance.shared.permission.PermissionService permissionService;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
@@ -136,7 +136,7 @@ public class InboxPostTool implements Tool {
                 contextFactory.forToolSubject(tenantId, ctx.userId()),
                 new de.mhus.vance.shared.permission.Resource.InboxItem(tenantId, null, targetUserId),
                 de.mhus.vance.shared.permission.Action.WRITE);
-        InboxItemType type = parseType(stringOrThrow(params, "type"));
+        MaximegalonType type = parseType(stringOrThrow(params, "type"));
         String title = stringOrThrow(params, "title");
         String body = optString(params, "body");
         Criticality criticality = parseCriticality(optString(params, "criticality"));
@@ -148,7 +148,7 @@ public class InboxPostTool implements Tool {
             payload.put("documentRef", resolvedDocRef);
         }
 
-        InboxItemDocument toCreate = InboxItemDocument.builder()
+        MaximegalonDocument toCreate = MaximegalonDocument.builder()
                 .tenantId(tenantId)
                 .originatorUserId(ctx.userId() == null ? "system" : ctx.userId())
                 .assignedToUserId(targetUserId)
@@ -163,7 +163,7 @@ public class InboxPostTool implements Tool {
                 .requiresAction(isAsk(type))
                 .build();
 
-        InboxItemDocument saved = inboxItemService.create(toCreate);
+        MaximegalonDocument saved = inboxItemService.create(toCreate);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("itemId", saved.getId());
         out.put("status", saved.getStatus().name());
@@ -179,7 +179,7 @@ public class InboxPostTool implements Tool {
         return out;
     }
 
-    private static boolean isAsk(InboxItemType t) {
+    private static boolean isAsk(MaximegalonType t) {
         return switch (t) {
             case APPROVAL, DECISION, FEEDBACK, ORDERING, STRUCTURE_EDIT -> true;
             case OUTPUT_TEXT, OUTPUT_IMAGE, OUTPUT_DOCUMENT -> false;
@@ -243,9 +243,9 @@ public class InboxPostTool implements Tool {
         return ref;
     }
 
-    private static InboxItemType parseType(String raw) {
+    private static MaximegalonType parseType(String raw) {
         try {
-            return InboxItemType.valueOf(raw.trim().toUpperCase());
+            return MaximegalonType.valueOf(raw.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
             throw new ToolException("Unknown inbox item type '" + raw + "'");
         }

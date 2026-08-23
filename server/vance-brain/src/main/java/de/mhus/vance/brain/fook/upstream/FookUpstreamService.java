@@ -1,12 +1,12 @@
 package de.mhus.vance.brain.fook.upstream;
 
 import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.brain.cluster.ClusterMasterService;
 import de.mhus.vance.brain.fook.FookTicketService;
 import de.mhus.vance.brain.fook.TicketDocument;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.tenant.TenantService;
@@ -70,7 +70,7 @@ public class FookUpstreamService {
 
     private final FookTicketService ticketService;
     private final FookTicketAnonymizer anonymizer;
-    private final InboxItemService inboxItemService;
+    private final MaximegalonService inboxItemService;
     private final SettingService settingService;
     private final ClusterMasterService masterService;
     private final List<TicketProvider> providers;
@@ -330,11 +330,11 @@ public class FookUpstreamService {
         if (local.getReporter() == null
                 || local.getReporter().getUserId() == null
                 || local.getReporter().getTenantId() == null) return;
-        InboxItemDocument item = InboxItemDocument.builder()
+        MaximegalonDocument item = MaximegalonDocument.builder()
                 .tenantId(local.getReporter().getTenantId())
                 .originatorUserId(ORIGINATOR)
                 .assignedToUserId(local.getReporter().getUserId())
-                .type(InboxItemType.OUTPUT_TEXT)
+                .type(MaximegalonType.OUTPUT_TEXT)
                 .criticality(Criticality.LOW)
                 .tags(List.of(INBOX_TAG, INBOX_TAG_STATUS))
                 .title("Ticket status: " + update.getState())
@@ -362,11 +362,11 @@ public class FookUpstreamService {
         payload.put("commentExternalId", c.getExternalId());
         payload.put("author", c.getAuthor());
 
-        InboxItemDocument item = InboxItemDocument.builder()
+        MaximegalonDocument item = MaximegalonDocument.builder()
                 .tenantId(local.getReporter().getTenantId())
                 .originatorUserId(ORIGINATOR)
                 .assignedToUserId(local.getReporter().getUserId())
-                .type(InboxItemType.FEEDBACK)
+                .type(MaximegalonType.FEEDBACK)
                 .criticality(Criticality.NORMAL)
                 .tags(List.of(INBOX_TAG, INBOX_TAG_COMMENT))
                 .title("New comment from " + c.getAuthor())

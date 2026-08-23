@@ -17,6 +17,6 @@ import lombok.NoArgsConstructor;
 @GenerateTypeScript("inbox")
 public class InboxListResponse {
     @Builder.Default
-    private List<InboxItemDto> items = new ArrayList<>();
+    private List<MaximegalonDto> items = new ArrayList<>();
     private int count;
 }

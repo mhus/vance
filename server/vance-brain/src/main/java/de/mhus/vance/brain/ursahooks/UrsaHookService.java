@@ -2,10 +2,10 @@ package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.api.ursahooks.UrsaHookEventName;
 import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -47,7 +47,7 @@ public class UrsaHookService {
     private final UrsaHookRegistry registry;
     private final UrsaHookYamlParser parser;
     private final DocumentService documentService;
-    private final InboxItemService inboxService;
+    private final MaximegalonService inboxService;
 
     // ───────────────────────── Lifecycle ─────────────────────────
 
@@ -198,11 +198,11 @@ public class UrsaHookService {
         for (UrsaHookParseException ex : errors) {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("category", "hook-parse-error");
-            inboxService.create(InboxItemDocument.builder()
+            inboxService.create(MaximegalonDocument.builder()
                     .tenantId(tenantId)
                     .originatorUserId("system:hooks")
                     .assignedToUserId(recipientUserId)
-                    .type(InboxItemType.OUTPUT_TEXT)
+                    .type(MaximegalonType.OUTPUT_TEXT)
                     .criticality(Criticality.NORMAL)
                     .title("Hook parse error")
                     .body(ex.getMessage())

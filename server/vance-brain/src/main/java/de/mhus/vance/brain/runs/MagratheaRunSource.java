@@ -219,7 +219,7 @@ public class MagratheaRunSource implements RunSource {
         }
         try {
             return gateAnswers.findOpenGateItem(tenantId, runId)
-                    .map(de.mhus.vance.shared.inbox.InboxItemDocument::getId)
+                    .map(de.mhus.vance.shared.inbox.MaximegalonDocument::getId)
                     .orElse(null);
         } catch (RuntimeException e) {
             log.debug("Magrathea run {} — could not look up its open gate: {}",

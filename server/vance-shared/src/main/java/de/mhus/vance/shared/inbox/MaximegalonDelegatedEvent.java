@@ -5,7 +5,7 @@ package de.mhus.vance.shared.inbox;
  * delegation. Notification dispatcher uses this to ping the new
  * assignee.
  */
-public record InboxItemDelegatedEvent(
-        InboxItemDocument item,
+public record MaximegalonDelegatedEvent(
+        MaximegalonDocument item,
         String previousAssignedToUserId) {
 }

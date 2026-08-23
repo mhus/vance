@@ -4,8 +4,8 @@ import com.mongodb.client.result.UpdateResult;
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.InboxItemStatus;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonStatus;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.inbox.ResolvedBy;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -25,22 +25,22 @@ import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 /**
- * Lifecycle and lookup for {@link InboxItemDocument}. The single
+ * Lifecycle and lookup for {@link MaximegalonDocument}. The single
  * entry point to inbox data — analogous to
  * {@code ThinkProcessService} for processes.
  *
  * <h2>Auto-default for LOW criticality</h2>
  * Items with {@link Criticality#LOW} <em>and</em> a {@code default}
  * key in their payload are auto-answered at creation time:
- * {@link InboxItemStatus#ANSWERED}, {@link ResolvedBy#AUTO_DEFAULT},
+ * {@link MaximegalonStatus#ANSWERED}, {@link ResolvedBy#AUTO_DEFAULT},
  * answer carries the default. The originating process gets the
  * answer immediately via the steer-message path; no user is
  * bothered. The item is still persisted with the audit marker.
  *
  * <h2>Events</h2>
  * Publishes Spring application events on key transitions —
- * {@link InboxItemCreatedEvent}, {@link InboxItemAnsweredEvent},
- * {@link InboxItemDelegatedEvent}, {@link InboxItemArchivedEvent}.
+ * {@link MaximegalonCreatedEvent}, {@link MaximegalonAnsweredEvent},
+ * {@link MaximegalonDelegatedEvent}, {@link MaximegalonArchivedEvent}.
  * The notification dispatcher subscribes to {@code Created} and
  * {@code Delegated} (new assignee gets pinged); the steer-router
  * subscribes to {@code Answered}.
@@ -48,7 +48,7 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class InboxItemService {
+public class MaximegalonService {
 
     private static final String F_ID = "_id";
     private static final String F_TENANT = "tenantId";
@@ -59,7 +59,7 @@ public class InboxItemService {
     /** Conventional payload key for the LOW-auto-default value. */
     public static final String PAYLOAD_DEFAULT_KEY = "default";
 
-    private final InboxItemRepository repository;
+    private final MaximegalonRepository repository;
     private final MongoTemplate mongoTemplate;
     private final ApplicationEventPublisher eventPublisher;
     private final InboxEffectRegistry effectRegistry;
@@ -74,14 +74,14 @@ public class InboxItemService {
      *
      * @return the saved item (with id assigned)
      */
-    public InboxItemDocument create(InboxItemDocument toCreate) {
+    public MaximegalonDocument create(MaximegalonDocument toCreate) {
         Instant now = Instant.now();
         boolean autoAnswered = shouldAutoAnswer(toCreate);
 
         // Always start with a CREATED history entry.
-        List<InboxItemHistoryEntry> history = toCreate.getHistory();
+        List<MaximegalonHistoryEntry> history = toCreate.getHistory();
         if (history == null) history = new ArrayList<>();
-        history.add(InboxItemHistoryEntry.builder()
+        history.add(MaximegalonHistoryEntry.builder()
                 .action("CREATED")
                 .actor(toCreate.getOriginatorUserId())
                 .at(now)
@@ -91,7 +91,7 @@ public class InboxItemService {
             Object defaultValue = toCreate.getPayload().get(PAYLOAD_DEFAULT_KEY);
             Map<String, Object> answerValue = wrapDefaultAsAnswerValue(
                     toCreate.getType(), defaultValue);
-            toCreate.setStatus(InboxItemStatus.ANSWERED);
+            toCreate.setStatus(MaximegalonStatus.ANSWERED);
             toCreate.setAnswer(AnswerPayload.builder()
                     .outcome(AnswerOutcome.DECIDED)
                     .value(answerValue)
@@ -99,7 +99,7 @@ public class InboxItemService {
                     .build());
             toCreate.setResolvedBy(ResolvedBy.AUTO_DEFAULT);
             toCreate.setResolvedAt(now);
-            history.add(InboxItemHistoryEntry.builder()
+            history.add(MaximegalonHistoryEntry.builder()
                     .action("ANSWERED")
                     .actor("system:auto-default")
                     .details("LOW criticality auto-default")
@@ -108,15 +108,15 @@ public class InboxItemService {
         }
         toCreate.setHistory(history);
 
-        InboxItemDocument saved = repository.save(toCreate);
+        MaximegalonDocument saved = repository.save(toCreate);
         log.info("Created inbox item id='{}' tenant='{}' assignee='{}' type={} crit={} requiresAction={} status={}",
                 saved.getId(), saved.getTenantId(), saved.getAssignedToUserId(),
                 saved.getType(), saved.getCriticality(),
                 saved.isRequiresAction(), saved.getStatus());
 
-        eventPublisher.publishEvent(new InboxItemCreatedEvent(saved));
+        eventPublisher.publishEvent(new MaximegalonCreatedEvent(saved));
         if (autoAnswered) {
-            eventPublisher.publishEvent(new InboxItemAnsweredEvent(saved));
+            eventPublisher.publishEvent(new MaximegalonAnsweredEvent(saved));
         }
         return saved;
     }
@@ -125,7 +125,7 @@ public class InboxItemService {
      * Decision rule: auto-answer iff item is asking ({@code requiresAction}),
      * criticality is LOW, and payload carries a {@code default}.
      */
-    private static boolean shouldAutoAnswer(InboxItemDocument doc) {
+    private static boolean shouldAutoAnswer(MaximegalonDocument doc) {
         if (!doc.isRequiresAction()) return false;
         if (doc.getCriticality() != Criticality.LOW) return false;
         if (doc.getPayload() == null) return false;
@@ -134,7 +134,7 @@ public class InboxItemService {
 
     /** Maps the bare {@code default} value to the type-shaped answer-value map. */
     private static Map<String, Object> wrapDefaultAsAnswerValue(
-            InboxItemType type, Object defaultValue) {
+            MaximegalonType type, Object defaultValue) {
         Map<String, Object> v = new LinkedHashMap<>();
         switch (type) {
             case APPROVAL -> v.put("approved",
@@ -150,12 +150,12 @@ public class InboxItemService {
 
     // ────────────────── Read ──────────────────
 
-    public Optional<InboxItemDocument> findById(String tenantId, String id) {
+    public Optional<MaximegalonDocument> findById(String tenantId, String id) {
         return repository.findByIdAndTenantId(id, tenantId);
     }
 
-    public List<InboxItemDocument> listForUser(
-            String tenantId, String userId, @Nullable InboxItemStatus status) {
+    public List<MaximegalonDocument> listForUser(
+            String tenantId, String userId, @Nullable MaximegalonStatus status) {
         if (status == null) {
             return repository.findByTenantIdAndAssignedToUserId(tenantId, userId);
         }
@@ -182,14 +182,14 @@ public class InboxItemService {
      * @return matching items, sorted by {@code createdAt} desc so
      *         the freshest land at the top.
      */
-    public List<InboxItemDocument> listFiltered(
+    public List<MaximegalonDocument> listFiltered(
             String tenantId,
             List<String> userIds,
-            @Nullable InboxItemStatus status,
+            @Nullable MaximegalonStatus status,
             @Nullable String tag) {
         Query query = Query.query(filterCriteria(tenantId, userIds, status, tag))
                 .with(Sort.by(Sort.Direction.DESC, "createdAt"));
-        return mongoTemplate.find(query, InboxItemDocument.class);
+        return mongoTemplate.find(query, MaximegalonDocument.class);
     }
 
     /**
@@ -208,12 +208,12 @@ public class InboxItemService {
      */
     public PendingCounts countPending(String tenantId, List<String> userIds) {
         long total = mongoTemplate.count(
-                Query.query(filterCriteria(tenantId, userIds, InboxItemStatus.PENDING, null)),
-                InboxItemDocument.class);
+                Query.query(filterCriteria(tenantId, userIds, MaximegalonStatus.PENDING, null)),
+                MaximegalonDocument.class);
         long requiresAction = mongoTemplate.count(
-                Query.query(filterCriteria(tenantId, userIds, InboxItemStatus.PENDING, null)
+                Query.query(filterCriteria(tenantId, userIds, MaximegalonStatus.PENDING, null)
                         .and(F_REQUIRES_ACTION).is(true)),
-                InboxItemDocument.class);
+                MaximegalonDocument.class);
         return new PendingCounts(total, requiresAction);
     }
 
@@ -225,7 +225,7 @@ public class InboxItemService {
     private static Criteria filterCriteria(
             String tenantId,
             @Nullable List<String> userIds,
-            @Nullable InboxItemStatus status,
+            @Nullable MaximegalonStatus status,
             @Nullable String tag) {
         Criteria criteria = Criteria.where(F_TENANT).is(tenantId);
         if (userIds != null && !userIds.isEmpty()) {
@@ -253,19 +253,19 @@ public class InboxItemService {
             criteria = criteria.and(F_ASSIGNED).in(userIds);
         }
         return mongoTemplate.findDistinct(
-                Query.query(criteria), "tags", InboxItemDocument.class, String.class);
+                Query.query(criteria), "tags", MaximegalonDocument.class, String.class);
     }
 
-    public List<InboxItemDocument> listPendingForUser(String tenantId, String userId) {
-        return listForUser(tenantId, userId, InboxItemStatus.PENDING);
+    public List<MaximegalonDocument> listPendingForUser(String tenantId, String userId) {
+        return listForUser(tenantId, userId, MaximegalonStatus.PENDING);
     }
 
     public PendingSummary summarizePendingForUser(String tenantId, String userId) {
-        List<InboxItemDocument> pending = listPendingForUser(tenantId, userId);
+        List<MaximegalonDocument> pending = listPendingForUser(tenantId, userId);
         Map<Criticality, Integer> byCrit = new LinkedHashMap<>();
         for (Criticality c : Criticality.values()) byCrit.put(c, 0);
         Instant oldest = null;
-        for (InboxItemDocument d : pending) {
+        for (MaximegalonDocument d : pending) {
             byCrit.merge(d.getCriticality(), 1, Integer::sum);
             Instant ca = d.getCreatedAt();
             if (ca != null && (oldest == null || ca.isBefore(oldest))) {
@@ -278,48 +278,48 @@ public class InboxItemService {
     // ────────────────── Mutations ──────────────────
 
     /**
-     * Records an answer and transitions to {@link InboxItemStatus#ANSWERED}.
+     * Records an answer and transitions to {@link MaximegalonStatus#ANSWERED}.
      * Idempotent against double-submit: if status is already ANSWERED,
      * returns the existing item without overwriting.
      */
-    public Optional<InboxItemDocument> answer(
+    public Optional<MaximegalonDocument> answer(
             String tenantId, String itemId,
             AnswerPayload answer, ResolvedBy by) {
-        Optional<InboxItemDocument> existing = findById(tenantId, itemId);
+        Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
         if (existing.isEmpty()) return Optional.empty();
-        InboxItemDocument doc = existing.get();
-        if (doc.getStatus() != InboxItemStatus.PENDING) {
+        MaximegalonDocument doc = existing.get();
+        if (doc.getStatus() != MaximegalonStatus.PENDING) {
             log.info("Inbox.answer skipped — id='{}' already in status {}",
                     itemId, doc.getStatus());
             return Optional.of(doc);
         }
         Instant now = Instant.now();
         Update update = new Update()
-                .set("status", InboxItemStatus.ANSWERED)
+                .set("status", MaximegalonStatus.ANSWERED)
                 .set("answer", answer)
                 .set("resolvedBy", by)
                 .set("resolvedAt", now)
-                .push("history", InboxItemHistoryEntry.builder()
+                .push("history", MaximegalonHistoryEntry.builder()
                         .action("ANSWERED")
                         .actor(answer.getAnsweredBy())
                         .at(now)
                         .build());
         UpdateResult result = mongoTemplate.updateFirst(
                 Query.query(Criteria.where(F_ID).is(itemId).and(F_TENANT).is(tenantId)
-                        .and(F_STATUS).is(InboxItemStatus.PENDING)),
-                update, InboxItemDocument.class);
+                        .and(F_STATUS).is(MaximegalonStatus.PENDING)),
+                update, MaximegalonDocument.class);
         if (result.getModifiedCount() == 0) {
             // Race: someone else answered first. Re-read.
             return findById(tenantId, itemId);
         }
-        InboxItemDocument refreshed = findById(tenantId, itemId).orElse(doc);
+        MaximegalonDocument refreshed = findById(tenantId, itemId).orElse(doc);
         // Server-side effect (permission request, kit install, …) before the
         // process is notified: the effect IS the decision's consequence,
         // while the process notification is only information about it.
         // Riding the same single PENDING→ANSWERED transition makes the
         // existing double-submit guard the effect's exactly-once guarantee.
         runEffect(refreshed, answer);
-        eventPublisher.publishEvent(new InboxItemAnsweredEvent(refreshed));
+        eventPublisher.publishEvent(new MaximegalonAnsweredEvent(refreshed));
         return Optional.of(refreshed);
     }
 
@@ -333,7 +333,7 @@ public class InboxItemService {
      * and the mismatch between "approved" and "nothing happened" is
      * traceable rather than silent.
      */
-    private void runEffect(InboxItemDocument item, AnswerPayload answer) {
+    private void runEffect(MaximegalonDocument item, AnswerPayload answer) {
         try {
             effectRegistry.dispatch(item, answer);
         } catch (RuntimeException e) {
@@ -344,18 +344,18 @@ public class InboxItemService {
     }
 
     private void recordEffectFailure(
-            InboxItemDocument item, AnswerPayload answer, RuntimeException cause) {
+            MaximegalonDocument item, AnswerPayload answer, RuntimeException cause) {
         try {
             mongoTemplate.updateFirst(
                     Query.query(Criteria.where(F_ID).is(item.getId())
                             .and(F_TENANT).is(item.getTenantId())),
-                    new Update().push("history", InboxItemHistoryEntry.builder()
+                    new Update().push("history", MaximegalonHistoryEntry.builder()
                             .action("EFFECT_FAILED")
                             .actor(answer.getAnsweredBy())
                             .at(Instant.now())
                             .details(cause.getMessage())
                             .build()),
-                    InboxItemDocument.class);
+                    MaximegalonDocument.class);
         } catch (RuntimeException e) {
             // Nothing left to do — the error log above is the record.
             log.warn("Could not record effect failure on item '{}': {}",
@@ -363,58 +363,58 @@ public class InboxItemService {
         }
     }
 
-    public Optional<InboxItemDocument> dismiss(
+    public Optional<MaximegalonDocument> dismiss(
             String tenantId, String itemId, String byUserId) {
-        return transitionTo(tenantId, itemId, InboxItemStatus.DISMISSED, byUserId, "DISMISSED");
+        return transitionTo(tenantId, itemId, MaximegalonStatus.DISMISSED, byUserId, "DISMISSED");
     }
 
-    public Optional<InboxItemDocument> archive(
+    public Optional<MaximegalonDocument> archive(
             String tenantId, String itemId, String byUserId) {
-        Optional<InboxItemDocument> existing = findById(tenantId, itemId);
+        Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
         if (existing.isEmpty()) return Optional.empty();
-        InboxItemDocument doc = existing.get();
-        if (doc.getStatus() == InboxItemStatus.ARCHIVED) return Optional.of(doc);
+        MaximegalonDocument doc = existing.get();
+        if (doc.getStatus() == MaximegalonStatus.ARCHIVED) return Optional.of(doc);
         Instant now = Instant.now();
         Update update = new Update()
-                .set("status", InboxItemStatus.ARCHIVED)
+                .set("status", MaximegalonStatus.ARCHIVED)
                 .set("archivedAt", now)
-                .push("history", InboxItemHistoryEntry.builder()
+                .push("history", MaximegalonHistoryEntry.builder()
                         .action("ARCHIVED")
                         .actor(byUserId)
                         .at(now)
                         .build());
         mongoTemplate.updateFirst(
                 Query.query(Criteria.where(F_ID).is(itemId).and(F_TENANT).is(tenantId)),
-                update, InboxItemDocument.class);
-        InboxItemDocument refreshed = findById(tenantId, itemId).orElse(doc);
-        eventPublisher.publishEvent(new InboxItemArchivedEvent(refreshed));
+                update, MaximegalonDocument.class);
+        MaximegalonDocument refreshed = findById(tenantId, itemId).orElse(doc);
+        eventPublisher.publishEvent(new MaximegalonArchivedEvent(refreshed));
         return Optional.of(refreshed);
     }
 
     /**
      * Pulls an archived item back into the active inbox. Status is
-     * restored to {@link InboxItemStatus#ANSWERED} when an answer
+     * restored to {@link MaximegalonStatus#ANSWERED} when an answer
      * is on file (the item was answered before being archived) or
-     * {@link InboxItemStatus#PENDING} otherwise. {@code archivedAt}
+     * {@link MaximegalonStatus#PENDING} otherwise. {@code archivedAt}
      * is cleared. No-op when the item isn't currently archived.
      *
      * <p>v1 doesn't preserve the original pre-archive status — the
      * answer-presence heuristic gives the right answer in practice
      * (archive of an open ask vs. archive of a resolved item).
      */
-    public Optional<InboxItemDocument> unarchive(
+    public Optional<MaximegalonDocument> unarchive(
             String tenantId, String itemId, String byUserId) {
-        Optional<InboxItemDocument> existing = findById(tenantId, itemId);
+        Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
         if (existing.isEmpty()) return Optional.empty();
-        InboxItemDocument doc = existing.get();
-        if (doc.getStatus() != InboxItemStatus.ARCHIVED) return Optional.of(doc);
-        InboxItemStatus restored = doc.getAnswer() != null
-                ? InboxItemStatus.ANSWERED : InboxItemStatus.PENDING;
+        MaximegalonDocument doc = existing.get();
+        if (doc.getStatus() != MaximegalonStatus.ARCHIVED) return Optional.of(doc);
+        MaximegalonStatus restored = doc.getAnswer() != null
+                ? MaximegalonStatus.ANSWERED : MaximegalonStatus.PENDING;
         Instant now = Instant.now();
         Update update = new Update()
                 .set("status", restored)
                 .unset("archivedAt")
-                .push("history", InboxItemHistoryEntry.builder()
+                .push("history", MaximegalonHistoryEntry.builder()
                         .action("UNARCHIVED")
                         .actor(byUserId)
                         .details("restored to " + restored.name())
@@ -422,7 +422,7 @@ public class InboxItemService {
                         .build());
         mongoTemplate.updateFirst(
                 Query.query(Criteria.where(F_ID).is(itemId).and(F_TENANT).is(tenantId)),
-                update, InboxItemDocument.class);
+                update, MaximegalonDocument.class);
         return findById(tenantId, itemId);
     }
 
@@ -437,20 +437,20 @@ public class InboxItemService {
      * tenant. {@code newPayload} replaces the entire payload map;
      * pass {@code null} to keep the current one.
      */
-    public Optional<InboxItemDocument> updateContent(
+    public Optional<MaximegalonDocument> updateContent(
             String tenantId,
             String itemId,
             @Nullable String newTitle,
             String newBody,
             @Nullable Map<String, Object> newPayload,
             String byActorId) {
-        Optional<InboxItemDocument> existing = findById(tenantId, itemId);
+        Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
         if (existing.isEmpty()) return Optional.empty();
-        InboxItemDocument doc = existing.get();
+        MaximegalonDocument doc = existing.get();
         Instant now = Instant.now();
         Update update = new Update()
                 .set("body", newBody)
-                .push("history", InboxItemHistoryEntry.builder()
+                .push("history", MaximegalonHistoryEntry.builder()
                         .action("CONTENT_UPDATED")
                         .actor(byActorId)
                         .at(now)
@@ -463,18 +463,18 @@ public class InboxItemService {
         }
         mongoTemplate.updateFirst(
                 Query.query(Criteria.where(F_ID).is(itemId).and(F_TENANT).is(tenantId)),
-                update, InboxItemDocument.class);
-        InboxItemDocument refreshed = findById(tenantId, itemId).orElse(doc);
-        eventPublisher.publishEvent(new InboxItemUpdatedEvent(refreshed));
+                update, MaximegalonDocument.class);
+        MaximegalonDocument refreshed = findById(tenantId, itemId).orElse(doc);
+        eventPublisher.publishEvent(new MaximegalonUpdatedEvent(refreshed));
         return Optional.of(refreshed);
     }
 
-    public Optional<InboxItemDocument> delegate(
+    public Optional<MaximegalonDocument> delegate(
             String tenantId, String itemId, String toUserId, String byUserId,
             @Nullable String note) {
-        Optional<InboxItemDocument> existing = findById(tenantId, itemId);
+        Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
         if (existing.isEmpty()) return Optional.empty();
-        InboxItemDocument doc = existing.get();
+        MaximegalonDocument doc = existing.get();
         if (toUserId.equals(doc.getAssignedToUserId())) {
             // No-op delegation.
             return Optional.of(doc);
@@ -483,7 +483,7 @@ public class InboxItemService {
         Instant now = Instant.now();
         Update update = new Update()
                 .set(F_ASSIGNED, toUserId)
-                .push("history", InboxItemHistoryEntry.builder()
+                .push("history", MaximegalonHistoryEntry.builder()
                         .action("DELEGATED")
                         .actor(byUserId)
                         .details("from=" + previous + " to=" + toUserId
@@ -492,33 +492,33 @@ public class InboxItemService {
                         .build());
         mongoTemplate.updateFirst(
                 Query.query(Criteria.where(F_ID).is(itemId).and(F_TENANT).is(tenantId)),
-                update, InboxItemDocument.class);
-        InboxItemDocument refreshed = findById(tenantId, itemId).orElse(doc);
-        eventPublisher.publishEvent(new InboxItemDelegatedEvent(refreshed, previous));
+                update, MaximegalonDocument.class);
+        MaximegalonDocument refreshed = findById(tenantId, itemId).orElse(doc);
+        eventPublisher.publishEvent(new MaximegalonDelegatedEvent(refreshed, previous));
         return Optional.of(refreshed);
     }
 
-    private Optional<InboxItemDocument> transitionTo(
+    private Optional<MaximegalonDocument> transitionTo(
             String tenantId, String itemId,
-            InboxItemStatus newStatus, String byUserId, String historyAction) {
-        Optional<InboxItemDocument> existing = findById(tenantId, itemId);
+            MaximegalonStatus newStatus, String byUserId, String historyAction) {
+        Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
         if (existing.isEmpty()) return Optional.empty();
-        InboxItemDocument doc = existing.get();
+        MaximegalonDocument doc = existing.get();
         if (doc.getStatus() == newStatus) return Optional.of(doc);
         Instant now = Instant.now();
         Update update = new Update()
                 .set("status", newStatus)
-                .push("history", InboxItemHistoryEntry.builder()
+                .push("history", MaximegalonHistoryEntry.builder()
                         .action(historyAction)
                         .actor(byUserId)
                         .at(now)
                         .build());
-        if (newStatus == InboxItemStatus.DISMISSED) {
+        if (newStatus == MaximegalonStatus.DISMISSED) {
             update.set("resolvedBy", ResolvedBy.USER).set("resolvedAt", now);
         }
         mongoTemplate.updateFirst(
                 Query.query(Criteria.where(F_ID).is(itemId).and(F_TENANT).is(tenantId)),
-                update, InboxItemDocument.class);
+                update, MaximegalonDocument.class);
         return findById(tenantId, itemId);
     }
 

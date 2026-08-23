@@ -7,9 +7,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.InboxItemType;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.api.inbox.MaximegalonType;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.simpleauth.GrantRole;
 import de.mhus.vance.simpleauth.GrantScopeType;
 import de.mhus.vance.simpleauth.GrantSubjectType;
@@ -47,7 +47,7 @@ class PermissionRequestToolsTest {
     @Mock
     PermissionGrantService grants;
     @Mock
-    InboxItemService inboxItemService;
+    MaximegalonService inboxItemService;
     @Mock
     ToolInvocationContext ctx;
 
@@ -75,7 +75,7 @@ class PermissionRequestToolsTest {
                         .status(PermissionRequestStatus.PENDING)
                         .build());
         when(inboxItemService.create(any())).thenAnswer(inv -> {
-            InboxItemDocument doc = inv.getArgument(0);
+            MaximegalonDocument doc = inv.getArgument(0);
             doc.setId("item-1");
             return doc;
         });
@@ -116,13 +116,13 @@ class PermissionRequestToolsTest {
     void approvalItem_isNeverLowCriticality() {
         grantTool.invoke(grantParams(), ctx);
 
-        ArgumentCaptor<InboxItemDocument> item =
-                ArgumentCaptor.forClass(InboxItemDocument.class);
+        ArgumentCaptor<MaximegalonDocument> item =
+                ArgumentCaptor.forClass(MaximegalonDocument.class);
         verify(inboxItemService).create(item.capture());
         // A LOW item with a default auto-answers — a rights change must
         // never be decided by a default.
         assertThat(item.getValue().getCriticality()).isNotEqualTo(Criticality.LOW);
-        assertThat(item.getValue().getType()).isEqualTo(InboxItemType.APPROVAL);
+        assertThat(item.getValue().getType()).isEqualTo(MaximegalonType.APPROVAL);
         assertThat(item.getValue().isRequiresAction()).isTrue();
     }
 
@@ -130,8 +130,8 @@ class PermissionRequestToolsTest {
     void approvalItem_carriesTheEffectWiring() {
         grantTool.invoke(grantParams(), ctx);
 
-        ArgumentCaptor<InboxItemDocument> item =
-                ArgumentCaptor.forClass(InboxItemDocument.class);
+        ArgumentCaptor<MaximegalonDocument> item =
+                ArgumentCaptor.forClass(MaximegalonDocument.class);
         verify(inboxItemService).create(item.capture());
         assertThat(item.getValue().getEffectType())
                 .isEqualTo(PermissionRequestEffect.EFFECT_TYPE);
@@ -142,8 +142,8 @@ class PermissionRequestToolsTest {
     void statedReason_isQuotedAsAnUnverifiedClaim() {
         grantTool.invoke(grantParams(), ctx);
 
-        ArgumentCaptor<InboxItemDocument> item =
-                ArgumentCaptor.forClass(InboxItemDocument.class);
+        ArgumentCaptor<MaximegalonDocument> item =
+                ArgumentCaptor.forClass(MaximegalonDocument.class);
         verify(inboxItemService).create(item.capture());
         // The reason is LLM-written and may echo injected text — it must
         // not read as the system's own account of what will happen.
@@ -156,8 +156,8 @@ class PermissionRequestToolsTest {
     void deciderChoice_isDeterministic() {
         grantTool.invoke(grantParams(), ctx);
 
-        ArgumentCaptor<InboxItemDocument> item =
-                ArgumentCaptor.forClass(InboxItemDocument.class);
+        ArgumentCaptor<MaximegalonDocument> item =
+                ArgumentCaptor.forClass(MaximegalonDocument.class);
         verify(inboxItemService).create(item.capture());
         // Sorted, so the same situation always routes the same way rather
         // than following storage order.
@@ -172,8 +172,8 @@ class PermissionRequestToolsTest {
 
         grantTool.invoke(grantParams(), ctx);
 
-        ArgumentCaptor<InboxItemDocument> item =
-                ArgumentCaptor.forClass(InboxItemDocument.class);
+        ArgumentCaptor<MaximegalonDocument> item =
+                ArgumentCaptor.forClass(MaximegalonDocument.class);
         verify(inboxItemService).create(item.capture());
         assertThat(item.getValue().getAssignedToUserId()).isEqualTo("ford.prefect");
     }

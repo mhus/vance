@@ -12,11 +12,11 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.form.FormChoiceDto;
 import de.mhus.vance.api.form.FormFieldDto;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentRef;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
@@ -46,14 +46,14 @@ class InboxShareHandlerTest {
             SecurityContext.user("mara", TENANT, List.of());
 
     private UserService userService;
-    private InboxItemService inboxItemService;
+    private MaximegalonService inboxItemService;
     private PermissionService permissionService;
     private InboxShareHandler handler;
 
     @BeforeEach
     void setUp() {
         userService = mock(UserService.class);
-        inboxItemService = mock(InboxItemService.class);
+        inboxItemService = mock(MaximegalonService.class);
         permissionService = mock(PermissionService.class);
         handler = new InboxShareHandler(userService, inboxItemService, permissionService);
         when(permissionService.check(any(SecurityContext.class), any(Resource.class), any()))
@@ -167,8 +167,8 @@ class InboxShareHandlerTest {
 
         handler.share(request(Map.of("recipients", List.of("ford"), "text", "test is done")));
 
-        InboxItemDocument item = captureItem();
-        assertThat(item.getType()).isEqualTo(InboxItemType.OUTPUT_DOCUMENT);
+        MaximegalonDocument item = captureItem();
+        assertThat(item.getType()).isEqualTo(MaximegalonType.OUTPUT_DOCUMENT);
         assertThat(item.isRequiresAction()).isFalse();
         assertThat(item.getAssignedToUserId()).isEqualTo("ford");
         assertThat(item.getOriginatorUserId()).isEqualTo("mara");
@@ -192,7 +192,7 @@ class InboxShareHandlerTest {
         ShareResult result = handler.share(request(
                 Map.of("recipients", List.of("ford", "zaphod"), "text", "look")));
 
-        verify(inboxItemService, times(2)).create(any(InboxItemDocument.class));
+        verify(inboxItemService, times(2)).create(any(MaximegalonDocument.class));
         assertThat(result.details()).containsEntry("recipients", List.of("ford", "zaphod"));
         assertThat(result.message()).contains("2");
     }
@@ -204,7 +204,7 @@ class InboxShareHandlerTest {
         assertThatThrownBy(() -> handler.share(request(Map.of("recipients", List.of("ford")))))
                 .isInstanceOf(ShareException.class);
 
-        verify(inboxItemService, never()).create(any(InboxItemDocument.class));
+        verify(inboxItemService, never()).create(any(MaximegalonDocument.class));
     }
 
     @Test
@@ -222,7 +222,7 @@ class InboxShareHandlerTest {
         ShareResult result = handler.share(request(
                 Map.of("recipients", List.of("ford", "trillian"), "text", "look")));
 
-        verify(inboxItemService, times(1)).create(any(InboxItemDocument.class));
+        verify(inboxItemService, times(1)).create(any(MaximegalonDocument.class));
         assertThat(result.details()).containsEntry("recipients", List.of("ford"));
         assertThat(result.details()).containsEntry("rejected", List.of("trillian"));
         assertThat(result.message()).contains("trillian");
@@ -237,7 +237,7 @@ class InboxShareHandlerTest {
                 .isInstanceOf(ShareException.class)
                 .hasMessageContaining("trillian");
 
-        verify(inboxItemService, never()).create(any(InboxItemDocument.class));
+        verify(inboxItemService, never()).create(any(MaximegalonDocument.class));
     }
 
     @Test
@@ -260,10 +260,10 @@ class InboxShareHandlerTest {
         handler.share(new ShareRequest(
                 linkScope(), Map.of("recipients", List.of("ford"), "text", "have a look")));
 
-        InboxItemDocument item = captureItem();
+        MaximegalonDocument item = captureItem();
         // The discriminator follows the payload — an OUTPUT_DOCUMENT without a
         // document would be a lie in the type.
-        assertThat(item.getType()).isEqualTo(InboxItemType.OUTPUT_TEXT);
+        assertThat(item.getType()).isEqualTo(MaximegalonType.OUTPUT_TEXT);
         assertThat(item.getPayload()).doesNotContainKey("documentRef");
         @SuppressWarnings("unchecked")
         Map<String, Object> link = (Map<String, Object>) item.getPayload().get("link");
@@ -290,8 +290,8 @@ class InboxShareHandlerTest {
         handler.share(new ShareRequest(
                 scope, Map.of("recipients", List.of("ford"), "text", "this bit")));
 
-        InboxItemDocument item = captureItem();
-        assertThat(item.getType()).isEqualTo(InboxItemType.OUTPUT_DOCUMENT);
+        MaximegalonDocument item = captureItem();
+        assertThat(item.getType()).isEqualTo(MaximegalonType.OUTPUT_DOCUMENT);
         assertThat(item.getPayload()).containsKey("documentRef");
         assertThat(item.getPayload()).containsEntry("snippet", "…the passage…");
     }
@@ -325,8 +325,8 @@ class InboxShareHandlerTest {
         when(userService.all(TENANT)).thenReturn(all);
     }
 
-    private InboxItemDocument captureItem() {
-        ArgumentCaptor<InboxItemDocument> captor = forClass(InboxItemDocument.class);
+    private MaximegalonDocument captureItem() {
+        ArgumentCaptor<MaximegalonDocument> captor = forClass(MaximegalonDocument.class);
         verify(inboxItemService).create(captor.capture());
         return captor.getValue();
     }

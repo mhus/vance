@@ -18,7 +18,7 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
  * </ul>
  */
 @GenerateTypeScript("inbox")
-public enum InboxItemStatus {
+public enum MaximegalonStatus {
     PENDING,
     ANSWERED,
     DISMISSED,

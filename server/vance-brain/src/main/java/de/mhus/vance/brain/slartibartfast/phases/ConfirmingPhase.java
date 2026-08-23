@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.slartibartfast.phases;
 
 import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.slartibartfast.ArchitectState;
 import de.mhus.vance.api.slartibartfast.ArchitectStatus;
 import de.mhus.vance.api.slartibartfast.ConfirmationMode;
@@ -12,8 +12,8 @@ import de.mhus.vance.api.slartibartfast.PendingInboxKind;
 import de.mhus.vance.api.slartibartfast.PhaseIteration;
 import de.mhus.vance.api.slartibartfast.ValidationCheck;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -55,7 +55,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class ConfirmingPhase {
 
-    private final InboxItemService inboxItemService;
+    private final MaximegalonService inboxItemService;
 
     /**
      * Mutates {@code state.acceptanceCriteria} and appends a
@@ -225,7 +225,7 @@ public class ConfirmingPhase {
      * {@code state.pendingInboxItemId} so the engine drain-handler
      * can match an incoming answer.
      *
-     * <p>Item type is {@link InboxItemType#APPROVAL} — the user
+     * <p>Item type is {@link MaximegalonType#APPROVAL} — the user
      * answers yes-or-no for the whole batch. v1 simplification;
      * per-criterion verdicts (STRUCTURE_EDIT) are a possible
      * extension if real-world feedback shows a single bool is
@@ -265,13 +265,13 @@ public class ConfirmingPhase {
         payload.put("runId", state.getRunId());
         payload.put("criteria", criteriaPayload);
 
-        InboxItemDocument toCreate = InboxItemDocument.builder()
+        MaximegalonDocument toCreate = MaximegalonDocument.builder()
                 .tenantId(process.getTenantId())
                 .originatorUserId("slartibartfast:" + process.getId())
                 .assignedToUserId(null)   // unassigned — anyone with access can answer
                 .originProcessId(process.getId())
                 .originSessionId(process.getSessionId())
-                .type(InboxItemType.APPROVAL)
+                .type(MaximegalonType.APPROVAL)
                 .criticality(Criticality.NORMAL)
                 .title("Slartibartfast: confirm " + pending.size()
                         + " assumption(s)?")
@@ -279,7 +279,7 @@ public class ConfirmingPhase {
                 .payload(payload)
                 .requiresAction(true)
                 .build();
-        InboxItemDocument saved = inboxItemService.create(toCreate);
+        MaximegalonDocument saved = inboxItemService.create(toCreate);
 
         state.setPendingInboxItemId(saved.getId());
         state.setPendingInboxKind(PendingInboxKind.CONFIRMATION);

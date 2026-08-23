@@ -2,7 +2,7 @@ package de.mhus.vance.brain.thinkengine;
 
 import de.mhus.vance.api.attachment.AttachmentRef;
 import de.mhus.vance.api.inbox.AnswerPayload;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.thinkprocess.ActiveAppContext;
 import de.mhus.vance.api.thinkprocess.BoundDocSelection;
 import de.mhus.vance.api.thinkprocess.PeerEventType;
@@ -267,7 +267,7 @@ public sealed interface SteerMessage
             Instant at,
             @Nullable String idempotencyKey,
             String inboxItemId,
-            InboxItemType itemType,
+            MaximegalonType itemType,
             AnswerPayload answer) implements SteerMessage {
     }
 

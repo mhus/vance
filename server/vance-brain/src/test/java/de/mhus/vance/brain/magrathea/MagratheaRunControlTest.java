@@ -40,8 +40,8 @@ class MagratheaRunControlTest {
     private final MagratheaProjectLaneManager lanes = mock(MagratheaProjectLaneManager.class);
     private final de.mhus.vance.shared.thinkprocess.ThinkProcessService processes =
             mock(de.mhus.vance.shared.thinkprocess.ThinkProcessService.class);
-    private final de.mhus.vance.shared.inbox.InboxItemService inbox =
-            mock(de.mhus.vance.shared.inbox.InboxItemService.class);
+    private final de.mhus.vance.shared.inbox.MaximegalonService inbox =
+            mock(de.mhus.vance.shared.inbox.MaximegalonService.class);
     private final MagratheaTimerService timers = mock(MagratheaTimerService.class);
     private final MagratheaOwnerNotifier ownerNotifier = mock(MagratheaOwnerNotifier.class);
 

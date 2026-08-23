@@ -2,7 +2,7 @@ package de.mhus.vance.brain.magrathea;
 
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -49,7 +49,7 @@ final class GateChatAnswerParser {
      *         which case the caller must leave the gate open
      */
     static Optional<AnswerPayload> parse(
-            InboxItemType type,
+            MaximegalonType type,
             String text,
             List<String> options,
             String answeredBy) {

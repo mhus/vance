@@ -1,12 +1,12 @@
 package de.mhus.vance.brain.fook;
 
 import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.tenant.TenantService;
 import java.time.Instant;
@@ -90,7 +90,7 @@ public class FookService {
 
     private final FookTicketService ticketService;
     private final LightLlmService lightLlm;
-    private final InboxItemService inboxItemService;
+    private final MaximegalonService inboxItemService;
     private final SettingService settingService;
     private final FookSessionAnalysisService sessionAnalysisService;
 
@@ -251,7 +251,7 @@ public class FookService {
         String ticketId = ticketService.createTicket(payload);
 
         String body = initialInboxBody(ticketId, mode, result);
-        InboxItemDocument item = writeInboxItem(sub,
+        MaximegalonDocument item = writeInboxItem(sub,
                 "Ticket created",
                 body,
                 Map.of("decision", "new_ticket",
@@ -439,7 +439,7 @@ public class FookService {
         }
     }
 
-    private @Nullable InboxItemDocument writeInboxItem(
+    private @Nullable MaximegalonDocument writeInboxItem(
             Submission sub,
             String title,
             String body,
@@ -460,13 +460,13 @@ public class FookService {
             return null;
         }
         TicketContext ctx = sub.request().getContext();
-        InboxItemDocument item = InboxItemDocument.builder()
+        MaximegalonDocument item = MaximegalonDocument.builder()
                 .tenantId(reporter.getTenantId())
                 .originatorUserId(ORIGINATOR)
                 .assignedToUserId(reporter.getUserId())
                 .originProcessId(ctx == null ? null : ctx.getProcessId())
                 .originSessionId(ctx == null ? null : ctx.getSessionId())
-                .type(InboxItemType.OUTPUT_TEXT)
+                .type(MaximegalonType.OUTPUT_TEXT)
                 .criticality(Criticality.LOW)
                 .tags(List.of(INBOX_TAG))
                 .title(title)

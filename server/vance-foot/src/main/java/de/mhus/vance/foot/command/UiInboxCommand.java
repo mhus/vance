@@ -20,10 +20,10 @@ import com.googlecode.lanterna.gui2.dialogs.TextInputDialog;
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.InboxAnswerRequest;
 import de.mhus.vance.api.inbox.InboxDelegateRequest;
-import de.mhus.vance.api.inbox.InboxItemDto;
+import de.mhus.vance.api.inbox.MaximegalonDto;
 import de.mhus.vance.api.inbox.InboxItemIdRequest;
-import de.mhus.vance.api.inbox.InboxItemStatus;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonStatus;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.inbox.InboxListRequest;
 import de.mhus.vance.api.inbox.InboxListResponse;
 import de.mhus.vance.api.ws.MessageType;
@@ -101,7 +101,7 @@ public class UiInboxCommand implements SlashCommand {
         private final ActionListBox listBox = new ActionListBox();
         private final Button filterButton;
         private boolean showAll = false;
-        private List<InboxItemDto> items = List.of();
+        private List<MaximegalonDto> items = List.of();
 
         View(WindowBasedTextGUI gui) {
             this.gui = gui;
@@ -146,7 +146,7 @@ public class UiInboxCommand implements SlashCommand {
                 InboxListResponse response = connection.request(
                         MessageType.INBOX_LIST,
                         InboxListRequest.builder()
-                                .status(showAll ? null : InboxItemStatus.PENDING)
+                                .status(showAll ? null : MaximegalonStatus.PENDING)
                                 .build(),
                         InboxListResponse.class,
                         WS_TIMEOUT);
@@ -170,7 +170,7 @@ public class UiInboxCommand implements SlashCommand {
             }
             header.setText(items.size() + " item" + (items.size() == 1 ? "" : "s")
                     + " — Enter to open, " + (showAll ? "showing all." : "pending only."));
-            for (InboxItemDto item : items) {
+            for (MaximegalonDto item : items) {
                 listBox.addItem(formatRow(item), () -> openDetail(item));
             }
         }
@@ -179,7 +179,7 @@ public class UiInboxCommand implements SlashCommand {
             return showAll ? "Filter: ALL" : "Filter: PENDING";
         }
 
-        private void openDetail(InboxItemDto item) {
+        private void openDetail(MaximegalonDto item) {
             Detail detail = new Detail(item);
             gui.addWindowAndWait(detail.window);
             if (detail.mutated) {
@@ -204,11 +204,11 @@ public class UiInboxCommand implements SlashCommand {
      */
     private final class Detail {
 
-        private final InboxItemDto item;
+        private final MaximegalonDto item;
         private final BasicWindow window;
         private boolean mutated = false;
 
-        Detail(InboxItemDto item) {
+        Detail(MaximegalonDto item) {
             this.item = item;
             this.window = new BasicWindow("Inbox item — " + tailId(item.getId()));
             window.setHints(Set.of(Window.Hint.CENTERED, Window.Hint.FIT_TERMINAL_WINDOW));
@@ -245,7 +245,7 @@ public class UiInboxCommand implements SlashCommand {
 
             Panel buttons = new Panel();
             buttons.setLayoutManager(new LinearLayout(Direction.HORIZONTAL));
-            boolean editable = item.getStatus() == InboxItemStatus.PENDING;
+            boolean editable = item.getStatus() == MaximegalonStatus.PENDING;
             boolean canAnswer = editable && item.isRequiresAction();
             if (canAnswer) {
                 buttons.addComponent(new Button("Answer…", this::answer));
@@ -310,7 +310,7 @@ public class UiInboxCommand implements SlashCommand {
          * Returns {@code null} when the user cancels or the type has no UI
          * collector yet.
          */
-        private @Nullable Map<String, Object> collectAnswerValue(InboxItemType type) {
+        private @Nullable Map<String, Object> collectAnswerValue(MaximegalonType type) {
             WindowBasedTextGUI gui = window.getTextGUI();
             switch (type) {
                 case FEEDBACK, OUTPUT_TEXT -> {
@@ -446,7 +446,7 @@ public class UiInboxCommand implements SlashCommand {
         void run() throws Exception;
     }
 
-    private static String formatRow(InboxItemDto item) {
+    private static String formatRow(MaximegalonDto item) {
         return String.format("%-12s  %-9s  %-12s  %-7s  %s",
                 tailId(item.getId()),
                 Objects.toString(item.getStatus(), ""),

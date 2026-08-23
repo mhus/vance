@@ -3,9 +3,9 @@
  Source: de.mhus.vance.api.inbox.InboxListResponse
 */
 
-import { InboxItemDto } from './InboxItemDto';
+import { MaximegalonDto } from './MaximegalonDto';
 
 export interface InboxListResponse {
-  items: InboxItemDto[];
+  items: MaximegalonDto[];
   count: number;
 }

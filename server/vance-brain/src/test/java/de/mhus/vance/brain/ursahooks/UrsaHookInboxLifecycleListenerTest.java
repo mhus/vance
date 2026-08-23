@@ -7,8 +7,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.action.TriggerKind;
-import de.mhus.vance.shared.inbox.InboxItemCreatedEvent;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
+import de.mhus.vance.shared.inbox.MaximegalonCreatedEvent;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -43,7 +43,7 @@ class UrsaHookInboxLifecycleListenerTest {
 
     @Test
     void hookSpawnedOrigin_doesNotRefireInboxCreated_evenWithResolvableSession() {
-        InboxItemDocument item = mock(InboxItemDocument.class);
+        MaximegalonDocument item = mock(MaximegalonDocument.class);
         when(item.getOriginProcessId()).thenReturn("p-hook");
         // A resolvable session is present — proves the guard short-circuits
         // BEFORE project resolution / fan-out.
@@ -56,7 +56,7 @@ class UrsaHookInboxLifecycleListenerTest {
                         .build());
         when(thinkProcessService.findById("p-hook")).thenReturn(Optional.of(hookProc));
 
-        listener.onCreated(new InboxItemCreatedEvent(item));
+        listener.onCreated(new MaximegalonCreatedEvent(item));
 
         verify(publisher, never()).publishEvent(any());
         verify(sessionService, never()).findBySessionId(any());
@@ -64,7 +64,7 @@ class UrsaHookInboxLifecycleListenerTest {
 
     @Test
     void normalOrigin_firesInboxCreated() {
-        InboxItemDocument item = mock(InboxItemDocument.class);
+        MaximegalonDocument item = mock(MaximegalonDocument.class);
         when(item.getOriginProcessId()).thenReturn(null); // not hook-spawned
         when(item.getOriginSessionId()).thenReturn("s-1");
         when(item.getTenantId()).thenReturn("acme");
@@ -73,7 +73,7 @@ class UrsaHookInboxLifecycleListenerTest {
         when(session.getProjectId()).thenReturn("instant-hole");
         when(sessionService.findBySessionId("s-1")).thenReturn(Optional.of(session));
 
-        listener.onCreated(new InboxItemCreatedEvent(item));
+        listener.onCreated(new MaximegalonCreatedEvent(item));
 
         verify(publisher).publishEvent(any(UrsaHookFireableEvent.class));
     }
@@ -82,11 +82,11 @@ class UrsaHookInboxLifecycleListenerTest {
     void unresolvableScope_dropsSilently() {
         // No origin process (guard skipped) and no session → no project → drop,
         // never fan out (a tool-driven item without scope can't reach project hooks).
-        InboxItemDocument item = mock(InboxItemDocument.class);
+        MaximegalonDocument item = mock(MaximegalonDocument.class);
         when(item.getOriginProcessId()).thenReturn(null);
         when(item.getOriginSessionId()).thenReturn(null);
 
-        listener.onCreated(new InboxItemCreatedEvent(item));
+        listener.onCreated(new MaximegalonCreatedEvent(item));
 
         verify(publisher, never()).publishEvent(any());
     }

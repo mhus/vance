@@ -3,11 +3,11 @@ package de.mhus.vance.brain.magrathea;
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
-import de.mhus.vance.shared.inbox.InboxItemAnsweredEvent;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
+import de.mhus.vance.shared.inbox.MaximegalonAnsweredEvent;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +20,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Subscribes to {@link InboxItemAnsweredEvent} and converts answers
+ * Subscribes to {@link MaximegalonAnsweredEvent} and converts answers
  * for {@code workflow.gate}-tagged items into a {@link TaskCompletedEvent}
  * for the waiting Magrathea {@code gate_task} (plan §4.4, §6.4).
  *
@@ -53,8 +53,8 @@ public class MagratheaInboxCompletionListener {
     private final ObjectMapper objectMapper;
 
     @EventListener
-    public void onAnswered(InboxItemAnsweredEvent event) {
-        InboxItemDocument item = event.item();
+    public void onAnswered(MaximegalonAnsweredEvent event) {
+        MaximegalonDocument item = event.item();
         if (!isWorkflowGate(item)) {
             return;
         }
@@ -83,14 +83,14 @@ public class MagratheaInboxCompletionListener {
         publish(task, outcome, output, errorMessage);
     }
 
-    private static boolean isWorkflowGate(InboxItemDocument item) {
+    private static boolean isWorkflowGate(MaximegalonDocument item) {
         Map<String, Object> payload = item.getPayload();
         if (payload == null) return false;
         Object kind = payload.get("kind");
         return GateTaskExecutor.PAYLOAD_KIND.equals(kind);
     }
 
-    private static String mapOutcome(InboxItemType type, AnswerPayload answer) {
+    private static String mapOutcome(MaximegalonType type, AnswerPayload answer) {
         if (answer.getOutcome() == AnswerOutcome.INSUFFICIENT_INFO) return "insufficient_info";
         if (answer.getOutcome() == AnswerOutcome.UNDECIDABLE) return "undecidable";
 

@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.inbox.handlers;
 
-import de.mhus.vance.api.inbox.InboxItemStatus;
+import de.mhus.vance.api.inbox.MaximegalonStatus;
 import de.mhus.vance.api.inbox.InboxListRequest;
 import de.mhus.vance.api.inbox.InboxListResponse;
 import de.mhus.vance.api.ws.MessageType;
@@ -10,8 +10,8 @@ import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import java.io.IOException;
@@ -23,7 +23,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Lists inbox items for the bound user. Default returns
- * {@link InboxItemStatus#PENDING} only; client can pass
+ * {@link MaximegalonStatus#PENDING} only; client can pass
  * {@link InboxListRequest#getStatus()} to filter differently.
  */
 @Component
@@ -32,7 +32,7 @@ public class InboxListHandler implements WsHandler {
 
     private final ObjectMapper objectMapper;
     private final WebSocketSender sender;
-    private final InboxItemService inboxService;
+    private final MaximegalonService inboxService;
     private final RequestAuthority authority;
 
     @Override
@@ -53,9 +53,9 @@ public class InboxListHandler implements WsHandler {
             return;
         }
         authority.enforce(ctx, new Resource.Tenant(ctx.getTenantId()), Action.READ);
-        InboxItemStatus filter = request.getStatus() == null
-                ? InboxItemStatus.PENDING : request.getStatus();
-        List<InboxItemDocument> docs = inboxService.listForUser(
+        MaximegalonStatus filter = request.getStatus() == null
+                ? MaximegalonStatus.PENDING : request.getStatus();
+        List<MaximegalonDocument> docs = inboxService.listForUser(
                 ctx.getTenantId(), ctx.getUserId(), filter);
         InboxListResponse response = InboxListResponse.builder()
                 .items(InboxMapper.toDtos(docs))

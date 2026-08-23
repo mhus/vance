@@ -3,7 +3,7 @@ package de.mhus.vance.shared.inbox;
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.EffectDescription;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,7 +22,7 @@ import org.springframework.stereotype.Service;
  * unreadable approval flag. The alternative — acting when unsure — is
  * exactly the failure mode this mechanism exists to prevent.
  *
- * <p>Only {@link InboxItemType#APPROVAL} is dispatched in v1: it is the
+ * <p>Only {@link MaximegalonType#APPROVAL} is dispatched in v1: it is the
  * one item type whose answer schema carries a plain yes/no
  * ({@code {"approved": <bool>}}). Effects on richer types would need a
  * different callback shape than approve/reject and are deliberately not
@@ -61,7 +61,7 @@ public class InboxEffectRegistry {
      * failed notified nobody. Callers that suppress the generic route must
      * check the actual outcome as well — see {@code InboxAnsweredListener}.
      */
-    public boolean notifiesOrigin(InboxItemDocument item) {
+    public boolean notifiesOrigin(MaximegalonDocument item) {
         String type = item.getEffectType();
         if (StringUtils.isBlank(type)) {
             return false;
@@ -70,7 +70,7 @@ public class InboxEffectRegistry {
         return effect != null && effect.notifiesOrigin();
     }
 
-    public boolean dispatch(InboxItemDocument item, AnswerPayload answer) {
+    public boolean dispatch(MaximegalonDocument item, AnswerPayload answer) {
         String type = item.getEffectType();
         if (StringUtils.isBlank(type)) {
             return false;
@@ -88,7 +88,7 @@ public class InboxEffectRegistry {
                     item.getId(), answer.getOutcome());
             return false;
         }
-        if (item.getType() != InboxItemType.APPROVAL) {
+        if (item.getType() != MaximegalonType.APPROVAL) {
             log.warn("Inbox item '{}' has effect type '{}' but item type {} carries no "
                             + "approve/reject answer — no effect run",
                     item.getId(), type, item.getType());
@@ -115,7 +115,7 @@ public class InboxEffectRegistry {
      * UI. Empty when the item declares no effect, the type is unknown, or
      * the effect has nothing to show.
      */
-    public Optional<EffectDescription> describe(InboxItemDocument item) {
+    public Optional<EffectDescription> describe(MaximegalonDocument item) {
         String type = item.getEffectType();
         if (StringUtils.isBlank(type)) {
             return Optional.empty();

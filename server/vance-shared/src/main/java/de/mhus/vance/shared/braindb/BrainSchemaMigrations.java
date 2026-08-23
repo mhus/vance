@@ -66,7 +66,16 @@ public class BrainSchemaMigrations implements SchemaMigrationSource {
                     /*runOnBaseline*/ true),
             // Not runOnBaseline: a genuinely new database has no event_log to
             // drop, and being stamped without running is exactly right.
-            new Registered("2026-08-23_001", Migrator_2026_08_23_001_DropEventLog.class));
+            new Registered("2026-08-23_001", Migrator_2026_08_23_001_DropEventLog.class),
+            // runOnBaseline: this is the only writer of the inbox collection's
+            // new location, and the code only reads the new name. A database
+            // restored from before the anchor looks new here and would be
+            // baselined — the rows would stay in inbox_items while every query
+            // goes to maximegalon_threads, so every inbox appears *empty*
+            // rather than broken, and nothing later puts it right. On a new
+            // database it costs one collectionExists call.
+            new Registered("2026-08-23_002", Migrator_2026_08_23_002_MaximegalonRename.class,
+                    /*runOnBaseline*/ true));
 
     @Override
     public List<Registered> migrations() {

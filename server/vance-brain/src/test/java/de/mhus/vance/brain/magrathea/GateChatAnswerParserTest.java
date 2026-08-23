@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 class GateChatAnswerParserTest {
 
     private static Optional<AnswerPayload> approval(String text) {
-        return GateChatAnswerParser.parse(InboxItemType.APPROVAL, text, List.of(), "alice");
+        return GateChatAnswerParser.parse(MaximegalonType.APPROVAL, text, List.of(), "alice");
     }
 
     @Test
@@ -55,7 +55,7 @@ class GateChatAnswerParserTest {
     @Test
     void decision_matchingOption_isChosen() {
         Optional<AnswerPayload> p = GateChatAnswerParser.parse(
-                InboxItemType.DECISION, "Retry", List.of("retry", "abort"), "bob");
+                MaximegalonType.DECISION, "Retry", List.of("retry", "abort"), "bob");
 
         assertThat(p.orElseThrow().getValue()).containsEntry("chosen", "retry");
     }
@@ -63,7 +63,7 @@ class GateChatAnswerParserTest {
     @Test
     void decision_unknownOption_isNotAnAnswer() {
         Optional<AnswerPayload> p = GateChatAnswerParser.parse(
-                InboxItemType.DECISION, "maybe later", List.of("retry", "abort"), "bob");
+                MaximegalonType.DECISION, "maybe later", List.of("retry", "abort"), "bob");
 
         assertThat(p).isEmpty();
     }
@@ -71,13 +71,13 @@ class GateChatAnswerParserTest {
     @Test
     void decision_withoutDeclaredOptions_isNotAnAnswer() {
         assertThat(GateChatAnswerParser.parse(
-                InboxItemType.DECISION, "retry", List.of(), "bob")).isEmpty();
+                MaximegalonType.DECISION, "retry", List.of(), "bob")).isEmpty();
     }
 
     @Test
     void feedback_takesTheTextVerbatim() {
         AnswerPayload p = GateChatAnswerParser.parse(
-                InboxItemType.FEEDBACK, "  needs a shorter intro  ", List.of(), "cara")
+                MaximegalonType.FEEDBACK, "  needs a shorter intro  ", List.of(), "cara")
                 .orElseThrow();
 
         assertThat(p.getValue()).containsEntry("text", "needs a shorter intro");

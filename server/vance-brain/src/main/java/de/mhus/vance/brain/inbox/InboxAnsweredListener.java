@@ -1,14 +1,14 @@
 package de.mhus.vance.brain.inbox;
 
 import de.mhus.vance.api.inbox.AnswerOutcome;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.brain.memory.RecompactionTags;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SteerMessageCodec;
-import de.mhus.vance.shared.inbox.InboxItemAnsweredEvent;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemHistoryEntry;
+import de.mhus.vance.shared.inbox.MaximegalonAnsweredEvent;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonHistoryEntry;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;
@@ -49,7 +49,7 @@ import org.springframework.stereotype.Component;
 public class InboxAnsweredListener {
 
     /**
-     * History action {@code InboxItemService.recordEffectFailure} writes
+     * History action {@code MaximegalonService.recordEffectFailure} writes
      * when the effect threw. Duplicated as a literal because the writer
      * side has no constant to share; the pairing is covered by
      * {@code InboxAnsweredListenerTest}.
@@ -59,11 +59,11 @@ public class InboxAnsweredListener {
     private final ThinkProcessService thinkProcessService;
     private final ProcessEventEmitter eventEmitter;
     private final de.mhus.vance.shared.inbox.InboxEffectRegistry effectRegistry;
-    private final de.mhus.vance.shared.inbox.InboxItemService inboxItemService;
+    private final de.mhus.vance.shared.inbox.MaximegalonService inboxItemService;
 
     @EventListener
-    public void onAnswered(InboxItemAnsweredEvent event) {
-        InboxItemDocument item = event.item();
+    public void onAnswered(MaximegalonAnsweredEvent event) {
+        MaximegalonDocument item = event.item();
         // Recompaction-offers handle their own answers in
         // RecompactionOfferAnsweredListener (act on chat history directly,
         // no engine round-trip needed). Skip routing for them so the
@@ -110,7 +110,7 @@ public class InboxAnsweredListener {
      *
      * <p>{@code notifiesOrigin()} alone is not that answer: it is a static
      * property of the effect <em>type</em>, decided before anything ran.
-     * {@code InboxItemService.answer} dispatches the effect, swallows
+     * {@code MaximegalonService.answer} dispatches the effect, swallows
      * whatever it throws, and publishes the answered-event regardless. A
      * listener that suppressed on the declaration therefore dropped the
      * only notification the origin was going to receive, and the process
@@ -130,7 +130,7 @@ public class InboxAnsweredListener {
      * {@code dispatch} to report what it did rather than what its type
      * promises.
      */
-    private boolean originAlreadyNotified(InboxItemDocument item) {
+    private boolean originAlreadyNotified(MaximegalonDocument item) {
         if (!effectRegistry.notifiesOrigin(item)) {
             return false;
         }
@@ -140,7 +140,7 @@ public class InboxAnsweredListener {
             return false;
         }
         // Only APPROVAL carries the approve/reject answer dispatch needs.
-        if (item.getType() != InboxItemType.APPROVAL) {
+        if (item.getType() != MaximegalonType.APPROVAL) {
             return false;
         }
         return !effectFailed(item);
@@ -151,14 +151,14 @@ public class InboxAnsweredListener {
      * the document the event carries was read <em>before</em> the effect
      * ran, so the failure entry is never on it.
      */
-    private boolean effectFailed(InboxItemDocument item) {
-        InboxItemDocument fresh = inboxItemService
+    private boolean effectFailed(MaximegalonDocument item) {
+        MaximegalonDocument fresh = inboxItemService
                 .findById(item.getTenantId(), item.getId())
                 .orElse(item);
         if (fresh.getHistory() == null) {
             return false;
         }
-        for (InboxItemHistoryEntry entry : fresh.getHistory()) {
+        for (MaximegalonHistoryEntry entry : fresh.getHistory()) {
             if (ACTION_EFFECT_FAILED.equals(entry.getAction())) {
                 log.warn("InboxAnsweredListener: effect '{}' failed on item '{}' — routing the "
                                 + "generic answer so the origin process is not left waiting",

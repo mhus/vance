@@ -6,9 +6,9 @@ import de.mhus.vance.api.inbox.Criticality;
 import de.mhus.vance.api.inbox.InboxAnswerRequest;
 import de.mhus.vance.api.inbox.InboxCountResponse;
 import de.mhus.vance.api.inbox.InboxDelegateRequest;
-import de.mhus.vance.api.inbox.InboxItemDto;
-import de.mhus.vance.api.inbox.InboxItemStatus;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonDto;
+import de.mhus.vance.api.inbox.MaximegalonStatus;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.inbox.InboxListResponse;
 import de.mhus.vance.api.inbox.InboxShareRequest;
 import de.mhus.vance.api.inbox.InboxTagsResponse;
@@ -17,8 +17,8 @@ import de.mhus.vance.brain.inbox.InboxMapper;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.inbox.InboxEffectRegistry;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.project.ProjectDocument;
@@ -72,7 +72,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Slf4j
 public class InboxController {
 
-    private final InboxItemService inboxItemService;
+    private final MaximegalonService inboxItemService;
     private final InboxEffectRegistry effectRegistry;
     private final TeamService teamService;
     private final ProjectService projectService;
@@ -97,15 +97,15 @@ public class InboxController {
     public InboxListResponse list(
             @PathVariable("tenant") String tenant,
             @RequestParam(value = "assignedTo", required = false) @Nullable String assignedTo,
-            @RequestParam(value = "status", required = false) @Nullable InboxItemStatus status,
+            @RequestParam(value = "status", required = false) @Nullable MaximegalonStatus status,
             @RequestParam(value = "tag", required = false) @Nullable String tag,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
         String currentUser = currentUser(httpRequest);
         List<String> targetUsers = resolveTargetUsers(tenant, currentUser, assignedTo);
-        List<InboxItemDocument> docs = inboxItemService.listFiltered(
+        List<MaximegalonDocument> docs = inboxItemService.listFiltered(
                 tenant, targetUsers, status, tag);
-        List<InboxItemDto> dtos = InboxMapper.toDtos(docs);
+        List<MaximegalonDto> dtos = InboxMapper.toDtos(docs);
         return InboxListResponse.builder().items(dtos).count(dtos.size()).build();
     }
 
@@ -126,7 +126,7 @@ public class InboxController {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
         String currentUser = currentUser(httpRequest);
         List<String> targetUsers = resolveTargetUsers(tenant, currentUser, assignedTo);
-        InboxItemService.PendingCounts counts =
+        MaximegalonService.PendingCounts counts =
                 inboxItemService.countPending(tenant, targetUsers);
         return InboxCountResponse.builder()
                 .pending(counts.total())
@@ -136,11 +136,11 @@ public class InboxController {
 
     /** Single item — same authorisation as list. */
     @GetMapping("/brain/{tenant}/inbox/{id}")
-    public InboxItemDto findOne(
+    public MaximegalonDto findOne(
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
             HttpServletRequest httpRequest) {
-        InboxItemDocument doc = loadAuthorized(tenant, id, httpRequest);
+        MaximegalonDocument doc = loadAuthorized(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.READ);
         return InboxMapper.toDto(doc);
     }
@@ -162,7 +162,7 @@ public class InboxController {
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
             HttpServletRequest httpRequest) {
-        InboxItemDocument doc = loadAuthorized(tenant, id, httpRequest);
+        MaximegalonDocument doc = loadAuthorized(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.READ);
         return effectRegistry.describe(doc)
                 .map(ResponseEntity::ok)
@@ -193,13 +193,13 @@ public class InboxController {
     // ──────────────────── Mutations ────────────────────
 
     @PostMapping("/brain/{tenant}/inbox/{id}/answer")
-    public ResponseEntity<InboxItemDto> answer(
+    public ResponseEntity<MaximegalonDto> answer(
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
             @Valid @RequestBody InboxAnswerRequest request,
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
-        InboxItemDocument doc = loadAuthorized(tenant, id, httpRequest);
+        MaximegalonDocument doc = loadAuthorized(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
         // The wire-DTO is flat (outcome / value / reason). Build
         // the AnswerPayload here, stamping the resolver with the
@@ -211,21 +211,21 @@ public class InboxController {
                 .reason(request.getReason())
                 .answeredBy(currentUser)
                 .build();
-        InboxItemDocument updated = inboxItemService.answer(
+        MaximegalonDocument updated = inboxItemService.answer(
                         tenant, id, payload, ResolvedBy.USER)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
     }
 
     @PostMapping("/brain/{tenant}/inbox/{id}/archive")
-    public ResponseEntity<InboxItemDto> archive(
+    public ResponseEntity<MaximegalonDto> archive(
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
-        InboxItemDocument doc = loadAuthorized(tenant, id, httpRequest);
+        MaximegalonDocument doc = loadAuthorized(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
-        InboxItemDocument updated = inboxItemService.archive(tenant, id, currentUser)
+        MaximegalonDocument updated = inboxItemService.archive(tenant, id, currentUser)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
     }
@@ -236,45 +236,45 @@ public class InboxController {
      * {@code PENDING}. No-op if the item isn't currently archived.
      */
     @PostMapping("/brain/{tenant}/inbox/{id}/unarchive")
-    public ResponseEntity<InboxItemDto> unarchive(
+    public ResponseEntity<MaximegalonDto> unarchive(
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
-        InboxItemDocument doc = loadAuthorized(tenant, id, httpRequest);
+        MaximegalonDocument doc = loadAuthorized(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
-        InboxItemDocument updated = inboxItemService.unarchive(tenant, id, currentUser)
+        MaximegalonDocument updated = inboxItemService.unarchive(tenant, id, currentUser)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
     }
 
     @PostMapping("/brain/{tenant}/inbox/{id}/dismiss")
-    public ResponseEntity<InboxItemDto> dismiss(
+    public ResponseEntity<MaximegalonDto> dismiss(
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
-        InboxItemDocument doc = loadAuthorized(tenant, id, httpRequest);
+        MaximegalonDocument doc = loadAuthorized(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
-        InboxItemDocument updated = inboxItemService.dismiss(tenant, id, currentUser)
+        MaximegalonDocument updated = inboxItemService.dismiss(tenant, id, currentUser)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
     }
 
     @PostMapping("/brain/{tenant}/inbox/{id}/delegate")
-    public ResponseEntity<InboxItemDto> delegate(
+    public ResponseEntity<MaximegalonDto> delegate(
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
             @Valid @RequestBody InboxDelegateRequest request,
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
-        InboxItemDocument doc = loadAuthorized(tenant, id, httpRequest);
+        MaximegalonDocument doc = loadAuthorized(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
         if (request.getToUserId() == null || request.getToUserId().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Delegate target userId is required");
         }
-        InboxItemDocument updated = inboxItemService.delegate(
+        MaximegalonDocument updated = inboxItemService.delegate(
                         tenant, id, request.getToUserId(), currentUser, request.getNote())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
@@ -287,7 +287,7 @@ public class InboxController {
      * the extension authenticates with a long-lived bearer token
      * minted at login time and stored in the App-Group keychain.
      *
-     * <p>The item is created as an {@link InboxItemType#OUTPUT_TEXT}
+     * <p>The item is created as an {@link MaximegalonType#OUTPUT_TEXT}
      * with {@code requiresAction=false} so the inbox treats it as a
      * delivered note the user can read, archive, move to Documents,
      * or attach to a chat later. The project association lives in
@@ -295,7 +295,7 @@ public class InboxController {
      * (so the existing tag-filter UI picks it up).
      */
     @PostMapping("/brain/{tenant}/share/inbox")
-    public ResponseEntity<InboxItemDto> shareInbox(
+    public ResponseEntity<MaximegalonDto> shareInbox(
             @PathVariable("tenant") String tenant,
             @Valid @RequestBody InboxShareRequest request,
             HttpServletRequest httpRequest) {
@@ -321,13 +321,13 @@ public class InboxController {
 
         String title = StringUtils.defaultIfBlank(request.getTitle(), "Shared item");
 
-        InboxItemDocument toCreate = InboxItemDocument.builder()
+        MaximegalonDocument toCreate = MaximegalonDocument.builder()
                 .tenantId(tenant)
                 .originatorUserId(currentUser)
                 .assignedToUserId(currentUser)
-                .type(InboxItemType.OUTPUT_TEXT)
+                .type(MaximegalonType.OUTPUT_TEXT)
                 .criticality(Criticality.NORMAL)
-                .status(InboxItemStatus.PENDING)
+                .status(MaximegalonStatus.PENDING)
                 .requiresAction(false)
                 .title(title)
                 .body(request.getBody())
@@ -335,7 +335,7 @@ public class InboxController {
                 .payload(payload)
                 .build();
 
-        InboxItemDocument created = inboxItemService.create(toCreate);
+        MaximegalonDocument created = inboxItemService.create(toCreate);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(InboxMapper.toDto(created));
     }
@@ -353,7 +353,7 @@ public class InboxController {
 
     /**
      * Map an {@code assignedTo}-query-param to the concrete list of
-     * userIds the {@link InboxItemService} should filter on.
+     * userIds the {@link MaximegalonService} should filter on.
      *
      * <ul>
      *   <li>{@code null} or {@code "self"} → {@code [currentUser]}</li>
@@ -402,21 +402,21 @@ public class InboxController {
      * Loads the item, validates tenant, and checks the current
      * user is allowed to see/touch it (own inbox or shared team).
      */
-    private static Resource.InboxItem inboxResource(InboxItemDocument doc) {
+    private static Resource.InboxItem inboxResource(MaximegalonDocument doc) {
         return new Resource.InboxItem(
                 doc.getTenantId() == null ? "" : doc.getTenantId(),
                 doc.getId() == null ? "" : doc.getId(),
                 doc.getAssignedToUserId() == null ? "" : doc.getAssignedToUserId());
     }
 
-    private InboxItemDocument loadAuthorized(
+    private MaximegalonDocument loadAuthorized(
             String tenant, String id, HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
-        Optional<InboxItemDocument> opt = inboxItemService.findById(tenant, id);
+        Optional<MaximegalonDocument> opt = inboxItemService.findById(tenant, id);
         if (opt.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        InboxItemDocument doc = opt.get();
+        MaximegalonDocument doc = opt.get();
         if (!tenant.equals(doc.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }

@@ -2,7 +2,7 @@ package de.mhus.vance.brain.marvin;
 
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.marvin.ConcludeOutput;
 import de.mhus.vance.api.marvin.NewTaskSpec;
 import de.mhus.vance.api.marvin.NodeStatus;
@@ -34,8 +34,8 @@ import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.marvin.MarvinNodeDocument;
 import de.mhus.vance.shared.marvin.MarvinNodeService;
 import de.mhus.vance.shared.marvin.MarvinNodeService.NodeSpec;
@@ -138,7 +138,7 @@ public class MarvinEngine implements ThinkEngine {
 
     private final MarvinNodeService nodeService;
     private final MarvinProperties properties;
-    private final InboxItemService inboxItemService;
+    private final MaximegalonService inboxItemService;
     private final ThinkProcessService thinkProcessService;
     private final ChatMessageService chatMessageService;
     private final RecipeResolver recipeResolver;
@@ -1668,8 +1668,8 @@ public class MarvinEngine implements ThinkEngine {
                     "USER_INPUT requires session-owner userId; none resolved");
             return false;
         }
-        InboxItemType type = parseInboxItemType(
-                paramString(node, "type", null), InboxItemType.FEEDBACK);
+        MaximegalonType type = parseInboxItemType(
+                paramString(node, "type", null), MaximegalonType.FEEDBACK);
         Criticality crit = parseCriticality(
                 paramString(node, "criticality", null), Criticality.NORMAL);
         String title = paramString(node, "title", node.getGoal());
@@ -1677,7 +1677,7 @@ public class MarvinEngine implements ThinkEngine {
         @SuppressWarnings("unchecked")
         Map<String, Object> payload = paramMap(node, "payload");
         try {
-            InboxItemDocument toCreate = InboxItemDocument.builder()
+            MaximegalonDocument toCreate = MaximegalonDocument.builder()
                     .tenantId(process.getTenantId())
                     .originatorUserId("marvin:" + process.getId())
                     .assignedToUserId(targetUserId)
@@ -1691,7 +1691,7 @@ public class MarvinEngine implements ThinkEngine {
                     .payload(payload == null ? new LinkedHashMap<>() : payload)
                     .requiresAction(true)
                     .build();
-            InboxItemDocument saved = inboxItemService.create(toCreate);
+            MaximegalonDocument saved = inboxItemService.create(toCreate);
             nodeService.setInboxItemId(node, saved.getId());
             nodeService.markWaiting(node);
             log.info("Marvin id='{}' USER_INPUT node='{}' item='{}' type={} crit={}",
@@ -2185,11 +2185,11 @@ public class MarvinEngine implements ThinkEngine {
         }
     }
 
-    private static InboxItemType parseInboxItemType(
-            @Nullable String raw, InboxItemType fallback) {
+    private static MaximegalonType parseInboxItemType(
+            @Nullable String raw, MaximegalonType fallback) {
         if (raw == null || raw.isBlank()) return fallback;
         try {
-            return InboxItemType.valueOf(raw.trim().toUpperCase());
+            return MaximegalonType.valueOf(raw.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
             return fallback;
         }

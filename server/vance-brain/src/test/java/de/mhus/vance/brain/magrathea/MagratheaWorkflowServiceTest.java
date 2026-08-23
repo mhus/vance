@@ -70,8 +70,8 @@ class MagratheaWorkflowServiceTest {
             mock(de.mhus.vance.shared.document.DocumentService.class);
     private final de.mhus.vance.shared.thinkprocess.ThinkProcessService thinkProcessService =
             mock(de.mhus.vance.shared.thinkprocess.ThinkProcessService.class);
-    private final de.mhus.vance.shared.inbox.InboxItemService inboxItemService =
-            mock(de.mhus.vance.shared.inbox.InboxItemService.class);
+    private final de.mhus.vance.shared.inbox.MaximegalonService inboxItemService =
+            mock(de.mhus.vance.shared.inbox.MaximegalonService.class);
     private final de.mhus.vance.shared.magrathea.MagratheaTimerService timerService =
             mock(de.mhus.vance.shared.magrathea.MagratheaTimerService.class);
     private final MagratheaTaskService taskService = mock(MagratheaTaskService.class);

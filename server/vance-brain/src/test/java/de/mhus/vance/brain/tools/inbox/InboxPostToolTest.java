@@ -10,7 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.permission.SecurityContextFactory;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionService;
@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
  */
 class InboxPostToolTest {
 
-    private final InboxItemService inboxItemService = mock(InboxItemService.class);
+    private final MaximegalonService inboxItemService = mock(MaximegalonService.class);
     private final DocumentService documentService = mock(DocumentService.class);
     private final PermissionService permissionService = mock(PermissionService.class);
     private final SecurityContextFactory contextFactory = mock(SecurityContextFactory.class);

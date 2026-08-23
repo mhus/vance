@@ -12,8 +12,8 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
-import de.mhus.vance.shared.inbox.InboxItemAnsweredEvent;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
+import de.mhus.vance.shared.inbox.MaximegalonAnsweredEvent;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -64,11 +64,11 @@ class RecompactionOfferAnsweredListenerTest {
                 .thenReturn(CompactionResult.success(3, 100, "mem-99", null));
     }
 
-    private InboxItemDocument offer(
+    private MaximegalonDocument offer(
             List<String> tags,
             AnswerPayload answer,
             Map<String, Object> payload) {
-        InboxItemDocument item = InboxItemDocument.builder()
+        MaximegalonDocument item = MaximegalonDocument.builder()
                 .id("inbox-1")
                 .tenantId("t")
                 .originProcessId("p-1")
@@ -99,11 +99,11 @@ class RecompactionOfferAnsweredListenerTest {
 
     @Test
     void approved_callsCompactRangeWithDecodedRangeAndTopic() {
-        InboxItemDocument item = offer(
+        MaximegalonDocument item = offer(
                 List.of(RecompactionTags.TAG_INBOX_OFFER),
                 approved(true), validPayload());
 
-        listener.onAnswered(new InboxItemAnsweredEvent(item));
+        listener.onAnswered(new MaximegalonAnsweredEvent(item));
 
         ArgumentCaptor<ThinkProcessDocument> processCap =
                 ArgumentCaptor.forClass(ThinkProcessDocument.class);
@@ -123,22 +123,22 @@ class RecompactionOfferAnsweredListenerTest {
 
     @Test
     void missingTag_skipsEntirely() {
-        InboxItemDocument item = offer(
+        MaximegalonDocument item = offer(
                 List.of(), // no RECOMPACTION_OFFER tag
                 approved(true), validPayload());
 
-        listener.onAnswered(new InboxItemAnsweredEvent(item));
+        listener.onAnswered(new MaximegalonAnsweredEvent(item));
 
         verifyNoInteractions(compactionService, thinkProcessService);
     }
 
     @Test
     void approvedFalse_doesNotCompact() {
-        InboxItemDocument item = offer(
+        MaximegalonDocument item = offer(
                 List.of(RecompactionTags.TAG_INBOX_OFFER),
                 approved(false), validPayload());
 
-        listener.onAnswered(new InboxItemAnsweredEvent(item));
+        listener.onAnswered(new MaximegalonAnsweredEvent(item));
 
         verify(compactionService, never()).compactRange(any(), any(), any(), anyString());
     }
@@ -148,22 +148,22 @@ class RecompactionOfferAnsweredListenerTest {
         AnswerPayload nope = AnswerPayload.builder()
                 .outcome(AnswerOutcome.INSUFFICIENT_INFO)
                 .reason("user unsure").build();
-        InboxItemDocument item = offer(
+        MaximegalonDocument item = offer(
                 List.of(RecompactionTags.TAG_INBOX_OFFER),
                 nope, validPayload());
 
-        listener.onAnswered(new InboxItemAnsweredEvent(item));
+        listener.onAnswered(new MaximegalonAnsweredEvent(item));
 
         verify(compactionService, never()).compactRange(any(), any(), any(), anyString());
     }
 
     @Test
     void missingAnswer_doesNotCompact() {
-        InboxItemDocument item = offer(
+        MaximegalonDocument item = offer(
                 List.of(RecompactionTags.TAG_INBOX_OFFER),
                 null, validPayload());
 
-        listener.onAnswered(new InboxItemAnsweredEvent(item));
+        listener.onAnswered(new MaximegalonAnsweredEvent(item));
 
         verify(compactionService, never()).compactRange(any(), any(), any(), anyString());
     }
@@ -172,11 +172,11 @@ class RecompactionOfferAnsweredListenerTest {
     void missingRangeStartInPayload_skips() {
         Map<String, Object> p = validPayload();
         p.remove(RecompactionTags.PAYLOAD_RANGE_START_AT);
-        InboxItemDocument item = offer(
+        MaximegalonDocument item = offer(
                 List.of(RecompactionTags.TAG_INBOX_OFFER),
                 approved(true), p);
 
-        listener.onAnswered(new InboxItemAnsweredEvent(item));
+        listener.onAnswered(new MaximegalonAnsweredEvent(item));
 
         verify(compactionService, never()).compactRange(any(), any(), any(), anyString());
     }
@@ -184,11 +184,11 @@ class RecompactionOfferAnsweredListenerTest {
     @Test
     void processGone_skips() {
         when(thinkProcessService.findById("p-1")).thenReturn(Optional.empty());
-        InboxItemDocument item = offer(
+        MaximegalonDocument item = offer(
                 List.of(RecompactionTags.TAG_INBOX_OFFER),
                 approved(true), validPayload());
 
-        listener.onAnswered(new InboxItemAnsweredEvent(item));
+        listener.onAnswered(new MaximegalonAnsweredEvent(item));
 
         verify(compactionService, never()).compactRange(any(), any(), any(), anyString());
     }

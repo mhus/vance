@@ -2,7 +2,7 @@ package de.mhus.vance.brain.ursascheduler;
 
 import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.ursascheduler.OverlapPolicy;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionOutcome;
@@ -14,8 +14,8 @@ import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler;
 import de.mhus.vance.shared.ursascheduler.UrsaSchedulerLoader;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -91,7 +91,7 @@ public class UrsaSchedulerService {
     /** Coarse activity feed for the project owner — see MegadodoService. */
     private final de.mhus.vance.shared.megadodo.MegadodoService megadodoService;
     /** For auto-disable notifications — see {@link #autoDisableScheduler}. */
-    private final InboxItemService inboxItemService;
+    private final MaximegalonService inboxItemService;
 
     /**
      * When {@code false}, the seconds-field of a 6-field cron expression
@@ -957,11 +957,11 @@ public class UrsaSchedulerService {
         payload.put("autoDisabled", persisted);
 
         try {
-            inboxItemService.create(InboxItemDocument.builder()
+            inboxItemService.create(MaximegalonDocument.builder()
                     .tenantId(reg.tenantId)
                     .originatorUserId("ursascheduler:" + reg.config.name())
                     .assignedToUserId(assignee)
-                    .type(InboxItemType.OUTPUT_TEXT)
+                    .type(MaximegalonType.OUTPUT_TEXT)
                     .criticality(Criticality.NORMAL)
                     .title("Scheduler '" + reg.config.name() + "' auto-disabled")
                     .body(body.toString())

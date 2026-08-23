@@ -95,7 +95,7 @@ public class MagratheaWorkflowService {
     /** Only to stop an agent whose task ended on its deadline. */
     private final ThinkProcessService thinkProcessService;
     /** Unwinding a stopped run: withdraw its gate item, drop its timers. */
-    private final de.mhus.vance.shared.inbox.InboxItemService inboxItemService;
+    private final de.mhus.vance.shared.inbox.MaximegalonService inboxItemService;
     private final de.mhus.vance.shared.magrathea.MagratheaTimerService timerService;
 
     public MagratheaWorkflowService(
@@ -111,7 +111,7 @@ public class MagratheaWorkflowService {
             org.springframework.context.ApplicationEventPublisher eventPublisher,
             MetricService metricService,
             ThinkProcessService thinkProcessService,
-            de.mhus.vance.shared.inbox.InboxItemService inboxItemService,
+            de.mhus.vance.shared.inbox.MaximegalonService inboxItemService,
             de.mhus.vance.shared.magrathea.MagratheaTimerService timerService) {
         this.workflowLoader = workflowLoader;
         this.documentService = documentService;

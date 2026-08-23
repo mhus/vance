@@ -7,13 +7,13 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.api.inbox.InboxItemStatus;
+import de.mhus.vance.api.inbox.MaximegalonStatus;
 import de.mhus.vance.api.kit.KitInstalledRecordDto;
 import de.mhus.vance.api.kit.KitOriginDto;
 import de.mhus.vance.api.kit.KitProvisioningAuthority;
 import de.mhus.vance.brain.kit.KitRecordStore;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.kit.KitException;
 import java.util.List;
 import java.util.Map;
@@ -32,7 +32,7 @@ class KitProvisioningCheckTest {
     private KitProvisioningLoader loader;
     private KitProvisioningHandlers handlers;
     private KitRecordStore recordStore;
-    private InboxItemService inboxItems;
+    private MaximegalonService inboxItems;
     private KitProvisioningCheck check;
 
     @BeforeEach
@@ -40,7 +40,7 @@ class KitProvisioningCheckTest {
         loader = mock(KitProvisioningLoader.class);
         handlers = mock(KitProvisioningHandlers.class);
         recordStore = mock(KitRecordStore.class);
-        inboxItems = mock(InboxItemService.class);
+        inboxItems = mock(MaximegalonService.class);
         check = new KitProvisioningCheck(loader, handlers, recordStore, inboxItems);
         when(loader.declaredBy(TENANT, PROJECT)).thenReturn(AUTHOR);
         when(inboxItems.listFiltered(any(), any(), any(), any())).thenReturn(List.of());
@@ -170,9 +170,9 @@ class KitProvisioningCheckTest {
     void openItemForTheSameKit_suppressesASecond() {
         declare(KitProvisioningAuthority.NOTIFY, "rev-2");
         installedWithStamp("rev-1", Map.of("lang", "de"));
-        when(inboxItems.listFiltered(TENANT, List.of(AUTHOR), InboxItemStatus.PENDING,
+        when(inboxItems.listFiltered(TENANT, List.of(AUTHOR), MaximegalonStatus.PENDING,
                 KitProvisioningCheck.TAG))
-                .thenReturn(List.of(InboxItemDocument.builder()
+                .thenReturn(List.of(MaximegalonDocument.builder()
                         .effectRef(PROJECT + "|" + URL + "|acme-crm")
                         .build()));
 
@@ -188,7 +188,7 @@ class KitProvisioningCheckTest {
         declare(KitProvisioningAuthority.NOTIFY, "rev-2");
         installedWithStamp("rev-1", Map.of("lang", "de"));
         when(inboxItems.listFiltered(any(), any(), any(), any()))
-                .thenReturn(List.of(InboxItemDocument.builder()
+                .thenReturn(List.of(MaximegalonDocument.builder()
                         .effectRef(PROJECT + "|" + URL + "|other-kit")
                         .build()));
 
@@ -202,8 +202,8 @@ class KitProvisioningCheckTest {
 
         check.check(TENANT, PROJECT);
 
-        ArgumentCaptor<InboxItemDocument> item =
-                ArgumentCaptor.forClass(InboxItemDocument.class);
+        ArgumentCaptor<MaximegalonDocument> item =
+                ArgumentCaptor.forClass(MaximegalonDocument.class);
         verify(inboxItems).create(item.capture());
         assertThat(item.getValue().getAssignedToUserId()).isEqualTo(AUTHOR);
         assertThat(item.getValue().getTags()).containsExactly(KitProvisioningCheck.TAG);

@@ -20,7 +20,7 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
  * {@link #FEEDBACK}, {@link #OUTPUT_TEXT}; the rest are spec-only.
  */
 @GenerateTypeScript("inbox")
-public enum InboxItemType {
+public enum MaximegalonType {
     APPROVAL,
     DECISION,
     FEEDBACK,

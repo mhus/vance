@@ -11,14 +11,14 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.api.magrathea.MagratheaWorkflowSource;
 import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.shared.magrathea.MagratheaBoundsSpec;
 import de.mhus.vance.shared.magrathea.MagratheaRetrySpec;
 import de.mhus.vance.shared.magrathea.MagratheaStateSpec;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import de.mhus.vance.shared.magrathea.ResolvedMagratheaWorkflow;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,7 +29,7 @@ import org.mockito.InOrder;
 
 class GateTaskExecutorTest {
 
-    private final InboxItemService inboxService = mock(InboxItemService.class);
+    private final MaximegalonService inboxService = mock(MaximegalonService.class);
     private final MagratheaTaskService taskService = mock(MagratheaTaskService.class);
     private final MagratheaTimeoutScheduler timeoutScheduler = mock(MagratheaTimeoutScheduler.class);
     private final MagratheaOwnerNotifier ownerNotifier = mock(MagratheaOwnerNotifier.class);
@@ -49,10 +49,10 @@ class GateTaskExecutorTest {
 
         assertThat(outcome).isEmpty();
 
-        ArgumentCaptor<InboxItemDocument> captor = ArgumentCaptor.captor();
+        ArgumentCaptor<MaximegalonDocument> captor = ArgumentCaptor.captor();
         verify(inboxService).create(captor.capture());
-        InboxItemDocument created = captor.getValue();
-        assertThat(created.getType()).isEqualTo(InboxItemType.APPROVAL);
+        MaximegalonDocument created = captor.getValue();
+        assertThat(created.getType()).isEqualTo(MaximegalonType.APPROVAL);
         assertThat(created.getTitle()).isEqualTo("Approve PR?");
         assertThat(created.getBody()).isEqualTo("merge if ok");
         assertThat(created.getAssignedToUserId()).isEqualTo("@maintainers");
@@ -78,7 +78,7 @@ class GateTaskExecutorTest {
     @Test
     void decision_gate_includes_options_in_payload() {
         when(inboxService.create(any())).thenAnswer(inv -> {
-            InboxItemDocument doc = inv.getArgument(0);
+            MaximegalonDocument doc = inv.getArgument(0);
             doc.setId("inbox-2");
             return doc;
         });
@@ -88,11 +88,11 @@ class GateTaskExecutorTest {
                 "title", "Pick a path",
                 "options", List.of("approve", "reject", "defer")))));
 
-        ArgumentCaptor<InboxItemDocument> captor = ArgumentCaptor.captor();
+        ArgumentCaptor<MaximegalonDocument> captor = ArgumentCaptor.captor();
         verify(inboxService).create(captor.capture());
         assertThat(captor.getValue().getPayload())
                 .containsEntry("options", List.of("approve", "reject", "defer"));
-        assertThat(captor.getValue().getType()).isEqualTo(InboxItemType.DECISION);
+        assertThat(captor.getValue().getType()).isEqualTo(MaximegalonType.DECISION);
     }
 
     @Test
@@ -122,7 +122,7 @@ class GateTaskExecutorTest {
     @Test
     void assignedTo_falls_back_to_startedBy_then_system() {
         when(inboxService.create(any())).thenAnswer(inv -> {
-            InboxItemDocument d = inv.getArgument(0);
+            MaximegalonDocument d = inv.getArgument(0);
             d.setId("ix");
             return d;
         });
@@ -131,7 +131,7 @@ class GateTaskExecutorTest {
                 "kind", "APPROVAL",
                 "title", "x"))));
 
-        ArgumentCaptor<InboxItemDocument> captor = ArgumentCaptor.captor();
+        ArgumentCaptor<MaximegalonDocument> captor = ArgumentCaptor.captor();
         verify(inboxService).create(captor.capture());
         // ctx.startedBy is "alice" — the fallback chain picks it.
         assertThat(captor.getValue().getAssignedToUserId()).isEqualTo("alice");
@@ -140,7 +140,7 @@ class GateTaskExecutorTest {
     @Test
     void criticality_parses_case_insensitive_with_default() {
         when(inboxService.create(any())).thenAnswer(inv -> {
-            InboxItemDocument d = inv.getArgument(0);
+            MaximegalonDocument d = inv.getArgument(0);
             d.setId("ix");
             return d;
         });
@@ -150,7 +150,7 @@ class GateTaskExecutorTest {
                 "title", "x",
                 "criticality", "critical"))));
 
-        ArgumentCaptor<InboxItemDocument> captor = ArgumentCaptor.captor();
+        ArgumentCaptor<MaximegalonDocument> captor = ArgumentCaptor.captor();
         verify(inboxService).create(captor.capture());
         assertThat(captor.getValue().getCriticality()).isEqualTo(Criticality.CRITICAL);
     }
@@ -158,7 +158,7 @@ class GateTaskExecutorTest {
     @Test
     void timeout_seconds_schedules_a_timeout_timer() {
         when(inboxService.create(any())).thenAnswer(inv -> {
-            InboxItemDocument doc = inv.getArgument(0);
+            MaximegalonDocument doc = inv.getArgument(0);
             doc.setId("inbox-timeout");
             return doc;
         });
@@ -187,7 +187,7 @@ class GateTaskExecutorTest {
     @Test
     void gate_alwaysHandsTheStateToTheScheduler_whichDecidesOnTheDeadline() {
         when(inboxService.create(any())).thenAnswer(inv -> {
-            InboxItemDocument doc = inv.getArgument(0);
+            MaximegalonDocument doc = inv.getArgument(0);
             doc.setId("inbox-x");
             return doc;
         });

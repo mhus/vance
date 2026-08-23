@@ -118,7 +118,7 @@ class MagratheaRunSourceTest {
     void detailNamesTheOpenGateItem() {
         stubDetail("r1");
         when(gateAnswers.findOpenGateItem("acme", "r1")).thenReturn(Optional.of(
-                de.mhus.vance.shared.inbox.InboxItemDocument.builder().id("item-7").build()));
+                de.mhus.vance.shared.inbox.MaximegalonDocument.builder().id("item-7").build()));
 
         assertThat(source.get("acme", "proj", "r1").orElseThrow().getWaitingOnInboxItemId())
                 .isEqualTo("item-7");

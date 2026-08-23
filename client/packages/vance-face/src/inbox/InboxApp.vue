@@ -23,9 +23,9 @@ import { setDocumentDraft } from '@/platform';
 import {
   AnswerOutcome,
   Criticality,
-  InboxItemStatus,
-  InboxItemType,
-  type InboxItemDto,
+  MaximegalonStatus,
+  MaximegalonType,
+  type MaximegalonDto,
 } from '@vance/generated';
 
 const { t } = useI18n();
@@ -79,14 +79,14 @@ function selectionToFilter(s: SidebarSelection): InboxFilter {
   if (s.kind === 'inbox') {
     return {
       assignedTo: { kind: 'self' },
-      status: InboxItemStatus.PENDING,
+      status: MaximegalonStatus.PENDING,
       tag: s.tag,
     };
   }
   if (s.kind === 'archive') {
     return {
       assignedTo: { kind: 'self' },
-      status: InboxItemStatus.ARCHIVED,
+      status: MaximegalonStatus.ARCHIVED,
       tag: null,
     };
   }
@@ -157,7 +157,7 @@ watch(selection, async (next) => {
 }, { deep: true });
 
 // ─────── Item open / close ───────
-async function openItem(item: InboxItemDto): Promise<void> {
+async function openItem(item: MaximegalonDto): Promise<void> {
   if (!item.id) return;
   await inbox.loadOne(item.id);
 }
@@ -305,22 +305,22 @@ async function unarchiveItem(): Promise<void> {
 
 const showBulkArchive = ref(false);
 const bulkArchiveBusy = ref(false);
-const bulkArchiveTypes = ref<Record<InboxItemType, boolean>>(
+const bulkArchiveTypes = ref<Record<MaximegalonType, boolean>>(
   Object.fromEntries(
-    Object.values(InboxItemType).map((t) => [
+    Object.values(MaximegalonType).map((t) => [
       t,
       // Default-on for the loud output-only types; explicit user-facing
       // request types (approval, decision, ordering, structure-edit)
       // start off so they don't get archived by accident.
-      t === InboxItemType.OUTPUT_TEXT
-        || t === InboxItemType.OUTPUT_IMAGE
-        || t === InboxItemType.OUTPUT_DOCUMENT
-        || t === InboxItemType.FEEDBACK,
+      t === MaximegalonType.OUTPUT_TEXT
+        || t === MaximegalonType.OUTPUT_IMAGE
+        || t === MaximegalonType.OUTPUT_DOCUMENT
+        || t === MaximegalonType.FEEDBACK,
     ]),
-  ) as Record<InboxItemType, boolean>,
+  ) as Record<MaximegalonType, boolean>,
 );
 
-const inboxItemTypeValues = Object.values(InboxItemType) as InboxItemType[];
+const inboxItemTypeValues = Object.values(MaximegalonType) as MaximegalonType[];
 
 /**
  * Items in the current list that match the selected types AND are
@@ -331,7 +331,7 @@ const inboxItemTypeValues = Object.values(InboxItemType) as InboxItemType[];
 const bulkArchiveCandidates = computed(() => {
   return inbox.items.value.filter((item) => {
     if (!item.id) return false;
-    if (item.status === InboxItemStatus.ARCHIVED) return false;
+    if (item.status === MaximegalonStatus.ARCHIVED) return false;
     return bulkArchiveTypes.value[item.type] === true;
   });
 });
@@ -388,7 +388,7 @@ async function toDocument(): Promise<void> {
   });
   // Archive the item — once it's been promoted to a document, it's
   // no longer pending in the inbox. Skip if already archived.
-  if (sel.id && sel.status !== InboxItemStatus.ARCHIVED) {
+  if (sel.id && sel.status !== MaximegalonStatus.ARCHIVED) {
     submitting.value = true;
     try {
       await inbox.archive(sel.id);
@@ -449,11 +449,11 @@ async function confirmDelegate(): Promise<void> {
 }
 
 // ─────── Item-type detection ───────
-function isAsk(item: InboxItemDto): boolean {
-  return item.requiresAction === true && item.status === InboxItemStatus.PENDING;
+function isAsk(item: MaximegalonDto): boolean {
+  return item.requiresAction === true && item.status === MaximegalonStatus.PENDING;
 }
 
-function decisionOptions(item: InboxItemDto): string[] {
+function decisionOptions(item: MaximegalonDto): string[] {
   const raw = item.payload?.options;
   if (Array.isArray(raw)) return raw.map((o) => String(o));
   return [];
@@ -681,7 +681,7 @@ const breadcrumbs = computed<string[]>(() => {
             <span v-if="item.assignedToUserId !== currentUser" class="opacity-60">
               → {{ item.assignedToUserId }}
             </span>
-            <span v-if="item.status !== InboxItemStatus.PENDING" class="opacity-60">{{ item.status }}</span>
+            <span v-if="item.status !== MaximegalonStatus.PENDING" class="opacity-60">{{ item.status }}</span>
           </div>
           <div v-if="item.tags && item.tags.length" class="mt-1 flex gap-1 flex-wrap">
             <VBadge
@@ -836,7 +836,7 @@ const breadcrumbs = computed<string[]>(() => {
               <!-- Group 1: primary answer (type-specific). -->
               <!-- APPROVAL: Yes / No -->
               <div
-                v-if="isAsk(inbox.selected.value) && inbox.selected.value.type === InboxItemType.APPROVAL"
+                v-if="isAsk(inbox.selected.value) && inbox.selected.value.type === MaximegalonType.APPROVAL"
                 class="flex flex-wrap gap-2"
               >
                 <VButton variant="primary" :loading="submitting" @click="submitApproval(true)">
@@ -850,7 +850,7 @@ const breadcrumbs = computed<string[]>(() => {
               <!-- DECISION: option-buttons. Labels are domain text from
                    the server payload — not translated here. -->
               <div
-                v-else-if="isAsk(inbox.selected.value) && inbox.selected.value.type === InboxItemType.DECISION"
+                v-else-if="isAsk(inbox.selected.value) && inbox.selected.value.type === MaximegalonType.DECISION"
                 class="flex flex-wrap gap-2"
               >
                 <VButton
@@ -869,7 +869,7 @@ const breadcrumbs = computed<string[]>(() => {
                    right-aligned. The textarea wants space; squeezing
                    it next to a button on one line ate that space. -->
               <div
-                v-else-if="isAsk(inbox.selected.value) && inbox.selected.value.type === InboxItemType.FEEDBACK"
+                v-else-if="isAsk(inbox.selected.value) && inbox.selected.value.type === MaximegalonType.FEEDBACK"
                 class="flex flex-col gap-2"
               >
                 <VTextarea
@@ -928,13 +928,13 @@ const breadcrumbs = computed<string[]>(() => {
                   @click="openDelegateModal"
                 >{{ $t('inbox.actions.delegate') }}</VButton>
                 <VButton
-                  v-if="inbox.selected.value.status !== InboxItemStatus.DISMISSED"
+                  v-if="inbox.selected.value.status !== MaximegalonStatus.DISMISSED"
                   variant="ghost"
                   :disabled="submitting"
                   @click="dismissItem"
                 >{{ $t('inbox.actions.dismiss') }}</VButton>
                 <VButton
-                  v-if="inbox.selected.value.status === InboxItemStatus.ARCHIVED"
+                  v-if="inbox.selected.value.status === MaximegalonStatus.ARCHIVED"
                   variant="primary"
                   :loading="submitting"
                   @click="unarchiveItem"

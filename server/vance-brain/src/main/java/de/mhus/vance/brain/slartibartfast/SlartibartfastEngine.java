@@ -17,7 +17,7 @@ import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.slartibartfast.Criterion;
 import de.mhus.vance.api.slartibartfast.CriterionOrigin;
 import de.mhus.vance.api.slartibartfast.PendingInboxKind;
@@ -43,8 +43,8 @@ import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.LinkedHashMap;
@@ -196,7 +196,7 @@ public class SlartibartfastEngine implements ThinkEngine {
     private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     private final LaneScheduler laneScheduler;
     private final ObjectMapper objectMapper;
-    private final InboxItemService inboxItemService;
+    private final MaximegalonService inboxItemService;
     private final RecipeResolver recipeResolver;
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
     private final FramingPhase framingPhase;
@@ -1209,20 +1209,20 @@ public class SlartibartfastEngine implements ThinkEngine {
         payload.put("recipeDraft", state.getProposedRecipe());
         payload.put("recoveryReason", lastRecovery.getReason());
 
-        InboxItemDocument toCreate = InboxItemDocument.builder()
+        MaximegalonDocument toCreate = MaximegalonDocument.builder()
                 .tenantId(process.getTenantId())
                 .originatorUserId("slartibartfast:" + process.getId())
                 .assignedToUserId(null)
                 .originProcessId(process.getId())
                 .originSessionId(process.getSessionId())
-                .type(InboxItemType.APPROVAL)
+                .type(MaximegalonType.APPROVAL)
                 .criticality(Criticality.CRITICAL)
                 .title("Slartibartfast: recovery budget exhausted — retry?")
                 .body(body.toString())
                 .payload(payload)
                 .requiresAction(true)
                 .build();
-        InboxItemDocument saved = inboxItemService.create(toCreate);
+        MaximegalonDocument saved = inboxItemService.create(toCreate);
         state.setPendingInboxItemId(saved.getId());
         state.setPendingInboxKind(PendingInboxKind.ESCALATION);
         state.setStatus(ArchitectStatus.ESCALATING);

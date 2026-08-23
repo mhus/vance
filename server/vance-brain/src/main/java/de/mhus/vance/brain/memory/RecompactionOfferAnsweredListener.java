@@ -2,8 +2,8 @@ package de.mhus.vance.brain.memory;
 
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
-import de.mhus.vance.shared.inbox.InboxItemAnsweredEvent;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
+import de.mhus.vance.shared.inbox.MaximegalonAnsweredEvent;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
  * Reacts to {@code RECOMPACTION_OFFER} inbox answers by calling
  * {@link MemoryCompactionService#compactRange} when the user accepts.
  *
- * <p>Trigger: {@link InboxItemAnsweredEvent} where the item carries the
+ * <p>Trigger: {@link MaximegalonAnsweredEvent} where the item carries the
  * {@link RecompactionTags#TAG_INBOX_OFFER} tag. Acceptance is the
  * {@code APPROVAL}-shape pair
  * {@code outcome=DECIDED, value={"approved": true}}. Anything else —
@@ -44,8 +44,8 @@ public class RecompactionOfferAnsweredListener {
     private final MetricService metricService;
 
     @EventListener
-    public void onAnswered(InboxItemAnsweredEvent event) {
-        InboxItemDocument item = event.item();
+    public void onAnswered(MaximegalonAnsweredEvent event) {
+        MaximegalonDocument item = event.item();
         List<String> tags = item.getTags();
         if (tags == null || !tags.contains(RecompactionTags.TAG_INBOX_OFFER)) {
             return;

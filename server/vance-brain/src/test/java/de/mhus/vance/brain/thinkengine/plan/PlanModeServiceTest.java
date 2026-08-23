@@ -20,7 +20,7 @@ import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.thinkengine.action.EngineAction;
 import de.mhus.vance.brain.thinkengine.action.StructuredActionEngine.ActionTurnOutcome;
 import de.mhus.vance.shared.chat.ChatMessageService;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -48,7 +48,7 @@ class PlanModeServiceTest {
     private ThinkProcessService thinkProcessService;
     private PlanModeEventEmitter eventEmitter;
     private ChatMessageService chatMessageService;
-    private InboxItemService inboxItemService;
+    private MaximegalonService inboxItemService;
     private PlanModeService service;
     private ThinkEngineContext ctx;
     /** Real buffer — we inspect via {@link BufferingHistoryTagSink#peek()}. */
@@ -62,7 +62,7 @@ class PlanModeServiceTest {
         thinkProcessService = mock(ThinkProcessService.class);
         eventEmitter = mock(PlanModeEventEmitter.class);
         chatMessageService = mock(ChatMessageService.class);
-        inboxItemService = mock(InboxItemService.class);
+        inboxItemService = mock(MaximegalonService.class);
         MetricService metricService = new MetricService(
                 new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
         service = new PlanModeService(

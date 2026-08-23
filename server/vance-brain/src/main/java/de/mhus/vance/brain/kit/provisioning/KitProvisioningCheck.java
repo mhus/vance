@@ -1,12 +1,12 @@
 package de.mhus.vance.brain.kit.provisioning;
 
 import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.InboxItemStatus;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonStatus;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.kit.KitInstalledRecordDto;
 import de.mhus.vance.brain.kit.KitRecordStore;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -55,7 +55,7 @@ public class KitProvisioningCheck {
     private final KitProvisioningLoader loader;
     private final KitProvisioningHandlers handlers;
     private final KitRecordStore recordStore;
-    private final InboxItemService inboxItems;
+    private final MaximegalonService inboxItems;
 
     /** What one check found. */
     public record Report(List<String> changed, List<String> missing, List<String> reported) {}
@@ -160,11 +160,11 @@ public class KitProvisioningCheck {
         payload.put("sourceUrl", kit.sourceUrl());
         payload.put("divergence", divergence.name().toLowerCase(Locale.ROOT));
 
-        inboxItems.create(InboxItemDocument.builder()
+        inboxItems.create(MaximegalonDocument.builder()
                 .tenantId(tenantId)
                 .originatorUserId(KitProvisioningService.ACTOR)
                 .assignedToUserId(assignee)
-                .type(InboxItemType.DECISION)
+                .type(MaximegalonType.DECISION)
                 .criticality(Criticality.NORMAL)
                 .tags(new ArrayList<>(List.of(TAG)))
                 .title(title(kit, divergence))
@@ -183,7 +183,7 @@ public class KitProvisioningCheck {
         // Queried by tag and filtered on the reference in memory: the pending
         // set carrying this tag is small, and listFiltered has no effectRef
         // predicate worth adding for one caller.
-        return inboxItems.listFiltered(tenantId, List.of(assignee), InboxItemStatus.PENDING, TAG)
+        return inboxItems.listFiltered(tenantId, List.of(assignee), MaximegalonStatus.PENDING, TAG)
                 .stream()
                 .anyMatch(item -> ref.equals(item.getEffectRef()));
     }

@@ -2,8 +2,8 @@ package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.api.ursahooks.UrsaHookEventName;
-import de.mhus.vance.shared.inbox.InboxItemCreatedEvent;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
+import de.mhus.vance.shared.inbox.MaximegalonCreatedEvent;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -18,7 +18,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 /**
- * Forwards {@link InboxItemCreatedEvent} into the hook stream as
+ * Forwards {@link MaximegalonCreatedEvent} into the hook stream as
  * {@code inbox.item.created}. The inbox item does not carry the
  * project id directly (it's per-session), so the listener resolves it
  * via the session's home project — when neither session nor project
@@ -35,8 +35,8 @@ public class UrsaHookInboxLifecycleListener {
     private final de.mhus.vance.shared.thinkprocess.ThinkProcessService thinkProcessService;
 
     @EventListener
-    public void onCreated(InboxItemCreatedEvent event) {
-        InboxItemDocument item = event.item();
+    public void onCreated(MaximegalonCreatedEvent event) {
+        MaximegalonDocument item = event.item();
         // Cycle guard (mirror UrsaHookProcessLifecycleListener): if this inbox
         // item was created by a hook-spawned process, do NOT re-fire
         // inbox.item.created — a hook on inbox.item.created whose action posts an
@@ -84,7 +84,7 @@ public class UrsaHookInboxLifecycleListener {
                 UrsaHookEventName.INBOX_ITEM_CREATED, payload));
     }
 
-    private @org.jspecify.annotations.Nullable String resolveProjectId(InboxItemDocument item) {
+    private @org.jspecify.annotations.Nullable String resolveProjectId(MaximegalonDocument item) {
         String sessionId = item.getOriginSessionId();
         if (sessionId == null || sessionId.isBlank()) return null;
         Optional<SessionDocument> session = sessionService.findBySessionId(sessionId);

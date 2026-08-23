@@ -12,9 +12,9 @@ import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.brain.memory.RecompactionTags;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.shared.inbox.InboxEffectRegistry;
-import de.mhus.vance.shared.inbox.InboxItemAnsweredEvent;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemHistoryEntry;
+import de.mhus.vance.shared.inbox.MaximegalonAnsweredEvent;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonHistoryEntry;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.List;
@@ -43,13 +43,13 @@ class InboxAnsweredListenerTest {
     @Mock
     InboxEffectRegistry effectRegistry;
     @Mock
-    de.mhus.vance.shared.inbox.InboxItemService inboxItemService;
+    de.mhus.vance.shared.inbox.MaximegalonService inboxItemService;
 
     @Test
     void anOrdinaryAnswer_reachesTheOriginProcess() {
         when(thinkProcessService.appendPending(anyString(), any())).thenReturn(true);
 
-        listener().onAnswered(new InboxItemAnsweredEvent(item()));
+        listener().onAnswered(new MaximegalonAnsweredEvent(item()));
 
         verify(thinkProcessService).appendPending(eq(PROCESS), any(PendingMessageDocument.class));
         verify(eventEmitter).scheduleTurn(PROCESS);
@@ -61,10 +61,10 @@ class InboxAnsweredListenerTest {
         // "access granted, you can proceed" and this listener added a
         // generic InboxAnswer steer, so one decision arrived twice and
         // both were drained into the same turn.
-        InboxItemDocument item = item();
+        MaximegalonDocument item = item();
         when(effectRegistry.notifiesOrigin(item)).thenReturn(true);
 
-        listener().onAnswered(new InboxItemAnsweredEvent(item));
+        listener().onAnswered(new MaximegalonAnsweredEvent(item));
 
         verify(thinkProcessService, never()).appendPending(anyString(), any());
         verify(eventEmitter, never()).scheduleTurn(anyString());
@@ -78,49 +78,49 @@ class InboxAnsweredListenerTest {
         when(thinkProcessService.appendPending(anyString(), any())).thenReturn(true);
         when(effectRegistry.notifiesOrigin(any())).thenReturn(false);
 
-        listener().onAnswered(new InboxItemAnsweredEvent(item()));
+        listener().onAnswered(new MaximegalonAnsweredEvent(item()));
 
         verify(eventEmitter).scheduleTurn(PROCESS);
     }
 
     @Test
     void aRecompactionOffer_isStillHandledElsewhere() {
-        InboxItemDocument item = item();
+        MaximegalonDocument item = item();
         item.setTags(List.of(RecompactionTags.TAG_INBOX_OFFER));
 
-        listener().onAnswered(new InboxItemAnsweredEvent(item));
+        listener().onAnswered(new MaximegalonAnsweredEvent(item));
 
         verify(thinkProcessService, never()).appendPending(anyString(), any());
     }
 
     @Test
     void anItemWithoutAnOrigin_isNotRouted() {
-        InboxItemDocument item = item();
+        MaximegalonDocument item = item();
         item.setOriginProcessId(null);
 
-        listener().onAnswered(new InboxItemAnsweredEvent(item));
+        listener().onAnswered(new MaximegalonAnsweredEvent(item));
 
         verify(thinkProcessService, never()).appendPending(anyString(), any());
     }
 
     @Test
     void anEffectThatFailed_stillReachesTheOriginProcess() {
-        // InboxItemService.answer swallows whatever the effect throws and
+        // MaximegalonService.answer swallows whatever the effect throws and
         // publishes the answered-event anyway. Suppressing on the effect
         // *type* therefore dropped the only message the origin was ever
         // going to get: the item is ANSWERED, the mutation never happened,
         // and the process stays BLOCKED with nobody left to unblock it.
-        InboxItemDocument item = item();
+        MaximegalonDocument item = item();
         when(effectRegistry.notifiesOrigin(item)).thenReturn(true);
         when(thinkProcessService.appendPending(anyString(), any())).thenReturn(true);
-        InboxItemDocument afterFailure = item();
+        MaximegalonDocument afterFailure = item();
         afterFailure.setHistory(List.of(
-                InboxItemHistoryEntry.builder().action("ANSWERED").build(),
-                InboxItemHistoryEntry.builder().action("EFFECT_FAILED").build()));
+                MaximegalonHistoryEntry.builder().action("ANSWERED").build(),
+                MaximegalonHistoryEntry.builder().action("EFFECT_FAILED").build()));
         when(inboxItemService.findById(any(), eq("item-1")))
                 .thenReturn(java.util.Optional.of(afterFailure));
 
-        listener().onAnswered(new InboxItemAnsweredEvent(item));
+        listener().onAnswered(new MaximegalonAnsweredEvent(item));
 
         verify(thinkProcessService).appendPending(eq(PROCESS), any(PendingMessageDocument.class));
         verify(eventEmitter).scheduleTurn(PROCESS);
@@ -130,12 +130,12 @@ class InboxAnsweredListenerTest {
     void anAbstention_keepsTheGenericRoute_evenForANotifyingEffect() {
         // Abstention is not consent, so InboxEffectRegistry.dispatch runs
         // nothing at all — and an effect that did not run notified nobody.
-        InboxItemDocument item = item();
+        MaximegalonDocument item = item();
         item.getAnswer().setOutcome(AnswerOutcome.UNDECIDABLE);
         when(effectRegistry.notifiesOrigin(item)).thenReturn(true);
         when(thinkProcessService.appendPending(anyString(), any())).thenReturn(true);
 
-        listener().onAnswered(new InboxItemAnsweredEvent(item));
+        listener().onAnswered(new MaximegalonAnsweredEvent(item));
 
         verify(eventEmitter).scheduleTurn(PROCESS);
     }
@@ -144,12 +144,12 @@ class InboxAnsweredListenerTest {
     void aNonApprovalItem_keepsTheGenericRoute_evenForANotifyingEffect() {
         // Only APPROVAL carries the approve/reject answer dispatch needs;
         // anything else is refused there and nothing is delivered.
-        InboxItemDocument item = item();
-        item.setType(de.mhus.vance.api.inbox.InboxItemType.DECISION);
+        MaximegalonDocument item = item();
+        item.setType(de.mhus.vance.api.inbox.MaximegalonType.DECISION);
         when(effectRegistry.notifiesOrigin(item)).thenReturn(true);
         when(thinkProcessService.appendPending(anyString(), any())).thenReturn(true);
 
-        listener().onAnswered(new InboxItemAnsweredEvent(item));
+        listener().onAnswered(new MaximegalonAnsweredEvent(item));
 
         verify(eventEmitter).scheduleTurn(PROCESS);
     }
@@ -159,12 +159,12 @@ class InboxAnsweredListenerTest {
                 thinkProcessService, eventEmitter, effectRegistry, inboxItemService);
     }
 
-    private static InboxItemDocument item() {
-        InboxItemDocument item = new InboxItemDocument();
+    private static MaximegalonDocument item() {
+        MaximegalonDocument item = new MaximegalonDocument();
         item.setId("item-1");
         item.setTenantId("acme");
         item.setOriginProcessId(PROCESS);
-        item.setType(de.mhus.vance.api.inbox.InboxItemType.APPROVAL);
+        item.setType(de.mhus.vance.api.inbox.MaximegalonType.APPROVAL);
         AnswerPayload answer = new AnswerPayload();
         answer.setOutcome(AnswerOutcome.DECIDED);
         item.setAnswer(answer);

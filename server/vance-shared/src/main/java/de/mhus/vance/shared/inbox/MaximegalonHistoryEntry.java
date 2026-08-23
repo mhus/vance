@@ -16,7 +16,7 @@ import org.jspecify.annotations.Nullable;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class InboxItemHistoryEntry {
+public class MaximegalonHistoryEntry {
 
     /** {@code "CREATED"}, {@code "DELEGATED"}, {@code "ANSWERED"},
      *  {@code "DISMISSED"}, {@code "ARCHIVED"}, {@code "REOPENED"}. */

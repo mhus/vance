@@ -13,7 +13,7 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
  *   <li>{@link #AUTO_RESOLVER} — (v2) an auto-resolver worker
  *       returned a {@link AnswerOutcome#DECIDED} answer.</li>
  *   <li>{@link #AUTO_ARCHIVE} — auto-archive Spring-job moved an
- *       answered/dismissed item to {@link InboxItemStatus#ARCHIVED}.</li>
+ *       answered/dismissed item to {@link MaximegalonStatus#ARCHIVED}.</li>
  * </ul>
  */
 @GenerateTypeScript("inbox")

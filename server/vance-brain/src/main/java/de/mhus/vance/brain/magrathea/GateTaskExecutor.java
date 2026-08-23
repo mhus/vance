@@ -2,13 +2,13 @@ package de.mhus.vance.brain.magrathea;
 
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.shared.magrathea.MagratheaStateSpec;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import de.mhus.vance.shared.magrathea.MagratheaTimerDocument;
 import de.mhus.vance.shared.magrathea.MagratheaTimerService;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -68,7 +68,7 @@ public class GateTaskExecutor implements MagratheaTypeExecutor {
     private static final String SPEC_INBOX = "inbox";
     private static final String SYSTEM_USER = "@system";
 
-    private final InboxItemService inboxItemService;
+    private final MaximegalonService inboxItemService;
     private final MagratheaTaskService taskService;
     private final MagratheaTimeoutScheduler timeoutScheduler;
     private final MagratheaOwnerNotifier ownerNotifier;
@@ -92,7 +92,7 @@ public class GateTaskExecutor implements MagratheaTypeExecutor {
             return Optional.of(TaskOutcome.failure(
                     "gate_task '" + state.name() + "' inbox is missing required 'title'"));
         }
-        InboxItemType kind = parseKind(inboxSpec.get("kind"));
+        MaximegalonType kind = parseKind(inboxSpec.get("kind"));
         if (kind == null) {
             return Optional.of(TaskOutcome.failure(
                     "gate_task '" + state.name()
@@ -124,12 +124,12 @@ public class GateTaskExecutor implements MagratheaTypeExecutor {
         // wide, but a client that reads the item from the change feed rather
         // than from a listing is inside it, and so is the E2E test that polls
         // Mongo directly. The auto-default path closes it altogether:
-        // InboxItemService.create publishes the answered-event *inside*
+        // MaximegalonService.create publishes the answered-event *inside*
         // create(), so for a LOW item with a `default:` the old order could
         // never have worked.
         String itemId = new ObjectId().toHexString();
 
-        InboxItemDocument toCreate = InboxItemDocument.builder()
+        MaximegalonDocument toCreate = MaximegalonDocument.builder()
                 .id(itemId)
                 .tenantId(context.tenantId())
                 .originatorUserId(firstNonBlank(context.startedBy(), SYSTEM_USER))
@@ -186,11 +186,11 @@ public class GateTaskExecutor implements MagratheaTypeExecutor {
                 "gate_task '" + state.name() + "' inbox must be a map");
     }
 
-    private static @org.jspecify.annotations.Nullable InboxItemType parseKind(Object raw) {
+    private static @org.jspecify.annotations.Nullable MaximegalonType parseKind(Object raw) {
         if (!(raw instanceof String s) || s.isBlank()) return null;
         String norm = s.trim().toUpperCase(Locale.ROOT);
         try {
-            InboxItemType type = InboxItemType.valueOf(norm);
+            MaximegalonType type = MaximegalonType.valueOf(norm);
             // Only the interactive kinds make sense as gates.
             return switch (type) {
                 case APPROVAL, DECISION, FEEDBACK -> type;

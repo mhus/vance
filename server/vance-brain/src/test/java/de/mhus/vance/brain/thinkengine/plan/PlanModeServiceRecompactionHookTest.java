@@ -11,15 +11,15 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.thinkprocess.TodoItem;
 import de.mhus.vance.api.thinkprocess.TodoStatus;
 import de.mhus.vance.brain.arthur.PlanModeEventEmitter;
 import de.mhus.vance.brain.memory.RecompactionTags;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -50,7 +50,7 @@ class PlanModeServiceRecompactionHookTest {
     private ThinkProcessService thinkProcessService;
     private PlanModeEventEmitter eventEmitter;
     private ChatMessageService chatMessageService;
-    private InboxItemService inboxItemService;
+    private MaximegalonService inboxItemService;
     private PlanModeService service;
 
     private final Instant planStart = Instant.parse("2026-05-11T14:00:00Z");
@@ -60,7 +60,7 @@ class PlanModeServiceRecompactionHookTest {
         thinkProcessService = mock(ThinkProcessService.class);
         eventEmitter = mock(PlanModeEventEmitter.class);
         chatMessageService = mock(ChatMessageService.class);
-        inboxItemService = mock(InboxItemService.class);
+        inboxItemService = mock(MaximegalonService.class);
         MetricService metricService = new MetricService(
                 new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
         service = new PlanModeService(
@@ -80,9 +80,9 @@ class PlanModeServiceRecompactionHookTest {
 
         // create() returns the persisted doc with an id — we don't pin the
         // value, only that getId() doesn't NPE on the log line in the hook.
-        when(inboxItemService.create(any(InboxItemDocument.class)))
+        when(inboxItemService.create(any(MaximegalonDocument.class)))
                 .thenAnswer(inv -> {
-                    InboxItemDocument arg = inv.getArgument(0);
+                    MaximegalonDocument arg = inv.getArgument(0);
                     arg.setId("inbox-99");
                     return arg;
                 });
@@ -112,12 +112,12 @@ class PlanModeServiceRecompactionHookTest {
         service.maybeOfferRecompaction(processWithTodos(
                 TodoStatus.COMPLETED, TodoStatus.COMPLETED, TodoStatus.COMPLETED));
 
-        ArgumentCaptor<InboxItemDocument> cap =
-                ArgumentCaptor.forClass(InboxItemDocument.class);
+        ArgumentCaptor<MaximegalonDocument> cap =
+                ArgumentCaptor.forClass(MaximegalonDocument.class);
         verify(inboxItemService).create(cap.capture());
-        InboxItemDocument offer = cap.getValue();
+        MaximegalonDocument offer = cap.getValue();
 
-        assertThat(offer.getType()).isEqualTo(InboxItemType.APPROVAL);
+        assertThat(offer.getType()).isEqualTo(MaximegalonType.APPROVAL);
         assertThat(offer.getCriticality()).isEqualTo(Criticality.NORMAL);
         assertThat(offer.isRequiresAction()).isTrue();
         assertThat(offer.getTags()).containsExactly(RecompactionTags.TAG_INBOX_OFFER);

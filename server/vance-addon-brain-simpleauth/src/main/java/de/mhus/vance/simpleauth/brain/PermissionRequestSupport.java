@@ -1,9 +1,9 @@
 package de.mhus.vance.simpleauth.brain;
 
 import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.InboxItemType;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.api.inbox.MaximegalonType;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.simpleauth.GrantRole;
 import de.mhus.vance.simpleauth.GrantScopeType;
 import de.mhus.vance.simpleauth.GrantSubjectType;
@@ -39,7 +39,7 @@ class PermissionRequestSupport {
 
     private final PermissionRequestService requests;
     private final PermissionGrantService grants;
-    private final InboxItemService inboxItemService;
+    private final MaximegalonService inboxItemService;
 
     /** Tool-facing variant: unpacks the invocation context and renders a result map. */
     Map<String, Object> raise(
@@ -114,13 +114,13 @@ class PermissionRequestSupport {
             return new Receipt(request.getId(), null, request.getStatus().name(), null, false);
         }
 
-        InboxItemDocument item = inboxItemService.create(InboxItemDocument.builder()
+        MaximegalonDocument item = inboxItemService.create(MaximegalonDocument.builder()
                 .tenantId(tenantId)
                 .originatorUserId(requestedBy)
                 .assignedToUserId(decider.get())
                 .originProcessId(processId)
                 .originSessionId(sessionId)
-                .type(InboxItemType.APPROVAL)
+                .type(MaximegalonType.APPROVAL)
                 // Never LOW: a LOW item carrying a default auto-answers,
                 // and a rights change must not be decided by a default.
                 .criticality(Criticality.CRITICAL)

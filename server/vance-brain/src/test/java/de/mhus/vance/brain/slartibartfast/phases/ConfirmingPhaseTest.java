@@ -30,7 +30,7 @@ class ConfirmingPhaseTest {
     @BeforeEach
     void setUp() {
         phase = new ConfirmingPhase(
-                mock(de.mhus.vance.shared.inbox.InboxItemService.class));
+                mock(de.mhus.vance.shared.inbox.MaximegalonService.class));
         process = new ThinkProcessDocument();
         process.setId("proc-1");
         process.setTenantId("acme");

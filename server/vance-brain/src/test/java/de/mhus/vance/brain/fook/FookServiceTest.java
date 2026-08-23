@@ -13,13 +13,13 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.light.LightLlmException;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.settings.SettingService;
 import java.util.List;
 import java.util.Map;
@@ -40,7 +40,7 @@ class FookServiceTest {
 
     private FookTicketService ticketService;
     private LightLlmService lightLlm;
-    private InboxItemService inboxItemService;
+    private MaximegalonService inboxItemService;
     private SettingService settingService;
     private FookSessionAnalysisService sessionAnalysisService;
     private FookService service;
@@ -49,7 +49,7 @@ class FookServiceTest {
     void setUp() {
         ticketService = mock(FookTicketService.class);
         lightLlm = mock(LightLlmService.class);
-        inboxItemService = mock(InboxItemService.class);
+        inboxItemService = mock(MaximegalonService.class);
         settingService = mock(SettingService.class);
         // Default: upstream off — every existing test sees "never" so
         // their assertions stay valid. Tests that exercise the
@@ -58,7 +58,7 @@ class FookServiceTest {
                 eq("fook.upstream.mode")))
                 .thenReturn("never");
         when(inboxItemService.create(any())).thenAnswer(inv ->
-                inv.<InboxItemDocument>getArgument(0));
+                inv.<MaximegalonDocument>getArgument(0));
         sessionAnalysisService = mock(FookSessionAnalysisService.class);
         service = new FookService(
                 ticketService, lightLlm, inboxItemService, settingService,
@@ -163,11 +163,11 @@ class FookServiceTest {
         assertThat(payload.getValue().getRelatedTickets())
                 .containsExactly("uuid-related");
 
-        InboxItemDocument item = captureInbox();
+        MaximegalonDocument item = captureInbox();
         assertThat(item.getTenantId()).isEqualTo("acme");
         assertThat(item.getAssignedToUserId()).isEqualTo("alice");
         assertThat(item.getOriginatorUserId()).isEqualTo("fook");
-        assertThat(item.getType()).isEqualTo(InboxItemType.OUTPUT_TEXT);
+        assertThat(item.getType()).isEqualTo(MaximegalonType.OUTPUT_TEXT);
         assertThat(item.getCriticality()).isEqualTo(Criticality.LOW);
         assertThat(item.isRequiresAction()).isFalse();
         assertThat(item.getTags()).containsExactly("fook");
@@ -221,7 +221,7 @@ class FookServiceTest {
         assertThat(patchCap.getValue().getAddRootCauseOf())
                 .containsExactly("uuid-extra-1");
 
-        InboxItemDocument item = captureInbox();
+        MaximegalonDocument item = captureInbox();
         assertThat(item.getPayload())
                 .containsEntry("decision", "merge_into")
                 .containsEntry("ticketId", "uuid-target");
@@ -237,7 +237,7 @@ class FookServiceTest {
 
         verify(ticketService, never()).updateRelations(any(), any());
         verify(ticketService, never()).createTicket(any());
-        InboxItemDocument item = captureInbox();
+        MaximegalonDocument item = captureInbox();
         assertThat(item.getTitle()).contains("could not be triaged");
         assertThat(item.getPayload()).containsEntry("decision", "failed");
     }
@@ -257,7 +257,7 @@ class FookServiceTest {
 
         verify(ticketService, never()).createTicket(any());
         verify(ticketService, never()).updateRelations(any(), any());
-        InboxItemDocument item = captureInbox();
+        MaximegalonDocument item = captureInbox();
         assertThat(item.getTitle()).contains("not opened");
         assertThat(item.getPayload())
                 .containsEntry("decision", "discard")
@@ -273,7 +273,7 @@ class FookServiceTest {
                         "reason", "no signal"));
         service.submit(engineSubmission("asdf"));
         service.drainQueue();
-        InboxItemDocument item = captureInbox();
+        MaximegalonDocument item = captureInbox();
         assertThat(item.getPayload()).containsEntry("category", "nonsense");
     }
 
@@ -288,7 +288,7 @@ class FookServiceTest {
         service.drainQueue();
 
         verify(ticketService, never()).createTicket(any());
-        InboxItemDocument item = captureInbox();
+        MaximegalonDocument item = captureInbox();
         assertThat(item.getTitle()).contains("could not be triaged");
         assertThat(item.getPayload())
                 .containsEntry("decision", "failed")
@@ -303,7 +303,7 @@ class FookServiceTest {
         service.submit(engineSubmission("anything"));
         service.drainQueue();
 
-        InboxItemDocument item = captureInbox();
+        MaximegalonDocument item = captureInbox();
         assertThat(item.getPayload()).containsEntry("decision", "failed");
     }
 
@@ -315,7 +315,7 @@ class FookServiceTest {
         service.submit(engineSubmission("anything"));
         service.drainQueue();
 
-        InboxItemDocument item = captureInbox();
+        MaximegalonDocument item = captureInbox();
         assertThat(item.getPayload()).containsEntry("decision", "failed");
     }
 
@@ -471,7 +471,7 @@ class FookServiceTest {
         verify(ticketService).createTicket(cap.capture());
         assertThat(cap.getValue().getTransportApproval()).isEqualTo("pending");
 
-        InboxItemDocument item = captureInbox();
+        MaximegalonDocument item = captureInbox();
         assertThat(item.getBody()).contains("waiting for an admin");
         assertThat(item.getPayload()).containsEntry("transportMode", "manual");
     }
@@ -495,7 +495,7 @@ class FookServiceTest {
                 ArgumentCaptor.forClass(NewTicketPayload.class);
         verify(ticketService).createTicket(cap.capture());
         assertThat(cap.getValue().getTransportApproval()).isEqualTo("none");
-        InboxItemDocument item = captureInbox();
+        MaximegalonDocument item = captureInbox();
         assertThat(item.getBody()).contains("stays local");
     }
 
@@ -508,7 +508,7 @@ class FookServiceTest {
                         "reason", "ok"));
         when(ticketService.createTicket(any())).thenReturn("uuid-new");
         // create() returns the saved document with an id set.
-        InboxItemDocument withId = InboxItemDocument.builder()
+        MaximegalonDocument withId = MaximegalonDocument.builder()
                 .id("inbox-42")
                 .build();
         when(inboxItemService.create(any())).thenReturn(withId);
@@ -640,7 +640,7 @@ class FookServiceTest {
         assertThat(cap.getAllValues().get(1).getProjectId()).isEqualTo("p1");
 
         // Inbox-Item ist trotzdem geschrieben — Triage hat geklappt.
-        InboxItemDocument item = captureInbox();
+        MaximegalonDocument item = captureInbox();
         assertThat(item.getPayload()).containsEntry("decision", "discard");
     }
 
@@ -665,7 +665,7 @@ class FookServiceTest {
         service.submit(req);
         service.drainQueue();
 
-        InboxItemDocument item = captureInbox();
+        MaximegalonDocument item = captureInbox();
         assertThat(item.getPayload())
                 .containsEntry("decision", "failed")
                 .containsEntry("error", "UnknownModelException");
@@ -685,7 +685,7 @@ class FookServiceTest {
         service.drainQueue();
 
         verify(lightLlm, times(1)).callForJson(any());
-        InboxItemDocument item = captureInbox();
+        MaximegalonDocument item = captureInbox();
         assertThat(item.getPayload()).containsEntry("decision", "failed");
     }
 
@@ -843,9 +843,9 @@ class FookServiceTest {
                 .build();
     }
 
-    private InboxItemDocument captureInbox() {
-        ArgumentCaptor<InboxItemDocument> cap =
-                ArgumentCaptor.forClass(InboxItemDocument.class);
+    private MaximegalonDocument captureInbox() {
+        ArgumentCaptor<MaximegalonDocument> cap =
+                ArgumentCaptor.forClass(MaximegalonDocument.class);
         verify(inboxItemService, times(1)).create(cap.capture());
         return cap.getValue();
     }

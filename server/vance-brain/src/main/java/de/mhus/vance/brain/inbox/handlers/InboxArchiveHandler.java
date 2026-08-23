@@ -8,8 +8,8 @@ import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import java.io.IOException;
@@ -25,7 +25,7 @@ public class InboxArchiveHandler implements WsHandler {
 
     private final ObjectMapper objectMapper;
     private final WebSocketSender sender;
-    private final InboxItemService inboxService;
+    private final MaximegalonService inboxService;
     private final RequestAuthority authority;
 
     @Override
@@ -48,20 +48,20 @@ public class InboxArchiveHandler implements WsHandler {
             sender.sendError(wsSession, envelope, 400, "itemId is required");
             return;
         }
-        Optional<InboxItemDocument> existing =
+        Optional<MaximegalonDocument> existing =
                 inboxService.findById(ctx.getTenantId(), request.getItemId());
         if (existing.isEmpty()) {
             sender.sendError(wsSession, envelope, 404, "Inbox item not found");
             return;
         }
-        InboxItemDocument item = existing.get();
+        MaximegalonDocument item = existing.get();
         authority.enforce(ctx, new Resource.InboxItem(
                         item.getTenantId() == null ? "" : item.getTenantId(),
                         item.getId() == null ? "" : item.getId(),
                         item.getAssignedToUserId() == null ? "" : item.getAssignedToUserId()),
                 Action.WRITE);
 
-        Optional<InboxItemDocument> updated = inboxService.archive(
+        Optional<MaximegalonDocument> updated = inboxService.archive(
                 ctx.getTenantId(), request.getItemId(), ctx.getUserId());
         if (updated.isEmpty()) {
             sender.sendError(wsSession, envelope, 404, "Inbox item not found");

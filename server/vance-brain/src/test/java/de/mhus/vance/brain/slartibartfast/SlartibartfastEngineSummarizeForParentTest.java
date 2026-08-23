@@ -25,7 +25,7 @@ import de.mhus.vance.brain.slartibartfast.phases.ProposingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.ValidatingPhase;
 import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.ArrayList;
@@ -65,7 +65,7 @@ class SlartibartfastEngineSummarizeForParentTest {
                 mock(de.mhus.vance.brain.progress.ProgressEmitter.class),
                 mock(LaneScheduler.class),
                 objectMapper,
-                mock(InboxItemService.class),
+                mock(MaximegalonService.class),
                 mock(RecipeResolver.class),
                 /*thinkEngineServiceProvider*/ null,
                 mock(FramingPhase.class),

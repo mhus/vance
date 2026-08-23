@@ -99,11 +99,11 @@ export * from './inbox/Criticality';
 export * from './inbox/InboxAnswerRequest';
 export * from './inbox/InboxCountResponse';
 export * from './inbox/InboxDelegateRequest';
-export * from './inbox/InboxItemDto';
-export * from './inbox/InboxItemStatus';
-export * from './inbox/InboxItemType';
 export * from './inbox/InboxListResponse';
 export * from './inbox/InboxTagsResponse';
+export * from './inbox/MaximegalonDto';
+export * from './inbox/MaximegalonStatus';
+export * from './inbox/MaximegalonType';
 export * from './inbox/ResolvedBy';
 
 

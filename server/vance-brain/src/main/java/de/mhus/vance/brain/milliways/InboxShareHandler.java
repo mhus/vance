@@ -3,10 +3,10 @@ package de.mhus.vance.brain.milliways;
 import de.mhus.vance.api.form.FormChoiceDto;
 import de.mhus.vance.api.form.FormFieldDto;
 import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.shared.document.DocumentDocument;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
@@ -49,7 +49,7 @@ public class InboxShareHandler implements ShareHandler {
     static final String FIELD_TEXT = "text";
 
     private final UserService userService;
-    private final InboxItemService inboxItemService;
+    private final MaximegalonService inboxItemService;
     private final PermissionService permissionService;
 
     @Override
@@ -149,7 +149,7 @@ public class InboxShareHandler implements ShareHandler {
 
     // ──────────────────── internals ────────────────────
 
-    private InboxItemDocument item(ShareScope scope, String recipient, String text) {
+    private MaximegalonDocument item(ShareScope scope, String recipient, String text) {
         ShareSubject subject = scope.subject();
         Map<String, Object> payload = new LinkedHashMap<>();
         @Nullable DocumentDocument doc = scope.document();
@@ -174,13 +174,13 @@ public class InboxShareHandler implements ShareHandler {
         // that must stay a quote.
         if (subject.snippet() != null) payload.put("snippet", subject.snippet());
 
-        return InboxItemDocument.builder()
+        return MaximegalonDocument.builder()
                 .tenantId(scope.tenantId())
                 .originatorUserId(scope.sharer())
                 .assignedToUserId(recipient)
                 // The discriminator follows the payload. An OUTPUT_DOCUMENT
                 // without a document would be a lie in the type.
-                .type(doc == null ? InboxItemType.OUTPUT_TEXT : InboxItemType.OUTPUT_DOCUMENT)
+                .type(doc == null ? MaximegalonType.OUTPUT_TEXT : MaximegalonType.OUTPUT_DOCUMENT)
                 .criticality(Criticality.NORMAL)
                 .tags(new ArrayList<>(List.of("share")))
                 .title(sharerLabel(scope) + " shared: " + scope.displayTitle())

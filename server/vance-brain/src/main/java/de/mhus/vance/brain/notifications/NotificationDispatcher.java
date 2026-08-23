@@ -1,9 +1,9 @@
 package de.mhus.vance.brain.notifications;
 
-import de.mhus.vance.api.inbox.InboxItemStatus;
-import de.mhus.vance.shared.inbox.InboxItemCreatedEvent;
-import de.mhus.vance.shared.inbox.InboxItemDelegatedEvent;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
+import de.mhus.vance.api.inbox.MaximegalonStatus;
+import de.mhus.vance.shared.inbox.MaximegalonCreatedEvent;
+import de.mhus.vance.shared.inbox.MaximegalonDelegatedEvent;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import java.time.Instant;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
@@ -13,8 +13,8 @@ import org.springframework.stereotype.Service;
 /**
  * Routes inbox events to all registered notification channels.
  *
- * <p>Subscribes to {@link InboxItemCreatedEvent} (notify the
- * assignee) and {@link InboxItemDelegatedEvent} (notify the new
+ * <p>Subscribes to {@link MaximegalonCreatedEvent} (notify the
+ * assignee) and {@link MaximegalonDelegatedEvent} (notify the new
  * assignee). Auto-answered LOW items skip notification — there's
  * nothing for the user to do about them at create-time.
  *
@@ -40,9 +40,9 @@ public class NotificationDispatcher {
     }
 
     @EventListener
-    public void onCreated(InboxItemCreatedEvent event) {
-        InboxItemDocument item = event.item();
-        if (item.getStatus() != InboxItemStatus.PENDING) {
+    public void onCreated(MaximegalonCreatedEvent event) {
+        MaximegalonDocument item = event.item();
+        if (item.getStatus() != MaximegalonStatus.PENDING) {
             // Auto-answered (LOW) at create-time → don't ping anyone.
             return;
         }
@@ -50,9 +50,9 @@ public class NotificationDispatcher {
     }
 
     @EventListener
-    public void onDelegated(InboxItemDelegatedEvent event) {
-        InboxItemDocument item = event.item();
-        if (item.getStatus() != InboxItemStatus.PENDING) {
+    public void onDelegated(MaximegalonDelegatedEvent event) {
+        MaximegalonDocument item = event.item();
+        if (item.getStatus() != MaximegalonStatus.PENDING) {
             return;
         }
         notify(toEvent(item, item.getAssignedToUserId()));
@@ -77,7 +77,7 @@ public class NotificationDispatcher {
         }
     }
 
-    private static NotifyEvent toEvent(InboxItemDocument item, String recipientUserId) {
+    private static NotifyEvent toEvent(MaximegalonDocument item, String recipientUserId) {
         return new NotifyEvent(
                 item.getTenantId(),
                 recipientUserId,

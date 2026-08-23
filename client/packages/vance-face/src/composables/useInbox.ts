@@ -1,9 +1,9 @@
 import { ref, type Ref } from 'vue';
 import {
   AnswerOutcome,
-  InboxItemStatus,
+  MaximegalonStatus,
   type EffectDescription,
-  type InboxItemDto,
+  type MaximegalonDto,
   type InboxListResponse,
   type InboxTagsResponse,
 } from '@vance/generated';
@@ -20,7 +20,7 @@ export interface InboxFilter {
    *  team-mate. */
   assignedTo: AssignedToFilter;
   /** Item status. {@code null} → all statuses. */
-  status?: InboxItemStatus | null;
+  status?: MaximegalonStatus | null;
   /** Single tag filter. {@code null} → no tag filter. */
   tag?: string | null;
 }
@@ -40,8 +40,8 @@ function encodeAssignedTo(a: AssignedToFilter): string | null {
  * item, and mutation helpers.
  */
 export function useInbox(): {
-  items: Ref<InboxItemDto[]>;
-  selected: Ref<InboxItemDto | null>;
+  items: Ref<MaximegalonDto[]>;
+  selected: Ref<MaximegalonDto | null>;
   /** Server-rendered facts for the selected item's effect, if it has one. */
   effect: Ref<EffectDescription | null>;
   tags: Ref<string[]>;
@@ -60,15 +60,15 @@ export function useInbox(): {
   dismiss: (id: string) => Promise<boolean>;
   delegate: (id: string, toUserId: string, note?: string | null) => Promise<boolean>;
 } {
-  const items = ref<InboxItemDto[]>([]);
-  const selected = ref<InboxItemDto | null>(null);
+  const items = ref<MaximegalonDto[]>([]);
+  const selected = ref<MaximegalonDto | null>(null);
   const effect = ref<EffectDescription | null>(null);
   const tags = ref<string[]>([]);
   const loading = ref(false);
   const error = ref<string | null>(null);
   const filter = ref<InboxFilter>({
     assignedTo: { kind: 'self' },
-    status: InboxItemStatus.PENDING,
+    status: MaximegalonStatus.PENDING,
     tag: null,
   });
 
@@ -82,7 +82,7 @@ export function useInbox(): {
       if (a) params.set('assignedTo', a);
       if (next.status !== null && next.status !== undefined) {
         // Numerical TS-enum → backend's string name via reverse lookup.
-        params.set('status', InboxItemStatus[next.status]);
+        params.set('status', MaximegalonStatus[next.status]);
       }
       if (next.tag) params.set('tag', next.tag);
       const qs = params.toString();
@@ -102,7 +102,7 @@ export function useInbox(): {
     loading.value = true;
     error.value = null;
     try {
-      selected.value = await brainFetch<InboxItemDto>(
+      selected.value = await brainFetch<MaximegalonDto>(
         'GET', `inbox/${encodeURIComponent(id)}`);
       await loadEffect(id, selected.value);
     } catch (e) {
@@ -120,7 +120,7 @@ export function useInbox(): {
    * Failing to load must not hide the item: the caller still sees title,
    * quoted reason and the answer buttons, just without the fact table.
    */
-  async function loadEffect(id: string, item: InboxItemDto | null): Promise<void> {
+  async function loadEffect(id: string, item: MaximegalonDto | null): Promise<void> {
     effect.value = null;
     if (!item?.effectType) return;
     try {
@@ -153,7 +153,7 @@ export function useInbox(): {
    * if it was the touched item, and refresh the row in `items`.
    * Returns `true` so the caller can chain.
    */
-  function applyMutation(updated: InboxItemDto): boolean {
+  function applyMutation(updated: MaximegalonDto): boolean {
     if (selected.value?.id === updated.id) {
       selected.value = updated;
       // The effect ran as part of answering, so its state has moved on —
@@ -192,7 +192,7 @@ export function useInbox(): {
         value: value ?? undefined,
         reason: reason ?? undefined,
       };
-      const updated = await brainFetch<InboxItemDto>(
+      const updated = await brainFetch<MaximegalonDto>(
         'POST', `inbox/${encodeURIComponent(id)}/answer`, { body });
       return applyMutation(updated);
     } catch (e) {
@@ -204,7 +204,7 @@ export function useInbox(): {
   async function archive(id: string): Promise<boolean> {
     error.value = null;
     try {
-      const updated = await brainFetch<InboxItemDto>(
+      const updated = await brainFetch<MaximegalonDto>(
         'POST', `inbox/${encodeURIComponent(id)}/archive`);
       return applyMutation(updated);
     } catch (e) {
@@ -216,7 +216,7 @@ export function useInbox(): {
   async function unarchive(id: string): Promise<boolean> {
     error.value = null;
     try {
-      const updated = await brainFetch<InboxItemDto>(
+      const updated = await brainFetch<MaximegalonDto>(
         'POST', `inbox/${encodeURIComponent(id)}/unarchive`);
       return applyMutation(updated);
     } catch (e) {
@@ -228,7 +228,7 @@ export function useInbox(): {
   async function dismiss(id: string): Promise<boolean> {
     error.value = null;
     try {
-      const updated = await brainFetch<InboxItemDto>(
+      const updated = await brainFetch<MaximegalonDto>(
         'POST', `inbox/${encodeURIComponent(id)}/dismiss`);
       return applyMutation(updated);
     } catch (e) {
@@ -249,7 +249,7 @@ export function useInbox(): {
         toUserId,
         note: note ?? undefined,
       };
-      const updated = await brainFetch<InboxItemDto>(
+      const updated = await brainFetch<MaximegalonDto>(
         'POST', `inbox/${encodeURIComponent(id)}/delegate`, { body });
       return applyMutation(updated);
     } catch (e) {

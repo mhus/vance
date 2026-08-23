@@ -3,7 +3,7 @@ package de.mhus.vance.brain.thinkengine;
 import de.mhus.vance.api.attachment.AttachmentRef;
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.thinkprocess.ActiveAppContext;
 import de.mhus.vance.api.thinkprocess.PeerEventType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
@@ -167,7 +167,7 @@ public final class SteerMessageCodec {
                     at, idem,
                     nullToEmpty(d.getInboxItemId()),
                     d.getInboxItemType() == null
-                            ? InboxItemType.OUTPUT_TEXT : d.getInboxItemType(),
+                            ? MaximegalonType.OUTPUT_TEXT : d.getInboxItemType(),
                     d.getInboxAnswer() == null
                             ? AnswerPayload.builder()
                                     .outcome(AnswerOutcome.UNDECIDABLE)

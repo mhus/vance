@@ -3,8 +3,8 @@ package de.mhus.vance.brain.inbox;
 import de.mhus.vance.api.inbox.InboxPendingSummaryData;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.ws.WebSocketSender;
-import de.mhus.vance.shared.inbox.InboxItemService;
-import de.mhus.vance.shared.inbox.InboxItemService.PendingSummary;
+import de.mhus.vance.shared.inbox.MaximegalonService;
+import de.mhus.vance.shared.inbox.MaximegalonService.PendingSummary;
 import java.io.IOException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +26,7 @@ import org.springframework.web.socket.WebSocketSession;
 @Slf4j
 public class InboxPendingSummaryPusher {
 
-    private final InboxItemService inboxItemService;
+    private final MaximegalonService inboxItemService;
     private final WebSocketSender sender;
 
     /**

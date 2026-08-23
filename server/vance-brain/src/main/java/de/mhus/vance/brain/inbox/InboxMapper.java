@@ -1,12 +1,12 @@
 package de.mhus.vance.brain.inbox;
 
-import de.mhus.vance.api.inbox.InboxItemDto;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
+import de.mhus.vance.api.inbox.MaximegalonDto;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Conversion {@link InboxItemDocument} → {@link InboxItemDto} for
+ * Conversion {@link MaximegalonDocument} → {@link MaximegalonDto} for
  * outbound WS frames. Persistent fields like {@code history} and
  * {@code version} are intentionally not exposed — the wire view is
  * the user-facing snapshot.
@@ -15,8 +15,8 @@ public final class InboxMapper {
 
     private InboxMapper() {}
 
-    public static InboxItemDto toDto(InboxItemDocument d) {
-        return InboxItemDto.builder()
+    public static MaximegalonDto toDto(MaximegalonDocument d) {
+        return MaximegalonDto.builder()
                 .id(d.getId())
                 .tenantId(d.getTenantId())
                 .originatorUserId(d.getOriginatorUserId())
@@ -45,7 +45,7 @@ public final class InboxMapper {
                 .build();
     }
 
-    public static List<InboxItemDto> toDtos(List<InboxItemDocument> docs) {
+    public static List<MaximegalonDto> toDtos(List<MaximegalonDocument> docs) {
         return docs.stream().map(InboxMapper::toDto).toList();
     }
 }

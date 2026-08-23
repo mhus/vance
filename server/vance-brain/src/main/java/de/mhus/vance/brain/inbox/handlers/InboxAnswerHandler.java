@@ -11,8 +11,8 @@ import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import java.io.IOException;
@@ -27,7 +27,7 @@ import tools.jackson.databind.ObjectMapper;
  * Persists an inbox answer. The downstream routing back to the
  * originating process is handled by
  * {@code InboxAnsweredListener} (subscribes to
- * {@code InboxItemAnsweredEvent}).
+ * {@code MaximegalonAnsweredEvent}).
  */
 @Component
 @RequiredArgsConstructor
@@ -36,7 +36,7 @@ public class InboxAnswerHandler implements WsHandler {
 
     private final ObjectMapper objectMapper;
     private final WebSocketSender sender;
-    private final InboxItemService inboxService;
+    private final MaximegalonService inboxService;
     private final RequestAuthority authority;
 
     @Override
@@ -73,13 +73,13 @@ public class InboxAnswerHandler implements WsHandler {
                     outcome.name() + " outcome requires a 'reason'");
             return;
         }
-        Optional<InboxItemDocument> existing =
+        Optional<MaximegalonDocument> existing =
                 inboxService.findById(ctx.getTenantId(), request.getItemId());
         if (existing.isEmpty()) {
             sender.sendError(wsSession, envelope, 404, "Inbox item not found");
             return;
         }
-        InboxItemDocument item = existing.get();
+        MaximegalonDocument item = existing.get();
         authority.enforce(ctx, new Resource.InboxItem(
                         item.getTenantId() == null ? "" : item.getTenantId(),
                         item.getId() == null ? "" : item.getId(),
@@ -92,7 +92,7 @@ public class InboxAnswerHandler implements WsHandler {
                 .reason(request.getReason())
                 .answeredBy(ctx.getUserId())
                 .build();
-        Optional<InboxItemDocument> updated = inboxService.answer(
+        Optional<MaximegalonDocument> updated = inboxService.answer(
                 ctx.getTenantId(), request.getItemId(), payload, ResolvedBy.USER);
         if (updated.isEmpty()) {
             sender.sendError(wsSession, envelope, 404, "Inbox item not found");

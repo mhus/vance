@@ -9,8 +9,8 @@ import java.util.Optional;
  * server, rather than merely travel back to the asking process.
  *
  * <p><b>Why this exists.</b> The standard answer path is purely
- * process-directed: {@code InboxItemService.answer} flips the item and
- * publishes {@link InboxItemAnsweredEvent}, the brain routes a
+ * process-directed: {@code MaximegalonService.answer} flips the item and
+ * publishes {@link MaximegalonAnsweredEvent}, the brain routes a
  * {@code SteerMessage.InboxAnswer} to {@code originProcessId}, the engine
  * wakes and reads it. For anything an LLM must <em>not</em> be able to do
  * on its own — changing permissions, installing a kit, deleting a project
@@ -47,7 +47,7 @@ import java.util.Optional;
 public interface InboxEffect {
 
     /**
-     * Registry key, matched against {@code InboxItemDocument.effectType}.
+     * Registry key, matched against {@code MaximegalonDocument.effectType}.
      * Stable string — it is persisted on items that may outlive a
      * release.
      */
@@ -77,13 +77,13 @@ public interface InboxEffect {
      * @param answer the answer that triggered this, including
      *               {@code answeredBy}
      */
-    void onApproved(InboxItemDocument item, AnswerPayload answer);
+    void onApproved(MaximegalonDocument item, AnswerPayload answer);
 
     /**
      * The responder said no. Typically: mark the held mutation rejected
      * so it cannot be picked up later. Must not perform it.
      */
-    void onRejected(InboxItemDocument item, AnswerPayload answer);
+    void onRejected(MaximegalonDocument item, AnswerPayload answer);
 
     /**
      * Server-rendered facts about what approving would do, for the
@@ -95,7 +95,7 @@ public interface InboxEffect {
      * whoever wrote that text — which for an agent-raised request is the
      * one thing that must not happen.
      */
-    default Optional<EffectDescription> describe(InboxItemDocument item) {
+    default Optional<EffectDescription> describe(MaximegalonDocument item) {
         return Optional.empty();
     }
 }

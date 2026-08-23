@@ -24,7 +24,7 @@ public class InboxListRequest {
 
     /** {@code null} → only PENDING. Use {@code "ALL"} for everything
      *  including ARCHIVED. */
-    private @Nullable InboxItemStatus status;
+    private @Nullable MaximegalonStatus status;
 
     /** Filter on tags (any-of semantics). */
     private @Nullable List<String> tags;

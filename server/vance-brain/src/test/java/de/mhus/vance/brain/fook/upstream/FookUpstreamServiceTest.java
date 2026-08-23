@@ -17,8 +17,8 @@ import de.mhus.vance.brain.fook.TicketContext;
 import de.mhus.vance.brain.fook.TicketDocument;
 import de.mhus.vance.brain.fook.TicketRelations;
 import de.mhus.vance.brain.fook.TicketReporter;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
-import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.settings.SettingService;
 import java.time.Instant;
 import java.util.List;
@@ -34,7 +34,7 @@ class FookUpstreamServiceTest {
 
     private FookTicketService ticketService;
     private FookTicketAnonymizer anonymizer;
-    private InboxItemService inboxItemService;
+    private MaximegalonService inboxItemService;
     private SettingService settingService;
     private ClusterMasterService masterService;
     private TicketProvider provider;
@@ -44,7 +44,7 @@ class FookUpstreamServiceTest {
     void setUp() {
         ticketService = mock(FookTicketService.class);
         anonymizer = new FookTicketAnonymizer();   // real — pure logic
-        inboxItemService = mock(InboxItemService.class);
+        inboxItemService = mock(MaximegalonService.class);
         settingService = mock(SettingService.class);
         masterService = mock(ClusterMasterService.class);
         when(masterService.isLocalPodMaster()).thenReturn(true);
@@ -249,8 +249,8 @@ class FookUpstreamServiceTest {
 
         verify(ticketService).markUpstreamState("uuid-1", "closed");
 
-        ArgumentCaptor<InboxItemDocument> cap =
-                ArgumentCaptor.forClass(InboxItemDocument.class);
+        ArgumentCaptor<MaximegalonDocument> cap =
+                ArgumentCaptor.forClass(MaximegalonDocument.class);
         verify(inboxItemService).create(cap.capture());
         assertThat(cap.getValue().getTitle()).contains("closed");
         assertThat(cap.getValue().getTags()).contains("fook-status");
@@ -281,10 +281,10 @@ class FookUpstreamServiceTest {
 
         service.pollTick();
 
-        ArgumentCaptor<InboxItemDocument> cap =
-                ArgumentCaptor.forClass(InboxItemDocument.class);
+        ArgumentCaptor<MaximegalonDocument> cap =
+                ArgumentCaptor.forClass(MaximegalonDocument.class);
         verify(inboxItemService, times(1)).create(cap.capture());
-        InboxItemDocument item = cap.getValue();
+        MaximegalonDocument item = cap.getValue();
         assertThat(item.getTitle()).contains("ford");
         assertThat(item.getBody()).contains("Can you reproduce");
         assertThat(item.getTags()).contains("fook-comment");

@@ -8,7 +8,7 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
  *
  * <ul>
  *   <li>{@link #LOW} — auto-default-Übernahme bei {@code default}
- *       gesetzt; Item entsteht direkt mit {@link InboxItemStatus#ANSWERED}.
+ *       gesetzt; Item entsteht direkt mit {@link MaximegalonStatus#ANSWERED}.
  *       Email- und Mobile-Channels skippen LOW typischerweise.</li>
  *   <li>{@link #NORMAL} — User entscheidet. v2-Hook für
  *       Auto-Resolver-Worker (siehe spec).</li>

@@ -71,7 +71,7 @@ class MagratheaCounterTest {
             new de.mhus.vance.shared.metric.MetricService(
                     new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
             mock(de.mhus.vance.shared.thinkprocess.ThinkProcessService.class),
-            mock(de.mhus.vance.shared.inbox.InboxItemService.class),
+            mock(de.mhus.vance.shared.inbox.MaximegalonService.class),
             mock(de.mhus.vance.shared.magrathea.MagratheaTimerService.class));
 
     @BeforeEach

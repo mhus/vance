@@ -7,7 +7,7 @@ import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.EffectDescription;
 import de.mhus.vance.api.inbox.EffectFact;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -101,8 +101,8 @@ class InboxEffectRegistryTest {
         RecordingEffect effect = new RecordingEffect(TYPE);
         InboxEffectRegistry registry = new InboxEffectRegistry(List.of(effect));
 
-        InboxItemDocument decision = approvalItem(TYPE);
-        decision.setType(InboxItemType.DECISION);
+        MaximegalonDocument decision = approvalItem(TYPE);
+        decision.setType(MaximegalonType.DECISION);
 
         // A DECISION answer carries no yes/no — approve/reject cannot be
         // derived from it, so nothing runs.
@@ -119,12 +119,12 @@ class InboxEffectRegistryTest {
             }
 
             @Override
-            public void onApproved(InboxItemDocument item, AnswerPayload answer) {
+            public void onApproved(MaximegalonDocument item, AnswerPayload answer) {
                 throw new IllegalStateException("grant storage down");
             }
 
             @Override
-            public void onRejected(InboxItemDocument item, AnswerPayload answer) {
+            public void onRejected(MaximegalonDocument item, AnswerPayload answer) {
             }
         }));
 
@@ -142,15 +142,15 @@ class InboxEffectRegistryTest {
             }
 
             @Override
-            public void onApproved(InboxItemDocument item, AnswerPayload answer) {
+            public void onApproved(MaximegalonDocument item, AnswerPayload answer) {
             }
 
             @Override
-            public void onRejected(InboxItemDocument item, AnswerPayload answer) {
+            public void onRejected(MaximegalonDocument item, AnswerPayload answer) {
             }
 
             @Override
-            public java.util.Optional<EffectDescription> describe(InboxItemDocument item) {
+            public java.util.Optional<EffectDescription> describe(MaximegalonDocument item) {
                 return java.util.Optional.of(new EffectDescription(
                         "PENDING", null, List.of(new EffectFact("Scope", "PROJECT 'test1'"))));
             }
@@ -179,15 +179,15 @@ class InboxEffectRegistryTest {
             }
 
             @Override
-            public void onApproved(InboxItemDocument item, AnswerPayload answer) {
+            public void onApproved(MaximegalonDocument item, AnswerPayload answer) {
             }
 
             @Override
-            public void onRejected(InboxItemDocument item, AnswerPayload answer) {
+            public void onRejected(MaximegalonDocument item, AnswerPayload answer) {
             }
 
             @Override
-            public java.util.Optional<EffectDescription> describe(InboxItemDocument item) {
+            public java.util.Optional<EffectDescription> describe(MaximegalonDocument item) {
                 throw new IllegalStateException("storage down");
             }
         }));
@@ -209,11 +209,11 @@ class InboxEffectRegistryTest {
 
     // ──── helpers ───────────────────────────────────────────────────────
 
-    private static InboxItemDocument approvalItem(String effectType) {
-        return InboxItemDocument.builder()
+    private static MaximegalonDocument approvalItem(String effectType) {
+        return MaximegalonDocument.builder()
                 .id("item-1")
                 .tenantId("acme")
-                .type(InboxItemType.APPROVAL)
+                .type(MaximegalonType.APPROVAL)
                 .effectType(effectType)
                 .effectRef("req-1")
                 .requiresAction(true)
@@ -246,12 +246,12 @@ class InboxEffectRegistryTest {
         }
 
         @Override
-        public void onApproved(InboxItemDocument item, AnswerPayload answer) {
+        public void onApproved(MaximegalonDocument item, AnswerPayload answer) {
             calls.add("approved");
         }
 
         @Override
-        public void onRejected(InboxItemDocument item, AnswerPayload answer) {
+        public void onRejected(MaximegalonDocument item, AnswerPayload answer) {
             calls.add("rejected");
         }
     }

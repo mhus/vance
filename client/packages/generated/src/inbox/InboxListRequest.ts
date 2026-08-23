@@ -3,10 +3,10 @@
  Source: de.mhus.vance.api.inbox.InboxListRequest
 */
 
-import { InboxItemStatus } from './InboxItemStatus';
+import { MaximegalonStatus } from './MaximegalonStatus';
 
 export interface InboxListRequest {
-  status?: InboxItemStatus;
+  status?: MaximegalonStatus;
   tags?: string[];
   sessionId?: string;
   limit?: number;

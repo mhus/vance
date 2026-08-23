@@ -12,7 +12,7 @@ package de.mhus.vance.brain.memory;
  * <p>The constants live in {@code vance-brain.memory} (next to the
  * compactor) rather than in {@code vance-api}: only brain code emits
  * or consumes them — they never cross the API boundary, and adding an
- * {@code InboxItemType} variant would mean a TypeScript-DTO change and
+ * {@code MaximegalonType} variant would mean a TypeScript-DTO change and
  * a wire-protocol commitment we don't yet need. The tag-as-discriminator
  * approach keeps {@code APPROVAL} as the inbox-type (its yes/no UI is
  * exactly what we want) and treats {@link #TAG_INBOX_OFFER} as a brain-

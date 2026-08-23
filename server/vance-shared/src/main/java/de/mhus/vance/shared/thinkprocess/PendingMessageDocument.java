@@ -1,7 +1,7 @@
 package de.mhus.vance.shared.thinkprocess;
 
 import de.mhus.vance.api.inbox.AnswerPayload;
-import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.thinkprocess.ActiveAppContext;
 import de.mhus.vance.api.thinkprocess.BoundDocSelection;
 import de.mhus.vance.api.thinkprocess.PeerEventType;
@@ -163,7 +163,7 @@ public class PendingMessageDocument {
 
     // ─── INBOX_ANSWER ────────────────────────────────────────────
     private @Nullable String inboxItemId;
-    private @Nullable InboxItemType inboxItemType;
+    private @Nullable MaximegalonType inboxItemType;
     private @Nullable AnswerPayload inboxAnswer;
 
     // ─── PEER_EVENT ──────────────────────────────────────────────

@@ -1,6 +1,6 @@
 package de.mhus.vance.foot.connection.handlers;
 
-import de.mhus.vance.api.inbox.InboxItemDto;
+import de.mhus.vance.api.inbox.MaximegalonDto;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.foot.connection.MessageHandler;
@@ -31,7 +31,7 @@ public class InboxItemUpdatedHandler implements MessageHandler {
 
     @Override
     public void handle(WebSocketEnvelope envelope) {
-        InboxItemDto item = json.convertValue(envelope.getData(), InboxItemDto.class);
+        MaximegalonDto item = json.convertValue(envelope.getData(), MaximegalonDto.class);
         if (item == null) return;
         terminal.verbose("inbox-update id=" + item.getId()
                 + " status=" + item.getStatus()

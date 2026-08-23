@@ -7,7 +7,7 @@ import de.mhus.vance.api.inbox.EffectDescription;
 import de.mhus.vance.api.inbox.EffectFact;
 import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.inbox.InboxEffect;
-import de.mhus.vance.shared.inbox.InboxItemDocument;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
@@ -70,7 +70,7 @@ public class PermissionRequestEffect implements InboxEffect {
     }
 
     @Override
-    public void onApproved(InboxItemDocument item, AnswerPayload answer) {
+    public void onApproved(MaximegalonDocument item, AnswerPayload answer) {
         PermissionRequestDocument request = load(item);
         if (request == null) {
             return;
@@ -105,7 +105,7 @@ public class PermissionRequestEffect implements InboxEffect {
     }
 
     @Override
-    public void onRejected(InboxItemDocument item, AnswerPayload answer) {
+    public void onRejected(MaximegalonDocument item, AnswerPayload answer) {
         PermissionRequestDocument request = load(item);
         if (request == null) {
             return;
@@ -172,7 +172,7 @@ public class PermissionRequestEffect implements InboxEffect {
      * claimed; this is what would actually happen.
      */
     @Override
-    public Optional<EffectDescription> describe(InboxItemDocument item) {
+    public Optional<EffectDescription> describe(MaximegalonDocument item) {
         String ref = item.getEffectRef();
         if (StringUtils.isBlank(ref)) {
             return Optional.empty();
@@ -220,7 +220,7 @@ public class PermissionRequestEffect implements InboxEffect {
      * the responder should see as an error.
      */
     private @org.jspecify.annotations.Nullable PermissionRequestDocument load(
-            InboxItemDocument item) {
+            MaximegalonDocument item) {
         String ref = item.getEffectRef();
         if (StringUtils.isBlank(ref)) {
             log.warn("Inbox item '{}' declares effect '{}' without an effectRef",

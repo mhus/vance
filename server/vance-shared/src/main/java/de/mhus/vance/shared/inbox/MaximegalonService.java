@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.inbox;
 
 import com.mongodb.client.result.UpdateResult;
+import org.bson.types.ObjectId;
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.Criticality;
@@ -55,6 +56,23 @@ public class MaximegalonService {
     private static final String F_STATUS = "status";
     private static final String F_ASSIGNED = "assignedToUserId";
     private static final String F_REQUIRES_ACTION = "requiresAction";
+    private static final String F_MESSAGES = "messages";
+    private static final String F_PARTICIPANTS = "participants";
+    private static final String F_READ_BY = "readBy";
+    private static final String F_UNREAD_FOR = "unreadFor";
+    private static final String F_REACTIONS = "reactions";
+
+    /**
+     * Upper bound on a thread's embedded discussion.
+     *
+     * <p>Not a guess at what people need but a property of the storage
+     * decision: the messages live inside the thread document, and an unbounded
+     * array walks into Mongo's 16 MB limit — a document that has burst it can
+     * be neither read nor repaired through the normal API. For a single matter
+     * heading for a single decision the bound is also simply healthy; it says
+     * the same thing as "a thread ends".
+     */
+    public static final int MAX_MESSAGES = 500;
 
     /** Conventional payload key for the LOW-auto-default value. */
     public static final String PAYLOAD_DEFAULT_KEY = "default";
@@ -107,6 +125,7 @@ public class MaximegalonService {
                     .build());
         }
         toCreate.setHistory(history);
+        seedThreadState(toCreate, autoAnswered);
 
         MaximegalonDocument saved = repository.save(toCreate);
         log.info("Created inbox item id='{}' tenant='{}' assignee='{}' type={} crit={} requiresAction={} status={}",
@@ -119,6 +138,47 @@ public class MaximegalonService {
             eventPublisher.publishEvent(new MaximegalonAnsweredEvent(saved));
         }
         return saved;
+    }
+
+    /**
+     * Fills participants and read state on a thread being created, unless the
+     * caller already supplied participants of its own.
+     *
+     * <p>The creator counts as having read what they wrote, so they start in
+     * {@code readBy} and out of {@code unreadFor} — otherwise every posting
+     * tool would light up its own author's badge.
+     *
+     * <p><b>An auto-answered thread starts fully read.</b> LOW criticality with
+     * a default is decided at creation time and deliberately bothers nobody;
+     * leaving it unread would put a badge on something no human ever needs to
+     * look at, which is exactly what the auto-default exists to avoid.
+     */
+    private static void seedThreadState(MaximegalonDocument doc, boolean autoAnswered) {
+        if (doc.getParticipants() == null || doc.getParticipants().isEmpty()) {
+            List<String> participants = new ArrayList<>();
+            addIfPresent(participants, doc.getOriginatorUserId());
+            addIfPresent(participants, doc.getAssignedToUserId());
+            doc.setParticipants(participants);
+        }
+        String creator = doc.getOriginatorUserId();
+        List<String> readBy = new ArrayList<>();
+        addIfPresent(readBy, creator);
+        doc.setReadBy(readBy);
+
+        List<String> unread = new ArrayList<>();
+        if (!autoAnswered) {
+            for (String p : doc.getParticipants()) {
+                if (!p.equals(creator)) unread.add(p);
+            }
+        }
+        doc.setUnreadFor(unread);
+    }
+
+    /** Appends a non-blank value that isn't already in the list. */
+    private static void addIfPresent(List<String> target, @Nullable String value) {
+        if (value != null && !value.isBlank() && !target.contains(value)) {
+            target.add(value);
+        }
     }
 
     /**
@@ -180,7 +240,16 @@ public class MaximegalonService {
      * @param tag        filter on a single tag, or {@code null} =
      *                   any tag.
      * @return matching items, sorted by {@code createdAt} desc so
-     *         the freshest land at the top.
+     *         the freshest land at the top. <b>Without their messages</b> —
+     *         see below.
+     *
+     * <p><b>The discussion is projected out.</b> A listing needs titles, not
+     * transcripts, and the messages are embedded in the same document; without
+     * this every inbox listing would drag every thread's full history along.
+     * Consequence to be aware of: the returned documents are
+     * <em>incomplete</em> and must never be handed to {@code save()} — that
+     * would erase the messages. Every mutation in this service updates by
+     * field for exactly that reason.
      */
     public List<MaximegalonDocument> listFiltered(
             String tenantId,
@@ -189,6 +258,7 @@ public class MaximegalonService {
             @Nullable String tag) {
         Query query = Query.query(filterCriteria(tenantId, userIds, status, tag))
                 .with(Sort.by(Sort.Direction.DESC, "createdAt"));
+        query.fields().exclude(F_MESSAGES);
         return mongoTemplate.find(query, MaximegalonDocument.class);
     }
 
@@ -215,6 +285,11 @@ public class MaximegalonService {
                         .and(F_REQUIRES_ACTION).is(true)),
                 MaximegalonDocument.class);
         return new PendingCounts(total, requiresAction);
+    }
+
+    /** Single-item query by id within a tenant — used by every mutation. */
+    private static Query byId(String tenantId, String itemId) {
+        return Query.query(Criteria.where(F_ID).is(itemId).and(F_TENANT).is(tenantId));
     }
 
     /**
@@ -483,6 +558,13 @@ public class MaximegalonService {
         Instant now = Instant.now();
         Update update = new Update()
                 .set(F_ASSIGNED, toUserId)
+                // The new assignee joins and is told; the previous one stays a
+                // participant, so delegating no longer loses sight of the matter.
+                // With teamId set, visibility does not move at all — which is
+                // what makes "delegation changes who is up, not who can see"
+                // true rather than merely intended.
+                .addToSet(F_PARTICIPANTS, toUserId)
+                .addToSet(F_UNREAD_FOR, toUserId)
                 .push("history", MaximegalonHistoryEntry.builder()
                         .action("DELEGATED")
                         .actor(byUserId)
@@ -522,11 +604,358 @@ public class MaximegalonService {
         return findById(tenantId, itemId);
     }
 
+    // ────────────────── Thread: messages ──────────────────
+
+    /**
+     * Appends a contribution and marks the thread unread for everyone else.
+     *
+     * <p><b>One write.</b> Pushing the message and updating {@link
+     * MaximegalonDocument#getUnreadFor()} happen in the same update — the
+     * reason the discussion is embedded rather than a second collection. Split
+     * across two collections this would need a transaction, or the index could
+     * drift from the truth it indexes.
+     *
+     * <p>The author joins {@code participants} implicitly: contributing is a
+     * way of taking part. Their own message starts read for them, and their
+     * membership in {@code unreadFor} is left alone — they may well have older
+     * contributions they never opened.
+     *
+     * @param parentId the message being replied to, or {@code null} for the
+     *                 root level (a reply to the thread's own question)
+     * @throws MaximegalonRuleException {@code MESSAGE_LIMIT_REACHED} or
+     *                                  {@code INVALID_PARENT}
+     */
+    public Optional<MaximegalonDocument> postMessage(
+            String tenantId, String itemId, String authorUserId, String body,
+            @Nullable String parentId) {
+        Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
+        if (existing.isEmpty()) return Optional.empty();
+        MaximegalonDocument doc = existing.get();
+
+        List<MaximegalonMessage> current = doc.getMessages() == null
+                ? List.<MaximegalonMessage>of() : doc.getMessages();
+        if (current.size() >= MAX_MESSAGES) {
+            throw new MaximegalonRuleException(
+                    MaximegalonRuleException.MESSAGE_LIMIT_REACHED,
+                    "thread '" + itemId + "' already holds " + current.size()
+                            + " messages (limit " + MAX_MESSAGES + ")");
+        }
+        if (parentId != null) {
+            requireReplyableParent(current, parentId, itemId);
+        }
+
+        Instant now = Instant.now();
+        MaximegalonMessage message = MaximegalonMessage.builder()
+                .id(new ObjectId().toHexString())
+                .authorUserId(authorUserId)
+                .body(body)
+                .createdAt(now)
+                .parentId(parentId)
+                .readBy(new ArrayList<>(List.of(authorUserId)))
+                .reactions(new ArrayList<>())
+                .build();
+
+        List<String> nowUnread = new ArrayList<>();
+        for (String p : doc.getParticipants()) {
+            if (!p.equals(authorUserId)) nowUnread.add(p);
+        }
+
+        Update update = new Update()
+                .push(F_MESSAGES, message)
+                .addToSet(F_PARTICIPANTS, authorUserId);
+        if (!nowUnread.isEmpty()) {
+            update.addToSet(F_UNREAD_FOR).each(nowUnread.toArray());
+        }
+        mongoTemplate.updateFirst(byId(tenantId, itemId), update, MaximegalonDocument.class);
+        return findById(tenantId, itemId);
+    }
+
+    /**
+     * Depth is capped at one level, so the parent must exist and must itself be
+     * a root message. Checked here rather than in the schema — see
+     * {@link MaximegalonMessage} for why that is deliberate.
+     */
+    private static void requireReplyableParent(
+            List<MaximegalonMessage> messages, String parentId, String itemId) {
+        for (MaximegalonMessage m : messages) {
+            if (parentId.equals(m.getId())) {
+                if (m.getParentId() != null) {
+                    throw new MaximegalonRuleException(
+                            MaximegalonRuleException.INVALID_PARENT,
+                            "message '" + parentId + "' is itself a reply; depth is capped at one");
+                }
+                return;
+            }
+        }
+        throw new MaximegalonRuleException(
+                MaximegalonRuleException.INVALID_PARENT,
+                "no message '" + parentId + "' in thread '" + itemId + "'");
+    }
+
+    // ────────────────── Thread: read state ──────────────────
+
+    /**
+     * Marks the whole thread read for one user — body and every message — and
+     * drops them from the badge index. One update, using the all-positional
+     * operator, so opening a thread with fifty messages is one write.
+     *
+     * <p><b>Reading never closes an ask.</b> {@code status} is untouched:
+     * looking at a decision is not making it. That separation is the point of
+     * having read as an axis of its own (§3a).
+     */
+    public Optional<MaximegalonDocument> markRead(String tenantId, String itemId, String userId) {
+        Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
+        if (existing.isEmpty()) return Optional.empty();
+        Update update = new Update()
+                .addToSet(F_READ_BY, userId)
+                .pull(F_UNREAD_FOR, userId);
+        if (existing.get().getMessages() != null && !existing.get().getMessages().isEmpty()) {
+            update.addToSet(F_MESSAGES + ".$[].readBy", userId);
+        }
+        mongoTemplate.updateFirst(byId(tenantId, itemId), update, MaximegalonDocument.class);
+        return findById(tenantId, itemId);
+    }
+
+    /**
+     * Marks individual messages read — the deep-link case, where someone lands
+     * on message five without having seen three and four. This is why read
+     * state sits per message and not as a single watermark on the thread: a
+     * watermark would silently tick off everything before the target.
+     *
+     * <p>{@code unreadFor} is only cleared when nothing is left open for that
+     * user, which needs a re-read; that is the cost of partial reading and the
+     * reason {@link #markRead} exists as the cheap common case.
+     */
+    public Optional<MaximegalonDocument> markMessagesRead(
+            String tenantId, String itemId, String userId, List<String> messageIds) {
+        if (messageIds.isEmpty()) return findById(tenantId, itemId);
+        Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
+        if (existing.isEmpty()) return Optional.empty();
+
+        mongoTemplate.updateFirst(
+                byId(tenantId, itemId),
+                new Update().addToSet(F_MESSAGES + ".$[m].readBy", userId)
+                        .filterArray(Criteria.where("m.id").in(messageIds)),
+                MaximegalonDocument.class);
+
+        MaximegalonDocument refreshed = findById(tenantId, itemId).orElse(existing.get());
+        if (!hasUnreadFor(refreshed, userId)) {
+            mongoTemplate.updateFirst(byId(tenantId, itemId),
+                    new Update().pull(F_UNREAD_FOR, userId), MaximegalonDocument.class);
+            return findById(tenantId, itemId);
+        }
+        return Optional.of(refreshed);
+    }
+
+    /** The definition {@code unreadFor} indexes — also the repair rule. */
+    private static boolean hasUnreadFor(MaximegalonDocument doc, String userId) {
+        if (doc.getReadBy() == null || !doc.getReadBy().contains(userId)) return true;
+        if (doc.getMessages() == null) return false;
+        for (MaximegalonMessage m : doc.getMessages()) {
+            if (m.getReadBy() == null || !m.getReadBy().contains(userId)) return true;
+        }
+        return false;
+    }
+
+    // ────────────────── Thread: participation ──────────────────
+
+    /**
+     * Adds someone to the thread and makes it unread for them.
+     *
+     * <p><b>An invitation creates unread, joining does not</b> ({@link
+     * #setFollowing}): being pulled in by someone else has to be noticeable,
+     * whereas whoever subscribes themselves is looking at the thread already.
+     *
+     * <p>Authorization is the caller's: inviting <em>is</em> delivering, so it
+     * goes through the same {@code Resource.InboxItem} + {@code WRITE} check
+     * that Milliways' inbox handler uses. Participation itself is a property of
+     * the object, not a grant — it is checked on entry, not on every access.
+     */
+    public Optional<MaximegalonDocument> invite(
+            String tenantId, String itemId, String invitedUserId, String byUserId) {
+        Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
+        if (existing.isEmpty()) return Optional.empty();
+        mongoTemplate.updateFirst(byId(tenantId, itemId),
+                new Update()
+                        .addToSet(F_PARTICIPANTS, invitedUserId)
+                        .addToSet(F_UNREAD_FOR, invitedUserId)
+                        .push("history", MaximegalonHistoryEntry.builder()
+                                .action("INVITED")
+                                .actor(byUserId)
+                                .details("invited=" + invitedUserId)
+                                .at(Instant.now())
+                                .build()),
+                MaximegalonDocument.class);
+        return findById(tenantId, itemId);
+    }
+
+    /**
+     * Subscribes to or unsubscribes from a thread's updates.
+     *
+     * <p>Unsubscribing drops the user from {@code unreadFor} too — leaving them
+     * there would keep a badge alight for a thread they asked to be rid of.
+     * Subscribing does <em>not</em> add unread (see {@link #invite}).
+     *
+     * @throws MaximegalonRuleException {@code ASSIGNEE_MUST_STAY} when the
+     *         assignee of an open ask tries to leave — a process is waiting on
+     *         them; delegation is the way out
+     */
+    public Optional<MaximegalonDocument> setFollowing(
+            String tenantId, String itemId, String userId, boolean following) {
+        Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
+        if (existing.isEmpty()) return Optional.empty();
+        MaximegalonDocument doc = existing.get();
+
+        if (!following
+                && userId.equals(doc.getAssignedToUserId())
+                && doc.isRequiresAction()
+                && doc.getStatus() == MaximegalonStatus.PENDING) {
+            throw new MaximegalonRuleException(
+                    MaximegalonRuleException.ASSIGNEE_MUST_STAY,
+                    "user '" + userId + "' is the assignee of the open ask '" + itemId
+                            + "' — delegate instead of unsubscribing");
+        }
+
+        Update update = following
+                ? new Update().addToSet(F_PARTICIPANTS, userId)
+                : new Update().pull(F_PARTICIPANTS, userId).pull(F_UNREAD_FOR, userId);
+        mongoTemplate.updateFirst(byId(tenantId, itemId), update, MaximegalonDocument.class);
+        return findById(tenantId, itemId);
+    }
+
+    // ────────────────── Thread: reactions ──────────────────
+
+    /**
+     * Toggles one user's emoji reaction on the thread body
+     * ({@code messageId == null}) or on a single message.
+     *
+     * <p>Read-modify-write guarded by {@code @Version}: a reaction rewrites an
+     * array of objects, which {@code $addToSet} cannot address by key without
+     * knowing whether the entry exists yet. A lost race here costs one click,
+     * so a single retry is enough and a failed second attempt is dropped
+     * rather than escalated.
+     *
+     * <p>Reactions never touch {@code unreadFor}: they are the quiet channel.
+     * Five agreements must not ring five bells — whoever wants to be loud
+     * writes a message.
+     */
+    public Optional<MaximegalonDocument> react(
+            String tenantId, String itemId, @Nullable String messageId,
+            String key, String userId, boolean on) {
+        for (int attempt = 0; attempt < 2; attempt++) {
+            Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
+            if (existing.isEmpty()) return Optional.empty();
+            MaximegalonDocument doc = existing.get();
+
+            Update update = new Update();
+            if (messageId == null) {
+                update.set(F_REACTIONS, toggled(doc.getReactions(), key, userId, on));
+            } else {
+                MaximegalonMessage target = null;
+                for (MaximegalonMessage m : doc.getMessages()) {
+                    if (messageId.equals(m.getId())) { target = m; break; }
+                }
+                if (target == null) return Optional.of(doc);
+                update.set(F_MESSAGES + ".$[m].reactions",
+                                toggled(target.getReactions(), key, userId, on))
+                        .filterArray(Criteria.where("m.id").is(messageId));
+            }
+            UpdateResult result = mongoTemplate.updateFirst(
+                    Query.query(Criteria.where(F_ID).is(itemId).and(F_TENANT).is(tenantId)
+                            .and("version").is(doc.getVersion())),
+                    update, MaximegalonDocument.class);
+            if (result.getModifiedCount() > 0) {
+                return findById(tenantId, itemId);
+            }
+        }
+        log.debug("Reaction '{}' on item '{}' lost two races — dropped", key, itemId);
+        return findById(tenantId, itemId);
+    }
+
+    /** Pure toggle on a reaction list: adds or removes one user under one key. */
+    private static List<MaximegalonReaction> toggled(
+            @Nullable List<MaximegalonReaction> current, String key, String userId, boolean on) {
+        List<MaximegalonReaction> result = new ArrayList<>();
+        boolean seen = false;
+        if (current != null) {
+            for (MaximegalonReaction r : current) {
+                if (!key.equals(r.getKey())) {
+                    result.add(r);
+                    continue;
+                }
+                seen = true;
+                List<String> users = new ArrayList<>(
+                        r.getUserIds() == null ? List.<String>of() : r.getUserIds());
+                if (on) {
+                    if (!users.contains(userId)) users.add(userId);
+                } else {
+                    users.remove(userId);
+                }
+                // An empty reaction is dropped: a key with nobody behind it
+                // would still render as a chip showing zero.
+                if (!users.isEmpty()) {
+                    result.add(MaximegalonReaction.builder().key(key).userIds(users).build());
+                }
+            }
+        }
+        if (!seen && on) {
+            result.add(MaximegalonReaction.builder()
+                    .key(key).userIds(new ArrayList<>(List.of(userId))).build());
+        }
+        return result;
+    }
+
+    // ────────────────── Badge ──────────────────
+
+    /**
+     * The three numbers behind the topbar badge, each with exactly one reader.
+     *
+     * <p>{@code unread} is the count <em>in</em> the badge, {@code
+     * unreadRequiresAction} its colour, {@code pending} the tooltip. Colour and
+     * count must come from the same population — colouring on all open asks
+     * while counting only unread threads would paint the badge red because
+     * something is open somewhere, even when every unread thread is a harmless
+     * output.
+     *
+     * <p><b>Only unread counts.</b> A decision deliberately held back — waiting
+     * on information, wrong moment — must not glow forever: a badge that cannot
+     * reach zero without deciding trains people to dismiss. The stock of open
+     * matters is in the list and in the tooltip; the badge is an alarm, not an
+     * inventory. See {@code planning/maximegalon.md} §4b.
+     */
+    public BadgeCounts countBadge(String tenantId, String userId) {
+        Criteria notArchived = Criteria.where(F_TENANT).is(tenantId)
+                .and(F_UNREAD_FOR).is(userId)
+                .and(F_STATUS).ne(MaximegalonStatus.ARCHIVED);
+        long unread = mongoTemplate.count(Query.query(notArchived), MaximegalonDocument.class);
+
+        long unreadRequiresAction = mongoTemplate.count(
+                Query.query(Criteria.where(F_TENANT).is(tenantId)
+                        .and(F_UNREAD_FOR).is(userId)
+                        .and(F_STATUS).is(MaximegalonStatus.PENDING)
+                        .and(F_REQUIRES_ACTION).is(true)
+                        .and(F_ASSIGNED).is(userId)),
+                MaximegalonDocument.class);
+
+        long pending = mongoTemplate.count(
+                Query.query(filterCriteria(tenantId, List.of(userId),
+                        MaximegalonStatus.PENDING, null)),
+                MaximegalonDocument.class);
+
+        return new BadgeCounts(unread, unreadRequiresAction, pending);
+    }
+
     /**
      * Pending-item counts for the topbar badge — {@code total} is everything
      * still pending, {@code requiresAction} the subset that waits on an answer.
      */
     public record PendingCounts(long total, long requiresAction) {}
+
+    /**
+     * Badge numbers: {@code unread} is shown, {@code unreadRequiresAction}
+     * colours it, {@code pending} is the stock behind the tooltip.
+     */
+    public record BadgeCounts(long unread, long unreadRequiresAction, long pending) {}
 
     /** Lightweight summary used by {@code inbox-pending-summary} on session resume. */
     public record PendingSummary(

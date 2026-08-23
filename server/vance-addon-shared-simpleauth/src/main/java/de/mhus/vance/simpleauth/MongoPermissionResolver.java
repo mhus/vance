@@ -181,12 +181,18 @@ public class MongoPermissionResolver implements PermissionResolver {
      * team with the assignee. An item without an assignee is never accessible.
      *
      * <p><b>The same rule exists a second time</b>, in
-     * {@code InboxAuthz#isAuthorized} (vance-brain), which the REST surface
-     * uses. The duplication is forced by the module boundary — this addon
-     * builds on {@code vance-shared} and must not depend on
-     * {@code vance-brain}. <b>Change both or neither:</b> the copies are only
-     * useful while they agree, or REST and WS authorize the same request
-     * differently.
+     * {@code InboxAuthz#mayDecide} (vance-brain), which the REST surface uses.
+     * The duplication is forced by the module boundary — this addon builds on
+     * {@code vance-shared} and must not depend on {@code vance-brain}.
+     * <b>Change both or neither:</b> the copies are only useful while they
+     * agree, or REST and WS authorize the same request differently.
+     *
+     * <p>Note what is deliberately <b>not</b> here: a thread's participants and
+     * its declared team also grant read access, but that is decided in
+     * {@code InboxAuthz#maySee} as a property of the document, not asked of a
+     * resolver. Keeping it out leaves {@code Resource.InboxItem} unchanged —
+     * otherwise every implementation, including the EE governor, would have to
+     * grow a field. See {@code planning/maximegalon.md} §5.
      */
     private boolean inboxAllowed(SecurityContext subject, Resource.InboxItem item) {
         String assignee = item.assignedToUserId();

@@ -140,7 +140,7 @@ public class InboxController {
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
             HttpServletRequest httpRequest) {
-        MaximegalonDocument doc = loadAuthorized(tenant, id, httpRequest);
+        MaximegalonDocument doc = loadVisible(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.READ);
         return InboxMapper.toDto(doc);
     }
@@ -162,7 +162,7 @@ public class InboxController {
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
             HttpServletRequest httpRequest) {
-        MaximegalonDocument doc = loadAuthorized(tenant, id, httpRequest);
+        MaximegalonDocument doc = loadVisible(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.READ);
         return effectRegistry.describe(doc)
                 .map(ResponseEntity::ok)
@@ -199,7 +199,7 @@ public class InboxController {
             @Valid @RequestBody InboxAnswerRequest request,
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
-        MaximegalonDocument doc = loadAuthorized(tenant, id, httpRequest);
+        MaximegalonDocument doc = loadDecidable(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
         // The wire-DTO is flat (outcome / value / reason). Build
         // the AnswerPayload here, stamping the resolver with the
@@ -223,7 +223,7 @@ public class InboxController {
             @PathVariable("id") String id,
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
-        MaximegalonDocument doc = loadAuthorized(tenant, id, httpRequest);
+        MaximegalonDocument doc = loadDecidable(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
         MaximegalonDocument updated = inboxItemService.archive(tenant, id, currentUser)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
@@ -241,7 +241,7 @@ public class InboxController {
             @PathVariable("id") String id,
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
-        MaximegalonDocument doc = loadAuthorized(tenant, id, httpRequest);
+        MaximegalonDocument doc = loadDecidable(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
         MaximegalonDocument updated = inboxItemService.unarchive(tenant, id, currentUser)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
@@ -254,7 +254,7 @@ public class InboxController {
             @PathVariable("id") String id,
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
-        MaximegalonDocument doc = loadAuthorized(tenant, id, httpRequest);
+        MaximegalonDocument doc = loadDecidable(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
         MaximegalonDocument updated = inboxItemService.dismiss(tenant, id, currentUser)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
@@ -268,7 +268,7 @@ public class InboxController {
             @Valid @RequestBody InboxDelegateRequest request,
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
-        MaximegalonDocument doc = loadAuthorized(tenant, id, httpRequest);
+        MaximegalonDocument doc = loadDecidable(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
         if (request.getToUserId() == null || request.getToUserId().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -409,18 +409,49 @@ public class InboxController {
                 doc.getAssignedToUserId() == null ? "" : doc.getAssignedToUserId());
     }
 
-    private MaximegalonDocument loadAuthorized(
+    /**
+     * Loads a thread the caller may <b>read</b> — assignee, their team, a
+     * participant or the declared team. Used by the two read endpoints and by
+     * everything that only contributes (messages, reads, reactions).
+     */
+    private MaximegalonDocument loadVisible(
             String tenant, String id, HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
+        MaximegalonDocument doc = loadInTenant(tenant, id);
+        if (!inboxAuthz.maySee(tenant, currentUser, doc)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return doc;
+    }
+
+    /**
+     * Loads a thread the caller may <b>decide</b> on — answer, dismiss,
+     * delegate, archive. Same rule and same population as before the thread
+     * work: being invited into a discussion does not confer the right to
+     * settle it.
+     */
+    private MaximegalonDocument loadDecidable(
+            String tenant, String id, HttpServletRequest httpRequest) {
+        String currentUser = currentUser(httpRequest);
+        MaximegalonDocument doc = loadInTenant(tenant, id);
+        if (!inboxAuthz.mayDecide(tenant, currentUser, doc.getAssignedToUserId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return doc;
+    }
+
+    /**
+     * Existence and tenant check, shared by both gates. Not-found and
+     * not-allowed both answer 404 on purpose: a 403 would confirm that an item
+     * with that id exists in this tenant.
+     */
+    private MaximegalonDocument loadInTenant(String tenant, String id) {
         Optional<MaximegalonDocument> opt = inboxItemService.findById(tenant, id);
         if (opt.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
         MaximegalonDocument doc = opt.get();
         if (!tenant.equals(doc.getTenantId())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-        }
-        if (!inboxAuthz.isAuthorized(tenant, currentUser, doc.getAssignedToUserId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
         return doc;

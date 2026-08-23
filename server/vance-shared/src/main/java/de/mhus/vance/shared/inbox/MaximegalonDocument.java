@@ -37,7 +37,14 @@ import org.springframework.data.mongodb.core.mapping.Document;
                 def = "{ 'tenantId': 1, 'originSessionId': 1, 'status': 1 }"),
         @CompoundIndex(
                 name = "process_status_idx",
-                def = "{ 'originProcessId': 1, 'status': 1 }")
+                def = "{ 'originProcessId': 1, 'status': 1 }"),
+        // The badge query: "threads with something unread for me, not archived".
+        // It fires on every page mount and every tab focus in every MPA entry,
+        // so it must be one index on one collection. unreadFor is the multikey
+        // equality term, status the range/inequality term — hence this order.
+        @CompoundIndex(
+                name = "tenant_unread_status_idx",
+                def = "{ 'tenantId': 1, 'unreadFor': 1, 'status': 1 }")
 })
 @Data
 @Builder
@@ -113,6 +120,78 @@ public class MaximegalonDocument {
     private @Nullable ResolvedBy resolvedBy;
     private @Nullable Instant resolvedAt;
     private @Nullable String resolverReason;
+
+    // ── Thread: access, participation, read state, discussion ──
+    //
+    // Three access sources, all explicit and all additive. assignedToUserId
+    // above says who is *up*, and it alone decides who may answer; the two
+    // below only widen who may *see* and contribute.
+
+    /**
+     * The team that may look on without being a participant. {@code null}
+     * keeps the historical behaviour, where visibility is derived from the
+     * teams of the current assignee.
+     *
+     * <p>Declaring it fixes a side effect nobody asked for: with the derived
+     * rule, delegating from a member of team X to a member of team Y silently
+     * moves visibility from X to Y. With a team on the thread, delegation
+     * moves {@code assignedToUserId} and nothing else.
+     */
+    private @Nullable String teamId;
+
+    /**
+     * Who receives updates on this thread — and, as a property of the object
+     * rather than a permission, who may read it. Grows by contributing, by
+     * being invited and by delegation; shrinks by unsubscribing. Deliberately
+     * <b>not</b> derived from originator/assignee/authors: an invited person
+     * appears in none of those, and unsubscribing would be impossible because
+     * whoever wrote once stays an author forever.
+     */
+    @Builder.Default
+    private List<String> participants = new ArrayList<>();
+
+    /**
+     * Who has read title and body. The thread is the root node of its own
+     * tree, so it carries a read state like every message does — and without
+     * this a freshly created thread (which has no messages yet) could never
+     * be unread.
+     */
+    @Builder.Default
+    private List<String> readBy = new ArrayList<>();
+
+    /**
+     * Badge index: everyone with something unopened anywhere in this thread.
+     * Always a subset of {@link #participants}.
+     *
+     * <p>Derivable — {@code {u : u ∉ readBy} ∪ {u : ∃ message with u ∉
+     * message.readBy}} — but precomputed, because the badge count cannot
+     * derive it without scanning: the alternative,
+     * {@code messages: {$elemMatch: {readBy: {$ne: me}}}}, is a negative
+     * match and not index-bounded. Kept in step inside the same update as the
+     * truth it indexes, and rebuildable from the messages if it ever drifts.
+     */
+    @Builder.Default
+    private List<String> unreadFor = new ArrayList<>();
+
+    /** Reactions on the thread itself, i.e. on title and body. */
+    @Builder.Default
+    private List<MaximegalonReaction> reactions = new ArrayList<>();
+
+    /**
+     * The clarification, as a flat array with {@code parentId} links —
+     * embedded rather than a second collection so that appending a message
+     * and updating {@link #unreadFor} is <em>one</em> atomic update instead of
+     * two writes that can drift apart. Bounded (see
+     * {@code MaximegalonService.MAX_MESSAGES}), because an unbounded embedded
+     * array walks into the 16 MB document limit, and a document that has burst
+     * it is neither readable nor repairable through the normal API.
+     *
+     * <p><b>Excluded from list queries.</b> {@code list()} returns whole
+     * documents; without a projection every inbox listing would drag every
+     * discussion along.
+     */
+    @Builder.Default
+    private List<MaximegalonMessage> messages = new ArrayList<>();
 
     @Builder.Default
     private List<MaximegalonHistoryEntry> history = new ArrayList<>();

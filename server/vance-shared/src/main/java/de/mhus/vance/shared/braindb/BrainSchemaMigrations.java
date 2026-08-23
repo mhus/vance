@@ -75,7 +75,13 @@ public class BrainSchemaMigrations implements SchemaMigrationSource {
             // rather than broken, and nothing later puts it right. On a new
             // database it costs one collectionExists call.
             new Registered("2026-08-23_002", Migrator_2026_08_23_002_MaximegalonRename.class,
-                    /*runOnBaseline*/ true));
+                    /*runOnBaseline*/ true),
+            // Not runOnBaseline: a new database has no threads to backfill, and
+            // unlike the rename above a skipped run is recoverable — the fields
+            // are additive and a missing unreadFor reads as "nothing unread",
+            // not as a lost collection.
+            new Registered("2026-08-23_003",
+                    Migrator_2026_08_23_003_MaximegalonThreadFields.class));
 
     @Override
     public List<Registered> migrations() {

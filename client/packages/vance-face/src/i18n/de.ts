@@ -113,6 +113,22 @@ export default {
     openSession: 'Session öffnen',
   },
 
+  inboxThread: {
+    participants: 'Beteiligt:',
+    team: '(Team {team})',
+    follow: 'Folgen',
+    followTitle: 'Updates zu diesem Thread erhalten',
+    reply: 'Antworten',
+    replyingTo: 'Antwort auf einen Beitrag',
+    cancelReply: 'abbrechen',
+    newFromHere: 'neu ab hier',
+    empty: 'Noch keine Klärung — frag nach, wenn etwas unklar ist.',
+    placeholder: 'Zur Klärung beitragen…',
+    send: 'Senden',
+    invite: 'Einladen',
+    invitePlaceholder: 'Person einladen',
+  },
+
   inboxBadge: {
     tooltip: '{n} ungelesen — {p} offen insgesamt; Inbox öffnen',
     actionableTooltip: '{n} ungelesen, {a} warten auf deine Antwort — {p} offen insgesamt; Inbox öffnen',

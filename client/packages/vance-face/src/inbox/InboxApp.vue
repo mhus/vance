@@ -20,6 +20,7 @@ import { useTeams } from '@/composables/useTeams';
 import { getUsername, safeUrl } from '@vance/shared';
 import { VBadge } from '@/components';
 import { setDocumentDraft } from '@/platform';
+import InboxThreadPanel from '@/inbox/InboxThreadPanel.vue';
 import {
   AnswerOutcome,
   Criticality,
@@ -521,6 +522,58 @@ function cortexLink(ref: SharedDocumentRef): string {
     + `&doc=${encodeURIComponent(ref.documentId)}`;
 }
 
+// ─── Thread ────────────────────────────────────────────────────────────
+//
+// Thin pass-throughs: the composable owns the requests and folds the answer
+// back into `selected`, so the panel re-renders from the server's version
+// rather than from a guess about what the mutation did.
+
+async function onThreadPost(body: string, parentId: string | null): Promise<void> {
+  const sel = inbox.selected.value;
+  if (!sel?.id) return;
+  submitting.value = true;
+  try {
+    await inbox.postMessage(sel.id, body, parentId);
+  } finally {
+    submitting.value = false;
+  }
+}
+
+/** Not guarded by `submitting`: reporting a read must never block the UI. */
+async function onThreadRead(): Promise<void> {
+  const sel = inbox.selected.value;
+  if (sel?.id) await inbox.markRead(sel.id);
+}
+
+async function onThreadInvite(userId: string): Promise<void> {
+  const sel = inbox.selected.value;
+  if (!sel?.id) return;
+  submitting.value = true;
+  try {
+    await inbox.invite(sel.id, userId);
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function onThreadFollow(following: boolean): Promise<void> {
+  const sel = inbox.selected.value;
+  if (!sel?.id) return;
+  submitting.value = true;
+  try {
+    await inbox.setFollowing(sel.id, following);
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function onThreadReact(
+  key: string, on: boolean, messageId: string | null,
+): Promise<void> {
+  const sel = inbox.selected.value;
+  if (sel?.id) await inbox.react(sel.id, key, on, messageId);
+}
+
 const breadcrumbs = computed<string[]>(() => {
   // Breadcrumbs carry the path *within* the editor — the editor name
   // itself is in the topbar title and would otherwise read twice.
@@ -946,6 +999,19 @@ const breadcrumbs = computed<string[]>(() => {
                   @click="archiveItem"
                 >{{ $t('inbox.actions.archive') }}</VButton>
               </div>
+
+              <!-- The clarification on the way to the decision. Below the
+                   action tray on purpose: the question and its buttons stay
+                   the point of the panel, the discussion supports them. -->
+              <InboxThreadPanel
+                :item="inbox.selected.value"
+                :busy="submitting"
+                @post="onThreadPost"
+                @read="onThreadRead"
+                @invite="onThreadInvite"
+                @follow="onThreadFollow"
+                @react="onThreadReact"
+              />
             </div>
           </template>
         </VCard>

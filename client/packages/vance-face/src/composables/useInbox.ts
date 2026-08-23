@@ -7,7 +7,7 @@ import {
   type InboxListResponse,
   type InboxTagsResponse,
 } from '@vance/generated';
-import { brainFetch } from '@vance/shared';
+import { brainFetch, RestError } from '@vance/shared';
 import { refreshInboxCount } from '@/inbox/inboxCountStore';
 
 export type AssignedToFilter =
@@ -59,6 +59,11 @@ export function useInbox(): {
   unarchive: (id: string) => Promise<boolean>;
   dismiss: (id: string) => Promise<boolean>;
   delegate: (id: string, toUserId: string, note?: string | null) => Promise<boolean>;
+  postMessage: (id: string, body: string, parentId?: string | null) => Promise<boolean>;
+  markRead: (id: string, messageIds?: string[] | null) => Promise<boolean>;
+  invite: (id: string, userId: string) => Promise<boolean>;
+  setFollowing: (id: string, following: boolean) => Promise<boolean>;
+  react: (id: string, key: string, on: boolean, messageId?: string | null) => Promise<boolean>;
 } {
   const items = ref<MaximegalonDto[]>([]);
   const selected = ref<MaximegalonDto | null>(null);
@@ -258,6 +263,100 @@ export function useInbox(): {
     }
   }
 
+  // ──── Thread ────────────────────────────────────────────────────────
+
+  /**
+   * Turns a failure into a message for the user.
+   *
+   * <p>A 409 carries a thread invariant the server refused to break, with a
+   * stable {@code reason} code — "you are the assignee of an open ask, delegate
+   * instead" is worth saying precisely. Anything else falls back to the
+   * generic text, because guessing at an unknown failure is worse than
+   * admitting it.
+   */
+  function threadError(e: unknown, fallbackKey: string): string {
+    if (e instanceof RestError && e.status === 409) {
+      const reason = /"reason"\s*:\s*"([a-z_]+)"/.exec(e.message)?.[1];
+      if (reason) return reason;
+    }
+    return e instanceof Error ? e.message : fallbackKey;
+  }
+
+  async function postMessage(
+    id: string, body: string, parentId?: string | null,
+  ): Promise<boolean> {
+    error.value = null;
+    try {
+      const updated = await brainFetch<MaximegalonDto>(
+        'POST', `inbox/${encodeURIComponent(id)}/messages`,
+        { body: { body, parentId: parentId ?? undefined } });
+      return applyMutation(updated);
+    } catch (e) {
+      error.value = threadError(e, 'Failed to post message.');
+      return false;
+    }
+  }
+
+  /**
+   * Tells the server what the user has seen. Whether that is on open, on
+   * scroll or after a delay is this client's business; that it happened has to
+   * reach the server, or a second device shows a badge that is already dealt
+   * with.
+   *
+   * <p>Silent on failure: a read-marker that does not arrive costs a stale
+   * badge, and an error toast for it would be noise on every flaky moment.
+   */
+  async function markRead(id: string, messageIds?: string[] | null): Promise<boolean> {
+    try {
+      const updated = await brainFetch<MaximegalonDto>(
+        'POST', `inbox/${encodeURIComponent(id)}/read`,
+        { body: { messageIds: messageIds ?? undefined } });
+      return applyMutation(updated);
+    } catch (e) {
+      console.warn('Failed to mark inbox thread read', e);
+      return false;
+    }
+  }
+
+  async function invite(id: string, userId: string): Promise<boolean> {
+    error.value = null;
+    try {
+      const updated = await brainFetch<MaximegalonDto>(
+        'POST', `inbox/${encodeURIComponent(id)}/invite`, { body: { userId } });
+      return applyMutation(updated);
+    } catch (e) {
+      error.value = threadError(e, 'Failed to invite.');
+      return false;
+    }
+  }
+
+  async function setFollowing(id: string, following: boolean): Promise<boolean> {
+    error.value = null;
+    try {
+      const updated = await brainFetch<MaximegalonDto>(
+        'POST', `inbox/${encodeURIComponent(id)}/follow`, { body: { following } });
+      return applyMutation(updated);
+    } catch (e) {
+      error.value = threadError(e, 'Failed to change subscription.');
+      return false;
+    }
+  }
+
+  async function react(
+    id: string, key: string, on: boolean, messageId?: string | null,
+  ): Promise<boolean> {
+    error.value = null;
+    try {
+      const updated = await brainFetch<MaximegalonDto>(
+        'POST', `inbox/${encodeURIComponent(id)}/react`,
+        { body: { key, on, messageId: messageId ?? undefined } });
+      return applyMutation(updated);
+    } catch (e) {
+      error.value = threadError(e, 'Failed to react.');
+      return false;
+    }
+  }
+
   return {
     items,
     selected,
@@ -275,5 +374,10 @@ export function useInbox(): {
     unarchive,
     dismiss,
     delegate,
+    postMessage,
+    markRead,
+    invite,
+    setFollowing,
+    react,
   };
 }

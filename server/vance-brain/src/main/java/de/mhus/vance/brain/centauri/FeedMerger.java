@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.centauri;
 
+import de.mhus.vance.toolpack.feed.FeedContentPolicy;
 import de.mhus.vance.toolpack.feed.FeedDirection;
 import de.mhus.vance.toolpack.feed.FeedFilter;
 import de.mhus.vance.toolpack.feed.FeedItem;
@@ -189,8 +190,18 @@ public final class FeedMerger {
         List<Candidate> all = new ArrayList<>();
         for (StreamFetch fetch : fetches) {
             List<Candidate> mine = new ArrayList<>(fetch.page().items().size());
+            // The source's standing policy sits beside the request filter, not
+            // inside it: a filter is what the reader wants now, the policy is
+            // what never comes through (FeedContentPolicy). Applying it here
+            // means one place decides, and a rejection is treated exactly like
+            // a filter rejection — the entry is not delivered but still moves
+            // the cursor, or a stream of nothing but blocked entries would
+            // scroll forever without progress.
+            FeedContentPolicy policy = fetch.instance().contentPolicy();
             for (FeedItem item : fetch.page().items()) {
-                mine.add(new Candidate(fetch, item, filter.matches(item, fetch.pushdown())));
+                boolean accepted = policy.allows(item)
+                        && filter.matches(item, fetch.pushdown());
+                mine.add(new Candidate(fetch, item, accepted));
             }
             mine.sort(order);
             byStream.put(fetch.stream().key(), mine);

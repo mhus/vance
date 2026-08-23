@@ -9,6 +9,7 @@ import de.mhus.vance.brain.sourceconfig.SourceConfigLoader;
 import de.mhus.vance.brain.sourceconfig.SourceConfigPaths;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.core.SecretResolver;
+import de.mhus.vance.toolpack.feed.FeedContentPolicy;
 import de.mhus.vance.toolpack.feed.FeedInstanceConfig;
 import de.mhus.vance.toolpack.feed.FeedProtocol;
 import de.mhus.vance.toolpack.feed.FeedScope;
@@ -235,7 +236,9 @@ public class FeedSourceFactory implements SourceConfigCache {
                         // so a rotated secret takes effect without waiting for the TTL.
                         () -> resolveCredential(scope, config),
                         protocolExtras(config));
-                instances.add(protocol.instantiate(cfg));
+                FeedSourceInstance instance = protocol.instantiate(cfg);
+                warnOnIgnoredContentPolicy(config, cfg, instance);
+                instances.add(instance);
             } catch (RuntimeException e) {
                 log.warn("Centauri: protocol '{}' refused to instantiate endpoint '{}': {}",
                         config.protocol(), config.documentPath(), e.toString());
@@ -252,6 +255,33 @@ public class FeedSourceFactory implements SourceConfigCache {
      * deriving the pseudonym centrally is that no protocol implementation ever
      * has a say in it.
      */
+    /**
+     * Warns when a source declares a content policy that its protocol drops on
+     * the floor.
+     *
+     * <p>{@link FeedSourceInstance#contentPolicy()} defaults to "no policy", so
+     * a protocol that never implements it keeps behaving exactly as before —
+     * which is right for compatibility and wrong for the operator who just
+     * wrote {@code blockedHosts} into a document and gets no effect and no
+     * word. The check turns a silent no-op into a line in the log; it cannot be
+     * a boot failure, because the fields are additive and a protocol is free to
+     * grow into them later.
+     */
+    private static void warnOnIgnoredContentPolicy(
+            SourceConfig config, FeedInstanceConfig cfg, FeedSourceInstance instance) {
+        if (FeedContentPolicy.from(cfg).isEmpty() || !instance.contentPolicy().isEmpty()) {
+            return;
+        }
+        log.warn("Centauri: endpoint '{}' declares a content policy "
+                        + "({}/{}/{}), but protocol '{}' does not read it — the entries are "
+                        + "NOT being filtered. The protocol has to override contentPolicy().",
+                config.documentPath(),
+                FeedContentPolicy.FIELD_HIDE_SENSITIVE,
+                FeedContentPolicy.FIELD_BLOCKED_HOSTS,
+                FeedContentPolicy.FIELD_BLOCKED_AUTHORS,
+                config.protocol());
+    }
+
     private static Map<String, Object> protocolExtras(SourceConfig config) {
         Map<String, Object> extras = new LinkedHashMap<>(config.extras());
         extras.remove(FIELD_SEND_ACTOR);

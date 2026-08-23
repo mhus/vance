@@ -5,6 +5,7 @@ import de.mhus.vance.toolpack.feed.FeedCapabilities;
 import de.mhus.vance.toolpack.feed.FeedDirection;
 import de.mhus.vance.toolpack.feed.FeedException;
 import de.mhus.vance.toolpack.feed.FeedFetch;
+import de.mhus.vance.toolpack.feed.FeedContentPolicy;
 import de.mhus.vance.toolpack.feed.FeedInstanceConfig;
 import de.mhus.vance.toolpack.feed.FeedItem;
 import de.mhus.vance.toolpack.feed.FeedPage;
@@ -128,6 +129,16 @@ class WikipediaFeedInstance implements FeedSourceInstance {
     @Override
     public List<FeedSelector> listSelectors() {
         return SELECTORS;
+    }
+
+    /**
+     * Policy off this source's own document — see {@link FeedContentPolicy}.
+     * One line per protocol on purpose: the merge asks and applies, so the
+     * filtering itself lives in one place.
+     */
+    @Override
+    public FeedContentPolicy contentPolicy() {
+        return FeedContentPolicy.from(cfg);
     }
 
     @Override

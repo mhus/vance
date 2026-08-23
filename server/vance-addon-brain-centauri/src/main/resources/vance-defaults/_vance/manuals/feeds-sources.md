@@ -34,8 +34,31 @@ baseUrl: https://…
 | `sendActor` | `true` | send the salted reader pseudonym, so the source can personalise |
 | `language` | from host | only for `wikipedia` on hosts like `commons.wikimedia.org` |
 | `feedPath` | `/ode/feed` | only for `ode`, when the source moved its path |
+| `hideSensitive` | `false` | drop entries the source itself flagged as sensitive |
+| `blockedHosts` | — | comma-separated hosts whose entries are dropped, subdomains included |
+| `blockedAuthors` | — | comma-separated authors whose entries are dropped |
 
 **Without `protocol` the source is skipped entirely**, and so is a file that is not valid YAML — the brain log names it.
+
+## What a source refuses to hand on
+
+The last three fields above are **standing policy, not a filter**. A filter is what the reader wants
+right now and arrives per request; these hang on the source and apply to every request, including
+yours through `feed_read`. You cannot switch them off from here, and that is deliberate — a rule a
+caller can forget is not a rule.
+
+They work for every protocol, not just Mastodon: `blockedHosts` matches the host of an entry's url
+(subdomains included, so `a.example` also blocks `www.a.example`), and `hideSensitive` honours an
+`extras.sensitive` flag that a protocol sets when its source labelled the entry. A protocol that never
+sets it is simply unaffected.
+
+**None of this is a parental control.** A blocklist blocks what is on it; new hosts keep appearing.
+For a federated source the effective lever is the **selector** — a local or hashtag timeline never
+pulls foreign instances in. Say that when someone asks for the lists to keep unwanted material out:
+offer the selector first, the lists as a supplement.
+
+If an operator wrote these fields and nothing changed, the brain log has a warning — the protocol
+does not read them yet.
 
 ## The protocols shipped with this addon
 

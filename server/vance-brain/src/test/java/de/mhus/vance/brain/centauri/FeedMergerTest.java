@@ -3,6 +3,7 @@ package de.mhus.vance.brain.centauri;
 import static de.mhus.vance.brain.centauri.FakeFeedSource.item;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.mhus.vance.toolpack.feed.FeedContentPolicy;
 import de.mhus.vance.toolpack.feed.FeedDirection;
 import de.mhus.vance.toolpack.feed.FeedFilter;
 import de.mhus.vance.toolpack.feed.FeedItem;
@@ -357,6 +358,60 @@ class FeedMergerTest {
     }
 
     // ── helpers ──────────────────────────────────────────────────────
+
+    // ──── Content policy ────────────────────────────────────────────────
+
+    /**
+     * The source's standing policy drops entries the reader never asked about —
+     * and, like a filter rejection, the cursor still moves past them. Otherwise
+     * a stream of nothing but blocked entries would re-fetch the same page
+     * forever and the scroll would never progress.
+     */
+    @Test
+    void merge_policyBlockedEntries_areDroppedButStillAdvanceTheCursor() {
+        FakeFeedSource alpha = new FakeFeedSource("alpha").withContentPolicy(
+                new FeedContentPolicy(false, Set.of("blocked.test"), Set.of()));
+
+        var result = merge(
+                List.of(fetch(ALPHA, alpha, page(true, "page-end",
+                        item("a1", "2026-08-19T10:00:00Z", "https://blocked.test/1"),
+                        item("a2", "2026-08-19T09:00:00Z", "https://blocked.test/2")))),
+                FeedFilter.none(), 10, FeedDirection.OLDER, CentauriCursor.fresh());
+
+        assertThat(result.items()).isEmpty();
+        assertThat(result.cursor().perStream()).containsEntry(ALPHA.key(), "page-end");
+    }
+
+    /** The policy is the source's, so it applies to that stream only. */
+    @Test
+    void merge_policyOfOneStream_leavesTheOtherAlone() {
+        FakeFeedSource alpha = new FakeFeedSource("alpha").withContentPolicy(
+                new FeedContentPolicy(false, Set.of("a.test"), Set.of()));
+        FakeFeedSource beta = new FakeFeedSource("beta");
+
+        var result = merge(
+                List.of(
+                        fetch(ALPHA, alpha, page(false, null,
+                                item("a1", "2026-08-19T10:00:00Z", "https://a.test/1"))),
+                        fetch(BETA, beta, page(false, null,
+                                item("b1", "2026-08-19T09:00:00Z", "https://b.test/1")))),
+                FeedFilter.none(), 10, FeedDirection.OLDER, CentauriCursor.fresh());
+
+        assertThat(result.items()).extracting(i -> i.item().id()).containsExactly("b1");
+    }
+
+    /** A source without policy keeps behaving exactly as before. */
+    @Test
+    void merge_withoutPolicy_deliversEverything() {
+        FakeFeedSource alpha = new FakeFeedSource("alpha");
+
+        var result = merge(
+                List.of(fetch(ALPHA, alpha, page(false, null,
+                        item("a1", "2026-08-19T10:00:00Z", "https://anything.test/1")))),
+                FeedFilter.none(), 10, FeedDirection.OLDER, CentauriCursor.fresh());
+
+        assertThat(result.items()).hasSize(1);
+    }
 
     /** Every stream answered — the shape most of these cases are about. */
     private static FeedMerger.MergeResult merge(

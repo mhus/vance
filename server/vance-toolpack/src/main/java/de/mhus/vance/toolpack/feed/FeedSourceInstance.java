@@ -50,6 +50,23 @@ public interface FeedSourceInstance {
     List<FeedSelector> listSelectors();
 
     /**
+     * What this source refuses to hand on, whatever was asked for — read from
+     * its own configuration ({@link FeedContentPolicy#from}).
+     *
+     * <p><b>Declared here rather than applied inside the protocol</b> so that
+     * one place does the filtering: the merge asks every stream for its policy
+     * and applies it alongside the request filter. Left to each adapter, the
+     * rule would only be as good as its implementations, and the next source
+     * added would forget it.
+     *
+     * <p>The default is no policy, so a protocol that ignores the fields
+     * behaves exactly as before.
+     */
+    default FeedContentPolicy contentPolicy() {
+        return FeedContentPolicy.none();
+    }
+
+    /**
      * One level of a facet's value tree, for a source whose taxonomy is too
      * large to ship inline (see {@link de.mhus.vance.toolpack.facet.Facet}).
      *

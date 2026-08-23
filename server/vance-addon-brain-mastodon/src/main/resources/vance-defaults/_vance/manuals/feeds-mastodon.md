@@ -67,6 +67,28 @@ grammar, not the permission. Two consequences for what you say to a user:
   wrote one, else the opening of the text, else the attachment, else the handle. Do not quote it as
   if it were a headline the author chose; the body is the post.
 
+## Unwanted content in a federated stream
+
+`public:all` and `public:remote` pull in posts from foreign instances, and the moderation of *this*
+server does not reach them. Explicit material turns up that way. Three levers, in order of how well
+they work:
+
+1. **The selector.** `public:local` on a moderated server, or a `hashtag:` stream, never pulls foreign
+   instances in at all. This is the only lever that also works against content nobody has labelled
+   and nobody has put on a list yet — and it needs no configuration beyond the selector itself.
+2. **`hideSensitive: true`** in the source document honours Mastodon's own `sensitive` flag: author
+   and instance label their own posts, so nothing has to be guessed. Set by default in the template.
+3. **`blockedHosts: a.example,b.example`** in the source document drops entries whose address is on
+   the list, subdomains included.
+
+**None of this is a parental control**, and the second and third are the weaker two on purpose. A
+blocklist blocks what is on it; new instances keep appearing. A `sensitive` flag is only as good as
+the author who sets it. If unwanted material must stay out reliably, the answer is (1) — the other two
+narrow what gets through, they do not guarantee it.
+
+Where the fields live and how they behave for other protocols:
+`specification/public/centauri-service.md`.
+
 ## What this source will not do
 
 No posting, no boosting, no favouriting, no reporting — not "not implemented" but out of scope by

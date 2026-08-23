@@ -2,3 +2,6 @@ protocol: mastodon
 baseUrl: {{ baseUrl }}
 {% if apiKey %}apiKey: "{{ apiKey }}"
 {% endif %}enabled: true
+hideSensitive: {{ hideSensitive | default('true') }}
+{% if blockedHosts %}blockedHosts: {{ blockedHosts }}
+{% endif %}

@@ -23,3 +23,14 @@ fields:
     label: { de: "App-Token (optional)", en: "App token (optional)" }
     help:  { de: "Nur nötig, wenn die Instanz die öffentliche Vorschau abgeschaltet hat. Referenz ({{secret:vault:…}}) oder erklärtes Literal ({noop}…).",
              en: "Only needed when the instance has disabled public preview. A reference ({{secret:vault:…}}) or a declared literal ({noop}…)." }
+  - name: hideSensitive
+    type: boolean
+    defaultValue: true
+    label: { de: "Als sensibel markierte Beiträge ausblenden", en: "Hide entries flagged sensitive" }
+    help:  { de: "Respektiert das sensitive-Flag der Mastodon-API — der Autor kennzeichnet selbst. Der wirksamste Hebel ist aber der Selektor: eine lokale oder Hashtag-Timeline holt fremde Instanzen gar nicht erst herein.",
+             en: "Honours the Mastodon API's own sensitive flag — the author labels it themselves. The stronger lever is the selector, though: a local or hashtag timeline never pulls foreign instances in." }
+  - name: blockedHosts
+    type: string
+    label: { de: "Gesperrte Instanzen", en: "Blocked instances" }
+    help:  { de: "Komma-separiert, Subdomains eingeschlossen (example.org sperrt auch www.example.org). Eine Sperrliste sperrt, was darauf steht — sie ist kein Jugendschutz.",
+             en: "Comma-separated, subdomains included (example.org also blocks www.example.org). A blocklist blocks what is on it — it is not a parental control." }

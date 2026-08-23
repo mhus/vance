@@ -32,6 +32,9 @@ final class FakeFeedSource implements FeedSourceInstance {
             false, false, false, false, true,
             40, Set.of(), false, Duration.ofMinutes(30));
 
+    private de.mhus.vance.toolpack.feed.FeedContentPolicy contentPolicy =
+            de.mhus.vance.toolpack.feed.FeedContentPolicy.none();
+
     private @Nullable RuntimeException failure;
     private @Nullable RuntimeException capabilitiesFailure;
     private @Nullable Duration fetchDelay;
@@ -40,6 +43,17 @@ final class FakeFeedSource implements FeedSourceInstance {
 
     FakeFeedSource(String id) {
         this.id = id;
+    }
+
+    /** What this source refuses to hand on, whatever was asked for. */
+    FakeFeedSource withContentPolicy(de.mhus.vance.toolpack.feed.FeedContentPolicy policy) {
+        this.contentPolicy = policy;
+        return this;
+    }
+
+    @Override
+    public de.mhus.vance.toolpack.feed.FeedContentPolicy contentPolicy() {
+        return contentPolicy;
     }
 
     // ── scripting ────────────────────────────────────────────────────

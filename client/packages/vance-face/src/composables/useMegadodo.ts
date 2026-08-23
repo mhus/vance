@@ -40,6 +40,12 @@ export interface MegadodoOperation {
 }
 
 export interface UseMegadodo {
+  /**
+   * All rows of one operation, regardless of the active filter. Needed
+   * because "only failures" hides the START row — and with it the
+   * duration and the run-log link, exactly when the reader needs them.
+   */
+  loadTrace(projectId: string | null, traceId: string): Promise<MegadodoEventDto[]>;
   operations: ComputedRef<MegadodoOperation[]>;
   loading: Ref<boolean>;
   loadingMore: Ref<boolean>;
@@ -105,10 +111,29 @@ export function useMegadodo(): UseMegadodo {
     }
   }
 
+  const traceCache = ref<Record<string, MegadodoEventDto[]>>({});
+
+  async function loadTrace(
+    projectId: string | null,
+    traceId: string,
+  ): Promise<MegadodoEventDto[]> {
+    const cached = traceCache.value[traceId];
+    if (cached) return cached;
+    const params = new URLSearchParams();
+    if (projectId) params.set('projectId', projectId);
+    const loaded = await brainFetch<MegadodoEventDto[]>(
+      'GET',
+      `megadodo/trace/${encodeURIComponent(traceId)}?${params.toString()}`,
+    );
+    traceCache.value = { ...traceCache.value, [traceId]: loaded };
+    return loaded;
+  }
+
   function clear(): void {
     rows.value = [];
     cursor.value = null;
     error.value = null;
+    traceCache.value = {};
   }
 
   /**
@@ -161,5 +186,8 @@ export function useMegadodo(): UseMegadodo {
 
   const hasMore = computed(() => cursor.value !== null);
 
-  return { operations, loading, loadingMore, error, hasMore, filters, load, loadMore, clear };
+  return {
+    operations, loading, loadingMore, error, hasMore, filters,
+    load, loadMore, loadTrace, clear,
+  };
 }

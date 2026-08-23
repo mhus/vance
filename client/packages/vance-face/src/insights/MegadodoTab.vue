@@ -22,6 +22,15 @@ const props = defineProps<{ projectId: string | null }>();
 const state = useMegadodo();
 const expanded = ref<Set<string>>(new Set());
 
+/**
+ * Full rows per expanded operation, fetched from the trace endpoint.
+ *
+ * Not reused from the loaded page: under "only failures" the page holds
+ * the END row alone, so duration, log link and the preceding steps —
+ * exactly what someone opens a failure for — would be missing.
+ */
+const traces = ref<Record<string, MegadodoEventDto[]>>({});
+
 const ACTION_OPTIONS = [
   { value: '', label: 'All activity' },
   { value: 'scheduler.', label: 'Scheduler' },
@@ -60,9 +69,37 @@ function onActionChange(value: string | number | null): void {
 
 function toggle(traceId: string): void {
   const next = new Set(expanded.value);
-  if (next.has(traceId)) next.delete(traceId);
-  else next.add(traceId);
+  if (next.has(traceId)) {
+    next.delete(traceId);
+  } else {
+    next.add(traceId);
+    if (!traces.value[traceId]) {
+      void state
+        .loadTrace(props.projectId, traceId)
+        .then((rows) => {
+          traces.value = { ...traces.value, [traceId]: rows };
+        })
+        .catch(() => {
+          /* Fall back to what the page already holds. */
+        });
+    }
+  }
   expanded.value = next;
+}
+
+/** Rows to show in the expanded body — the full trace once it arrived. */
+function detailRows(op: MegadodoOperation): MegadodoEventDto[] {
+  const full = traces.value[op.traceId];
+  return full ?? [...op.rows].reverse();
+}
+
+/** Duration from the full trace, so it survives the failures-only filter. */
+function detailDuration(op: MegadodoOperation): number | null {
+  const rows = traces.value[op.traceId];
+  if (!rows || rows.length < 2) return op.durationMs;
+  const first = new Date(rows[0]!.timestamp).getTime();
+  const last = new Date(rows[rows.length - 1]!.timestamp).getTime();
+  return last - first;
 }
 
 const failureCount = computed(() => state.operations.value.filter((o) => o.failed).length);
@@ -131,9 +168,13 @@ function logLink(row: MegadodoEventDto): string | null {
   return `/cortex.html?project=${encodeURIComponent(project)}&path=${encodeURIComponent(row.logPath)}`;
 }
 
-/** The row that carries the log link — the END knows it, else the head. */
+/**
+ * The row that carries the log link. Looks at the full trace first: with
+ * a filter active the loaded page may not contain the row that has it.
+ */
 function logRow(op: MegadodoOperation): MegadodoEventDto | null {
-  return op.rows.find((r) => r.logPath) ?? null;
+  const rows = traces.value[op.traceId] ?? op.rows;
+  return rows.find((r) => r.logPath) ?? null;
 }
 </script>
 
@@ -258,13 +299,16 @@ function logRow(op: MegadodoOperation): MegadodoEventDto | null {
               >
                 Open run log ↗
               </a>
+              <span v-if="detailDuration(op) !== null" class="opacity-60 tabular-nums">
+                {{ formatDuration(detailDuration(op)) }}
+              </span>
               <span class="opacity-40 font-mono">{{ op.traceId }}</span>
             </div>
 
             <table class="w-full text-xs">
               <tbody>
                 <tr
-                  v-for="row in [...op.rows].reverse()"
+                  v-for="row in detailRows(op)"
                   :key="row.id"
                   class="border-t border-base-content/5"
                 >

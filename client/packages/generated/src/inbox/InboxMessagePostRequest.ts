@@ -3,6 +3,8 @@
  Source: de.mhus.vance.api.inbox.InboxMessagePostRequest
 */
 
+export const MAX_BODY_CHARS = 16_384;
+
 export interface InboxMessagePostRequest {
   body: string;
   parentId?: string;

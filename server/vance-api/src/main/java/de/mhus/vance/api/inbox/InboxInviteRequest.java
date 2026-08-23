@@ -3,6 +3,7 @@ package de.mhus.vance.api.inbox;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -26,5 +27,6 @@ import lombok.NoArgsConstructor;
 public class InboxInviteRequest {
 
     @NotBlank
+    @Size(max = 256)
     private String userId;
 }

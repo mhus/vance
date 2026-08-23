@@ -8,6 +8,7 @@ import de.mhus.vance.api.inbox.InboxCountResponse;
 import de.mhus.vance.api.inbox.InboxMessagePostRequest;
 import de.mhus.vance.api.inbox.InboxReadRequest;
 import de.mhus.vance.api.inbox.InboxInviteRequest;
+import de.mhus.vance.api.inbox.InboxParticipantRemoveRequest;
 import de.mhus.vance.api.inbox.InboxFollowRequest;
 import de.mhus.vance.api.inbox.InboxReactRequest;
 import de.mhus.vance.shared.inbox.MaximegalonRuleException;
@@ -324,7 +325,7 @@ public class InboxController {
     public ResponseEntity<MaximegalonDto> markRead(
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
-            @RequestBody(required = false) @Nullable InboxReadRequest request,
+            @Valid @RequestBody(required = false) @Nullable InboxReadRequest request,
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
         loadVisible(tenant, id, httpRequest);
@@ -355,6 +356,32 @@ public class InboxController {
         authority.enforce(httpRequest,
                 new Resource.InboxItem(tenant, "", request.getUserId()), Action.WRITE);
         MaximegalonDocument updated = inboxItemService.invite(
+                        tenant, id, request.getUserId(), currentUser)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        return ResponseEntity.ok(InboxMapper.toDto(updated));
+    }
+
+    /**
+     * Takes someone back out of the thread.
+     *
+     * <p>The one thread endpoint gated on {@code mayDecide} rather than
+     * {@code maySee}: deciding who is in the room belongs to running the
+     * matter, and a participant removing another participant would make
+     * membership self-governing. It is needed because participation is checked
+     * before anything derived — joining turns a visibility that followed the
+     * assignee into one that stays, and without this only the joiner could undo
+     * it.
+     */
+    @PostMapping("/brain/{tenant}/inbox/{id}/participants/remove")
+    public ResponseEntity<MaximegalonDto> removeParticipant(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @Valid @RequestBody InboxParticipantRemoveRequest request,
+            HttpServletRequest httpRequest) {
+        String currentUser = currentUser(httpRequest);
+        MaximegalonDocument doc = loadDecidable(tenant, id, httpRequest);
+        authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
+        MaximegalonDocument updated = inboxItemService.removeParticipant(
                         tenant, id, request.getUserId(), currentUser)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));

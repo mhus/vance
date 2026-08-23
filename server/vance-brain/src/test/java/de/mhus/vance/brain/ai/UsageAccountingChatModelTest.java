@@ -115,14 +115,21 @@ class UsageAccountingChatModelTest {
     }
 
     @Test
-    void skipsSuccessfulCallsThatReportedNoUsageAtAll() {
+    void booksSuccessfulCallsThatReportedNoUsage_markedAsUnmeasured() {
+        // It used to drop them. The information that was dropped is that the
+        // call HAPPENED: an endpoint without usage reporting then contributed
+        // nothing to the report at all, and an absent row reads as "nothing
+        // ran" — which is the one thing it does not mean.
         RecordingSink sink = new RecordingSink();
         ChatModel model = accounting(
                 new FakeChatModel(request -> response(null)), pricedModel(), sink);
 
         model.chat(request());
 
-        assertThat(sink.calls).isEmpty();
+        assertThat(sink.calls).hasSize(1);
+        assertThat(sink.calls.get(0).measurement.outcome()).isEqualTo(UsageOutcome.SUCCESS);
+        assertThat(sink.calls.get(0).measurement.isEmpty()).isTrue();
+        assertThat(sink.calls.get(0).measurement.tokensIn()).isZero();
     }
 
     @Test

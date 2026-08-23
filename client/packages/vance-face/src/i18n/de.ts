@@ -119,6 +119,8 @@ export default {
       assignee_must_stay: 'Du bist zuständig für diese offene Frage — delegiere sie, statt sie abzubestellen.',
       message_limit_reached: 'Dieser Thread hat sein Beitragslimit erreicht. Eröffne einen neuen für den Rest.',
       invalid_parent: 'Auf diesen Beitrag kann nicht geantwortet werden — Antworten gehen eine Ebene tief.',
+      participant_must_stay: 'Diese Person kann nicht entfernt werden — sie ist zuständig für die offene Frage oder hat den Thread eröffnet.',
+      reaction_limit_reached: 'Hier gibt es schon genug verschiedene Reaktionen — schließ dich einer an.',
     },
     participants: 'Beteiligt:',
     team: '(Team {team})',
@@ -133,6 +135,8 @@ export default {
     send: 'Senden',
     invite: 'Einladen',
     invitePlaceholder: 'Person einladen',
+    remove: 'Entfernen',
+    removeTitle: '{name} aus dem Thread entfernen',
   },
 
   inboxBadge: {

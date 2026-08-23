@@ -9,6 +9,7 @@ import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.settings.SettingDocument;
 import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.shared.access.AccessFilterBase;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -123,11 +124,14 @@ public class AdminSettingsController {
         authority.enforce(httpRequest,
                 new Resource.Setting(tenant, referenceType, referenceId, key), Action.ADMIN);
         StorageRef ref = mapToStorage(referenceType, referenceId);
+        // The actor travels: a setting.change row in the activity feed exists to
+        // answer "who changed this", and this is one of the paths that knows.
+        String actor = AccessFilterBase.usernameOrNull(httpRequest);
         SettingDocument saved = request.getType().encrypted()
-                ? settingService.setEncryptedSecret(tenant, ref.type(), ref.id(), key,
-                        request.getValue(), request.getType())
-                : settingService.set(tenant, ref.type(), ref.id(), key,
-                        request.getValue(), request.getType(), request.getDescription());
+                ? settingService.setEncryptedSecretAs(tenant, ref.type(), ref.id(), key,
+                        request.getValue(), request.getType(), actor)
+                : settingService.setAs(tenant, ref.type(), ref.id(), key,
+                        request.getValue(), request.getType(), request.getDescription(), actor);
 
         log.info("Setting upserted tenant='{}' wire='{}:{}' storage='{}:{}' key='{}' type='{}'",
                 tenant, referenceType, referenceId, ref.type(), ref.id(), key, saved.getType());

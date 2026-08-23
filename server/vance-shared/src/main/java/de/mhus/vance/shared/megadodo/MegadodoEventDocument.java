@@ -32,10 +32,20 @@ import org.springframework.data.mongodb.core.mapping.Document;
  */
 @Document(collection = "megadodo_events")
 @CompoundIndexes({
+        // The paging sort is (timestamp desc, _id desc) — the tie-break has to
+        // be in the index or the planner cannot satisfy the sort from it and
+        // adds a blocking SORT stage over the whole match, which walks into the
+        // 32 MB in-memory sort limit on a busy project. That failure would land
+        // on the *read* side, where nothing swallows it.
         @CompoundIndex(name = "feed_idx",
-                def = "{ 'tenantId': 1, 'projectId': 1, 'timestamp': -1 }"),
+                def = "{ 'tenantId': 1, 'projectId': 1, 'timestamp': -1, '_id': -1 }"),
+        // Same query without a projectId — the tenant-wide feed. It cannot use
+        // the index above at all: with projectId absent from the filter,
+        // timestamp is no longer the key immediately after the equality prefix.
+        @CompoundIndex(name = "feed_tenant_idx",
+                def = "{ 'tenantId': 1, 'timestamp': -1, '_id': -1 }"),
         @CompoundIndex(name = "trace_idx",
-                def = "{ 'tenantId': 1, 'traceId': 1, 'timestamp': 1 }"),
+                def = "{ 'tenantId': 1, 'traceId': 1, 'projectId': 1, 'timestamp': 1 }"),
         @CompoundIndex(name = "ref_idx",
                 def = "{ 'tenantId': 1, 'refType': 1, 'refId': 1, 'timestamp': -1 }")
 })

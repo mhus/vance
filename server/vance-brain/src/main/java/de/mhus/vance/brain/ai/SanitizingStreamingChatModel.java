@@ -33,28 +33,17 @@ public class SanitizingStreamingChatModel implements StreamingChatModel {
 
     @Override
     public void chat(ChatRequest request, StreamingChatResponseHandler handler) {
-        delegate.chat(request, new StreamingChatResponseHandler() {
-            @Override
-            public void onPartialResponse(String partial) {
-                handler.onPartialResponse(partial);
-            }
-
-            @Override
-            public void onPartialThinking(PartialThinking partialThinking) {
-                // Reasoning deltas pass through untouched — the parser
-                // only rewrites the aggregated final response.
-                handler.onPartialThinking(partialThinking);
-            }
-
+        // Forwarding base, so the callbacks this decorator has no opinion
+        // about (tool-call streaming, raw provider events, the cancel handle)
+        // reach the caller instead of stopping here.
+        delegate.chat(request, new ForwardingStreamingChatResponseHandler(handler) {
             @Override
             public void onCompleteResponse(ChatResponse complete) {
+                // The only thing this decorator changes. Reasoning and text
+                // deltas pass through untouched — the parser rewrites the
+                // aggregated final response, not the stream.
                 ChatResponse rewritten = complete == null ? null : parser.parse(complete);
-                handler.onCompleteResponse(rewritten == null ? complete : rewritten);
-            }
-
-            @Override
-            public void onError(Throwable error) {
-                handler.onError(error);
+                super.onCompleteResponse(rewritten == null ? complete : rewritten);
             }
         });
     }

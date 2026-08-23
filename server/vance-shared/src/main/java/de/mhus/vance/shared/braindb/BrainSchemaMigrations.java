@@ -76,12 +76,24 @@ public class BrainSchemaMigrations implements SchemaMigrationSource {
             // database it costs one collectionExists call.
             new Registered("2026-08-23_002", Migrator_2026_08_23_002_MaximegalonRename.class,
                     /*runOnBaseline*/ true),
-            // Not runOnBaseline: a new database has no threads to backfill, and
-            // unlike the rename above a skipped run is recoverable — the fields
-            // are additive and a missing unreadFor reads as "nothing unread",
-            // not as a lost collection.
+            // runOnBaseline, and it has to travel with _002: that one is on the
+            // baseline path precisely because a database restored from before
+            // the anchor looks new here. On exactly that path the rename then
+            // runs and brings the rows across, while this backfill would only
+            // be stamped — leaving unreadFor absent on every one of them, which
+            // reads as a badge of 0 for asks that are lighting it up today.
+            // That is the outcome this migration exists to prevent, and no
+            // later boot retries it. Self-emptying filter, so on a genuinely
+            // new database it costs one query.
             new Registered("2026-08-23_003",
-                    Migrator_2026_08_23_003_MaximegalonThreadFields.class));
+                    Migrator_2026_08_23_003_MaximegalonThreadFields.class,
+                    /*runOnBaseline*/ true),
+            // Not runOnBaseline: llm_usage_daily is newer than the anchor, so a
+            // database old enough to be baselined does not have it — and a
+            // skipped run here shows up as amounts reading zero rather than as
+            // a silently wrong total.
+            new Registered("2026-08-24_001",
+                    Migrator_2026_08_24_001_UsageDailyCostMicros.class));
 
     @Override
     public List<Registered> migrations() {

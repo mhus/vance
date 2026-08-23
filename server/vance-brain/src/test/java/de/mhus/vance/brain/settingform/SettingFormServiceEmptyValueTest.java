@@ -66,8 +66,10 @@ class SettingFormServiceEmptyValueTest {
         });
         // The persisted "" is what stops getStringValueCascade at the project
         // layer — a null value would keep falling through to the tenant.
-        verify(settingService).set(
-                TENANT, SettingService.SCOPE_PROJECT, PROJECT, KEY, "", SettingType.STRING, null);
+        // setAs, not set: the acting user travels into the setting.change row.
+        verify(settingService).setAs(
+                TENANT, SettingService.SCOPE_PROJECT, PROJECT, KEY, "", SettingType.STRING,
+                null, "alice");
     }
 
     @Test

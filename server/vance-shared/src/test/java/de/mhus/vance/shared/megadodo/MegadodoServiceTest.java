@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.api.megadodo.MegadodoPhase;
 import de.mhus.vance.api.megadodo.MegadodoRefType;
 import de.mhus.vance.api.megadodo.MegadodoSeverity;
+import de.mhus.vance.shared.settings.RetentionSettingCache;
 import de.mhus.vance.shared.settings.SettingService;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -40,7 +41,11 @@ class MegadodoServiceTest {
     void setUp() {
         mongoTemplate = mock(MongoTemplate.class);
         settingService = mock(SettingService.class);
-        service = new MegadodoService(mongoTemplate, settingService, 90);
+        // Real cache over a mocked settings service: the retention lookup goes
+        // through it in production, and the parsing / fallback behaviour these
+        // tests assert now lives there. A mocked cache would assert nothing.
+        service = new MegadodoService(
+                mongoTemplate, new RetentionSettingCache(settingService), 90);
     }
 
     // ──── Emitting ───────────────────────────────────────────────────

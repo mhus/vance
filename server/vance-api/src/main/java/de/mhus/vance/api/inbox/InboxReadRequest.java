@@ -2,6 +2,7 @@ package de.mhus.vance.api.inbox;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -29,5 +30,13 @@ import org.jspecify.annotations.Nullable;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @GenerateTypeScript("inbox")
 public class InboxReadRequest {
-    private @Nullable List<String> messageIds;
+
+    /**
+     * Bounded at {@code MaximegalonService.MAX_MESSAGES} — a thread cannot hold
+     * more than that, so a longer list is not a bigger request but a malformed
+     * one. It goes straight into an {@code $in}, which is the reason to say so
+     * at the door rather than to find out at the database.
+     */
+    @Size(max = 500)
+    private @Nullable List<@Size(max = 64) String> messageIds;
 }

@@ -182,24 +182,42 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
         ChainEntry entry = chain.get(chainIdx);
         AtomicBoolean emitted = new AtomicBoolean(false);
 
-        StreamingChatResponseHandler internal = new StreamingChatResponseHandler() {
+        // Forwarding base, so callbacks this layer has no opinion about reach
+        // the caller. Reasoning deltas are relayed without flipping `emitted`:
+        // that flag guards against replaying answer *content* on retry, and an
+        // empty-after-reasoning completion is exactly a case still worth
+        // retrying — a re-streamed thought is a tolerable cosmetic duplicate.
+        // Tool-call deltas are relayed for the same reason and likewise do not
+        // set it: a chain entry that streamed argument tokens and then failed
+        // produced no output the caller kept.
+        StreamingChatResponseHandler internal =
+                new ForwardingStreamingChatResponseHandler(caller) {
             @Override
             public void onPartialResponse(String partial) {
-                if (partial != null && !partial.isEmpty()) {
-                    emitted.set(true);
-                }
-                caller.onPartialResponse(partial);
+                markEmitted(partial);
+                super.onPartialResponse(partial);
             }
 
+            /**
+             * The same guard on the context-carrying overload. Both have to be
+             * here: the forwarding base relays this one as-is instead of
+             * letting the interface default fold it onto the String form, so
+             * without this override a provider that streams through the newer
+             * callback would leave {@code emitted} false — and a retry after
+             * real output would replay it.
+             */
             @Override
-            public void onPartialThinking(PartialThinking partialThinking) {
-                // Forward reasoning deltas without flipping `emitted`:
-                // that flag guards against replaying answer *content* on
-                // retry. Reasoning is a dim side-channel, and an
-                // empty-after-reasoning completion is exactly a case we
-                // still want to retry — a re-streamed thought is a
-                // tolerable cosmetic duplicate.
-                caller.onPartialThinking(partialThinking);
+            public void onPartialResponse(
+                    dev.langchain4j.model.chat.response.PartialResponse partialResponse,
+                    dev.langchain4j.model.chat.response.PartialResponseContext context) {
+                markEmitted(partialResponse == null ? null : partialResponse.text());
+                super.onPartialResponse(partialResponse, context);
+            }
+
+            private void markEmitted(@Nullable String text) {
+                if (text != null && !text.isEmpty()) {
+                    emitted.set(true);
+                }
             }
 
             @Override
@@ -211,7 +229,7 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
                     handleEmptyComplete(chainIdx, attempt, request, caller, entry, complete);
                     return;
                 }
-                caller.onCompleteResponse(complete);
+                super.onCompleteResponse(complete);
             }
 
             @Override

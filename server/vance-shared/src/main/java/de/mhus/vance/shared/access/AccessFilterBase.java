@@ -44,6 +44,24 @@ public abstract class AccessFilterBase extends OncePerRequestFilter {
     public static final String ATTR_TENANT_ID = "vance.access.tenantId";
     public static final String ATTR_CLAIMS = "vance.access.claims";
 
+    /**
+     * The authenticated username on this request, or {@code null} when there
+     * is none.
+     *
+     * <p>Exists so that "who is doing this" has <em>one</em> spelling. Several
+     * controllers already read {@link #ATTR_USERNAME} by hand to build an
+     * actor; each copy is a chance to get the attribute name wrong or to turn a
+     * missing user into an empty string that then travels into an audit row.
+     * Deliberately nullable rather than throwing: an actor is a fact to record,
+     * not an authorization decision — that has already happened by the time
+     * anyone asks this.
+     */
+    public static @org.jspecify.annotations.Nullable String usernameOrNull(
+            jakarta.servlet.http.HttpServletRequest request) {
+        Object value = request.getAttribute(ATTR_USERNAME);
+        return value instanceof String s && !s.isBlank() ? s : null;
+    }
+
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final JwtService jwtService;

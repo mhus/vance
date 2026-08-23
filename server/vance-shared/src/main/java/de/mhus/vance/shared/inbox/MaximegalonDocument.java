@@ -133,9 +133,17 @@ public class MaximegalonDocument {
      * teams of the current assignee.
      *
      * <p>Declaring it fixes a side effect nobody asked for: with the derived
-     * rule, delegating from a member of team X to a member of team Y silently
-     * moves visibility from X to Y. With a team on the thread, delegation
-     * moves {@code assignedToUserId} and nothing else.
+     * rule alone, delegating from a member of team X to a member of team Y
+     * moves visibility <em>off</em> X. A declared team does not move.
+     *
+     * <p><b>It widens, it does not confine.</b> The derived assignee-team rule
+     * keeps applying alongside it, so after a delegation into team Y both X and
+     * Y can see the thread. That is not an oversight and cannot be tightened
+     * here: whoever may decide must be able to read, {@code mayDecide} admits
+     * the assignee's team by design, and {@code maySee} ⊇ {@code mayDecide} is
+     * the invariant that keeps a decision from being made blind. If a thread
+     * must not be visible to the new assignee's colleagues, the answer is not
+     * to delegate it there. See {@code InboxAuthz}.
      */
     private @Nullable String teamId;
 

@@ -62,6 +62,7 @@ export function useInbox(): {
   postMessage: (id: string, body: string, parentId?: string | null) => Promise<boolean>;
   markRead: (id: string, messageIds?: string[] | null) => Promise<boolean>;
   invite: (id: string, userId: string) => Promise<boolean>;
+  removeParticipant: (id: string, userId: string) => Promise<boolean>;
   setFollowing: (id: string, following: boolean) => Promise<boolean>;
   react: (id: string, key: string, on: boolean, messageId?: string | null) => Promise<boolean>;
 } {
@@ -327,6 +328,28 @@ export function useInbox(): {
     }
   }
 
+  /**
+   * Take someone back out of the thread. The counterpart to `invite`, and the
+   * only way an unwanted join can be undone by anyone other than the joiner —
+   * being a participant is checked before anything derived, so joining freezes
+   * a visibility that until then merely followed the assignee.
+   *
+   * Server-side this is gated on whoever may decide, not on whoever may see;
+   * a 409 comes back for the assignee of an open ask and for the originator.
+   */
+  async function removeParticipant(id: string, userId: string): Promise<boolean> {
+    error.value = null;
+    try {
+      const updated = await brainFetch<MaximegalonDto>(
+        'POST', `inbox/${encodeURIComponent(id)}/participants/remove`,
+        { body: { userId } });
+      return applyMutation(updated);
+    } catch (e) {
+      error.value = threadError(e, 'Failed to remove participant.');
+      return false;
+    }
+  }
+
   async function setFollowing(id: string, following: boolean): Promise<boolean> {
     error.value = null;
     try {
@@ -374,6 +397,7 @@ export function useInbox(): {
     postMessage,
     markRead,
     invite,
+    removeParticipant,
     setFollowing,
     react,
   };

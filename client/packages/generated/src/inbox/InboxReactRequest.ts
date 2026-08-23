@@ -3,6 +3,8 @@
  Source: de.mhus.vance.api.inbox.InboxReactRequest
 */
 
+export const MAX_KEY_CHARS = 64;
+
 export interface InboxReactRequest {
   messageId?: string;
   key: string;

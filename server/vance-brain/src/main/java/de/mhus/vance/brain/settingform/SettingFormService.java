@@ -75,7 +75,9 @@ public class SettingFormService {
         validateSubmitted(form, values, tenantId, projectId, live);
         List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
                 form, values, tenantId, projectId, userId, lang, live);
-        executePlan(tenantId, plan);
+        // userId is the acting user (from the SecurityContext), not a scope
+        // label — so it is also the actor for the setting.change feed rows.
+        executePlan(tenantId, plan, userId);
         return plan;
     }
 
@@ -110,7 +112,9 @@ public class SettingFormService {
             @Nullable String projectId,
             @Nullable String userId) {
         List<PlannedSettingAction> plan = planBuilder.buildResetPlan(form, projectId, userId);
-        executePlan(tenantId, plan);
+        // userId is the acting user (from the SecurityContext), not a scope
+        // label — so it is also the actor for the setting.change feed rows.
+        executePlan(tenantId, plan, userId);
         return plan;
     }
 
@@ -418,18 +422,20 @@ public class SettingFormService {
 
     // ──────────────────── Execution ────────────────────
 
-    private void executePlan(String tenantId, List<PlannedSettingAction> plan) {
+    private void executePlan(
+            String tenantId, List<PlannedSettingAction> plan, @Nullable String actor) {
         for (PlannedSettingAction action : plan) {
             switch (action.action()) {
                 case SKIP -> { /* no-op */ }
                 case DELETE -> settingService.delete(
                         tenantId, action.referenceType(), action.referenceId(), action.key());
-                case WRITE -> applyWrite(tenantId, action);
+                case WRITE -> applyWrite(tenantId, action, actor);
             }
         }
     }
 
-    private void applyWrite(String tenantId, PlannedSettingAction action) {
+    private void applyWrite(
+            String tenantId, PlannedSettingAction action, @Nullable String actor) {
         SettingType type = action.settingType();
         if (type == null) {
             throw new IllegalStateException(
@@ -438,13 +444,13 @@ public class SettingFormService {
         }
         String value = action.value();
         if (type.encrypted()) {
-            settingService.setEncryptedSecret(
+            settingService.setEncryptedSecretAs(
                     tenantId, action.referenceType(), action.referenceId(),
-                    action.key(), value, type);
+                    action.key(), value, type, actor);
         } else {
-            settingService.set(
+            settingService.setAs(
                     tenantId, action.referenceType(), action.referenceId(),
-                    action.key(), value, type, null);
+                    action.key(), value, type, null, actor);
         }
         log.debug("setting-form wrote {}:{} key='{}' type={} (source={})",
                 action.referenceType(), action.referenceId(),

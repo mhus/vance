@@ -94,9 +94,19 @@ public class InboxAuthz {
      *
      * <p>A declared {@code teamId} is <b>additional</b>, not a replacement: with
      * none set the derived rule applies unchanged, so existing threads behave
-     * exactly as before. Where one is set, visibility stops travelling with the
-     * assignee — delegating no longer hands the thread from one team to another
-     * behind everyone's back.
+     * exactly as before. Where one is set, the declared team keeps the thread
+     * across a delegation that would otherwise have taken it away — visibility
+     * no longer <em>leaves</em> that team.
+     *
+     * <p><b>It does not stop visibility travelling to the new assignee's
+     * team.</b> The derived branch below runs whether or not {@code teamId} is
+     * set, so a delegation into team Y adds Y without removing X. Do not
+     * "fix" that by skipping the derived branch when a team is declared: it
+     * would break {@link #maySee} ⊇ {@link #mayDecide}, and a user who may
+     * answer but may not read is worse than one who reads too much. The
+     * invariant is asserted in {@code InboxAuthzTest}. {@code teamId} is
+     * therefore a way to keep people in, never a way to keep people out — for
+     * the latter the lever is not delegating the thread there.
      */
     public boolean maySee(String tenant, String currentUser, MaximegalonDocument doc) {
         List<String> participants = doc.getParticipants();
@@ -107,6 +117,7 @@ public class InboxAuthz {
         if (teamId != null && !teamId.isBlank() && isTeamMember(tenant, currentUser, teamId)) {
             return true;
         }
+        // Unconditional: everyone who may decide must be able to read.
         return mayDecide(tenant, currentUser, doc.getAssignedToUserId());
     }
 

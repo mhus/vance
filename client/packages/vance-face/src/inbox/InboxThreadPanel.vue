@@ -35,6 +35,7 @@ const emit = defineEmits<{
   (e: 'post', body: string, parentId: string | null): void;
   (e: 'read'): void;
   (e: 'invite', userId: string): void;
+  (e: 'remove', userId: string): void;
   (e: 'follow', following: boolean): void;
   (e: 'react', key: string, on: boolean, messageId: string | null): void;
 }>();
@@ -118,6 +119,26 @@ const tree = computed<Node[]>(() => {
 
 
 const following = computed<boolean>(() => props.item.participants?.includes(me.value) ?? false);
+
+/**
+ * Whether to offer removing a participant.
+ *
+ * The server decides — this only avoids showing a button that would 409. The
+ * approximation is the assignee, which is the part of "may decide" a client
+ * can see: shared-team membership is not on the DTO, so a colleague of the
+ * assignee gets no button and still has the endpoint. Erring towards too few
+ * buttons is the right side to err on here.
+ */
+const canRemove = computed<boolean>(() => props.item.assignedToUserId === me.value);
+
+/** The originator and the assignee of an open ask are refused by the server. */
+function removable(user: string): boolean {
+  if (!canRemove.value) return false;
+  if (user === props.item.originatorUserId) return false;
+  return !(user === props.item.assignedToUserId
+    && props.item.requiresAction
+    && props.item.status === 'PENDING');
+}
 
 // ── Composer ─────────────────────────────────────────────────────────
 
@@ -247,8 +268,18 @@ watch(() => [props.item.participants, props.error], () => {
         <span
           v-for="p in item.participants"
           :key="p"
-          class="text-sm px-2 py-0.5 rounded bg-black/5 dark:bg-white/10"
-        >{{ p }}</span>
+          class="text-sm px-2 py-0.5 rounded bg-black/5 dark:bg-white/10 inline-flex items-center gap-1"
+        >
+          {{ p }}
+          <button
+            v-if="removable(p)"
+            type="button"
+            class="opacity-50 hover:opacity-100 leading-none"
+            :title="t('inboxThread.removeTitle', { name: p })"
+            :disabled="busy"
+            @click="emit('remove', p)"
+          >×</button>
+        </span>
         <span v-if="item.teamId" class="text-sm opacity-70">
           {{ t('inboxThread.team', { team: item.teamId }) }}
         </span>

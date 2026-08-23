@@ -3,6 +3,7 @@ package de.mhus.vance.brain.usage;
 import de.mhus.vance.api.insights.UsageBucketDto;
 import de.mhus.vance.api.insights.UsageReportDto;
 import de.mhus.vance.shared.llmusage.LlmUsageDailyDocument;
+import de.mhus.vance.shared.llmusage.LlmUsageService;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -156,7 +157,7 @@ public class LlmUsageReportService {
                 // Cost first — it's the headline. Tokens break the tie so
                 // unpriced models (all cost 0) still rank by how much they
                 // actually burned instead of in arbitrary Mongo order.
-                Sort.by(Sort.Order.desc("costTotal"), Sort.Order.desc("tokensIn")),
+                Sort.by(Sort.Order.desc("costTotalMicros"), Sort.Order.desc("tokensIn")),
                 doc -> {
                     Document key = doc.get("_id", Document.class);
                     return row(doc)
@@ -179,9 +180,11 @@ public class LlmUsageReportService {
         Document acc = new Document("_id", groupKey);
         for (String f : List.of(
                 "tokensIn", "tokensOut", "cacheReadTokens", "cacheWriteTokens", "images",
-                "costInput", "costOutput", "costCacheRead", "costCacheWrite", "costTotal",
+                "costInputMicros", "costOutputMicros", "costCacheReadMicros",
+                "costCacheWriteMicros", "costTotalMicros",
                 "calls", "callsFailed", "tokensInFailed", "tokensOutFailed",
-                "unpricedCalls", "unpricedTokensIn", "unpricedTokensOut")) {
+                "unpricedCalls", "unpricedTokensIn", "unpricedTokensOut",
+                "unmeasuredCalls")) {
             acc.append(f, new Document("$sum", "$" + f));
         }
         return new Document("$group", acc);
@@ -194,18 +197,24 @@ public class LlmUsageReportService {
                 .cacheReadTokens(asLong(doc.get("cacheReadTokens")))
                 .cacheWriteTokens(asLong(doc.get("cacheWriteTokens")))
                 .images(asLong(doc.get("images")))
-                .costInput(asDouble(doc.get("costInput")))
-                .costOutput(asDouble(doc.get("costOutput")))
-                .costCacheRead(asDouble(doc.get("costCacheRead")))
-                .costCacheWrite(asDouble(doc.get("costCacheWrite")))
-                .costTotal(asDouble(doc.get("costTotal")))
+                // Stored as integer micro-units, reported as an amount. The
+                // conversion happens once, here, at the edge — summing in
+                // micros is what keeps the total exact.
+                .costInput(LlmUsageService.fromMicros(asLong(doc.get("costInputMicros"))))
+                .costOutput(LlmUsageService.fromMicros(asLong(doc.get("costOutputMicros"))))
+                .costCacheRead(
+                        LlmUsageService.fromMicros(asLong(doc.get("costCacheReadMicros"))))
+                .costCacheWrite(
+                        LlmUsageService.fromMicros(asLong(doc.get("costCacheWriteMicros"))))
+                .costTotal(LlmUsageService.fromMicros(asLong(doc.get("costTotalMicros"))))
                 .calls(asLong(doc.get("calls")))
                 .callsFailed(asLong(doc.get("callsFailed")))
                 .tokensInFailed(asLong(doc.get("tokensInFailed")))
                 .tokensOutFailed(asLong(doc.get("tokensOutFailed")))
                 .unpricedCalls(asLong(doc.get("unpricedCalls")))
                 .unpricedTokensIn(asLong(doc.get("unpricedTokensIn")))
-                .unpricedTokensOut(asLong(doc.get("unpricedTokensOut")));
+                .unpricedTokensOut(asLong(doc.get("unpricedTokensOut")))
+                .unmeasuredCalls(asLong(doc.get("unmeasuredCalls")));
     }
 
     /**

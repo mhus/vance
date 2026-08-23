@@ -19,11 +19,17 @@ final class UsageAccounting {
     private UsageAccounting() {}
 
     /**
-     * Measurement for a successful attempt, or {@code null} when the provider
-     * reported no usage at all — there is nothing to book, and inventing a
-     * zero row would inflate the call count without adding information.
+     * Measurement for a successful attempt, always.
+     *
+     * <p>It used to return {@code null} when the provider reported no usage —
+     * "inventing a zero row adds no information". The information it dropped
+     * was that the call <em>happened</em>: an endpoint that does not report
+     * usage (some Ollama and LM-Studio configurations) then contributed nothing
+     * at all to the report, not even a count. That is the one gap the pricing
+     * coverage figures exist to make visible, and it was the one they could not
+     * see. A zero-token row marked as unmeasured is honest; silence is not.
      */
-    static @Nullable UsageMeasurement succeeded(
+    static UsageMeasurement succeeded(
             ModelInfo model,
             String providerInstance,
             int attempt,
@@ -36,9 +42,6 @@ final class UsageAccounting {
         if (usage instanceof CacheAwareTokenUsage cau) {
             cacheRead = (int) Math.max(0, cau.cacheReadInputTokens());
             cacheWrite = (int) Math.max(0, cau.cacheCreationInputTokens());
-        }
-        if (in <= 0 && out <= 0 && cacheRead <= 0 && cacheWrite <= 0) {
-            return null;
         }
         return UsageMeasurement.chat(
                 model, providerInstance, attempt, in, out, cacheRead, cacheWrite, durationMs);

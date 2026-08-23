@@ -74,6 +74,23 @@ public class MaximegalonService {
      */
     public static final int MAX_MESSAGES = 500;
 
+    /**
+     * Distinct reaction keys one node (the thread body, or one message) may
+     * carry.
+     *
+     * <p>The bound that matters for reactions. A key's <em>length</em> is
+     * capped at the wire ({@code InboxReactRequest.MAX_KEY_CHARS}), but every
+     * distinct key adds an array entry, and the array lives inside the same
+     * document as the discussion — so without this a client could grow a thread
+     * towards the 16 MB limit one novel key at a time, without ever sending
+     * anything oversized.
+     *
+     * <p>Adding past the cap is refused, not silently dropped: the client asked
+     * for something and has to learn it did not happen. Taking a reaction back
+     * always works — a rule that could not be undone would be a trap.
+     */
+    public static final int MAX_REACTION_KEYS = 32;
+
     /** Conventional payload key for the LOW-auto-default value. */
     public static final String PAYLOAD_DEFAULT_KEY = "default";
 
@@ -790,6 +807,65 @@ public class MaximegalonService {
     }
 
     /**
+     * Takes someone out of the thread again — the counterpart to
+     * {@link #invite} and to a self-join through {@link #setFollowing}.
+     *
+     * <p><b>Why this has to exist.</b> {@code participants} is checked first in
+     * {@code InboxAuthz.maySee}, so joining converts a <em>derived</em>
+     * visibility (sharing a team with whoever is currently assigned) into a
+     * <em>permanent</em> one. After a delegation out of that team the entry
+     * remains and so does the access. Without a removal path only the person
+     * themselves could undo that, which means the thread's owner has no answer
+     * to an unwanted join at all.
+     *
+     * <p>Authorization is the caller's, and it is {@code mayDecide}, not
+     * {@code maySee}: deciding who is in the room is part of running the
+     * matter, and a participant must not be able to remove another participant.
+     *
+     * <p>Removing also clears the badge — leaving someone in {@code unreadFor}
+     * for a thread they can no longer open would light a badge that cannot be
+     * cleared.
+     *
+     * @throws MaximegalonRuleException {@code PARTICIPANT_MUST_STAY} for the
+     *         assignee of an open ask (a process is waiting on them; delegate
+     *         instead) and for the originator (the thread's audit record)
+     */
+    public Optional<MaximegalonDocument> removeParticipant(
+            String tenantId, String itemId, String userId, String byUserId) {
+        Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
+        if (existing.isEmpty()) return Optional.empty();
+        MaximegalonDocument doc = existing.get();
+
+        if (userId.equals(doc.getAssignedToUserId())
+                && doc.isRequiresAction()
+                && doc.getStatus() == MaximegalonStatus.PENDING) {
+            throw new MaximegalonRuleException(
+                    MaximegalonRuleException.PARTICIPANT_MUST_STAY,
+                    "user '" + userId + "' is the assignee of the open ask '" + itemId
+                            + "' — delegate instead of removing them");
+        }
+        if (userId.equals(doc.getOriginatorUserId())) {
+            throw new MaximegalonRuleException(
+                    MaximegalonRuleException.PARTICIPANT_MUST_STAY,
+                    "user '" + userId + "' opened thread '" + itemId
+                            + "' — the originator is not removable");
+        }
+
+        mongoTemplate.updateFirst(byId(tenantId, itemId),
+                new Update()
+                        .pull(F_PARTICIPANTS, userId)
+                        .pull(F_UNREAD_FOR, userId)
+                        .push("history", MaximegalonHistoryEntry.builder()
+                                .action("REMOVED")
+                                .actor(byUserId)
+                                .details("removed=" + userId)
+                                .at(Instant.now())
+                                .build()),
+                MaximegalonDocument.class);
+        return findById(tenantId, itemId);
+    }
+
+    /**
      * Subscribes to or unsubscribes from a thread's updates.
      *
      * <p>Unsubscribing drops the user from {@code unreadFor} too — leaving them
@@ -872,9 +948,22 @@ public class MaximegalonService {
         return findById(tenantId, itemId);
     }
 
-    /** Pure toggle on a reaction list: adds or removes one user under one key. */
+    /**
+     * Pure toggle on a reaction list: adds or removes one user under one key.
+     *
+     * @throws MaximegalonRuleException {@code REACTION_LIMIT_REACHED} when a
+     *         <em>new</em> key would push the node past
+     *         {@link #MAX_REACTION_KEYS}
+     */
     private static List<MaximegalonReaction> toggled(
             @Nullable List<MaximegalonReaction> current, String key, String userId, boolean on) {
+        if (on && current != null && current.size() >= MAX_REACTION_KEYS
+                && !containsKey(current, key)) {
+            throw new MaximegalonRuleException(
+                    MaximegalonRuleException.REACTION_LIMIT_REACHED,
+                    "already " + current.size() + " distinct reactions here (limit "
+                            + MAX_REACTION_KEYS + ") — join one of them instead");
+        }
         List<MaximegalonReaction> result = new ArrayList<>();
         boolean seen = false;
         if (current != null) {
@@ -903,6 +992,14 @@ public class MaximegalonService {
                     .key(key).userIds(new ArrayList<>(List.of(userId))).build());
         }
         return result;
+    }
+
+    /** Whether {@code key} already has an entry — a toggle on it is never new. */
+    private static boolean containsKey(List<MaximegalonReaction> current, String key) {
+        for (MaximegalonReaction r : current) {
+            if (key.equals(r.getKey())) return true;
+        }
+        return false;
     }
 
     // ────────────────── Badge ──────────────────

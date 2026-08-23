@@ -85,6 +85,16 @@ public class UsageBucketDto {
 
     private long unpricedTokensOut;
 
+    /**
+     * Calls whose provider reported no token counts at all.
+     *
+     * <p>One step past {@link #unpricedCalls}: there the tokens are known and
+     * the rate is missing, here neither is known. They used not to be recorded
+     * at all, which made an endpoint without usage reporting vanish from the
+     * report — and an absent row reads as "nothing ran".
+     */
+    private long unmeasuredCalls;
+
     /** Generated images; only non-zero for image usage. */
     private long images;
 }

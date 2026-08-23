@@ -114,6 +114,11 @@ public class SettingService {
      * Sets {@code key} to {@code value} with the given type. Encrypted types
      * ({@link SettingType#encrypted()}) are rejected here — they go through
      * {@link #setEncryptedSecret}.
+     *
+     * <p>Records the change without an actor — see
+     * {@link #setAs(String, String, String, String, String, SettingType, String, String)}
+     * for what that means in the activity feed. Server-driven writes (OAuth
+     * token refresh, bootstrap, kit apply) are the intended users of this form.
      */
     public SettingDocument set(
             String tenantId,
@@ -123,6 +128,34 @@ public class SettingService {
             @Nullable String value,
             SettingType type,
             @Nullable String description) {
+        return setAs(tenantId, referenceType, referenceId, key, value, type, description,
+                /*actor*/ null);
+    }
+
+    /**
+     * {@link #set} on behalf of a named actor.
+     *
+     * <p>"Why does it behave differently since yesterday?" is the question the
+     * {@code setting.change} feed row exists to answer, and the answer is
+     * incomplete without a name. So every path that <em>knows</em> who is
+     * acting has to say so — admin REST, setting forms, the profile editor,
+     * the shell, a kit install.
+     *
+     * <p>A {@code null} actor is not "unknown", it is a statement: <b>no person
+     * did this, the server did</b> — a token refresh, a bootstrap, a service
+     * writing its own salt. That is worth seeing in the feed, which is why the
+     * two forms exist side by side instead of one form with a mandatory
+     * argument that half the callers would have to invent a value for.
+     */
+    public SettingDocument setAs(
+            String tenantId,
+            String referenceType,
+            String referenceId,
+            String key,
+            @Nullable String value,
+            SettingType type,
+            @Nullable String description,
+            @Nullable String actor) {
         if (type.encrypted()) {
             // Encrypted values must be encrypted at rest — route through
             // setEncryptedSecret so nothing can persist a plaintext secret
@@ -130,7 +163,8 @@ public class SettingService {
             throw new IllegalArgumentException(
                     type + " settings must be written via setEncryptedSecret(), not set()");
         }
-        return setInternal(tenantId, referenceType, referenceId, key, value, type, description);
+        return setInternal(tenantId, referenceType, referenceId, key, value, type, description,
+                actor);
     }
 
     private SettingDocument setInternal(
@@ -141,6 +175,19 @@ public class SettingService {
             @Nullable String value,
             SettingType type,
             @Nullable String description) {
+        return setInternal(tenantId, referenceType, referenceId, key, value, type, description,
+                /*actor*/ null);
+    }
+
+    private SettingDocument setInternal(
+            String tenantId,
+            String referenceType,
+            String referenceId,
+            String key,
+            @Nullable String value,
+            SettingType type,
+            @Nullable String description,
+            @Nullable String actor) {
         SettingDocument doc = repository
                 .findByTenantIdAndReferenceTypeAndReferenceIdAndKey(
                         tenantId, referenceType, referenceId, key)
@@ -163,7 +210,7 @@ public class SettingService {
                 // Only a project-scoped setting belongs to a project feed;
                 // tenant and user settings are tenant-wide by nature.
                 SCOPE_PROJECT.equals(referenceType) ? referenceId : null,
-                referenceType, referenceId, key, type.encrypted(), /*actor*/ null);
+                referenceType, referenceId, key, type.encrypted(), actor);
         return saved;
     }
 
@@ -645,13 +692,26 @@ public class SettingService {
     public SettingDocument setEncryptedSecret(
             String tenantId, String referenceType, String referenceId, String key,
             @Nullable String plaintext, SettingType type) {
+        return setEncryptedSecretAs(
+                tenantId, referenceType, referenceId, key, plaintext, type, /*actor*/ null);
+    }
+
+    /**
+     * {@link #setEncryptedSecret} on behalf of a named actor — see
+     * {@link #setAs} for why the name matters and what a {@code null} means.
+     * The feed row for an encrypted type is a {@code WARN}, i.e. exactly the
+     * line a reader is most likely to want a name on.
+     */
+    public SettingDocument setEncryptedSecretAs(
+            String tenantId, String referenceType, String referenceId, String key,
+            @Nullable String plaintext, SettingType type, @Nullable String actor) {
         if (!type.encrypted()) {
             throw new IllegalArgumentException(
                     "setEncryptedSecret() requires an encrypted type, got " + type);
         }
         String ciphertext = encryption.encrypt(plaintext);
         return setInternal(
-                tenantId, referenceType, referenceId, key, ciphertext, type, null);
+                tenantId, referenceType, referenceId, key, ciphertext, type, null, actor);
     }
 
     /**

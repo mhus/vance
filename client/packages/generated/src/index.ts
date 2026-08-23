@@ -101,6 +101,7 @@ export * from './inbox/InboxCountResponse';
 export * from './inbox/InboxDelegateRequest';
 export * from './inbox/InboxFollowRequest';
 export * from './inbox/InboxInviteRequest';
+export * from './inbox/InboxParticipantRemoveRequest';
 export * from './inbox/InboxListResponse';
 export * from './inbox/InboxMessagePostRequest';
 export * from './inbox/InboxReactRequest';

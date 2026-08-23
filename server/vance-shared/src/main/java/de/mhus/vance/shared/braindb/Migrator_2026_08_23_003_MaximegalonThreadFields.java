@@ -5,6 +5,7 @@ import de.mhus.vance.shared.schema.SchemaMigrationContext;
 import java.util.ArrayList;
 import java.util.List;
 import org.bson.Document;
+import org.springframework.data.mongodb.core.BulkOperations;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
@@ -38,17 +39,33 @@ import org.springframework.data.mongodb.core.query.Update;
  * <p>Idempotent through a self-emptying filter: only documents without a
  * {@code participants} field are touched, so a second run matches nothing.
  *
- * <p>Not {@code runOnBaseline}: a genuinely new database has no threads to
- * backfill, and being stamped without running is exactly right. Unlike the
- * rename in {@code 2026-08-23_002}, a skipped run here is also recoverable —
- * the fields are additive, and a missing {@code unreadFor} reads as "nothing
- * unread" rather than as a lost collection.
+ * <p><b>{@code runOnBaseline}, and it has to travel with the rename in
+ * {@code 2026-08-23_002}.</b> That one is on the baseline path for a stated
+ * reason: a database restored from before the anchor carries no marker, looks
+ * new from here, and gets baselined. On exactly that path the rename runs and
+ * brings the rows across — while this backfill, merely stamped, would leave
+ * {@code unreadFor} absent on every one of them. A missing {@code unreadFor}
+ * does read as "nothing unread", and that is precisely the problem: the badge
+ * shows 0 for asks that are lighting it up today, which is the outcome named
+ * above as the one to avoid, and nothing retries it later. Two adjacent
+ * migrations must not reason from opposite premises about what a baselined
+ * database is. On a genuinely new database the self-emptying filter makes this
+ * one query.
  *
  * <p>See {@code planning/maximegalon.md} §8.
  */
 public final class Migrator_2026_08_23_003_MaximegalonThreadFields implements SchemaMigration {
 
     private static final String COLLECTION = "maximegalon_threads";
+
+    /**
+     * Rows per bulk write. The migrator runs between the Mongo infrastructure
+     * and the repository layer, so the boot waits on it — one round-trip per
+     * row would make an installation's start time a function of its inbox size.
+     * Chunked rather than one big batch so neither the cursor nor the pending
+     * updates are held in memory in full.
+     */
+    private static final int CHUNK = 1000;
 
     @Override
     public void up(SchemaMigrationContext context) {
@@ -60,40 +77,57 @@ public final class Migrator_2026_08_23_003_MaximegalonThreadFields implements Sc
             return;
         }
 
-        List<Document> pending = new ArrayList<>();
-        context.mongoTemplate().getDb().getCollection(COLLECTION)
+        long modified = 0;
+        int buffered = 0;
+        BulkOperations bulk = newBulk(context);
+        try (var cursor = context.mongoTemplate().getDb().getCollection(COLLECTION)
                 .find(new Document("participants", new Document("$exists", false)))
                 .projection(new Document("_id", 1)
                         .append("originatorUserId", 1)
                         .append("assignedToUserId", 1)
                         .append("status", 1))
-                .forEach(pending::add);
-
-        int touched = 0;
-        for (Document row : pending) {
-            List<String> participants = new ArrayList<>();
-            addIfPresent(participants, row.getString("originatorUserId"));
-            addIfPresent(participants, row.getString("assignedToUserId"));
-
-            List<String> unreadFor = new ArrayList<>();
-            if ("PENDING".equals(row.getString("status"))) {
-                addIfPresent(unreadFor, row.getString("assignedToUserId"));
+                .cursor()) {
+            while (cursor.hasNext()) {
+                Document row = cursor.next();
+                bulk.updateOne(
+                        Query.query(Criteria.where("_id").is(row.get("_id"))),
+                        updateFor(row));
+                if (++buffered >= CHUNK) {
+                    modified += bulk.execute().getModifiedCount();
+                    bulk = newBulk(context);
+                    buffered = 0;
+                }
             }
-
-            Update update = new Update()
-                    .set("participants", participants)
-                    .set("unreadFor", unreadFor)
-                    .set("readBy", List.of())
-                    .set("reactions", List.of())
-                    .set("messages", List.of());
-            context.mongoTemplate().updateFirst(
-                    Query.query(Criteria.where("_id").is(row.get("_id"))),
-                    update, COLLECTION);
-            touched++;
         }
+        if (buffered > 0) {
+            modified += bulk.execute().getModifiedCount();
+        }
+
         log.log(System.Logger.Level.INFO,
-                "backfilled thread fields on " + touched + " of " + pending.size()
-                        + " threads without participants");
+                "backfilled thread fields on " + modified + " threads without participants");
+    }
+
+    private static BulkOperations newBulk(SchemaMigrationContext context) {
+        return context.mongoTemplate().bulkOps(BulkOperations.BulkMode.UNORDERED, COLLECTION);
+    }
+
+    /** The write for one row: participants derived, unread only for open asks. */
+    private static Update updateFor(Document row) {
+        List<String> participants = new ArrayList<>();
+        addIfPresent(participants, row.getString("originatorUserId"));
+        addIfPresent(participants, row.getString("assignedToUserId"));
+
+        List<String> unreadFor = new ArrayList<>();
+        if ("PENDING".equals(row.getString("status"))) {
+            addIfPresent(unreadFor, row.getString("assignedToUserId"));
+        }
+
+        return new Update()
+                .set("participants", participants)
+                .set("unreadFor", unreadFor)
+                .set("readBy", List.of())
+                .set("reactions", List.of())
+                .set("messages", List.of());
     }
 
     private static void addIfPresent(List<String> target, String value) {

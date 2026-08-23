@@ -79,10 +79,20 @@ class UrsaOneShotFireServiceTest {
         ArgumentCaptor<OneShotFireDocument> saved =
                 ArgumentCaptor.forClass(OneShotFireDocument.class);
         verify(mongoTemplate).save(saved.capture());
-        assertThat(saved.getValue().getId()).isEqualTo("acme/proj/cleanup-once");
+        assertThat(saved.getValue().getId())
+                .isEqualTo(UrsaOneShotFireService.markerId(TENANT, PROJECT, SCHEDULER));
         assertThat(saved.getValue().getScheduledFor()).isEqualTo(AT);
         assertThat(saved.getValue().getCorrelationId()).isEqualTo("run_42");
         assertThat(saved.getValue().getFiredAt()).isNotNull();
+    }
+
+    @Test
+    void markerId_separatorCannotOccurInsideAPart() {
+        // A '/' separator collided: ("acme", "a/b", "c") and ("acme", "a",
+        // "b/c") produced the same id, and a collision here is a one-shot that
+        // silently never fires.
+        assertThat(UrsaOneShotFireService.markerId(TENANT, "a/b", "c"))
+                .isNotEqualTo(UrsaOneShotFireService.markerId(TENANT, "a", "b/c"));
     }
 
     @Test

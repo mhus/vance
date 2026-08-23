@@ -53,27 +53,19 @@ public class LoggingStreamingChatModel implements StreamingChatModel {
     public void chat(ChatRequest request, StreamingChatResponseHandler handler) {
         AiTraceLogger.logRequest(name, request);
         long started = System.currentTimeMillis();
-        delegate.chat(request, new StreamingChatResponseHandler() {
-            @Override
-            public void onPartialResponse(String partial) {
-                handler.onPartialResponse(partial);
-            }
-
-            @Override
-            public void onPartialThinking(PartialThinking partialThinking) {
-                // Forward reasoning deltas; like content partials they
-                // are not trace-logged (reconstructible from the final
-                // aiMessage().thinking()).
-                handler.onPartialThinking(partialThinking);
-            }
-
+        // Forwarding base: this decorator observes the two terminal callbacks
+        // and must relay everything else unchanged — including tool-call
+        // streaming and the cancel handle, which an ad-hoc handler drops.
+        // Content and reasoning deltas are deliberately not trace-logged; both
+        // are reconstructible from the final aiMessage().
+        delegate.chat(request, new ForwardingStreamingChatResponseHandler(handler) {
             @Override
             public void onCompleteResponse(ChatResponse complete) {
                 AiTraceLogger.logResponse(name, complete);
                 long elapsed = System.currentTimeMillis() - started;
                 LlmCallStatsLogger.record(name, request, complete, elapsed, metricService);
                 safeRecord(request, complete, elapsed);
-                handler.onCompleteResponse(complete);
+                super.onCompleteResponse(complete);
             }
 
             @Override
@@ -82,7 +74,7 @@ public class LoggingStreamingChatModel implements StreamingChatModel {
                 long elapsed = System.currentTimeMillis() - started;
                 LlmCallStatsLogger.record(name, request, null, elapsed, metricService);
                 safeRecord(request, null, elapsed);
-                handler.onError(error);
+                super.onError(error);
             }
         });
     }

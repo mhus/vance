@@ -37,6 +37,23 @@ public class MaximegalonRuleException extends RuntimeException {
      */
     public static final String INVALID_PARENT = "invalid_parent";
 
+    /**
+     * Someone tried to remove a participant who cannot be removed — the
+     * assignee of an open ask, for the same reason they may not unsubscribe
+     * themselves ({@link #ASSIGNEE_MUST_STAY}), or the thread's originator, who
+     * is the audit record of where it came from.
+     */
+    public static final String PARTICIPANT_MUST_STAY = "participant_must_stay";
+
+    /**
+     * The node already carries {@code MaximegalonService.MAX_REACTION_KEYS}
+     * distinct reactions. Every new key is another entry in an array that lives
+     * inside the thread document, so the count is bounded for the same reason
+     * {@link #MESSAGE_LIMIT_REACHED} exists. Taking a reaction back is never
+     * refused.
+     */
+    public static final String REACTION_LIMIT_REACHED = "reaction_limit_reached";
+
     private final String reason;
 
     public MaximegalonRuleException(String reason, String message) {

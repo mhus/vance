@@ -188,7 +188,21 @@ class MastodonFeedInstance implements FeedSourceInstance {
         // The stream time of the entry before this one, so a fallback timestamp
         // cannot make the page rise. Null for the first entry.
         @Nullable Instant previous = null;
+        // Progress is a property of the RESPONSE, not of what survived mapping.
+        // A status without id/url/created_at is skipped, and if a whole charge
+        // consisted of those, deriving the cursor from `items` would yield none
+        // — the stream would report "end reached" because of a handful of
+        // malformed entries rather than because the timeline ran out.
+        String firstId = null;
+        String lastId = null;
+        int received = 0;
         for (JsonNode status : root) {
+            received++;
+            String statusId = status.path("id").asString("");
+            if (!statusId.isBlank()) {
+                if (firstId == null) firstId = statusId;
+                lastId = statusId;
+            }
             FeedItem item = toItem(status, previous);
             if (item != null) {
                 items.add(item);
@@ -199,26 +213,18 @@ class MastodonFeedInstance implements FeedSourceInstance {
         // Mastodon has no "there is more" flag, and going back a public
         // timeline is effectively endless — an empty response is the only
         // statement that the end was reached.
-        return new FeedPage(items, nextCursor(items, newer), !items.isEmpty());
+        String cursor = newer ? firstId : lastId;
+        return new FeedPage(items, cursor, received > 0);
     }
 
-    /**
-     * Resume after the last entry of this page — which end of it depends on the
-     * direction, because the API sorts newest-first either way.
-     *
-     * <p>With {@code max_id} the page walks backwards and the oldest entry is
-     * last, so that one is the anchor. With {@code min_id} the API returns the
-     * block <em>immediately above</em> the anchor, still newest-first — so
-     * continuing upwards means anchoring on the <b>first</b> entry. Taking the
-     * last one in that case would hand back an id barely above where the page
-     * started and walk the same block again.
-     */
-    private @Nullable String nextCursor(List<FeedItem> items, boolean newer) {
-        if (items.isEmpty()) {
-            return null;
-        }
-        return cursorAfter(newer ? items.get(0) : items.get(items.size() - 1));
-    }
+    // Which end of the page is the anchor depends on the direction, because the
+    // API sorts newest-first either way. With max_id the page walks backwards
+    // and the oldest entry is last, so that one anchors. With min_id the API
+    // returns the block immediately ABOVE the anchor, still newest-first — so
+    // continuing upwards anchors on the FIRST entry; taking the last one there
+    // would hand back an id barely above where the page started and walk the
+    // same block again. Both ends are read off the raw response above, so a
+    // skipped status still moves the cursor past itself.
 
     // ── mapping ──────────────────────────────────────────────────────
 
@@ -390,7 +396,7 @@ class MastodonFeedInstance implements FeedSourceInstance {
                     + " Set apiKey in _vance/config/feeds/" + cfg.instanceId()
                     + ".yaml to an app token, or use a hashtag: selector,"
                     + " which many servers keep open. Response: "
-                    + StringUtils.abbreviate(response.body(), 200);
+                    + StatusHtml.collapse(StringUtils.abbreviate(response.body(), 200));
         }
         if (status == 429) {
             return "HTTP 429 from " + url + " — rate limited (300 requests per 5 minutes"

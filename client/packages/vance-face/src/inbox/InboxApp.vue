@@ -556,6 +556,22 @@ async function onThreadInvite(userId: string): Promise<void> {
   }
 }
 
+/**
+ * Take someone out of the thread again. Refused by the server for the
+ * originator and for the assignee of an open ask; the reason lands in the
+ * thread panel's alert.
+ */
+async function onThreadRemove(userId: string): Promise<void> {
+  const sel = inbox.selected.value;
+  if (!sel?.id) return;
+  submitting.value = true;
+  try {
+    await inbox.removeParticipant(sel.id, userId);
+  } finally {
+    submitting.value = false;
+  }
+}
+
 async function onThreadFollow(following: boolean): Promise<void> {
   const sel = inbox.selected.value;
   if (!sel?.id) return;
@@ -1010,6 +1026,7 @@ const breadcrumbs = computed<string[]>(() => {
                 @post="onThreadPost"
                 @read="onThreadRead"
                 @invite="onThreadInvite"
+                @remove="onThreadRemove"
                 @follow="onThreadFollow"
                 @react="onThreadReact"
               />

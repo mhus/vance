@@ -170,13 +170,14 @@ public class ProfileController {
         // Stored on the per-user `_user_<login>` project — the same
         // location AdminSettingsController writes to for the {@code
         // user/<login>} wire scope.
-        settingService.set(tenant,
+        settingService.setAs(tenant,
                 SettingService.SCOPE_PROJECT,
                 HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + username,
                 key,
                 request.getValue(),
                 SettingType.STRING,
-                null);
+                null,
+                username);
         log.info("Profile setting upserted tenant='{}' user='{}' key='{}'",
                 tenant, username, key);
         UserDocument user = userService.findByTenantAndName(tenant, username)

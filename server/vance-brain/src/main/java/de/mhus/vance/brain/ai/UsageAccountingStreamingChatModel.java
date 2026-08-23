@@ -4,7 +4,6 @@ import de.mhus.vance.shared.llmusage.CallAttribution;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
-import dev.langchain4j.model.chat.response.PartialThinking;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.model.output.TokenUsage;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -50,24 +49,18 @@ public class UsageAccountingStreamingChatModel implements StreamingChatModel {
     public void chat(ChatRequest request, StreamingChatResponseHandler handler) {
         int attempt = attempts.incrementAndGet();
         long started = System.currentTimeMillis();
-        delegate.chat(request, new StreamingChatResponseHandler() {
-            @Override
-            public void onPartialResponse(String partial) {
-                handler.onPartialResponse(partial);
-            }
-
-            @Override
-            public void onPartialThinking(PartialThinking partialThinking) {
-                handler.onPartialThinking(partialThinking);
-            }
-
+        // Forwarding base: accounting observes the two terminal callbacks and
+        // must not narrow the stream it sits in. An ad-hoc handler here would
+        // silently swallow tool-call deltas, raw provider events and the cancel
+        // handle — invisible until something downstream needs them.
+        delegate.chat(request, new ForwardingStreamingChatResponseHandler(handler) {
             @Override
             public void onCompleteResponse(ChatResponse complete) {
                 TokenUsage usage = complete == null ? null : complete.tokenUsage();
                 book(UsageAccounting.succeeded(
                         modelInfo, providerInstance, attempt, usage,
                         System.currentTimeMillis() - started));
-                handler.onCompleteResponse(complete);
+                super.onCompleteResponse(complete);
             }
 
             @Override
@@ -75,7 +68,7 @@ public class UsageAccountingStreamingChatModel implements StreamingChatModel {
                 book(UsageAccounting.failed(
                         modelInfo, providerInstance, attempt,
                         System.currentTimeMillis() - started));
-                handler.onError(error);
+                super.onError(error);
             }
         });
     }

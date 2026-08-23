@@ -125,6 +125,8 @@ export default {
       assignee_must_stay: 'You are the assignee of this open ask — delegate it instead of unsubscribing.',
       message_limit_reached: 'This thread has reached its message limit. Open a new thread for what is left.',
       invalid_parent: 'That message cannot be replied to — replies go one level deep.',
+      participant_must_stay: 'This person cannot be removed — they are the assignee of the open ask, or they opened the thread.',
+      reaction_limit_reached: 'There are enough different reactions here already — join one of them.',
     },
     participants: 'Taking part:',
     team: '(team {team})',
@@ -139,6 +141,8 @@ export default {
     send: 'Send',
     invite: 'Invite',
     invitePlaceholder: 'user to invite',
+    remove: 'Remove',
+    removeTitle: 'Remove {name} from the thread',
   },
 
   inboxBadge: {

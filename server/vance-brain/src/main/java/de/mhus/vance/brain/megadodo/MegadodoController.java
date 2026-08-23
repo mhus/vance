@@ -85,6 +85,13 @@ public class MegadodoController {
     /**
      * Every row of one operation, oldest first — what the UI shows when a
      * collapsed START/END line is expanded.
+     *
+     * <p>The {@code projectId} that was authorized is the {@code projectId}
+     * that is read. It has to be passed on rather than only checked: a trace id
+     * is a borrowed correlation key (a session id, a run id, and for
+     * {@code setting.change} an enumerable {@code scope:scopeId:key}), so a
+     * tenant-wide read behind a project-scoped check is a working cross-project
+     * peek.
      */
     @GetMapping("/trace/{traceId}")
     public List<MegadodoEventDto> trace(
@@ -94,7 +101,8 @@ public class MegadodoController {
             HttpServletRequest request) {
 
         enforce(tenant, projectId, request);
-        return megadodoService.byTrace(tenant, traceId).stream()
+        String scope = projectId == null || projectId.isBlank() ? null : projectId;
+        return megadodoService.byTrace(tenant, scope, traceId).stream()
                 .map(MegadodoMapper::toDto)
                 .toList();
     }

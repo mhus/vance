@@ -23,5 +23,6 @@ export interface UsageBucketDto {
   unpricedCalls: number;
   unpricedTokensIn: number;
   unpricedTokensOut: number;
+  unmeasuredCalls: number;
   images: number;
 }

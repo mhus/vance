@@ -166,4 +166,70 @@ class InboxAuthzTest {
 
         assertThat(authz.maySee("acme", "eve", doc)).isFalse();
     }
+
+    // ──── maySee ⊇ mayDecide ────────────────────────────────────────────
+
+    /**
+     * The invariant that must survive any future narrowing of {@code maySee}:
+     * whoever may answer a thread must be able to read it. A user who may
+     * decide but may not see would be asked to make a decision blind — and the
+     * obvious "improvement" (skip the derived assignee-team branch once a
+     * {@code teamId} is declared) breaks exactly this.
+     */
+    @Test
+    void maySee_isAlwaysAtLeastAsWideAsMayDecide_evenWithADeclaredTeam() {
+        // carol shares a team with the assignee bob, and is a member of no
+        // other team — in particular not of the thread's declared "support".
+        when(teamService.byMember("acme", "carol")).thenReturn(List.of(team("carol", "bob")));
+
+        MaximegalonDocument doc = MaximegalonDocument.builder()
+                .tenantId("acme")
+                .originatorUserId("alice")
+                .assignedToUserId("bob")
+                .teamId("support")
+                .participants(new ArrayList<>())
+                .build();
+
+        assertThat(authz.mayDecide("acme", "carol", doc.getAssignedToUserId())).isTrue();
+        assertThat(authz.maySee("acme", "carol", doc)).isTrue();
+    }
+
+    /**
+     * A declared team widens: its members see the thread without being
+     * participants and without sharing a team with the assignee.
+     */
+    @Test
+    void maySee_admitsTheDeclaredTeamOnTopOfTheDerivedOne() {
+        when(teamService.byMember("acme", "dora"))
+                .thenReturn(List.of(TeamDocument.builder()
+                        .name("support").members(List.of("dora")).build()));
+
+        MaximegalonDocument doc = MaximegalonDocument.builder()
+                .tenantId("acme")
+                .originatorUserId("alice")
+                .assignedToUserId("bob")
+                .teamId("support")
+                .participants(new ArrayList<>())
+                .build();
+
+        assertThat(authz.maySee("acme", "dora", doc)).isTrue();
+        // Seeing is not deciding — that separation is what keeps an invited
+        // reader from firing the item's effectType.
+        assertThat(authz.mayDecide("acme", "dora", doc.getAssignedToUserId())).isFalse();
+    }
+
+    @Test
+    void maySee_admitsAParticipantWithNoTeamRelationAtAll() {
+        when(teamService.byMember("acme", "erin")).thenReturn(List.of());
+
+        MaximegalonDocument doc = MaximegalonDocument.builder()
+                .tenantId("acme")
+                .originatorUserId("alice")
+                .assignedToUserId("bob")
+                .participants(new ArrayList<>(List.of("erin")))
+                .build();
+
+        assertThat(authz.maySee("acme", "erin", doc)).isTrue();
+        assertThat(authz.mayDecide("acme", "erin", doc.getAssignedToUserId())).isFalse();
+    }
 }

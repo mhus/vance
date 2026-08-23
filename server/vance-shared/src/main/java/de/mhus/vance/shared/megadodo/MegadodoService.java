@@ -3,7 +3,7 @@ package de.mhus.vance.shared.megadodo;
 import de.mhus.vance.api.megadodo.MegadodoPhase;
 import de.mhus.vance.api.megadodo.MegadodoRefType;
 import de.mhus.vance.api.megadodo.MegadodoSeverity;
-import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.shared.settings.RetentionSettingCache;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -45,7 +45,9 @@ import org.springframework.stereotype.Service;
  * {@code expiresAt} is computed per write from the settings cascade and
  * reaped by Mongo's TTL monitor. Tri-state, same convention as the
  * scheduler / event / web run logs: {@code > 0} days, {@code 0} =
- * infinite, {@code < 0} = do not write at all.
+ * infinite, {@code < 0} = do not write at all. The lookup goes through
+ * {@link de.mhus.vance.shared.settings.RetentionSettingCache} — per write
+ * means per row, and the cascade is uncached.
  */
 @Service
 @Slf4j
@@ -63,15 +65,15 @@ public class MegadodoService {
     private static final Pattern CURSOR_SEPARATOR = Pattern.compile("\\|");
 
     private final MongoTemplate mongoTemplate;
-    private final SettingService settingService;
+    private final RetentionSettingCache retentionCache;
     private final int defaultRetentionDays;
 
     public MegadodoService(
             MongoTemplate mongoTemplate,
-            SettingService settingService,
+            RetentionSettingCache retentionCache,
             @Value("${vance.megadodo.retention-days:90}") int defaultRetentionDays) {
         this.mongoTemplate = mongoTemplate;
-        this.settingService = settingService;
+        this.retentionCache = retentionCache;
         this.defaultRetentionDays = Math.min(MAX_RETENTION_DAYS, defaultRetentionDays);
     }
 
@@ -434,10 +436,31 @@ public class MegadodoService {
         return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
 
-    /** Every row of one operation, oldest first — the expanded trace view. */
-    public List<MegadodoEventDocument> byTrace(String tenantId, String traceId) {
-        Query q = new Query(Criteria.where("tenantId").is(tenantId)
-                .and("traceId").is(traceId))
+    /**
+     * Every row of one operation, oldest first — the expanded trace view.
+     *
+     * <p><b>{@code projectId} is part of the query, not decoration.</b> A
+     * trace id is a foreign id reused as a correlation key — a session id, a
+     * run's correlation id, and for {@code setting.change} literally
+     * {@code scope:scopeId:key}, which anyone can enumerate. Reading tenant-wide
+     * while the caller was only authorized against one project would hand a
+     * project admin the feed of every other project of the tenant. So the scope
+     * that was checked has to be the scope that is read.
+     *
+     * @param projectId the project the caller holds {@code ADMIN} on — rows are
+     *                  restricted to it. {@code null} means the caller passed
+     *                  the tenant gate and sees the whole tenant, which is the
+     *                  only way to reach the tenant-wide rows
+     *                  ({@code projectId == null}: user created, project
+     *                  created — they belong to no project scope)
+     */
+    public List<MegadodoEventDocument> byTrace(
+            String tenantId, @Nullable String projectId, String traceId) {
+        Criteria c = Criteria.where("tenantId").is(tenantId).and("traceId").is(traceId);
+        if (projectId != null && !projectId.isBlank()) {
+            c = c.and("projectId").is(projectId);
+        }
+        Query q = new Query(c)
                 .with(Sort.by(Sort.Order.asc("timestamp")))
                 .limit(500);
         return mongoTemplate.find(q, MegadodoEventDocument.class);
@@ -494,17 +517,11 @@ public class MegadodoService {
      * {@code > 0} days, {@code 0} infinite, {@code < 0} disabled.
      */
     private int retentionDaysFor(String tenantId, @Nullable String projectId) {
-        String raw = settingService.getStringValueCascade(
-                tenantId, projectId, /*thinkProcessId*/ null, SETTING_RETENTION_DAYS);
-        int days = defaultRetentionDays;
-        if (raw != null && !raw.isBlank()) {
-            try {
-                days = Integer.parseInt(raw.trim());
-            } catch (NumberFormatException ex) {
-                log.warn("Megadodo — setting '{}' is not an integer ('{}'), falling back to {}d",
-                        SETTING_RETENTION_DAYS, raw, defaultRetentionDays);
-            }
-        }
+        // Through the cache, not the cascade: this runs on every single feed
+        // row, and the cascade is three uncached Mongo reads for a number that
+        // changes approximately never. See RetentionSettingCache.
+        int days = retentionCache.days(
+                tenantId, projectId, SETTING_RETENTION_DAYS, defaultRetentionDays);
         if (days <= 0) return days;
         return Math.min(MAX_RETENTION_DAYS, days);
     }

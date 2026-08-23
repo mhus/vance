@@ -1,7 +1,7 @@
 package de.mhus.vance.shared.llmusage;
 
 import com.mongodb.MongoWriteException;
-import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.shared.settings.RetentionSettingCache;
 import java.time.Duration;
 import java.time.Instant;
 import lombok.extern.slf4j.Slf4j;
@@ -85,20 +85,20 @@ public class LlmUsageService {
     static final String SETTING_DETAIL_RETENTION_FAILED = "usage.detailRetentionDaysFailed";
 
     private final MongoTemplate mongoTemplate;
-    private final SettingService settingService;
+    private final RetentionSettingCache retentionCache;
     private final int defaultDailyRetentionDays;
     private final int defaultDetailRetentionDays;
     private final int defaultDetailRetentionDaysFailed;
 
     public LlmUsageService(
             MongoTemplate mongoTemplate,
-            SettingService settingService,
+            RetentionSettingCache retentionCache,
             @Value("${vance.usage.retention-days:0}") int defaultDailyRetentionDays,
             @Value("${vance.usage.detail-retention-days:60}") int defaultDetailRetentionDays,
             @Value("${vance.usage.detail-retention-days-failed:14}")
                     int defaultDetailRetentionDaysFailed) {
         this.mongoTemplate = mongoTemplate;
-        this.settingService = settingService;
+        this.retentionCache = retentionCache;
         this.defaultDailyRetentionDays = clamp(defaultDailyRetentionDays);
         this.defaultDetailRetentionDays = clamp(defaultDetailRetentionDays);
         this.defaultDetailRetentionDaysFailed = clamp(defaultDetailRetentionDaysFailed);
@@ -168,11 +168,14 @@ public class LlmUsageService {
                     .plusSeconds(Duration.ofDays(retentionDays).toSeconds()));
         }
 
+        // Amounts go in as integer micro-units. The $inc that lands here runs
+        // once per attempt and is never recomputed, so it has to be exact and
+        // order-independent — see the field comment on LlmUsageDailyDocument.
         if (w.outcome() == UsageOutcome.FAILED) {
             update.inc("callsFailed", 1L)
                     .inc("tokensInFailed", w.tokensIn())
                     .inc("tokensOutFailed", w.tokensOut())
-                    .inc("costFailed", costs.total());
+                    .inc("costFailedMicros", toMicros(costs.total()));
         } else {
             update.inc("calls", 1L)
                     .inc("tokensIn", w.tokensIn())
@@ -180,12 +183,21 @@ public class LlmUsageService {
                     .inc("cacheReadTokens", w.cacheReadTokens())
                     .inc("cacheWriteTokens", w.cacheWriteTokens())
                     .inc("images", w.images())
-                    .inc("costInput", costs.input())
-                    .inc("costOutput", costs.output())
-                    .inc("costCacheRead", costs.cacheRead())
-                    .inc("costCacheWrite", costs.cacheWrite())
-                    .inc("costTotal", costs.total());
-            if (!w.priced()) {
+                    .inc("costInputMicros", toMicros(costs.input()))
+                    .inc("costOutputMicros", toMicros(costs.output()))
+                    .inc("costCacheReadMicros", toMicros(costs.cacheRead()))
+                    .inc("costCacheWriteMicros", toMicros(costs.cacheWrite()))
+                    // Summed from the rounded parts, not rounded from the sum:
+                    // otherwise costTotal and the four components disagree by a
+                    // micro-unit now and then, and a report that shows both
+                    // would be visibly inconsistent.
+                    .inc("costTotalMicros",
+                            toMicros(costs.input()) + toMicros(costs.output())
+                                    + toMicros(costs.cacheRead())
+                                    + toMicros(costs.cacheWrite()));
+            if (w.unmeasured()) {
+                update.inc("unmeasuredCalls", 1L);
+            } else if (!w.priced()) {
                 update.inc("unpricedCalls", 1L)
                         .inc("unpricedTokensIn", w.tokensIn())
                         .inc("unpricedTokensOut", w.tokensOut());
@@ -205,6 +217,30 @@ public class LlmUsageService {
             log.trace("LlmUsage daily bucket insert raced, retrying: {}", bucketId);
             mongoTemplate.upsert(byId, update, LlmUsageDailyDocument.class);
         }
+    }
+
+    /**
+     * An amount in {@code currency} as integer micro-units, rounded half-up.
+     *
+     * <p>The unit of the day bucket. A micro-unit is 1e-6, finer than any
+     * per-token price the catalog carries, so the rounding error per attempt is
+     * below the resolution anyone bills at — and unlike a {@code double} it
+     * does not grow with the number of attempts, which is the whole point.
+     *
+     * <p>{@code NaN} and infinities become {@code 0}: a nonsensical rate in a
+     * catalog entry must not be able to poison a tenant's day total with a
+     * value no later write can correct.
+     */
+    public static long toMicros(double amount) {
+        if (Double.isNaN(amount) || Double.isInfinite(amount)) {
+            return 0L;
+        }
+        return Math.round(amount * 1_000_000.0d);
+    }
+
+    /** The inverse of {@link #toMicros}, for display and for the wire. */
+    public static double fromMicros(long micros) {
+        return micros / 1_000_000.0d;
     }
 
     /**
@@ -302,14 +338,11 @@ public class LlmUsageService {
     private int retentionDays(CallAttribution a, String settingKey, int fallback) {
         int days = fallback;
         try {
-            String raw = settingService.getStringValueCascade(
-                    a.tenantId(), a.projectId(), /*thinkProcessId*/ null, settingKey);
-            if (raw != null && !raw.isBlank()) {
-                days = Integer.parseInt(raw.trim());
-            }
-        } catch (NumberFormatException e) {
-            log.warn("LlmUsage — setting '{}' is not an integer, falling back to {}d",
-                    settingKey, fallback);
+            // Through the cache: this runs twice per model-call attempt, and
+            // the settings cascade is up to three uncached Mongo reads. A chat
+            // turn with one retry used to pay a dozen of them for two numbers
+            // that change approximately never. See RetentionSettingCache.
+            days = retentionCache.days(a.tenantId(), a.projectId(), settingKey, fallback);
         } catch (RuntimeException e) {
             log.debug("LlmUsage — retention lookup failed for '{}': {}", settingKey, e.toString());
         }
@@ -367,6 +400,14 @@ public class LlmUsageService {
             CallAttribution attribution,
             UsageKind kind,
             UsageOutcome outcome,
+            /**
+             * The attempt happened but the provider reported no token counts
+             * at all — booked as a call with zero tokens and zero cost, and
+             * counted separately so the report can say so. Distinct from
+             * {@link #priced()}: unpriced means "we know the tokens, not the
+             * rate", unmeasured means "we do not even know the tokens".
+             */
+            boolean unmeasured,
             /** 1-based; values above 1 are retries or fallback-chain advances. */
             int attempt,
             @Nullable String providerInstance,

@@ -301,6 +301,100 @@ class MaximegalonThreadTest {
         assertThat(captureUpdate().getUpdateObject().toString()).doesNotContain("thumbsup");
     }
 
+    // ──── Removing a participant ────────────────────────────────────────
+
+    /**
+     * The counterpart to joining. Without it, a self-join through
+     * {@code setFollowing} would be irreversible for everyone except the
+     * joiner — and joining converts a visibility that merely followed the
+     * assignee into one that stays.
+     */
+    @Test
+    void removeParticipant_dropsThemFromParticipantsAndFromTheBadge() {
+        MaximegalonDocument doc = thread("acme", "alice", "bob").id("t1")
+                .participants(new ArrayList<>(List.of("alice", "bob", "cecilia")))
+                .unreadFor(new ArrayList<>(List.of("cecilia")))
+                .build();
+        when(repository.findByIdAndTenantId("t1", "acme")).thenReturn(Optional.of(doc));
+
+        service.removeParticipant("acme", "t1", "cecilia", "bob");
+
+        String rendered = captureUpdate().getUpdateObject().toString();
+        assertThat(rendered).contains("participants").contains("unreadFor");
+        assertThat(rendered).contains("cecilia");
+    }
+
+    @Test
+    void removeParticipant_refusesTheAssigneeOfAnOpenAsk() {
+        // A process is waiting on them; delegation is the way out. Same rule
+        // that stops them unsubscribing themselves.
+        MaximegalonDocument doc = thread("acme", "alice", "bob").id("t1").build();
+        when(repository.findByIdAndTenantId("t1", "acme")).thenReturn(Optional.of(doc));
+
+        assertThatThrownBy(() -> service.removeParticipant("acme", "t1", "bob", "alice"))
+                .isInstanceOf(MaximegalonRuleException.class)
+                .hasFieldOrPropertyWithValue(
+                        "reason", MaximegalonRuleException.PARTICIPANT_MUST_STAY);
+    }
+
+    @Test
+    void removeParticipant_refusesTheOriginator() {
+        MaximegalonDocument doc = thread("acme", "alice", "bob").id("t1").build();
+        when(repository.findByIdAndTenantId("t1", "acme")).thenReturn(Optional.of(doc));
+
+        assertThatThrownBy(() -> service.removeParticipant("acme", "t1", "alice", "bob"))
+                .isInstanceOf(MaximegalonRuleException.class)
+                .hasFieldOrPropertyWithValue(
+                        "reason", MaximegalonRuleException.PARTICIPANT_MUST_STAY);
+    }
+
+    // ──── Reaction key bound ────────────────────────────────────────────
+
+    /**
+     * Every distinct key is another entry in an array that lives inside the
+     * thread document, so the count is what has to be bounded — a per-key
+     * length limit alone lets a client grow the document one novel key at a
+     * time.
+     */
+    @Test
+    void react_refusesANewKeyOnceTheNodeIsFull() {
+        List<MaximegalonReaction> full = new ArrayList<>();
+        for (int i = 0; i < MaximegalonService.MAX_REACTION_KEYS; i++) {
+            full.add(MaximegalonReaction.builder()
+                    .key("k" + i).userIds(new ArrayList<>(List.of("alice"))).build());
+        }
+        MaximegalonDocument doc = thread("acme", "alice", "bob").id("t1").version(1L)
+                .reactions(full).build();
+        when(repository.findByIdAndTenantId("t1", "acme")).thenReturn(Optional.of(doc));
+
+        assertThatThrownBy(
+                () -> service.react("acme", "t1", null, "brand_new", "bob", true))
+                .isInstanceOf(MaximegalonRuleException.class)
+                .hasFieldOrPropertyWithValue(
+                        "reason", MaximegalonRuleException.REACTION_LIMIT_REACHED);
+    }
+
+    @Test
+    void react_joiningAnExistingKeyStillWorksWhenFull() {
+        // The cap is on distinct keys, not on people — and a rule that could
+        // not be undone would be a trap, so taking one back is never refused.
+        List<MaximegalonReaction> full = new ArrayList<>();
+        for (int i = 0; i < MaximegalonService.MAX_REACTION_KEYS; i++) {
+            full.add(MaximegalonReaction.builder()
+                    .key("k" + i).userIds(new ArrayList<>(List.of("alice"))).build());
+        }
+        MaximegalonDocument doc = thread("acme", "alice", "bob").id("t1").version(1L)
+                .reactions(full).build();
+        when(repository.findByIdAndTenantId("t1", "acme")).thenReturn(Optional.of(doc));
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
+                any(Class.class))).thenReturn(com.mongodb.client.result.UpdateResult
+                        .acknowledged(1, 1L, null));
+
+        service.react("acme", "t1", null, "k0", "bob", true);
+
+        assertThat(captureUpdate().getUpdateObject().toString()).contains("bob");
+    }
+
     // ──── helpers ───────────────────────────────────────────────────────
 
     private Update captureUpdate() {

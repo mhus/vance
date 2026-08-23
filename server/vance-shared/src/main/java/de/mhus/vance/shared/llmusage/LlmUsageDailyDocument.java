@@ -45,8 +45,11 @@ import org.springframework.data.mongodb.core.mapping.Document;
  * <ul>
  *   <li><b>No rate snapshot.</b> Cost is additive, rates are not: if a price
  *       changes mid-day there is no single correct rate for the row. The
- *       already-computed {@code cost*} amounts are summed; the rate stays on
- *       the per-call row.</li>
+ *       already-computed {@code cost*Micros} amounts are summed; the rate stays
+ *       on the per-call row.</li>
+ *   <li><b>No floating point.</b> Amounts are integer micro-units — see the
+ *       comment on the fields. The per-call rows keep doubles because nothing
+ *       accumulates them.</li>
  *   <li><b>No {@code outcome} in the key.</b> Failures are a second group of
  *       counters in the same document, which halves the row count and
  *       answers the usual question — what did it cost, how much went wrong —
@@ -115,11 +118,25 @@ public class LlmUsageDailyDocument {
     private long cacheReadTokens;
     private long cacheWriteTokens;
     private long images;
-    private double costInput;
-    private double costOutput;
-    private double costCacheRead;
-    private double costCacheWrite;
-    private double costTotal;
+
+    // Money is integer micro-units of `currency`, never a double.
+    //
+    // These fields are accumulated with $inc, once per attempt, forever — and
+    // once the per-call rows have aged out they are the only record left, so
+    // the sum has to be exact rather than merely close. Repeated IEEE-754
+    // addition is neither: it loses low bits and it depends on the order the
+    // attempts happened to arrive in, which for a billing record is the wrong
+    // kind of surprise. One micro-unit is 1e-6 of the currency, which is finer
+    // than any model's per-token price and comfortably inside a long for any
+    // volume a tenant can produce in a day.
+    //
+    // Convert with LlmUsageService.toMicros / fromMicros; never format one of
+    // these directly.
+    private long costInputMicros;
+    private long costOutputMicros;
+    private long costCacheReadMicros;
+    private long costCacheWriteMicros;
+    private long costTotalMicros;
 
     // ── Failed attempts ───────────────────────────────────────────
     //
@@ -129,7 +146,7 @@ public class LlmUsageDailyDocument {
     private long callsFailed;
     private long tokensInFailed;
     private long tokensOutFailed;
-    private double costFailed;
+    private long costFailedMicros;
 
     // ── Pricing coverage ──────────────────────────────────────────
     //
@@ -139,6 +156,17 @@ public class LlmUsageDailyDocument {
     private long unpricedCalls;
     private long unpricedTokensIn;
     private long unpricedTokensOut;
+
+    /**
+     * Successful calls whose provider reported no token counts at all.
+     *
+     * <p>A step beyond {@link #unpricedCalls}: there the tokens are known and
+     * only the rate is missing, here neither is. Counted rather than dropped,
+     * because a dropped row makes an endpoint disappear from the report
+     * entirely — and an absent line reads as "nothing ran", which is the one
+     * thing it does not mean.
+     */
+    private long unmeasuredCalls;
 
     private @Nullable Instant firstAt;
     private @Nullable Instant lastAt;

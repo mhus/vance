@@ -21,17 +21,18 @@ public class LedgerUsageSink implements UsageSink {
 
     @Override
     public void onCall(CallAttribution attribution, UsageMeasurement m) {
-        if (m.isEmpty()) {
-            // Nothing measured — a provider that reports no usage gives us
-            // no row to write. The call still shows up in the audit log.
-            return;
-        }
         try {
             ModelInfo.Pricing p = m.pricing();
             llmUsageService.record(LlmUsageService.UsageWrite.builder()
                     .attribution(attribution)
                     .kind(m.kind())
                     .outcome(m.outcome())
+                    // A successful attempt the provider reported no counts for
+                    // is still booked — as a call, marked unmeasured. Dropping
+                    // it made endpoints without usage reporting vanish from the
+                    // report entirely, which the pricing-coverage numbers could
+                    // not show because there was no row to count.
+                    .unmeasured(m.isEmpty())
                     .attempt(m.attempt())
                     .providerInstance(m.providerInstance())
                     .providerType(m.providerType())

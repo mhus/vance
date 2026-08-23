@@ -1,5 +1,5 @@
 ---
-triggers: ode search source, own search source, eigene suchquelle, company archive search, internal index search, add a search provider, add a research provider, research.endpoint, protocol ode, vance-ode-zarniwoop, search my own system, unser archiv durchsuchen, kann ich unseren index anbinden, hrafnagud search, foreign search endpoint, no provider for modality, kein provider fuer
+triggers: ode search source, own search source, eigene suchquelle, company archive search, internal index search, add a search provider, add a research provider, research.endpoint, suchquelle anlegen, _vance/config/research, protocol ode, vance-ode-zarniwoop, search my own system, unser archiv durchsuchen, kann ich unseren index anbinden, hrafnagud search, foreign search endpoint, no provider for modality, kein provider fuer
 summary: How a foreign application (company archive, news index, domain catalogue) becomes a research provider via the ode protocol — what an operator has to configure and why you cannot do it yourself. Read this before telling anyone that their own system cannot be searched, and before claiming a research modality has no provider.
 ---
 # Own search sources via Ode

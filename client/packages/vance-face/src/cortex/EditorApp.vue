@@ -1199,9 +1199,38 @@ async function onSaveAll(): Promise<void> {
   }
 }
 
+/**
+ * Close a tab the reader asked to close.
+ *
+ * <p><b>Save, do not ask.</b> Cortex auto-saves — 2 s debounced, on tab
+ * switch, and on unmount — so `dirty` is a state that lasts seconds, not
+ * unsaved work. A "discard your changes?" prompt would therefore fire only
+ * inside that window and ask about edits that were about to be written
+ * anyway. Closing flushes them instead, which is what every other exit from a
+ * tab already does (see the URL-sync path above and the `activeTabId` watch).
+ *
+ * <p>The prompt belongs to the one case where something really would be lost:
+ * the save **failed**. Then the reader is told why and decides.
+ */
+async function requestCloseTab(id: string): Promise<void> {
+  const tab = store.openTabs.find((t) => t.id === id);
+  if (tab?.dirty) {
+    try {
+      await store.saveTab(id);
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : String(e);
+      const label = tab.title || tab.path;
+      if (!window.confirm(`„${label}" konnte nicht gespeichert werden (${reason}).\n\nTrotzdem schließen und die Änderungen verwerfen?`)) {
+        return;
+      }
+    }
+  }
+  store.closeTab(id);
+}
+
 function onCloseActiveTab(): void {
   if (!activeTab.value) return;
-  store.closeTab(activeTab.value.id);
+  void requestCloseTab(activeTab.value.id);
 }
 
 function onBindModeAuto(): void {
@@ -1280,7 +1309,7 @@ function onKeyDown(e: KeyboardEvent): void {
   }
   if (key === 'w' && activeTab.value) {
     e.preventDefault();
-    store.closeTab(activeTab.value.id);
+    void requestCloseTab(activeTab.value.id);
     return;
   }
 }
@@ -1656,7 +1685,7 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
         :tabs="store.openTabs"
         :active-tab-id="store.activeTabId"
         @select="store.setActiveTab"
-        @close="store.closeTab"
+        @close="requestCloseTab"
       />
 
       <VAlert v-if="saveError" variant="error" class="m-2">{{ saveError }}</VAlert>

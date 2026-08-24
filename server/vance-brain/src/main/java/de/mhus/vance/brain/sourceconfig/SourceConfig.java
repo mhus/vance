@@ -65,6 +65,55 @@ public record SourceConfig(
         return text.isEmpty() ? fallback : text;
     }
 
+    /**
+     * How much this source is allowed to learn about the reader. Default
+     * {@link ReaderIdentityMode#NONE} — a source that has not been given the
+     * permission does not get it.
+     *
+     * <p>An unknown word resolves to {@code NONE} as well; see
+     * {@link ReaderIdentityMode#parse}. Use {@link #hasUnknownReaderIdentity}
+     * to tell "not configured" from "misspelled", because only the second one
+     * is worth a warning.
+     */
+    public ReaderIdentityMode readerIdentity() {
+        return ReaderIdentityMode.parse(
+                extras.get(ReaderIdentityMode.FIELD), ReaderIdentityMode.NONE);
+    }
+
+    /** Whether {@code readerIdentity} is set to something unrecognised. */
+    public boolean hasUnknownReaderIdentity() {
+        Object raw = extras.get(ReaderIdentityMode.FIELD);
+        return raw != null
+                && StringUtils.isNotBlank(String.valueOf(raw))
+                && !ReaderIdentityMode.isKnown(raw);
+    }
+
+    /**
+     * Whether answers from this source may be cached at all. Default
+     * {@code true} — the source states its own policy (a TTL, later an ETag),
+     * and this is the local override that can only ever say <em>less</em>.
+     *
+     * <p>It exists because caching is the one thing an operator cannot fix on
+     * the far side: a source that lies about how long its answers stay valid
+     * produces stale documents that look like ours.
+     */
+    public boolean cacheAllowed() {
+        return extraBoolean(FIELD_CACHE, true);
+    }
+
+    /** Config value governing {@link #cacheAllowed()}. */
+    public static final String FIELD_CACHE = "cache";
+
+    /**
+     * A copy with {@code readerIdentity} replaced — how a ceiling is applied
+     * without the callers downstream having to know a ceiling existed.
+     */
+    public SourceConfig withReaderIdentity(ReaderIdentityMode mode) {
+        Map<String, Object> merged = new java.util.LinkedHashMap<>(extras);
+        merged.put(ReaderIdentityMode.FIELD, mode.name().toLowerCase(java.util.Locale.ROOT));
+        return new SourceConfig(name, documentPath, protocol, baseUrl, apiKey, enabled, merged);
+    }
+
     /** An extra as boolean, or {@code fallback} when absent. */
     public boolean extraBoolean(String key, boolean fallback) {
         Object value = extras.get(key);

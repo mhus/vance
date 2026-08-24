@@ -3,6 +3,7 @@ package de.mhus.vance.brain.centauri;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import de.mhus.vance.api.settings.SettingType;
+import de.mhus.vance.brain.sourceconfig.ReaderIdentityMode;
 import de.mhus.vance.brain.sourceconfig.SourceConfig;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.settings.SettingService;
@@ -32,7 +33,7 @@ import org.springframework.stereotype.Service;
  *
  * <p>Derivation is central rather than per protocol for a plain reason: with
  * three protocols there would be three chances to get the salting wrong, and
- * the {@code sendActor} switch would have to be honoured in three places
+ * the {@code readerIdentity} switch would have to be honoured in three places
  * instead of one.
  *
  * <p><b>The pseudonym is per endpoint</b>, and that is the actual decision
@@ -112,8 +113,9 @@ public class FeedActorResolver {
      * anonymous call.
      *
      * <p>Null is a supported answer in three cases, and all three are normal:
-     * no user in scope (scheduler, service account), {@code sendActor=false}
-     * on the endpoint, or no salt obtainable. Every source has to answer a
+     * no user in scope (scheduler, service account), {@code readerIdentity}
+     * other than {@code pseudonym} on the endpoint — which is the default —
+     * or no salt obtainable. Every source has to answer a
      * fetch without a pseudonym anyway — a source that needs one to respond
      * at all breaks every digest job.
      *
@@ -127,8 +129,11 @@ public class FeedActorResolver {
         }
         String sourceId = instance.id();
         SourceConfig config = sourceFactory.config(scope, sourceId);
-        if (config != null
-                && !config.extraBoolean(FeedSourceFactory.FIELD_SEND_ACTOR, true)) {
+        if (config == null || config.readerIdentity() != ReaderIdentityMode.PSEUDONYM) {
+            // Default is NONE: a source that has not been given permission
+            // does not get one. IDENTITY never reaches here — the factory
+            // refuses it for feeds, because a feed cannot be handed a login
+            // (see FeedSourceFactory.CEILING).
             return null;
         }
         String salt = obtainSalt(scope, sourceId);

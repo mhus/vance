@@ -61,7 +61,8 @@ public class JaglanService implements JaglanPort {
             JaglanCapabilities caps =
                     capabilities.peek(tenantId, projectId, instance.mount());
             out.add(describe(instance, caps,
-                    capabilities.failedRecently(tenantId, projectId, instance.mount())));
+                    capabilities.failedRecently(tenantId, projectId, instance.mount()),
+                    factory.cacheAllowed(tenantId, projectId, instance.mount())));
         }
         return List.copyOf(out);
     }
@@ -233,7 +234,8 @@ public class JaglanService implements JaglanPort {
      *        healthy mount look broken for the first minutes after a restart.
      */
     private static MountedSource describe(
-            JaglanInstance instance, @Nullable JaglanCapabilities caps, boolean failedRecently) {
+            JaglanInstance instance, @Nullable JaglanCapabilities caps, boolean failedRecently,
+            boolean cacheAllowed) {
         if (caps == null) {
             // Reported either way, not hidden: "not configured" and "not
             // answering right now" are different facts, and only the first
@@ -246,6 +248,14 @@ public class JaglanService implements JaglanPort {
         }
         return new MountedSource(
                 instance.mount(), caps.displayName(), instance.protocolId(),
-                caps.access(), caps.itemCount(), null, caps.metadataTtl(), caps.canSearch());
+                caps.access(), caps.itemCount(), null,
+                // cache: false in the mount document is the local override
+                // over whatever the source declares for itself. It floors the
+                // TTL instead of removing it: the shell row is what makes the
+                // mount appear in the tree at all, so "never fresh" is not an
+                // option — MIN_TTL is as close to always-re-ask as the model
+                // gets.
+                cacheAllowed ? caps.metadataTtl() : JaglanCapabilities.MIN_TTL,
+                caps.canSearch());
     }
 }

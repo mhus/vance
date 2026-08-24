@@ -9,6 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.brain.sourceconfig.ReaderIdentityMode;
 import de.mhus.vance.brain.sourceconfig.SourceConfig;
 import de.mhus.vance.brain.sourceconfig.SourceConfigLoader;
 import de.mhus.vance.brain.sourceconfig.SourceConfigPaths;
@@ -154,16 +155,17 @@ class FeedSourceFactoryTest {
     }
 
     @Test
-    void sendActor_isNotHandedToTheProtocol() {
-        // Whether the reader pseudonym travels is Centauri's decision, and the
+    void readerIdentity_isNotHandedToTheProtocol() {
+        // What a source learns about the reader is Centauri's decision, and the
         // point of deriving it centrally is that no protocol has a say.
         given(config("alpha", "ode", null, true,
-                Map.of("sendActor", false, "feedPath", "/ode/feed")));
+                Map.of(ReaderIdentityMode.FIELD, "pseudonym", "feedPath", "/ode/feed")));
 
         FeedInstanceConfig cfg = capturedConfig("alpha");
 
         assertThat(cfg.extras()).containsOnlyKeys("feedPath");
-        assertThat(factory.config(SCOPE, "alpha").extraBoolean("sendActor", true)).isFalse();
+        assertThat(factory.config(SCOPE, "alpha").readerIdentity())
+                .isEqualTo(ReaderIdentityMode.PSEUDONYM);
     }
 
     /** The {@link FeedInstanceConfig} the protocol was handed for {@code id}. */

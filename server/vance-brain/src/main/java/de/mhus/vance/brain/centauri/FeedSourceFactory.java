@@ -3,6 +3,7 @@ package de.mhus.vance.brain.centauri;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import de.mhus.vance.brain.project.ProjectEnginesStopRequested;
+import de.mhus.vance.brain.sourceconfig.ReaderIdentityMode;
 import de.mhus.vance.brain.sourceconfig.SourceConfig;
 import de.mhus.vance.brain.sourceconfig.SourceConfigCache;
 import de.mhus.vance.brain.sourceconfig.SourceConfigLoader;
@@ -54,12 +55,16 @@ public class FeedSourceFactory implements SourceConfigCache {
     static final Duration DEFAULT_TTL = Duration.ofMinutes(5);
 
     /**
-     * Whether the reader pseudonym travels to this source. Default {@code true}
-     * because the feature would otherwise be dead by default and never
-     * exercised; the switch exists all the same, since not wanting one's
-     * readers profiled by a foreign source is a legitimate position.
+     * The most a feed source can be told about the reader.
+     *
+     * <p>A feed is consumed from arbitrary third parties — Mastodon instances,
+     * public APIs, whatever an operator points it at — and its purpose is
+     * presentation, not authorisation. Presentation needs the reader to be
+     * <em>recognisable</em>, never <em>identified</em>, so a pseudonym is the
+     * most that can ever be justified here and {@code identity} is refused
+     * rather than silently downgraded.
      */
-    static final String FIELD_SEND_ACTOR = "sendActor";
+    static final ReaderIdentityMode CEILING = ReaderIdentityMode.PSEUDONYM;
 
     private final SourceConfigLoader configLoader;
     private final SecretResolver secretResolver;
@@ -238,6 +243,7 @@ public class FeedSourceFactory implements SourceConfigCache {
                         protocolExtras(config));
                 FeedSourceInstance instance = protocol.instantiate(cfg);
                 warnOnIgnoredContentPolicy(config, cfg, instance);
+                warnOnUnsupportedReaderIdentity(config);
                 instances.add(instance);
             } catch (RuntimeException e) {
                 log.warn("Centauri: protocol '{}' refused to instantiate endpoint '{}': {}",
@@ -284,8 +290,35 @@ public class FeedSourceFactory implements SourceConfigCache {
 
     private static Map<String, Object> protocolExtras(SourceConfig config) {
         Map<String, Object> extras = new LinkedHashMap<>(config.extras());
-        extras.remove(FIELD_SEND_ACTOR);
+        extras.remove(ReaderIdentityMode.FIELD);
         return extras;
+    }
+
+    /**
+     * Complain about a {@code readerIdentity} a feed cannot honour, once per
+     * instance build rather than per call.
+     *
+     * <p>Refused, not downgraded: a source configured to receive an identity
+     * and then quietly handed a pseudonym is a promise broken where nobody can
+     * see it. The instance is still built — the mode governs what travels, not
+     * whether the source works — but the log says plainly that it will not.
+     */
+    private static void warnOnUnsupportedReaderIdentity(SourceConfig config) {
+        if (config.hasUnknownReaderIdentity()) {
+            log.warn("Centauri: endpoint '{}' sets an unknown {}='{}' — treating it as {}",
+                    config.documentPath(), ReaderIdentityMode.FIELD,
+                    config.extras().get(ReaderIdentityMode.FIELD), ReaderIdentityMode.NONE);
+            return;
+        }
+        ReaderIdentityMode requested = config.readerIdentity();
+        if (requested.atMost(CEILING) != requested) {
+            log.warn("Centauri: endpoint '{}' asks for {}={}, which a feed source cannot be "
+                            + "given — a feed is read for presentation, not authorisation. "
+                            + "Nothing about the reader will travel; use '{}' if a stable "
+                            + "recognisable reader is what you want.",
+                    config.documentPath(), ReaderIdentityMode.FIELD, requested,
+                    ReaderIdentityMode.PSEUDONYM.name().toLowerCase(java.util.Locale.ROOT));
+        }
     }
 
     /**

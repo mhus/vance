@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.brain.sourceconfig.ReaderIdentityMode;
 import de.mhus.vance.brain.sourceconfig.SourceConfig;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.toolpack.core.SecretResolver;
@@ -104,9 +105,31 @@ class FeedActorResolverTest {
     }
 
     @Test
-    void resolve_withSendActorOff_isAnonymous() {
+    void resolve_withoutReaderIdentityConfigured_isAnonymous() {
+        // The default: a source that was not given permission does not get one.
+        when(sourceFactory.config(any(), anyString())).thenReturn(config(Map.of()));
+
+        FeedActor actor = resolver().resolve(scopeWithUser(), source("alpha"));
+
+        assertThat(actor).isNull();
+    }
+
+    @Test
+    void resolve_withReaderIdentityNone_isAnonymous() {
         when(sourceFactory.config(any(), anyString()))
-                .thenReturn(config(Map.of("sendActor", false)));
+                .thenReturn(config(Map.of(ReaderIdentityMode.FIELD, "none")));
+
+        FeedActor actor = resolver().resolve(scopeWithUser(), source("alpha"));
+
+        assertThat(actor).isNull();
+    }
+
+    @Test
+    void resolve_withReaderIdentityIdentity_isAnonymous() {
+        // A feed cannot be handed a login, and asking for one must not fall
+        // back to a pseudonym: refused, not downgraded.
+        when(sourceFactory.config(any(), anyString()))
+                .thenReturn(config(Map.of(ReaderIdentityMode.FIELD, "identity")));
 
         FeedActor actor = resolver().resolve(scopeWithUser(), source("alpha"));
 
@@ -201,9 +224,13 @@ class FeedActorResolverTest {
         return new FeedActorResolver(settings, SecretResolver.PASSTHROUGH, sourceFactory);
     }
 
-    /** sendActor is on by default, so the plain document is the "on" case. */
+    /**
+     * A pseudonym travels only when the document asks for it: the default is
+     * {@code readerIdentity: none}, so the plain document is the "off" case.
+     */
     private void givenSendActorOn() {
-        when(sourceFactory.config(any(), anyString())).thenReturn(config(Map.of()));
+        when(sourceFactory.config(any(), anyString()))
+                .thenReturn(config(Map.of(ReaderIdentityMode.FIELD, "pseudonym")));
     }
 
     private static SourceConfig config(Map<String, Object> extras) {

@@ -145,4 +145,77 @@ class SourceConfigLoaderTest {
         assertThat(SourceConfigPaths.nameFromPath(PREFIX, PREFIX + "sub/a.yaml")).isNull();
         assertThat(SourceConfigPaths.nameFromPath(PREFIX, "_vance/config/research/a.yaml")).isNull();
     }
+
+    // ─── readerIdentity: the tenant sets the ceiling ─────────────────────
+
+    @Test
+    void readerIdentity_projectAskingForMoreThanTheTenantAllows_isCapped() {
+        givenProject(Map.of(PREFIX + "a.yaml", """
+                protocol: ode
+                readerIdentity: identity
+                """));
+        givenTenant(Map.of(PREFIX + "a.yaml", """
+                protocol: ode
+                readerIdentity: pseudonym
+                """));
+
+        assertThat(load().get(0).readerIdentity()).isEqualTo(ReaderIdentityMode.PSEUDONYM);
+    }
+
+    @Test
+    void readerIdentity_projectAskingForLessThanTheTenantAllows_keepsTheLowerValue() {
+        // A ceiling restricts; it never raises a project that chose to send
+        // nothing up to what the tenant would have permitted.
+        givenProject(Map.of(PREFIX + "a.yaml", "protocol: ode\n"));
+        givenTenant(Map.of(PREFIX + "a.yaml", """
+                protocol: ode
+                readerIdentity: identity
+                """));
+
+        assertThat(load().get(0).readerIdentity()).isEqualTo(ReaderIdentityMode.NONE);
+    }
+
+    @Test
+    void readerIdentity_withoutATenantDocumentOfThatName_isNotCapped() {
+        // The documented limit: an explicit restriction has to be written down
+        // to exist. A source configured only in a project has nothing above it.
+        givenProject(Map.of(PREFIX + "a.yaml", """
+                protocol: ode
+                readerIdentity: pseudonym
+                """));
+        givenTenant(Map.of());
+
+        assertThat(load().get(0).readerIdentity()).isEqualTo(ReaderIdentityMode.PSEUDONYM);
+    }
+
+    @Test
+    void readerIdentity_allNone_doesNotReadTheTenantCascadeAtAll() {
+        // The common case has to stay free: no second document read when there
+        // is nothing that could be capped.
+        givenProject(Map.of(PREFIX + "a.yaml", "protocol: ode\n"));
+
+        assertThat(load().get(0).readerIdentity()).isEqualTo(ReaderIdentityMode.NONE);
+        org.mockito.Mockito.verify(documents, org.mockito.Mockito.never())
+                .listByPrefixCascade(eq(TENANT), eq(TENANT_PROJECT), anyString());
+    }
+
+    private static final String TENANT_PROJECT =
+            de.mhus.vance.shared.home.HomeBootstrapService.TENANT_PROJECT_NAME;
+
+    private void givenProject(Map<String, String> docs) {
+        when(documents.listByPrefixCascade(eq(TENANT), eq(PROJECT), anyString()))
+                .thenReturn(hits(docs));
+    }
+
+    private void givenTenant(Map<String, String> docs) {
+        when(documents.listByPrefixCascade(eq(TENANT), eq(TENANT_PROJECT), anyString()))
+                .thenReturn(hits(docs));
+    }
+
+    private static Map<String, LookupResult> hits(Map<String, String> docs) {
+        Map<String, LookupResult> hits = new LinkedHashMap<>();
+        docs.forEach((path, body) -> hits.put(
+                path, new LookupResult(path, body, LookupResult.Source.PROJECT, null)));
+        return hits;
+    }
 }

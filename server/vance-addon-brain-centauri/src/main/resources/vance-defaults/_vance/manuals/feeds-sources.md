@@ -31,7 +31,7 @@ baseUrl: https://…
 |---|---|---|
 | `enabled` | `true` | `false` switches the source off without deleting the file |
 | `apiKey` | — | sent as `Authorization: Bearer …`. Either a reference (`{{secret:vault:…}}`) or a declared literal (`{noop}…`) — which of the two is the operator's decision |
-| `sendActor` | `true` | send the salted reader pseudonym, so the source can personalise |
+| `readerIdentity` | `none` | what the source learns about the reader. `pseudonym` sends a per-source salted pseudonym so it can personalise; `none` sends nothing. A feed cannot be given `identity` — it is read for presentation, not authorisation — and asking for it sends nothing rather than quietly falling back |
 | `language` | from host | only for `wikipedia` on hosts like `commons.wikimedia.org` |
 | `feedPath` | `/ode/feed` | only for `ode`, when the source moved its path |
 | `hideSensitive` | `false` | drop entries the source itself flagged as sensitive |

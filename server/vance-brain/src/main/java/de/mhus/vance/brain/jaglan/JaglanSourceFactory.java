@@ -9,6 +9,7 @@ import java.util.Map;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import de.mhus.vance.brain.project.ProjectEnginesStopRequested;
+import de.mhus.vance.brain.sourceconfig.ReaderIdentityMode;
 import de.mhus.vance.brain.sourceconfig.SourceConfig;
 import de.mhus.vance.brain.sourceconfig.SourceConfigCache;
 import de.mhus.vance.brain.sourceconfig.SourceConfigLoader;
@@ -50,7 +51,7 @@ public class JaglanSourceFactory implements SourceConfigCache {
     private final SourceConfigLoader configLoader;
     private final SecretResolver secretResolver;
     private final Map<String, JaglanProtocol> protocolsById;
-    private final Cache<ScopeKey, List<JaglanInstance>> cache;
+    private final Cache<ScopeKey, Mounts> cache;
 
     public JaglanSourceFactory(
             SourceConfigLoader configLoader, SecretResolver secretResolver,
@@ -70,7 +71,8 @@ public class JaglanSourceFactory implements SourceConfigCache {
         this.cache = Caffeine.newBuilder()
                 .maximumSize(256)
                 .expireAfterWrite(CACHE_TTL)
-                .<ScopeKey, List<JaglanInstance>>removalListener((key, value, cause) -> disposeAll(value))
+                .<ScopeKey, Mounts>removalListener(
+                        (key, value, cause) -> disposeAll(value == null ? null : value.instances()))
                 .build();
         log.info("Jaglan: {} protocol(s) registered: {}", protocolsById.size(), protocolsById.keySet());
     }
@@ -80,7 +82,25 @@ public class JaglanSourceFactory implements SourceConfigCache {
         if (StringUtils.isBlank(tenantId) || StringUtils.isBlank(projectId)) {
             return List.of();
         }
-        return cache.get(new ScopeKey(tenantId, projectId), this::build);
+        return cache.get(new ScopeKey(tenantId, projectId), this::build).instances();
+    }
+
+    /**
+     * Whether answers from this mount may be cached, as the mount document
+     * says — {@code cache: false} is the local override over whatever TTL the
+     * source declares for itself.
+     *
+     * <p>Defaults to {@code true} for an unknown mount, which is the
+     * pre-existing behaviour: the source's own declaration applies. Kept next
+     * to the instances in one cache entry rather than in a second cache, so
+     * the flags cannot outlive or lag behind the instances they belong to.
+     */
+    public boolean cacheAllowed(String tenantId, String projectId, String mount) {
+        if (StringUtils.isBlank(tenantId) || StringUtils.isBlank(projectId)) {
+            return true;
+        }
+        return cache.get(new ScopeKey(tenantId, projectId), this::build)
+                .cacheAllowed().getOrDefault(mount, Boolean.TRUE);
     }
 
     /** One mount by name, or {@code null} when it is not configured. */
@@ -107,10 +127,10 @@ public class JaglanSourceFactory implements SourceConfigCache {
      */
     @Override
     public void evict(String tenantId, String projectId) {
-        List<JaglanInstance> evicted = cache.asMap().remove(new ScopeKey(tenantId, projectId));
+        Mounts evicted = cache.asMap().remove(new ScopeKey(tenantId, projectId));
         if (evicted != null) {
             log.debug("Jaglan: evicted {} mount(s) for '{}/{}' (explicit refresh)",
-                    evicted.size(), tenantId, projectId);
+                    evicted.instances().size(), tenantId, projectId);
         }
     }
 
@@ -137,24 +157,25 @@ public class JaglanSourceFactory implements SourceConfigCache {
                 || StringUtils.isBlank(event.projectName())) {
             return;
         }
-        List<JaglanInstance> evicted =
+        Mounts evicted =
                 cache.asMap().remove(new ScopeKey(event.tenantId(), event.projectName()));
         if (evicted != null) {
             log.debug("Jaglan: evicted {} mount(s) for '{}/{}' (project stop)",
-                    evicted.size(), event.tenantId(), event.projectName());
+                    evicted.instances().size(), event.tenantId(), event.projectName());
         }
     }
 
     // ── internals ────────────────────────────────────────────────────
 
-    private List<JaglanInstance> build(ScopeKey scope) {
+    private Mounts build(ScopeKey scope) {
         List<SourceConfig> configs = configLoader.load(
                 scope.tenantId(), scope.projectId(), SourceConfigPaths.MOUNTS);
         if (configs.isEmpty()) {
-            return List.of();
+            return Mounts.EMPTY;
         }
 
         List<JaglanInstance> result = new ArrayList<>(configs.size());
+        Map<String, Boolean> cacheFlags = new LinkedHashMap<>();
         for (SourceConfig config : configs) {
             String mount = config.name();
             if (!JaglanPaths.isValidMountName(mount)) {
@@ -183,6 +204,7 @@ public class JaglanSourceFactory implements SourceConfigCache {
                         config.documentPath(), config.protocol(), protocolsById.keySet());
                 continue;
             }
+            warnOnUnsupportedReaderIdentity(config);
 
             try {
                 JaglanInstanceConfig cfg = new JaglanInstanceConfig(
@@ -194,6 +216,7 @@ public class JaglanSourceFactory implements SourceConfigCache {
                         () -> resolveCredential(scope, config),
                         scope.tenantId(), scope.projectId(), config.extras());
                 result.add(protocol.instantiate(cfg));
+                cacheFlags.put(mount, config.cacheAllowed());
             } catch (RuntimeException e) {
                 log.warn("Jaglan: protocol '{}' refused to instantiate mount '{}': {}",
                         config.protocol(), config.documentPath(), e.toString());
@@ -201,7 +224,41 @@ public class JaglanSourceFactory implements SourceConfigCache {
         }
         log.debug("Jaglan: assembled {} mount(s) for '{}/{}'",
                 result.size(), scope.tenantId(), scope.projectId());
-        return List.copyOf(result);
+        return new Mounts(List.copyOf(result), Map.copyOf(cacheFlags));
+    }
+
+    /**
+     * Reject a {@code readerIdentity} this mount cannot honour.
+     *
+     * <p>Jaglan transports nothing about the reader today: no method on
+     * {@code JaglanPort} carries a user, and neither does the document read
+     * path that calls it. So {@code pseudonym} and {@code identity} are both
+     * refused here rather than accepted and ignored — a mount configured to
+     * receive an identity, that never does, is a promise broken where nobody
+     * looks. When the transport exists, this ceiling is the one line to raise.
+     */
+    private static void warnOnUnsupportedReaderIdentity(SourceConfig config) {
+        if (config.hasUnknownReaderIdentity()) {
+            log.warn("Jaglan: mount '{}' sets an unknown {}='{}' — treating it as {}",
+                    config.documentPath(), ReaderIdentityMode.FIELD,
+                    config.extras().get(ReaderIdentityMode.FIELD), ReaderIdentityMode.NONE);
+            return;
+        }
+        ReaderIdentityMode requested = config.readerIdentity();
+        if (requested != ReaderIdentityMode.NONE) {
+            log.warn("Jaglan: mount '{}' asks for {}={}, but Jaglan does not transport reader "
+                            + "identity yet — nothing about the reader travels. The mount works; "
+                            + "authorisation stays at the level of its credential.",
+                    config.documentPath(), ReaderIdentityMode.FIELD, requested);
+        }
+    }
+
+    /**
+     * One project's mounts together with what their documents say about
+     * caching — one cache entry, so the two cannot drift apart.
+     */
+    record Mounts(List<JaglanInstance> instances, Map<String, Boolean> cacheAllowed) {
+        static final Mounts EMPTY = new Mounts(List.of(), Map.of());
     }
 
     /**

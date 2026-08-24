@@ -56,6 +56,7 @@ class JaglanServiceTest {
     private void configured() {
         when(factory.assemble(TENANT, PROJECT)).thenReturn(List.of(instance));
         when(factory.find(TENANT, PROJECT, MOUNT)).thenReturn(instance);
+        when(factory.cacheAllowed(TENANT, PROJECT, MOUNT)).thenReturn(true);
     }
 
     private static JaglanCapabilities caps(MountAccess access) {

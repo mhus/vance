@@ -2,6 +2,7 @@ package de.mhus.vance.brain.sourceconfig;
 
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -48,6 +49,9 @@ public class SourceConfigLoader {
     /**
      * Every configured instance under {@code pathPrefix}, cascade-merged.
      * Order is the cascade application order and carries no meaning.
+     *
+     * <p>{@code readerIdentity} is capped here against the tenant-level
+     * document of the same name — see {@link #applyTenantCeiling}.
      */
     public List<SourceConfig> load(String tenantId, String projectId, String pathPrefix) {
         Map<String, LookupResult> hits =
@@ -71,7 +75,64 @@ public class SourceConfigLoader {
                         path, hit.getValue().source(), e.getMessage());
             }
         }
-        return List.copyOf(out);
+        return List.copyOf(applyTenantCeiling(tenantId, projectId, pathPrefix, out));
+    }
+
+    /**
+     * Cap each config's {@code readerIdentity} at what the tenant-level
+     * document of the same name allows.
+     *
+     * <p>The document cascade is whole-document override: a project file
+     * replaces the {@code _tenant} one entirely. For every other field that is
+     * right — a source has one origin. For this one it is not, because it
+     * would mean anyone who may write a project configuration can widen a
+     * privacy decision the tenant made. Ceilings only ever restrict, so this
+     * runs centrally rather than in each subsystem: a ceiling somebody can
+     * forget to apply is not a ceiling.
+     *
+     * <p>Same shape as the foot sandbox, where the project-local policy file
+     * may only tighten the central one.
+     *
+     * <p><b>Known limit:</b> the ceiling binds only where the tenant has a
+     * document of that name. A source configured solely in a project has no
+     * tenant statement above it and therefore no cap — an explicit restriction
+     * has to be written down to exist. A tenant that wants a blanket ceiling
+     * needs a deployment-level policy, which is deliberately not built here.
+     */
+    private List<SourceConfig> applyTenantCeiling(
+            String tenantId, String projectId, String pathPrefix, List<SourceConfig> configs) {
+        if (HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
+            // Nothing sits above the tenant level — and this is also what
+            // keeps the recursion below one deep.
+            return configs;
+        }
+        if (configs.stream().allMatch(c -> c.readerIdentity() == ReaderIdentityMode.NONE)) {
+            // The common case by far: nothing to cap, so no second cascade read.
+            return configs;
+        }
+        Map<String, ReaderIdentityMode> ceilings = new LinkedHashMap<>();
+        for (SourceConfig tenantConfig
+                : load(tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, pathPrefix)) {
+            ceilings.put(tenantConfig.name(), tenantConfig.readerIdentity());
+        }
+        List<SourceConfig> capped = new ArrayList<>(configs.size());
+        for (SourceConfig config : configs) {
+            ReaderIdentityMode ceiling = ceilings.get(config.name());
+            if (ceiling == null) {
+                capped.add(config);
+                continue;
+            }
+            ReaderIdentityMode effective = config.readerIdentity().atMost(ceiling);
+            if (effective != config.readerIdentity()) {
+                log.info("SourceConfig: '{}' asks for readerIdentity={} but the tenant document "
+                                + "allows at most {} — using {}",
+                        config.documentPath(), config.readerIdentity(), ceiling, effective);
+                capped.add(config.withReaderIdentity(effective));
+            } else {
+                capped.add(config);
+            }
+        }
+        return capped;
     }
 
     /**

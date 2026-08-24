@@ -30,6 +30,7 @@ import {
   Criticality,
   MaximegalonStatus,
   MaximegalonType,
+  type MaximegalonDocumentRef,
   type MaximegalonDto,
 } from '@vance/generated';
 
@@ -465,35 +466,18 @@ function decisionOptions(item: MaximegalonDto): string[] {
 }
 
 /**
- * The document an item points at, from the {@code payload.documentRef}
- * convention that {@code inbox_post} and the Milliways {@code inbox}
- * share-handler both write. Read by shape, not by item type: an
- * {@code OUTPUT_DOCUMENT} share and an {@code APPROVAL} that happens to
- * reference a document deserve the same link.
+ * The document an item is about. A typed field now, not a shape read out of
+ * {@code payload} — the same move that made it queryable server-side: asking
+ * "which threads are about this document" is a question across every item type,
+ * and {@code payload} is type-specific by contract.
+ *
+ * <p>Still guarded: a ref without an id has nothing to open, and a link that
+ * lands on an empty Cortex is worse than no link.
  */
-interface SharedDocumentRef {
-  documentId: string;
-  projectId: string;
-  path: string;
-  title?: string;
-}
-
-const sharedDocument = computed<SharedDocumentRef | null>(() => {
-  const raw = inbox.selected.value?.payload?.documentRef;
-  if (!raw || typeof raw !== 'object') return null;
-  const ref = raw as Record<string, unknown>;
-  const documentId = typeof ref.documentId === 'string' ? ref.documentId : '';
-  const projectId = typeof ref.projectId === 'string' ? ref.projectId : '';
-  const path = typeof ref.path === 'string' ? ref.path : '';
-  // Without an id there is nothing to open — a half-written ref must not
-  // render a link that lands on an empty Cortex.
-  if (!documentId || !projectId) return null;
-  return {
-    documentId,
-    projectId,
-    path,
-    title: typeof ref.title === 'string' ? ref.title : undefined,
-  };
+const sharedDocument = computed<MaximegalonDocumentRef | null>(() => {
+  const ref = inbox.selected.value?.documentRef;
+  if (!ref?.documentId || !ref.projectId) return null;
+  return ref;
 });
 
 /**
@@ -521,7 +505,7 @@ const sharedSnippet = computed<string | null>(() => {
 });
 
 /** Cortex deep-link: a lone {@code doc} id opens as a single tab. */
-function cortexLink(ref: SharedDocumentRef): string {
+function cortexLink(ref: MaximegalonDocumentRef): string {
   return `/cortex.html?project=${encodeURIComponent(ref.projectId)}`
     + `&doc=${encodeURIComponent(ref.documentId)}`;
 }

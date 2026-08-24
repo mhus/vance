@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.inbox;
 
 import de.mhus.vance.api.inbox.Criticality;
+import de.mhus.vance.api.inbox.MaximegalonDocumentRef;
 import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
@@ -79,8 +80,8 @@ public class InboxPostTool implements Tool {
                             "type", "object",
                             "description", "Optional reference to a document the "
                                     + "item is about. Validated against DocumentService; "
-                                    + "the resolved ref lands in payload.documentRef "
-                                    + "as {projectId, documentId, path, title}. "
+                                    + "the resolved ref becomes the thread's documentRef, "
+                                    + "which is what makes it findable from that document. "
                                     + "Identify the doc by id or by (projectId, path).",
                             "properties", Map.of(
                                     "id", Map.of("type", "string"),
@@ -163,11 +164,7 @@ public class InboxPostTool implements Tool {
         Criticality criticality = parseCriticality(optString(params, "criticality"));
         List<String> tags = optStringList(params, "tags");
         Map<String, Object> payload = optMap(params, "payload");
-        Map<String, Object> resolvedDocRef = resolveDocumentRef(params, ctx);
-        if (resolvedDocRef != null) {
-            if (payload == null) payload = new LinkedHashMap<>();
-            payload.put("documentRef", resolvedDocRef);
-        }
+        MaximegalonDocumentRef resolvedDocRef = resolveDocumentRef(params, ctx);
 
         MaximegalonDocument toCreate = MaximegalonDocument.builder()
                 .tenantId(tenantId)
@@ -181,6 +178,7 @@ public class InboxPostTool implements Tool {
                 .title(title)
                 .body(body)
                 .payload(payload == null ? new LinkedHashMap<>() : payload)
+                .documentRef(resolvedDocRef)
                 .requiresAction(isAsk(type))
                 .build();
 
@@ -212,7 +210,7 @@ public class InboxPostTool implements Tool {
      * and returns a normalized ref map suitable for {@code payload.documentRef}.
      * Returns {@code null} when no documentRef was passed.
      */
-    private @org.jspecify.annotations.Nullable Map<String, Object> resolveDocumentRef(
+    private @org.jspecify.annotations.Nullable MaximegalonDocumentRef resolveDocumentRef(
             Map<String, Object> params, ToolInvocationContext ctx) {
         if (params == null) return null;
         Object rawRef = params.get("documentRef");
@@ -255,13 +253,13 @@ public class InboxPostTool implements Tool {
                         ctx.tenantId(), doc.getProjectId(), doc.getPath()),
                 de.mhus.vance.shared.permission.Action.READ);
 
-        Map<String, Object> ref = new LinkedHashMap<>();
-        ref.put("documentId", doc.getId());
-        ref.put("projectId", doc.getProjectId());
-        ref.put("path", doc.getPath());
-        if (doc.getTitle() != null) ref.put("title", doc.getTitle());
-        if (doc.getMimeType() != null) ref.put("mimeType", doc.getMimeType());
-        return ref;
+        return MaximegalonDocumentRef.builder()
+                .documentId(doc.getId())
+                .projectId(doc.getProjectId())
+                .path(doc.getPath())
+                .title(doc.getTitle())
+                .mimeType(doc.getMimeType())
+                .build();
     }
 
     private static MaximegalonType parseType(String raw) {

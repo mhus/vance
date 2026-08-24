@@ -153,16 +153,14 @@ public class InboxShareHandler implements ShareHandler {
         ShareSubject subject = scope.subject();
         Map<String, Object> payload = new LinkedHashMap<>();
         @Nullable DocumentDocument doc = scope.document();
-        if (doc != null) {
-            // Same payload shape inbox_post writes, so one renderer serves both.
-            Map<String, Object> documentRef = new LinkedHashMap<>();
-            documentRef.put("documentId", doc.getId());
-            documentRef.put("projectId", doc.getProjectId());
-            documentRef.put("path", doc.getPath());
-            if (doc.getTitle() != null) documentRef.put("title", doc.getTitle());
-            if (doc.getMimeType() != null) documentRef.put("mimeType", doc.getMimeType());
-            payload.put("documentRef", documentRef);
-        }
+        de.mhus.vance.api.inbox.MaximegalonDocumentRef documentRef = doc == null ? null
+                : de.mhus.vance.api.inbox.MaximegalonDocumentRef.builder()
+                        .documentId(doc.getId())
+                        .projectId(doc.getProjectId())
+                        .path(doc.getPath())
+                        .title(doc.getTitle())
+                        .mimeType(doc.getMimeType())
+                        .build();
         if (subject.link() != null) {
             Map<String, Object> link = new LinkedHashMap<>();
             link.put("url", subject.link());
@@ -186,6 +184,7 @@ public class InboxShareHandler implements ShareHandler {
                 .title(sharerLabel(scope) + " shared: " + scope.displayTitle())
                 .body(text)
                 .payload(payload)
+                .documentRef(documentRef)
                 .requiresAction(false)
                 .build();
     }

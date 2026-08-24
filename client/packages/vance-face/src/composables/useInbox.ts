@@ -49,6 +49,8 @@ export function useInbox(): {
   error: Ref<string | null>;
   filter: Ref<InboxFilter>;
   loadList: (filter: InboxFilter) => Promise<void>;
+  /** Threads whose object is the given document — fills the same `items` ref. */
+  loadForDocument: (documentId: string) => Promise<void>;
   loadOne: (id: string) => Promise<void>;
   loadTags: () => Promise<void>;
   clearSelection: () => void;
@@ -99,6 +101,30 @@ export function useInbox(): {
       items.value = data.items ?? [];
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load inbox.';
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  /**
+   * Threads about one document. Fills the same `items` ref as {@link loadList},
+   * so the row rendering and every mutation helper work unchanged.
+   *
+   * <p>The server filters by visibility, and an empty answer therefore does not
+   * mean "there are none" — it means none this person may see. The caller must
+   * not phrase the empty state as a statement about existence; saying "none you
+   * may see" would confirm the very thing the filter protects.
+   */
+  async function loadForDocument(documentId: string): Promise<void> {
+    loading.value = true;
+    error.value = null;
+    try {
+      const data = await brainFetch<InboxListResponse>(
+        'GET', `inbox/by-document/${encodeURIComponent(documentId)}`);
+      items.value = data.items ?? [];
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to load discussions.';
+      items.value = [];
     } finally {
       loading.value = false;
     }
@@ -386,6 +412,7 @@ export function useInbox(): {
     error,
     filter,
     loadList,
+    loadForDocument,
     loadOne,
     loadTags,
     clearSelection,

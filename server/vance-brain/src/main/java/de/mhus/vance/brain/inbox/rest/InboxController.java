@@ -155,6 +155,38 @@ public class InboxController {
                 .build();
     }
 
+    /**
+     * Threads whose object is the given document — the Cortex discussion tab.
+     *
+     * <p>This is the endpoint where the inbox turns from a filing place into a
+     * query, and the visibility rule is the interesting part: it stays
+     * {@code maySee}. Being able to read a document must <b>not</b> be a back
+     * door into other people's conversations about it — document access and
+     * conversation access are different permissions, and folding them together
+     * would make every share a disclosure.
+     *
+     * <p>The consequence is deliberate and has to be handled by the client: the
+     * answer can be <b>empty while threads exist</b>. The empty state therefore
+     * says "no discussions", never "none you may see" — the second phrasing
+     * would confirm existence, which is the thing the filter is protecting.
+     */
+    @GetMapping("/brain/{tenant}/inbox/by-document/{documentId}")
+    public InboxListResponse byDocument(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("documentId") String documentId,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
+        String currentUser = currentUser(httpRequest);
+        List<MaximegalonDocument> visible = new ArrayList<>();
+        for (MaximegalonDocument doc : inboxItemService.listByDocument(tenant, documentId)) {
+            if (inboxAuthz.maySee(tenant, currentUser, doc)) visible.add(doc);
+        }
+        List<MaximegalonDto> dtos = InboxMapper.toDtos(visible, inboxItemService.countMessages(
+                tenant, visible.stream().map(MaximegalonDocument::getId)
+                        .filter(Objects::nonNull).toList()));
+        return InboxListResponse.builder().items(dtos).count(dtos.size()).build();
+    }
+
     /** Single item — same authorisation as list. */
     @GetMapping("/brain/{tenant}/inbox/{id}")
     public MaximegalonDto findOne(

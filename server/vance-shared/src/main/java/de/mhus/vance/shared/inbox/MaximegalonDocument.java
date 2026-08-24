@@ -2,6 +2,7 @@ package de.mhus.vance.shared.inbox;
 
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.Criticality;
+import de.mhus.vance.api.inbox.MaximegalonDocumentRef;
 import de.mhus.vance.api.inbox.MaximegalonStatus;
 import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.inbox.ResolvedBy;
@@ -87,6 +88,19 @@ public class MaximegalonDocument {
      *  for STRUCTURE_EDIT, url for OUTPUT_IMAGE, etc.). */
     @Builder.Default
     private Map<String, Object> payload = new LinkedHashMap<>();
+
+    /**
+     * The document this thread is about, when it is about one.
+     *
+     * <p>A field rather than a {@code payload} entry because it is queried
+     * across every {@link de.mhus.vance.api.inbox.MaximegalonType} and
+     * {@code payload} is type-specific by contract — see
+     * {@link MaximegalonDocumentRef}. Indexed via {@code tenant_docref_idx}.
+     *
+     * <p>{@code null} for the many threads that are about nothing filed: a
+     * worker's question is often only text.
+     */
+    private @Nullable MaximegalonDocumentRef documentRef;
 
     /**
      * Server-side effect to run when this item is answered — the

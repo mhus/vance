@@ -12,8 +12,13 @@ beside the document you're working on.
 - **Middle** — one or more open documents as tabs. The active tab
   renders with the right view for its kind: a list, a checklist, a
   diagram, a script editor, …
-- **Right** — two tabs:
-  - **Chat** — the agent conversation, same one you came from.
+- **Right** — three tabs:
+  - **Chat** — the agent conversation, same one you came from. Without a bound
+    session this tab lists the project's sessions instead.
+  - **Discussion** — the inbox threads about the document in the foreground:
+    shares, decisions and questions someone raised about it. Click one to read
+    it and to contribute; answering an ask happens in the inbox, where the
+    options and their consequences are shown.
   - **Help** — this panel. Changes content per active document kind.
 
 ## Document tabs

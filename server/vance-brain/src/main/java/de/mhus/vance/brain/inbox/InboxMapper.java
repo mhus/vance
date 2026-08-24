@@ -45,6 +45,7 @@ public final class InboxMapper {
                 .title(d.getTitle())
                 .body(d.getBody())
                 .payload(d.getPayload())
+                .documentRef(d.getDocumentRef())
                 // effectRef stays server-side: it identifies a security
                 // object, and the client only needs to know that an
                 // effect exists to fetch its rendered description.

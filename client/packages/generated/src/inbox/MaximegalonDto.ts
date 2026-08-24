@@ -4,6 +4,7 @@
 */
 
 import { Criticality } from './Criticality';
+import { MaximegalonDocumentRef } from './MaximegalonDocumentRef';
 import { AnswerPayload } from './AnswerPayload';
 import { MaximegalonMessageDto } from './MaximegalonMessageDto';
 import { MaximegalonStatus } from './MaximegalonStatus';
@@ -24,6 +25,7 @@ export interface MaximegalonDto {
   title: string;
   body?: string;
   payload?: Record<string, any>;
+  documentRef?: MaximegalonDocumentRef;
   effectType?: string;
   status: MaximegalonStatus;
   requiresAction: boolean;

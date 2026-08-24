@@ -119,6 +119,18 @@ export default {
     openSession: 'Open session',
   },
 
+  cortexThreads: {
+    tab: 'Discussion',
+    heading: 'Discussions on',
+    noDocument: 'Open a document to see the discussions about it.',
+    loading: 'Loading…',
+    emptyHeadline: 'No discussions',
+    emptyBody: 'Nothing has been raised about this document.',
+    noTitle: '(no title)',
+    awaitingAnswer: 'waiting for an answer',
+    answerInInbox: 'Answer this in your inbox ↗',
+    backToList: 'Back to the list',
+  },
   inboxThread: {
     addReaction: 'Add a reaction',
     reason: {

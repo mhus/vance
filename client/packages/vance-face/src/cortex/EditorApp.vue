@@ -56,7 +56,6 @@ import FileTreeSidebar from './components/FileTreeSidebar.vue';
 import EditorTabs from './components/EditorTabs.vue';
 import TabRendererHost from './components/TabRendererHost.vue';
 import CortexRightPanel from './components/CortexRightPanel.vue';
-import SessionPickerPanel from '@/components/SessionPickerPanel.vue';
 import CreateDocumentModal, {
   type CreateModalResult,
 } from './components/CreateDocumentModal.vue';
@@ -1652,24 +1651,17 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
     </div>
 
     <template #right-panel>
+      <!-- The tab strip is the right panel's identity, so it renders with or
+           without a bound session: Discussion is about the open document. The
+           Chat tab falls back to the session picker on its own. -->
       <CortexRightPanel
-        v-if="hasSession && sessionId && projectId && clientToolService"
-        :session-id="sessionId"
+        v-if="projectId"
+        :session-id="hasSession && sessionId && clientToolService ? sessionId : null"
         :project-id="projectId"
         :tool-service="clientToolService"
         :active-document="activeTab"
         :bound-document-id="chatBoundDocumentId"
         :app-selection="activeAppSelection"
-      />
-      <div
-        v-else-if="hasSession"
-        class="h-full p-3 text-sm opacity-60"
-      >
-        Waiting for session…
-      </div>
-      <SessionPickerPanel
-        v-else-if="projectId"
-        :project-id="projectId"
         @open-session="enterSession"
       />
       <div

@@ -45,6 +45,12 @@ public class MaximegalonDto {
     private @Nullable Map<String, Object> payload;
 
     /**
+     * The document this thread is about, when it is about one. Drives the
+     * document link in the inbox detail and the discussion tab in Cortex.
+     */
+    private @Nullable MaximegalonDocumentRef documentRef;
+
+    /**
      * Set when answering this item executes something on the server
      * (e.g. a permission change). Clients use its presence to fetch the
      * server-rendered facts from {@code GET .../inbox/{id}/effect} and to

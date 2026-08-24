@@ -113,6 +113,18 @@ export default {
     openSession: 'Session öffnen',
   },
 
+  cortexThreads: {
+    tab: 'Diskussion',
+    heading: 'Diskussionen zu',
+    noDocument: 'Öffne ein Dokument, um die Diskussionen dazu zu sehen.',
+    loading: 'Wird geladen…',
+    emptyHeadline: 'Keine Diskussionen',
+    emptyBody: 'Zu diesem Dokument wurde nichts aufgeworfen.',
+    noTitle: '(kein Titel)',
+    awaitingAnswer: 'wartet auf Antwort',
+    answerInInbox: 'Im Posteingang beantworten ↗',
+    backToList: 'Zurück zur Liste',
+  },
   inboxThread: {
     addReaction: 'Reaktion hinzufügen',
     reason: {

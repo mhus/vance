@@ -177,11 +177,14 @@ class InboxShareHandlerTest {
         assertThat(item.getTitle()).isEqualTo("Mara Toon shared: Results");
         assertThat(item.getBody()).isEqualTo("test is done");
         assertThat(item.getTags()).containsExactly("share");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> ref = (Map<String, Object>) item.getPayload().get("documentRef");
-        assertThat(ref).containsEntry("projectId", PROJECT);
-        assertThat(ref).containsEntry("path", PATH);
-        assertThat(ref).containsEntry("documentId", "doc-1");
+        // A typed field now, not a payload entry — "which threads are about this
+        // document" is a query across every item type, and payload is
+        // type-specific by contract.
+        assertThat(item.getDocumentRef()).isNotNull();
+        assertThat(item.getDocumentRef().getProjectId()).isEqualTo(PROJECT);
+        assertThat(item.getDocumentRef().getPath()).isEqualTo(PATH);
+        assertThat(item.getDocumentRef().getDocumentId()).isEqualTo("doc-1");
+        assertThat(item.getPayload()).doesNotContainKey("documentRef");
         assertThat(item.getPayload()).doesNotContainKey("content");
     }
 
@@ -292,7 +295,7 @@ class InboxShareHandlerTest {
 
         MaximegalonDocument item = captureItem();
         assertThat(item.getType()).isEqualTo(MaximegalonType.OUTPUT_DOCUMENT);
-        assertThat(item.getPayload()).containsKey("documentRef");
+        assertThat(item.getDocumentRef()).isNotNull();
         assertThat(item.getPayload()).containsEntry("snippet", "…the passage…");
     }
 

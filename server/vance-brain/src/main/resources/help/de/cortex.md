@@ -12,8 +12,13 @@ neben dem Dokument, an dem du arbeitest.
 - **Mitte** — ein oder mehrere offene Dokumente als Tabs. Der aktive
   Tab rendert mit der richtigen View für seine Kind: Liste,
   Checkliste, Diagramm, Script-Editor, …
-- **Rechts** — zwei Tabs:
-  - **Chat** — die Agent-Konversation aus der du gekommen bist.
+- **Rechts** — drei Tabs:
+  - **Chat** — die Agent-Konversation aus der du gekommen bist. Ohne gebundene
+    Session listet dieser Tab stattdessen die Sessions des Projekts.
+  - **Diskussion** — die Inbox-Threads zu dem Dokument im Vordergrund: was
+    jemand daran geteilt, gefragt oder zur Entscheidung gestellt hat. Klick
+    öffnet den Thread zum Lesen und Beitragen; beantwortet wird ein Ask im
+    Posteingang, wo die Optionen und ihre Folgen stehen.
   - **Help** — dieses Panel. Inhalt ändert sich pro aktiver Doc-Kind.
 
 ## Dokument-Tabs

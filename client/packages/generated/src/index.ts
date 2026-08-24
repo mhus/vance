@@ -114,6 +114,7 @@ export * from './inbox/InboxMessagePostRequest';
 export * from './inbox/InboxReactRequest';
 export * from './inbox/InboxReadRequest';
 export * from './inbox/InboxTagsResponse';
+export * from './inbox/MaximegalonDocumentRef';
 export * from './inbox/MaximegalonDto';
 export * from './inbox/MaximegalonMessageDto';
 export * from './inbox/MaximegalonReactionDto';

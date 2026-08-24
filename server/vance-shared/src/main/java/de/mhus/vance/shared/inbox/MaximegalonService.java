@@ -67,6 +67,7 @@ public class MaximegalonService {
     private static final String F_READ_BY = "readBy";
     private static final String F_UNREAD_FOR = "unreadFor";
     private static final String F_REACTIONS = "reactions";
+    private static final String F_DOC_REF_ID = "documentRef.documentId";
 
     /**
      * Upper bound on a thread's embedded discussion.
@@ -280,6 +281,28 @@ public class MaximegalonService {
             @Nullable MaximegalonStatus status,
             @Nullable String tag) {
         Query query = Query.query(filterCriteria(tenantId, userIds, status, tag))
+                .with(Sort.by(Sort.Direction.DESC, "createdAt"));
+        query.fields().exclude(F_MESSAGES);
+        return mongoTemplate.find(query, MaximegalonDocument.class);
+    }
+
+    /**
+     * Threads whose object is the given document, newest first.
+     *
+     * <p><b>Unfiltered by visibility on purpose</b> — the caller filters. This
+     * is the point where the inbox stops being a filing place (queried by
+     * assignee, where the index already carries the answer) and becomes a query
+     * about an <em>object</em>, which cuts across assignees. The service returns
+     * what exists; who may see it is a decision with a name
+     * ({@code InboxAuthz.maySee}) and belongs at the call site, next to the
+     * subject, rather than buried in a lookup.
+     *
+     * <p>Messages are projected out, as in {@link #listFiltered}: a discussion
+     * list wants titles.
+     */
+    public List<MaximegalonDocument> listByDocument(String tenantId, String documentId) {
+        Query query = Query.query(Criteria.where(F_TENANT).is(tenantId)
+                        .and(F_DOC_REF_ID).is(documentId))
                 .with(Sort.by(Sort.Direction.DESC, "createdAt"));
         query.fields().exclude(F_MESSAGES);
         return mongoTemplate.find(query, MaximegalonDocument.class);

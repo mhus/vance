@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Cortex right-panel container. Switches between Chat and Help tabs.
+ * Cortex right-panel container. Switches between Chat, Discussion and Help.
  *
  * <p>Chat is the agent conversation (CortexChatPanel — owns WS session,
  * tool service attachment, message stream). Help shows per-document
@@ -10,16 +10,30 @@
  * <p>The chat panel stays mounted across tab switches (keep-alive) so
  * its WebSocket and message buffer survive when the user peeks at Help.
  * The help panel can re-mount cheaply — it's just a markdown render.
+ *
+ * <p>Discussion (threads whose object is the open document) is kept mounted for
+ * a different reason than Chat: it holds a two-level position (list vs. one
+ * thread open), and remounting would throw the reader back to the list every
+ * time they glanced at another tab.
  */
 import { computed, ref } from 'vue';
 import type { CortexDocument } from '../types';
 import { resolveHelpPath } from '../help';
 import CortexChatPanel from './CortexChatPanel.vue';
+import SessionPickerPanel from '@/components/SessionPickerPanel.vue';
+import CortexThreadsPanel from './CortexThreadsPanel.vue';
 import CortexHelpPanel from './CortexHelpPanel.vue';
 import type { CortexClientToolService } from '../clientToolService';
 
 interface Props {
-  sessionId: string;
+  /**
+   * The bound session, or {@code null} when none is. The tabs exist either way:
+   * the panel's identity is the tab strip, and Discussion is about the open
+   * document, not about a conversation. Before this the whole strip only
+   * appeared once a session was bound, which made the document's own
+   * discussions unreachable until you happened to start a chat.
+   */
+  sessionId: string | null;
   projectId: string;
   toolService?: CortexClientToolService | null;
   activeDocument: CortexDocument | null;
@@ -39,7 +53,12 @@ interface Props {
 
 const props = defineProps<Props>();
 
-type RightTab = 'chat' | 'help';
+const emit = defineEmits<{
+  /** A session was picked in the Chat tab's picker. */
+  (e: 'open-session', sessionId: string): void;
+}>();
+
+type RightTab = 'chat' | 'threads' | 'help';
 const activeTab = ref<RightTab>('chat');
 
 const helpPath = computed<string | null>(() => resolveHelpPath(props.activeDocument));
@@ -63,6 +82,14 @@ const helpPath = computed<string | null>(() => resolveHelpPath(props.activeDocum
       <button
         type="button"
         role="tab"
+        :aria-selected="activeTab === 'threads'"
+        class="px-4 py-1.5 border-r border-base-300"
+        :class="activeTab === 'threads' ? 'bg-base-100 font-semibold' : 'opacity-70 hover:bg-base-100/40'"
+        @click="activeTab = 'threads'"
+      >{{ $t('cortexThreads.tab') }}</button>
+      <button
+        type="button"
+        role="tab"
         :aria-selected="activeTab === 'help'"
         class="px-4 py-1.5"
         :class="activeTab === 'help' ? 'bg-base-100 font-semibold' : 'opacity-70 hover:bg-base-100/40'"
@@ -74,12 +101,21 @@ const helpPath = computed<string | null>(() => resolveHelpPath(props.activeDocum
            Help tab, preserving its WS state + message buffer. -->
       <div v-show="activeTab === 'chat'" class="h-full">
         <CortexChatPanel
+          v-if="sessionId"
           :session-id="sessionId"
           :project-id="projectId"
           :tool-service="toolService ?? null"
           :bound-document-id="boundDocumentId ?? null"
           :app-selection="appSelection ?? null"
         />
+        <SessionPickerPanel
+          v-else
+          :project-id="projectId"
+          @open-session="(id: string) => emit('open-session', id)"
+        />
+      </div>
+      <div v-show="activeTab === 'threads'" class="h-full">
+        <CortexThreadsPanel :active-document="activeDocument" />
       </div>
       <div v-show="activeTab === 'help'" class="h-full">
         <CortexHelpPanel :help-path="helpPath" />

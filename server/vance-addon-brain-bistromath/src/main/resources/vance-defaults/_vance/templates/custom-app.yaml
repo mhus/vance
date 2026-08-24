@@ -1,0 +1,27 @@
+title:       { de: "Eigene Anwendung", en: "Custom application" }
+description: { de: "Ein kleines Programm aus Dokumenten — ein Widget-Baum pro Sicht, das Verhalten in main.js, sandboxed im Browser. Daten werden nirgends deklariert: das Programm liest Dokumente. Kommt als lauffähiges Hello World.",
+               en: "A small program made of documents — a widget tree per view, the behaviour in main.js, sandboxed in the browser. Data is declared nowhere: the program reads documents. Comes as a running Hello World." }
+icon: table
+tags: [app, custom, bistromath]
+
+# `app:` routes this template through BistromathApplication.create — the same
+# entry point `bistromath_app_create` uses. That matters more here than for the
+# other app templates: a Bistromath app is three documents (manifest, view,
+# program) and a template body can only write one. Before the routing existed,
+# the surface way produced a strictly poorer app than the tool way. Now both
+# scaffold the same running Hello World.
+#
+# The folder is chosen by the user.
+app: custom
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel",        en: "Title" }
+    help:  { de: "Zum Beispiel „Rechnungsbuch\" oder „Inventar\".",
+             en: "For example \"Invoice register\" or \"Inventory\"." }
+  - name: description
+    type: textarea
+    rows: 2
+    label: { de: "Beschreibung", en: "Description" }

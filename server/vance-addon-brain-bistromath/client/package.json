@@ -1,0 +1,45 @@
+{
+  "name": "@vance-addon/bistromath",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Client surface of the Bistromath addon \u2014 the application runtime. Registers the application:custom app kind, which renders a widget tree read from view documents instead of from compiled Vue.",
+  "license": "SEE LICENSE IN ../../../../client/LICENSE.txt",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "files": [
+    "src",
+    "dist"
+  ],
+  "scripts": {
+    "build": "vue-tsc -b && vite build",
+    "dev": "vite",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@vance/components": "workspace:*",
+    "@vance/generated": "workspace:*",
+    "@vance/kind-registry": "workspace:*",
+    "@vance/shared": "workspace:*",
+    "dompurify": "^3.4.13",
+    "js-yaml": "^4.1.1",
+    "marked": "^18.0.9"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@module-federation/vite": "^1.20.5",
+    "@types/js-yaml": "^4.0.9",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "vite": "^8.2.1",
+    "vue": "^3.5.41",
+    "vue-tsc": "^3.3.9"
+  }
+}

@@ -109,6 +109,20 @@ public class EngineMessageDocument {
 
     // ─── USER_CHAT_INPUT ─────────────────────────────────────────
     private @Nullable String fromUser;
+
+    /**
+     * Display name of the sender for this turn. Mirrors
+     * {@code PendingMessageDocument.fromUserDisplayName}, and had to be added
+     * here for the same reason {@link #activeApp} lives here: this document is
+     * the durable hop between the WS handler and the engine drain, so a field
+     * that stops here never reaches the engine.
+     *
+     * <p>It was missing, silently. Arthur and Eddie read it for the
+     * {@code <DisplayName>:} prefix on a multi-user turn and for the mention
+     * routing ({@code senderDisplayName}, {@code mentionedByDisplayName}) — all
+     * of which degraded to the bare login without anything reporting a problem.
+     */
+    private @Nullable String fromUserDisplayName;
     private @Nullable String content;
     /**
      * Per-message voice-mode flag — {@code true} when the originating

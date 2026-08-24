@@ -60,6 +60,7 @@ class ThinkProcessServicePendingHopTest {
                 .type(PendingMessageType.USER_CHAT_INPUT)
                 .at(Instant.parse("2026-08-24T10:00:00Z"))
                 .fromUser("wile.coyote")
+                .fromUserDisplayName("Wile E. Coyote")
                 .content("what about this one?")
                 .voiceMode(false)
                 .activeApp(ActiveAppContext.builder().folder("f").app("kanban").build())
@@ -79,6 +80,7 @@ class ThinkProcessServicePendingHopTest {
         verify(engineMessages).acceptDelivery(captor.capture());
         EngineMessageDocument stored = captor.getValue();
 
+        assertThat(stored.getFromUserDisplayName()).isEqualTo("Wile E. Coyote");
         assertThat(stored.getActiveApp()).isNotNull();
         assertThat(stored.getBoundDocumentId()).isEqualTo("doc-1");
         assertThat(stored.getBoundDocSelection()).isNotNull();
@@ -101,6 +103,7 @@ class ThinkProcessServicePendingHopTest {
 
         assertThat(drained).hasSize(1);
         PendingMessageDocument back = drained.get(0);
+        assertThat(back.getFromUserDisplayName()).isEqualTo("Wile E. Coyote");
         assertThat(back.getActiveApp()).isNotNull();
         assertThat(back.getBoundDocumentId()).isEqualTo("doc-1");
         assertThat(back.getBoundDocSelection()).isNotNull();

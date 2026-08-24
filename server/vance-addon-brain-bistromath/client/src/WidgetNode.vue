@@ -1,6 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { FormFields, VAlert, VButton, VEmptyState, type FormValue } from '@vance/components';
+import { computed, inject, onBeforeUnmount, ref, watch, type Component } from 'vue';
+import {
+  FormFields,
+  VAlert,
+  VButton,
+  VEmptyState,
+  VModal,
+  type FormValue,
+} from '@vance/components';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import FormFieldsView from './FormFieldsView.vue';
@@ -31,6 +38,17 @@ const props = defineProps<{
   state: Record<string, unknown>;
   /** Record key from the entry handle, for a detail view. */
   recordKey: string | null;
+  /** A path in the app's grammar → the project path. Supplied by the host. */
+  resolve: (path: string) => string;
+  /**
+   * Inside a `repeat`, the element being rendered.
+   *
+   * <p>`from:` is asked of this first and falls back to the surrounding state.
+   * Two levels, no path syntax — the widget still names a key, it is just asked
+   * of the element. Anything deeper would be the start of an expression
+   * language, and there is already exactly one of those in the browser.
+   */
+  scope?: Record<string, unknown> | null;
   depth?: number;
 }>();
 
@@ -45,9 +63,62 @@ const depth = computed(() => props.depth ?? 0);
 /** Which tab is open. Client state — nothing is written. */
 const activeTab = ref(0);
 
-const bound = computed<unknown>(() =>
-  props.node.from ? props.state[props.node.from] : undefined,
-);
+/** The bound value: the repeat element first, the surrounding state otherwise. */
+function lookup(key: string): unknown {
+  const scope = props.scope;
+  if (scope && Object.prototype.hasOwnProperty.call(scope, key)) return scope[key];
+  return props.state[key];
+}
+
+const bound = computed<unknown>(() => (props.node.from ? lookup(props.node.from) : undefined));
+
+/**
+ * Whether this widget is shown at all.
+ *
+ * <p>A state key, never an expression — the program computes the boolean, the
+ * widget reads it. That is why `visibleIf` is refused: one expression language
+ * in the browser, and it is the sandbox's.
+ *
+ * <p><b>An unset key counts as hidden</b>, and that was not the first answer.
+ * Treating it as visible avoids a widget flickering into existence during
+ * startup — but it also means a `dialog` stands open before `init()` has run,
+ * and a "show only to an admin" section is shown to everyone for a moment.
+ * Briefly missing is a mistake the reader can see and the author can explain;
+ * briefly showing what the document says to hide is not.
+ */
+const visible = computed<boolean>(() => {
+  const key = props.node.show;
+  if (!key) return true;
+  const v = lookup(key);
+  return Boolean(v) && v !== 'false' && v !== '0';
+});
+
+/** Elements of a `repeat`. Anything not a list repeats zero times. */
+const items = computed<unknown[]>(() => (Array.isArray(bound.value) ? bound.value : []));
+
+/**
+ * What an `embed` points at, as a `vance:` URI.
+ *
+ * <p>The author writes a path in the same grammar as everywhere else in an app
+ * — relative to the app folder, leading slash for the project root. The URI is
+ * built from the resolved path, so nobody has to learn a second spelling for
+ * "this document".
+ */
+const embedUri = computed<string | null>(() => {
+  const raw = props.node.from ? bound.value : props.node.text;
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  return `vance:/${props.resolve(raw.trim())}`;
+});
+
+/**
+ * The Cortex embed renderer, if there is a host that provides one.
+ *
+ * <p>Injected rather than imported: it routes on document kind and pulls in
+ * every kind renderer the host knows. This addon shipping its own would mean
+ * shipping a charting library, a PDF viewer and a mindmap — which is exactly
+ * why there is no `chart` and no `image` widget.
+ */
+const embedComponent = inject<Component | null>('vance:embed-component', null);
 
 /** Rows of a `table`: whatever the program put there, if it is a list. */
 const rows = computed<Record<string, unknown>[]>(() => {
@@ -156,7 +227,7 @@ onBeforeUnmount(() => {
   if (changeTimer !== null) clearTimeout(changeTimer);
 });
 
-/** Text: the state value when bound, else the literal. */
+/** Text: the bound value when there is one, else the literal. */
 const textValue = computed<string>(() => {
   if (props.node.from) {
     const v = bound.value;
@@ -205,7 +276,12 @@ const headingClass = computed(() =>
 </script>
 
 <template>
-  <section v-if="node.type === 'page'" class="flex min-h-0 flex-col gap-3">
+  <!-- `show:` gates every widget from one place. Per-branch it would be six
+       chances to forget one, and a forgotten gate is a widget that ignores a
+       condition the document states. -->
+  <template v-if="!visible" />
+
+  <section v-else-if="node.type === 'page'" class="flex min-h-0 flex-col gap-3">
     <h2 v-if="node.label" :class="headingClass">{{ node.label }}</h2>
     <WidgetNode
       v-for="(child, i) in node.children"
@@ -213,6 +289,8 @@ const headingClass = computed(() =>
       :node="child"
       :state="state"
       :record-key="recordKey"
+      :resolve="resolve"
+      :scope="scope"
       :depth="depth + 1"
       @action="(a, k) => emit('action', a, k)"
       @state="(k, v) => emit('state', k, v)"
@@ -226,6 +304,8 @@ const headingClass = computed(() =>
       :node="child"
       :state="state"
       :record-key="recordKey"
+      :resolve="resolve"
+      :scope="scope"
       :depth="depth + 1"
       @action="(a, k) => emit('action', a, k)"
       @state="(k, v) => emit('state', k, v)"
@@ -322,11 +402,79 @@ const headingClass = computed(() =>
       :node="node.children[activeTab]"
       :state="state"
       :record-key="recordKey"
+      :resolve="resolve"
+      :scope="scope"
       :depth="depth + 1"
       @action="(a, k) => emit('action', a, k)"
       @state="(k, v) => emit('state', k, v)"
     />
   </div>
+
+  <!-- `repeat`: children once per element, with the element as the inner
+       scope. `key` by index because an element need not carry an id — and a
+       list a program rebuilt wholesale re-renders anyway. -->
+  <div v-else-if="node.type === 'repeat'" class="flex flex-col gap-3">
+    <h3 v-if="node.label" class="text-base font-semibold">{{ node.label }}</h3>
+    <VEmptyState
+      v-if="items.length === 0"
+      headline="Nothing here yet"
+      :body="`The program has not put a list into \`${node.from}\`.`"
+    />
+    <template v-for="(item, i) in items" v-else :key="i">
+      <WidgetNode
+        v-for="(child, c) in node.children"
+        :key="`${i}-${c}`"
+        :node="child"
+        :state="state"
+        :record-key="recordKey"
+        :resolve="resolve"
+        :scope="(item as Record<string, unknown>) ?? null"
+        :depth="depth + 1"
+        @action="(a, k) => emit('action', a, k)"
+        @state="(k, v) => emit('state', k, v)"
+      />
+    </template>
+  </div>
+
+  <div v-else-if="node.type === 'embed'" class="flex flex-col gap-2">
+    <h3 v-if="node.label" class="text-base font-semibold">{{ node.label }}</h3>
+    <VAlert v-if="!embedUri" variant="info">
+      Nothing to embed — <code class="font-mono">{{ node.from ?? '(no path)' }}</code> holds no
+      document path.
+    </VAlert>
+    <component :is="embedComponent" v-else-if="embedComponent" :uri="embedUri" />
+    <!-- No host renderer: say which document was meant rather than nothing.
+         Standalone renders of an app view have no Cortex around them. -->
+    <VAlert v-else variant="info">
+      This surface cannot render embedded documents. Meant:
+      <code class="font-mono">{{ embedUri }}</code>
+    </VAlert>
+  </div>
+
+  <!-- A dialog has no close button of its own and no `vance.ui.closeDialog()`:
+       its `show:` key is the whole mechanism, so the ✕ writes it back to false
+       through the same path the program uses. One rule, not three. -->
+  <VModal
+    v-else-if="node.type === 'dialog'"
+    :model-value="true"
+    :title="node.label ?? undefined"
+    @update:model-value="() => node.show && emit('state', node.show, false)"
+  >
+    <div class="flex flex-col gap-3">
+      <WidgetNode
+        v-for="(child, i) in node.children"
+        :key="i"
+        :node="child"
+        :state="state"
+        :record-key="recordKey"
+        :resolve="resolve"
+        :scope="scope"
+        :depth="depth + 1"
+        @action="(a, k) => emit('action', a, k)"
+        @state="(k, v) => emit('state', k, v)"
+      />
+    </div>
+  </VModal>
 
   <!-- Unreachable while the server enforces the whitelist. A visible failure
        rather than an empty div, because an empty div in a generic renderer is

@@ -41,6 +41,15 @@ public record ViewNode(
         @Nullable String label,
         @Nullable String text,
         @Nullable String from,
+        /**
+         * State key deciding whether this widget is shown at all.
+         *
+         * <p>A key, not an expression. The program computes the boolean and puts
+         * it in state; the widget reads it. That keeps exactly one expression
+         * language in the browser — the sandbox's — and it is the reason
+         * {@code visibleIf} was refused rather than implemented.
+         */
+        @Nullable String show,
         List<String> columns,
         List<FormFieldDto> fields,
         Map<String, ViewAction> on,

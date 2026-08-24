@@ -74,6 +74,7 @@ Do not guess at the schema — the four manuals below are short and exact:
 | Widgets, bindings, handler grammar | `manual_read('bistromath/views')` |
 | Lifecycle functions, sandbox limits, async | `manual_read('bistromath/program')` |
 | Reading documents, folders, mounted files | `manual_read('bistromath/data')` |
+| The keys of one widget — columns, editing, repeat, embed, dialog | `manual_read('bistromath/widgets')` |
 
 **Never say "I cannot build that" about a small data or form tool without
 reading `manual_read('bistromath/hello-world')` first.**
@@ -86,7 +87,9 @@ reading `manual_read('bistromath/hello-world')` first.**
 | `is part of the schema but is not rendered yet` | a reserved widget |
 | `` `source` no longer exists `` | use `from:`, have the program fill the key |
 | `a table needs from` | name the state key |
-| `not evaluated yet` | remove `visibleIf` |
+| `` `visibleIf` is not a thing `` | a condition is a state key: `show: <key>` |
+| `` a `dialog` needs `show` `` | the key that opens and closes it |
+| `is not valid YAML` | a syntax error — the message names line and column |
 | `no function named X` | the handler names a function `main.js` does not define |
 | `await is only valid in async functions` | the handler reads documents — make it `async` |
 | `The program stopped responding` | an endless loop; the frame was stopped |

@@ -1,7 +1,6 @@
 package de.mhus.vance.addon.brain.bistromath;
 
-import java.util.List;
-import java.util.Map;
+import de.mhus.vance.toolpack.ToolException;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.yaml.snakeyaml.DumperOptions;
@@ -13,9 +12,9 @@ import org.yaml.snakeyaml.representer.Representer;
 import org.yaml.snakeyaml.resolver.Resolver;
 
 /**
- * YAML reading for view documents and data rows.
+ * YAML reading for view documents.
  *
- * <p>Two decisions are baked in here, and both matter.
+ * <p>Three decisions are baked in here, and all three matter.
  *
  * <p><b>SafeConstructor.</b> A view document and a data row are untrusted
  * content — authored by a person, written by an agent, or shipped in a kit.
@@ -23,21 +22,36 @@ import org.yaml.snakeyaml.resolver.Resolver;
  * by a {@code !!} tag; the safe one cannot.
  *
  * <p><b>No timestamp resolver, and {@code true|false} only for booleans.</b>
- * A data row is displayed in a table, so scalar resolution is visible to the
- * reader. With SnakeYAML's YAML-1.1 defaults a column holding {@code no}
- * becomes the boolean false and renders as "false", and {@code 2026-01-01}
- * becomes a {@code java.util.Date} that renders as
- * "Thu Jan 01 00:00:00 CET 2026". Both are wrong in a way the author cannot
- * work around, because the cell says what they typed. The core schema keeps
- * them as strings.
+ * A value read here can end up in front of the reader, so scalar resolution is
+ * visible. With SnakeYAML's YAML-1.1 defaults a value of {@code no} becomes the
+ * boolean false and renders as "false", and {@code 2026-01-01} becomes a
+ * {@code java.util.Date} that renders as "Thu Jan 01 00:00:00 CET 2026". Both
+ * are wrong in a way the author cannot work around, because the document says
+ * what they typed. The core schema keeps them as strings.
+ *
+ * <p><b>A syntax error is reported, not swallowed.</b> An earlier version
+ * returned {@code null} for anything unparseable, so a view with a misplaced
+ * brace was reported as "is not a YAML mapping — a view starts with
+ * {@code type: page}" and sent the author to look at line 1. SnakeYAML already
+ * knows the line and the column; throwing them is strictly more useful than a
+ * guess, and a view document is hand-written YAML, so this is the failure that
+ * happens most.
  */
 final class BistromathYaml {
 
     private BistromathYaml() {
     }
 
-    /** Parse a document. Returns {@code null} for empty or unparseable input. */
-    static @Nullable Object load(String text) {
+    /**
+     * Parse a document, naming it if the YAML does not hold together.
+     *
+     * @param docPath the document's path, for the message.
+     * @return {@code null} for empty input — which is a document, just an empty
+     *     one; the caller decides whether that is allowed.
+     * @throws ToolException when the text is not YAML, with the parser's own
+     *     line and column.
+     */
+    static @Nullable Object load(String text, String docPath) {
         if (text == null || text.isBlank()) return null;
         try {
             // SnakeYAML is not thread-safe → one instance per parse.
@@ -46,42 +60,19 @@ final class BistromathYaml {
                     new CoreResolver());
             return yaml.load(text);
         } catch (RuntimeException e) {
-            return null;
+            throw new ToolException("View '" + docPath + "' is not valid YAML: "
+                    + firstLine(e.getMessage()));
         }
-    }
-
-    /** Parse a document whose root must be a mapping, else an empty map. */
-    static Map<?, ?> loadMap(String text) {
-        return load(text) instanceof Map<?, ?> m ? m : Map.of();
     }
 
     /**
-     * A cell value as the reader should see it.
-     *
-     * <p>Lists and maps are rendered compactly rather than with Java's
-     * {@code toString}: a column that happens to hold a list must still read
-     * as data, not as a debug dump.
+     * SnakeYAML's message is several lines with a caret diagram. The first line
+     * carries what went wrong; the rest is a picture that loses its alignment
+     * anywhere it is re-wrapped, and the position follows in the next lines.
      */
-    static String stringify(@Nullable Object value) {
-        if (value == null) return "";
-        if (value instanceof String s) return s;
-        if (value instanceof List<?> list) {
-            StringBuilder sb = new StringBuilder();
-            for (Object o : list) {
-                if (sb.length() > 0) sb.append(", ");
-                sb.append(stringify(o));
-            }
-            return sb.toString();
-        }
-        if (value instanceof Map<?, ?> map) {
-            StringBuilder sb = new StringBuilder();
-            for (Map.Entry<?, ?> e : map.entrySet()) {
-                if (sb.length() > 0) sb.append(", ");
-                sb.append(stringify(e.getKey())).append(": ").append(stringify(e.getValue()));
-            }
-            return sb.toString();
-        }
-        return String.valueOf(value);
+    private static String firstLine(@Nullable String message) {
+        if (message == null || message.isBlank()) return "unparseable";
+        return message.replace('\n', ' ').replaceAll("\\s+", " ").trim();
     }
 
     /** @see BistromathYaml the class comment explains why this exists. */

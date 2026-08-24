@@ -11,6 +11,7 @@ export interface ViewNode {
   label?: string;
   text?: string;
   from?: string;
+  show?: string;
   columns: string[];
   fields: FormFieldDto[];
   on: Record<string, ViewAction>;

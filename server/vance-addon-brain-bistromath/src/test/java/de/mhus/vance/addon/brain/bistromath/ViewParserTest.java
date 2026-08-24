@@ -76,24 +76,68 @@ class ViewParserTest {
 
     /**
      * A planned widget gets a different message from an unknown one. Telling an
-     * author "unknown widget: if" would send them hunting for a typo.
+     * author "unknown widget: chart" would send them hunting for a typo.
      */
     @Test
     void parse_plannedWidget_saysItArrivesLaterRatherThanUnknown() {
-        assertThatThrownBy(() -> ViewParser.parse("type: repeat\n", "v.yaml"))
+        assertThatThrownBy(() -> ViewParser.parse("type: chart\n", "v.yaml"))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("not rendered yet")
                 .hasMessageNotContaining("unknown widget");
     }
 
+    /**
+     * The message has to name the replacement, because the author's intent is
+     * right and only the spelling is wrong: a condition here is a state key the
+     * program computes, never an expression the renderer evaluates.
+     */
     @Test
-    void parse_visibleIf_isRejectedBecauseNothingEvaluatesIt() {
+    void parse_visibleIf_isRejectedAndPointsAtShow() {
         String yaml = "type: text\ntext: hi\nvisibleIf: \"state.x === 1\"\n";
 
         assertThatThrownBy(() -> ViewParser.parse(yaml, "v.yaml"))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("visibleIf")
-                .hasMessageContaining("not evaluated yet");
+                .hasMessageContaining("show: <key>");
+    }
+
+    @Test
+    void parse_show_isCarriedAsAStateKey() {
+        ViewNode node = ViewParser.parse("type: text\ntext: hi\nshow: hasRows\n", "v.yaml");
+
+        assertThat(node.show()).isEqualTo("hasRows");
+    }
+
+    @Test
+    void parse_embedWithoutAPath_isRejected() {
+        assertThatThrownBy(() -> ViewParser.parse("type: embed\n", "v.yaml"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("an `embed` needs");
+    }
+
+    @Test
+    void parse_repeatWithoutFrom_isRejected() {
+        assertThatThrownBy(() -> ViewParser.parse("type: repeat\n", "v.yaml"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("a `repeat` needs `from`");
+    }
+
+    /**
+     * A dialog without a `show:` key could be opened but never closed — and the
+     * author would look for a missing close button rather than a missing key.
+     */
+    @Test
+    void parse_dialogWithoutShow_isRejected() {
+        String yaml = """
+                type: dialog
+                title: Really?
+                children:
+                  - { type: text, text: "Are you sure?" }
+                """;
+
+        assertThatThrownBy(() -> ViewParser.parse(yaml, "v.yaml"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("a `dialog` needs `show`");
     }
 
     @Test

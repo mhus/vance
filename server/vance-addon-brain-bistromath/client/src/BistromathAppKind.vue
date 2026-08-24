@@ -426,6 +426,7 @@ function message(e: unknown): string {
         :node="view.root"
         :state="state"
         :record-key="recordKey"
+        :resolve="resolve"
         @action="onAction"
         @state="onStateEdit"
       />

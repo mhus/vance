@@ -19,11 +19,6 @@ public enum ActionKind {
     /** {@code reload} — re-read the current view and its tables. */
     RELOAD,
 
-    /**
-     * {@code <script-ref>:<function>} — call a function exported by a script
-     * document. Parsed and carried, but not yet executed: the sandbox arrives
-     * in the next iteration. A button wired to a script says so when clicked,
-     * which is a visible no-op rather than a silent one.
-     */
+    /** {@code <script-ref>:<function>} — call a top-level function of the program. */
     SCRIPT
 }

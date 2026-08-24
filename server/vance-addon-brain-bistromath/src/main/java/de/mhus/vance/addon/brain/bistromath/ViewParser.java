@@ -27,14 +27,15 @@ import org.jspecify.annotations.Nullable;
  *   <li>An unknown widget type is refused rather than skipped. A skipped
  *       widget is an empty space, and an empty space is indistinguishable from
  *       a layout the author got wrong.</li>
- *   <li>A <em>planned</em> widget type ({@code if}, {@code repeat}, …) is
- *       refused with a different message: it will exist, just not yet. Telling
- *       an author "unknown widget: if" would send them looking for a typo.</li>
- *   <li>{@code visibleIf} is refused outright. Evaluating conditions needs the
- *       script sandbox, which this iteration does not have — and carrying an
- *       unevaluated condition to the client would show a field that the
- *       document says to hide. That is the one failure that is invisible to
- *       the reader, so it must be visible to the author.</li>
+ *   <li>A <em>planned</em> widget type ({@code chart}) is refused with a
+ *       different message: it will exist, just not yet. Telling an author
+ *       "unknown widget: chart" would send them looking for a typo.</li>
+ *   <li>{@code visibleIf} is refused and its message names the replacement.
+ *       A condition is a <em>state key</em> here ({@code show:}), never an
+ *       expression — the program computes the boolean, the widget reads it.
+ *       Carrying an unevaluated condition to the client would show exactly what
+ *       the document says to hide, which is the one failure the reader cannot
+ *       see; so it must be visible to the author.</li>
  * </ul>
  *
  * <p>Handlers are the opposite case and are treated the opposite way: an
@@ -62,8 +63,8 @@ public final class ViewParser {
             List.of("showIf", "writeIf", "bindsTo", "choicesFrom");
 
     private static final String SETTING_FORM_HINT =
-            "A view's fields read the record in the state key named by `from`; conditions"
-                    + " will be `visibleIf` once expressions land.";
+            "A view's fields read the record in the state key named by `from`; a condition"
+                    + " on a whole widget is `show: <state key>`.";
 
     private ViewParser() {
     }
@@ -74,7 +75,7 @@ public final class ViewParser {
      * @throws ToolException when the document cannot be rendered as written.
      */
     public static ViewNode parse(String yamlText, String docPath) {
-        Object root = BistromathYaml.load(yamlText);
+        Object root = BistromathYaml.load(yamlText, docPath);
         if (!(root instanceof Map<?, ?> map)) {
             throw new ToolException("View '" + docPath
                     + "' is not a YAML mapping — a view starts with `type: page`.");
@@ -111,10 +112,11 @@ public final class ViewParser {
         }
 
         if (raw.get("visibleIf") != null) {
-            throw new ToolException(where(docPath, at) + ": `visibleIf` is not evaluated"
-                    + " yet. Remove it — a condition nobody evaluates would show exactly"
-                    + " what the document says to hide, and that is the one failure the"
-                    + " reader cannot see.");
+            throw new ToolException(where(docPath, at) + ": `visibleIf` is not a thing."
+                    + " A condition is a state key, not an expression: write"
+                    + " `show: <key>` and have the program compute the boolean with"
+                    + " `vance.state.set(<key>, …)`. That keeps one expression language"
+                    + " in the browser instead of two.");
         }
 
         // `title` and `label` are the same field. Both spellings read naturally
@@ -125,6 +127,7 @@ public final class ViewParser {
 
         String text = str(raw.get("text"));
         String from = str(raw.get("from"));
+        String show = str(raw.get("show"));
         List<String> columns = strings(raw.get("columns"), docPath, at + ".columns");
         Map<String, ViewAction> on = handlers(raw.get("on"), docPath, at);
 
@@ -144,9 +147,9 @@ public final class ViewParser {
         List<ViewNode> children = children(raw.get("children"), type, docPath, at, depth, budget);
 
         rejectRemovedKeys(raw, docPath, at);
-        requireShape(type, label, text, from, docPath, at);
+        requireShape(type, label, text, from, show, docPath, at);
 
-        return new ViewNode(type.wire(), label, text, from, columns, fields, on, children);
+        return new ViewNode(type.wire(), label, text, from, show, columns, fields, on, children);
     }
 
     /**
@@ -169,7 +172,7 @@ public final class ViewParser {
     /** Per-widget requirements, in one place so the messages stay uniform. */
     private static void requireShape(WidgetType type, @Nullable String label,
                                      @Nullable String text, @Nullable String from,
-                                     String docPath, String at) {
+                                     @Nullable String show, String docPath, String at) {
         switch (type) {
             case TABLE -> {
                 if (from == null) {
@@ -181,6 +184,30 @@ public final class ViewParser {
                 if (from == null) {
                     throw new ToolException(where(docPath, at) + ": a `" + type.wire()
                             + "` needs `from`, the state key holding the record it shows.");
+                }
+            }
+            case EMBED -> {
+                // Same rule as text/markdown: a literal path or a state key
+                // holding one. A widget with neither embeds nothing, which in a
+                // generic renderer looks like a layout mistake.
+                if (text == null && from == null) {
+                    throw new ToolException(where(docPath, at) + ": an `embed` needs"
+                            + " `text` (a document path) or `from` (a state key holding"
+                            + " one).");
+                }
+            }
+            case DIALOG -> {
+                if (show == null) {
+                    throw new ToolException(where(docPath, at) + ": a `dialog` needs `show`,"
+                            + " the state key that opens and closes it. Without one there"
+                            + " would be no way to close it — the program sets the key to"
+                            + " true to open and false to close.");
+                }
+            }
+            case REPEAT -> {
+                if (from == null) {
+                    throw new ToolException(where(docPath, at) + ": a `repeat` needs"
+                            + " `from`, the state key holding the list it repeats over.");
                 }
             }
             case TEXT, MARKDOWN -> {

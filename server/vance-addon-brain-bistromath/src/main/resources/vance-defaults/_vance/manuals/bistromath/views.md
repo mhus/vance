@@ -46,69 +46,43 @@ not an expression — a name the program wrote with
 | `form` | `from`, `fields`, `on.change?` | **editable** — writes back into `from` |
 | `details` | `from`, `fields` | the same field list, read-only |
 | `tabs` | `children` | each child's `label` captions its tab |
+| `repeat` | `from`, `children` | children once per element of a list |
+| `embed` | `text` **or** `from` | another document, rendered by its kind |
+| `dialog` | `show`, `children` | shown over the page while its key is true |
+
+Each one's details — what `columns:` does, how a `form` differs from a
+`details`, what a `repeat` scopes — are in `manual_read('widgets')`.
 
 `title:` and `label:` are the same field — use whichever reads better.
 
-**Reserved but not rendered:** `if`, `repeat`, `chart`, `dialog`. Using one is
-refused with a message saying it arrives later — that is different from an
-unknown widget, so do not go looking for a typo.
+**Reserved but not rendered:** `chart`. Using it is refused with a message
+saying it arrives later — that is different from an unknown widget, so do not go
+looking for a typo. (For a chart today: put the data in a chart document and
+`embed` it.)
 
-### `table`
+## `show:` — one condition, no expression
 
-`columns:` fixes the order. Without it, the union of the keys present is used.
-A named column the rows do not have shows as empty cells rather than
-disappearing, so a typo looks like a typo.
-
-A row's `key` field identifies it; `vance.documents.list` already returns one.
-
-### `form` and `details`
-
-Both take `fields:`, the ordinary form-engine field list (the one wizards and
-setting forms use), and `from:`, the state key holding the record: an **object**
-is shown directly, an **array** is indexed by the record key in the entry
-handle — which is how "click a row, see it in a form" works.
-
-The difference is the only thing their names say: **a `form` can be typed into,
-a `details` cannot.** Two widgets rather than one with a `readOnly:` flag,
-because both defaults for that flag are wrong.
+Any widget takes `show: <state key>`. The **program** computes the boolean; the
+widget reads it.
 
 ```yaml
-  - type: form
-    from: draft
-    fields:
-      - { name: customer, type: string, label: { en: Customer } }
-      - { name: amount, type: integer, label: { en: Amount } }
   - type: button
-    label: Save
-    on: { click: "main.js:save" }
+    label: Delete…
+    show: hasSelection
+    on: { click: "main.js:askDelete" }
 ```
-
-**Editing writes state, nothing else.** What the reader types goes straight back
-into `draft`; no document is touched until the program says so:
 
 ```js
-async function save() {
-  const draft = await vance.state.get('draft');
-  await vance.documents.write(`invoices/${draft.customer}.yaml`, draft);
-  vance.ui.notify('Saved.');
-}
+await vance.state.set('hasSelection', Boolean(row));
 ```
 
-Types survive the trip: an `integer` field hands back a number, a `boolean` a
-real boolean. A key the record carries but no field shows is kept, so editing
-one field never drops the rest. A field left empty on a record that never had it
-stays absent rather than becoming `""`.
+`visibleIf` is **refused** and its message says this. A condition here is never
+an expression — that would be a second expression language in the browser, and
+there is already exactly one: the sandbox's.
 
-`on: { change: "main.js:recalc" }` fires while the reader types — the running
-total case. It is debounced, so a word costs one call, not eight; the handler
-reads the current values with `vance.state.get`.
-
-A `form` bound to an **array** with no row selected says so instead of showing
-empty fields.
-
-Fields carrying `showIf`, `writeIf`, `bindsTo` or `choicesFrom` are **refused**
-in both: those belong to setting forms, the shared parser does not read them
-here, and a silently dropped condition would show a field you told it to hide.
+**An unset key means hidden.** A widget whose condition nobody has computed yet
+stays away. Briefly missing is a mistake you can see and explain; briefly
+showing what the document says to hide is not.
 
 ## Handlers
 

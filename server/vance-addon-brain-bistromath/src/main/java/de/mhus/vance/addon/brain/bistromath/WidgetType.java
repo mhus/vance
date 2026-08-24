@@ -62,14 +62,46 @@ public enum WidgetType {
     DETAILS,
 
     /** Children as tab panes, captioned by their own label. */
-    TABS;
+    TABS,
+
+    /**
+     * Another document, rendered by whatever knows its kind.
+     *
+     * <p>The widget carries a path and nothing else: the host injects the
+     * Cortex embed component, which routes on the document's kind. That is why
+     * there is no {@code chart} and no {@code image} widget — a chart document
+     * and an image document already have renderers, and duplicating them here
+     * would mean this addon shipping a charting library.
+     */
+    EMBED,
+
+    /**
+     * Children once per element of a bound array.
+     *
+     * <p>Inside it, {@code from:} looks in the element first and falls back to
+     * the surrounding state. Two levels, no path syntax — a widget still names
+     * a key, it is just asked of the element.
+     */
+    REPEAT,
+
+    /**
+     * Children shown over the page, opened and closed by its {@code show:} key.
+     *
+     * <p>No handler form of its own and no {@code vance.ui.closeDialog()}: a
+     * dialog is a widget whose condition happens to be interesting, so the
+     * program opens it with {@code vance.state.set(key, true)} and closes it
+     * with {@code false}. One rule instead of three, and the dialog is declared
+     * where it is used.
+     */
+    DIALOG;
 
     /** Widgets the schema reserves but this iteration does not render. */
-    static final Set<String> PLANNED = Set.of("if", "repeat", "chart", "dialog");
+    static final Set<String> PLANNED = Set.of("chart");
 
     /** Widgets that carry children. */
     boolean allowsChildren() {
-        return this == PAGE || this == TOOLBAR || this == TABS;
+        return this == PAGE || this == TOOLBAR || this == TABS
+                || this == REPEAT || this == DIALOG;
     }
 
     /** The lowercase spelling used in a view document. */

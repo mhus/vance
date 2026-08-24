@@ -223,7 +223,7 @@ class CustomAppTemplateTest {
                         List.of(new ViewRef("main", FOLDER + "/main.yaml", "Main")),
                         List.of()));
         when(store.readView(any(), any(), any())).thenReturn(new ViewNode(
-                "page", "Main", null, null, List.of(), List.of(), Map.of(), List.of()));
+                "page", "Main", null, null, null, List.of(), List.of(), Map.of(), List.of()));
         when(store.findProgram(any(), any(), any(), any())).thenReturn(
                 Optional.of(DocumentDocument.builder().path(FOLDER + "/main.js").build()));
         when(store.load(any(), any(), any())).thenAnswer(inv ->

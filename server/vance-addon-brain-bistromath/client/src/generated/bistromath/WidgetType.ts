@@ -12,5 +12,8 @@ export enum WidgetType {
   TABLE = 'TABLE',
   FORM = 'FORM',
   DETAILS = 'DETAILS',
-  TABS = 'TABS'
+  TABS = 'TABS',
+  EMBED = 'EMBED',
+  REPEAT = 'REPEAT',
+  DIALOG = 'DIALOG'
 }

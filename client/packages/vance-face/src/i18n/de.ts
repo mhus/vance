@@ -136,6 +136,7 @@ export default {
     invite: 'Einladen',
     invitePlaceholder: 'Person einladen',
     remove: 'Entfernen',
+    picked: 'ausgewählt',
     removeTitle: '{name} aus dem Thread entfernen',
   },
 

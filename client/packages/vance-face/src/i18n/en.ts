@@ -142,6 +142,7 @@ export default {
     invite: 'Invite',
     invitePlaceholder: 'user to invite',
     remove: 'Remove',
+    picked: 'picked',
     removeTitle: 'Remove {name} from the thread',
   },
 

@@ -1192,6 +1192,21 @@ event") unless the user names a different path.
 {{ appInstructions | raw }}
 {% endif %}
 
+{% if activeInbox is not null %}
+
+## The reader's inbox
+
+The reader has inbox thread `{{ activeInbox.threadId }}` open in the panel next
+to this chat{% if activeInbox.messageId %}, and has picked the contribution
+`{{ activeInbox.messageId }}` inside it{% endif %}. When they say "this", "that
+one" or "the request" without naming anything, that is what they mean.
+
+This is **not** a text selection inside a document, and the inbox is **not**
+mail. Read it with `thread_get({ threadId: '{{ activeInbox.threadId }}' })` —
+never claim you cannot see what they are looking at. Reading it answers nothing:
+if the thread is waiting on a decision, it still is afterwards.
+{% endif %}
+
 {% if collabActive %}
 ## Multi-user session
 

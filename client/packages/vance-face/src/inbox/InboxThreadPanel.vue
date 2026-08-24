@@ -30,6 +30,13 @@ const props = defineProps<{
    * actions happen.
    */
   error?: string | null;
+  /**
+   * The contribution the reader has picked, or {@code null}. Owned by the host
+   * rather than local state because the chat panel beside the list has to send
+   * it with every turn — two copies would drift the moment one of them
+   * re-rendered.
+   */
+  selectedMessageId?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -39,6 +46,8 @@ const emit = defineEmits<{
   (e: 'remove', userId: string): void;
   (e: 'follow', following: boolean): void;
   (e: 'react', key: string, on: boolean, messageId: string | null): void;
+  /** A contribution was picked, or un-picked (null). */
+  (e: 'select-message', messageId: string | null): void;
 }>();
 
 const { t } = useI18n();
@@ -140,6 +149,16 @@ function startReply(id: string): void {
   replyTo.value = id;
 }
 
+/**
+ * Picking is a toggle: clicking the picked one again lets go. Without that the
+ * reader could never tell the agent "never mind that one" except by opening a
+ * different thread.
+ */
+function toggleSelected(messageId: string | undefined): void {
+  if (!messageId) return;
+  emit('select-message', props.selectedMessageId === messageId ? null : messageId);
+}
+
 function submitInvite(): void {
   const name = inviteName.value.trim();
   if (!name || props.busy) return;
@@ -238,15 +257,31 @@ watch(() => [props.item.participants, props.error], () => {
           class="text-xs uppercase tracking-wide opacity-60"
         >{{ t('inboxThread.newFromHere') }}</div>
 
-        <article class="flex flex-col gap-1">
+        <!-- Clicking a contribution picks it: the chat beside the list then
+             sends its id with every turn, so "this one" has a referent. The
+             ring is the only feedback, so it has to be unmistakable. The id
+             is the scroll anchor for inbox_show_thread. -->
+        <article
+          :id="`inbox-msg-${node.message.id}`"
+          class="flex flex-col gap-1 rounded px-2 py-1 -mx-2 cursor-pointer transition-colors"
+          :class="selectedMessageId === node.message.id
+            ? 'ring-2 ring-primary bg-primary/5'
+            : 'hover:bg-black/5 dark:hover:bg-white/5'"
+          @click="toggleSelected(node.message.id)"
+        >
           <div class="flex items-baseline gap-2">
             <span class="font-medium text-sm">{{ node.message.authorUserId }}</span>
             <span class="text-xs opacity-60">{{ when(node.message.createdAt) }}</span>
+            <span
+              v-if="selectedMessageId === node.message.id"
+              class="text-xs opacity-70"
+            >{{ t('inboxThread.picked') }}</span>
           </div>
           <p class="whitespace-pre-wrap text-sm">{{ node.message.body }}</p>
           <InboxReactionBar
             :reactions="node.message.reactions"
             :busy="busy"
+            @click.stop
             @react="(key: string, on: boolean) => emit('react', key, on, node.message.id)"
           >
             <VButton size="sm" variant="ghost" @click="startReply(node.message.id)">
@@ -256,7 +291,16 @@ watch(() => [props.item.participants, props.error], () => {
         </article>
 
         <ol v-if="node.replies.length" class="flex flex-col gap-2 pl-6 border-l">
-          <li v-for="reply in node.replies" :key="reply.id" class="flex flex-col gap-1">
+          <li
+            v-for="reply in node.replies"
+            :id="`inbox-msg-${reply.id}`"
+            :key="reply.id"
+            class="flex flex-col gap-1 rounded px-2 py-1 -mx-2 cursor-pointer transition-colors"
+            :class="selectedMessageId === reply.id
+              ? 'ring-2 ring-primary bg-primary/5'
+              : 'hover:bg-black/5 dark:hover:bg-white/5'"
+            @click="toggleSelected(reply.id)"
+          >
             <div
               v-if="reply.id === firstUnreadId"
               class="text-xs uppercase tracking-wide opacity-60"
@@ -269,6 +313,7 @@ watch(() => [props.item.participants, props.error], () => {
             <InboxReactionBar
               :reactions="reply.reactions"
               :busy="busy"
+              @click.stop
               @react="(key: string, on: boolean) => emit('react', key, on, reply.id)"
             />
           </li>

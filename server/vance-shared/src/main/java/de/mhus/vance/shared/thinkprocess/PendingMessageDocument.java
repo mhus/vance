@@ -3,6 +3,7 @@ package de.mhus.vance.shared.thinkprocess;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.thinkprocess.ActiveAppContext;
+import de.mhus.vance.api.thinkprocess.ActiveInboxContext;
 import de.mhus.vance.api.thinkprocess.BoundDocSelection;
 import de.mhus.vance.api.thinkprocess.PeerEventType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
@@ -120,6 +121,15 @@ public class PendingMessageDocument {
      * {@code doc_get_selection}. {@code null} when nothing is selected.
      */
     private @Nullable BoundDocSelection boundDocSelection;
+
+    /**
+     * Which inbox thread (and contribution) the reader had open beside the chat
+     * on this turn. Persisted with the pending message for the same reason
+     * {@link #activeApp} is: the queue may be drained on another pod, minutes
+     * later, and the hint has to survive the trip. Per-turn all the same —
+     * nothing reads it after the drain.
+     */
+    private @Nullable ActiveInboxContext activeInbox;
 
     // ─── PROCESS_EVENT ───────────────────────────────────────────
     /** {@code ThinkProcessDocument.id} of the emitter. */

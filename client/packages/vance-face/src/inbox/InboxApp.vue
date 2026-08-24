@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   EditorShell,
@@ -21,6 +21,7 @@ import { getUsername, hubProjectName, safeUrl } from '@vance/shared';
 import { VBadge } from '@/components';
 import SessionPickerPanel from '@/components/SessionPickerPanel.vue';
 import ChatSidePanel from '@/chat/ChatSidePanel.vue';
+import { InboxClientToolService } from '@/inbox/inboxClientToolService';
 import { setDocumentDraft } from '@/platform';
 import InboxThreadPanel from '@/inbox/InboxThreadPanel.vue';
 import InboxReactionBar from '@/inbox/InboxReactionBar.vue';
@@ -642,6 +643,54 @@ const chatSessionId = ref<string | null>(
  */
 const chatPanelOpen = ref<boolean>(chatSessionId.value !== null);
 
+/**
+ * The contribution the reader picked inside the open thread. Lives here, not in
+ * the thread panel: the chat beside the list has to send it with every turn, and
+ * two copies of "what is picked" would drift.
+ *
+ * <p>Cleared whenever the open thread changes — a message id means nothing in
+ * another thread, and a stale one would point the agent at the wrong text.
+ */
+const selectedMessageId = ref<string | null>(null);
+watch(() => inbox.selected.value?.id, () => { selectedMessageId.value = null; });
+
+/**
+ * What the chat sends with each turn: which thread is open beside it, and which
+ * contribution is picked. Ids only — the agent reads the thread with
+ * `thread_get` when it matters.
+ */
+const activeInbox = computed<{ threadId: string; messageId?: string } | null>(() => {
+  const id = inbox.selected.value?.id;
+  if (!id) return null;
+  return selectedMessageId.value
+    ? { threadId: id, messageId: selectedMessageId.value }
+    : { threadId: id };
+});
+
+/**
+ * The page's client-tool surface: one tool, so the agent can put a thread on the
+ * reader's screen. Owned here because it has to outlive the chat panel's
+ * remounts (a session switch must not drop the registration mid-turn).
+ */
+const clientToolService = new InboxClientToolService({
+  showThread: async (threadId: string, messageId?: string | null) => {
+    const row = inbox.items.value.find((i) => i.id === threadId);
+    // Only what the reader currently has listed. Fetching an unlisted thread
+    // would move them somewhere their filter says they are not.
+    if (!row) return false;
+    await openItem(row);
+    selectedMessageId.value = messageId ?? null;
+    if (messageId) {
+      // The thread panel renders after the fetch resolves; one frame is enough
+      // and a missing anchor is a no-op rather than an error.
+      await nextTick();
+      document.getElementById(`inbox-msg-${messageId}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    return true;
+  },
+});
+
 const panelToggle = computed(() => ({
   icon: '💬',
   title: chatPanelOpen.value ? t('inbox.chat.hide') : t('inbox.chat.show'),
@@ -1134,6 +1183,8 @@ const breadcrumbs = computed<string[]>(() => {
                 :item="inbox.selected.value"
                 :busy="submitting"
                 :error="inbox.error.value"
+                :selected-message-id="selectedMessageId"
+                @select-message="(id: string | null) => selectedMessageId = id"
                 @post="onThreadPost"
                 @read="onThreadRead"
                 @invite="onThreadInvite"
@@ -1239,6 +1290,8 @@ const breadcrumbs = computed<string[]>(() => {
         :project-id="chatProjectId"
         :draft-key="`inbox:${chatSessionId}`"
         :back-label="$t('inbox.chat.sessions')"
+        :tool-service="clientToolService"
+        :active-inbox="activeInbox"
         @leave="leaveChatSession"
         @back="leaveChatSession"
       />

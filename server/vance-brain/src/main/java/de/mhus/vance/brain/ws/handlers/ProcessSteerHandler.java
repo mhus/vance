@@ -230,7 +230,8 @@ public class ProcessSteerHandler implements WsHandler {
                 Boolean.TRUE.equals(request.getVoiceMode()),
                 request.getActiveApp(),
                 request.getBoundDocumentId(),
-                request.getBoundDocSelection());
+                request.getBoundDocSelection(),
+                request.getActiveInbox());
         PendingMessageDocument doc = SteerMessageCodec.toDocument(userInput);
 
         if (!thinkProcessService.appendPending(processId, doc)) {

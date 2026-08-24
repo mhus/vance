@@ -2492,6 +2492,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         de.mhus.vance.api.thinkprocess.ActiveAppContext activeApp = null;
         String boundDocumentId = null;
         de.mhus.vance.api.thinkprocess.BoundDocSelection boundDocSelection = null;
+        de.mhus.vance.api.thinkprocess.ActiveInboxContext activeInbox = null;
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput uci) {
                 voiceMode = uci.voiceMode();
@@ -2499,6 +2500,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 activeApp = uci.activeApp();
                 boundDocumentId = uci.boundDocumentId();
                 boundDocSelection = uci.boundDocSelection();
+                activeInbox = uci.activeInbox();
             }
         }
         String appInstructions = activeAppPromptResolver.resolve(process, activeApp);
@@ -2537,6 +2539,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         .engine(NAME)
                         .voiceMode(voiceMode)
                         .activeApp(activeApp)
+                        .activeInbox(activeInbox)
                         .appInstructions(appInstructions)
                         .cortexMode(cortex.active())
                         .cortexBoundDoc(cortexBoundDocPath)

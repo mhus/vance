@@ -58,6 +58,7 @@ public final class SteerMessageCodec {
                     .activeApp(u.activeApp())
                     .boundDocumentId(u.boundDocumentId())
                     .boundDocSelection(u.boundDocSelection())
+                    .activeInbox(u.activeInbox())
                     .build();
 
             case SteerMessage.ProcessEvent e -> b
@@ -131,7 +132,8 @@ public final class SteerMessageCodec {
                     Boolean.TRUE.equals(d.getVoiceMode()),
                     d.getActiveApp(),
                     d.getBoundDocumentId(),
-                    d.getBoundDocSelection());
+                    d.getBoundDocSelection(),
+                    d.getActiveInbox());
 
             case PROCESS_EVENT -> new SteerMessage.ProcessEvent(
                     at, idem,

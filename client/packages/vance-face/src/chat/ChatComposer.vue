@@ -27,6 +27,7 @@ import {
 } from '../platform/speechSettings';
 import type {
   ActiveAppContext,
+  ActiveInboxContext,
   AttachmentRef,
   BoundDocSelection,
   ChatMessageDto,
@@ -107,6 +108,12 @@ const props = defineProps<{
    *  Cortex sets this when the selection lives inside the bound doc;
    *  chat.html leaves it unset. */
   boundDocSelection?: BoundDocSelection | null;
+  /**
+   * Which inbox thread (and picked contribution) the reader has open beside this
+   * chat. Ids only; the agent reads the thread with `thread_get`. Set by the
+   * inbox page — every other host leaves it unset.
+   */
+  activeInbox?: ActiveInboxContext | null;
 }>();
 
 /**
@@ -911,6 +918,7 @@ async function send(): Promise<void> {
       activeApp: props.activeApp ?? undefined,
       boundDocumentId: props.boundDocumentId ?? undefined,
       boundDocSelection: props.boundDocSelection ?? undefined,
+      activeInbox: props.activeInbox ?? undefined,
     });
   } catch (e) {
     emit('rollback-echo', optimisticId);

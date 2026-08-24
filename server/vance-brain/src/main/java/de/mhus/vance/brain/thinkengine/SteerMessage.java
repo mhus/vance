@@ -4,6 +4,7 @@ import de.mhus.vance.api.attachment.AttachmentRef;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.thinkprocess.ActiveAppContext;
+import de.mhus.vance.api.thinkprocess.ActiveInboxContext;
 import de.mhus.vance.api.thinkprocess.BoundDocSelection;
 import de.mhus.vance.api.thinkprocess.PeerEventType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
@@ -58,6 +59,10 @@ public sealed interface SteerMessage
      *                        a voice-block in their system prompt
      *                        when this is set. See
      *                        {@code specification/voice-mode.md}.
+     * @param activeInbox     which inbox thread (and contribution) the reader
+     *                        had open beside the chat when they hit send, or
+     *                        {@code null}. Ids only — the content is fetched
+     *                        with {@code thread_get} when it matters.
      */
     record UserChatInput(
             Instant at,
@@ -69,7 +74,8 @@ public sealed interface SteerMessage
             boolean voiceMode,
             @Nullable ActiveAppContext activeApp,
             @Nullable String boundDocumentId,
-            @Nullable BoundDocSelection boundDocSelection)
+            @Nullable BoundDocSelection boundDocSelection,
+            @Nullable ActiveInboxContext activeInbox)
             implements SteerMessage {
 
         /**
@@ -95,7 +101,7 @@ public sealed interface SteerMessage
                 @Nullable String idempotencyKey,
                 String fromUser,
                 String content) {
-            this(at, idempotencyKey, fromUser, null, content, List.of(), false, null, null, null);
+            this(at, idempotencyKey, fromUser, null, content, List.of(), false, null, null, null, null);
         }
 
         /**
@@ -110,7 +116,28 @@ public sealed interface SteerMessage
                 String fromUser,
                 String content,
                 List<AttachmentRef> attachments) {
-            this(at, idempotencyKey, fromUser, null, content, attachments, false, null, null, null);
+            this(at, idempotencyKey, fromUser, null, content, attachments, false, null, null, null, null);
+        }
+
+        /**
+         * Full-context constructor from before the inbox hint existed. Kept so
+         * the call sites that build a turn's view context (chat handlers, the
+         * codec, tests) do not all have to name a field that only the inbox
+         * panel ever sets. Equivalent to {@code null} for {@code activeInbox}.
+         */
+        public UserChatInput(
+                Instant at,
+                @Nullable String idempotencyKey,
+                String fromUser,
+                @Nullable String fromUserDisplayName,
+                String content,
+                List<AttachmentRef> attachments,
+                boolean voiceMode,
+                @Nullable ActiveAppContext activeApp,
+                @Nullable String boundDocumentId,
+                @Nullable BoundDocSelection boundDocSelection) {
+            this(at, idempotencyKey, fromUser, fromUserDisplayName, content, attachments,
+                    voiceMode, activeApp, boundDocumentId, boundDocSelection, null);
         }
 
         /**

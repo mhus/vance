@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.prompt;
 
 import de.mhus.vance.api.thinkprocess.ActiveAppContext;
+import de.mhus.vance.api.thinkprocess.ActiveInboxContext;
 import de.mhus.vance.api.thinkprocess.BoundDocSelection;
 import de.mhus.vance.api.thinkprocess.ProcessMode;
 import de.mhus.vance.brain.ai.ModelInfo;
@@ -192,6 +193,34 @@ public final class PromptContextBuilder {
             view.put("folder", activeApp.getFolder());
             view.put("app", activeApp.getApp());
             map.put("activeApp", view);
+        }
+        return this;
+    }
+
+    /**
+     * Inbox hint for the current turn — which thread the reader has open beside
+     * the chat, and which contribution they picked. Exposed as the Pebble
+     * variable {@code activeInbox} with keys {@code threadId} and
+     * {@code messageId}; guard with {@code {% if activeInbox is not null %}}
+     * (a bare {@code {% if <map> %}} is rejected by Pebble).
+     *
+     * <p>Unlike {@link #activeApp(ActiveAppContext)} there is no companion
+     * instructions string: the inbox has no {@code VanceApplication} to ask for
+     * one, so the wording lives in the prompt templates, where prompt wording
+     * belongs. Only ids travel — the thread is read with {@code thread_get}.
+     *
+     * <p>Per-turn, never persisted beyond the pending message.
+     */
+    public PromptContextBuilder activeInbox(
+            @Nullable ActiveInboxContext activeInbox) {
+        if (activeInbox != null && activeInbox.getThreadId() != null
+                && !activeInbox.getThreadId().isBlank()) {
+            Map<String, Object> view = new LinkedHashMap<>();
+            view.put("threadId", activeInbox.getThreadId());
+            if (activeInbox.getMessageId() != null && !activeInbox.getMessageId().isBlank()) {
+                view.put("messageId", activeInbox.getMessageId());
+            }
+            map.put("activeInbox", view);
         }
         return this;
     }

@@ -97,6 +97,17 @@ public class ProcessSteerRequest {
     private @Nullable ActiveAppContext activeApp;
 
     /**
+     * Inbox hint for this single turn: which thread the reader has open
+     * beside the chat, and which contribution they picked in it.
+     *
+     * <p>A sibling of {@link #activeApp} rather than a use of it — the inbox is
+     * not an app and has no manifest to resolve; see
+     * {@link ActiveInboxContext}. Same last-message-wins, same
+     * per-turn-never-persisted lifetime.
+     */
+    private @Nullable ActiveInboxContext activeInbox;
+
+    /**
      * Id of the document the sending Cortex view has "bound" to the
      * chat for this turn (the {@code bind file} affordance). Per-message
      * LLM context — the engine resolves the id, inlines the document so

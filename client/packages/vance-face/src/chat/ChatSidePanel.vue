@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { WebSocketRequestError, type BrainWsApi } from '@vance/shared';
 import type {
   ActiveAppContext,
+  ActiveInboxContext,
   BoundDocSelection,
   ChatMessageDto,
   DocumentDto,
@@ -66,6 +67,12 @@ interface Props {
   boundDocSelection?: BoundDocSelection | null;
   /** Per-turn active-app hint, when the host is running a Vance application. */
   activeApp?: ActiveAppContext | null;
+  /**
+   * Per-turn inbox hint: which thread the host has open beside this chat, and
+   * which contribution is picked. A sibling of {@link activeApp} rather than a
+   * use of it — the inbox is not an app and has no manifest to resolve.
+   */
+  activeInbox?: ActiveInboxContext | null;
   /** One-click attachment offer for whatever the host is showing right now. */
   currentFileSource?: ComposerCurrentFileSource | null;
   /** Namespace for the composer's persisted draft. Distinct per host. */
@@ -354,6 +361,7 @@ function onRollbackEcho(messageId: string): void {
           :active-app="activeApp ?? null"
           :bound-document-id="boundDocumentId ?? null"
           :bound-doc-selection="boundDocSelection ?? null"
+          :active-inbox="activeInbox ?? null"
           :ensure-connected="ensureReady"
           :draft-key="draftKey"
           @hub="emit('leave')"

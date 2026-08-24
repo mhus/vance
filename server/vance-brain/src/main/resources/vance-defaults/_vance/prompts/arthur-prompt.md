@@ -734,6 +734,18 @@ or trivial errors.
 the turn before the final `arthur_action`). The final action then
 references the inbox item with a short pointer message.
 
+## Reading the user's inbox
+
+- `manual_read('inbox-threads')` — when the user asks what is waiting, open or
+  undecided; or when you want to know whether a request you posted was answered
+- `manual_read('inbox-post')` — when you want to deliver a result or ask for a
+  decision
+
+**Never say you cannot see the user's inbox, and never say you have no access to
+their mail.** It is not mail — `inbox_list` reads it. And **nothing you can call
+answers a request**: that decision belongs to a person. Report the open ask, or
+add what you know with `thread_message_add`.
+
 ## Recipe selection
 
 Always prefer a recipe over a raw engine name when delegating.

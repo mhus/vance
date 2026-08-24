@@ -25,15 +25,14 @@ import org.springframework.stereotype.Component;
  * {@code originProcessId} is the calling process. Both populate the
  * audit trail and (for asks) the answer-routing target.
  *
- * <p>v1 caveats:
- * <ul>
- *   <li>4 item types implemented: {@code APPROVAL}, {@code DECISION},
- *       {@code FEEDBACK}, {@code OUTPUT_TEXT}. Others accepted by the
- *       schema but UI/validator support follows in later iterations.</li>
- *   <li>{@code targetUserId} is taken at face value — no permission
- *       check that the caller may post to that user. v2: tenant-level
- *       authorization rules.</li>
- * </ul>
+ * <p>v1 caveat: 4 item types are fully supported — {@code APPROVAL},
+ * {@code DECISION}, {@code FEEDBACK}, {@code OUTPUT_TEXT}. Others are
+ * accepted by the schema but UI/validator support follows in later
+ * iterations.
+ *
+ * <p>{@code targetUserId} <b>is</b> authorized (see {@link #invoke}): it is a
+ * raw LLM parameter, so delivery is checked against the provider's inbox rule.
+ * An older version of this javadoc claimed otherwise; it was read as a gap.
  */
 @Component
 @RequiredArgsConstructor
@@ -109,6 +108,28 @@ public class InboxPostTool implements Tool {
     @Override
     public boolean primary() {
         return false;
+    }
+
+    /**
+     * Deferred like the rest of the family, so the whole {@code inbox} prefix is
+     * one demotion unit. Before this it was {@code primary=false} +
+     * {@code deferred=false} — a pair with no discovery line, which left the
+     * tool nameless in the block that is supposed to advertise it.
+     */
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Put a request, decision or result in front of a person in their inbox";
+    }
+
+    @Override
+    public String troubleshootingHint() {
+        return "Use inbox_list / thread_get to read your own inbox. Posting an ask does not "
+                + "answer it — a person decides.";
     }
 
     @Override

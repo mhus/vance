@@ -9,6 +9,10 @@ engines and scripts to surface analyses, ask for decisions, request
 feedback, or just notify "task done". The Inbox persists; the user
 sees the item in the Inbox editor (Web-UI / Foot / Mobile).
 
+> Reading an inbox and contributing to a thread is the other half:
+> `manual_read('inbox-threads')`. A follow-up on a matter you already posted
+> belongs there (`thread_message_add`), not in a second `inbox_post`.
+
 ## Required fields
 
 ```js

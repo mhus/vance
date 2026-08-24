@@ -103,7 +103,7 @@ class DocumentServiceJaglanTest {
 
     @Test
     void loadContent_mountedPath_streamsFromThePortNotStorage() throws IOException {
-        when(port.open("acme", "research", "library", "books/dune.pdf"))
+        when(port.open("acme", "research", "library", "books/dune.pdf", null))
                 .thenReturn(new ByteArrayInputStream("pdf-bytes".getBytes(StandardCharsets.UTF_8)));
 
         try (InputStream in = service.loadContent(mountedDoc())) {
@@ -118,7 +118,7 @@ class DocumentServiceJaglanTest {
         // A mounted document has no storageId, so the pre-existing
         // "storageId == null → empty stream" branch would have made the
         // content read as "" — silently, which is the worst outcome.
-        when(port.open(anyString(), anyString(), anyString(), anyString()))
+        when(port.open(anyString(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.isNull()))
                 .thenReturn(new ByteArrayInputStream("real".getBytes(StandardCharsets.UTF_8)));
 
         try (InputStream in = service.loadContent(mountedDoc())) {

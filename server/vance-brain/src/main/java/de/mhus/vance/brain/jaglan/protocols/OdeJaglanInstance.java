@@ -87,6 +87,10 @@ public class OdeJaglanInstance implements JaglanInstance {
                 // its default rather than into zero.
                 duration(node.path("metadataTtl").asString(null)),
                 node.hasNonNull("maxBytes") ? node.get("maxBytes").asLong() : null,
+                // Absent means false: a source that says nothing about
+                // parameterised reads does not serve them, and guessing
+                // otherwise would send it a query it never asked for.
+                node.path("supportsQuery").asBoolean(false),
                 node.path("displayName").asString(null));
     }
 
@@ -121,7 +125,12 @@ public class OdeJaglanInstance implements JaglanInstance {
 
     @Override
     public InputStream open(String pathInMount) {
-        URI url = uri("/content", pathInMount);
+        return open(pathInMount, null);
+    }
+
+    @Override
+    public InputStream open(String pathInMount, @Nullable String query) {
+        URI url = uri("/content", pathInMount, query);
         JaglanHttpClient.StreamResponse response;
         try {
             response = http.getStream(url, headers(), CONTENT_TIMEOUT);
@@ -188,8 +197,43 @@ public class OdeJaglanInstance implements JaglanInstance {
     }
 
     private URI uri(String suffix, @Nullable String pathInMount) {
+        return uri(suffix, pathInMount, null);
+    }
+
+    /**
+     * The endpoint URL, with the reader's query appended after the wire's own
+     * {@code path} parameter.
+     *
+     * <p>The query arrives <b>already encoded</b> — it is the query string the
+     * reader wrote, and re-encoding it would turn {@code a=1&b=2} into one
+     * opaque parameter. It is therefore only checked, not transformed.
+     *
+     * <p><b>A query may not declare {@code path}.</b> This wire carries the
+     * document path in a query parameter of that name, so a reader-supplied
+     * {@code path=} would arrive beside it and the source would pick one of
+     * the two — reading a different file than the one addressed. That is worth
+     * a refusal rather than a last-one-wins.
+     */
+    private URI uri(String suffix, @Nullable String pathInMount, @Nullable String query) {
         String path = pathInMount == null ? "" : pathInMount;
-        return URI.create(base + suffix + "?path=" + encode(path));
+        String url = base + suffix + "?path=" + encode(path);
+        if (query != null && !query.isBlank()) {
+            requireNoPathParameter(query);
+            url = url + "&" + query;
+        }
+        return URI.create(url);
+    }
+
+    private void requireNoPathParameter(String query) {
+        for (String pair : query.split("&")) {
+            int eq = pair.indexOf('=');
+            String key = eq < 0 ? pair : pair.substring(0, eq);
+            if ("path".equals(key.trim())) {
+                throw new JaglanProtocolException(mount(),
+                        "mount '" + mount() + "': a query may not declare 'path' — "
+                                + "this protocol carries the document path in that parameter");
+            }
+        }
     }
 
     private static String encode(String raw) {

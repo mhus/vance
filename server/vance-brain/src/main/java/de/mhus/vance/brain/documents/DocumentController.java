@@ -33,6 +33,7 @@ import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentArchiveDocument;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.document.jaglan.MountQuery;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import jakarta.servlet.http.HttpServletRequest;
@@ -454,7 +455,16 @@ public class DocumentController {
             }
         }
 
-        InputStream stream = documentService.loadContent(doc);
+        // Everything in the query string that is not ours travels to the source
+        // as a parameterised read. Only meaningful for a mounted path: for a
+        // stored document there is nothing to parameterise, and forwarding it
+        // would be a query nobody answers.
+        // A mount that declared no parameterised reads throws
+        // JaglanAccessException, which JaglanExceptionAdvice already turns into
+        // a 409 `mount_refused` naming the mount. Catching it here would
+        // replace that body with a bare status.
+        String mountQuery = mounted ? MountQuery.forward(httpRequest.getQueryString()) : null;
+        InputStream stream = documentService.loadContent(doc, mountQuery);
         MediaType contentType = parseMimeType(doc.getMimeType());
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(contentType);

@@ -151,11 +151,11 @@ public class DocumentService {
     }
 
     /** Stream a mounted document's content straight from its source. */
-    private InputStream openMountedContent(DocumentDocument doc) {
+    private InputStream openMountedContent(DocumentDocument doc, @Nullable String query) {
         String path = doc.getPath();
         JaglanPort port = requireJaglanPort(path);
         return port.open(doc.getTenantId(), doc.getProjectId(),
-                JaglanPaths.mountNameOf(path), JaglanPaths.pathInMount(path));
+                JaglanPaths.mountNameOf(path), JaglanPaths.pathInMount(path), query);
     }
 
     /**
@@ -2226,11 +2226,41 @@ public class DocumentService {
     }
 
     public InputStream loadContent(DocumentDocument doc) {
+        return loadContent(doc, null);
+    }
+
+    /**
+     * Content, optionally as a <b>parameterised view</b> of a mounted document.
+     *
+     * <p>An overload rather than a changed signature on purpose: there are
+     * around fifty call sites of {@link #loadContent(DocumentDocument)} in this
+     * module and brain, and all but a handful have no query and never will.
+     * Widening the signature would have touched every one of them to pass
+     * {@code null}.
+     *
+     * <p>The query is <b>only</b> meaningful for a mounted path. For a stored
+     * document there is nothing to parameterise — the bytes are ours — so a
+     * query there is a caller error and says so rather than being ignored: a
+     * silently dropped query returns the plain document, which is a wrong
+     * answer wearing the shape of a right one.
+     *
+     * @param query raw query string without the leading {@code ?}, or null
+     */
+    public InputStream loadContent(DocumentDocument doc, @Nullable String query) {
+        boolean parameterised = query != null && !query.isBlank();
         // Mount branch first: a mounted document has no storageId by
         // construction, so the null-check below would otherwise hand back an
         // empty stream and the content would silently read as "".
         if (JaglanPaths.isMounted(doc.getPath())) {
-            return openMountedContent(doc);
+            // Normalised here rather than at each layer below: "a query with
+            // nothing in it" and "no query" have to be one value, or a mount
+            // that serves no parameters refuses an ordinary download.
+            return openMountedContent(doc, parameterised ? query : null);
+        }
+        if (parameterised) {
+            throw new IllegalArgumentException(
+                    "document '" + doc.getPath() + "' is stored, not mounted — "
+                            + "there is nothing to parameterise with a query");
         }
         String sid = doc.getStorageId();
         if (sid == null) {

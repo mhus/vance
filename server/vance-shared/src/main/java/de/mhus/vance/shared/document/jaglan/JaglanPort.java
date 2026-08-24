@@ -7,6 +7,7 @@ import java.util.Optional;
 import de.mhus.vance.api.documents.MountSearchOutcome;
 import de.mhus.vance.api.mount.MountedSource;
 import de.mhus.vance.api.mount.MountedStat;
+import org.jspecify.annotations.Nullable;
 
 /**
  * What {@code DocumentService} calls instead of {@code StorageService} when a
@@ -125,7 +126,32 @@ public interface JaglanPort {
      * is the whole point of the mount. Callers must not buffer the whole
      * thing to answer a size question; {@link MountedStat#size()} exists.
      */
-    InputStream open(String tenantId, String projectId, String mount, String pathInMount);
+    default InputStream open(
+            String tenantId, String projectId, String mount, String pathInMount) {
+        return open(tenantId, projectId, mount, pathInMount, null);
+    }
+
+    /**
+     * Open a <b>parameterised</b> read — the same path with a query string the
+     * source turns into a computed view of it.
+     *
+     * <p>This is the method implementations provide; the four-argument form
+     * above delegates to it with no query. That direction matters: the other
+     * way round, an implementation written against the short signature would
+     * receive a query and never see it, and the reader would get the
+     * unparameterised document as if it were the answer.
+     *
+     * <p>The query is <b>never</b> part of the document path. Paths address a
+     * Mongo row and derive the document id; a query addresses a view of that
+     * row. Mixing them would make {@code (tenantId, projectId, path)}
+     * ambiguous and put a {@code ?} into every extension and mime decision in
+     * the tree.
+     *
+     * @param query raw query string without the leading {@code ?}, or null for
+     *              a plain read
+     */
+    InputStream open(String tenantId, String projectId, String mount, String pathInMount,
+            @Nullable String query);
 
     /**
      * Write content back to the source and return the resulting metadata.

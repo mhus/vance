@@ -45,7 +45,11 @@ class JaglanServiceTest {
         factory = mock(JaglanSourceFactory.class);
         capabilities = mock(JaglanCapabilitiesCache.class);
         MetricService metrics = mock(MetricService.class);
-        when(metrics.counter(anyString(), anyString(), anyString()))
+        // Matched on the varargs array rather than a fixed tag count: pinning
+        // the arity here means adding a tag to any counter fails an unrelated
+        // test with a NullPointerException out of Micrometer.
+        when(metrics.counter(anyString(),
+                org.mockito.ArgumentMatchers.any(String[].class)))
                 .thenReturn(mock(Counter.class));
         instance = mock(JaglanInstance.class);
         when(instance.mount()).thenReturn(MOUNT);
@@ -61,7 +65,8 @@ class JaglanServiceTest {
 
     private static JaglanCapabilities caps(MountAccess access) {
         return new JaglanCapabilities(
-                access, false, 42L, Duration.ofMinutes(3), null, "Book Library");
+                access, false, 42L, Duration.ofMinutes(3), null,
+                /* supportsQuery */ false, "Book Library");
     }
 
     // ─── mounts() stays off the network ─────────────────────────────────

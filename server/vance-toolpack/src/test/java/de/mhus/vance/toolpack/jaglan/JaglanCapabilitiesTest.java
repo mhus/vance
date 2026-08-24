@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class JaglanCapabilitiesTest {
 
     private static JaglanCapabilities withTtl(Duration ttl) {
-        return new JaglanCapabilities(MountAccess.RO, false, null, ttl, null, null);
+        return new JaglanCapabilities(MountAccess.RO, false, null, ttl, null, false, null);
     }
 
     @Test
@@ -51,7 +51,7 @@ class JaglanCapabilitiesTest {
 
     @Test
     void nullAccess_becomesUnknownRatherThanAssumingWrite() {
-        JaglanCapabilities caps = new JaglanCapabilities(null, false, null, null, null, null);
+        JaglanCapabilities caps = new JaglanCapabilities(null, false, null, null, null, false, null);
 
         assertThat(caps.access()).isEqualTo(MountAccess.UNKNOWN);
     }
@@ -61,7 +61,7 @@ class JaglanCapabilitiesTest {
         // Zero would read as "empty folder" in the tree; unknown shows no
         // number at all.
         JaglanCapabilities caps = new JaglanCapabilities(
-                MountAccess.RO, false, -1L, null, null, null);
+                MountAccess.RO, false, -1L, null, null, false, null);
 
         assertThat(caps.itemCount()).isNull();
     }
@@ -69,14 +69,14 @@ class JaglanCapabilitiesTest {
     @Test
     void zeroItemCount_isKeptBecauseAnEmptySourceIsAFact() {
         JaglanCapabilities caps = new JaglanCapabilities(
-                MountAccess.RO, false, 0L, null, null, null);
+                MountAccess.RO, false, 0L, null, null, false, null);
 
         assertThat(caps.itemCount()).isZero();
     }
 
     @Test
     void nonPositiveMaxBytes_becomesNoStatedLimit() {
-        assertThat(new JaglanCapabilities(MountAccess.RO, false, null, null, 0L, null).maxBytes())
+        assertThat(new JaglanCapabilities(MountAccess.RO, false, null, null, 0L, false, null).maxBytes())
                 .isNull();
     }
 

@@ -303,6 +303,70 @@ class OdeJaglanProtocolTest {
                 .satisfies(e -> assertThat(((JaglanProtocolException) e).isRefused()).isFalse());
     }
 
+    // ─── parameterised reads ────────────────────────────────────────────
+
+    @Test
+    void capabilities_supportsQueryDefaultsToFalseWhenTheSourceSaysNothing() {
+        client = new RecordingClient();
+        client.jsonBody = "{\"access\":\"READ_ONLY\"}";
+
+        assertThat(instance().capabilities().supportsQuery()).isFalse();
+    }
+
+    @Test
+    void capabilities_supportsQueryIsReadFromTheSource() {
+        client = new RecordingClient();
+        client.jsonBody = "{\"access\":\"READ_ONLY\",\"supportsQuery\":true}";
+
+        assertThat(instance().capabilities().supportsQuery()).isTrue();
+    }
+
+    @Test
+    void open_withQuery_appendsItAfterTheWiresOwnPathParameter() {
+        client = new RecordingClient();
+        client.streamBody = "chart:";
+
+        instance().open("reports/analysis.yaml", "from=2026-01&to=2026-06");
+
+        assertThat(client.lastUrl.toString()).isEqualTo(
+                BASE + "/content?path=reports%2Fanalysis.yaml&from=2026-01&to=2026-06");
+    }
+
+    @Test
+    void open_withQuery_passesItVerbatimRatherThanReEncodingIt() {
+        // The reader already encoded it. Encoding again would turn two
+        // parameters into one opaque value the source cannot read.
+        client = new RecordingClient();
+        client.streamBody = "x";
+
+        instance().open("a.yaml", "q=a%20b&n=1");
+
+        assertThat(client.lastUrl.toString()).endsWith("&q=a%20b&n=1");
+    }
+
+    @Test
+    void open_withoutQuery_leavesTheUrlUnchanged() {
+        client = new RecordingClient();
+        client.streamBody = "x";
+
+        instance().open("a.yaml", null);
+
+        assertThat(client.lastUrl.toString()).isEqualTo(BASE + "/content?path=a.yaml");
+    }
+
+    @Test
+    void open_withQueryDeclaringPath_isRefusedRatherThanShadowingTheDocument() {
+        // This wire carries the document path in a query parameter of that
+        // name. A second `path=` would arrive beside it and the source would
+        // pick one — reading a different file than the one addressed.
+        client = new RecordingClient();
+
+        assertThatThrownBy(() -> instance().open("a.yaml", "path=/etc/passwd&x=1"))
+                .isInstanceOf(JaglanProtocolException.class)
+                .satisfies(e -> assertThat(((JaglanProtocolException) e).isRefused()).isTrue());
+        assertThat(client.streamCalls).isZero();
+    }
+
     // ─── test double ────────────────────────────────────────────────────
 
     private static class RecordingClient implements JaglanHttpClient {

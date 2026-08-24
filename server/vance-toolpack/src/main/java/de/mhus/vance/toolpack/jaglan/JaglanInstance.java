@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 
 import de.mhus.vance.api.mount.MountedStat;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A configured mount, ready to answer. Produced by
@@ -51,6 +52,32 @@ public interface JaglanInstance {
 
     /** Open content for reading. The caller closes the stream. */
     InputStream open(String pathInMount);
+
+    /**
+     * Open a <b>parameterised</b> read: the same path, with a query string
+     * that the source turns into a computed view of it.
+     *
+     * <p>The default <b>refuses</b> any non-empty query rather than dropping
+     * it. That asymmetry is deliberate and is the whole safety property here:
+     * a dropped query returns the unparameterised document, which looks like a
+     * valid answer to a question nobody answered — a chart for the wrong date
+     * range with nothing to indicate it. A refusal is visible.
+     *
+     * <p>An empty query is not a parameterised read and goes to
+     * {@link #open(String)} untouched, so this stays a single code path for
+     * both cases at the caller.
+     *
+     * @param query raw query string without the leading {@code ?}, or null
+     * @throws JaglanProtocolException when this protocol serves no parameters
+     */
+    default InputStream open(String pathInMount, @Nullable String query) {
+        if (query != null && !query.isBlank()) {
+            throw new JaglanProtocolException(mount(),
+                    "mount '" + mount() + "' does not serve parameterised reads, "
+                            + "but a query was given for '" + pathInMount + "'");
+        }
+        return open(pathInMount);
+    }
 
     /**
      * Write content back. Default refuses.

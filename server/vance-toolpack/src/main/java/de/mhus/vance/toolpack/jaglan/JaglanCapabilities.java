@@ -24,6 +24,13 @@ import org.jspecify.annotations.Nullable;
  *                    {@link Duration#ZERO} means <b>do not cache</b>.
  * @param maxBytes    largest content the source will serve, {@code null} for
  *                    no stated limit.
+ * @param supportsQuery the source serves <b>parameterised reads</b>: the same
+ *                    path with a query string is a computed view of it, and
+ *                    the source is prepared to receive that query. Default
+ *                    {@code false} — a plain file store has no parameters, and
+ *                    a query it never asked for must be refused rather than
+ *                    dropped, or the reader silently gets the unparameterised
+ *                    document while believing they asked for a slice of it.
  * @param displayName label for configuration UI and logs.
  */
 public record JaglanCapabilities(
@@ -32,6 +39,7 @@ public record JaglanCapabilities(
         @Nullable Long itemCount,
         Duration metadataTtl,
         @Nullable Long maxBytes,
+        boolean supportsQuery,
         @Nullable String displayName) {
 
     /** Applied when a source states no TTL at all. */
@@ -66,15 +74,15 @@ public record JaglanCapabilities(
         }
     }
 
-    /** Read-write, no search, unknown size, default TTL. */
+    /** Read-write, no search, unknown size, default TTL, no query support. */
     public static JaglanCapabilities readWrite() {
         return new JaglanCapabilities(
-                MountAccess.RW, false, null, DEFAULT_TTL, null, null);
+                MountAccess.RW, false, null, DEFAULT_TTL, null, false, null);
     }
 
-    /** Read-only, no search, unknown size, default TTL. */
+    /** Read-only, no search, unknown size, default TTL, no query support. */
     public static JaglanCapabilities readOnly() {
         return new JaglanCapabilities(
-                MountAccess.RO, false, null, DEFAULT_TTL, null, null);
+                MountAccess.RO, false, null, DEFAULT_TTL, null, false, null);
     }
 }

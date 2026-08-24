@@ -128,15 +128,53 @@ public class JaglanService implements JaglanPort {
 
     @Override
     public InputStream open(
-            String tenantId, String projectId, String mount, String pathInMount) {
+            String tenantId, String projectId, String mount, String pathInMount,
+            @Nullable String query) {
         JaglanInstance instance = require(tenantId, projectId, mount);
+        boolean parameterised = query != null && !query.isBlank();
+        if (parameterised) {
+            requireQuerySupport(tenantId, projectId, mount, instance, pathInMount);
+        }
         try {
-            InputStream stream = instance.open(pathInMount);
-            metrics.counter("vance.jaglan.open", "outcome", "success").increment();
+            InputStream stream = parameterised
+                    ? instance.open(pathInMount, query)
+                    : instance.open(pathInMount);
+            metrics.counter("vance.jaglan.open",
+                    "outcome", "success", "mode", parameterised ? "query" : "plain").increment();
             return stream;
         } catch (RuntimeException e) {
-            metrics.counter("vance.jaglan.open", "outcome", "failed").increment();
+            metrics.counter("vance.jaglan.open",
+                    "outcome", "failed", "mode", parameterised ? "query" : "plain").increment();
             throw translate(mount, "open", e);
+        }
+    }
+
+    /**
+     * Refuse a parameterised read against a mount that did not declare it.
+     *
+     * <p>Checked here rather than only in the SPI default because this is the
+     * layer that holds the declaration, and because the message a human sees
+     * should name the mount and the missing capability instead of coming out
+     * of a protocol that was handed something it never expected.
+     *
+     * <p>The declaration is <b>fetched</b> if it is not cached — the same
+     * trade-off {@code stat} and {@code search} already make. Deciding from a
+     * cold cache would produce the worst answer available: "this mount serves
+     * no parameters" about one that does, right after a restart.
+     */
+    private void requireQuerySupport(
+            String tenantId, String projectId, String mount, JaglanInstance instance,
+            String pathInMount) {
+        JaglanCapabilities caps = capabilities.warm(tenantId, projectId, instance);
+        if (caps == null) {
+            throw new JaglanUnavailableException(mount,
+                    "mount '" + mount + "' did not answer, so it is unknown whether it serves "
+                            + "the parameterised read of '" + pathInMount + "'");
+        }
+        if (!caps.supportsQuery()) {
+            throw new JaglanAccessException(mount,
+                    "mount '" + mount + "' does not serve parameterised reads — "
+                            + "'" + pathInMount + "' can only be read without a query");
         }
     }
 

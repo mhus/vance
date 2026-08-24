@@ -80,6 +80,10 @@ public class LocalFileJaglanInstance implements JaglanInstance {
                 /* itemCount */ null,
                 metadataTtl,
                 /* maxBytes */ null,
+                // A directory has no parameters. There is nothing a query
+                // could mean here, so it is refused rather than ignored —
+                // the SPI default on JaglanInstance does that.
+                /* supportsQuery */ false,
                 displayName);
     }
 

@@ -77,7 +77,8 @@ class DocumentServiceMountKindTest {
     }
 
     private void sourceServes(String body) {
-        when(port.open(anyString(), anyString(), anyString(), anyString()))
+        when(port.open(anyString(), anyString(), anyString(), anyString(),
+                org.mockito.ArgumentMatchers.isNull()))
                 .thenReturn(new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)));
     }
 

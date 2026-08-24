@@ -102,6 +102,27 @@ public class BistromathViewService {
     }
 
     /**
+     * Parse one view named by its own path, with no app around it.
+     *
+     * <p>For a view document opened on its own in the Cortex. The handle-based
+     * call above needs an app folder to resolve `landing:` and to check that a
+     * `navigate:` target exists; here there is no app, so those notes cannot be
+     * produced — a view is a document first and a member of an app second.
+     */
+    public RenderedView viewByPath(String tenantId, String projectId, String path) {
+        ViewRef ref = new ViewRef(handleOf(path), path, null);
+        ViewNode root = store.readView(tenantId, projectId, ref);
+        return new RenderedView(ref.handle(), root.label(), root, List.of());
+    }
+
+    /** File name without its extension — the same handle rule the scan uses. */
+    private static String handleOf(String path) {
+        String leaf = leaf(path);
+        int dot = leaf.lastIndexOf('.');
+        return dot > 0 ? leaf.substring(0, dot) : leaf;
+    }
+
+    /**
      * Problems that do not stop the page.
      *
      * <p>A view document that cannot be parsed never becomes a

@@ -4,6 +4,7 @@ import de.mhus.vance.brain.applications.VanceApplication.RefreshContext;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.toolpack.ToolException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -53,13 +54,28 @@ public class BistromathAppController {
         return viewService.scan(tenant, projectId, folder);
     }
 
+    /**
+     * One view, named either by its app and handle or by its own path.
+     *
+     * <p>Two ways into one route rather than a fourth route: it is the same
+     * question — "give me this view, parsed" — asked from the app, where a view
+     * has a handle, and from the Cortex, where a document has a path.
+     */
     @GetMapping("/brain/{tenant}/addon/bistromath/view")
     public RenderedView view(@PathVariable String tenant,
                              @RequestParam String projectId,
-                             @RequestParam String folder,
+                             @RequestParam(required = false) @Nullable String folder,
                              @RequestParam(required = false) @Nullable String handle,
+                             @RequestParam(required = false) @Nullable String path,
                              HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
+        if (path != null && !path.isBlank()) {
+            return viewService.viewByPath(tenant, projectId, path.trim());
+        }
+        if (folder == null || folder.isBlank()) {
+            throw new ToolException("Name the view: either `folder` (and optionally `handle`)"
+                    + " or `path`.");
+        }
         return viewService.view(tenant, projectId, folder, handle);
     }
 

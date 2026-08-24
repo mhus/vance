@@ -117,5 +117,14 @@ the renderer decides *how*.
 
 ## After editing
 
-`app_rebuild(folder=…)` re-reads every view and names what does not parse.
-Nothing else validates a view document.
+Editing an **existing** view takes effect on its own — the app watches its own
+folder and reloads when one of its own documents changes.
+
+`app_rebuild(folder=…)` is for the case that watching cannot cover: a
+**newly added** view, which no scan knows about yet. It re-reads every view and
+names what does not parse.
+
+A view document on its own is also checked by `kind_validate` — the kind
+`app-view` is registered, so the parser runs without an app around it. Opening
+one in the Cortex shows a **preview** against empty state: the real widgets,
+drawn by the real renderer, with no program running.

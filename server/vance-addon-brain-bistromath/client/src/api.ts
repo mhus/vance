@@ -41,6 +41,18 @@ export async function loadView(
   return brainFetch<RenderedView>('GET', `addon/bistromath/view?${qs(params)}`);
 }
 
+/**
+ * One view by its own path — for a view document opened outside its app.
+ *
+ * <p>Same route as {@link loadView}, named differently: from the app a view has
+ * a handle, from the Cortex a document has a path. The parsing is the server's
+ * either way, which is the point — a second parser in the browser would be a
+ * second definition of a valid view.
+ */
+export async function loadViewByPath(projectId: string, path: string): Promise<RenderedView> {
+  return brainFetch<RenderedView>('GET', `addon/bistromath/view?${qs({ projectId, path })}`);
+}
+
 export async function rebuildApp(projectId: string, folder: string): Promise<AppScan> {
   return brainFetch<AppScan>('POST', `addon/bistromath/rebuild?${qs({ projectId, folder })}`);
 }

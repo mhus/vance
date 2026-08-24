@@ -1,25 +1,12 @@
+import { IframeTransport, type GuestTransport } from './sandboxTransport';
+
 /**
- * The sandbox: a long-running program in a null-origin iframe.
+ * The sandbox: a long-running program, and the protocol that talks to it.
  *
- * ## Why an iframe and not QuickJS
- *
- * The spec argued QuickJS-WASM in a worker. This is an `<iframe
- * sandbox="allow-scripts">` with `srcdoc`, which gets an **opaque origin**: no
- * `localStorage` (access throws), no cookies, no access to the parent DOM, and
- * no `fetch` carrying our session. The security claim of the spec is unchanged
- * — the program does not run in the page realm — and at this one point it is
- * stronger, because the boundary is the browser's rather than a heap of ours.
- *
- * What it bought: no 1 MB WASM asset to resolve from a federated bundle, no
- * handle marshalling and `dispose()` discipline for every value, and timers
- * that die with the frame instead of needing a host-side registry.
- *
- * What it costs: **no way to interrupt a busy loop.** QuickJS has fuel; an
- * iframe has none. The stand-in is the watchdog below, and it fires on
- * **silence**, not on elapsed time: every host call re-arms it, so a slow
- * document read is the host's time and not held against the program.
- *
- * The swap stays cheap: no app document knows which engine ran it.
+ * <p>Where the program actually runs is {@link GuestTransport}'s business —
+ * today a null-origin iframe, later possibly QuickJS. Everything here is
+ * engine-agnostic: the message protocol, the call queue, the watchdog, and the
+ * three lifecycle hooks.
  *
  * ## Lifetime
  *
@@ -27,6 +14,13 @@
  * state in the program survives clicks, because this is one program that keeps
  * running — not one invocation per event. Guest calls are serialised, so no
  * handler starts before `init()` has finished.
+ *
+ * ## The watchdog
+ *
+ * An iframe cannot be interrupted the way QuickJS can be starved of fuel, so a
+ * runaway loop is caught by silence rather than by elapsed time: every host
+ * call re-arms the timer. Time spent waiting for a document read is the host's
+ * and is not held against the program.
  */
 
 /** What the host lets the guest do. Everything else is unreachable. */
@@ -49,6 +43,10 @@ export interface SandboxOptions {
   onError: (message: string) => void;
   /** Watchdog window per call. */
   timeoutMs?: number;
+  /** How long teardown waits for work already in flight. */
+  drainMs?: number;
+  /** Where the program runs. Defaults to a null-origin iframe. */
+  transport?: GuestTransport;
 }
 
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -60,7 +58,7 @@ const DEFAULT_TIMEOUT_MS = 5000;
  * lets it land instead of being cut mid-write; anything slower is not worth
  * delaying a teardown the reader has already walked away from.
  */
-const DRAIN_MS = 1500;
+const DEFAULT_DRAIN_MS = 1500;
 
 /**
  * The functions the runtime calls **if the program defines them**.
@@ -71,98 +69,24 @@ const DRAIN_MS = 1500;
  * "no function named …", which is a string comparison standing in for a fact
  * the guest can simply be asked.
  */
-const HOOKS = ['init', 'shutdown', 'onBeforeUnload'] as const;
-
-/**
- * The guest bootstrap. Fixed text, so the program source never has to be
- * HTML-escaped into `srcdoc` — it arrives afterwards by message.
- *
- * Two details are load-bearing. `(0, eval)` is *indirect* eval, which runs in
- * global scope: a top-level `function hello()` in the program therefore becomes
- * reachable by name, which is what lets a view say `main.js:hello` without the
- * program exporting anything. And every host call is a promise resolved by
- * message id, because everything across this boundary is async.
- */
-const BOOTSTRAP = `<!doctype html><meta charset="utf-8"><script>
-(function () {
-  var pending = {}, nextId = 1;
-  function call(method, args) {
-    return new Promise(function (resolve, reject) {
-      var id = 'c' + (nextId++);
-      pending[id] = { resolve: resolve, reject: reject };
-      parent.postMessage({ t: 'call', id: id, method: method, args: args }, '*');
-    });
-  }
-  window.vance = {
-    state: { set: function (k, v) { return call('state.set', [k, v]); } },
-    documents: {
-      list: function (p) { return call('documents.list', [p]); },
-      read: function (p) { return call('documents.read', [p]); }
-    },
-    ui: {
-      notify: function (t, s) { return call('ui.notify', [t, s]); },
-      show: function (h) { return call('ui.show', [h]); }
-    }
-  };
-  function reply(id, error, value) {
-    parent.postMessage({ t: 'done', id: id, error: error || null, value: value }, '*');
-  }
-  function settle(id, result) {
-    if (result && typeof result.then === 'function') {
-      result.then(function (v) { reply(id, null, v); }, function (e) { reply(id, String(e)); });
-    } else {
-      reply(id, null, result);
-    }
-  }
-  window.addEventListener('message', function (ev) {
-    if (ev.source !== parent) return;
-    var m = ev.data;
-    if (!m || typeof m !== 'object') return;
-    if (m.t === 'result') {
-      var p = pending[m.id];
-      if (!p) return;
-      delete pending[m.id];
-      if (m.ok) p.resolve(m.value); else p.reject(new Error(m.message));
-      return;
-    }
-    if (m.t === 'eval') {
-      try { (0, eval)(m.code); reply(m.id); }
-      catch (e) { reply(m.id, String(e)); }
-      return;
-    }
-    if (m.t === 'has') {
-      var out = {};
-      for (var i = 0; i < m.names.length; i++) {
-        out[m.names[i]] = typeof window[m.names[i]] === 'function';
-      }
-      reply(m.id, null, out);
-      return;
-    }
-    if (m.t === 'invoke') {
-      var fn = window[m.fn];
-      if (typeof fn !== 'function') { reply(m.id, 'no function named ' + m.fn); return; }
-      try { settle(m.id, fn()); }
-      catch (e) { reply(m.id, String(e)); }
-      return;
-    }
-  });
-  parent.postMessage({ t: 'ready' }, '*');
-})();
-<\/script>`;
+export const HOOKS = ['init', 'shutdown', 'onBeforeUnload'] as const;
 
 interface Waiter {
   resolve: (value: unknown) => void;
   reject: (e: Error) => void;
-  timer: number;
+  timer: ReturnType<typeof setTimeout>;
   /** Re-armed whenever the guest shows a sign of life. */
   rearm: () => void;
 }
 
 export class Sandbox {
-  private frame: HTMLIFrameElement | null = null;
-  private readonly waiters = new Map<string, Waiter>();
   private readonly opts: SandboxOptions;
   private readonly timeoutMs: number;
+  private readonly drainMs: number;
+  private readonly transport: GuestTransport;
+  private readonly waiters = new Map<string, Waiter>();
+
+  private started = false;
   private ready: Promise<void> | null = null;
   private markReady: (() => void) | null = null;
   private seq = 0;
@@ -193,22 +117,34 @@ export class Sandbox {
    */
   private queue: Promise<unknown> = Promise.resolve();
 
-  private readonly onMessage: (ev: MessageEvent) => void;
+  /**
+   * Host calls the guest is currently waiting on.
+   *
+   * <p>The watchdog must not fire while this is non-zero. Re-arming when a call
+   * *arrives* and when its answer *goes out* is not enough: between those two
+   * moments the host is doing the work, and a document read against a slow
+   * source produces exactly that silence. The first version of this fix did
+   * only the two re-arms and still tore a reading program down — found by the
+   * test, not by a browser.
+   */
+  private outstandingHostCalls = 0;
+
   private readonly onPageHide: () => void;
   private readonly onBeforeUnload: (e: BeforeUnloadEvent) => void;
 
   constructor(opts: SandboxOptions) {
     this.opts = opts;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    this.onMessage = (ev) => this.handle(ev);
+    this.drainMs = opts.drainMs ?? DEFAULT_DRAIN_MS;
+    this.transport = opts.transport ?? new IframeTransport();
 
     // The page going away is the case nothing else covers: no Vue hook runs and
-    // the frame dies with the document. Best effort and it cannot be more — the
+    // the guest dies with the document. Best effort and it cannot be more — the
     // browser will not wait for a promise here, so a synchronous `shutdown` may
     // run and an async one will not finish.
     this.onPageHide = () => {
       if (!this.hooks.has('shutdown')) return;
-      this.frame?.contentWindow?.postMessage({ t: 'invoke', id: 'unload', fn: 'shutdown' }, '*');
+      this.transport.post({ t: 'invoke', id: 'unload', fn: 'shutdown' });
     };
 
     // The browser shows its own generic wording and nothing else; a custom text
@@ -222,7 +158,7 @@ export class Sandbox {
   }
 
   get alive(): boolean {
-    return this.frame !== null && !this.disposing;
+    return this.started && !this.disposing;
   }
 
   /** Whether the program defines this hook. */
@@ -236,47 +172,50 @@ export class Sandbox {
   }
 
   /**
-   * Create the frame, evaluate the program, ask which hooks it has, run
+   * Bring the guest up, evaluate the program, ask which hooks it has, run
    * `init()` if it has one.
    */
   async start(programSource: string | null, sourceName?: string): Promise<void> {
-    if (this.frame) throw new Error('sandbox already started');
+    if (this.started) throw new Error('sandbox already started');
+    this.started = true;
     this.ready = new Promise<void>((resolve) => {
       this.markReady = resolve;
     });
 
-    const frame = document.createElement('iframe');
-    // No `allow-same-origin`: that is what makes the origin opaque, and with it
-    // localStorage, cookies and the parent DOM unreachable. Adding it would
-    // quietly turn this into "eval in the page realm with extra steps".
-    frame.setAttribute('sandbox', 'allow-scripts');
-    frame.setAttribute('aria-hidden', 'true');
-    frame.style.display = 'none';
-    frame.srcdoc = BOOTSTRAP;
-    window.addEventListener('message', this.onMessage);
-    window.addEventListener('pagehide', this.onPageHide);
-    window.addEventListener('beforeunload', this.onBeforeUnload);
-    document.body.appendChild(frame);
-    this.frame = frame;
-
-    await this.ready;
-    if (!programSource || !programSource.trim()) return;
-
-    // A sourceURL makes the browser name the document in syntax errors and
-    // stack traces. Without it every message says "<anonymous>", and the one
-    // thing an author needs from an error is which file and which line.
-    const code = sourceName ? `${programSource}\n//# sourceURL=${sourceName}` : programSource;
-    await this.enqueue(() => this.send('eval', { code }));
-
-    const found = await this.enqueue(() =>
-      this.send<Record<string, boolean>>('has', { names: [...HOOKS] }),
-    );
-    for (const [name, present] of Object.entries(found ?? {})) {
-      if (present) this.hooks.add(name);
+    this.transport.start((message) => this.handle(message));
+    // Guarded: a non-browser host has no page lifecycle, and the sandbox is
+    // otherwise environment-agnostic above the transport.
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pagehide', this.onPageHide);
+      window.addEventListener('beforeunload', this.onBeforeUnload);
     }
 
-    if (this.hooks.has('init')) await this.invoke('init');
-    else await this.enqueue(() => this.refreshLeaveGuard());
+    // The whole startup claims its place in the queue **synchronously**, before
+    // this method yields. Awaiting first and enqueuing afterwards left a gap:
+    // a click landing in it queued ahead of the evaluation and would have been
+    // sent to a guest that had not seen the program yet. Everything below runs
+    // inside one slot, so it uses `send` directly — re-entering the queue from
+    // within it would deadlock.
+    return this.enqueue(async () => {
+      await this.ready;
+      if (!programSource || !programSource.trim()) return;
+
+      // A sourceURL makes the browser name the document in syntax errors and
+      // stack traces. Without it every message says "<anonymous>", and the one
+      // thing an author needs from an error is which file and which line.
+      const code = sourceName
+        ? `${programSource}\n//# sourceURL=${sourceName}`
+        : programSource;
+      await this.send('eval', { code });
+
+      const found = await this.send<Record<string, boolean>>('has', { names: [...HOOKS] });
+      for (const [name, present] of Object.entries(found ?? {})) {
+        if (present) this.hooks.add(name);
+      }
+
+      if (this.hooks.has('init')) await this.send('invoke', { fn: 'init' });
+      await this.refreshLeaveGuard();
+    });
   }
 
   /**
@@ -298,6 +237,49 @@ export class Sandbox {
       await this.refreshLeaveGuard();
     });
   }
+
+  /**
+   * Run `shutdown()` if there is one, then take the guest down.
+   *
+   * <p>Work already in flight gets {@link drainMs} to land — cutting a handler
+   * off mid-write is what this avoids; waiting on a hung one is what it must
+   * not do. The guest goes either way: it has a window, not a veto.
+   *
+   * <p>`shutdown` may not run at all (a closed browser tab never gets here), so
+   * a program must not keep the only copy of anything until then.
+   */
+  async dispose(): Promise<void> {
+    if (this.disposing) return;
+    this.disposing = true;
+    if (this.started) {
+      await Promise.race([
+        this.queue.catch(() => undefined),
+        new Promise((r) => setTimeout(r, this.drainMs)),
+      ]);
+      if (this.hooks.has('shutdown')) {
+        try {
+          // Sent directly, not through the queue: the queue is closed by now,
+          // and shutdown carries its own watchdog window.
+          await this.send('invoke', { fn: 'shutdown' });
+        } catch {
+          // Throwing or timed out — both mean the same at this point.
+        }
+      }
+    }
+    this.disposed = true;
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('pagehide', this.onPageHide);
+      window.removeEventListener('beforeunload', this.onBeforeUnload);
+    }
+    for (const [, w] of this.waiters) {
+      clearTimeout(w.timer);
+      w.reject(new Error('sandbox disposed'));
+    }
+    this.waiters.clear();
+    this.transport.dispose();
+  }
+
+  // ── protocol ─────────────────────────────────────────────────────
 
   /**
    * Re-ask the program whether leaving would lose something.
@@ -331,56 +313,13 @@ export class Sandbox {
     return run;
   }
 
-  /**
-   * Run `shutdown()` if there is one, then tear the frame down.
-   *
-   * <p>Work already in flight gets {@link DRAIN_MS} to land — cutting a handler
-   * off mid-write is what this avoids; waiting on a hung one is what it must
-   * not do. The frame goes either way: it has a window, not a veto.
-   *
-   * <p>`shutdown` may not run at all (a closed browser tab never gets here), so
-   * a program must not keep the only copy of anything until then.
-   */
-  async dispose(): Promise<void> {
-    if (this.disposing) return;
-    this.disposing = true;
-    if (this.frame) {
-      await Promise.race([
-        this.queue.catch(() => undefined),
-        new Promise((r) => window.setTimeout(r, DRAIN_MS)),
-      ]);
-      if (this.hooks.has('shutdown')) {
-        try {
-          // Sent directly, not through the queue: the queue is closed by now,
-          // and shutdown carries its own watchdog window.
-          await this.send('invoke', { fn: 'shutdown' });
-        } catch {
-          // Throwing or timed out — both mean the same at this point.
-        }
-      }
-    }
-    this.disposed = true;
-    window.removeEventListener('message', this.onMessage);
-    window.removeEventListener('pagehide', this.onPageHide);
-    window.removeEventListener('beforeunload', this.onBeforeUnload);
-    for (const [, w] of this.waiters) {
-      window.clearTimeout(w.timer);
-      w.reject(new Error('sandbox disposed'));
-    }
-    this.waiters.clear();
-    // Removing the frame takes its timers, listeners and heap with it.
-    this.frame?.remove();
-    this.frame = null;
-  }
-
-  // ── plumbing ─────────────────────────────────────────────────────
-
   private send<T = void>(
     t: 'eval' | 'invoke' | 'has',
     payload: Record<string, unknown>,
   ): Promise<T> {
-    const frame = this.frame;
-    if (!frame || this.disposed) return Promise.reject(new Error('sandbox is not running'));
+    if (!this.started || this.disposed) {
+      return Promise.reject(new Error('sandbox is not running'));
+    }
     const id = `h${++this.seq}`;
     return new Promise<T>((resolve, reject) => {
       // The watchdog fires only on *silence*. It is re-armed every time the
@@ -391,6 +330,11 @@ export class Sandbox {
       // and is never caught. Deliberate: it is making progress through the
       // bridge, so it is busy rather than hung.
       const fire = () => {
+        // Silence while the host is working is the host's silence.
+        if (this.outstandingHostCalls > 0) {
+          waiter.rearm();
+          return;
+        }
         this.waiters.delete(id);
         this.opts.onError(
           'The program stopped responding and was stopped. Reload to run it again.',
@@ -401,23 +345,20 @@ export class Sandbox {
       const waiter: Waiter = {
         resolve: resolve as (value: unknown) => void,
         reject,
-        timer: window.setTimeout(fire, this.timeoutMs),
+        timer: setTimeout(fire, this.timeoutMs),
         rearm: () => {},
       };
       waiter.rearm = () => {
-        window.clearTimeout(waiter.timer);
-        waiter.timer = window.setTimeout(fire, this.timeoutMs);
+        clearTimeout(waiter.timer);
+        waiter.timer = setTimeout(fire, this.timeoutMs);
       };
       this.waiters.set(id, waiter);
-      frame.contentWindow?.postMessage({ t, id, ...payload }, '*');
+      this.transport.post({ t, id, ...payload });
     });
   }
 
-  private handle(ev: MessageEvent): void {
-    // Identity by window, not by origin: a null-origin frame reports "null",
-    // which any other sandboxed frame on the page would report too.
-    if (!this.frame || ev.source !== this.frame.contentWindow) return;
-    const m = ev.data as Record<string, unknown> | null;
+  private handle(raw: unknown): void {
+    const m = raw as Record<string, unknown> | null;
     if (!m || typeof m !== 'object') return;
 
     if (m.t === 'ready') {
@@ -430,7 +371,7 @@ export class Sandbox {
       const w = this.waiters.get(id);
       if (!w) return;
       this.waiters.delete(id);
-      window.clearTimeout(w.timer);
+      clearTimeout(w.timer);
       if (m.error) w.reject(new Error(String(m.error)));
       else w.resolve(m.value);
       return;
@@ -439,17 +380,22 @@ export class Sandbox {
     if (m.t === 'call') {
       // A sign of life: the program is running, not spinning.
       for (const [, w] of this.waiters) w.rearm();
+      this.outstandingHostCalls++;
       void this.serve(String(m.id), String(m.method), Array.isArray(m.args) ? m.args : []);
     }
   }
 
   /** Answer one host call. Every rejection travels as a message, never as a throw. */
   private async serve(id: string, method: string, args: unknown[]): Promise<void> {
+    let answered = false;
     const post = (ok: boolean, value?: unknown, message?: string) => {
+      if (answered) return;
+      answered = true;
+      this.outstandingHostCalls--;
       // Re-arm on the way back too: the guest resumes here, so the clock on the
       // pending invoke should start from now rather than from before the read.
       for (const [, w] of this.waiters) w.rearm();
-      this.frame?.contentWindow?.postMessage({ t: 'result', id, ok, value, message }, '*');
+      this.transport.post({ t: 'result', id, ok, value, message });
     };
     try {
       const host = this.opts.host;

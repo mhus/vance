@@ -13,6 +13,7 @@ import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.trillian.nature.SelfCheckFinding;
 import de.mhus.vance.brain.trillian.nature.TrillianNature;
 import de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry;
+import de.mhus.vance.shared.megadodo.MegadodoService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -53,6 +54,8 @@ class TrillianHeartbeatTickTest {
     TrillianNatureRegistry natureRegistry;
     @Mock
     TrillianNature nature;
+    @Mock
+    MegadodoService megadodoService;
 
     TrillianHeartbeatTick tick;
 
@@ -64,7 +67,7 @@ class TrillianHeartbeatTickTest {
         when(natureRegistry.resolve(any())).thenReturn(nature);
         tick = new TrillianHeartbeatTick(
                 projectService, clusterService, thinkProcessService,
-                wakeupService, eventEmitter, natureRegistry);
+                wakeupService, eventEmitter, natureRegistry, megadodoService);
     }
 
     @Test
@@ -123,6 +126,39 @@ class TrillianHeartbeatTickTest {
 
         verify(eventEmitter, never()).scheduleTurn(anyString());
         verify(nature, never()).selfCheckDelivered(any(), any());
+        // Nothing woke, so nothing is worth a feed row either.
+        verify(megadodoService, never())
+                .trillianWokeUp(anyString(), anyString(), anyString(), any(), anyString(), any());
+    }
+
+    @Test
+    void aWakeup_landsInTheFeedWithItsReasons() {
+        // Why a Trillian started working at four in the morning is only
+        // answerable afterwards if the reason was written down: the ladder
+        // leaves no trace, and the self-check command is consumed by the
+        // turn it triggers.
+        givenDueLoop();
+        when(nature.selfCheckFindings(any())).thenReturn(List.of(finding()));
+        when(thinkProcessService.appendPending(eq(LOOP), any())).thenReturn(true);
+
+        tick.tick();
+
+        verify(megadodoService).trillianWokeUp(
+                eq("acme"), eq("proj"), eq(LOOP), eq("_trillian-void-1535"), anyString(),
+                eq(List.of("[worker_waiting] ask-worker: parked since 20 minutes")));
+    }
+
+    @Test
+    void aQuietRound_writesNoFeedRow() {
+        // The common round, hourly, per loop, forever. A row for it would
+        // bury the ones that mean something.
+        givenDueLoop();
+        when(nature.selfCheckFindings(any())).thenReturn(List.of());
+
+        tick.tick();
+
+        verify(megadodoService, never())
+                .trillianWokeUp(anyString(), anyString(), anyString(), any(), anyString(), any());
     }
 
     @Test
@@ -150,6 +186,8 @@ class TrillianHeartbeatTickTest {
         loop.setTenantId("acme");
         loop.setProjectId("proj");
         loop.setStatus(status);
+        loop.getEngineParams().put(
+                TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME, "_trillian-void-1535");
         when(wakeupService.loopsOf(eq("acme"), eq("proj"), org.mockito.ArgumentMatchers.anyInt()))
                 .thenReturn(List.of(loop));
     }

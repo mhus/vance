@@ -121,6 +121,11 @@ public class TrillianUserEngine implements ThinkEngine {
         base.add("recipe_describe");
         base.add("how_do_i");
         base.add("vance_notify");
+        // No thread_* tools here. An inbox life follows from being woken by
+        // unread threads, and that is a *Nature's* behaviour — adam has it,
+        // void does not. Giving the whole engine the family would hand void
+        // an inbox it is never told about. The tools come in through
+        // trillian-user-adam.yaml.
         // Project visibility (read-only). Note: doc_*-tools are NOT
         // listed — they hardcode ctx.projectId() and silently ignore a
         // projectId parameter the LLM might pass. Trillian-User must

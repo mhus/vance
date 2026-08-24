@@ -6,6 +6,8 @@ import de.mhus.vance.brain.trillian.TrillianAttributeStore;
 import de.mhus.vance.brain.trillian.TrillianJournalStore;
 import de.mhus.vance.brain.trillian.TrillianSessionBootstrapper;
 import de.mhus.vance.brain.trillian.tools.TrillianAskTool;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.List;
@@ -79,6 +81,13 @@ public class TrillianNatureAdam extends TrillianNatureBase {
      */
     static final java.time.Duration ASK_PROBE_COOLDOWN = java.time.Duration.ofHours(2);
 
+    /**
+     * How many unread threads one self-check reports. A backlog is one
+     * reason to wake, not forty; and since reported threads are marked
+     * read, the next round picks up where this one stopped.
+     */
+    static final int MAX_UNREAD_PER_CHECK = 5;
+
     /** A RUNNING worker quieter than this is worth a look. */
     private static final java.time.Duration SILENT_AFTER = java.time.Duration.ofMinutes(45);
 
@@ -104,18 +113,21 @@ public class TrillianNatureAdam extends TrillianNatureBase {
     private final TrillianJournalStore journalStore;
     private final LightLlmService lightLlm;
     private final TrillianCharacterCatalog characterCatalog;
+    private final MaximegalonService maximegalonService;
 
     public TrillianNatureAdam(
             ThinkProcessService thinkProcessService,
             TrillianAttributeStore attributeStore,
             TrillianJournalStore journalStore,
             LightLlmService lightLlm,
-            TrillianCharacterCatalog characterCatalog) {
+            TrillianCharacterCatalog characterCatalog,
+            MaximegalonService maximegalonService) {
         super(thinkProcessService);
         this.attributeStore = attributeStore;
         this.journalStore = journalStore;
         this.lightLlm = lightLlm;
         this.characterCatalog = characterCatalog;
+        this.maximegalonService = maximegalonService;
     }
 
     @Override
@@ -328,14 +340,14 @@ public class TrillianNatureAdam extends TrillianNatureBase {
      * resolve itself.
      *
      * <p>Derived, not remembered: every finding here comes from a process
-     * status, so nothing depends on the Trillian having written something
-     * down at the right moment. What it cannot see — a promise made in
-     * conversation, "I'll come back to this on Friday" — needs a written
-     * list, which is a separate matter.
+     * status or from a row somebody else wrote, so nothing depends on the
+     * Trillian having noted something down at the right moment. What it
+     * cannot see — a promise made in conversation, "I'll come back to this
+     * on Friday" — needs a written list, which is a separate matter.
      */
     @Override
     public List<SelfCheckFinding> selfCheckFindings(ThinkProcessDocument loop) {
-        List<SelfCheckFinding> findings = new java.util.ArrayList<>();
+        List<SelfCheckFinding> findings = new java.util.ArrayList<>(unreadInboxFindings(loop));
         Instant now = Instant.now();
         for (ThinkProcessDocument worker : thinkProcessService.findByParentProcessId(loop.getId())) {
             switch (worker.getStatus()) {
@@ -359,6 +371,64 @@ public class TrillianNatureAdam extends TrillianNatureBase {
     }
 
     /**
+     * Inbox threads the Trillian has not seen yet.
+     *
+     * <p>The first finding whose subject is not a process. It is also the
+     * only one somebody writes <em>at</em> the Trillian: a worker parks
+     * itself, but a thread lands because a person or an agent put it there,
+     * and nothing else in this loop would ever notice. Without it a
+     * Trillian is reachable only through Control's chat — which is exactly
+     * the channel a human uses when they are sitting in front of it, and
+     * not the one they use when they are not.
+     *
+     * <p><b>Capped.</b> A backlog of forty threads is not forty reasons to
+     * wake — it is one, reported {@value #MAX_UNREAD_PER_CHECK} at a time.
+     * The cap does not lose anything: what is reported is marked read at
+     * delivery, so the next round surfaces the next batch, oldest first.
+     *
+     * <p>Read-state failures leave the finding out rather than the whole
+     * self-check: a Trillian whose inbox lookup fails should still hear
+     * about its stuck workers.
+     */
+    private List<SelfCheckFinding> unreadInboxFindings(ThinkProcessDocument loop) {
+        String account = accountOf(loop);
+        if (account == null) return List.of();
+        List<SelfCheckFinding> findings = new java.util.ArrayList<>();
+        try {
+            for (MaximegalonDocument thread : maximegalonService.listUnreadForUser(
+                    loop.getTenantId(), account, MAX_UNREAD_PER_CHECK)) {
+                findings.add(new SelfCheckFinding(
+                        SelfCheckFinding.Kind.INBOX_UNREAD,
+                        String.valueOf(thread.getId()),
+                        String.valueOf(thread.getId()),
+                        unreadDetail(thread)));
+            }
+        } catch (RuntimeException e) {
+            log.warn("Trillian adam: unread inbox lookup for '{}' failed: {}",
+                    account, e.toString());
+            return List.of();
+        }
+        return findings;
+    }
+
+    /**
+     * The one line the loop gets about a thread: enough to decide whether
+     * to open it, not enough to answer from.
+     *
+     * <p>Deliberately not the body. The listing projects the discussion out
+     * — the excerpt of an excerpt would be the worst of both, long enough
+     * to cost tokens on every quiet round and short enough that the loop
+     * would answer from a fragment. It gets the handle and reads the thread
+     * if it cares.
+     */
+    private static String unreadDetail(MaximegalonDocument thread) {
+        return "unread " + thread.getType() + " from '" + thread.getOriginatorUserId() + "': \""
+                + thread.getTitle() + "\""
+                + (thread.isRequiresAction() ? " — waits on an answer" : "")
+                + " (read it with thread_get)";
+    }
+
+    /**
      * The loop has been handed these findings — now write down what
      * reporting them costs.
      *
@@ -373,13 +443,31 @@ public class TrillianNatureAdam extends TrillianNatureBase {
      * <p>Per finding, and each guarded: a worker that has since gone away,
      * or a write that fails, must not cost the loop the rest of its
      * self-check.
+     *
+     * <p><b>For {@link SelfCheckFinding.Kind#INBOX_UNREAD} the effect is
+     * not bookkeeping, it is the termination condition.</b> An unread
+     * thread stays unread until somebody marks it, so a self-check that
+     * only reported it would produce the identical finding on the next
+     * round, and the one after that — a Trillian woken forever by the same
+     * message. Marking it here, in code, is what makes the wakeup
+     * one-shot; leaving it to the model would mean a forgotten tool call
+     * turns into an endless loop.
+     *
+     * <p>It sits here and not in the gathering for the reason the whole
+     * hook exists: a due tick that ends in no wakeup must not have marked
+     * anything read. The thread would then be silently swallowed — the one
+     * failure mode worse than repeating.
      */
     @Override
     public void selfCheckDelivered(ThinkProcessDocument loop, List<SelfCheckFinding> findings) {
         Instant now = Instant.now();
         for (SelfCheckFinding finding : findings) {
+            if (finding.kind() == SelfCheckFinding.Kind.INBOX_UNREAD) {
+                markThreadRead(loop, finding.subjectId());
+                continue;
+            }
             ThinkProcessDocument worker =
-                    thinkProcessService.findById(finding.processId()).orElse(null);
+                    thinkProcessService.findById(finding.subjectId()).orElse(null);
             if (worker == null) continue;
             try {
                 switch (finding.kind()) {
@@ -398,11 +486,40 @@ public class TrillianNatureAdam extends TrillianNatureBase {
                     case WORKER_SILENT -> {
                         // Nothing is spent on saying "this is quiet".
                     }
+                    case INBOX_UNREAD -> {
+                        // Handled above — its subject is not a process.
+                    }
                 }
             } catch (RuntimeException e) {
                 log.warn("Trillian adam: could not record self-check on '{}': {}",
-                        finding.processId(), e.toString());
+                        finding.subjectId(), e.toString());
             }
+        }
+    }
+
+    /**
+     * Takes the thread out of the Trillian's unread index, so the wakeup it
+     * caused happens once.
+     *
+     * <p>{@code markRead} touches read state only — the thread's status is
+     * untouched, so an ask that was handed over is still open and still
+     * waiting for whoever has to decide it. Seeing something is not
+     * answering it.
+     *
+     * <p>A failure here is logged and dropped rather than rethrown: the
+     * price is the same thread being reported again next round, which is
+     * annoying and self-correcting. Letting it escape would cost the loop
+     * the bookkeeping of every finding after it.
+     */
+    private void markThreadRead(ThinkProcessDocument loop, String threadId) {
+        String account = accountOf(loop);
+        if (account == null) return;
+        try {
+            maximegalonService.markRead(loop.getTenantId(), threadId, account);
+            log.debug("Trillian adam: thread '{}' marked read for '{}'", threadId, account);
+        } catch (RuntimeException e) {
+            log.warn("Trillian adam: could not mark thread '{}' read for '{}': {}",
+                    threadId, account, e.toString());
         }
     }
 

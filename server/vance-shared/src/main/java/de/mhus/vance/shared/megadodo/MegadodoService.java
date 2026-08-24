@@ -342,6 +342,43 @@ public class MegadodoService {
                         : "Event '" + eventName + "' failed" + suffix(cause)));
     }
 
+    // ─── Trillian ──────────────────────────────────────────────
+
+    /**
+     * A Trillian user-loop woke itself up because its self-check found
+     * something worth a turn.
+     *
+     * <p>One {@link MegadodoPhase#SINGLE} row, like an inbound event
+     * trigger: a wakeup is a point in time. What follows from it is the
+     * loop's own work, and that already shows up as whatever it does.
+     *
+     * <p><b>Only the wakeups that happened.</b> A due self-check that
+     * finds nothing re-arms without running a turn, and that is the common
+     * round — hourly, per loop, forever. A row for it would bury the ones
+     * that mean something.
+     *
+     * @param wakeupId the id the self-check command already carries; the
+     *                 trace of this one wakeup
+     * @param reasons  one line per finding — this is the whole point of
+     *                 the row: why it woke, not that it woke
+     */
+    public void trillianWokeUp(
+            String tenantId,
+            String projectId,
+            String loopProcessId,
+            @Nullable String trillianName,
+            String wakeupId,
+            List<String> reasons) {
+        record(builder(tenantId, projectId, "trillian.wakeup", wakeupId)
+                .phase(MegadodoPhase.SINGLE)
+                .outcome("success")
+                .actor(trillianName)
+                .refType(MegadodoRefType.PROCESS)
+                .refId(loopProcessId)
+                .message("Trillian self-check woke up on " + reasons.size() + " finding(s)"
+                        + suffix(String.join("; ", reasons))));
+    }
+
     // ═════════════════════════ Reading ═════════════════════════
 
     /**

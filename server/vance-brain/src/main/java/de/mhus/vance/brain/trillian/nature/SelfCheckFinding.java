@@ -13,17 +13,25 @@ package de.mhus.vance.brain.trillian.nature;
  * three times is looping, and deciding that afresh each round is exactly
  * how it would be talked out of it.
  *
+ * <p><b>The subject is not always a process.</b> It started as one and the
+ * fields were named accordingly; an unread inbox thread is the second sort
+ * of thing a Trillian can be woken for, and it is addressed by id rather
+ * than by name. The {@link Kind} says which — nothing may read
+ * {@link #subjectId()} without having looked at it first.
+ *
  * @param kind        what sort of situation this is
- * @param processName the process it concerns, as the loop would address
- *                    it in {@code process_steer}
- * @param processId   the same process, for logging
+ * @param subjectName the thing it concerns, as the loop would address it:
+ *                    the process name for the worker kinds, the thread id
+ *                    for {@link Kind#INBOX_UNREAD}
+ * @param subjectId   the same thing, for lookups and logging — a process
+ *                    id, or a thread id
  * @param detail      one line for the prompt: what is the case, and what
  *                    the loop is expected to weigh
  */
 public record SelfCheckFinding(
         Kind kind,
-        String processName,
-        String processId,
+        String subjectName,
+        String subjectId,
         String detail) {
 
     public enum Kind {
@@ -32,12 +40,28 @@ public record SelfCheckFinding(
         /** Hit a safety net (wallclock, idle-stuck). Context intact, resumable. */
         WORKER_BLOCKED,
         /** Still RUNNING, but has said nothing for a long time. */
-        WORKER_SILENT
+        WORKER_SILENT,
+        /**
+         * An inbox thread the Trillian has not seen. The one finding whose
+         * subject is not a process — and the one whose delivery
+         * <em>must</em> have an effect, because an unread thread that stays
+         * unread would produce the same finding on every round forever.
+         */
+        INBOX_UNREAD
+    }
+
+    /**
+     * One line about this finding, without the prompt's list marker — for
+     * anywhere that is not a bullet list, such as the Megadodo feed row of
+     * the wakeup this finding caused.
+     */
+    public String summary() {
+        return "[" + kind.name().toLowerCase(java.util.Locale.ROOT) + "] "
+                + subjectName + ": " + detail;
     }
 
     /** Rendered into the self-check frame. */
     public String render() {
-        return "- [" + kind.name().toLowerCase(java.util.Locale.ROOT) + "] "
-                + processName + ": " + detail;
+        return "- " + summary();
     }
 }

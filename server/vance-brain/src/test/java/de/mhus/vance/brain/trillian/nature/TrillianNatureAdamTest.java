@@ -2,6 +2,7 @@ package de.mhus.vance.brain.trillian.nature;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -42,6 +43,8 @@ class TrillianNatureAdamTest {
     de.mhus.vance.brain.ai.light.LightLlmService lightLlm;
     @Mock
     TrillianCharacterCatalog characterCatalog;
+    @Mock
+    de.mhus.vance.shared.inbox.MaximegalonService maximegalonService;
 
     @Test
     void aChangedMap_isMirroredToTheStore() {
@@ -493,6 +496,77 @@ class TrillianNatureAdamTest {
     }
 
     @Test
+    void anUnreadThread_isAReasonToWake() {
+        // The one finding somebody writes *at* the Trillian. Without it the
+        // only way to reach it is Control's chat — the channel a human uses
+        // when they are sitting in front of it, not when they are not.
+        when(maximegalonService.listUnreadForUser(eq(TENANT), eq(ACCOUNT), anyInt()))
+                .thenReturn(java.util.List.of(thread("t-1", "Reisekosten", true)));
+
+        java.util.List<SelfCheckFinding> findings =
+                adam().selfCheckFindings(loopWithAccount());
+
+        assertThat(findings).singleElement().satisfies(f -> {
+            assertThat(f.kind()).isEqualTo(SelfCheckFinding.Kind.INBOX_UNREAD);
+            assertThat(f.subjectId()).isEqualTo("t-1");
+            assertThat(f.render()).contains("Reisekosten").contains("waits on an answer");
+        });
+    }
+
+    @Test
+    void gatheringUnreadThreads_marksNothingRead() {
+        // A due tick can end without a wakeup. Marking read while merely
+        // looking would swallow the thread — the one failure worse than
+        // reporting it twice.
+        when(maximegalonService.listUnreadForUser(eq(TENANT), eq(ACCOUNT), anyInt()))
+                .thenReturn(java.util.List.of(thread("t-1", "Reisekosten", false)));
+
+        adam().selfCheckFindings(loopWithAccount());
+
+        verify(maximegalonService, never()).markRead(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void deliveringAnUnreadThread_marksItRead() {
+        // The termination condition, not bookkeeping: an unread thread
+        // stays unread, so a self-check that only reported it would wake
+        // the Trillian with the same message every hour forever. Code does
+        // it, because a model that forgets the tool call turns that into an
+        // endless loop.
+        SelfCheckFinding finding = new SelfCheckFinding(
+                SelfCheckFinding.Kind.INBOX_UNREAD, "t-1", "t-1", "unread");
+
+        adam().selfCheckDelivered(loopWithAccount(), java.util.List.of(finding));
+
+        verify(maximegalonService).markRead(TENANT, "t-1", ACCOUNT);
+    }
+
+    @Test
+    void anInboxFinding_isNotLookedUpAsAProcess() {
+        // Its subject is a thread id. Running it through the worker lookup
+        // would drop it on the floor — findById returns empty and the loop
+        // body skips to the next finding.
+        adam().selfCheckDelivered(loopWithAccount(), java.util.List.of(new SelfCheckFinding(
+                SelfCheckFinding.Kind.INBOX_UNREAD, "t-1", "t-1", "unread")));
+
+        verify(thinkProcessService, never()).findById("t-1");
+    }
+
+    @Test
+    void aFailingInboxLookup_stillReportsTheStuckWorkers() {
+        // A Trillian whose inbox is unreachable must still hear about the
+        // worker that is parked on a question.
+        when(maximegalonService.listUnreadForUser(anyString(), anyString(), anyInt()))
+                .thenThrow(new IllegalStateException("mongo down"));
+        when(thinkProcessService.findByParentProcessId("loop-1"))
+                .thenReturn(java.util.List.of(parkedOnStateQuestion("w1")));
+
+        assertThat(adam().selfCheckFindings(loopWithAccount()))
+                .extracting(SelfCheckFinding::kind)
+                .containsExactly(SelfCheckFinding.Kind.WORKER_WAITING);
+    }
+
+    @Test
     void theRegistryAcceptsAdam() {
         // The id travels into _trillian-adam-XXXX and three recipe names,
         // so it has to survive the boot-time validation.
@@ -505,7 +579,28 @@ class TrillianNatureAdamTest {
 
     private TrillianNatureAdam adam() {
         return new TrillianNatureAdam(
-                thinkProcessService, attributeStore, journalStore, lightLlm, characterCatalog);
+                thinkProcessService, attributeStore, journalStore, lightLlm, characterCatalog,
+                maximegalonService);
+    }
+
+    /** A loop that knows which account it runs as — needed to have an inbox. */
+    private static ThinkProcessDocument loopWithAccount() {
+        ThinkProcessDocument loop = loopProcess();
+        loop.getEngineParams().put(
+                TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME, ACCOUNT);
+        return loop;
+    }
+
+    private static de.mhus.vance.shared.inbox.MaximegalonDocument thread(
+            String id, String title, boolean requiresAction) {
+        de.mhus.vance.shared.inbox.MaximegalonDocument doc =
+                new de.mhus.vance.shared.inbox.MaximegalonDocument();
+        doc.setId(id);
+        doc.setTenantId(TENANT);
+        doc.setTitle(title);
+        doc.setOriginatorUserId("mara");
+        doc.setRequiresAction(requiresAction);
+        return doc;
     }
 
     private void givenReflexion(boolean keep, String entry) {

@@ -287,6 +287,36 @@ public class MaximegalonService {
     }
 
     /**
+     * The unread, non-archived threads of one user — <b>oldest first</b>.
+     *
+     * <p>The rows behind the badge: same population as the {@code unread}
+     * number of {@link #countBadge}, deliberately built from the same two
+     * criteria. Two answers to "what is unread for me" that could drift
+     * apart would show a badge of three over a list of two.
+     *
+     * <p>Oldest first, unlike every other listing here. The reader is an
+     * agent working a queue rather than a person scanning one, and a queue
+     * is worked from the front — the newest-first order that serves a human
+     * inbox would, under a cap, hand back the <em>last</em> N and leave the
+     * oldest unread thread permanently at the far side of the window.
+     *
+     * <p>Messages are projected out, as in {@link #listFiltered}: this
+     * answers <em>which</em> threads, and a caller that wants the discussion
+     * reads it per thread. Same consequence — the returned documents are
+     * incomplete and must never be handed to {@code save()}.
+     */
+    public List<MaximegalonDocument> listUnreadForUser(
+            String tenantId, String userId, int limit) {
+        Query query = Query.query(Criteria.where(F_TENANT).is(tenantId)
+                        .and(F_UNREAD_FOR).is(userId)
+                        .and(F_STATUS).ne(MaximegalonStatus.ARCHIVED))
+                .with(Sort.by(Sort.Direction.ASC, "createdAt"))
+                .limit(Math.max(1, limit));
+        query.fields().exclude(F_MESSAGES);
+        return mongoTemplate.find(query, MaximegalonDocument.class);
+    }
+
+    /**
      * Threads whose object is the given document, newest first.
      *
      * <p><b>Unfiltered by visibility on purpose</b> — the caller filters. This

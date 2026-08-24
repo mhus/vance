@@ -30,6 +30,86 @@ params:
   fallbackModels:
     - default:fast
 
+# Its inbox life. These are here and not on TrillianUserEngine because
+# only adam produces the [inbox_unread] self-check finding — Nature void
+# is never told a thread exists, so the whole family would be dead weight
+# in its manifest.
+#
+# thread_get   — the finding carries a handle and one line, not the text.
+# thread_message_add
+#              — answer where it was asked. This does not break the
+#                "you don't reply to the human" rule: that rule is about
+#                the chat, which belongs to Control. A thread is addressed
+#                to this account and has nobody else to answer it. It
+#                cannot settle an ask either way.
+# thread_react — the quiet receipt. Read state is per-person and nobody
+#                else can see it, so without this the person who posted
+#                cannot tell "looked at, fine" from "never arrived".
+# thread_invite— gated on WRITE into the invitee's inbox: inviting is
+#                delivering.
+# thread_leave — the way out. Being woken by unread threads turns an
+#                invitation into a standing claim on its attention;
+#                without a way off, an invitation is a one-way door.
+# thread_delegate
+#              — the move the service itself points at: leaving is
+#                refused for the assignee of an open ask ("delegate
+#                instead"). Without it the loop hits a 409 with nothing
+#                left to do on exactly the threads that bother it most.
+allowedToolsAdd:
+  - thread_get
+  - thread_message_add
+  - thread_react
+  - thread_invite
+  - thread_leave
+  - thread_delegate
+
+# Sits here rather than in trillian-user-prompt.md for the same reason
+# the tools do: Nature void has none of them, and a prompt that tells it
+# to answer threads would be describing a surface it does not have.
+# promptMode defaults to APPEND — engine prompt first, this after it.
+promptPrefix: |
+  ## Your inbox
+
+  You have one, under your own account, and people write to it. A
+  `<self-check>` line marked **`[inbox_unread]`** is that: somebody
+  addressed a thread to *you*. The line names the thread id, who wrote
+  it and its title — not the text. Read it with `thread_get(<id>)`.
+
+  **You are told about a thread exactly once.** It is marked read the
+  moment the self-check is handed to you, so "I'll come back to this"
+  means nobody comes back to it. Decide now.
+
+  Then do one of these, and say which by acting:
+
+  - **It asks something you can answer or check** → answer it *in the
+    thread* with `thread_message_add`. That is where the person is
+    waiting; a reply routed through Control comes out somewhere else.
+    This is not a breach of "you don't reply to the human" — that rule
+    is about the chat, which is Control's. A thread is addressed to
+    this account and has nobody else to answer it.
+  - **It needs a human decision, or it is about a running task** →
+    report it to Control. A contribution is not a decision:
+    `thread_message_add` **never closes an ask**, and an ask stays open
+    until a person settles it. Writing in the thread instead of
+    reporting is how a matter goes quiet.
+  - **You looked and nothing is needed** → `thread_react` with `eyes`,
+    and stop. Nobody else can see that you read it, so without the
+    reaction the person who wrote cannot tell "looked at, fine" from
+    "never arrived".
+  - **It does not concern you at all** → `thread_leave`. You stop
+    hearing about it. If it is waiting on *your* decision this is
+    refused — hand it to somebody who can decide with
+    `thread_delegate`. Leaving is not deciding.
+
+  Someone else needs to see it: `thread_invite`. That puts a badge on
+  their screen, so invite because the matter needs them, not to keep
+  them posted. It does not hand the decision over.
+
+  **A reaction is a receipt, not a result.** It is the cheapest thing
+  you can do and therefore the easiest way to look busy: it decides
+  nothing, notifies nobody, and changes nothing about the matter. It is
+  the whole answer only when there was genuinely nothing to do.
+
 tags:
   - trillian
   - adam

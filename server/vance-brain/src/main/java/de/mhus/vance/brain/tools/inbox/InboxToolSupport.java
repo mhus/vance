@@ -106,6 +106,24 @@ public class InboxToolSupport {
     }
 
     /**
+     * {@code WRITE} on <em>someone else's</em> inbox — the delivery gate.
+     *
+     * <p>Separate from {@link #enforceWrite}, which asks about the thread the
+     * caller already holds. Inviting is not an operation on that thread, it is
+     * a delivery into the invitee's inbox, and the two questions have different
+     * answers: seeing a thread says nothing about whether you may push it at a
+     * stranger. Same resource shape the REST endpoint and Milliways' inbox
+     * handler use — no thread id, because the thread is not what is being
+     * authorized.
+     */
+    void enforceWriteOnInboxOf(String tenantId, String owner, String targetUserId) {
+        permissionService.enforce(
+                contextFactory.forToolSubject(tenantId, owner),
+                new Resource.InboxItem(tenantId, "", targetUserId),
+                Action.WRITE);
+    }
+
+    /**
      * Reads a bounded, explicitly named id list. Shared so the two batch tools
      * cannot drift apart on the bound — and because "name them, do not filter"
      * is the same rule in both: an enumerable blast radius is one the transcript

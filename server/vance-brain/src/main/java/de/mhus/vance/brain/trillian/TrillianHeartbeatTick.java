@@ -5,6 +5,7 @@ import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SteerMessageCodec;
+import de.mhus.vance.shared.megadodo.MegadodoService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -57,6 +59,7 @@ public class TrillianHeartbeatTick {
     private final TrillianWakeupService wakeupService;
     private final ProcessEventEmitter eventEmitter;
     private final de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry natureRegistry;
+    private final MegadodoService megadodoService;
 
     @Scheduled(fixedDelayString = "${vance.trillian.heartbeat.intervalMs:60000}",
             initialDelayString = "${vance.trillian.heartbeat.intervalMs:60000}")
@@ -108,11 +111,17 @@ public class TrillianHeartbeatTick {
                     wakeupService.arm(loop, zone);
                     continue;
                 }
-                if (wake(loop, findings)) {
+                // Minted here rather than inside wake(): the same id is the
+                // command's idempotency key and the feed row's trace, so
+                // the row and the turn it caused can be put next to each
+                // other afterwards.
+                String wakeupId = "wakeup-" + loop.getId() + "-" + now.toEpochMilli();
+                if (wake(loop, wakeupId, findings)) {
                     woken++;
                     // Only now: the Nature's bookkeeping is about findings
                     // that were reported, and a wakeup that did not happen
                     // must not spend a budget or end an episode.
+                    recordInFeed(loop, wakeupId, findings);
                     delivered(loop, findings);
                 }
             }
@@ -161,6 +170,43 @@ public class TrillianHeartbeatTick {
         }
     }
 
+    /**
+     * Writes the wakeup into the project feed.
+     *
+     * <p>Here and not in {@link #wake}, for the same reason
+     * {@link #delivered} sits here: {@code wake} reports whether the loop
+     * was actually woken, and a feed write that throws must not turn a
+     * wakeup that landed into one that reads as failed. The feed row is
+     * the only place a reader can later see <em>why</em> a Trillian
+     * started working at four in the morning — the ladder itself leaves
+     * no trace, and the self-check command is consumed by the turn.
+     */
+    private void recordInFeed(
+            ThinkProcessDocument loop, String wakeupId, List<SelfCheckFinding> findings) {
+        try {
+            megadodoService.trillianWokeUp(
+                    loop.getTenantId(),
+                    loop.getProjectId(),
+                    loop.getId(),
+                    trillianNameOf(loop),
+                    wakeupId,
+                    findings.stream().map(SelfCheckFinding::summary).toList());
+        } catch (RuntimeException e) {
+            log.warn("Trillian heartbeat: feed row for loop '{}' failed: {}",
+                    loop.getId(), e.toString());
+        }
+    }
+
+    /**
+     * The {@code _trillian-*} service account the loop runs as — the actor
+     * of the row, the way {@code runAs} is the actor of a scheduler run.
+     */
+    private @Nullable String trillianNameOf(ThinkProcessDocument loop) {
+        Object name = loop.getEngineParams() == null ? null
+                : loop.getEngineParams().get(TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME);
+        return name == null ? null : name.toString();
+    }
+
     private de.mhus.vance.brain.trillian.nature.TrillianNature natureOf(
             ThinkProcessDocument loop) {
         Object nature = loop.getEngineParams() == null ? null
@@ -168,12 +214,13 @@ public class TrillianHeartbeatTick {
         return natureRegistry.resolve(nature == null ? null : nature.toString());
     }
 
-    private boolean wake(ThinkProcessDocument loop, List<SelfCheckFinding> findings) {
+    private boolean wake(
+            ThinkProcessDocument loop, String wakeupId, List<SelfCheckFinding> findings) {
         try {
             wakeupService.disarm(loop);
             SteerMessage.ExternalCommand check = new SteerMessage.ExternalCommand(
                     Instant.now(),
-                    /*idempotencyKey*/ "wakeup-" + loop.getId() + "-" + Instant.now().toEpochMilli(),
+                    /*idempotencyKey*/ wakeupId,
                     TrillianWakeupService.COMMAND_SELF_CHECK,
                     Map.of(TrillianWakeupService.PARAM_FINDINGS,
                             findings.stream().map(SelfCheckFinding::render).toList()));

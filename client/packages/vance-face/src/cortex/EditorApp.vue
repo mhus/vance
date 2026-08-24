@@ -200,6 +200,15 @@ const onVanceLink: VanceLinkHandler = async ({
     console.warn('Editor: failed to open vance: link in editor', e);
     return false;
   }
+  if (embedRef.entry) {
+    // The tab-set watcher writes the URL, but it does not fire when the target
+    // tab was already open and active — precisely the in-app link case, where
+    // the entry is the *only* thing that changed. Without this the board
+    // switches while the address bar keeps the old one, so F5 goes back.
+    // `push`, because following a link is navigable; the equality guard in
+    // syncUrl absorbs the call when the watcher already wrote the same URL.
+    syncUrl('push');
+  }
   return true;
 };
 provide(VANCE_LINK_HANDLER_KEY, onVanceLink);

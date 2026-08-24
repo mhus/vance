@@ -1,11 +1,18 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
 import type { FolderNode } from '../types';
+import { useCortexStore } from '../stores/cortexStore';
 import FileTreeNode from './FileTreeNode.vue';
 
 interface Props {
   root: FolderNode;
   activeFileId?: string | null;
+  /**
+   * Path of the active document. Needed alongside the id because revealing it
+   * has to load the folders on the way there, and a folder that was never
+   * opened is in no tree to search.
+   */
+  activeFilePath?: string | null;
   /**
    * When true, auto-reveal the active file in the tree whenever it changes
    * (or the tree (re)loads) — the same effect as clicking the 🎯 button,
@@ -24,9 +31,11 @@ const emit = defineEmits<{
   (e: 'reload'): void;
 }>();
 
-// Root pre-expanded so the project's top-level structure is visible
-// immediately. Sub-folders collapse until clicked.
-const expanded = ref<Set<string>>(new Set(['']));
+// Expansion lives in the store, not here: opening a folder is what loads it,
+// so the set of open folders is state the store has to be able to restore
+// after a reload — not a view detail of this component.
+const store = useCortexStore();
+const expanded = computed<Set<string>>(() => store.expanded);
 const sidebarEl = ref<HTMLElement | null>(null);
 
 // Tree-wide single drop-target — the deepest folder currently under
@@ -54,29 +63,9 @@ onBeforeUnmount(() => {
   document.removeEventListener('drop', clearDragOver);
 });
 
+/** Expanding loads the folder; the store owns both halves. */
 function toggle(path: string): void {
-  const next = new Set(expanded.value);
-  if (next.has(path)) {
-    next.delete(path);
-  } else {
-    next.add(path);
-  }
-  expanded.value = next;
-}
-
-// Walk the folder tree to collect the chain of folder paths that lead
-// to {@code fileId} — the trail we need to add to {@link expanded} so
-// the file row becomes visible. Returns null when the file is not in
-// this tree (e.g. just deleted on the server).
-function ancestorPathsFor(node: FolderNode, fileId: string): string[] | null {
-  if (node.files.some((f) => f.id === fileId)) {
-    return [node.path];
-  }
-  for (const child of node.children) {
-    const sub = ancestorPathsFor(child, fileId);
-    if (sub) return [node.path, ...sub];
-  }
-  return null;
+  void store.toggleFolder(path);
 }
 
 interface MovePayload { id: string; targetFolder: string }
@@ -84,28 +73,37 @@ interface UploadPayload { files: File[]; targetFolder: string }
 function onMoveFile(payload: MovePayload): void { emit('move-file', payload); }
 function onUploadFiles(payload: UploadPayload): void { emit('upload-files', payload); }
 
-function revealActiveFile(): void {
+/**
+ * Bring the active document into view: load and expand the folders on the way
+ * to it, then scroll to its row.
+ *
+ * <p>Driven by the document's <b>path</b>, not by searching the rendered tree.
+ * With folders loading on demand, the file's folder is usually not in the tree
+ * yet — a tree walk would find nothing and silently do nothing, which is what
+ * "reveal" must never do.
+ */
+async function revealActiveFile(): Promise<void> {
   const id = props.activeFileId;
-  if (!id) return;
-  const ancestors = ancestorPathsFor(props.root, id);
-  if (!ancestors) return;
-  const next = new Set(expanded.value);
-  for (const p of ancestors) next.add(p);
-  expanded.value = next;
-  void nextTick(() => {
-    const safe = window.CSS?.escape ? window.CSS.escape(id) : id;
-    const el = sidebarEl.value?.querySelector<HTMLElement>(`[data-file-id="${safe}"]`);
-    el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  });
+  const path = props.activeFilePath;
+  if (!id || !path) return;
+  await store.expandTo(path);
+  await nextTick();
+  const safe = window.CSS?.escape ? window.CSS.escape(id) : id;
+  const el = sidebarEl.value?.querySelector<HTMLElement>(`[data-file-id="${safe}"]`);
+  el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 // Auto-Target: reveal the active file whenever it changes, the mode gets
 // switched on, or the tree (re)loads (root identity changes after a
 // loadList). Manual 🎯 clicks work regardless of the mode.
+// Not watching `props.root` any more: with lazy folders the tree object
+// changes on every folder that loads, and revealing on each of those would
+// re-walk (and re-request) the chain while the user is browsing elsewhere.
+// The active file and the mode are the two things that actually mean "reveal".
 watch(
-  [() => props.activeFileId, () => props.autoReveal, () => props.root],
+  [() => props.activeFileId, () => props.autoReveal],
   () => {
-    if (props.autoReveal && props.activeFileId) revealActiveFile();
+    if (props.autoReveal && props.activeFileId) void revealActiveFile();
   },
   { immediate: true },
 );

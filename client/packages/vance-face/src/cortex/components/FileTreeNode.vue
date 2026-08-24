@@ -141,6 +141,12 @@ function onFolderDrop(ev: DragEvent): void {
       <span class="opacity-50 w-3 inline-block text-xs">{{ isOpen(node.path) ? '▾' : '▸' }}</span>
       <span>📁</span>
       <span class="truncate">{{ node.name }}</span>
+      <span v-if="node.loading" class="opacity-50 text-xs" title="loading">⏳</span>
+      <span
+        v-else-if="node.error"
+        class="opacity-70 text-xs text-error"
+        :title="node.error"
+      >⚠</span>
     </button>
 
     <template v-if="isOpen(node.path)">
@@ -191,6 +197,40 @@ function onFolderDrop(ev: DragEvent): void {
           @click.stop="emit('delete-file', file.id)"
         >✕</button>
       </div>
+
+      <!--
+        A folder holds more files than one page carries. Stated rather than
+        dropped: silence here reads as "the folder ends" and made documents
+        look deleted. Not a "load more" button in this iteration — say the
+        truth first, paging inside a folder can follow.
+      -->
+      <div
+        v-if="node.moreFiles > 0"
+        class="px-2 py-1 text-xs opacity-60 italic"
+        :style="{ paddingLeft: `${(depth + 1) * 12 + 4}px` }"
+        :title="`Use search or the Documents view to reach the remaining ${node.moreFiles}`"
+      >… {{ node.moreFiles }} more not shown</div>
+
+      <!--
+        Distinguishes "opened and empty" from "opened, still loading" and from
+        "opened, the request failed". Three states that look identical as an
+        empty folder, and only one of them means the folder is empty.
+      -->
+      <div
+        v-else-if="node.loading"
+        class="px-2 py-1 text-xs opacity-50 italic"
+        :style="{ paddingLeft: `${(depth + 1) * 12 + 4}px` }"
+      >loading…</div>
+      <div
+        v-else-if="node.error"
+        class="px-2 py-1 text-xs text-error"
+        :style="{ paddingLeft: `${(depth + 1) * 12 + 4}px` }"
+      >{{ node.error }}</div>
+      <div
+        v-else-if="node.loaded && node.children.length === 0 && node.files.length === 0"
+        class="px-2 py-1 text-xs opacity-40 italic"
+        :style="{ paddingLeft: `${(depth + 1) * 12 + 4}px` }"
+      >empty</div>
     </template>
   </div>
 </template>

@@ -1,11 +1,16 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import type { CortexDocument, FolderNode } from '../types';
+import {
+  buildFolderTree,
+  parentFolderOf,
+  type FolderState,
+} from '../folderTree';
 import { brainFetch, brainFetchText, brainSendRaw } from '@vance/shared';
 import type {
   AccentColor,
   DocumentDto,
-  DocumentListResponse,
+  DocumentFolderListResponse,
   DocumentSummary,
   WriterRole,
 } from '@vance/generated';
@@ -117,9 +122,12 @@ export interface MetaUpdateBody {
  * the ScriptCortex-specific {@code /scripts} endpoints — so Cortex sees
  * all document types in a project, not only scripts.
  *
- * v1 fetches the whole project's document list in one paged call with a
- * large page size. If projects grow past ~500 documents, we'll switch to
- * a tree-friendly endpoint or virtual scrolling.
+ * The tree loads one folder at a time ({@link loadFolder}), not the project.
+ * It used to fetch a flat list with a large page size and derive the folders
+ * from the paths; that was wrong twice over — the server clamps the list to
+ * 200 rows however many are asked for, so the tree was a silent fragment in
+ * any larger project, and a mounted source has no upper bound at all, so
+ * "every document" is not a quantity a client can hold.
  */
 /**
  * Current text selection inside the active tab's editor. {@code null}
@@ -152,6 +160,56 @@ export const useCortexStore = defineStore('cortex', () => {
   // matching the spec: a virtual folder vanishes on refresh unless a
   // file has since materialised it.
   const virtualFolders = ref<Set<string>>(new Set());
+
+  /**
+   * What is known per folder, keyed by folder path ({@code ''} is the root).
+   * The tree's structure comes from here, not from aggregating document paths
+   * — see {@code folderTree.ts}.
+   */
+  const folderStates = ref<Map<string, FolderState>>(new Map());
+
+  /**
+   * Which folders are open. Lives here rather than in the sidebar because it
+   * is no longer a view detail: expanding a folder is what loads it, and a
+   * reload has to restore the same set.
+   */
+  const expanded = ref<Set<string>>(new Set(['']));
+
+  /**
+   * Files per folder request. The server clamps this to 200 whatever we ask
+   * for, so asking for more only hides the truncation — the tree reports the
+   * remainder instead ({@code FolderNode.moreFiles}).
+   */
+  const FOLDER_PAGE_SIZE = 200;
+
+  /**
+   * Keep a loaded folder's counters honest after a local add/remove, so the
+   * "N more" row does not claim files that are already on screen (or hide the
+   * ones that are not). Only touches folders we actually loaded — for an
+   * unloaded one there is no count to correct.
+   */
+  function bumpFolderCount(path: string, delta: number): void {
+    const state = folderStates.value.get(path);
+    if (!state?.loaded) return;
+    patchFolderState(path, {
+      totalFiles: Math.max(0, state.totalFiles + delta),
+      loadedFiles: Math.max(0, state.loadedFiles + delta),
+    });
+  }
+
+  function patchFolderState(path: string, patch: Partial<FolderState>): void {
+    const next = new Map(folderStates.value);
+    const before = next.get(path) ?? {
+      folders: [],
+      loaded: false,
+      loading: false,
+      error: null,
+      totalFiles: 0,
+      loadedFiles: 0,
+    };
+    next.set(path, { ...before, ...patch });
+    folderStates.value = next;
+  }
 
   const activeTab = computed<CortexDocument | null>(() => {
     if (!activeTabId.value) return null;
@@ -274,29 +332,127 @@ export const useCortexStore = defineStore('cortex', () => {
     }
   }
 
+  /**
+   * Load the project's root folder — the tree's entry point.
+   *
+   * <p>One folder, not the project. The tree used to fetch a flat list of
+   * every document and derive its folders from the paths, which broke twice
+   * over: the server clamps that list to 200 rows however many are asked for,
+   * so in any larger project the tree was silently a fragment; and a mounted
+   * source ({@code _ext}) has no upper bound at all, so "all documents" is not
+   * a quantity a client can hold. Folders now load on expand
+   * ({@link loadFolder}).
+   */
   async function loadList(pid: string): Promise<void> {
+    const switching = projectId.value !== pid;
     projectId.value = pid;
-    loading.value = true;
-    error.value = null;
+    if (switching) {
+      files.value = [];
+      folderStates.value = new Map();
+      expanded.value = new Set(['']);
+    }
+    // Virtual folders are ephemeral by design — a refresh discards
+    // any the user staged that didn't get a real file moved into it.
+    virtualFolders.value = new Set();
+    await loadFolder('', { force: true });
+    // Re-read whatever the user had open, so a refresh keeps the shape of the
+    // tree it refreshed instead of collapsing to the root.
+    const openFolders = [...expanded.value].filter((p) => p !== '');
+    for (const path of openFolders) {
+      await loadFolder(path, { force: true });
+    }
+  }
+
+  /**
+   * Fetch one folder: its direct subfolders and one page of its files.
+   *
+   * <p>Idempotent by default — an already-loaded folder is left alone, which
+   * is what makes re-expanding a folder free. {@code force} is for the
+   * explicit reload and for the write paths that changed the folder's content.
+   */
+  async function loadFolder(
+    path: string,
+    opts: { force?: boolean } = {},
+  ): Promise<void> {
+    const pid = projectId.value;
+    if (!pid) return;
+    const current = folderStates.value.get(path);
+    if (current && !opts.force && (current.loaded || current.loading)) return;
+
+    patchFolderState(path, { loading: true, error: null });
+    // The root's spinner is the tree's spinner; a subfolder's is its own row,
+    // so it must not blank the whole sidebar.
+    if (path === '') loading.value = true;
     try {
       const params = new URLSearchParams({
         projectId: pid,
+        path,
         page: '0',
-        size: '500',
+        size: String(FOLDER_PAGE_SIZE),
       });
-      const data = await brainFetch<DocumentListResponse>(
+      const data = await brainFetch<DocumentFolderListResponse>(
         'GET',
-        `documents?${params}`,
+        `documents/folder?${params}`,
       );
-      files.value = (data.items ?? []).map(summaryToDocument);
-      // Virtual folders are ephemeral by design — a refresh discards
-      // any the user staged that didn't get a real file moved into it.
-      virtualFolders.value = new Set();
+      const rows = (data.files ?? []).map(summaryToDocument);
+      // Replace this folder's rows rather than merging: a file deleted or
+      // moved away server-side has to disappear here too, and every row we
+      // hold for this folder came from this same call.
+      const others = files.value.filter((f) => parentFolderOf(f.path) !== path);
+      files.value = [...others, ...rows];
+      patchFolderState(path, {
+        folders: [...(data.folders ?? [])],
+        loaded: true,
+        loading: false,
+        error: null,
+        totalFiles: data.totalCount ?? rows.length,
+        loadedFiles: rows.length,
+      });
+      if (path === '') error.value = null;
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load documents.';
+      const message = e instanceof Error ? e.message : 'Failed to load folder.';
+      patchFolderState(path, { loading: false, error: message });
+      // The root failing is the tree failing; a subfolder failing is a row
+      // that says so, and must not replace the tree with an error.
+      if (path === '') error.value = message;
     } finally {
-      loading.value = false;
+      if (path === '') loading.value = false;
     }
+  }
+
+  /** Expand or collapse a folder; expanding loads it if it is new. */
+  async function toggleFolder(path: string): Promise<void> {
+    const next = new Set(expanded.value);
+    if (next.has(path)) {
+      next.delete(path);
+      expanded.value = next;
+      return;
+    }
+    next.add(path);
+    expanded.value = next;
+    await loadFolder(path);
+  }
+
+  /**
+   * Make a document path visible: load and expand every folder on the way to
+   * it. Used by the deep link, by "reveal active file" and after a create —
+   * all three know a path and nothing else, and the folders along it may never
+   * have been opened.
+   */
+  async function expandTo(documentPath: string): Promise<void> {
+    const segments = parentFolderOf(documentPath).split('/').filter(Boolean);
+    const next = new Set(expanded.value);
+    let prefix = '';
+    // Sequential on purpose: each level's listing is what tells us the next
+    // one exists, and a burst of parallel requests for a path nobody has
+    // opened is exactly the load this refactor removes.
+    await loadFolder('');
+    for (const seg of segments) {
+      prefix = prefix ? `${prefix}/${seg}` : seg;
+      next.add(prefix);
+      await loadFolder(prefix);
+    }
+    expanded.value = next;
   }
 
   async function openFile(id: string): Promise<void> {
@@ -389,6 +545,7 @@ export const useCortexStore = defineStore('cortex', () => {
     );
     const created = dtoToDocument(dto);
     files.value = [...files.value, created];
+    bumpFolderCount(parentFolderOf(created.path), 1);
     return created;
   }
 
@@ -539,6 +696,7 @@ export const useCortexStore = defineStore('cortex', () => {
       inline: dto.inline,
       kind: dto.kind,
     })];
+    bumpFolderCount(parentFolderOf(dto.path), 1);
     openTabs.value = [...openTabs.value, file];
     activeTabId.value = file.id;
     return file;
@@ -554,7 +712,9 @@ export const useCortexStore = defineStore('cortex', () => {
 
   async function deleteFile(id: string): Promise<void> {
     await brainFetch<void>('DELETE', `documents/${encodeURIComponent(id)}`);
+    const gone = files.value.find((f) => f.id === id);
     files.value = files.value.filter((f) => f.id !== id);
+    if (gone) bumpFolderCount(parentFolderOf(gone.path), -1);
     closeTab(id);
   }
 
@@ -572,57 +732,17 @@ export const useCortexStore = defineStore('cortex', () => {
   }
 
   /**
-   * Group the file list into a recursive folder tree based on
-   * forward-slash-separated path segments. Files at the root sit
-   * directly under the synthetic root node with path === "".
+   * The folder tree as far as it has been loaded. Structure comes from the
+   * folder listings, not from aggregating document paths — see
+   * {@code folderTree.ts} for why that distinction is the whole refactor.
    */
-  const fileTree = computed<FolderNode>(() => {
-    const root: FolderNode = { path: '', name: '', children: [], files: [] };
-    const folderIndex = new Map<string, FolderNode>();
-    folderIndex.set('', root);
-    for (const f of files.value) {
-      const segments = f.path.split('/');
-      const fileName = segments.pop()!;
-      let current = root;
-      let prefix = '';
-      for (const seg of segments) {
-        prefix = prefix ? `${prefix}/${seg}` : seg;
-        let next = folderIndex.get(prefix);
-        if (!next) {
-          next = { path: prefix, name: seg, children: [], files: [] };
-          folderIndex.set(prefix, next);
-          current.children.push(next);
-        }
-        current = next;
-      }
-      current.files.push({ ...f, name: fileName });
-    }
-    // Merge in virtual (file-less) folders. Same walk as the file
-    // loop, just without anything to push at the leaf — empty
-    // FolderNodes get created along the way as needed.
-    for (const vpath of virtualFolders.value) {
-      const segments = vpath.split('/');
-      let current = root;
-      let prefix = '';
-      for (const seg of segments) {
-        prefix = prefix ? `${prefix}/${seg}` : seg;
-        let next = folderIndex.get(prefix);
-        if (!next) {
-          next = { path: prefix, name: seg, children: [], files: [] };
-          folderIndex.set(prefix, next);
-          current.children.push(next);
-        }
-        current = next;
-      }
-    }
-    function sortNode(n: FolderNode): void {
-      n.children.sort((a, b) => a.name.localeCompare(b.name));
-      n.files.sort((a, b) => a.name.localeCompare(b.name));
-      n.children.forEach(sortNode);
-    }
-    sortNode(root);
-    return root;
-  });
+  const fileTree = computed<FolderNode>(() =>
+    buildFolderTree({
+      folderStates: folderStates.value,
+      files: files.value,
+      virtualFolders: virtualFolders.value,
+    }),
+  );
 
   return {
     projectId,
@@ -633,7 +753,11 @@ export const useCortexStore = defineStore('cortex', () => {
     loading,
     error,
     fileTree,
+    expanded,
     loadList,
+    loadFolder,
+    toggleFolder,
+    expandTo,
     openFile,
     reloadTab,
     moveFile,

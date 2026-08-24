@@ -89,16 +89,33 @@ export interface CortexDocument {
 }
 
 /**
- * Folder-tree node, built client-side by aggregating the path prefixes
- * of every document in the project.
+ * Folder-tree node, assembled from the folder listings loaded so far
+ * (see {@code folderTree.ts}). One node per folder the session has heard
+ * of — which is not the same as one per folder that has been read.
  */
 export interface FolderNode {
   /** Full path prefix, e.g. {@code "utils/math"} */
   path: string;
   /** Last path segment, e.g. {@code "math"} */
   name: string;
-  /** Direct sub-folders. */
+  /** Direct sub-folders — empty until this folder has been loaded. */
   children: FolderNode[];
-  /** Files directly inside this folder. */
+  /** Files directly inside this folder — likewise. */
   files: CortexDocument[];
+  /**
+   * Whether this folder's listing has been fetched. A node can exist
+   * without it: the parent's listing names the folder, and only opening it
+   * asks the server what is inside.
+   */
+  loaded: boolean;
+  /** A fetch for this folder is in flight. */
+  loading: boolean;
+  /** Why the last fetch failed, or {@code null}. */
+  error: string | null;
+  /**
+   * Files the server counted but did not send (one page per folder). Shown
+   * as a row rather than dropped: a silently truncated folder is what made
+   * documents look deleted.
+   */
+  moreFiles: number;
 }

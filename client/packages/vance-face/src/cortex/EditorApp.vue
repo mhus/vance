@@ -1002,13 +1002,19 @@ const clientToolService = computed<CortexClientToolService | null>(() => {
       return { documentId: tab.id, path: tab.path };
     },
     openFileByPath: async (path) => {
+      const pid = projectId.value;
+      if (!pid) return null;
       const normalised = path.replace(/^\/+/, '');
-      const file = store.files.find((f) => f.path === normalised);
-      if (!file) return null;
-      const alreadyOpen = store.openTabs.some((t) => t.id === file.id);
+      // Resolved against the server, not looked up in the loaded rows: the
+      // tree loads folder by folder, so a document in a folder nobody has
+      // opened is simply not in `store.files` — and answering "no such
+      // document" for a document that exists is the worst of the options.
+      const id = await resolveDocumentIdByPath(pid, normalised, store.files);
+      if (!id) return null;
+      const alreadyOpen = store.openTabs.some((t) => t.id === id);
       focusZone.value = 'main';
-      await store.openFile(file.id);
-      return { documentId: file.id, path: file.path, alreadyOpen };
+      await store.openFile(id);
+      return { documentId: id, path: normalised, alreadyOpen };
     },
   });
 });
@@ -1053,16 +1059,18 @@ async function onCreateConfirm(result: CreateModalResult): Promise<void> {
       mimeType: result.mimeType,
       inlineText: result.inlineText,
     });
+    // Make the new file's folder visible — it may be one nobody has opened.
+    await store.expandTo(result.fullPath);
   } else if (result.kind === 'templateCreated') {
-    // The template was applied server-side; reload the tree and open the
-    // freshly created document.
+    // The template was applied server-side. Load and expand the folders on
+    // the way to the new document, then open it.
     //
-    // Resolved by path against the server, NOT looked up in the loaded list:
-    // that list is one page and the server clamps it to 200 rows, so in a
-    // project with more documents than that a miss is silence — the document
-    // exists, but the user lands on an empty Cortex and has to go find it.
-    // Observed with an app template in a project of 605 documents.
-    await store.loadList(projectId.value);
+    // Resolved by path against the server, NOT looked up in the loaded rows:
+    // the tree loads folder by folder, so a document in a folder nobody has
+    // opened is not in `store.files` — and a miss there used to be silence:
+    // the document existed, but the user landed on an empty Cortex and had to
+    // go find it. Observed with an app template in a project of 605 documents.
+    await store.expandTo(result.path);
     try {
       const id = await resolveDocumentIdByPath(projectId.value, result.path, store.files);
       if (id) await store.openFile(id);
@@ -1075,13 +1083,16 @@ async function onCreateConfirm(result: CreateModalResult): Promise<void> {
         + (e instanceof Error ? e.message : 'unknown error');
     }
   } else {
+    let uploaded: { id: string; path: string } | null = null;
     for (const file of result.files) {
-      await store.uploadExternalFile(file, result.targetFolder);
+      uploaded = await store.uploadExternalFile(file, result.targetFolder);
     }
-    // Open the first uploaded file as a tab if there was exactly one.
-    if (result.files.length === 1) {
-      const last = store.files[store.files.length - 1];
-      if (last) await store.openFile(last.id);
+    // Open the uploaded file as a tab if there was exactly one. Taken from the
+    // upload's own result rather than "the last row in the list" — with
+    // folder-wise loading, list order is no longer a proxy for recency.
+    if (result.files.length === 1 && uploaded) {
+      await store.expandTo(uploaded.path);
+      await store.openFile(uploaded.id);
     }
   }
   showCreate.value = false;
@@ -1486,6 +1497,7 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
             v-if="projectId"
             :root="store.fileTree"
             :active-file-id="store.activeTabId"
+            :active-file-path="store.activeTab?.path ?? null"
             :auto-reveal="autoTarget"
             @open-file="(id: string) => { focusZone = 'main'; store.openFile(id); }"
             @delete-file="onDelete"

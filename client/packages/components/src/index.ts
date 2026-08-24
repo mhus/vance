@@ -12,6 +12,8 @@ export {
 } from './followUpExtension';
 // Live-WS Vue composables. Vue-bound, so they live here rather than in the
 // platform-neutral @vance/shared (which must stay Vue-free for RN/Electron).
+export * from './cortexLink';
+export * from './useAppEntry';
 export * from './useDocumentPrefixReaction';
 export * from './usePointers';
 export { default as VAlert } from './VAlert.vue';

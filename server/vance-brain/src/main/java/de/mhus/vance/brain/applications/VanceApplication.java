@@ -153,6 +153,35 @@ public interface VanceApplication {
     }
 
     /**
+     * The places inside this app instance a caller can address: the pages of a
+     * workbook, the columns of a board, the lists of a GTD folder.
+     *
+     * <p>The capability behind inter-app links. A link can point at a
+     * <em>place</em> rather than only at a document, and the only thing that
+     * knows what places an app has is the app. What a {@link AppTarget#handle}
+     * means is the app's business — a document id, a slug, a column name; the
+     * caller stores it opaquely and hands it back.
+     *
+     * <p><b>One method, two purposes.</b> {@link TargetPurpose} is in the
+     * context rather than split across two methods, because for most apps the
+     * answer is the same list. Where it is not — every workbook page can be
+     * linked to, but a share does not create a page — the {@code if} belongs
+     * here, in the app, and not in a caller that would have to know which apps
+     * differ.
+     *
+     * <p>An empty list means "no places", and the link then addresses the app
+     * itself. That also covers "linkable but takes nothing": a full
+     * {@code NAVIGATE} list next to an empty {@code INTAKE} one needs no extra
+     * flag. Whether a share is accepted at all stays with
+     * {@link #acceptsShare} — that answers "this subject", not "where".
+     *
+     * <p>Default returns empty — apps opt in by overriding.
+     */
+    default List<AppTarget> targets(TargetsContext ctx) {
+        return List.of();
+    }
+
+    /**
      * Take it. The app decides <em>where</em> — its own intake: the lead group
      * of a link list, the {@code inbox/} of a GTD folder, the backlog of an
      * issue tracker. A share is a hand-off, not an edit; refining happens in
@@ -172,6 +201,66 @@ public interface VanceApplication {
     }
 
     // ── Records ───────────────────────────────────────────────────
+
+    /** Why a caller is asking for an app's places. See {@link #targets}. */
+    enum TargetPurpose {
+        /** Somewhere to point a link at. Read-only; every place qualifies. */
+        NAVIGATE,
+        /** Somewhere to put a new entry. Only places that accept one. */
+        INTAKE
+    }
+
+    /**
+     * One place inside an app instance.
+     *
+     * @param handle opaque to everyone but the app that produced it — a
+     *               document id, a slug, a column name. It ends up in a stored
+     *               link, so it should be the most stable identity the app has
+     *               (an id over a title, wherever there is one).
+     * @param label  what a human picks from
+     * @param group  heading to sort under, purely visual; {@code null} for none
+     */
+    record AppTarget(String handle, String label, @Nullable String group) {
+
+        /**
+         * Separator of the Milliways app-share value ({@code project|path}),
+         * which gains a third part when a share targets a place. A handle
+         * carrying it would silently split into the wrong pieces there, so it
+         * is rejected here — at the one place that produces handles — rather
+         * than escaped at each of the several places that consume them.
+         */
+        private static final char RESERVED = '|';
+
+        public AppTarget {
+            if (handle == null || handle.isBlank()) {
+                throw new IllegalArgumentException("AppTarget handle must not be blank");
+            }
+            if (handle.indexOf(RESERVED) >= 0) {
+                throw new IllegalArgumentException(
+                        "AppTarget handle must not contain '" + RESERVED + "': " + handle);
+            }
+            if (label == null || label.isBlank()) {
+                throw new IllegalArgumentException(
+                        "AppTarget label must not be blank (handle=" + handle + ")");
+            }
+        }
+
+        public static AppTarget of(String handle, String label) {
+            return new AppTarget(handle, label, null);
+        }
+    }
+
+    /**
+     * Plumbing for {@link #targets}. Same scope as {@link DescribeContext} plus
+     * the {@link TargetPurpose} the caller is asking for.
+     */
+    record TargetsContext(
+            String tenantId,
+            String projectName,
+            String folder,
+            @Nullable String userId,
+            TargetPurpose purpose,
+            Map<String, Object> config) { }
 
     /**
      * What a share offers an app: a label, a URL, a quote, and whether a

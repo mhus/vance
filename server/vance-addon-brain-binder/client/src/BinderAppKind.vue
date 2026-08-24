@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, ref, watch, type Component } from 'vue';
-import { VAlert, VButton, VInput } from '@vance/components';
+import { cortexDeepLink, VAlert, VButton, VInput } from '@vance/components';
 import DocPicker from './DocPicker.vue';
 import {
   addEntry,
@@ -229,7 +229,7 @@ async function moveTo(
 
 function openInCortex(e: BinderEntryView): void {
   if (!e.id) return;
-  const url = `/cortex.html?project=${encodeURIComponent(props.document.projectId)}&doc=${encodeURIComponent(e.id)}`;
+  const url = cortexDeepLink({ project: props.document.projectId, documentId: e.id });
   window.open(url, '_blank', 'noopener');
 }
 

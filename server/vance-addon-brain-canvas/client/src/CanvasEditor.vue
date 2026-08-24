@@ -19,7 +19,7 @@ import { brainFetch } from '@vance/shared';
 import { VButton, usePointers } from '@vance/components';
 import CanvasNodeCard from './CanvasNodeCard.vue';
 import InputDialog from './InputDialog.vue';
-import DocPicker from './DocPicker.vue';
+import DocPicker, { type AppTargets } from './DocPicker.vue';
 import EdgeDialog from './EdgeDialog.vue';
 import type { CanvasGraphDto } from './generated/canvas/CanvasGraphDto';
 import type { CanvasNodeDto } from './generated/canvas/CanvasNodeDto';
@@ -32,8 +32,15 @@ const props = withDefaults(
     projectId?: string;
     /** Document path of this board — enables live cursors on the pointers channel. */
     path?: string | null;
+    /**
+     * The app this editor runs inside, so a doc-node can point at a sibling
+     * board. Comes from the host (`CanvasbookAppKind`), which is the only one
+     * that knows — the editor never derives it from the path. Absent when
+     * standalone, and the picker then drops the tab (planning/inter-links.md §7.3).
+     */
+    appTargets?: AppTargets | null;
   }>(),
-  { editable: false, projectId: '', path: null },
+  { editable: false, projectId: '', path: null, appTargets: null },
 );
 const emit = defineEmits<{
   (e: 'change', graph: CanvasGraphDto): void;
@@ -115,7 +122,12 @@ type DialogApi = {
   ) => Promise<Record<string, string> | null>;
 };
 const dialog = ref<DialogApi | null>(null);
-const docPicker = ref<{ open: (pid: string) => Promise<{ path: string; kind?: string } | null> } | null>(null);
+const docPicker = ref<{
+  open: (
+    pid: string,
+    appTargets?: AppTargets | null,
+  ) => Promise<{ path: string; kind?: string; entry?: string } | null>;
+} | null>(null);
 type EdgeStyleInit = {
   label: string; color: string; fromArrow: boolean; toArrow: boolean; dashed: boolean; thick: boolean;
 };
@@ -510,6 +522,19 @@ function placement(): { x: number; y: number } {
   return { x: 80 + (c % 4) * 240, y: 80 + Math.floor(c / 4) * 150 };
 }
 
+/**
+ * The `vance:` reference a pick becomes. `entry` is percent-encoded because a
+ * handle is app-owned text and may carry `&`, `#` or `=` — unencoded, it would
+ * silently swallow the rest of the query.
+ */
+function refFor(picked: { path: string; kind?: string; entry?: string }): string {
+  const params = new URLSearchParams();
+  if (picked.kind) params.set('kind', picked.kind);
+  if (picked.entry) params.set('entry', picked.entry);
+  const qs = params.toString();
+  return `vance:/${picked.path}${qs ? `?${qs}` : ''}`;
+}
+
 async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
   if (!isEditable.value) return;
   const id = nextId('n', nodes.value.map((n) => n.id));
@@ -519,10 +544,9 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
   if (type === 'text') {
     node = { id, type, x: p.x, y: p.y, w: 200, h: 120, text: 'Neue Notiz', author: me };
   } else if (type === 'doc') {
-    const picked = await docPicker.value?.open(props.projectId);
+    const picked = await docPicker.value?.open(props.projectId, props.appTargets);
     if (!picked || !picked.path) return;
-    const ref = `vance:/${picked.path}${picked.kind ? `?kind=${picked.kind}` : ''}`;
-    node = { id, type, x: p.x, y: p.y, w: 280, h: 200, ref };
+    node = { id, type, x: p.x, y: p.y, w: 280, h: 200, ref: refFor(picked) };
   } else if (type === 'link') {
     const v = await dialog.value?.open('Link-Node', [
       { key: 'href', label: 'URL', placeholder: 'https://', value: 'https://' },

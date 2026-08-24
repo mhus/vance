@@ -6,6 +6,7 @@ import { NodeResizer } from '@vue-flow/node-resizer';
 import '@vue-flow/node-resizer/dist/style.css';
 import { NodeToolbar } from '@vue-flow/node-toolbar';
 import { brainFetchText, documentContentUrl } from '@vance/shared';
+import { cortexDeepLink } from '@vance/components';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import type { CanvasNodeDto } from './generated/canvas/CanvasNodeDto';
@@ -110,6 +111,19 @@ function refToPath(ref: string): string {
   return s.replace(/^\/+/, '').split('?')[0];
 }
 
+/**
+ * `?entry=` of a ref: the place inside the referenced document, for a node that
+ * points at an application manifest. Read here rather than dropped, because
+ * {@link openInCortex} rebuilds the target URL from scratch and would otherwise
+ * land on the app's default page — a link that looks like it worked.
+ */
+function refToEntry(ref: string | undefined | null): string | null {
+  if (!ref) return null;
+  const q = ref.indexOf('?');
+  if (q < 0) return null;
+  return new URLSearchParams(ref.slice(q + 1)).get('entry') || null;
+}
+
 async function loadDoc(): Promise<void> {
   docMeta.value = null;
   imgSrc.value = null;
@@ -152,7 +166,11 @@ function openInCortex(): void {
   const pid = props.data.projectId;
   const id = docMeta.value?.id;
   if (!pid || !id) return;
-  const url = `/cortex.html?project=${encodeURIComponent(pid)}&doc=${encodeURIComponent(id)}`;
+  const url = cortexDeepLink({
+    project: pid,
+    documentId: id,
+    entry: refToEntry(node.value.ref),
+  });
   window.open(url, '_blank', 'noopener');
 }
 

@@ -20,6 +20,10 @@
  *  - `sg`   — `0` when follow-up suggestions are off (omitted for the
  *             `true` default). Same mirror semantics as `at`
  *             (`vance:cortex:suggestions`).
+ *  - `entry` — per-tab sub-position for application tabs: which workbook page,
+ *             which wiki page, which canvas board is open inside the app.
+ *             Comma-separated `<docId>:<handle>` pairs, handle percent-encoded,
+ *             restricted to members of `open`.
  *
  * Boot context (`project`, `sessionId`) is preserved verbatim. The one-shot
  * handoff params (`create`, `path`) are ALWAYS stripped by {@link writeCortexView}
@@ -35,6 +39,18 @@ export interface CortexView {
   pinned: string | null;
   autoTarget: boolean;
   suggestions: boolean;
+  /**
+   * Sub-position per open application tab, keyed by the tab's document id.
+   * The value is the app's own opaque handle — a page id in Workbook and
+   * Canvasbook, a space-qualified slug in Wiki.
+   *
+   * Owned here rather than by each app: Workbook and Wiki both used to write a
+   * bare `?page=` straight onto the location, so two such tabs open at once
+   * fought over one param and the second one won (planning/inter-links.md
+   * §5.2). Keying by document id is what makes them independent — and it is
+   * the same reason `open`/`doc` live here and not in the tabs.
+   */
+  entries: Record<string, string>;
 }
 
 const OPEN_PARAM = 'open';
@@ -43,6 +59,15 @@ const BIND_PARAM = 'bind';
 const PIN_PARAM = 'pin';
 const AUTOTARGET_PARAM = 'at';
 const SUGGESTIONS_PARAM = 'sg';
+const ENTRY_PARAM = 'entry';
+
+/**
+ * Separator between a tab's document id and its handle inside one `entry`
+ * pair. `:` and `,` both survive a round trip because the handle is
+ * percent-encoded and `encodeURIComponent` escapes both — unlike `~` or `-`,
+ * which it leaves alone and which a handle may therefore contain.
+ */
+const ENTRY_SEPARATOR = ':';
 
 /** One-shot handoff params that must never survive a URL rebuild. */
 const TRANSIENT_PARAMS = ['create', 'path'] as const;
@@ -89,8 +114,38 @@ export function readCortexView(search: string = window.location.search): CortexV
 
   const autoTarget = p.get(AUTOTARGET_PARAM) !== '0';
   const suggestions = p.get(SUGGESTIONS_PARAM) !== '0';
+  const openSet = new Set(open);
+  const entries = parseEntries(p.get(ENTRY_PARAM), openSet);
 
-  return { open: open.slice(0, MAX_OPEN), doc, bind, pinned, autoTarget, suggestions };
+  return { open: open.slice(0, MAX_OPEN), doc, bind, pinned, autoTarget, suggestions, entries };
+}
+
+/**
+ * Read `entry=<docId>:<handle>,…`, dropping pairs whose tab is not open.
+ *
+ * Lenient throughout: a malformed pair is skipped rather than failing the whole
+ * read. The URL is user-editable and arrives from links written elsewhere — a
+ * single bad pair must not cost the open-tab set.
+ */
+function parseEntries(raw: string | null, open: Set<string>): Record<string, string> {
+  if (!raw) return {};
+  const out: Record<string, string> = {};
+  for (const part of raw.split(',')) {
+    const sep = part.indexOf(ENTRY_SEPARATOR);
+    if (sep <= 0) continue;
+    const docId = part.slice(0, sep).trim();
+    if (!docId || !open.has(docId) || docId in out) continue;
+    const encoded = part.slice(sep + 1);
+    if (!encoded) continue;
+    let handle: string;
+    try {
+      handle = decodeURIComponent(encoded);
+    } catch {
+      continue; // malformed percent-escape
+    }
+    if (handle) out[docId] = handle;
+  }
+  return out;
 }
 
 /**
@@ -118,6 +173,15 @@ export function writeCortexView(base: string, view: CortexView): string {
 
   if (!view.autoTarget) p.set(AUTOTARGET_PARAM, '0'); else p.delete(AUTOTARGET_PARAM);
   if (!view.suggestions) p.set(SUGGESTIONS_PARAM, '0'); else p.delete(SUGGESTIONS_PARAM);
+
+  // Only for tabs that are actually open — a closed tab's sub-position is
+  // meaningless and would otherwise accumulate in the address bar forever.
+  // Order follows `open`, so the same view always serialises identically and
+  // the equality guard in EditorApp.syncUrl keeps working.
+  const entryPairs = open
+    .filter((id) => view.entries[id])
+    .map((id) => `${id}${ENTRY_SEPARATOR}${encodeURIComponent(view.entries[id])}`);
+  if (entryPairs.length > 0) p.set(ENTRY_PARAM, entryPairs.join(',')); else p.delete(ENTRY_PARAM);
 
   return p.toString();
 }

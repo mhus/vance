@@ -9,7 +9,7 @@ import {
   pollComposeRun,
   cancelComposeRun,
 } from '@vance/shared';
-import { useDocumentPrefixReaction, usePointers, VLinkPicker } from '@vance/components';
+import { useAppEntry, useDocumentPrefixReaction, usePointers, VLinkPicker } from '@vance/components';
 import { getUsername } from '@vance/shared/auth';
 import { WorkPageEditor, parseDocument, type ComposeRunResult } from '@vance/block-editor';
 import {
@@ -472,12 +472,10 @@ function onGotoIndexEvent() {
 onMounted(() => {
   workbookRootRef.value?.addEventListener('vance:open-embed', onOpenEmbedEvent);
   workbookRootRef.value?.addEventListener('vance:workbook-goto-index', onGotoIndexEvent);
-  window.addEventListener('popstate', onWorkbookPopState);
 });
 onBeforeUnmount(() => {
   workbookRootRef.value?.removeEventListener('vance:open-embed', onOpenEmbedEvent);
   workbookRootRef.value?.removeEventListener('vance:workbook-goto-index', onGotoIndexEvent);
-  window.removeEventListener('popstate', onWorkbookPopState);
   reportActiveSubDoc?.(null);
   reportActiveSelection?.(null);
 });
@@ -611,16 +609,15 @@ async function loadWorkbook() {
 function pickInitialPage() {
   const v = view.value;
   if (!v) return;
-  // Deep-link / restore: if the URL already names a page of this workbook,
+  // Deep-link / restore: if the host's entry names a page of this workbook,
   // open it. `replace` mode — the initial selection shouldn't add a history
-  // entry on top of the tab the host just opened.
-  const urlPage = pageIdFromUrl();
-  if (urlPage) {
-    const page = v.pages.find((p) => p.id === urlPage) ?? null;
-    if (page || v.indexPageId === urlPage || v.landingPageId === urlPage) {
-      void selectPage(urlPage, page, 'replace');
-      return;
-    }
+  // entry on top of the tab the host just opened. An unknown handle falls
+  // through to the default rather than showing nothing: the page may be gone,
+  // and the workbook is still the right place to land.
+  const urlPage = appEntry.entry.value;
+  if (urlPage && isKnownPage(v, urlPage)) {
+    void selectPage(urlPage, v.pages.find((p) => p.id === urlPage) ?? null, 'replace');
+    return;
   }
   if (v.landingPageId) {
     void selectPage(v.landingPageId, null, 'replace');
@@ -636,34 +633,16 @@ function pickInitialPage() {
 }
 
 // ── Per-page URL sync ─────────────────────────────────────────────
-// The host (cortex EditorApp) owns `?doc=<workbook-container-id>` at the
-// TAB level and drives it on popstate. The individual workpages are
-// SUB-navigation inside that one tab, so we carry the active page in our
-// own `?page=<pageId>` query param. This makes the browser URL reflect
-// the open page (so back/forward + deep-links work) without the host
-// ever needing to know about workbook internals — its own popstate
-// handler early-returns when `?doc` is unchanged. The value is the page's
-// document id (stable across title renames), not its filename.
-const URL_PAGE_PARAM = 'page';
-
-function pageIdFromUrl(): string | null {
-  return new URLSearchParams(window.location.search).get(URL_PAGE_PARAM);
-}
-
-function syncPageToUrl(id: string | null, mode: 'push' | 'replace') {
-  const params = new URLSearchParams(window.location.search);
-  if (id) params.set(URL_PAGE_PARAM, id);
-  else params.delete(URL_PAGE_PARAM);
-  const query = params.toString();
-  const next = `${window.location.pathname}${query ? `?${query}` : ''}`;
-  const current = `${window.location.pathname}${window.location.search}`;
-  if (next === current) return;
-  // Preserve the host's history state (`{ doc }`) so its popstate handler
-  // keeps working after a workbook-internal navigation.
-  const state = window.history.state;
-  if (mode === 'push') window.history.pushState(state, '', next);
-  else window.history.replaceState(state, '', next);
-}
+// The open page is SUB-navigation inside one tab, and the host carries it in
+// `?entry=<tabDocId>:<pageId>`. It used to be our own bare `?page=`, written
+// straight onto the location — which broke as soon as a second app tab did the
+// same: one param, two writers, second one wins (planning/inter-links.md §5.2).
+// Keying by the tab's document id is what makes the tabs independent, and it is
+// the host that knows the tab ids.
+//
+// The value is still the page's document id (stable across title renames), and
+// back/forward is now the host's popstate — we only react to the map changing.
+const appEntry = useAppEntry(() => props.document.id);
 
 async function selectPage(
   id: string,
@@ -681,25 +660,25 @@ async function selectPage(
   saveStatus.value = 'idle';
   lastSaveError.value = null;
   headerCache.value = null;
-  if (history !== 'none') syncPageToUrl(id, history);
+  if (history !== 'none') appEntry.report(id, history);
   await loadActivePageContent();
 }
 
-// Restore the active page from `?page=` on browser back/forward. The
-// host's popstate handler ignores this (its `?doc` is unchanged), so we
-// own the in-workbook restore. `history: 'none'` — don't re-push the
-// entry we're navigating back to.
-function onWorkbookPopState() {
+// Follow the host's entry: browser back/forward, and a link into this workbook
+// clicked while the tab is already open (nothing remounts then, so the jump has
+// to happen here). `history: 'none'` — the host already recorded it.
+watch(() => appEntry.entry.value, (handle) => {
   const v = view.value;
-  if (!v) return;
-  const targetId =
-    pageIdFromUrl()
-    ?? v.landingPageId
-    ?? v.indexPageId
-    ?? v.pages[0]?.id
-    ?? null;
-  if (!targetId || targetId === activePageId.value) return;
-  void selectPage(targetId, findPageById(targetId), 'none');
+  if (!v || !handle || handle === activePageId.value) return;
+  if (!isKnownPage(v, handle)) return;
+  void selectPage(handle, findPageById(handle), 'none');
+});
+
+/** Is this id a page of *this* workbook? Guards against a stale/foreign handle. */
+function isKnownPage(v: WorkbookView, id: string): boolean {
+  return v.indexPageId === id
+    || v.landingPageId === id
+    || v.pages.some((p) => p.id === id);
 }
 
 function findPageById(id: string): WorkbookPageView | null {

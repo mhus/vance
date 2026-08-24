@@ -181,10 +181,19 @@ const chatBoundDocumentId = computed<string | null>(() => {
 // click opens the document as a tab instead of navigating away. Both
 // modes benefit — chatless mode just doesn't have a chat bubble to do
 // this for. Cross-project refs fall through to the default jump.
-const onVanceLink: VanceLinkHandler = async ({ documentId, projectId: refProjectId, newTab }) => {
+const onVanceLink: VanceLinkHandler = async ({
+  documentId, projectId: refProjectId, embedRef, newTab,
+}) => {
   if (newTab) return false;
   if (!store.projectId || refProjectId !== store.projectId) return false;
   focusZone.value = 'main';
+  // `?entry=` addresses a place inside an application tab. Set it *before*
+  // opening so the app mounts on the right page instead of landing on its
+  // default and jumping afterwards; on an already-open tab this is the whole
+  // effect of the click.
+  if (embedRef.entry) {
+    appEntries.value = { ...appEntries.value, [documentId]: embedRef.entry };
+  }
   try {
     await store.openFile(documentId);
   } catch (e) {
@@ -244,6 +253,37 @@ const activeAppSelection = ref<{ appDocId: string; selection: string } | null>(n
 provide('vance:report-app-selection',
   (sel: { appDocId: string; selection: string } | null) => {
     activeAppSelection.value = sel;
+  });
+
+// ── Per-tab app sub-position ("entry") ────────────────────────────
+// Which page/board/column is open *inside* an application tab. The host owns
+// it because it is per tab: Workbook and Wiki each used to write a bare
+// `?page=` onto the location, so two such tabs fought over one param
+// (planning/inter-links.md §5.2). Keyed by the app tab's own document id,
+// exactly like the `appDocId` scoping the reports above already use.
+//
+// The map is the same value `CortexView.entries` carries, so it travels
+// through the normal URL contract: F5, back/forward and a shared link all
+// restore the open page without the app owning any history handling.
+const appEntries = ref<Record<string, string>>({});
+
+/** Read side for app remotes: `inject('vance:app-entry')` → reactive map. */
+provide('vance:app-entry', appEntries);
+
+/**
+ * Write side: an app reports the place it now has open. `history` mirrors the
+ * app's own intent — switching pages is navigable, restoring one is not.
+ */
+provide('vance:report-app-entry',
+  (report: { appDocId: string; entry: string | null; history?: 'push' | 'replace' }) => {
+    const current = appEntries.value[report.appDocId] ?? null;
+    if (current === report.entry) return;
+    const next = { ...appEntries.value };
+    if (report.entry) next[report.appDocId] = report.entry;
+    else delete next[report.appDocId];
+    appEntries.value = next;
+    if (restoring.value) return;
+    syncUrl(report.history === 'push' ? 'push' : 'replace');
   });
 
 const { projects: tenantProjects, reload: loadTenantProjects } = useTenantProjects();
@@ -398,6 +438,7 @@ function currentView(): CortexView {
     pinned: chatBindMode.value === 'pinned' ? pinnedDocumentId.value : null,
     autoTarget: autoTarget.value,
     suggestions: suggestionsEnabled.value,
+    entries: appEntries.value,
   };
 }
 
@@ -425,6 +466,9 @@ async function restoreView(): Promise<void> {
   const view = readCortexView();
   restoring.value = true;
   try {
+    // Sub-positions first: an app tab opened below must mount on the page the
+    // URL declares rather than on its default and then jump.
+    appEntries.value = view.entries;
     // Open tabs the URL declares that aren't open yet (URL order).
     for (const id of view.open) {
       if (store.openTabs.some((t) => t.id === id)) continue;
@@ -489,6 +533,15 @@ watch(
     ) {
       chatBindMode.value = 'auto';
       pinnedDocumentId.value = null;
+    }
+    // Forget the sub-position of a tab that is no longer open. `writeCortexView`
+    // already drops it from the URL; dropping it here too keeps the map and the
+    // address bar saying the same thing, which is the whole premise of this
+    // file (no hidden state beside the URL).
+    const openIds = new Set(store.openTabs.map((t) => t.id));
+    const kept = Object.keys(appEntries.value).filter((id) => openIds.has(id));
+    if (kept.length !== Object.keys(appEntries.value).length) {
+      appEntries.value = Object.fromEntries(kept.map((id) => [id, appEntries.value[id]]));
     }
     const active = store.activeTabId ?? null;
     const mode = active !== lastActiveDoc ? 'push' : 'replace';

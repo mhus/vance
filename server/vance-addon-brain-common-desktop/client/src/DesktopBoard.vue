@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { VAlert, VButton, VCard, VEmptyState } from '@vance/components';
+import { cortexDeepLink, VAlert, VButton, VCard, VEmptyState } from '@vance/components';
 import { getDesktopStatus } from './api';
 import type { DesktopView } from './generated/common-desktop/DesktopView';
 import type { DesktopCard } from './generated/common-desktop/DesktopCard';
@@ -31,7 +31,7 @@ async function load(): Promise<void> {
 
 function cardUrl(card: DesktopCard): string | null {
   if (!card.id) return null;
-  return `/cortex.html?project=${encodeURIComponent(props.projectId)}&doc=${encodeURIComponent(card.id)}`;
+  return cortexDeepLink({ project: props.projectId, documentId: card.id });
 }
 
 /** Open an app in the current window (default action). */

@@ -22,6 +22,14 @@ export interface EmbedRef {
   project?: string;
   /** `?kind=` query param when present — render-mode hint, optional. */
   kindHint?: string;
+  /**
+   * `?entry=` query param when present: a place *inside* the addressed
+   * document, for an application manifest — the workbook page, the board
+   * column. Opaque here; only the app that produced it knows what it means
+   * (see planning/inter-links.md §1). Passed through untouched so a stale
+   * handle can degrade inside the app instead of failing the parse.
+   */
+  entry?: string;
   /** Effective render mode after applying defaults + overrides. */
   mode: 'preview' | 'reference';
   /** `?caption=` query param when present. */
@@ -108,6 +116,9 @@ export function parseVanceUri(href: string, opts: ParseVanceUriOptions): EmbedRe
     : (inferredKind ?? explicitKind);
   const modeParam = url.searchParams.get('mode');
   const caption = url.searchParams.get('caption') ?? undefined;
+  // Empty (`?entry=`) is treated as absent: it addresses no place, and
+  // carrying `''` would make every consumer test for two falsy shapes.
+  const entry = url.searchParams.get('entry') || undefined;
 
   const mode: 'preview' | 'reference' = modeParam === 'preview' || modeParam === 'reference'
     ? modeParam
@@ -117,6 +128,7 @@ export function parseVanceUri(href: string, opts: ParseVanceUriOptions): EmbedRe
     path,
     project,
     kindHint: kindHint?.toLowerCase(),
+    entry,
     mode,
     caption,
     text: opts.text,

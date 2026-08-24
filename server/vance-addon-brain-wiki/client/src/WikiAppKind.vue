@@ -3,7 +3,6 @@ import {
   computed,
   inject,
   nextTick,
-  onBeforeUnmount,
   onMounted,
   ref,
   watch,
@@ -19,7 +18,7 @@ import {
   pollComposeRun,
   cancelComposeRun,
 } from '@vance/shared';
-import { useDocumentPrefixReaction, VLinkPicker } from '@vance/components';
+import { useAppEntry, useDocumentPrefixReaction, VLinkPicker } from '@vance/components';
 import {
   WorkPageEditor,
   parseDocument,
@@ -202,7 +201,7 @@ async function loadWiki(): Promise<void> {
 function pickInitialPage(): void {
   const v = view.value;
   if (!v) return;
-  const urlRef = pageRefFromUrl();
+  const urlRef = appEntry.entry.value;
   if (urlRef) {
     const hit = findByRef(urlRef);
     if (hit) {
@@ -249,21 +248,21 @@ function indexView(id: string, path: string, space: string): WikiPageView {
 }
 
 // ── Page selection + URL sync ──────────────────────────────────────
-// The URL carries the page by its space-qualified SLUG (`page=main`,
-// `page=ops/deploys`), not its Mongo id — human-readable, deep-linkable and
-// matching the `[[Wikilink]]` notation. Generated indexes use the `_index`
-// slug (`page=_index`, `page=ops/_index`). The host owns `?doc=<container>`
-// at the tab level; `?page` is the wiki's own sub-navigation.
-const URL_PAGE_PARAM = 'page';
+// The handle is the page's space-qualified SLUG (`main`, `ops/deploys`), not
+// its Mongo id — human-readable, deep-linkable and matching the `[[Wikilink]]`
+// notation. Generated indexes use the `_index` slug (`_index`, `ops/_index`).
+//
+// The host carries it per tab as `?entry=<tabDocId>:<slug>`. It used to be our
+// own bare `?page=`, written straight onto the location — which collided with
+// Workbook doing the same, one param and two writers
+// (planning/inter-links.md §5.2). Back/forward is the host's popstate now; we
+// only react to the map changing.
+const appEntry = useAppEntry(() => props.document.id);
 
-/** Space-qualified slug of a page/index view — the value used in `?page=`. */
+/** Space-qualified slug of a page/index view — the handle we report. */
 function refFor(p: { space: string; slug: string } | null): string | null {
   if (!p) return null;
   return p.space ? `${p.space}/${p.slug}` : p.slug;
-}
-
-function pageRefFromUrl(): string | null {
-  return new URLSearchParams(window.location.search).get(URL_PAGE_PARAM);
 }
 
 /** Resolve a `?page=` ref to a selectable page id (+ view when known). */
@@ -281,18 +280,6 @@ function findByRef(ref: string): { id: string; page: WikiPageView | null } | nul
   return null;
 }
 
-function syncPageToUrl(ref: string | null, mode: 'push' | 'replace'): void {
-  const params = new URLSearchParams(window.location.search);
-  if (ref) params.set(URL_PAGE_PARAM, ref);
-  else params.delete(URL_PAGE_PARAM);
-  const query = params.toString();
-  const next = `${window.location.pathname}${query ? `?${query}` : ''}`;
-  const current = `${window.location.pathname}${window.location.search}`;
-  if (next === current) return;
-  const state = window.history.state;
-  if (mode === 'push') window.history.pushState(state, '', next);
-  else window.history.replaceState(state, '', next);
-}
 
 async function selectPage(
   id: string,
@@ -307,19 +294,21 @@ async function selectPage(
   if (resolved) currentSpace.value = resolved.space;
   saveStatus.value = 'idle';
   lastSaveError.value = null;
-  if (history !== 'none') syncPageToUrl(refFor(resolved), history);
+  if (history !== 'none') appEntry.report(refFor(resolved), history);
   await loadActivePageContent();
 }
 
-function onWikiPopState(): void {
-  const v = view.value;
-  if (!v) return;
-  const ref = pageRefFromUrl();
-  const hit = ref ? findByRef(ref) : null;
-  const targetId = hit?.id ?? v.mainPageId ?? null;
-  if (!targetId || targetId === activePageId.value) return;
-  void selectPage(targetId, hit?.page ?? findPageById(targetId), 'none');
-}
+// Follow the host's entry: browser back/forward, and a link into this wiki
+// clicked while the tab is already open (nothing remounts then). `'none'` —
+// the host already recorded it. An unresolvable slug is ignored rather than
+// falling back to main: the reader is already on a page, and yanking them off
+// it because a link went stale is worse than staying put.
+watch(() => appEntry.entry.value, (handle) => {
+  if (!view.value || !handle) return;
+  const hit = findByRef(handle);
+  if (!hit || hit.id === activePageId.value) return;
+  void selectPage(hit.id, hit.page, 'none');
+});
 
 async function loadActivePageContent(options: { force?: boolean } = {}): Promise<void> {
   if (!activePageId.value) {
@@ -553,7 +542,7 @@ function openHome(): void {
   activePageId.value = null;
   activePageView.value = null;
   activeMarkdown.value = null;
-  syncPageToUrl(null, 'push');
+  appEntry.report(null, 'push');
 }
 
 /**
@@ -740,11 +729,7 @@ watch(folder, () => {
 });
 
 onMounted(() => {
-  window.addEventListener('popstate', onWikiPopState);
   void loadWiki();
-});
-onBeforeUnmount(() => {
-  window.removeEventListener('popstate', onWikiPopState);
 });
 
 const saveStatusLabel = computed<string | null>(() => {

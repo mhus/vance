@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { VAlert, VButton, useDocumentPrefixReaction } from '@vance/components';
+import { VAlert, VButton, useAppEntry, useDocumentPrefixReaction } from '@vance/components';
 import CanvasEditor from './CanvasEditor.vue';
 import InputDialog from './InputDialog.vue';
 import { createCanvasPage, getGraph, putGraph, rebuildCanvasbook, scanCanvasbook } from './api';
@@ -79,25 +79,92 @@ function onCanvasSelection(nodeIds: string[]): void {
   reportAppSelection({ appDocId: appId, selection: nodeIds.join(', ') });
 }
 
+// ── Sub-position in the URL ───────────────────────────────────
+// The open board is per-tab state the host carries in `?entry=`, so F5,
+// back/forward, a bookmark and an inter-app link all land on the same board
+// (planning/inter-links.md §5). The handle is the page's document **id**, not
+// its path: a rename moves the path, and a link stored last month should still
+// resolve. Without a host the composable degrades to null + no-op — the app
+// then works exactly as before, just without URL memory.
+const appEntry = useAppEntry(() => props.document.id);
+
+function pathForHandle(handle: string | null): string | null {
+  if (!handle) return null;
+  return pages.value.find((p) => p.id === handle)?.path ?? null;
+}
+
+function handleForPath(path: string | null): string | null {
+  if (!path) return null;
+  return pages.value.find((p) => p.path === path)?.id ?? null;
+}
+
+/**
+ * The places inside *this* canvasbook, for the editor's reference picker.
+ *
+ * Local data, no round trip: the host already holds the scan, and the app is
+ * the only thing that knows its own boards. That is the whole difference
+ * between linking into the own app and into a foreign one — the stored link is
+ * identical either way (planning/inter-links.md §7.3).
+ *
+ * The board currently open is left out: a board linking to itself is a dead
+ * click, and offering it invites one.
+ */
+const appTargets = computed(() => {
+  const manifest = props.document.path;
+  if (!manifest || pages.value.length === 0) return null;
+  return {
+    appPath: manifest,
+    appLabel: props.document.title || folder.value || 'Canvasbook',
+    targets: pages.value
+      .filter((p) => p.path !== activePath.value)
+      .map((p) => ({ handle: p.id, label: p.title || p.path })),
+  };
+});
+
+// A link clicked while this tab is already open only changes the host's entry —
+// nothing remounts, so the jump has to happen here.
+watch(() => appEntry.entry.value, (handle) => {
+  const path = pathForHandle(handle);
+  if (path && path !== activePath.value) void openPage(path, 'none');
+});
+
 async function refreshScan(select?: string): Promise<void> {
   error.value = null;
   try {
     view.value = await scanCanvasbook(props.document.projectId, folder.value);
+    // A board the URL asks for wins over the landing page — that is what makes
+    // a deep link a deep link. An unknown handle falls through to the default
+    // instead of showing nothing: the board may have been deleted, and the app
+    // is still the right place to land (planning/inter-links.md §4).
     const target = select
+      ?? pathForHandle(appEntry.entry.value)
       ?? view.value.landingPagePath
       ?? (view.value.pages.length > 0 ? view.value.pages[0].path : null);
-    if (target) await openPage(target);
-    else { activePath.value = null; graph.value = null; }
+    if (target) await openPage(target, 'replace');
+    else {
+      activePath.value = null;
+      graph.value = null;
+      appEntry.report(null);
+    }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   }
 }
 
-async function openPage(path: string): Promise<void> {
+/**
+ * @param history how the host should record the move. `replace` on restore,
+ *                `none` when the host asked for it (it already knows), `push`
+ *                for a board switch the user made.
+ */
+async function openPage(
+  path: string,
+  history: 'push' | 'replace' | 'none' = 'push',
+): Promise<void> {
   menuOpen.value = false;
   flushPending();
   activePath.value = path;
   graph.value = null;
+  if (history !== 'none') appEntry.report(handleForPath(path), history);
   try {
     graph.value = await getGraph(props.document.projectId, path);
   } catch (e) {
@@ -240,6 +307,7 @@ onBeforeUnmount(() => {
         :editable="true"
         :project-id="document.projectId"
         :path="activePath"
+        :app-targets="appTargets"
         @change="onEditorChange"
         @selection="onCanvasSelection"
       />

@@ -106,6 +106,7 @@ export * from './inbox/Criticality';
 export * from './inbox/InboxAnswerRequest';
 export * from './inbox/InboxCountResponse';
 export * from './inbox/InboxDelegateRequest';
+export * from './inbox/InboxDiscussionOpenRequest';
 export * from './inbox/InboxFollowRequest';
 export * from './inbox/InboxInviteRequest';
 export * from './inbox/InboxParticipantRemoveRequest';

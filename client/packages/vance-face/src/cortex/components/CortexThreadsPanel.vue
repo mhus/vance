@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { VAlert, VButton, VEmptyState } from '@/components';
+import { VAlert, VButton, VEmptyState, VInput, VModal, VSelect, VTextarea } from '@/components';
 import { MaximegalonStatus, type MaximegalonDto } from '@vance/generated';
 import { useInbox } from '@/composables/useInbox';
+import { useTeams } from '@/composables/useTeams';
+import { getUsername } from '@vance/shared';
 import InboxThreadPanel from '@/inbox/InboxThreadPanel.vue';
 import InboxReactionBar from '@/inbox/InboxReactionBar.vue';
 import MarkdownView from '@/components/MarkdownView.vue';
@@ -33,7 +35,9 @@ const props = defineProps<{
 
 const { t } = useI18n();
 const inbox = useInbox();
+const teamsState = useTeams();
 const busy = ref(false);
+const currentUser = getUsername() ?? '';
 
 /**
  * Which thread is open, or {@code null} for the list. Cleared whenever the
@@ -66,6 +70,70 @@ async function backToList(): Promise<void> {
   openThreadId.value = null;
   inbox.clearSelection();
   if (documentId.value) await inbox.loadForDocument(documentId.value);
+}
+
+// ── Opening a discussion ─────────────────────────────────────────────
+//
+// The "+" beside the heading, mirroring the session picker. Deliberately not a
+// second share dialog: pointing somebody at a document is Actions → Share and
+// lands in this same list. This is for the two cases that cannot — a thread
+// addressed to yourself, and one whose point is a question.
+
+const openOpen = ref(false);
+const newTitle = ref('');
+const newBody = ref('');
+const newAssignee = ref('');
+const creating = ref(false);
+
+/**
+ * Who it can be addressed to: yourself first (the case that exists because the
+ * share path refuses it), then team-mates. The server has the final say — a
+ * recipient whose inbox you may not write to is refused there.
+ */
+const assigneeOptions = computed(() => {
+  const set = new Set<string>();
+  for (const team of teamsState.teams.value) {
+    for (const m of team.members) if (m && m !== currentUser) set.add(m);
+  }
+  return [
+    { value: '', label: t('cortexThreads.assignSelf') },
+    ...[...set].sort().map((u) => ({ value: u, label: u })),
+  ];
+});
+
+// The team list has to be fetched, not just read: without this the recipient
+// dropdown offers only "mine" and the feature looks half-built.
+onMounted(() => { void teamsState.reload(); });
+
+function openDialog(): void {
+  // Prefilled with the document's name: a discussion about a document almost
+  // always starts by naming it, and an empty title field invites "Frage".
+  newTitle.value = props.activeDocument?.title || props.activeDocument?.name || '';
+  newBody.value = '';
+  newAssignee.value = '';
+  openOpen.value = true;
+}
+
+async function confirmOpen(): Promise<void> {
+  const id = documentId.value;
+  const title = newTitle.value.trim();
+  if (!id || !title) return;
+  creating.value = true;
+  try {
+    const created = await inbox.openDiscussion(
+      id, title, newBody.value.trim() || null, newAssignee.value || null);
+    if (!created) return;
+    openOpen.value = false;
+    await inbox.loadForDocument(id);
+    // Straight into it: you just wrote the opening line, so the thread is where
+    // you want to be — not back in a list looking for what you made.
+    if (created.id) {
+      openThreadId.value = created.id;
+      await inbox.loadOne(created.id);
+    }
+  } finally {
+    creating.value = false;
+  }
 }
 
 // ── Thread actions ───────────────────────────────────────────────────
@@ -164,7 +232,15 @@ function when(at: Date | string | undefined): string {
       <span v-else class="uppercase tracking-wide opacity-70">
         {{ t('cortexThreads.heading') }}
       </span>
-      <span class="truncate">{{ activeDocument?.title || activeDocument?.path }}</span>
+      <span class="truncate flex-1">{{ activeDocument?.title || activeDocument?.path }}</span>
+      <VButton
+        v-if="activeDocument && !openThreadId"
+        size="sm"
+        variant="ghost"
+        class="shrink-0 -mr-2"
+        :title="t('cortexThreads.newTitle')"
+        @click="openDialog"
+      >+</VButton>
     </div>
 
     <div v-if="!activeDocument" class="flex-1 flex items-center justify-center p-3">
@@ -263,5 +339,48 @@ function when(at: Date | string | undefined): string {
 
       <div v-else class="p-3 text-xs opacity-60">{{ t('cortexThreads.loading') }}</div>
     </div>
+
+    <VModal v-model="openOpen" :title="t('cortexThreads.newTitle')" :close-on-backdrop="!creating">
+      <div class="flex flex-col gap-3">
+        <p class="text-sm opacity-80">
+          {{ t('cortexThreads.newIntro', { doc: activeDocument?.title || activeDocument?.path }) }}
+        </p>
+        <VAlert v-if="inbox.error.value" variant="error">
+          <span>{{ inbox.error.value }}</span>
+        </VAlert>
+        <div class="w-full">
+          <VInput
+            v-model="newTitle"
+            :label="t('cortexThreads.newTitleLabel')"
+            :disabled="creating"
+          />
+        </div>
+        <div class="w-full">
+          <VSelect
+            v-model="newAssignee"
+            :label="t('cortexThreads.newAssignee')"
+            :options="assigneeOptions"
+            :disabled="creating"
+          />
+        </div>
+        <VTextarea
+          v-model="newBody"
+          :label="t('cortexThreads.newBody')"
+          :rows="4"
+          :disabled="creating"
+        />
+      </div>
+      <template #actions>
+        <VButton variant="ghost" :disabled="creating" @click="openOpen = false">
+          {{ t('cortexThreads.newCancel') }}
+        </VButton>
+        <VButton
+          variant="primary"
+          :loading="creating"
+          :disabled="!newTitle.trim()"
+          @click="confirmOpen"
+        >{{ t('cortexThreads.newConfirm') }}</VButton>
+      </template>
+    </VModal>
   </div>
 </template>

@@ -51,6 +51,11 @@ export function useInbox(): {
   loadList: (filter: InboxFilter) => Promise<void>;
   /** Threads whose object is the given document — fills the same `items` ref. */
   loadForDocument: (documentId: string) => Promise<void>;
+  /** Open a discussion about a document. Returns the new thread, or null. */
+  openDiscussion: (
+    documentId: string, title: string, body?: string | null,
+    assignedToUserId?: string | null,
+  ) => Promise<MaximegalonDto | null>;
   loadOne: (id: string) => Promise<void>;
   loadTags: () => Promise<void>;
   clearSelection: () => void;
@@ -127,6 +132,35 @@ export function useInbox(): {
       items.value = [];
     } finally {
       loading.value = false;
+    }
+  }
+
+  /**
+   * Open a discussion about a document.
+   *
+   * <p>Deliberately not folded into the share dialog: pointing somebody at a
+   * document is a Milliways share and lands in the same list. This serves the
+   * two cases that cannot — a thread addressed to yourself, and one whose point
+   * is a question. The server refuses a recipient whose inbox you may not write
+   * to, and says so.
+   */
+  async function openDiscussion(
+    documentId: string, title: string, body?: string | null,
+    assignedToUserId?: string | null,
+  ): Promise<MaximegalonDto | null> {
+    error.value = null;
+    try {
+      return await brainFetch<MaximegalonDto>('POST', 'inbox/discussions', {
+        body: {
+          documentId,
+          title,
+          body: body ?? undefined,
+          assignedToUserId: assignedToUserId ?? undefined,
+        },
+      });
+    } catch (e) {
+      error.value = threadError(e, 'Failed to open the discussion.');
+      return null;
     }
   }
 
@@ -413,6 +447,7 @@ export function useInbox(): {
     filter,
     loadList,
     loadForDocument,
+    openDiscussion,
     loadOne,
     loadTags,
     clearSelection,

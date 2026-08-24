@@ -14,6 +14,8 @@ import de.mhus.vance.api.inbox.InboxReactRequest;
 import de.mhus.vance.shared.inbox.MaximegalonRuleException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import de.mhus.vance.api.inbox.InboxDelegateRequest;
+import de.mhus.vance.api.inbox.InboxDiscussionOpenRequest;
+import de.mhus.vance.api.inbox.MaximegalonDocumentRef;
 import de.mhus.vance.api.inbox.MaximegalonDto;
 import de.mhus.vance.api.inbox.MaximegalonStatus;
 import de.mhus.vance.api.inbox.MaximegalonType;
@@ -25,6 +27,8 @@ import de.mhus.vance.brain.inbox.InboxMapper;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.inbox.InboxEffectRegistry;
+import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.permission.Action;
@@ -87,6 +91,7 @@ public class InboxController {
     private final ProjectService projectService;
     private final RequestAuthority authority;
     private final de.mhus.vance.brain.inbox.InboxAuthz inboxAuthz;
+    private final DocumentService documentService;
 
     // ──────────────────── Read ────────────────────
 
@@ -185,6 +190,68 @@ public class InboxController {
                 tenant, visible.stream().map(MaximegalonDocument::getId)
                         .filter(Objects::nonNull).toList()));
         return InboxListResponse.builder().items(dtos).count(dtos.size()).build();
+    }
+
+    /**
+     * Open a discussion about a document — the "+" in the Cortex discussion tab.
+     *
+     * <p>Deliberately narrow, because the neighbouring door already exists:
+     * pointing somebody at a document is a Milliways share, and it lands in the
+     * same tab. This endpoint serves what that cannot — a thread addressed to
+     * <em>yourself</em> (the share path refuses self-delivery) and one whose
+     * point is a question.
+     *
+     * <p>Three checks, and each answers a different question. Tenant READ: may
+     * this person be here at all. Document READ: the thread snapshots the
+     * document's title and path, so creating one about a document the caller
+     * cannot read would leak its name. Inbox WRITE on the recipient: putting a
+     * matter on someone's desk spends their attention — the same rule
+     * {@code invite}, {@code delegate} and {@code inbox_post} apply.
+     *
+     * <p>{@code requiresAction=false} always. See
+     * {@link InboxDiscussionOpenRequest} for why an ask would be wrong here.
+     */
+    @PostMapping("/brain/{tenant}/inbox/discussions")
+    public ResponseEntity<MaximegalonDto> openDiscussion(
+            @PathVariable("tenant") String tenant,
+            @Valid @RequestBody InboxDiscussionOpenRequest request,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
+        String currentUser = currentUser(httpRequest);
+        String assignee = StringUtils.isBlank(request.getAssignedToUserId())
+                ? currentUser : request.getAssignedToUserId().trim();
+
+        DocumentDocument doc = documentService.findById(request.getDocumentId())
+                .filter(d -> tenant.equals(d.getTenantId()))
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Document not found"));
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
+        authority.enforce(httpRequest,
+                new Resource.InboxItem(tenant, "", assignee), Action.WRITE);
+
+        MaximegalonDocument created = inboxItemService.create(MaximegalonDocument.builder()
+                .tenantId(tenant)
+                .originatorUserId(currentUser)
+                .assignedToUserId(assignee)
+                // The type follows the object, as everywhere else: this thread has
+                // a document, so it is about one.
+                .type(MaximegalonType.OUTPUT_DOCUMENT)
+                .criticality(Criticality.NORMAL)
+                .status(MaximegalonStatus.PENDING)
+                .requiresAction(false)
+                .title(request.getTitle().trim())
+                .body(request.getBody())
+                .tags(new ArrayList<>(List.of("discussion")))
+                .documentRef(MaximegalonDocumentRef.builder()
+                        .documentId(doc.getId())
+                        .projectId(doc.getProjectId())
+                        .path(doc.getPath())
+                        .title(doc.getTitle())
+                        .mimeType(doc.getMimeType())
+                        .build())
+                .build());
+        return ResponseEntity.ok(InboxMapper.toDto(created));
     }
 
     /** Single item — same authorisation as list. */

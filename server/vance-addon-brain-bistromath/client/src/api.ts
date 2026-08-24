@@ -51,6 +51,17 @@ export async function rebuildApp(projectId: string, folder: string): Promise<App
 export interface DocEntry {
   /** File name without extension — the key, if the folder holds records. */
   key: string;
+  /**
+   * Project-root path, with a leading slash — ready to hand straight back to
+   * `read`.
+   *
+   * <p>The slash is the whole point and it was missing at first: paths a
+   * program writes are relative to the **app folder**, but a listing comes back
+   * from the server as a **project** path. Returning it bare meant
+   * `read(entry.path)` resolved it a second time against the app folder and
+   * looked for `apps/mine/apps/mine/invoices/…`. The grammar already has a
+   * spelling for "from the project root", so the listing uses it.
+   */
   path: string;
   title?: string;
   mime?: string;
@@ -141,7 +152,12 @@ export class DocumentAccess {
     const out: DocEntry[] = [];
     for (const f of res.files ?? []) {
       if (!f.path) continue;
-      out.push({ key: baseName(f.path), path: f.path, title: f.title, mime: f.mimeType });
+      out.push({
+        key: baseName(f.path),
+        path: f.path.startsWith('/') ? f.path : `/${f.path}`,
+        title: f.title,
+        mime: f.mimeType,
+      });
     }
     out.sort((a, b) => a.path.localeCompare(b.path));
     return out;

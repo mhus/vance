@@ -53,8 +53,12 @@ collide.
 `vance.documents.list(folder)` returns the documents **directly** inside it:
 
 ```js
-[{ key: '2026-0001', path: 'invoices/2026-0001.yaml', title: '…', mime: '…' }]
+[{ key: '2026-0001', path: '/apps/mine/invoices/2026-0001.yaml', title: '…', mime: '…' }]
 ```
+
+**`path` comes back with a leading slash**, from the project root — so you hand
+it straight to `read` and it means the same document you just listed. `key` is
+the file name without its extension, which is the useful half most of the time.
 
 Ordered by path, at most 200 entries. A larger collection needs paging in the
 program — say so rather than showing a table that quietly stops.

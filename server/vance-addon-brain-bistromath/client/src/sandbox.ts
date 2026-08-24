@@ -77,7 +77,7 @@ const DEFAULT_DRAIN_MS = 1500;
  * "no function named …", which is a string comparison standing in for a fact
  * the guest can simply be asked.
  */
-export const HOOKS = ['init', 'shutdown', 'onBeforeUnload'] as const;
+export const HOOKS = ['init', 'shutdown', 'onBeforeUnload', 'onDocumentChanged'] as const;
 
 interface Waiter {
   resolve: (value: unknown) => void;
@@ -238,12 +238,24 @@ export class Sandbox {
    * authoring mistake and should be visible. The lifecycle hooks are asked
    * about up front instead and skipped when absent.
    */
-  invoke(fn: string): Promise<void> {
+  invoke(fn: string, args: unknown[] = []): Promise<void> {
     if (this.disposing) return Promise.reject(new Error('the app is closing'));
     return this.enqueue(async () => {
-      await this.send('invoke', { fn });
+      await this.send('invoke', { fn, args });
       await this.refreshLeaveGuard();
     });
+  }
+
+  /**
+   * Run a lifecycle hook if the program defines one, and say nothing if not.
+   *
+   * <p>The opposite of {@link invoke} on purpose: a *handler* the program does
+   * not define is an authoring mistake and must be visible, while a hook it
+   * chose not to write is the normal case — the app just does not react.
+   */
+  async invokeHook(hook: string, args: unknown[] = []): Promise<void> {
+    if (!this.hooks.has(hook) || this.disposing) return;
+    await this.invoke(hook, args);
   }
 
   /**

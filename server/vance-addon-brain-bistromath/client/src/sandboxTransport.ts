@@ -103,7 +103,7 @@ export const GUEST_BOOTSTRAP = `<!doctype html><meta charset="utf-8"><script>
     if (m.t === 'invoke') {
       var fn = window[m.fn];
       if (typeof fn !== 'function') { reply(m.id, 'no function named ' + m.fn); return; }
-      try { settle(m.id, fn()); }
+      try { settle(m.id, fn.apply(null, m.args || [])); }
       catch (e) { reply(m.id, String(e)); }
       return;
     }

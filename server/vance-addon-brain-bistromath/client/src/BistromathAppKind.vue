@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, toRaw, watch } from 'vue';
-import { VAlert, VButton, VEmptyState, useAppEntry } from '@vance/components';
+import {
+  VAlert,
+  VButton,
+  VEmptyState,
+  useAppEntry,
+  useDocumentPrefixReaction,
+} from '@vance/components';
 import WidgetNode from './WidgetNode.vue';
 import { Sandbox, type SandboxHost } from './sandbox';
 import { DocumentAccess, loadView, readDocumentText, rebuildApp, scanApp } from './api';
@@ -156,6 +162,55 @@ function rethrow(original: string) {
     }
     throw new Error(msg);
   };
+}
+
+// ── reacting to writes ─────────────────────────────────────────────
+
+/**
+ * The app watches its own folder.
+ *
+ * <p>Two different things can change under it and they deserve two different
+ * answers. A document that **is** the app — the manifest, a view, the program —
+ * means the app itself was edited, so it reloads: that is what the Rebuild
+ * button does, and having to press it after every edit was the friction this
+ * removes. Anything else is **data**, and only the program knows what to do
+ * about it, so it gets `onDocumentChanged(paths)` and decides.
+ *
+ * <p>Self-writes do not come back: the REST client carries the connection's
+ * `editorId` and the server skips the writer. Without that, a program that
+ * saves a record would be told about its own save and could answer by saving
+ * again.
+ */
+const watchedPrefix = computed(() => (folder.value ? `${folder.value}/` : null));
+
+useDocumentPrefixReaction({
+  prefix: watchedPrefix,
+  onRemoteChange: (paths) => {
+    if (paths.some(isDefinition)) {
+      // The app was edited. Re-scan, re-open, restart — a program left running
+      // against a view that no longer matches it is the confusing state.
+      void load();
+      return;
+    }
+    void sandbox?.invokeHook('onDocumentChanged', [paths]);
+  },
+});
+
+/**
+ * Is this path part of the app's definition rather than its data?
+ *
+ * <p>Answered from the scan, not from a folder convention — §4.1 refused
+ * prescribed folders, and guessing from a path would resurrect them. The one
+ * case this misses is a **newly added** view: it is in no scan yet, so it
+ * counts as data. Rebuild still covers that, and it is a rarer act than saving
+ * a record.
+ */
+function isDefinition(path: string): boolean {
+  const s = scan.value;
+  if (path === props.document.path) return true;
+  if (!s) return false;
+  if (s.programPath && path === s.programPath) return true;
+  return s.views.some((v) => v.path === path);
 }
 
 // ── lifecycle ──────────────────────────────────────────────────────

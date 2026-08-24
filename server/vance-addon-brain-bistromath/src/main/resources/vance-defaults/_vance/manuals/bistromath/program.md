@@ -1,7 +1,7 @@
 ---
 name: program
-summary: The program of a custom app — the three lifecycle functions, what the sandbox allows, and the async rules.
-triggers: you are writing or changing main.js of a custom application, wiring a handler, or wondering why a function is not called
+summary: The program of a custom app — the four lifecycle functions, what the sandbox allows, and the async rules.
+triggers: you are writing or changing main.js of a custom application, wiring a handler, reacting to a document somebody else wrote, or wondering why a function is not called
 ---
 
 # The program
@@ -28,7 +28,7 @@ Nothing survives to the next opening. Closing the app tab, switching documents
 or reloading starts a fresh program. **Whatever must outlive that goes into a
 document.**
 
-## The three functions the runtime calls
+## The four functions the runtime calls
 
 All optional. The runtime asks once, after loading, which ones exist; a missing
 one is simply not called.
@@ -38,6 +38,7 @@ one is simply not called.
 | `init()` | once, after the program is loaded |
 | `shutdown()` | when the app closes — see the warning below |
 | `onBeforeUnload()` | returns `true` if leaving would lose something |
+| `onDocumentChanged(paths)` | somebody else wrote a document in the app folder |
 
 **`init()` does not render.** The view is drawn first — `init` is async, and
 waiting for it would leave the app blank until the first document read returns.
@@ -61,6 +62,24 @@ function onBeforeUnload() { return unsavedChanges; }
 
 The browser shows its own generic wording, and skips the prompt entirely if the
 reader never interacted with the page. A courtesy, not a safety net.
+
+**`onDocumentChanged(paths)` is somebody else's write, never your own.** The
+app watches its own folder; when an agent, a colleague or the Cortex editor
+writes a document under it, the hook runs with the paths of that batch:
+
+```js
+async function onDocumentChanged(paths) {
+  await load();
+}
+```
+
+Your own writes do not come back, so reloading in the hook cannot loop.
+
+Three things it is not told about: a document **outside** the app folder, a
+change to the app's **own** documents (a view, the manifest, the program — those
+reload the whole app, which is why editing a view next door takes effect without
+pressing Rebuild), and a **newly added** view (no scan knows it yet — that one
+still needs Rebuild).
 
 ## `await` needs `async`
 

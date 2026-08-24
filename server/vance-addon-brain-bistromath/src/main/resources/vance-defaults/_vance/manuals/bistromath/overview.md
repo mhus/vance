@@ -36,9 +36,9 @@ folder in the name: `manual_read('bistromath/views')`.
 
 ## Before you promise anything
 
-This build reads **and writes** documents. It has no `visibleIf`, no `import`
-in the program, and `if` / `repeat` / `chart` / `dialog` are reserved but not
-rendered.
+This build reads **and writes** documents, takes input in a `form`, and reacts
+to writes in its own folder. It has no `visibleIf`, no `import` in the program,
+and `if` / `repeat` / `chart` / `dialog` are reserved but not rendered.
 
 Create with `bistromath_app_create(folder=…, title=…)`; it scaffolds a running
 Hello World. After editing anything, run `app_rebuild(folder=…)` — nothing else

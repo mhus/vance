@@ -417,6 +417,40 @@ describe('host calls', () => {
   });
 });
 
+// ── hooks with arguments ───────────────────────────────────────────
+
+describe('invokeHook', () => {
+  it('passes its arguments through to the guest', async () => {
+    const guest = new FakeGuest();
+    autoRespond(guest, { hooks: ['onDocumentChanged'] });
+    const box = new Sandbox({ host: makeHost(), onError: vi.fn(), transport: guest });
+    await box.start('code');
+
+    await box.invokeHook('onDocumentChanged', [['a.yaml', 'b.yaml']]);
+
+    const call = guest.posted.find((m) => m.t === 'invoke' && m.fn === 'onDocumentChanged');
+    expect(call).toBeDefined();
+    expect(call!.args).toEqual([['a.yaml', 'b.yaml']]);
+  });
+
+  /**
+   * A hook the program chose not to write is the normal case, not a mistake —
+   * the app simply does not react. That is the opposite of a *handler* a view
+   * names and the program lacks, which must be visible.
+   */
+  it('says nothing when the program has no such hook', async () => {
+    const guest = new FakeGuest();
+    autoRespond(guest);
+    const box = new Sandbox({ host: makeHost(), onError: vi.fn(), transport: guest });
+    await box.start('code');
+    const before = guest.posted.length;
+
+    await expect(box.invokeHook('onDocumentChanged', [[]])).resolves.toBeUndefined();
+
+    expect(guest.posted.length).toBe(before);
+  });
+});
+
 // ── teardown ───────────────────────────────────────────────────────
 
 describe('dispose', () => {

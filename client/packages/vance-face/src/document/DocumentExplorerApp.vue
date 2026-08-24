@@ -72,7 +72,10 @@ onMounted(async () => {
   if (selectedProjectId.value) {
     docsState.pathPrefix.value = queryPath ?? DEFAULT_PATH_PREFIX;
     await docsState.loadPage(selectedProjectId.value, 0, docsState.pathPrefix.value);
-    void docsState.loadFolders(selectedProjectId.value);
+    // The project-wide folder list is NOT loaded here. Its only consumers are
+    // the move/copy dialogs' target suggestions, and it costs a distinct-scan
+    // over every document path in the project — with a mount, a quantity with
+    // no upper bound. Loaded when one of those dialogs opens instead.
     // Loaded alongside the listing so an empty mounted folder can explain
     // itself; failure is silent and only costs the explanation.
     void docsState.loadMounts(selectedProjectId.value);
@@ -129,7 +132,9 @@ watch(selectedProjectId, async (next, prev) => {
   docsState.pathPrefix.value = DEFAULT_PATH_PREFIX;
   search.value = '';
   await docsState.loadPage(next, 0, DEFAULT_PATH_PREFIX);
-  void docsState.loadFolders(next);
+  // Folder list intentionally not refetched — see onMounted. It belongs to the
+  // previous project now, so drop it and let the next dialog fetch it.
+  docsState.folders.value = [];
   void docsState.loadMounts(next);
   kitState.clear();
   void loadKits();
@@ -682,9 +687,14 @@ const copyProjectOptions = computed(() => [
   ...projectsState.projects.value.map((p) => ({ value: p.name, label: p.title || p.name })),
 ]);
 
-function openCopyModal(): void {
+async function openCopyModal(): Promise<void> {
   copyTargetProject.value = '';
   copyTargetPath.value = docsState.pathPrefix.value.replace(/\/+$/, '');
+  if (selectedProjectId.value && docsState.folders.value.length === 0) {
+    // Awaited, unlike the move dialog's fire-and-forget: the suggestions are
+    // copied into a local list right below, so they have to be there.
+    await docsState.loadFolders(selectedProjectId.value);
+  }
   copyFolderSuggestions.value = docsState.folders.value.map((f) => f);
   showCopyModal.value = true;
 }

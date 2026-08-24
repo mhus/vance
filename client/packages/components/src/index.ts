@@ -14,6 +14,7 @@ export {
 // platform-neutral @vance/shared (which must stay Vue-free for RN/Electron).
 export * from './cortexLink';
 export * from './useAppEntry';
+export * from './vanceUri';
 export * from './useDocumentPrefixReaction';
 export * from './usePointers';
 export { default as VAlert } from './VAlert.vue';

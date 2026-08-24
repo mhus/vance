@@ -265,6 +265,29 @@ function refFor(p: { space: string; slug: string } | null): string | null {
   return p.space ? `${p.space}/${p.slug}` : p.slug;
 }
 
+/**
+ * This wiki's pages, for the link picker's "This app" tab.
+ *
+ * The handle is the space-qualified slug — the same value `?entry=` carries and
+ * the same one `[[Wikilink]]` uses, so there is one way to name a page here.
+ * The open page is left out: linking a page to itself is a dead click.
+ */
+const linkPickerAppTargets = computed(() => {
+  const v = view.value;
+  if (!v) return null;
+  return {
+    appPath: props.document.path,
+    appLabel: v.title || folder.value || 'Wiki',
+    targets: v.pages
+      .filter((p) => p.id !== activePageId.value)
+      .map((p) => ({
+        handle: refFor(p) as string,
+        label: p.title || p.slug,
+        group: p.space || null,
+      })),
+  };
+});
+
 /** Resolve a `?page=` ref to a selectable page id (+ view when known). */
 function findByRef(ref: string): { id: string; page: WikiPageView | null } | null {
   const v = view.value;
@@ -921,6 +944,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
             v-if="linkPickerOpen"
             :project-id="projectId"
             :initial-href="linkPickerInitialHref"
+            :app-targets="linkPickerAppTargets"
             @pick="onLinkPicked"
             @clear="onLinkClear"
             @close="closeLinkPicker"

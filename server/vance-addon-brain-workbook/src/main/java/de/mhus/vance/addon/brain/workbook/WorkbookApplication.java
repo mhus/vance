@@ -17,6 +17,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -69,6 +70,40 @@ public class WorkbookApplication implements VanceApplication {
                 + "grammar: `manual_read('workpage-blocks')`). Add pages with "
                 + "`workpage_create(path=\"" + ctx.folder() + "/<slug>\", ...)` and "
                 + "`app_rebuild('" + ctx.folder() + "')` after structural changes.";
+    }
+
+    /**
+     * The workbook's pages, as link targets.
+     *
+     * <p>{@code NAVIGATE} only: every page can be linked to, but a share does
+     * not create one — a workbook has no inbox, and inventing "the first page"
+     * as a drop-box would put someone else's note into a page they wrote. An
+     * empty {@code INTAKE} list is the honest answer, and it makes the workbook
+     * simply not appear as a share target.
+     *
+     * <p>The handle is the page's document id, not its path: a rename moves the
+     * path, and a link stored last month should still resolve. The generated
+     * {@code _index} is left out — it is derived, and a link into it would point
+     * at something the next rebuild rewrites.
+     */
+    @Override
+    public List<AppTarget> targets(TargetsContext ctx) {
+        if (ctx.purpose() != TargetPurpose.NAVIGATE) return List.of();
+        WorkbookFolderReader.Scan scan = folderReader.scan(
+                ctx.tenantId(), ctx.projectName(), ctx.folder());
+        List<AppTarget> out = new ArrayList<>(scan.pages().size());
+        for (WorkbookPage page : scan.pages()) {
+            String id = page.doc().getId();
+            if (id == null) continue;
+            String label = page.title() != null && !page.title().isBlank()
+                    ? page.title() : page.relativePath();
+            out.add(new AppTarget(id, label, blankToNull(page.section())));
+        }
+        return List.copyOf(out);
+    }
+
+    private static @Nullable String blankToNull(@Nullable String s) {
+        return s == null || s.isBlank() ? null : s;
     }
 
     @Override

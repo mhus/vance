@@ -76,6 +76,35 @@ public class WikiApplication implements VanceApplication {
                 + "Read `manual_read('app-wiki')` for the full model.";
     }
 
+    /**
+     * The wiki's pages, as link targets, grouped by space.
+     *
+     * <p>{@code NAVIGATE} only — see {@link WorkbookApplication#targets} for why
+     * a page collection is not an intake.
+     *
+     * <p>The handle is the space-qualified <b>slug</b>, not the document id: it
+     * is what the wiki already addresses pages by, both in its own URL and in
+     * the {@code [[Wikilink]]} notation, so a link built here reads like one a
+     * person would type. A rename that changes the slug breaks it — that is the
+     * same trade the wiki already makes for every wikilink in its pages, and
+     * two identities for one page would be worse.
+     */
+    @Override
+    public List<AppTarget> targets(TargetsContext ctx) {
+        if (ctx.purpose() != TargetPurpose.NAVIGATE) return List.of();
+        WikiFolderReader.Scan scan = folderReader.scan(
+                ctx.tenantId(), ctx.projectName(), ctx.folder());
+        List<AppTarget> out = new ArrayList<>(scan.pages().size());
+        for (WikiPage page : scan.pages()) {
+            String handle = page.space().isBlank()
+                    ? page.slug() : page.space() + "/" + page.slug();
+            String label = page.title() != null && !page.title().isBlank()
+                    ? page.title() : handle;
+            out.add(new AppTarget(handle, label, page.space().isBlank() ? null : page.space()));
+        }
+        return List.copyOf(out);
+    }
+
     @Override
     public CreateResult create(CreateContext ctx) {
         String folder = WikiFolderReader.normaliseFolder(ctx.folder());

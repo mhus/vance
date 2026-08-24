@@ -8,6 +8,11 @@ export * from './access/AccessTokenResponse';
 export * from './access/RefreshTokenResponse';
 export * from './access/WebUiSessionData';
 
+export * from './applications/ApplicationEntryDto';
+export * from './applications/ApplicationListResponse';
+export * from './applications/ApplicationTargetDto';
+export * from './applications/ApplicationTargetsResponse';
+
 export * from './addon/AddonDto';
 export * from './addon/AddonInsightDto';
 export * from './addon/AddonProfileTabDto';

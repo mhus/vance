@@ -19,12 +19,42 @@
  */
 import { computed, onMounted, ref, watch } from 'vue';
 import { brainFetch } from '@vance/shared';
-import type { DocumentSearchItem, DocumentSearchResponse } from '@vance/generated';
+import type {
+  ApplicationEntryDto,
+  ApplicationListResponse,
+  ApplicationTargetDto,
+  ApplicationTargetsResponse,
+  DocumentSearchItem,
+  DocumentSearchResponse,
+} from '@vance/generated';
+import { vanceRef } from './vanceUri';
+
+/** One place inside the surrounding app, as the host describes it. */
+export interface AppLinkTarget {
+  handle: string;
+  label: string;
+  group?: string | null;
+}
+
+/**
+ * The app this editor runs inside. Supplied by the host — it is the only one
+ * that knows; the picker never derives it from the document path, and without
+ * it the "this app" tab simply does not appear.
+ */
+export interface AppLinkContext {
+  /** Path of the app manifest (`<folder>/_app.yaml`). */
+  appPath: string;
+  /** Display name of the app. */
+  appLabel: string;
+  targets: AppLinkTarget[];
+}
 
 const props = defineProps<{
   projectId: string;
   /** Currently selected link href, when editing an existing link. */
   initialHref?: string | null;
+  /** The surrounding app, for linking to a sibling page. */
+  appTargets?: AppLinkContext | null;
 }>();
 
 const emit = defineEmits<{
@@ -33,7 +63,7 @@ const emit = defineEmits<{
   (e: 'close'): void;
 }>();
 
-type TabId = 'project' | 'url';
+type TabId = 'project' | 'url' | 'own' | 'starred' | 'apps';
 const tab = ref<TabId>('project');
 
 // ── Tab 1: Project document search ─────────────────────────────────
@@ -85,6 +115,106 @@ function pickDoc(doc: DocumentSearchItem) {
   emit('pick', href, urlOpensInNewTab.value);
 }
 
+// ── Tabs 3–5: link into an application ─────────────────────────────
+// Three tabs, not one with sections: "this app" comes from the host and needs
+// no request, "Starred" crosses projects and is the user's own shortcut,
+// "Applications" is this project. They differ in where the data comes from and
+// in what a row means, so merging them would need a label per row anyway.
+
+/** Own app: the host knows it, we never derive it from the document path. */
+const ownTargets = computed<AppLinkTarget[]>(() => props.appTargets?.targets ?? []);
+const ownQuery = ref('');
+const filteredOwnTargets = computed(() => filterTargets(ownTargets.value, ownQuery.value));
+
+const appsLoading = ref(false);
+const appsError = ref<string | null>(null);
+const starredApps = ref<ApplicationEntryDto[]>([]);
+const projectApps = ref<ApplicationEntryDto[]>([]);
+let appsLoaded = false;
+
+/** The app whose places are being shown, or null while picking an app. */
+const openApp = ref<ApplicationEntryDto | null>(null);
+const appTargetList = ref<ApplicationTargetDto[]>([]);
+const appTargetsLoading = ref(false);
+const appTargetsError = ref<string | null>(null);
+
+async function loadApps() {
+  if (appsLoaded) return;
+  appsLoading.value = true;
+  appsError.value = null;
+  try {
+    const params = new URLSearchParams({ projectId: props.projectId });
+    const resp = await brainFetch<ApplicationListResponse>('GET', `applications?${params}`);
+    starredApps.value = resp.starred ?? [];
+    projectApps.value = resp.project ?? [];
+    appsLoaded = true;
+  } catch (e) {
+    appsError.value = e instanceof Error ? e.message : 'Could not load applications';
+  } finally {
+    appsLoading.value = false;
+  }
+}
+
+/**
+ * Step two: the places inside a chosen app. An empty result is a normal answer
+ * (most apps have none) — the app itself stays pickable either way, so there is
+ * always something to do on this screen.
+ */
+async function openAppTargets(app: ApplicationEntryDto) {
+  openApp.value = app;
+  appTargetList.value = [];
+  appTargetsError.value = null;
+  appTargetsLoading.value = true;
+  try {
+    const params = new URLSearchParams({ projectId: app.project, path: app.path });
+    const resp = await brainFetch<ApplicationTargetsResponse>(
+      'GET',
+      `applications/targets?${params}`,
+    );
+    appTargetList.value = resp.targets ?? [];
+  } catch (e) {
+    appTargetsError.value = e instanceof Error ? e.message : 'Could not load places';
+  } finally {
+    appTargetsLoading.value = false;
+  }
+}
+
+function pickOwnTarget(handle: string | null) {
+  const app = props.appTargets;
+  if (!app) return;
+  // No project: the own app is by definition in the project being edited, and a
+  // relative reference survives the folder being copied elsewhere.
+  emit('pick', vanceRef({ path: app.appPath, kind: 'application', entry: handle }), false);
+}
+
+function pickApp(app: ApplicationEntryDto, handle: string | null) {
+  emit('pick', vanceRef({
+    path: app.path,
+    project: app.project === props.projectId ? null : app.project,
+    kind: 'application',
+    entry: handle,
+  }), false);
+}
+
+function filterTargets<T extends { label: string }>(list: T[], query: string): T[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return list;
+  return list.filter((t) => t.label.toLowerCase().includes(q));
+}
+
+/** Rows grouped by their `group`, ungrouped first, groups in first-seen order. */
+function grouped<T extends { group?: string | null }>(list: T[]): { name: string | null; items: T[] }[] {
+  const out: { name: string | null; items: T[] }[] = [];
+  const byName = new Map<string | null, { name: string | null; items: T[] }>();
+  for (const item of list) {
+    const name = item.group || null;
+    let bucket = byName.get(name);
+    if (!bucket) { bucket = { name, items: [] }; byName.set(name, bucket); out.push(bucket); }
+    bucket.items.push(item);
+  }
+  return out;
+}
+
 // ── Tab 2: Direct URL ──────────────────────────────────────────────
 const urlInput = ref('');
 const urlOpensInNewTab = ref(true);
@@ -127,6 +257,12 @@ watch(tab, async (next) => {
     await Promise.resolve();
     urlInputRef.value?.focus();
   }
+  // Lazily, and only once: the listing is one request, but it is pointless for
+  // the many links that are a document or a plain URL.
+  if (next === 'starred' || next === 'apps') {
+    openApp.value = null;
+    void loadApps();
+  }
 });
 </script>
 
@@ -145,6 +281,25 @@ watch(tab, async (next) => {
           :class="{ 'link-picker__tab--active': tab === 'project' }"
           @click="tab = 'project'"
         >Project document</button>
+        <button
+          v-if="appTargets"
+          type="button"
+          class="link-picker__tab"
+          :class="{ 'link-picker__tab--active': tab === 'own' }"
+          @click="tab = 'own'"
+        >This app</button>
+        <button
+          type="button"
+          class="link-picker__tab"
+          :class="{ 'link-picker__tab--active': tab === 'starred' }"
+          @click="tab = 'starred'"
+        >Starred</button>
+        <button
+          type="button"
+          class="link-picker__tab"
+          :class="{ 'link-picker__tab--active': tab === 'apps' }"
+          @click="tab = 'apps'"
+        >Applications</button>
         <button
           type="button"
           class="link-picker__tab"
@@ -191,6 +346,116 @@ watch(tab, async (next) => {
         >
           Showing {{ docResults.length }} of {{ docTotal }} — refine the search.
         </div>
+      </template>
+
+      <!-- ── Tab: this app (sibling pages) ───────────────────────── -->
+      <template v-else-if="tab === 'own' && appTargets">
+        <div class="link-picker__actions">
+          <input
+            v-model="ownQuery"
+            type="search"
+            class="link-picker__search-input"
+            :placeholder="`Filter in ${appTargets.appLabel}…`"
+          />
+        </div>
+        <div class="link-picker__list">
+          <button
+            type="button"
+            class="link-picker__list-item"
+            @click="pickOwnTarget(null)"
+          >
+            <span class="link-picker__list-title">{{ appTargets.appLabel }}</span>
+            <span class="link-picker__list-meta">
+              <span class="link-picker__list-path">The app itself, no particular page</span>
+            </span>
+          </button>
+          <template v-for="g in grouped(filteredOwnTargets)" :key="g.name ?? ''">
+            <div v-if="g.name" class="link-picker__group">{{ g.name }}</div>
+            <button
+              v-for="t in g.items"
+              :key="t.handle"
+              type="button"
+              class="link-picker__list-item"
+              @click="pickOwnTarget(t.handle)"
+            >
+              <span class="link-picker__list-title">{{ t.label }}</span>
+            </button>
+          </template>
+        </div>
+        <div v-if="filteredOwnTargets.length === 0" class="link-picker__empty">
+          No page matches the filter.
+        </div>
+      </template>
+
+      <!-- ── Tabs: starred apps / apps in this project ───────────── -->
+      <template v-else-if="tab === 'starred' || tab === 'apps'">
+        <div v-if="appsError" class="link-picker__error">{{ appsError }}</div>
+        <div v-else-if="appsLoading" class="link-picker__loading">Loading…</div>
+
+        <!-- step 1: pick an app -->
+        <template v-else-if="!openApp">
+          <div
+            v-if="(tab === 'starred' ? starredApps : projectApps).length === 0"
+            class="link-picker__empty"
+          >
+            {{ tab === 'starred'
+              ? 'No starred application.'
+              : 'No application in this project.' }}
+          </div>
+          <div v-else class="link-picker__list">
+            <button
+              v-for="a in (tab === 'starred' ? starredApps : projectApps)"
+              :key="a.project + a.path"
+              type="button"
+              class="link-picker__list-item"
+              @click="openAppTargets(a)"
+            >
+              <span class="link-picker__list-title">
+                <span v-if="a.icon">{{ a.icon }} </span>{{ a.title || a.path }}
+              </span>
+              <span class="link-picker__list-meta">
+                <span class="link-picker__list-kind">{{ a.app }}</span>
+                <span class="link-picker__list-path">
+                  {{ a.project === projectId ? a.path : a.project + ' · ' + a.path }}
+                </span>
+              </span>
+            </button>
+          </div>
+        </template>
+
+        <!-- step 2: pick a place inside it, or the app itself -->
+        <template v-else>
+          <div class="link-picker__actions">
+            <button type="button" class="link-picker__btn" @click="openApp = null">← Back</button>
+            <span class="link-picker__crumb">{{ openApp.title || openApp.path }}</span>
+          </div>
+          <div v-if="appTargetsError" class="link-picker__error">{{ appTargetsError }}</div>
+          <div v-else-if="appTargetsLoading" class="link-picker__loading">Loading…</div>
+          <div v-else class="link-picker__list">
+            <button
+              type="button"
+              class="link-picker__list-item"
+              @click="pickApp(openApp, null)"
+            >
+              <span class="link-picker__list-title">{{ openApp.title || openApp.path }}</span>
+              <span class="link-picker__list-meta">
+                <span class="link-picker__list-path">The app itself, no particular place</span>
+              </span>
+            </button>
+            <template v-for="g in grouped(appTargetList)" :key="g.name ?? ''">
+              <div v-if="g.name" class="link-picker__group">{{ g.name }}</div>
+              <button
+                v-for="t in g.items"
+                :key="t.handle"
+                type="button"
+                class="link-picker__list-item"
+                @click="pickApp(openApp, t.handle)"
+              >
+                <span class="link-picker__list-title">{{ t.label }}</span>
+              </button>
+            </template>
+          </div>
+        </template>
       </template>
 
       <!-- ── Tab: Direct URL ─────────────────────────────────────── -->
@@ -375,6 +640,22 @@ watch(tab, async (next) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Section heading inside a target list (a workbook section, a wiki space). */
+.link-picker__group {
+  padding: 0.5rem 0.75rem 0.25rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+}
+/* Which app the second step is showing, next to the back button. */
+.link-picker__crumb {
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: color-mix(in oklab, var(--color-base-content) 75%, transparent);
 }
 .link-picker__url-form {
   padding: 1rem;

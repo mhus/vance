@@ -674,6 +674,31 @@ watch(() => appEntry.entry.value, (handle) => {
   void selectPage(handle, findPageById(handle), 'none');
 });
 
+/**
+ * This workbook's pages, for the link picker's "This app" tab.
+ *
+ * Local data, no round trip: the scan is already here, and the app is the only
+ * thing that knows its own pages. The handle is the page's document id — the
+ * same value the sub-position in the URL uses, so a link and a tab restore
+ * speak about pages the same way. The open page is left out: linking a page to
+ * itself is a dead click.
+ */
+const linkPickerAppTargets = computed(() => {
+  const v = view.value;
+  if (!v) return null;
+  return {
+    appPath: props.document.path,
+    appLabel: v.title || folder.value || 'Workbook',
+    targets: v.pages
+      .filter((p) => p.id !== activePageId.value)
+      .map((p) => ({
+        handle: p.id,
+        label: p.title || p.relativePath,
+        group: p.section || null,
+      })),
+  };
+});
+
 /** Is this id a page of *this* workbook? Guards against a stale/foreign handle. */
 function isKnownPage(v: WorkbookView, id: string): boolean {
   return v.indexPageId === id
@@ -1784,6 +1809,7 @@ onBeforeUnmount(() => {
           v-if="linkPickerOpen"
           :project-id="projectId"
           :initial-href="linkPickerInitialHref"
+          :app-targets="linkPickerAppTargets"
           @pick="onLinkPicked"
           @clear="onLinkClear"
           @close="closeLinkPicker"

@@ -1,8 +1,0 @@
-$meta:
-  kind: application
-  app: canvasbook
-title: "{{ title }}"
-{% if description %}description: "{{ description }}"{% endif %}
-canvasbook:
-  index:
-    outputPath: _index.md

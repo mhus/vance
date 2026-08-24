@@ -53,6 +53,15 @@ public class KanbanApplication implements VanceApplication {
     private static final String YAML_MIME = "application/yaml";
     private static final String MD_MIME = "text/markdown";
 
+    /** One column of the set a board gets when the caller names none. */
+    private record DefaultColumn(String name, String title, int order) {}
+
+    private static final List<DefaultColumn> DEFAULT_COLUMNS = List.of(
+            new DefaultColumn(KanbanFolderReader.DEFAULT_COLUMN, "Backlog", 1),
+            new DefaultColumn("todo", "To Do", 2),
+            new DefaultColumn("doing", "In Progress", 3),
+            new DefaultColumn("done", "Done", 4));
+
     private final KanbanFolderReader folderReader;
     private final DocumentService documentService;
     private final DocumentLinkBuilder linkBuilder;
@@ -171,7 +180,8 @@ public class KanbanApplication implements VanceApplication {
      *   <li>{@code title} (string, optional)</li>
      *   <li>{@code description} (string, optional)</li>
      *   <li>{@code columns} (List of {@code {name, title?, color?, order?, wipLimit?}}
-     *       — empty list = columns inferred from cards / default set)</li>
+     *       — absent: inferred from the {@code cards}, and if there are none
+     *       either, the default set Backlog / To Do / In Progress / Done)</li>
      *   <li>{@code cards} (List of card maps, optional). Each card carries
      *       {@code title} (required), {@code column} (defaults to
      *       {@value KanbanFolderReader#DEFAULT_COLUMN}),
@@ -249,6 +259,23 @@ public class KanbanApplication implements VanceApplication {
             columnResults.add(new CreateLane(
                     col, null, null, folder + "/" + col + "/"));
             autoOrder++;
+        }
+
+        // Neither columns nor cards were given: seed the default set instead of
+        // writing a manifest with no columns at all. A missing `columns` block
+        // is read as "no columns" (KanbanAppConfig#readColumns) and the reader
+        // only infers them from card folders — so a fresh board would open with
+        // nothing to drag a card into. This is the set the create form promises
+        // ("Backlog → Done"), and the caller can still pass its own.
+        if (columns.isEmpty()) {
+            for (DefaultColumn dc : DEFAULT_COLUMNS) {
+                Map<String, Object> body = new LinkedHashMap<>();
+                body.put("title", dc.title());
+                body.put("order", dc.order());
+                columns.put(dc.name(), body);
+                columnResults.add(new CreateLane(
+                        dc.name(), dc.title(), null, folder + "/" + dc.name() + "/"));
+            }
         }
 
         // Build the kanban config block.

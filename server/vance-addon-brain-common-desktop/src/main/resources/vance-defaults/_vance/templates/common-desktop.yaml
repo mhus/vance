@@ -4,9 +4,7 @@ description: { de: "Ein Desktop, der die Apps in diesem Ordner als Launcher + St
 icon: squares-2x2
 tags: [app, common-desktop, dashboard]
 
-name:
-  mode: fixed
-  value: _app.yaml
+app: common-desktop
 
 fields:
   - name: title

@@ -4,9 +4,7 @@ description: { de: "Getting Things Done à la Things — Inbox/Today/Upcoming/An
 icon: check-circle
 tags: [app, gtd, tasks, productivity]
 
-name:
-  mode: fixed
-  value: _app.yaml
+app: gtd
 
 fields:
   - name: title

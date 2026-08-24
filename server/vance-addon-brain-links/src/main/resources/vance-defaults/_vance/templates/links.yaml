@@ -4,13 +4,13 @@ description: { de: "Eine Link-Sammlung — externe URLs als gruppierte Vorschau-
 icon: link
 tags: [app, links]
 
-# Application templates write only the _app.yaml manifest; the folder is
-# chosen by the user. Links and groups are created afterwards in the app
-# (paste field + "New group") or by the chat agent via links_entry_add —
-# so this form stays at the two fields that have no other home.
-name:
-  mode: fixed
-  value: _app.yaml
+# `app:` routes this template through LinksApplication.create — the same entry
+# point links_app_create uses — so the manifest is serialised by the codec
+# rather than typed out here. The folder is chosen by the user; links and
+# groups are created afterwards in the app (paste field + "New group") or by
+# the chat agent via links_entry_add — so this form stays at the two fields
+# that have no other home.
+app: links
 
 fields:
   - name: title

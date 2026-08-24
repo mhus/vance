@@ -8,10 +8,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.form.FormFieldDto;
+import de.mhus.vance.brain.applications.VanceApplication;
+import de.mhus.vance.brain.applications.VanceApplicationRegistry;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.form.FormValidator;
+import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.permission.WriteActor;
 import de.mhus.vance.shared.permission.WriteReason;
@@ -37,8 +40,12 @@ class TemplateServiceTest {
     private final FormValidator formValidator = new FormValidator();
     private final TimezoneResolver timezoneResolver = mock(TimezoneResolver.class);
 
-    private final TemplateService service =
-            new TemplateService(documentService, renderer, formValidator, timezoneResolver);
+    private final VanceApplicationRegistry applicationRegistry = mock(VanceApplicationRegistry.class);
+    private final PermissionService permissionService = mock(PermissionService.class);
+
+    private final TemplateService service = new TemplateService(
+            documentService, renderer, formValidator, timezoneResolver,
+            applicationRegistry, permissionService);
 
     @BeforeEach
     void setUp() {
@@ -83,8 +90,30 @@ class TemplateServiceTest {
                 fields,
                 List.of("*"),
                 TemplateSource.VANCE,
+                /*app*/ null,
                 bodyPath,
                 body);
+    }
+
+    /** An app template: the {@code app} discriminator and no body at all. */
+    private ResolvedTemplate appTemplate(String app, @Nullable String folder, List<FormFieldDto> fields) {
+        return new ResolvedTemplate(
+                app,
+                Map.of("en", "App"),
+                Map.of("en", "An app"),
+                null,
+                List.of("app"),
+                TemplateNameMode.FIXED,
+                /*nameDefaultTemplate*/ null,
+                VanceApplication.APP_MANIFEST,
+                folder,
+                /*typeOverride*/ null,
+                fields,
+                List.of("*"),
+                TemplateSource.VANCE,
+                app,
+                /*bodyPath*/ null,
+                /*bodyContent*/ null);
     }
 
     @Test
@@ -202,6 +231,125 @@ class TemplateServiceTest {
 
         assertThatThrownBy(() -> service.apply(t, "docs", "dup", Map.of(), TENANT, PROJECT, SUBJECT, "en"))
                 .isInstanceOf(DocumentService.DocumentAlreadyExistsException.class);
+    }
+
+    // ──────────────────── app templates ────────────────────
+
+    private VanceApplication stubApp(String name) {
+        VanceApplication app = mock(VanceApplication.class);
+        when(app.appName()).thenReturn(name);
+        when(app.create(any())).thenAnswer(inv -> {
+            VanceApplication.CreateContext ctx = inv.getArgument(0);
+            return new VanceApplication.CreateResult(
+                    name, ctx.folder(), ctx.folder() + "/_app.yaml",
+                    null, List.of(), List.of(), null, Map.of());
+        });
+        when(applicationRegistry.require(name)).thenReturn(app);
+        return app;
+    }
+
+    @Test
+    void apply_appTemplate_dispatchesToTheApplication_insteadOfWritingADocument() {
+        VanceApplication app = stubApp("kanban");
+        when(documentService.findByPath(any(), any(), any())).thenReturn(java.util.Optional.empty());
+
+        TemplateService.AppliedTemplate applied = service.apply(
+                appTemplate("kanban", null, List.of()),
+                "boards/sprint/", null, Map.of("title", "Sprint"),
+                TENANT, PROJECT, SUBJECT, "en");
+
+        // The manifest comes from the application — the service writes nothing itself.
+        assertThat(applied.path()).isEqualTo("boards/sprint/_app.yaml");
+        assertThat(applied.mimeType()).contains("yaml");
+        org.mockito.Mockito.verify(documentService, org.mockito.Mockito.never()).create(
+                any(), any(), any(), any(), any(), any(), any(), any(), any());
+
+        ArgumentCaptor<VanceApplication.CreateContext> ctx =
+                ArgumentCaptor.forClass(VanceApplication.CreateContext.class);
+        verify(app).create(ctx.capture());
+        assertThat(ctx.getValue().folder()).isEqualTo("boards/sprint");
+        assertThat(ctx.getValue().projectName()).isEqualTo(PROJECT);
+        assertThat(ctx.getValue().userId()).isEqualTo(USER);
+        assertThat(ctx.getValue().overwrite()).isFalse();
+        assertThat(ctx.getValue().params()).containsEntry("title", "Sprint");
+    }
+
+    @Test
+    void apply_appTemplate_enforcesCreateOnTheManifest_beforeDispatch() {
+        // CreateContext carries only a userId, and the applications derive their
+        // write actor from it — a blank one degrades to SecurityContext.SYSTEM.
+        // So this surface must do the check itself, or a service-account caller
+        // would write past the permission provider.
+        stubApp("kanban");
+        when(documentService.findByPath(any(), any(), any())).thenReturn(java.util.Optional.empty());
+
+        service.apply(appTemplate("kanban", null, List.of()),
+                "boards", null, Map.of(), TENANT, PROJECT, SUBJECT, "en");
+
+        verify(permissionService).enforce(
+                org.mockito.ArgumentMatchers.eq(SUBJECT),
+                org.mockito.ArgumentMatchers.eq(
+                        new de.mhus.vance.shared.permission.Resource.Document(
+                                TENANT, PROJECT, "boards/_app.yaml")),
+                org.mockito.ArgumentMatchers.eq(de.mhus.vance.shared.permission.Action.CREATE));
+    }
+
+    @Test
+    void apply_appTemplate_existingManifest_conflictsBeforeTheAppIsCalled() {
+        // Every application raises its own ToolException for an occupied
+        // manifest; checking here keeps one 409 for all of them.
+        VanceApplication app = stubApp("kanban");
+        when(documentService.findByPath(TENANT, PROJECT, "boards/_app.yaml"))
+                .thenReturn(java.util.Optional.of(DocumentDocument.builder().path("boards/_app.yaml").build()));
+
+        assertThatThrownBy(() -> service.apply(appTemplate("kanban", null, List.of()),
+                "boards", null, Map.of(), TENANT, PROJECT, SUBJECT, "en"))
+                .isInstanceOf(DocumentService.DocumentAlreadyExistsException.class);
+        org.mockito.Mockito.verify(app, org.mockito.Mockito.never()).create(any());
+    }
+
+    @Test
+    void apply_appTemplate_declaredFolderWinsOverTheCallerFolder() {
+        VanceApplication app = stubApp("feeds");
+        when(documentService.findByPath(any(), any(), any())).thenReturn(java.util.Optional.empty());
+
+        service.apply(appTemplate("feeds", "pinned/news", List.of()),
+                "somewhere/else", null, Map.of(), TENANT, PROJECT, SUBJECT, "en");
+
+        ArgumentCaptor<VanceApplication.CreateContext> ctx =
+                ArgumentCaptor.forClass(VanceApplication.CreateContext.class);
+        verify(app).create(ctx.capture());
+        assertThat(ctx.getValue().folder()).isEqualTo("pinned/news");
+    }
+
+    @Test
+    void apply_appTemplate_withoutAnyFolder_throws() {
+        stubApp("kanban");
+
+        assertThatThrownBy(() -> service.apply(appTemplate("kanban", null, List.of()),
+                "  ", null, Map.of(), TENANT, PROJECT, SUBJECT, "en"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("folder is required");
+    }
+
+    @Test
+    void apply_appTemplate_integerFieldReachesTheAppAsANumber() {
+        // The web form seeds and submits every value as a string, while the
+        // applications read their params with `instanceof Number`. Without the
+        // coercion "10" is silently ignored in favour of the app's own default.
+        VanceApplication app = stubApp("search");
+        when(documentService.findByPath(any(), any(), any())).thenReturn(java.util.Optional.empty());
+        FormFieldDto num = FormFieldDto.builder()
+                .name("defaultNum").type("integer")
+                .label(Map.of("en", "Results")).build();
+
+        service.apply(appTemplate("search", null, List.of(num)),
+                "search", null, Map.of("defaultNum", "10"), TENANT, PROJECT, SUBJECT, "en");
+
+        ArgumentCaptor<VanceApplication.CreateContext> ctx =
+                ArgumentCaptor.forClass(VanceApplication.CreateContext.class);
+        verify(app).create(ctx.capture());
+        assertThat(ctx.getValue().params()).containsEntry("defaultNum", 10);
     }
 
     private static byte[] readAll(java.io.InputStream in) {

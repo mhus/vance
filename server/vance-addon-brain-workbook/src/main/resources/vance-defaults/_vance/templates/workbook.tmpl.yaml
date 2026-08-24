@@ -1,9 +1,0 @@
-$meta:
-  kind: application
-  app: workbook
-title: "{{ title }}"
-{% if description %}description: "{{ description }}"{% endif %}
-workbook:
-  index:
-    outputPath: _index.md
-    style: cards

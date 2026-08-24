@@ -4,9 +4,7 @@ description: { de: "Ein neues Kanban-Board mit Standard-Spalten (Backlog → Don
 icon: view-columns
 tags: [app, kanban, planning]
 
-name:
-  mode: fixed
-  value: _app.yaml
+app: kanban
 
 fields:
   - name: title

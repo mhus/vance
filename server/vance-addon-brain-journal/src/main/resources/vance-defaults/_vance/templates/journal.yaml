@@ -4,9 +4,7 @@ description: { de: "Ein neues Tagebuch — ein Eintrag pro Tag mit Stimmung, Tag
 icon: book-open
 tags: [app, journal, diary, note]
 
-name:
-  mode: fixed
-  value: _app.yaml
+app: journal
 
 fields:
   - name: title

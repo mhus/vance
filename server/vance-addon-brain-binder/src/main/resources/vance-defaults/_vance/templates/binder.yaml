@@ -7,9 +7,7 @@ tags: [app, binder]
 # Application templates write only the _app.yaml manifest; the folder is
 # chosen by the user. Entries are added afterwards in the binder editor
 # (document picker) or via binder_entry_add.
-name:
-  mode: fixed
-  value: _app.yaml
+app: binder
 
 fields:
   - name: title

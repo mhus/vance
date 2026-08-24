@@ -37,7 +37,8 @@ import org.springframework.web.server.ResponseStatusException;
  * <ul>
  *   <li>{@code GET  /brain/{tenant}/templates}          — listing (optional {@code ?tag=} filter)</li>
  *   <li>{@code GET  /brain/{tenant}/templates/{name}}   — full definition for form rendering</li>
- *   <li>{@code POST /brain/{tenant}/templates/{name}/apply} — render the body, write a new document</li>
+ *   <li>{@code POST /brain/{tenant}/templates/{name}/apply} — render the body, write a new
+ *       document; for a template declaring {@code app:}, scaffold that application instead</li>
  * </ul>
  *
  * <p>All three accept an optional {@code projectId} query parameter.
@@ -132,7 +133,10 @@ public class TemplateController {
                     t, body.getFolder(), body.getName(), values, tenant, projectId, context, lang);
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
-        } catch (IllegalStateException e) {
+        } catch (IllegalStateException | de.mhus.vance.toolpack.ToolException e) {
+            // ToolException is how an application rejects a create() — an
+            // unusable parameter, a folder it cannot write. The params come
+            // from the submitted form, so the message belongs to the caller.
             log.warn("Template '{}' apply failed: {}", name, e.getMessage());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }

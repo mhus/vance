@@ -4,13 +4,12 @@ description: { de: "Ein neuer Feed — Endlos-Scroll über fremde Ströme. Welch
 icon: newspaper
 tags: [app, feeds]
 
-# Application templates write only the _app.yaml manifest; the folder is chosen
-# by the user. Streams are added afterwards in the feed's configuration tab,
-# because which sources exist depends on the project's
-# _vance/config/feeds/ documents and the form cannot know them here.
-name:
-  mode: fixed
-  value: _app.yaml
+# `app:` routes this template through FeedsApplication.create — the same entry
+# point the create tool uses. The folder is chosen by the user. Streams are
+# added afterwards in the feed's configuration tab, because which sources exist
+# depends on the project's _vance/config/feeds/ documents and the form cannot
+# know them here.
+app: feeds
 
 fields:
   - name: title

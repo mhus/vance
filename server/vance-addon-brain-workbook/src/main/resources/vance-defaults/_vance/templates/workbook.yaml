@@ -4,9 +4,7 @@ description: { de: "Eine neue Workbook-App — Notizbuch aus mehreren WorkPages"
 icon: book-open
 tags: [app, workbook, note]
 
-name:
-  mode: fixed
-  value: _app.yaml
+app: workbook
 
 fields:
   - name: title

@@ -4,9 +4,7 @@ description: { de: "Ein leichter Issue-Tracker im GitHub-Stil — Nummern (#42),
 icon: alert-circle
 tags: [app, issues, tracker, bug]
 
-name:
-  mode: fixed
-  value: _app.yaml
+app: issues
 
 fields:
   - name: title

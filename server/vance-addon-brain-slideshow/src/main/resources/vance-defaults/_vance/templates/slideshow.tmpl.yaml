@@ -1,8 +1,0 @@
-$meta:
-  kind: application
-  app: slideshow
-title: "{{ title }}"
-{% if description %}description: "{{ description }}"{% endif %}
-slideshow:
-  index:
-    outputPath: _index.yaml

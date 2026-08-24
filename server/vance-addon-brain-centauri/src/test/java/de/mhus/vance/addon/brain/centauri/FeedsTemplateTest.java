@@ -2,48 +2,54 @@ package de.mhus.vance.addon.brain.centauri;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import de.mhus.vance.brain.centauri.FeedStream;
-import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
-import de.mhus.vance.shared.document.kind.ApplicationCodec;
-import de.mhus.vance.shared.document.kind.ApplicationDocument;
+import de.mhus.vance.api.form.FormFieldDto;
+import de.mhus.vance.shared.form.FormFieldYamlParser;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.yaml.snakeyaml.Yaml;
 
 /**
- * Guards the bundled {@code _vance/templates/feeds.tmpl.yaml}: rendering it must
- * produce a manifest that actually parses into a feed configuration, not merely
- * text that looks right.
+ * Guards the bundled {@code _vance/templates/feeds.yaml} together with the
+ * mapping it feeds.
  *
- * <p>A template is Pebble, so nothing in the normal build notices when an edit
- * breaks the YAML indentation or the comma handling of a list. Running the real
- * renderer and then the real parser closes that gap — otherwise the first person
- * to pick the template is the test.
+ * <p>The template used to carry a Pebble body that hand-wrote the manifest, and
+ * this test rendered it to catch a broken indent or an unquoted title. The body
+ * is gone: {@code app: feeds} routes the form through
+ * {@code FeedsApplication.create}, so the manifest is serialised by the codec
+ * and can no longer be malformed. Two things stay breakable and are what this
+ * test now covers: the form's field names have to be the keys
+ * {@code fromParams} looks up, and the filter fields a person types as one
+ * comma-separated line have to arrive as a trimmed list.
  */
 class FeedsTemplateTest {
 
-    private static final String BODY = "vance-defaults/_vance/templates/feeds.tmpl.yaml";
-    private static final String YAML_MIME = "application/yaml";
-
-    private final PromptTemplateRenderer renderer = new PromptTemplateRenderer();
+    private static final String DEFINITION = "vance-defaults/_vance/templates/feeds.yaml";
 
     @Test
-    void rendered_isAFeedsManifest() {
-        ApplicationDocument doc = parse(render(full()));
+    void definition_routesThroughTheApplication() {
+        Map<String, Object> spec = spec();
 
-        assertThat(doc.kind()).isEqualTo("application");
-        assertThat(doc.app()).isEqualTo("feeds");
-        assertThat(doc.title()).isEqualTo("Morgenlage");
-        assertThat(doc.description()).isEqualTo("Was über Nacht passiert ist");
+        assertThat(spec.get("app")).isEqualTo(FeedsApplication.APP_NAME);
+        // The application owns filename and MIME; declaring either is refused
+        // at load time by TemplateLoader.
+        assertThat(spec).doesNotContainKeys("name", "type");
     }
 
     @Test
-    void rendered_parsesIntoTheConfiguration() {
-        FeedsConfig config = FeedsConfig.from(parse(render(full())));
+    void definition_fieldsAreTheParamsCreateReads() {
+        assertThat(fields()).extracting(FormFieldDto::getName)
+                .containsExactly("title", "description", "languages", "exclude", "since");
+    }
+
+    @Test
+    void params_becomeTheConfigurationTheAppReads() {
+        FeedsConfig config = FeedsApplication.fromParams(full());
 
         // Streams stay empty on purpose: which sources exist depends on the
         // project's settings, which the create form cannot know.
@@ -55,8 +61,8 @@ class FeedsTemplateTest {
     }
 
     @Test
-    void rendered_relativeSinceResolvesAgainstNow() {
-        FeedsConfig config = FeedsConfig.from(parse(render(full())));
+    void params_relativeSinceResolvesAgainstNow() {
+        FeedsConfig config = FeedsApplication.fromParams(full());
         Instant now = Instant.parse("2026-08-19T12:00:00Z");
 
         // The point of storing it relative: it still means "last week" next month.
@@ -64,22 +70,23 @@ class FeedsTemplateTest {
     }
 
     @Test
-    void rendered_commaSeparatedListsAreTrimmed() {
-        // "de ,  en" is what a person types; the config must not end up with a
-        // language called " en" that matches nothing.
-        Map<String, Object> ctx = full();
-        ctx.put("languages", "de ,  en");
+    void params_commaSeparatedListsAreTrimmed() {
+        // "de ,  en" is what a person types into the single text field; the
+        // config must not end up with a language called " en" that matches
+        // nothing.
+        Map<String, Object> params = full();
+        params.put("languages", "de ,  en");
 
-        assertThat(FeedsConfig.from(parse(render(ctx))).languages())
+        assertThat(FeedsApplication.fromParams(params).languages())
                 .containsExactlyInAnyOrder("de", "en");
     }
 
     @Test
-    void rendered_withOnlyTheRequiredField_isStillValid() {
-        Map<String, Object> ctx = new HashMap<>();
-        ctx.put("title", "Nur Titel");
+    void params_withOnlyTheRequiredField_areStillValid() {
+        Map<String, Object> params = new HashMap<>();
+        params.put("title", "Nur Titel");
 
-        FeedsConfig config = FeedsConfig.from(parse(render(ctx)));
+        FeedsConfig config = FeedsApplication.fromParams(params);
 
         assertThat(config.languages()).isEmpty();
         assertThat(config.exclude()).isEmpty();
@@ -87,59 +94,33 @@ class FeedsTemplateTest {
         assertThat(config.pageSize()).isEqualTo(20);
     }
 
-    @Test
-    void rendered_leavesNoUnsubstitutedPlaceholders() {
-        assertThat(render(full())).doesNotContain("{{").doesNotContain("{%");
-    }
-
-    @Test
-    void rendered_titleWithQuotesStaysValidYaml() {
-        // Free text goes straight into a YAML scalar. Before the template
-        // quoted defensively, `"Später" lesen` produced `title: ""Später"
-        // lesen"` — a manifest that no longer parses, written without a
-        // complaint because the application kind has no validate.
-        String hostile = "\"Später\" lesen \\ it's fine";
-        Map<String, Object> ctx = full();
-        ctx.put("title", hostile);
-        ctx.put("description", "a 'quoted' one");
-
-        ApplicationDocument doc = parse(render(ctx));
-
-        assertThat(doc.title()).isEqualTo(hostile);
-        assertThat(doc.description()).isEqualTo("a 'quoted' one");
-    }
-
     // ── helpers ──────────────────────────────────────────────────────
 
     private static Map<String, Object> full() {
-        Map<String, Object> ctx = new HashMap<>();
-        ctx.put("title", "Morgenlage");
-        ctx.put("description", "Was über Nacht passiert ist");
-        ctx.put("languages", "de, en");
-        ctx.put("exclude", "krypto, sport");
-        ctx.put("since", "-7d");
-        return ctx;
+        Map<String, Object> params = new HashMap<>();
+        params.put("title", "Morgenlage");
+        params.put("description", "Was über Nacht passiert ist");
+        params.put("languages", "de, en");
+        params.put("exclude", "krypto, sport");
+        params.put("since", "-7d");
+        return params;
     }
 
-    private String render(Map<String, Object> context) {
-        String rendered = renderer.renderStructured(templateBody(), context);
-        assertThat(rendered).isNotNull();
-        return rendered;
+    private static List<FormFieldDto> fields() {
+        return FormFieldYamlParser.parseFields(spec().get("fields"), "fields");
     }
 
-    private static ApplicationDocument parse(String rendered) {
-        return ApplicationCodec.parse(rendered, YAML_MIME);
-    }
-
-    private static String templateBody() {
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> spec() {
         try (InputStream in = FeedsTemplateTest.class.getClassLoader()
-                .getResourceAsStream(BODY)) {
+                .getResourceAsStream(DEFINITION)) {
             if (in == null) {
-                throw new IllegalStateException("bundled template body missing: " + BODY);
+                throw new AssertionError("bundled template not on the classpath: " + DEFINITION);
             }
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            return (Map<String, Object>) new Yaml()
+                    .load(new String(in.readAllBytes(), StandardCharsets.UTF_8));
         } catch (IOException e) {
-            throw new IllegalStateException("could not read " + BODY, e);
+            throw new AssertionError("could not read " + DEFINITION, e);
         }
     }
 }

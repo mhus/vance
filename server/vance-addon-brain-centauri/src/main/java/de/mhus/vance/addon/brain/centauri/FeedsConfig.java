@@ -219,9 +219,11 @@ public record FeedsConfig(
      * {@code loop.last} to place the commas, and {@code loop.*} is a method
      * call, which the deny-all method-access validator refuses. Taking the
      * string here is cheaper than teaching every template a workaround, and it
-     * makes hand-written manifests nicer too.
+     * makes hand-written manifests nicer too. It is also the shape a create
+     * form's text field submits, which is why
+     * {@link FeedsApplication} reads its params through here as well.
      */
-    private static List<String> asStringList(@Nullable Object v) {
+    static List<String> asStringList(@Nullable Object v) {
         if (v instanceof String s) {
             List<String> out = new ArrayList<>();
             for (String part : s.split(",")) {
@@ -263,7 +265,7 @@ public record FeedsConfig(
         return FacetSelection.normalize(out);
     }
 
-    private static Set<String> asStringSet(@Nullable Object v) {
+    static Set<String> asStringSet(@Nullable Object v) {
         return Set.copyOf(new LinkedHashSet<>(asStringList(v)));
     }
 }

@@ -2,138 +2,78 @@ package de.mhus.vance.addon.brain.zarniwoop;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
-import de.mhus.vance.shared.document.kind.ApplicationCodec;
-import de.mhus.vance.shared.document.kind.ApplicationDocument;
-import de.mhus.vance.toolpack.research.SearchModality;
+import de.mhus.vance.api.form.FormFieldDto;
+import de.mhus.vance.shared.form.FormFieldYamlParser;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.yaml.snakeyaml.Yaml;
 
 /**
- * Guards the bundled {@code _vance/templates/search.tmpl.yaml}: rendering it has
- * to produce a manifest that actually parses into a search configuration, not
- * merely text that looks right.
+ * Guards the bundled {@code _vance/templates/search.yaml} against drift from
+ * {@link SearchApplication}.
  *
- * <p>A template is Pebble, so nothing in the normal build notices when an edit
- * breaks the YAML indentation or a quote. Running the real renderer and then the
- * real parser closes that gap — otherwise the first person to pick the template
- * is the test.
+ * <p>The template used to carry a Pebble body that hand-wrote the manifest, and
+ * this test rendered it to catch a broken indent or an unquoted title. The body
+ * is gone: {@code app: search} routes the form through
+ * {@code SearchApplication.create}, so the manifest is serialised by the codec
+ * and can no longer be malformed. What remains breakable is the seam — the form
+ * collects field names that {@code create()} looks up in its params map, and
+ * nothing but this test connects the two. Rename a field on either side and the
+ * app silently falls back to its defaults.
  */
 class SearchTemplateTest {
 
-    private static final String BODY = "vance-defaults/_vance/templates/search.tmpl.yaml";
-    private static final String YAML_MIME = "application/yaml";
-
-    private final PromptTemplateRenderer renderer = new PromptTemplateRenderer();
+    private static final String DEFINITION = "vance-defaults/_vance/templates/search.yaml";
 
     @Test
-    void rendered_isASearchManifest() {
-        ApplicationDocument doc = parse(render(full()));
+    void definition_routesThroughTheApplication() {
+        Map<String, Object> spec = spec();
 
-        assertThat(doc.kind()).isEqualTo("application");
-        assertThat(doc.app()).isEqualTo(SearchApplication.APP_NAME);
-        assertThat(doc.title()).isEqualTo("Marktbeobachtung");
-        assertThat(doc.description()).contains("Zölle");
+        assertThat(spec.get("app")).isEqualTo(SearchApplication.APP_NAME);
+        // The application owns filename and MIME; declaring either is refused
+        // at load time by TemplateLoader.
+        assertThat(spec).doesNotContainKeys("name", "type");
     }
 
     @Test
-    void rendered_parsesIntoTheConfigTheAppReads() {
-        // The whole point: the template's output has to survive SearchConfig,
-        // not just look like YAML.
-        SearchConfig config = SearchConfig.from(parse(render(full())));
-
-        assertThat(config.defaultModality()).isEqualTo(SearchModality.NEWS);
-        assertThat(config.defaultNum()).isEqualTo(20);
+    void definition_fieldsAreTheParamsCreateReads() {
+        // SearchApplication.create reads exactly these keys out of ctx.params().
+        assertThat(fields()).extracting(FormFieldDto::getName)
+                .containsExactly("title", "description", "defaultModality", "defaultNum");
     }
 
     @Test
-    void rendered_withOnlyATitleStillParses() {
-        // Every field but the title is optional in the form, so the minimal case
-        // is the one a person is most likely to produce.
-        Map<String, Object> vars = new HashMap<>();
-        vars.put("title", "Suche");
+    void definition_resultCountStaysATypedInteger() {
+        // create() reads the count with `instanceof Number`. The web form
+        // submits every value as a string, and TemplateService only re-types
+        // what the field declares — so an `integer` here is what makes the
+        // typed count arrive at all. As `string` it would be dropped in favour
+        // of the app's own default, without any error.
+        FormFieldDto num = fields().stream()
+                .filter(f -> "defaultNum".equals(f.getName()))
+                .findFirst().orElseThrow();
 
-        SearchConfig config = SearchConfig.from(parse(render(vars)));
-
-        assertThat(config.defaultModality()).isEqualTo(SearchModality.WEB);
-        assertThat(config.defaultNum()).isEqualTo(10);
+        assertThat(num.getType()).isEqualTo("integer");
     }
 
-    @Test
-    void rendered_withoutADescriptionOmitsTheKeyRatherThanWritingNull() {
-        Map<String, Object> vars = new HashMap<>();
-        vars.put("title", "Suche");
-
-        assertThat(parse(render(vars)).description()).isNull();
+    private static java.util.List<FormFieldDto> fields() {
+        return FormFieldYamlParser.parseFields(spec().get("fields"), "fields");
     }
 
-    @Test
-    void rendered_numberArrivesAsANumberNotAQuotedString() {
-        // The template puts the count at a bare YAML integer position, so the
-        // rendered manifest has to read back as a number. SearchConfig
-        // tolerates both, but a quoted count here would mean the manifest and
-        // the app disagree about the type on every read. The form field is
-        // typed `integer` so that nothing but a number can reach this spot.
-        Map<String, Object> vars = new HashMap<>();
-        vars.put("title", "Suche");
-        vars.put("defaultNum", "7");
-
-        assertThat(render(vars)).contains("defaultNum: 7");
-    }
-
-    @Test
-    void rendered_titleWithQuotesStaysValidYaml() {
-        // Free text goes straight into a YAML scalar. Before the template
-        // quoted defensively, `"Später" lesen` produced `title: ""Später"
-        // lesen"` — a manifest that no longer parses, written without a
-        // complaint because the application kind has no validate.
-        String hostile = "\"Später\" lesen \\ it's fine";
-        Map<String, Object> vars = new HashMap<>();
-        vars.put("title", hostile);
-        vars.put("description", "a 'quoted' one");
-        vars.put("defaultModality", "news");
-
-        ApplicationDocument doc = parse(render(vars));
-
-        assertThat(doc.title()).isEqualTo(hostile);
-        assertThat(doc.description()).isEqualTo("a 'quoted' one");
-        assertThat(SearchConfig.from(doc).defaultModality()).isEqualTo(SearchModality.NEWS);
-    }
-
-    // ── helpers ──────────────────────────────────────────────────────
-
-    private static Map<String, Object> full() {
-        Map<String, Object> vars = new HashMap<>();
-        vars.put("title", "Marktbeobachtung");
-        vars.put("description", "Zölle und Lieferketten");
-        vars.put("defaultModality", "news");
-        vars.put("defaultNum", "20");
-        return vars;
-    }
-
-    private String render(Map<String, Object> vars) {
-        String rendered = renderer.renderStructured(templateBody(), vars);
-        assertThat(rendered).isNotNull();
-        return rendered;
-    }
-
-    private static ApplicationDocument parse(String body) {
-        return ApplicationCodec.parse(body, YAML_MIME);
-    }
-
-    private static String templateBody() {
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> spec() {
         try (InputStream in = SearchTemplateTest.class.getClassLoader()
-                .getResourceAsStream(BODY)) {
+                .getResourceAsStream(DEFINITION)) {
             if (in == null) {
-                throw new AssertionError("bundled template not on the classpath: " + BODY);
+                throw new AssertionError("bundled template not on the classpath: " + DEFINITION);
             }
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            return (Map<String, Object>) new Yaml()
+                    .load(new String(in.readAllBytes(), StandardCharsets.UTF_8));
         } catch (IOException e) {
-            throw new AssertionError("could not read " + BODY, e);
+            throw new AssertionError("could not read " + DEFINITION, e);
         }
     }
 }

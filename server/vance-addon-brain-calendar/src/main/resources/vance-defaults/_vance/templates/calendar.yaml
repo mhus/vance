@@ -4,9 +4,7 @@ description: { de: "Eine neue Calendar-App — Zeitplan aus mehreren Kalender-Da
 icon: calendar-days
 tags: [app, calendar, planning]
 
-name:
-  mode: fixed
-  value: _app.yaml
+app: calendar
 
 fields:
   - name: title

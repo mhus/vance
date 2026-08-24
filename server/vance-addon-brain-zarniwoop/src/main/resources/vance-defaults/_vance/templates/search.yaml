@@ -4,13 +4,12 @@ description: { de: "Eine Such-Oberfläche über die konfigurierten Research-Prov
 icon: magnifying-glass
 tags: [app, search]
 
-# Application templates write only the _app.yaml manifest; the folder is chosen
-# by the user. Everything else is set afterwards in the app itself, because the
-# available modalities depend on the project's _vance/config/research/ documents
-# and the form cannot know them here.
-name:
-  mode: fixed
-  value: _app.yaml
+# `app:` routes this template through SearchApplication.create — the same entry
+# point the create tool uses. The folder is chosen by the user. Everything else
+# is set afterwards in the app itself, because the available modalities depend
+# on the project's _vance/config/research/ documents and the form cannot know
+# them here.
+app: search
 
 fields:
   - name: title

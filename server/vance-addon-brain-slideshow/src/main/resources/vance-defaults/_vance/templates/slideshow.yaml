@@ -4,9 +4,7 @@ description: { de: "Eine neue Slideshow-App — Präsentations-Deck aus Bildern/
 icon: presentation-chart-bar
 tags: [app, slideshow]
 
-name:
-  mode: fixed
-  value: _app.yaml
+app: slideshow
 
 fields:
   - name: title

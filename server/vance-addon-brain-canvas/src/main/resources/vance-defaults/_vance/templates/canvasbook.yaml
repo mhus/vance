@@ -4,12 +4,12 @@ description: { de: "Eine neue Canvasbook-App — Sammlung räumlicher Canvas-Boa
 icon: squares-2x2
 tags: [app, canvas]
 
-# Application templates write only the _app.yaml manifest; the folder is
-# chosen by the user. Pages (_index.md, *.canvas.yaml) are added by the
-# canvas editor / canvasbook_page_create afterwards.
-name:
-  mode: fixed
-  value: _app.yaml
+# `app:` routes this template through CanvasbookApplication.create — the same
+# entry point canvasbook_app_create uses — so the surface way and the tool way
+# produce the same folder. The folder is chosen by the user; boards
+# (*.canvas.yaml) are added by the canvas editor / canvasbook_page_create
+# afterwards.
+app: canvasbook
 
 fields:
   - name: title

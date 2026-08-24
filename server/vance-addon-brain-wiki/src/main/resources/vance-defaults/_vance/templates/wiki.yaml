@@ -4,9 +4,7 @@ description: { de: "Ein neues Wiki — namens-verlinkte Seiten mit [[Wikilinks]]
 icon: link
 tags: [app, wiki, note, knowledge-base]
 
-name:
-  mode: fixed
-  value: _app.yaml
+app: wiki
 
 fields:
   - name: title

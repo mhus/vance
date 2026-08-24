@@ -133,6 +133,78 @@ class TemplateLoaderTest {
                 .containsExactly("meeting-notes");
     }
 
+    // ──────────────────── app templates ────────────────────
+
+    private static final String KANBAN_APP_DEF = """
+            title: { en: "Kanban board" }
+            description: { en: "A board" }
+            app: kanban
+            fields:
+              - name: title
+                type: string
+                required: true
+                label: { en: "Title" }
+            """;
+
+    @Test
+    void load_appTemplate_needsNoBody_andFixesTheManifestName() {
+        Map<String, LookupResult> map = new LinkedHashMap<>();
+        map.put(PREFIX + "kanban.yaml", res(PREFIX + "kanban.yaml", KANBAN_APP_DEF, LookupResult.Source.VANCE));
+        stubListing(map);
+
+        Optional<ResolvedTemplate> hit = loader.load(TENANT, PROJECT, "kanban");
+
+        assertThat(hit).isPresent();
+        ResolvedTemplate t = hit.get();
+        assertThat(t.isApp()).isTrue();
+        assertThat(t.app()).isEqualTo("kanban");
+        assertThat(t.bodyPath()).isNull();
+        assertThat(t.bodyContent()).isNull();
+        // Synthesised, not authored: the create dialog renders "folder only,
+        // no name field" for FIXED, which is what an app folder needs.
+        assertThat(t.nameMode()).isEqualTo(TemplateNameMode.FIXED);
+        assertThat(t.nameValue()).isEqualTo("_app.yaml");
+        assertThat(t.fields()).hasSize(1);
+    }
+
+    @Test
+    void load_appTemplate_withStaleBody_stillLoads() {
+        // The body may come from a lower cascade tier the author cannot see
+        // from the definition they are editing — a warning, not a dead template.
+        Map<String, LookupResult> map = new LinkedHashMap<>();
+        map.put(PREFIX + "kanban.yaml", res(PREFIX + "kanban.yaml", KANBAN_APP_DEF, LookupResult.Source.PROJECT));
+        map.put(PREFIX + "kanban.tmpl.yaml",
+                res(PREFIX + "kanban.tmpl.yaml", "$meta:\n  kind: application\n", LookupResult.Source.RESOURCE));
+        stubListing(map);
+
+        Optional<ResolvedTemplate> hit = loader.load(TENANT, PROJECT, "kanban");
+
+        assertThat(hit).isPresent();
+        assertThat(hit.get().bodyContent()).isNull();
+    }
+
+    @Test
+    void load_appTemplate_withOwnName_isRefused() {
+        String def = KANBAN_APP_DEF + "name:\n  mode: fixed\n  value: _app.yaml\n";
+        Map<String, LookupResult> map = new LinkedHashMap<>();
+        map.put(PREFIX + "kanban.yaml", res(PREFIX + "kanban.yaml", def, LookupResult.Source.VANCE));
+        stubListing(map);
+
+        assertThat(catchTemplateParse(() -> loader.load(TENANT, PROJECT, "kanban")))
+                .contains("'name' must not be set together with 'app'");
+    }
+
+    @Test
+    void load_appTemplate_withOwnType_isRefused() {
+        String def = KANBAN_APP_DEF + "type: text/x-custom\n";
+        Map<String, LookupResult> map = new LinkedHashMap<>();
+        map.put(PREFIX + "kanban.yaml", res(PREFIX + "kanban.yaml", def, LookupResult.Source.VANCE));
+        stubListing(map);
+
+        assertThat(catchTemplateParse(() -> loader.load(TENANT, PROJECT, "kanban")))
+                .contains("'type' must not be set together with 'app'");
+    }
+
     private static String catchTemplateParse(Runnable r) {
         try {
             r.run();

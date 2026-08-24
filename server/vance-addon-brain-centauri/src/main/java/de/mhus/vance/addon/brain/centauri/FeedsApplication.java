@@ -321,7 +321,13 @@ public class FeedsApplication implements VanceApplication {
         }
     }
 
-    private static FeedsConfig fromParams(Map<String, Object> params) {
+    /**
+     * The create params as a configuration. Package-private so
+     * {@code FeedsTemplateTest} can exercise the seam the create form depends
+     * on — since the template lost its Pebble body, this mapping is where a
+     * typed filter either survives or is silently dropped.
+     */
+    static FeedsConfig fromParams(Map<String, Object> params) {
         List<FeedStream> streams = new ArrayList<>();
         if (params.get("streams") instanceof List<?> list) {
             for (Object entry : list) {
@@ -337,7 +343,13 @@ public class FeedsApplication implements VanceApplication {
             }
         }
         int pageSize = params.get("pageSize") instanceof Number n ? n.intValue() : 0;
-        return new FeedsConfig(streams, null, java.util.Set.of(), List.of(), List.of(),
+        // languages/exclude accept a comma-separated string as well as a list —
+        // the create form submits one text field per filter, and the manifest
+        // parser has always taken both shapes (FeedsConfig#asStringList).
+        return new FeedsConfig(streams, asString(params.get("text")),
+                FeedsConfig.asStringSet(params.get("languages")),
+                FeedsConfig.asStringList(params.get("include")),
+                FeedsConfig.asStringList(params.get("exclude")),
                 asString(params.get("since")), pageSize);
     }
 

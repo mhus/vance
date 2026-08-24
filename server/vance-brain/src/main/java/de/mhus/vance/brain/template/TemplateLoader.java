@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.template;
 
 import de.mhus.vance.api.form.FormFieldDto;
+import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.prompt.PromptTemplateException;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import de.mhus.vance.shared.document.DocumentService;
@@ -31,6 +32,12 @@ import org.yaml.snakeyaml.Yaml;
  * partial override (definition only) transparently reuses a lower tier's
  * body — the body is paired to the definition's tier when present, else
  * the innermost body available.
+ *
+ * <p>A definition carrying {@code app: <name>} is the exception: it has no
+ * body at all. Applying it dispatches to that application's {@code create()}
+ * instead of rendering a document, so the manifest format (and every derived
+ * artefact) stays owned by Java. Such a definition must not carry {@code name}
+ * or {@code type} — the application owns both.
  *
  * <p>Parse failures on individual entries are logged on WARN and skipped
  * in {@link #listAll} — one broken template must not hide the rest.
@@ -130,18 +137,51 @@ public class TemplateLoader {
         String icon = FormFieldYamlParser.optionalString(spec.get("icon"));
         List<String> tags = parseTags(spec.get("tags"));
 
-        NamePolicy namePolicy = parseNamePolicy(spec.get("name"));
-        if (namePolicy.defaultTemplate() != null) {
-            compileTemplate(namePolicy.defaultTemplate(), "name.default");
-        }
-
+        String app = FormFieldYamlParser.optionalString(spec.get("app"));
         String folder = normalizeFolder(FormFieldYamlParser.optionalString(spec.get("folder")));
         String typeOverride = FormFieldYamlParser.optionalString(spec.get("type"));
         List<FormFieldDto> fields = FormFieldYamlParser.parseFields(spec.get("fields"), "fields");
         String bodyOverride = FormFieldYamlParser.optionalString(spec.get("body"));
         List<String> availableIn = parseAvailableIn(spec.get("availableIn"));
-
         TemplateSource source = mapSource(def.source());
+
+        if (app != null) {
+            // An app template has no filename and no MIME of its own: the
+            // application implementation owns both (it writes `_app.yaml` plus
+            // whatever derived artefacts belong to the app). Both keys sit in
+            // the same file the author is editing, so refuse them outright
+            // instead of ignoring them silently.
+            if (spec.containsKey("name")) {
+                throw new IllegalStateException(
+                        "'name' must not be set together with 'app' — the application "
+                                + "owns the manifest filename (" + VanceApplication.APP_MANIFEST + ")");
+            }
+            if (typeOverride != null) {
+                throw new IllegalStateException(
+                        "'type' must not be set together with 'app' — the application owns the MIME type");
+            }
+            // A body is ignored rather than refused: it may well come from a
+            // lower cascade tier (a stale project copy of a template that has
+            // since moved to `app:`), and breaking the whole template over a
+            // file the author cannot see from here is worse than a warning.
+            if (findBody(all, name, bodyOverride, source) != null) {
+                log.warn("TemplateLoader: template '{}' declares app='{}' — its body file is ignored",
+                        name, app);
+            }
+            return new ResolvedTemplate(
+                    name, title, description, icon, tags,
+                    // The manifest filename is fixed, which is exactly what the
+                    // create dialog already renders as "folder only, no name field".
+                    TemplateNameMode.FIXED, null, VanceApplication.APP_MANIFEST,
+                    folder, null, fields, availableIn, source,
+                    app, null, null);
+        }
+
+        NamePolicy namePolicy = parseNamePolicy(spec.get("name"));
+        if (namePolicy.defaultTemplate() != null) {
+            compileTemplate(namePolicy.defaultTemplate(), "name.default");
+        }
+
         LookupResult body = findBody(all, name, bodyOverride, source);
         if (body == null) {
             throw new IllegalStateException(
@@ -156,7 +196,7 @@ public class TemplateLoader {
                 name, title, description, icon, tags,
                 namePolicy.mode(), namePolicy.defaultTemplate(), namePolicy.value(),
                 folder, typeOverride, fields, availableIn, source,
-                body.path(), body.content());
+                null, body.path(), body.content());
     }
 
     /**

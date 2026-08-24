@@ -24,8 +24,14 @@ import org.jspecify.annotations.Nullable;
  *        there, so letting the caller pick the folder can only produce a file
  *        nobody reads.
  * @param typeOverride        explicit MIME override; {@code null} = derive from body extension
- * @param bodyPath            normalized path of the body file (carries the extension)
- * @param bodyContent         raw Pebble body content
+ * @param app                 {@code $meta.app} discriminator this template scaffolds through
+ *        {@link de.mhus.vance.brain.applications.VanceApplicationRegistry}; {@code null} for
+ *        an ordinary single-document template. Mutually exclusive with a body: an app template
+ *        has no body because the Java implementation owns the manifest format (and writes the
+ *        derived artefacts a Pebble body could never produce).
+ * @param bodyPath            normalized path of the body file (carries the extension);
+ *        {@code null} exactly when {@code app} is set
+ * @param bodyContent         raw Pebble body content; {@code null} exactly when {@code app} is set
  */
 public record ResolvedTemplate(
         String name,
@@ -41,11 +47,23 @@ public record ResolvedTemplate(
         List<FormFieldDto> fields,
         List<String> availableIn,
         TemplateSource source,
-        String bodyPath,
-        String bodyContent) {
+        @Nullable String app,
+        @Nullable String bodyPath,
+        @Nullable String bodyContent) {
 
-    /** Body file extension (lowercase, without the dot) — drives the created document's type. */
+    /** True when this template scaffolds an application instead of writing one document. */
+    public boolean isApp() {
+        return app != null;
+    }
+
+    /**
+     * Body file extension (lowercase, without the dot) — drives the created document's type.
+     * Empty for an app template, which has no body.
+     */
     public String bodyExtension() {
+        if (bodyPath == null) {
+            return "";
+        }
         int dot = bodyPath.lastIndexOf('.');
         return dot < 0 || dot == bodyPath.length() - 1
                 ? ""

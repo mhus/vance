@@ -447,10 +447,8 @@ public class DocumentController {
         // re-using the same id implies byte-identical content. Falls back
         // to the document id (immutable) when storageId is missing (inline
         // docs from before the storage migration / empty content).
-        String etag = null;
+        String etag = mounted ? null : contentEtag(doc);
         if (!mounted) {
-            String version = doc.getStorageId() != null ? doc.getStorageId() : doc.getId();
-            etag = "\"" + version + "\"";
             if (ifNoneMatch != null && etagsMatch(ifNoneMatch, etag)) {
                 return ResponseEntity.status(HttpStatus.NOT_MODIFIED)
                         .eTag(etag)
@@ -517,6 +515,28 @@ public class DocumentController {
      * comma-separated list form. Both quoted and unquoted entries match the
      * server's quoted ETag literal.
      */
+    /**
+     * The content version of a stored document, as an ETag.
+     *
+     * <p>{@code storageId} is the version: the streaming store hands out a
+     * fresh one on every write, so an unchanged id implies byte-identical
+     * content. It is not a monotonic version — it cannot say *how much*
+     * changed or order two writes — but that is not the question a validator
+     * asks. Falls back to the immutable document id when there is no
+     * storageId (inline documents from before the storage migration, or empty
+     * content); a conditional request against such a document therefore
+     * always matches and offers no protection. Mounted paths have no version
+     * at all and must not be passed here.
+     *
+     * <p>One function, because a reader and a writer that compute this
+     * separately are one refactor away from disagreeing — and the failure of
+     * that disagreement is a silently rejected or a silently accepted write.
+     */
+    private static String contentEtag(DocumentDocument doc) {
+        String version = doc.getStorageId() != null ? doc.getStorageId() : doc.getId();
+        return "\"" + version + "\"";
+    }
+
     private static boolean etagsMatch(String ifNoneMatch, String etag) {
         String header = ifNoneMatch.trim();
         if ("*".equals(header)) return true;
@@ -550,11 +570,32 @@ public class DocumentController {
      * {@link DocumentService#replaceContent} pumps it straight into storage
      * with the streaming-gzip path. No buffering.
      */
+    /**
+     * Replace a document's content.
+     *
+     * <p><b>{@code If-Match} makes the write conditional.</b> Without it the
+     * last writer wins silently: two readers who both opened a document and
+     * both save leave the second body in place and nobody learns that the
+     * first was discarded. A caller that read the document first can send the
+     * ETag it got back and be told — <b>412</b>, nothing written — when
+     * somebody wrote in between. It does not merge; it turns a silent loss
+     * into a refusal the caller can act on (re-read, ask, retry).
+     *
+     * <p>Optional on purpose: every existing caller keeps working, and the
+     * header is only meaningful for a caller that has a version to state.
+     *
+     * <p>Skipped for mounted paths. They carry no version by construction, so
+     * the fallback in {@link #contentEtag} would compare against an immutable
+     * id and always match — a check that cannot fail is worse than no check,
+     * because it reads like protection. Writes there are refused by the
+     * document lock instead.
+     */
     @PutMapping("/brain/{tenant}/documents/{id}/content")
     public ResponseEntity<DocumentDto> replaceContent(
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
             @RequestHeader(value = HttpHeaders.CONTENT_TYPE, required = false) @Nullable String contentType,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) @Nullable String ifMatch,
             @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
             HttpServletRequest httpRequest) throws IOException {
 
@@ -562,6 +603,11 @@ public class DocumentController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(existing.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        if (ifMatch != null && !DocumentService.isMounted(existing.getPath())
+                && !etagsMatch(ifMatch, contentEtag(existing))) {
+            throw new ResponseStatusException(HttpStatus.PRECONDITION_FAILED,
+                    "Document changed since it was read: " + existing.getPath());
         }
         // Pull a clean mime out of the Content-Type header — strip the
         // optional ";charset=…" suffix the browser tacks on for text bodies.
@@ -580,7 +626,12 @@ public class DocumentController {
             updated = documentService.replaceContent(id, body, mime,
                     writerIdentity(httpRequest, editorId), actor(httpRequest));
         }
-        return ResponseEntity.ok(toDto(updated));
+        // The new version travels back with the response: a caller doing
+        // read-modify-write in a loop would otherwise have to re-read the
+        // document after every save purely to learn what to send next time.
+        ResponseEntity.BodyBuilder ok = ResponseEntity.ok();
+        if (!DocumentService.isMounted(updated.getPath())) ok.eTag(contentEtag(updated));
+        return ok.body(toDto(updated));
     }
 
     @PutMapping("/brain/{tenant}/documents/{id}")

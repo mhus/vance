@@ -3,6 +3,7 @@ package de.mhus.vance.shared.enginemessage;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.thinkprocess.ActiveAppContext;
+import de.mhus.vance.api.thinkprocess.ActiveInboxContext;
 import de.mhus.vance.api.thinkprocess.BoundDocSelection;
 import de.mhus.vance.api.thinkprocess.PeerEventType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
@@ -147,6 +148,15 @@ public class EngineMessageDocument {
      * here so it survives the pending-queue round-trip.
      */
     private @Nullable BoundDocSelection boundDocSelection;
+
+    /**
+     * Which inbox thread (and contribution) the reader had open beside the chat
+     * when they sent this. Mirrors {@code PendingMessageDocument.activeInbox};
+     * carried here for the same reason {@link #activeApp} is — this document is
+     * the durable hop between the WS handler and the engine drain, so a field
+     * missing here is a field the engine never sees.
+     */
+    private @Nullable ActiveInboxContext activeInbox;
 
     // ─── PROCESS_EVENT ───────────────────────────────────────────
     /**

@@ -24,7 +24,7 @@ class CanvasCodecTest {
         CanvasNode d = new CanvasNode.Doc("n2", 420, 80, 320, 160, null, null, null,
                 "vance:/assets/x.png?kind=image");
         CanvasNode l = new CanvasNode.Link("n3", 120, 300, 260, 90, null, 5, null,
-                "https://example.com", "Example");
+                "https://example.com", "Example", false);
         CanvasEdge e = new CanvasEdge("e1", "n1", "n2",
                 CanvasEdge.Side.RIGHT, CanvasEdge.Side.LEFT,
                 CanvasEdge.End.NONE, CanvasEdge.End.ARROW, "belegt durch", null, null, null);
@@ -60,6 +60,25 @@ class CanvasCodecTest {
         CanvasNode.Link link = (CanvasNode.Link) back.graph().nodes().get(3);
         assertThat(link.href()).isEqualTo("https://example.com");
         assertThat(link.z()).isEqualTo(5);
+        // false must survive: it is the *choice* "stay on the board", and losing
+        // it would silently fall back to the opposite.
+        assertThat(link.newTab()).isFalse();
+    }
+
+    @Test
+    void link_newTabUnset_staysUnset() {
+        // Null is a third state, not a false — a node written before the field
+        // existed has not decided, and the reader applies the convention.
+        CanvasNode l = new CanvasNode.Link("n1", 0, 0, 10, 10, null, null, null,
+                "https://example.com", null, null);
+        CanvasDocument doc = new CanvasDocument("t", null,
+                new CanvasGraph(List.of(l), List.of()));
+
+        String yaml = CanvasCodec.serialize(doc, YAML);
+        CanvasNode.Link back = (CanvasNode.Link) CanvasCodec.parse(yaml, YAML).graph().nodes().getFirst();
+
+        assertThat(yaml).doesNotContain("newTab");
+        assertThat(back.newTab()).isNull();
     }
 
     @Test
@@ -106,7 +125,8 @@ class CanvasCodecTest {
     @Test
     void dtoRoundTrip_preservesTextColorAndAuthor() {
         CanvasNodeDto dto = new CanvasNodeDto("n1", "text", 10, 20, 200, 120,
-                null, null, null, "Hi", null, null, null, null, null, null, "m", "#2563eb", "bob");
+                null, null, null, "Hi", null, null, null, null, null, null, null,
+                "m", "#2563eb", "bob");
         CanvasGraphDto in = new CanvasGraphDto(null, null, List.of(dto), List.of());
         CanvasGraphDto out = CanvasDtoMapper.toDto(CanvasDtoMapper.fromDto(in));
         assertThat(out.nodes()).hasSize(1);

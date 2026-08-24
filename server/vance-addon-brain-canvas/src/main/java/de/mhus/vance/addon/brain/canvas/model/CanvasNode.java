@@ -55,9 +55,19 @@ public sealed interface CanvasNode
     }
 
     /** External link card. */
+    /**
+     * @param newTab whether following the link should leave the board. Stored
+     *               because the canvas format is ours — the workpage editor
+     *               offers the same choice but cannot keep it, since Markdown
+     *               has nowhere to put a link target. {@code null} means "not
+     *               decided": the reader then applies the convention (external
+     *               targets open away from the board, internal ones do too, see
+     *               the card).
+     */
     record Link(String id, double x, double y, double w, double h,
                 @Nullable String color, @Nullable Integer z, @Nullable String parent,
-                String href, @Nullable String title) implements CanvasNode {
+                String href, @Nullable String title,
+                @Nullable Boolean newTab) implements CanvasNode {
         @Override public String type() { return "link"; }
     }
 

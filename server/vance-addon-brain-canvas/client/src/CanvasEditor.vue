@@ -16,7 +16,7 @@ import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 import { getUsername } from '@vance/shared/auth';
 import { brainFetch } from '@vance/shared';
-import { VButton, usePointers, vanceRef } from '@vance/components';
+import { VButton, VLinkPicker, usePointers, vanceRef } from '@vance/components';
 import CanvasNodeCard from './CanvasNodeCard.vue';
 import InputDialog from './InputDialog.vue';
 import DocPicker, { type AppTargets } from './DocPicker.vue';
@@ -39,8 +39,14 @@ const props = withDefaults(
      * standalone, and the picker then drops the tab (planning/inter-links.md §7.3).
      */
     appTargets?: AppTargets | null;
+    /**
+     * Persist pending edits now. Supplied by the host, which owns the debounced
+     * save — a link that leaves the board same-tab must not drop an edit made in
+     * the second before the click.
+     */
+    flush?: (() => void) | null;
   }>(),
-  { editable: false, projectId: '', path: null, appTargets: null },
+  { editable: false, projectId: '', path: null, appTargets: null, flush: null },
 );
 const emit = defineEmits<{
   (e: 'change', graph: CanvasGraphDto): void;
@@ -133,6 +139,40 @@ type EdgeStyleInit = {
 };
 const edgeDialog = ref<{ open: (i: EdgeStyleInit) => Promise<EdgeStyleInit | null> } | null>(null);
 
+// ── Link nodes: the same picker the block editor uses ─────────
+// A link node used to be two free text fields. It is the same act as inserting
+// a link in a workpage — project document, an app, a place inside one, or a
+// plain URL — so it is the same dialog, and the canvas keeps only the
+// promise wrapper that its imperative call sites want.
+const linkPicker = ref<{ initialHref: string | null } | null>(null);
+let linkPickerResolve: ((pick: LinkPick | null) => void) | null = null;
+
+/** What the picker answered: the target, and whether to leave the board for it. */
+type LinkPick = { href: string; newTab: boolean };
+
+function openLinkPicker(initialHref: string | null): Promise<LinkPick | null> {
+  linkPicker.value = { initialHref };
+  return new Promise((resolve) => {
+    linkPickerResolve = resolve;
+  });
+}
+
+function finishLinkPicker(pick: LinkPick | null): void {
+  linkPicker.value = null;
+  const resolve = linkPickerResolve;
+  linkPickerResolve = null;
+  resolve?.(pick);
+}
+
+/** Change an existing link node's target; the title stays as it is. */
+async function editLinkNode(id: string): Promise<void> {
+  const current = nodes.value.find((n) => n.id === id);
+  if (!current || current.type !== 'link') return;
+  const pick = await openLinkPicker(current.href ?? null);
+  if (!pick) return;
+  patchNode(id, { href: pick.href, newTab: pick.newTab });
+}
+
 watch(
   () => props.graph,
   (g) => {
@@ -168,6 +208,8 @@ const vfNodes = computed<Node[]>(() => {
       onDelete: removeNode,
       onFront: bringToFront,
       onBack: sendToBack,
+      onEditLink: editLinkNode,
+      onFlush: props.flush ?? undefined,
     },
     draggable: isEditable.value,
     selectable: isEditable.value,
@@ -549,12 +591,12 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
     if (!picked || !picked.path) return;
     node = { id, type, x: p.x, y: p.y, w: 280, h: 200, ref: refFor(picked) };
   } else if (type === 'link') {
-    const v = await dialog.value?.open('Link-Node', [
-      { key: 'href', label: 'URL', placeholder: 'https://', value: 'https://' },
-      { key: 'title', label: 'Titel (optional)' },
-    ]);
-    if (!v || !v.href) return;
-    node = { id, type, x: p.x, y: p.y, w: 240, h: 72, href: v.href, title: v.title || undefined };
+    // No title question: creation stays one step, and the title is editable on
+    // the card afterwards (double-click). Without one the card shows the target,
+    // which is a better placeholder than an empty headline.
+    const pick = await openLinkPicker(null);
+    if (!pick) return;
+    node = { id, type, x: p.x, y: p.y, w: 240, h: 72, href: pick.href, newTab: pick.newTab };
   } else {
     const v = await dialog.value?.open('Gruppe', [
       { key: 'label', label: 'Titel', value: 'Gruppe' },
@@ -636,6 +678,19 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
 
     <InputDialog ref="dialog" />
     <DocPicker ref="docPicker" />
+    <VLinkPicker
+      v-if="linkPicker"
+      :project-id="projectId"
+      :initial-href="linkPicker.initialHref"
+      :app-targets="appTargets ? {
+        appPath: appTargets.appPath,
+        appLabel: appTargets.appLabel,
+        targets: appTargets.targets,
+      } : null"
+      @pick="(href, newTab) => finishLinkPicker({ href, newTab: newTab === true })"
+      @clear="finishLinkPicker(null)"
+      @close="finishLinkPicker(null)"
+    />
     <EdgeDialog ref="edgeDialog" />
   </div>
 </template>

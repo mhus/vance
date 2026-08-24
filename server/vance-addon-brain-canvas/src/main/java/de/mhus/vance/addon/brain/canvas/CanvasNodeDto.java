@@ -23,6 +23,8 @@ public record CanvasNodeDto(
         @Nullable String ref,
         @Nullable String href,
         @Nullable String title,
+        /** Link nodes: follow the target in a new browser tab. */
+        @Nullable Boolean newTab,
         @Nullable String label,
         @Nullable Boolean bold,
         @Nullable Boolean italic,

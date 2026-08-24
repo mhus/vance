@@ -5,7 +5,7 @@ import { Handle, Position } from '@vue-flow/core';
 import { NodeResizer } from '@vue-flow/node-resizer';
 import '@vue-flow/node-resizer/dist/style.css';
 import { NodeToolbar } from '@vue-flow/node-toolbar';
-import { brainFetchText, documentContentUrl } from '@vance/shared';
+import { brainFetchText, documentContentUrl, safeUrl } from '@vance/shared';
 import { cortexDeepLink } from '@vance/components';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -34,6 +34,10 @@ const props = defineProps<{
     onDelete?: (id: string) => void;
     onFront?: (id: string) => void;
     onBack?: (id: string) => void;
+    /** Reopen the reference picker for this link node. */
+    onEditLink?: (id: string) => void;
+    /** Persist pending edits now — before a same-tab navigation leaves the board. */
+    onFlush?: () => void;
   };
   selected?: boolean;
 }>();
@@ -105,23 +109,46 @@ const imgSrc = ref<string | null>(null);
 const mdHtml = ref<string | null>(null);
 const docError = ref<string | null>(null);
 
-function refToPath(ref: string): string {
-  let s = ref ?? '';
-  if (s.startsWith('vance:')) s = s.slice('vance:'.length);
-  return s.replace(/^\/+/, '').split('?')[0];
+/**
+ * A `vance:` reference, taken apart.
+ *
+ * The **project** matters and used to be dropped: `vance://other/x` has the
+ * project as a URI authority, and a naive strip left `other/x` as the path,
+ * which then resolved against the *current* project — a cross-project node
+ * showed "not found" for a document that exists. Picking a foreign app from the
+ * reference picker produces exactly such a ref, so it has to be read properly.
+ *
+ * `entry` is kept for the same reason: {@link openInCortex} rebuilds the target
+ * URL from scratch and would otherwise land on the app's default page — a link
+ * that looks like it worked.
+ */
+function parseRef(ref: string | undefined | null): {
+  project: string | null;
+  path: string;
+  entry: string | null;
+} {
+  const raw = ref ?? '';
+  if (!raw.startsWith('vance:')) {
+    return { project: null, path: raw.replace(/^\/+/, '').split('?')[0], entry: null };
+  }
+  try {
+    const url = new URL(raw);
+    return {
+      project: url.hostname ? decodeURIComponent(url.hostname) : null,
+      path: decodeURIComponent(url.pathname.replace(/^\/+/, '')),
+      entry: url.searchParams.get('entry') || null,
+    };
+  } catch {
+    // Malformed refs stay usable as a plain path — the same leniency the rest
+    // of the card applies to hand-edited YAML.
+    const body = raw.slice('vance:'.length).replace(/^\/+/, '');
+    return { project: null, path: body.split('?')[0], entry: null };
+  }
 }
 
-/**
- * `?entry=` of a ref: the place inside the referenced document, for a node that
- * points at an application manifest. Read here rather than dropped, because
- * {@link openInCortex} rebuilds the target URL from scratch and would otherwise
- * land on the app's default page — a link that looks like it worked.
- */
-function refToEntry(ref: string | undefined | null): string | null {
-  if (!ref) return null;
-  const q = ref.indexOf('?');
-  if (q < 0) return null;
-  return new URLSearchParams(ref.slice(q + 1)).get('entry') || null;
+/** The project a ref points into — its own, or the board's. */
+function refProject(ref: string | undefined | null): string {
+  return parseRef(ref).project ?? (props.data.projectId ?? '');
 }
 
 async function loadDoc(): Promise<void> {
@@ -130,10 +157,11 @@ async function loadDoc(): Promise<void> {
   mdHtml.value = null;
   docError.value = null;
   if (kind.value !== 'doc') return;
-  const pid = props.data.projectId;
   const ref = node.value.ref;
-  if (!pid || !ref) return;
-  const path = refToPath(ref);
+  if (!props.data.projectId || !ref) return;
+  const { path } = parseRef(ref);
+  // The ref's own project, not the board's — a foreign-app node lives elsewhere.
+  const pid = refProject(ref);
   try {
     const meta = await resolveDocument(pid, path);
     docMeta.value = meta;
@@ -163,19 +191,89 @@ watch(() => [node.value.ref, props.data.projectId], loadDoc);
 
 /** Jump: open the referenced document in a new Cortex tab. */
 function openInCortex(): void {
-  const pid = props.data.projectId;
   const id = docMeta.value?.id;
+  const pid = refProject(node.value.ref);
   if (!pid || !id) return;
-  const url = cortexDeepLink({
+  window.open(cortexDeepLink({
     project: pid,
     documentId: id,
-    entry: refToEntry(node.value.ref),
-  });
-  window.open(url, '_blank', 'noopener');
+    entry: parseRef(node.value.ref).entry,
+  }), '_blank', 'noopener');
 }
 
 function patch(p: Partial<CanvasNodeDto>): void {
   props.data.onPatch?.(node.value.id, p);
+}
+
+// ── Link nodes ────────────────────────────────────────────────
+/**
+ * An external target we are willing to put in an `href`, or null.
+ *
+ * `safeUrl` allows http/https/mailto only — `vance:` is deliberately not in that
+ * set, because it is not navigable by the browser and goes through
+ * {@link openLinkTarget} instead. Null means we render the text without a link
+ * rather than a link that goes nowhere.
+ */
+const isVanceLink = computed(() => (node.value.href ?? '').startsWith('vance:'));
+const linkHref = computed(() => (isVanceLink.value ? null : safeUrl(node.value.href)));
+
+/**
+ * Whether following the link leaves the board.
+ *
+ * An unset flag means the node predates the choice: it then keeps opening away
+ * from the board, which is what those nodes always did. An explicit `false` is a
+ * decision and is honoured — that is the whole point of storing it.
+ */
+const linkNewTab = computed(() => node.value.newTab !== false);
+
+/** What the card shows as the link's second line — the bare target. */
+const linkSubtitle = computed(() => {
+  const href = node.value.href ?? '';
+  if (!isVanceLink.value) return href;
+  const { project, path } = parseRef(href);
+  return project ? `${project}/${path}` : path;
+});
+
+/**
+ * Follow an internal link. Same shape as {@link openInCortex}, but a link node
+ * carries no resolved metadata (it never embedded anything), so the id is looked
+ * up on the click.
+ */
+async function openLinkTarget(): Promise<void> {
+  const href = node.value.href;
+  if (!href || !isVanceLink.value) return;
+  const { path, entry } = parseRef(href);
+  const pid = refProject(href);
+  if (!pid || !path) return;
+  try {
+    const meta = await resolveDocument(pid, path);
+    navigate(cortexDeepLink({ project: pid, documentId: meta.id, entry }));
+  } catch (e) {
+    // A gone target must not be silent — the card is the only place to say it.
+    docError.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
+/**
+ * Leaving the board same-tab has to flush the debounced save first, or an edit
+ * made in the last second before the click is lost. The host owns the save, so
+ * it is asked; without a host the navigation still happens (nothing to lose).
+ */
+function navigate(url: string): void {
+  if (linkNewTab.value) {
+    window.open(url, '_blank', 'noopener');
+    return;
+  }
+  props.data.onFlush?.();
+  window.location.href = url;
+}
+
+/** Plain click on an external link: same tab means flushing first. */
+function onExternalClick(event: MouseEvent): void {
+  if (linkNewTab.value) return; // the anchor's target does it
+  event.preventDefault();
+  const href = linkHref.value;
+  if (href) navigate(href);
 }
 
 // ── Inline editing (text nodes) ───────────────────────────────
@@ -191,9 +289,28 @@ function autogrow(): void {
   }
 }
 
+/**
+ * Double-click opens the editor for a text node only.
+ *
+ * On a link node the title is reached through the toolbar instead: the card is
+ * an anchor there, so a double-click is *two clicks* and would have opened the
+ * target twice before any editor appeared.
+ */
+function onCardDoubleClick(): void {
+  if (kind.value !== 'text') return;
+  void beginEdit();
+}
+
+/**
+ * Inline edit: the body of a text node, the *title* of a link node. A link's
+ * title is the only thing about it that is prose, and it was previously
+ * unreachable once the node existed — the target has its own button.
+ */
 async function beginEdit(): Promise<void> {
-  if (!editable.value || kind.value !== 'text') return;
-  draft.value = node.value.text ?? '';
+  if (!editable.value) return;
+  if (kind.value === 'text') draft.value = node.value.text ?? '';
+  else if (kind.value === 'link') draft.value = node.value.title ?? '';
+  else return;
   editing.value = true;
   await nextTick();
   autogrow();
@@ -204,6 +321,13 @@ async function beginEdit(): Promise<void> {
 function commit(): void {
   if (!editing.value) return;
   editing.value = false;
+  if (kind.value === 'link') {
+    // Empty means "no title" — the card then shows the target, which is a
+    // better fallback than an empty headline.
+    const title = draft.value.trim();
+    if (title !== (node.value.title ?? '')) patch({ title: title || undefined });
+    return;
+  }
   if (draft.value !== (node.value.text ?? '')) {
     props.data.onText?.(node.value.id, draft.value);
   }
@@ -234,7 +358,7 @@ function onResizeEnd(e: { params: { x: number; y: number; width: number; height:
         : { background: bg },
       kind === 'text' ? { minHeight: (node.h || 80) + 'px' } : { height: '100%' },
     ]"
-    @dblclick.stop="beginEdit"
+    @dblclick.stop="onCardDoubleClick"
   >
     <NodeToolbar :is-visible="editable && selected === true" :position="Position.Top" :offset="10">
       <div class="cv-toolbar nodrag">
@@ -272,6 +396,16 @@ function onResizeEnd(e: { params: { x: number; y: number; width: number; height:
             title="Textfarbe"
             @click="patch({ textColor: tc })"
           >A</button>
+        </template>
+
+        <template v-if="kind === 'link'">
+          <span class="cv-sep"></span>
+          <button class="cv-btn" title="Titel ändern" @click="beginEdit">✎</button>
+          <button
+            class="cv-btn"
+            title="Ziel ändern"
+            @click="props.data.onEditLink?.(node.id)"
+          >🔗</button>
         </template>
 
         <span class="cv-sep"></span>
@@ -353,8 +487,39 @@ function onResizeEnd(e: { params: { x: number; y: number; width: number; height:
     </template>
 
     <template v-else-if="kind === 'link'">
-      <div class="canvas-card-title">🔗 {{ node.title || node.href }}</div>
-      <div v-if="node.title" class="canvas-card-sub">{{ node.href }}</div>
+      <input
+        v-if="editing"
+        v-model="draft"
+        class="canvas-link-title-input nodrag"
+        placeholder="Titel"
+        @keydown.enter.prevent="commit"
+        @keydown.esc.prevent="cancel"
+        @blur="commit"
+        @dblclick.stop
+      />
+      <!-- Three cases on purpose: an external target is a real anchor (middle
+           click, copy link address), an internal one needs the host resolution,
+           and an unsafe or empty target renders as plain text rather than a
+           link that goes nowhere. -->
+      <a
+        v-else-if="linkHref"
+        class="canvas-card-title canvas-card-link"
+        :href="linkHref"
+        :target="linkNewTab ? '_blank' : undefined"
+        rel="noopener noreferrer"
+        @mousedown.stop
+        @click.stop="onExternalClick"
+      >🔗 {{ node.title || linkSubtitle }}</a>
+      <button
+        v-else-if="isVanceLink"
+        class="canvas-card-title canvas-card-link"
+        type="button"
+        @mousedown.stop
+        @click.stop="openLinkTarget"
+      >🔗 {{ node.title || linkSubtitle }}</button>
+      <div v-else class="canvas-card-title">🔗 {{ node.title || linkSubtitle || '—' }}</div>
+      <div v-if="node.title && !editing" class="canvas-card-sub">{{ linkSubtitle }}</div>
+      <div v-if="docError" class="canvas-card-sub canvas-card-error">{{ docError }}</div>
     </template>
 
     <template v-else-if="kind === 'group'">
@@ -481,6 +646,41 @@ function onResizeEnd(e: { params: { x: number; y: number; width: number; height:
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.canvas-card-error {
+  color: #b91c1c;
+  white-space: normal;
+}
+/* Anchor and button forms of the link title must look identical — which of the
+   two is rendered depends on the target's scheme, not on anything a reader
+   should notice. */
+.canvas-card-link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: #1d4ed8;
+  cursor: pointer;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.canvas-card-link:hover {
+  text-decoration: underline;
+}
+.canvas-link-title-input {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #ffffff;
+  color: #1f2937;
 }
 
 .canvas-node--group {

@@ -151,7 +151,8 @@ public final class CanvasCodec {
             case "link" -> {
                 String href = str(raw, "href");
                 if (href == null) throw new KindCodecException("canvas link-node requires `href`");
-                yield new CanvasNode.Link(id, x, y, w, h, color, z, parent, href, str(raw, "title"));
+                yield new CanvasNode.Link(id, x, y, w, h, color, z, parent, href,
+                        str(raw, "title"), boolOrNull(raw.get("newTab")));
             }
             case "group" -> new CanvasNode.Group(id, x, y, w, h, color, z, parent, str(raw, "label"));
             default -> throw new KindCodecException("Unknown canvas node.type='" + type + "'");
@@ -182,6 +183,7 @@ public final class CanvasCodec {
             case CanvasNode.Link l -> {
                 m.put("href", l.href());
                 if (l.title() != null) m.put("title", l.title());
+                if (l.newTab() != null) m.put("newTab", l.newTab());
             }
             case CanvasNode.Group g -> {
                 if (g.label() != null) m.put("label", g.label());

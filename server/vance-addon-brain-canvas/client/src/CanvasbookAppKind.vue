@@ -308,6 +308,7 @@ onBeforeUnmount(() => {
         :project-id="document.projectId"
         :path="activePath"
         :app-targets="appTargets"
+        :flush="flushPending"
         @change="onEditorChange"
         @selection="onCanvasSelection"
       />

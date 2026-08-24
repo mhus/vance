@@ -17,6 +17,7 @@ export interface CanvasNodeDto {
   ref?: string;
   href?: string;
   title?: string;
+  newTab?: boolean;
   label?: string;
   bold?: boolean;
   italic?: boolean;

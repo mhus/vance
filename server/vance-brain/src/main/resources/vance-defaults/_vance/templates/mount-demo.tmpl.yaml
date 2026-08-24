@@ -1,0 +1,3 @@
+protocol: demo
+{% if metadataTtlSeconds %}metadataTtlSeconds: {{ metadataTtlSeconds }}
+{% endif %}enabled: true

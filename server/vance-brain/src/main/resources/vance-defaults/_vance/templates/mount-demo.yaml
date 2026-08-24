@@ -1,0 +1,19 @@
+title:       { de: "Mount: Demo (berechnet)", en: "Mount: demo (computed)" }
+description: { de: "Eine Quelle, die ihren Inhalt selbst berechnet — zum Ausprobieren parametrisierter Sichten, ohne zweiten Prozess.",
+               en: "A source that computes its own content — for trying parameterised views without a second process." }
+icon: flask
+tags: [mounts, source]
+
+folder: _vance/config/mounts
+
+name:
+  mode: free
+  default: "demo"
+
+fields:
+  - name: metadataTtlSeconds
+    type: integer
+    integerMin: 10
+    label: { de: "Metadaten-TTL (Sekunden)", en: "Metadata TTL (seconds)" }
+    help:  { de: "Wie lange Listings gelten. Hier ändert sich nichts, kurz ist also gut. Leer = 60.",
+             en: "How long listings stay valid. Nothing here changes, so short is fine. Empty = 60." }

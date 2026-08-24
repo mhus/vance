@@ -35,10 +35,10 @@ folder in the name: `manual_read('bistromath/views')`.
 
 ## Before you promise anything
 
-This build **reads**; it cannot write documents yet. There is no `visibleIf`,
-no `import` in the program, and `if` / `repeat` / `chart` / `dialog` are
-reserved but not rendered. Do not write a program that calls
-`vance.documents.write` — it does not exist.
+This build reads **and writes** documents. It has no `visibleIf`, no `import`
+in the program, and `if` / `repeat` / `chart` / `dialog` are reserved but not
+rendered. Form fields are shown, not edited — a value reaches the program
+through `vance.state.set`, never from a field.
 
 Create with `bistromath_app_create(folder=…, title=…)`; it scaffolds a running
 Hello World. After editing anything, run `app_rebuild(folder=…)` — nothing else

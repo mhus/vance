@@ -93,6 +93,9 @@ function makeHost(overrides: Partial<SandboxHost> = {}): SandboxHost {
     stateSet: vi.fn(),
     documentsList: vi.fn().mockResolvedValue([]),
     documentsRead: vi.fn().mockResolvedValue(''),
+    documentsWrite: vi.fn().mockResolvedValue(undefined),
+    documentsCreate: vi.fn().mockResolvedValue(undefined),
+    documentsDelete: vi.fn().mockResolvedValue(undefined),
     uiNotify: vi.fn(),
     uiShow: vi.fn(),
     ...overrides,
@@ -368,6 +371,47 @@ describe('host calls', () => {
     expect(guest.posted.find((m) => m.t === 'result')).toMatchObject({
       ok: false,
       message: expect.stringContaining('no such host function'),
+    });
+  });
+
+  it('passes a write through with its content and options', async () => {
+    const guest = new FakeGuest();
+    autoRespond(guest);
+    const host = makeHost();
+    const box = new Sandbox({ host, onError: vi.fn(), transport: guest });
+    await box.start('code');
+
+    guest.emit({
+      t: 'call', id: 'c1', method: 'documents.write',
+      args: ['rows/1.yaml', { status: 'paid' }, { force: true }],
+    });
+    await vi.waitFor(() => expect(guest.posted.some((m) => m.t === 'result')).toBe(true));
+
+    expect(host.documentsWrite).toHaveBeenCalledWith(
+      'rows/1.yaml', { status: 'paid' }, { force: true },
+    );
+  });
+
+  /**
+   * A refused write must reach the program as a rejection it can catch — not
+   * as a silence, and not as a success. This is the whole point of the
+   * conditional write: the program gets to re-read and decide.
+   */
+  it('hands a refused write back to the program as an error', async () => {
+    const guest = new FakeGuest();
+    autoRespond(guest);
+    const host = makeHost({
+      documentsWrite: vi.fn().mockRejectedValue(new Error("'rows/1.yaml' changed since read")),
+    });
+    const box = new Sandbox({ host, onError: vi.fn(), transport: guest });
+    await box.start('code');
+
+    guest.emit({ t: 'call', id: 'c1', method: 'documents.write', args: ['rows/1.yaml', {}] });
+    await vi.waitFor(() => expect(guest.posted.some((m) => m.t === 'result')).toBe(true));
+
+    expect(guest.posted.find((m) => m.t === 'result')).toMatchObject({
+      ok: false,
+      message: expect.stringContaining('changed since read'),
     });
   });
 });

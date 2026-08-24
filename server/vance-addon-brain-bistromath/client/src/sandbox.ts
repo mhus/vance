@@ -31,6 +31,12 @@ export interface SandboxHost {
   documentsList(path: string): Promise<unknown>;
   /** `vance.documents.read(path)` */
   documentsRead(path: string): Promise<unknown>;
+  /** `vance.documents.write(path, content, opts?)` */
+  documentsWrite(path: string, content: unknown, opts?: unknown): Promise<unknown>;
+  /** `vance.documents.create(path, content)` */
+  documentsCreate(path: string, content: unknown): Promise<unknown>;
+  /** `vance.documents.delete(path)` */
+  documentsDelete(path: string): Promise<unknown>;
   /** `vance.ui.notify(text, severity)` */
   uiNotify(text: string, severity?: string): void;
   /** `vance.ui.show(handle)` */
@@ -409,6 +415,15 @@ export class Sandbox {
           break;
         case 'documents.read':
           post(true, await host.documentsRead(String(args[0])));
+          break;
+        case 'documents.write':
+          post(true, await host.documentsWrite(String(args[0]), args[1], args[2]));
+          break;
+        case 'documents.create':
+          post(true, await host.documentsCreate(String(args[0]), args[1]));
+          break;
+        case 'documents.delete':
+          post(true, await host.documentsDelete(String(args[0])));
           break;
         case 'ui.notify':
           host.uiNotify(String(args[0]), args[1] === undefined ? undefined : String(args[1]));

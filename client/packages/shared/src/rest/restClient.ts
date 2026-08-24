@@ -71,7 +71,7 @@ export function brainBaseUrl(): string {
   return getRestConfig().baseUrl;
 }
 
-interface RestOptions {
+export interface RestOptions {
   /**
    * Whether the request should carry credentials. Default `true`.
    *
@@ -299,14 +299,33 @@ function parseContentDispositionFilename(header: string | null): string | null {
  * `null` on 404 — many help-style routes treat "not present" as a
  * normal outcome rather than an error.
  */
-export async function brainFetchText(path: string): Promise<string | null> {
+export async function brainFetchText(
+  path: string,
+  options: RestOptions = {},
+): Promise<string | null> {
+  return (await brainFetchTextWithMeta(path, options)).text;
+}
+
+/**
+ * {@link brainFetchText} plus the raw {@link Response}.
+ *
+ * <p>Exists for conditional requests: the caller needs the `ETag` header to
+ * send back as `If-Match` on the next write, and a text helper that only
+ * returns the body cannot hand it over. Computing the validator on the client
+ * instead — from a DTO field — would put the version rule in two places, which
+ * is the one thing the server side of this deliberately avoids.
+ */
+export async function brainFetchTextWithMeta(
+  path: string,
+  options: RestOptions = {},
+): Promise<{ text: string | null; response: Response }> {
   const tenant = getTenantId();
   if (!tenant) throw new RestError(0, path, 'No tenant configured — user is not logged in.');
 
   const url = `${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/${path.replace(/^\//, '')}`;
-  let response = await doFetch(url, 'GET', {});
+  let response = await doFetch(url, 'GET', options);
 
-  if (response.status === 404) return null;
+  if (response.status === 404) return { text: null, response };
 
   if (response.status === 401) {
     const refreshed = await getRestConfig().refreshAccess();
@@ -314,19 +333,19 @@ export async function brainFetchText(path: string): Promise<string | null> {
       // Retry once; a non-ok retry (other than 404) surfaces as a
       // RestError below, not a logout. Only a failed refresh means the
       // session is dead. Aligns with the WithMeta / Blob / Raw helpers.
-      response = await doFetch(url, 'GET', {});
+      response = await doFetch(url, 'GET', options);
     } else {
       redirectToLogin();
-      return new Promise<string | null>(() => {});
+      return new Promise<{ text: string | null; response: Response }>(() => {});
     }
   }
 
-  if (response.status === 404) return null;
+  if (response.status === 404) return { text: null, response };
   if (!response.ok) {
     const text = await response.text().catch(() => '');
     throw new RestError(response.status, path, reasonFrom(text, response), reasonCodeFrom(text));
   }
-  return response.text();
+  return { text: await response.text(), response };
 }
 
 function redirectToLogin(): void {
@@ -350,14 +369,37 @@ export async function brainSendRaw<T>(
   path: string,
   body: string | Blob | ArrayBuffer | Uint8Array,
   contentType: string,
+  headers: Record<string, string> = {},
 ): Promise<T> {
+  return (await brainSendRawWithMeta<T>(method, path, body, contentType, headers)).data;
+}
+
+/**
+ * {@link brainSendRaw} plus the raw {@link Response}, and with room for extra
+ * request headers.
+ *
+ * <p>Both exist for the same reason: a conditional write sends `If-Match` and
+ * needs the new `ETag` back, so that a caller doing read-modify-write in a
+ * loop does not have to re-read the document after every save purely to learn
+ * what to send next time.
+ */
+export async function brainSendRawWithMeta<T>(
+  method: 'PUT' | 'POST',
+  path: string,
+  body: string | Blob | ArrayBuffer | Uint8Array,
+  contentType: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<{ data: T; response: Response }> {
   const tenant = getTenantId();
   if (!tenant) throw new RestError(0, path, 'No tenant configured — user is not logged in.');
 
   const url = `${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/${path.replace(/^\//, '')}`;
   const send = async (): Promise<Response> => {
     const config = getRestConfig();
-    const headers: Record<string, string> = { 'Content-Type': contentType };
+    const headers: Record<string, string> = {
+      'Content-Type': contentType,
+      ...extraHeaders,
+    };
     if (config.authMode === 'bearer') {
       const token = getStorage().secureStore.get(StorageKeys.authAccessToken);
       if (token !== null) headers['Authorization'] = `Bearer ${token}`;
@@ -383,14 +425,14 @@ export async function brainSendRaw<T>(
       response = await send();
     } else {
       redirectToLogin();
-      return new Promise<T>(() => {});
+      return new Promise<{ data: T; response: Response }>(() => {});
     }
   }
   if (!response.ok) {
     const text = await response.text().catch(() => '');
     throw new RestError(response.status, path, reasonFrom(text, response), reasonCodeFrom(text));
   }
-  return parseJson<T>(response);
+  return { data: await parseJson<T>(response), response };
 }
 
 /**

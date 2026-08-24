@@ -1,5 +1,10 @@
-import { brainFetch, brainFetchText } from '@vance/shared';
-import { load as parseYaml } from 'js-yaml';
+import {
+  RestError,
+  brainFetch,
+  brainFetchTextWithMeta,
+  brainSendRawWithMeta,
+} from '@vance/shared';
+import { dump as dumpYaml, load as parseYaml } from 'js-yaml';
 import type { AppScan } from './generated/bistromath/AppScan';
 import type { RenderedView } from './generated/bistromath/RenderedView';
 
@@ -7,11 +12,10 @@ import type { RenderedView } from './generated/bistromath/RenderedView';
  * Two surfaces, and the split is the point.
  *
  * `scanApp` / `loadView` / `rebuildApp` are *this addon's* three routes: what
- * views exist, what one looks like, re-check them. Everything else here goes
- * through the **generic document API** — because everything the program needs
- * already has a route. There is no `/table`, no `/rows`; a dedicated data
- * endpoint would have put "what a row is" in the backend, which cannot see the
- * app's data model anyway.
+ * views exist, what one looks like, re-check them. Everything a program does
+ * with data goes through the **generic document API** — because every route it
+ * needs already exists. A dedicated data endpoint would have put "what a row
+ * is" in the backend, which never sees the app's data model anyway.
  */
 
 function qs(params: Record<string, string>): string {
@@ -45,7 +49,7 @@ export async function rebuildApp(projectId: string, folder: string): Promise<App
 
 /** One entry of `vance.documents.list(path)`. */
 export interface DocEntry {
-  /** File name without extension — the key, if the folder is used as a table. */
+  /** File name without extension — the key, if the folder holds records. */
   key: string;
   path: string;
   title?: string;
@@ -55,6 +59,22 @@ export interface DocEntry {
 interface FolderResponse {
   folders?: string[];
   files?: { id?: string; path?: string; title?: string; mimeType?: string }[];
+}
+
+interface DocSummary {
+  id?: string;
+  mimeType?: string;
+}
+
+/** Raised when a write lost a race. The program can catch it by name. */
+export class DocumentChangedError extends Error {
+  constructor(readonly path: string) {
+    super(
+      `'${path}' changed since it was read. Read it again before writing, ` +
+        'or pass { force: true } to overwrite.',
+    );
+    this.name = 'DocumentChangedError';
+  }
 }
 
 function baseName(path: string): string {
@@ -72,69 +92,205 @@ export function splitQuery(pathWithQuery: string): { path: string; query: string
 }
 
 /**
- * The documents directly inside a folder.
+ * The document surface of one running app, with its **version memory**.
  *
- * <p>`size` is asked for at the endpoint's maximum. A folder with more than
- * that is truncated by the server, and the program sees a short list — which is
- * why a large collection wants paging in the program rather than one call. Said
- * here because the alternative is a table that quietly stops at 200.
+ * <p>Every read remembers the document's `ETag`; every write sends it back as
+ * `If-Match` and stores the new one from the response. So a program that reads
+ * a record, changes a field and writes it back is protected from the case that
+ * loses work silently — somebody else wrote in between — without the author
+ * having to know that a version exists.
  *
- * <p>A query is **refused**, not dropped. Parameterised reads are a property of
- * a mounted document's content, not of a listing; forwarding it would be a
- * query nobody answers, and dropping it would return the unfiltered folder
- * wearing the shape of a filtered one.
+ * <p>Implicit rather than a value the program passes around, and that is a
+ * deliberate trade: it keeps read-modify-write down to two lines, at the cost
+ * of a rule that has to be stated — **only a document this app has read is
+ * guarded**. A blind write (no prior read) goes through unconditionally, which
+ * is exactly right for creating something and exactly wrong for updating
+ * something, so `write` to an unread path is the one case an author has to
+ * think about.
+ *
+ * <p>Per instance, not global: the memory dies with the app, and two apps never
+ * share one.
  */
-export async function listDocuments(projectId: string, path: string): Promise<DocEntry[]> {
-  if (path.includes('?')) {
-    throw new Error(
-      `list('${path}') carries a query. A query parameterises the *content* of a ` +
-        'mounted document, not a folder listing — read the document instead.',
+export class DocumentAccess {
+  private readonly versions = new Map<string, string>();
+
+  constructor(private readonly projectId: string) {}
+
+  /**
+   * The documents directly inside a folder.
+   *
+   * <p>At most 200 — the endpoint's maximum. A larger collection needs paging
+   * in the program; a table that quietly stops at 200 would be worse.
+   *
+   * <p>A query is **refused**, not dropped. Parameters belong to a mounted
+   * document's content, not to a listing; forwarding one would be a query
+   * nobody answers, dropping it would return the unfiltered folder wearing the
+   * shape of a filtered one.
+   */
+  async list(path: string): Promise<DocEntry[]> {
+    if (path.includes('?')) {
+      throw new Error(
+        `list('${path}') carries a query. A query parameterises the *content* of a ` +
+          'mounted document, not a folder listing — read the document instead.',
+      );
+    }
+    const res = await brainFetch<FolderResponse>(
+      'GET',
+      `documents/folder?${qs({ projectId: this.projectId, path, page: '0', size: '200' })}`,
     );
+    const out: DocEntry[] = [];
+    for (const f of res.files ?? []) {
+      if (!f.path) continue;
+      out.push({ key: baseName(f.path), path: f.path, title: f.title, mime: f.mimeType });
+    }
+    out.sort((a, b) => a.path.localeCompare(b.path));
+    return out;
   }
-  const res = await brainFetch<FolderResponse>(
-    'GET',
-    `documents/folder?${qs({ projectId, path, page: '0', size: '200' })}`,
-  );
-  const out: DocEntry[] = [];
-  for (const f of res.files ?? []) {
-    if (!f.path) continue;
-    out.push({ key: baseName(f.path), path: f.path, title: f.title, mime: f.mimeType });
+
+  /**
+   * A document's content — parsed for YAML and JSON, raw text otherwise.
+   *
+   * <p>Parsing on the host is deliberate: the host knows the mime type, and
+   * shipping a parser into the sandbox to re-derive it would put the same
+   * decision in two places.
+   *
+   * <p><b>A query goes on the content call, not on the lookup.</b>
+   * `read('/_ext/demo/analysis.yaml?from=…')` is a parameterised view of a
+   * mounted document; the lookup asks for the document, the content call
+   * carries the parameters. Sending the whole string as a path would look for
+   * a document literally named `analysis.yaml?from=…`.
+   *
+   * <p>`$`-prefixed keys are dropped from a parsed mapping: `$meta` is document
+   * plumbing, not the record.
+   */
+  async read(pathWithQuery: string): Promise<unknown> {
+    const { path, query } = splitQuery(pathWithQuery);
+    const doc = await this.summary(path);
+    const url = `documents/${encodeURIComponent(doc.id!)}/content${query ? `?${query}` : ''}`;
+    const { text, response } = await brainFetchTextWithMeta(url);
+    this.remember(path, response);
+    return decode(text ?? '', doc.mimeType ?? '');
   }
-  out.sort((a, b) => a.path.localeCompare(b.path));
-  return out;
+
+  /**
+   * Write a document's content, creating it when it is not there yet.
+   *
+   * <p>Create-or-replace, deliberately: that is what `vance.documents.write`
+   * does on the server side, and a browser program that meant the same thing
+   * should not need a different call. `create` exists next to it for the case
+   * where "already there" is an *error* worth hearing about.
+   *
+   * <p>Conditional when this app has read the document before (see the class
+   * comment); `force` writes regardless. A lost race raises
+   * {@link DocumentChangedError} and **nothing is written**.
+   *
+   * <p>An object is serialised by the document's own type — YAML for a `.yaml`,
+   * JSON for a `.json`. A string is written as it is, which is how a program
+   * keeps full control of the bytes.
+   */
+  async write(path: string, content: unknown, opts: { force?: boolean } = {}): Promise<void> {
+    if (path.includes('?')) {
+      throw new Error(`write('${path}') carries a query. Parameters are a read-only concept.`);
+    }
+    const doc = await this.summaryOrNull(path);
+    if (!doc) {
+      // Nothing to overwrite and therefore nothing to race against — the
+      // server's uniqueness check is the whole concurrency story here.
+      await this.create(path, content);
+      return;
+    }
+    const mime = doc.mimeType ?? 'text/plain';
+    const headers: Record<string, string> = {};
+    const known = this.versions.get(path);
+    if (known && !opts.force) headers['If-Match'] = known;
+
+    try {
+      const { response } = await brainSendRawWithMeta<unknown>(
+        'PUT',
+        `documents/${encodeURIComponent(doc.id!)}/content`,
+        encode(content, mime),
+        `${mime}; charset=utf-8`,
+        headers,
+      );
+      this.remember(path, response);
+    } catch (e) {
+      if (e instanceof RestError && e.status === 412) {
+        // The version we knew is stale, and keeping it would make every retry
+        // fail the same way. Forget it so a re-read can start clean.
+        this.versions.delete(path);
+        throw new DocumentChangedError(path);
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Create a document, and fail if one is already there.
+   *
+   * <p>The difference to `write` is the intent: `create` treats an existing
+   * document as an error the program wants to hear about (a register that must
+   * not overwrite yesterday's entry), `write` treats it as the normal case.
+   */
+  async create(path: string, content: unknown): Promise<void> {
+    if (path.includes('?')) {
+      throw new Error(`create('${path}') carries a query.`);
+    }
+    // Mime is left to the server, which derives it from the extension; sending
+    // our own guess would be a second rule for the same question.
+    await brainFetch<unknown>('POST', `documents?${qs({ projectId: this.projectId })}`, {
+      body: { path, inlineText: encode(content, mimeFromPath(path)) },
+    });
+  }
+
+  /** Delete a document. It goes to the trash, like every other delete. */
+  async delete(path: string): Promise<void> {
+    const doc = await this.summary(path);
+    await brainFetch<void>('DELETE', `documents/${encodeURIComponent(doc.id!)}`);
+    this.versions.delete(path);
+  }
+
+  // ── plumbing ─────────────────────────────────────────────────────
+
+  private async summary(path: string): Promise<DocSummary> {
+    const doc = await this.summaryOrNull(path);
+    if (!doc) throw new Error(`no document at '${path}'`);
+    return doc;
+  }
+
+  /** `null` when there is no such document — a 404 is an answer here, not a fault. */
+  private async summaryOrNull(path: string): Promise<DocSummary | null> {
+    try {
+      const doc = await brainFetch<DocSummary>(
+        'GET',
+        `documents/by-path?${qs({ projectId: this.projectId, path })}`,
+      );
+      return doc.id ? doc : null;
+    } catch (e) {
+      if (e instanceof RestError && e.status === 404) return null;
+      throw e;
+    }
+  }
+
+  private remember(path: string, response: Response): void {
+    const etag = response.headers.get('ETag');
+    // A mounted document has no version and must not get a remembered one — a
+    // later write would then send an If-Match the server does not check.
+    if (etag) this.versions.set(path, etag);
+    else this.versions.delete(path);
+  }
 }
 
-/**
- * A document's content — parsed when it is YAML or JSON, raw text otherwise.
- *
- * <p>Parsing on the host rather than in the guest is deliberate: the host knows
- * the mime type, and shipping a YAML parser into the sandbox to re-derive it
- * would put the same decision in two places. The program gets an object when
- * the document holds one, which is what makes a folder of records readable in
- * three lines.
- *
- * <p><b>A query goes on the content call, not on the lookup.</b>
- * `read('_ext/demo/analysis.yaml?from=…&to=…')` is a
- * [parameterised view](jaglan-system.md) of a mounted document: the *lookup*
- * asks for the document, and the *content* call carries the parameters, which
- * the brain forwards to the source (`MountQuery.forward`). Sending the whole
- * string as the path would look for a document literally named
- * `analysis.yaml?from=…` and find nothing.
- *
- * <p>`$`-prefixed keys are dropped from a parsed mapping: `$meta` is document
- * plumbing, not the record.
- */
-export async function readDocument(projectId: string, pathWithQuery: string): Promise<unknown> {
-  const { path, query } = splitQuery(pathWithQuery);
-  const doc = await brainFetch<{ id?: string; mimeType?: string }>(
-    'GET',
-    `documents/by-path?${qs({ projectId, path })}`,
-  );
-  if (!doc.id) throw new Error(`no document at '${path}'`);
-  const content = `documents/${encodeURIComponent(doc.id)}/content${query ? `?${query}` : ''}`;
-  const text = (await brainFetchText(content)) ?? '';
+// ── content ────────────────────────────────────────────────────────
 
-  const mime = doc.mimeType ?? '';
+function mimeFromPath(path: string): string {
+  if (path.endsWith('.json')) return 'application/json';
+  if (path.endsWith('.yaml') || path.endsWith('.yml')) return 'application/yaml';
+  if (path.endsWith('.md')) return 'text/markdown';
+  if (path.endsWith('.js')) return 'text/javascript';
+  return 'text/plain';
+}
+
+function decode(text: string, mime: string): unknown {
   if (mime.includes('json')) {
     try {
       return strip(JSON.parse(text));
@@ -152,6 +308,19 @@ export async function readDocument(projectId: string, pathWithQuery: string): Pr
   return text;
 }
 
+/**
+ * Turn what the program handed over into bytes.
+ *
+ * <p>A string is written verbatim — the program said exactly what it wanted.
+ * Anything else is serialised by the document's own type, so `read` then
+ * `write` round-trips through the same representation.
+ */
+function encode(content: unknown, mime: string): string {
+  if (typeof content === 'string') return content;
+  if (mime.includes('json')) return `${JSON.stringify(content, null, 2)}\n`;
+  return dumpYaml(content, { noRefs: true, lineWidth: 100 });
+}
+
 function strip(value: unknown): unknown {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
   const out: Record<string, unknown> = {};
@@ -160,4 +329,17 @@ function strip(value: unknown): unknown {
     out[k] = v;
   }
   return out;
+}
+
+// Kept so the app host can read its program without a DocumentAccess instance.
+export async function readDocumentText(projectId: string, path: string): Promise<string> {
+  const doc = await brainFetch<DocSummary>(
+    'GET',
+    `documents/by-path?${qs({ projectId, path })}`,
+  );
+  if (!doc.id) throw new Error(`no document at '${path}'`);
+  const { text } = await brainFetchTextWithMeta(
+    `documents/${encodeURIComponent(doc.id)}/content`,
+  );
+  return text ?? '';
 }

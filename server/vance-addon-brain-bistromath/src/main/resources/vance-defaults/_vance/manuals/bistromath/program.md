@@ -83,19 +83,19 @@ often here.
 | `vance.state.set(key, value)` | what widgets bound with `from:` show |
 | `vance.documents.list(path)` | documents directly in a folder |
 | `vance.documents.read(path)` | content; an object for YAML/JSON |
+| `vance.documents.write(path, content, opts?)` | store content; refused if it changed since read |
+| `vance.documents.create(path, content)` | like `write`, but fails if one is there |
+| `vance.documents.delete(path)` | remove it |
 | `vance.ui.notify(text)` | a message above the page |
 | `vance.ui.show(handle)` | switch to another view |
 
-See `manual_read('data')` for paths and reading.
+See `manual_read('data')` for paths, reading and the write rule.
 
 ## What it may not do
 
 No DOM, no `window`, no cookies, no `localStorage`, no `fetch`. The program runs
 in a sandboxed frame with an opaque origin; `vance.*` is the only way out, and
 it never carries the reader's credentials into the program.
-
-**Writing does not exist yet.** There is no `vance.documents.write`. Do not
-write a program that calls it and do not tell anyone an app can save.
 
 ## Two things that stop a program
 

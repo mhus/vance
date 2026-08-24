@@ -1,7 +1,7 @@
 ---
 name: data
-summary: How a custom app reads data — paths, folders as records, parsed content, and mounted documents with parameters.
-triggers: your app needs to show or use data, you are writing a list or table, or you need to read a mounted (_ext) document
+summary: How a custom app reads and writes data — paths, folders as records, parsed content, mounted documents with parameters, and what happens when somebody else wrote first.
+triggers: your app needs to show, store or change data, you are writing a list or table, you need to read a mounted (_ext) document, or a write was refused
 ---
 
 # Data
@@ -94,12 +94,60 @@ whole string as a path would look for a document literally named
 
 ## Writing
 
-**Not in this build.** `vance.documents.write` does not exist. An app reads and
-computes; it cannot store. Do not promise a save button.
+```js
+const inv = await vance.documents.read('invoices/2026-0001.yaml');
+inv.status = 'paid';
+await vance.documents.write('invoices/2026-0001.yaml', inv);
+```
 
-The reason it is missing rather than quick: two browsers writing the same
-document need a concurrency rule, and a write without one loses somebody's edit
-silently. That rule is the next thing being built.
+Three calls, and each answers a different question:
+
+| Call | For |
+|---|---|
+| `write(path, content, opts?)` | store content — creates the document if it is not there |
+| `create(path, content)` | the same, but **fails** if something is already there |
+| `delete(path)` | remove it (into the trash, like every other delete) |
+
+Reach for `create` when "already there" is a mistake you want to hear about — a
+register that must not overwrite yesterday's entry. Otherwise `write`.
+
+An **object** is serialised by the document's own type — YAML for `.yaml`, JSON
+for `.json` — so read-then-write round-trips. A **string** is written verbatim,
+which is how you keep full control of the bytes (Markdown, a `.js`, a CSV).
+
+There is no separate "make the folder" step: a document's path *is* its
+folder.
+
+### Somebody else wrote first
+
+Every read remembers the document's version; every write sends it back. If the
+document changed in between, the write is **refused and nothing is stored**:
+
+```js
+try {
+  await vance.documents.write(path, row);
+} catch (e) {
+  if (e.message.includes('changed since it was read')) {
+    const fresh = await vance.documents.read(path);   // read again, decide
+    vance.ui.notify('Somebody else edited this record.', 'warn');
+    return;
+  }
+  throw e;
+}
+```
+
+`{ force: true }` writes regardless. Use it when your program is the authority
+on the content — a log line it appends to, a cache it owns — not to make an
+error go away.
+
+The rule this depends on, stated plainly: **only a document this app has read
+is guarded.** A write to a path the app never read goes through
+unconditionally. So the shape to keep is read → change → write; a write built
+from a path in a list, without reading first, is the case that loses somebody's
+edit.
+
+Mounted documents (`/_ext/…`) carry no version, so nothing guards them; most
+mounts refuse writes outright.
 
 ## Showing what you read
 

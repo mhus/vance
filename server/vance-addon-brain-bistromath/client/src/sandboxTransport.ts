@@ -53,7 +53,10 @@ export const GUEST_BOOTSTRAP = `<!doctype html><meta charset="utf-8"><script>
     state: { set: function (k, v) { return call('state.set', [k, v]); } },
     documents: {
       list: function (p) { return call('documents.list', [p]); },
-      read: function (p) { return call('documents.read', [p]); }
+      read: function (p) { return call('documents.read', [p]); },
+      write: function (p, c, o) { return call('documents.write', [p, c, o]); },
+      create: function (p, c) { return call('documents.create', [p, c]); },
+      delete: function (p) { return call('documents.delete', [p]); }
     },
     ui: {
       notify: function (t, s) { return call('ui.notify', [t, s]); },

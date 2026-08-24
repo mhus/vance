@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { VAlert, VButton, VEmptyState, useAppEntry } from '@vance/components';
 import WidgetNode from './WidgetNode.vue';
 import { Sandbox, type SandboxHost } from './sandbox';
-import { listDocuments, loadView, readDocument, rebuildApp, scanApp } from './api';
+import { DocumentAccess, loadView, readDocumentText, rebuildApp, scanApp } from './api';
 import type { AppScan } from './generated/bistromath/AppScan';
 import type { RenderedView } from './generated/bistromath/RenderedView';
 import type { ViewAction } from './generated/bistromath/ViewAction';
@@ -49,6 +49,15 @@ const state = reactive<Record<string, unknown>>({});
 let sandbox: Sandbox | null = null;
 
 /**
+ * The app's document surface, and its version memory.
+ *
+ * <p>Per app instance: a write is conditional on the version this app read, so
+ * two apps — or two tabs — never share one and never talk each other into
+ * believing a document is unchanged.
+ */
+const docs = new DocumentAccess(props.document.projectId);
+
+/**
  * Where we are inside the app, as the host stores it: `<view>` or
  * `<view>/<rowKey>`. The app owns what a handle means — that is the contract of
  * `useAppEntry` — and a detail view has to say *which* record.
@@ -72,10 +81,21 @@ const host: SandboxHost = {
     state[key] = value;
   },
   documentsList(path) {
-    return listDocuments(props.document.projectId, resolve(path)).catch(rethrow(path));
+    return docs.list(resolve(path)).catch(rethrow(path));
   },
   documentsRead(path) {
-    return readDocument(props.document.projectId, resolve(path)).catch(rethrow(path));
+    return docs.read(resolve(path)).catch(rethrow(path));
+  },
+  documentsWrite(path, content, opts) {
+    return docs
+      .write(resolve(path), content, (opts ?? {}) as { force?: boolean })
+      .catch(rethrow(path));
+  },
+  documentsCreate(path, content) {
+    return docs.create(resolve(path), content).catch(rethrow(path));
+  },
+  documentsDelete(path) {
+    return docs.delete(resolve(path)).catch(rethrow(path));
   },
   uiNotify(text) {
     notice.value = text;
@@ -191,8 +211,7 @@ async function boot(s: AppScan): Promise<void> {
   if (!s.programPath) return;
   let source: string;
   try {
-    const raw = await readDocument(props.document.projectId, s.programPath);
-    source = typeof raw === 'string' ? raw : String(raw);
+    source = await readDocumentText(props.document.projectId, s.programPath);
   } catch (e) {
     notice.value = `Could not read the program '${s.programPath}': ${message(e)}`;
     return;

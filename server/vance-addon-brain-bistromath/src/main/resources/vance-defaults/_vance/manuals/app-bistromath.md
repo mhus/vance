@@ -55,9 +55,10 @@ runtime knows about.
 
 ## Before you promise anything
 
-This build **reads**; there is no `vance.documents.write`. No `visibleIf`, no
-`import` in the program, and `if` / `repeat` / `chart` / `dialog` are reserved
-but not rendered.
+This build reads **and writes** documents (`vance.documents.write` / `create` /
+`delete`; a write is refused if the document changed since the app read it). No
+`visibleIf`, no `import` in the program, and `if` / `repeat` / `chart` /
+`dialog` are reserved but not rendered. Form fields display; they do not edit.
 
 ## The details
 

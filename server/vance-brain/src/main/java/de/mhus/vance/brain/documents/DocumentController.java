@@ -463,11 +463,24 @@ public class DocumentController {
         // as a parameterised read. Only meaningful for a mounted path: for a
         // stored document there is nothing to parameterise, and forwarding it
         // would be a query nobody answers.
+        // Everything in the query string that is not ours travels to the
+        // source as a parameterised read.
+        //
         // A mount that declared no parameterised reads throws
         // JaglanAccessException, which JaglanExceptionAdvice already turns into
         // a 409 `mount_refused` naming the mount. Catching it here would
         // replace that body with a bare status.
-        String mountQuery = mounted ? MountQuery.forward(httpRequest.getQueryString()) : null;
+        String mountQuery = MountQuery.forward(httpRequest.getQueryString());
+        if (mountQuery != null && !mounted) {
+            // Refused, not ignored. A stored document has nothing to
+            // parameterise, and answering 200 with the plain file is the exact
+            // failure this feature exists to prevent — the caller asked for a
+            // view and gets something that looks like one. Our own parameters
+            // never reach here; MountQuery has already taken them out.
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "document '" + doc.getPath() + "' is stored, not mounted — "
+                            + "there is nothing to parameterise with a query");
+        }
         InputStream stream = documentService.loadContent(doc, mountQuery);
         MediaType contentType = parseMimeType(doc.getMimeType());
         HttpHeaders headers = new HttpHeaders();

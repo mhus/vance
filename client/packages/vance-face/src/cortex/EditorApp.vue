@@ -1054,11 +1054,26 @@ async function onCreateConfirm(result: CreateModalResult): Promise<void> {
       inlineText: result.inlineText,
     });
   } else if (result.kind === 'templateCreated') {
-    // The template was applied server-side; reload the tree and open
-    // the freshly created document by its path.
+    // The template was applied server-side; reload the tree and open the
+    // freshly created document.
+    //
+    // Resolved by path against the server, NOT looked up in the loaded list:
+    // that list is one page and the server clamps it to 200 rows, so in a
+    // project with more documents than that a miss is silence — the document
+    // exists, but the user lands on an empty Cortex and has to go find it.
+    // Observed with an app template in a project of 605 documents.
     await store.loadList(projectId.value);
-    const created = store.files.find((f) => f.path === result.path);
-    if (created) await store.openFile(created.id);
+    try {
+      const id = await resolveDocumentIdByPath(projectId.value, result.path, store.files);
+      if (id) await store.openFile(id);
+      else treeError.value = `Created ${result.path}, but the server does not report it.`;
+    } catch (e) {
+      // The document exists — the modal would have stayed open otherwise. Only
+      // opening it failed, so say which file to go and open by hand instead of
+      // leaving an empty editor that looks like nothing happened.
+      treeError.value = `Created ${result.path}, but could not open it: `
+        + (e instanceof Error ? e.message : 'unknown error');
+    }
   } else {
     for (const file of result.files) {
       await store.uploadExternalFile(file, result.targetFolder);

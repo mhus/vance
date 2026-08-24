@@ -202,8 +202,11 @@ public class DocumentController {
             @RequestParam("projectId") String projectId,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
-        List<String> folders = documentService.listFolders(tenant, projectId);
-        return DocumentFoldersResponse.builder().folders(folders).build();
+        DocumentService.FolderNames folders = documentService.listFolders(tenant, projectId);
+        return DocumentFoldersResponse.builder()
+                .folders(folders.folders())
+                .truncated(folders.truncated())
+                .build();
     }
 
     /**

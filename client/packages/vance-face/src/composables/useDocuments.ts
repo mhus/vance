@@ -84,6 +84,12 @@ export function useDocuments(pageSize = 20): {
    * outranks the mount-wide status text.
    */
   mountFailure: Ref<string | null>;
+  /**
+   * The destination list was cut short (server-side cap). Has to be shown: a
+   * suggestion list that just ends reads as "there is nowhere else", and the
+   * folder the user wants may be the one that got cut.
+   */
+  foldersTruncated: Ref<boolean>;
   mounts: Ref<MountDto[]>;
   pathPrefix: Ref<string>;
   kinds: Ref<string[]>;
@@ -135,6 +141,7 @@ export function useDocuments(pageSize = 20): {
    *  `null` on every ordinary listing. */
   const mountSearch = ref<MountSearchOutcome | null>(null);
   const mountFailure = ref<string | null>(null);
+  const foldersTruncated = ref(false);
   /** The project's mounted external sources, so an empty mounted folder can
    *  be explained rather than just looking empty. */
   const mounts = ref<MountDto[]>([]);
@@ -215,6 +222,7 @@ export function useDocuments(pageSize = 20): {
         `documents/folders?${params}`,
       );
       folders.value = data.folders ?? [];
+      foldersTruncated.value = data.truncated === true;
     } catch (e) {
       // Folder list is a UX nicety — don't surface an error that
       // would mask the actual document load. Just clear and log.
@@ -644,6 +652,7 @@ export function useDocuments(pageSize = 20): {
     subFolders,
     mountSearch,
     mountFailure,
+    foldersTruncated,
     mounts,
     pathPrefix,
     kinds,

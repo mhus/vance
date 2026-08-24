@@ -5,4 +5,5 @@
 
 export interface DocumentFoldersResponse {
   folders: string[];
+  truncated: boolean;
 }

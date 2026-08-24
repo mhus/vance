@@ -661,6 +661,8 @@ export default {
       moveTitle: 'Dokumente verschieben',
       moveBody: '{count} ausgewählte Dokumente in einen anderen Ordner verschieben.',
       moveTargetLabel: 'Zielordner',
+      folderSuggestionsTruncated:
+        'Nicht jeder Ordner wird vorgeschlagen — fehlt der gesuchte, tippe den Pfad.',
       customPathPlaceholder: 'z. B. ordner/neuer-ordner (frei editierbar)',
       moveConfirm: 'Verschieben',
       copy: 'Kopieren',

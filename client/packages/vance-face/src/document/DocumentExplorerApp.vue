@@ -434,6 +434,8 @@ const copyTargetProject = ref<string>('');
 const copyTargetPath = ref('');
 const copyFolderSuggestions = ref<string[]>([]);
 const copyFoldersLoading = ref(false);
+// Own flag: the cross-project fetch below bypasses the composable state.
+const copyFoldersTruncated = ref(false);
 
 const moveFolderSuggestions = computed(() =>
   docsState.folders.value.map((f) => f),
@@ -696,6 +698,7 @@ async function openCopyModal(): Promise<void> {
     await docsState.loadFolders(selectedProjectId.value);
   }
   copyFolderSuggestions.value = docsState.folders.value.map((f) => f);
+  copyFoldersTruncated.value = docsState.foldersTruncated.value;
   showCopyModal.value = true;
 }
 
@@ -713,6 +716,7 @@ async function onCopyProjectChange(): Promise<void> {
       `documents/folders?${params}`,
     );
     copyFolderSuggestions.value = data.folders ?? [];
+    copyFoldersTruncated.value = data.truncated === true;
   } catch {
     copyFolderSuggestions.value = [];
   } finally {
@@ -1241,6 +1245,9 @@ function confirmNewFolder(): void {
           :placeholder="$t('documents.selection.customPathPlaceholder')"
           :suggestions="moveFolderSuggestions"
         />
+        <p v-if="docsState.foldersTruncated.value" class="text-xs opacity-60 mt-1">
+          {{ $t('documents.selection.folderSuggestionsTruncated') }}
+        </p>
       </template>
       <template #actions>
         <VButton
@@ -1287,6 +1294,9 @@ function confirmNewFolder(): void {
           :disabled="copyFoldersLoading"
           class="mt-3"
         />
+        <p v-if="copyFoldersTruncated" class="text-xs opacity-60 mt-1">
+          {{ $t('documents.selection.folderSuggestionsTruncated') }}
+        </p>
       </template>
       <template #actions>
         <VButton

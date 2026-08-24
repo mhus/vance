@@ -664,6 +664,8 @@ export default {
       moveTitle: 'Move documents',
       moveBody: 'Move {count} selected documents to another folder.',
       moveTargetLabel: 'Target folder',
+      folderSuggestionsTruncated:
+        'Not every folder is suggested — type the target path if it is missing.',
       customPathPlaceholder: 'e.g. folder/new-folder (free text)',
       moveConfirm: 'Move',
       copy: 'Copy',

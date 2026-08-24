@@ -169,19 +169,81 @@ class DocumentServiceMountFoldersTest {
     // ─── listFolders ────────────────────────────────────────────────────
 
     @Test
-    void listFolders_injectsTheSameSetAsExtractFolders() {
+    void listFolders_leavesTheMountNamespaceOut() {
         mounts(mount("library", 1, 0));
 
-        // A caller that only wants paths must not see a different set of
-        // folders than one that wants the counts too.
-        assertThat(service.listFolders(TENANT, PROJECT))
+        // The two surfaces answer different questions and therefore differ:
+        // extractFolders says what is there and needs `_ext` to have an
+        // entrance; listFolders says where a document may be moved to, and a
+        // mount is not an answer to that — it is a foreign, usually read-only
+        // file system.
+        assertThat(service.listFolders(TENANT, PROJECT).folders()).isEmpty();
+        assertThat(service.extractFolders(TENANT, PROJECT, null))
+                .extracting(FolderInfo::path)
                 .containsExactly("_ext", "_ext/library");
+    }
+
+    @Test
+    void listFolders_asksMongoToSkipMountsAndTrash() {
+        // Excluded in the query, not afterwards: `_ext` is the one part of a
+        // project whose row count has no upper bound, so filtering it out here
+        // is what keeps the distinct-scan proportional to the project's own
+        // documents.
+        mounts();
+
+        service.listFolders(TENANT, PROJECT);
+
+        org.mockito.ArgumentCaptor<Query> query =
+                org.mockito.ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).findDistinct(query.capture(), eq("path"),
+                eq(DocumentDocument.class), eq(String.class));
+        assertThat(query.getValue().toString())
+                .contains("_ext/")
+                .contains("_vance/trash/");
+    }
+
+    @Test
+    void listFolders_dropsTrashAndMountPathsFromTheResult() {
+        // Belt to the query's braces: whatever reaches the derivation, neither
+        // namespace may end up offered as a destination.
+        mounts();
+        when(mongoTemplate.findDistinct(any(Query.class), eq("path"),
+                eq(DocumentDocument.class), eq(String.class)))
+                .thenReturn(List.of(
+                        "documents/notes/a.md",
+                        "_vance/trash/old.md",
+                        "_ext/library/books/dune.pdf"));
+
+        // `_vance` survives, and on purpose: only `_vance/trash` itself is off
+        // limits, its parent is an ordinary folder that control-plane
+        // documents legitimately live in. What must be gone is the trash
+        // folder and everything in the mount namespace.
+        assertThat(service.listFolders(TENANT, PROJECT).folders())
+                .containsExactly("_vance", "documents", "documents/notes");
+    }
+
+    @Test
+    void listFolders_aboveTheCap_saysSo() {
+        mounts();
+        List<String> many = new java.util.ArrayList<>();
+        for (int i = 0; i < 30; i++) many.add("f" + i + "/doc.md");
+        when(mongoTemplate.findDistinct(any(Query.class), eq("path"),
+                eq(DocumentDocument.class), eq(String.class))).thenReturn(many);
+        ReflectionTestUtils.setField(service, "folderListLimit", 10);
+
+        DocumentService.FolderNames result = service.listFolders(TENANT, PROJECT);
+
+        assertThat(result.folders()).hasSize(10);
+        // The flag is the whole point: a suggestion list that just ends reads
+        // as "there is nowhere else to move this".
+        assertThat(result.truncated()).isTrue();
     }
 
     @Test
     void listFolders_noMounts_isUnchanged() {
         mounts();
 
-        assertThat(service.listFolders(TENANT, PROJECT)).isEmpty();
+        assertThat(service.listFolders(TENANT, PROJECT).folders()).isEmpty();
+        assertThat(service.listFolders(TENANT, PROJECT).truncated()).isFalse();
     }
 }

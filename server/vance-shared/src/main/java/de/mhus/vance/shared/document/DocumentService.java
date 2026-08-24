@@ -269,6 +269,18 @@ public class DocumentService {
     private boolean archiveEnabledDefault;
 
     /**
+     * Most folders {@link #listFolders} returns. {@code 0} disables the cap.
+     *
+     * <p>A destination list is a suggestion list: past a few hundred entries
+     * nobody scrolls it, and the only thing an uncapped one adds is the risk
+     * that a pathological project turns one dialog into a five-figure
+     * response. The cut is reported (see {@link FolderNames}), because a
+     * suggestion list that just stops looks like the whole truth.
+     */
+    @Value("${vance.documents.folder-list-limit:2000}")
+    private int folderListLimit = 2000;
+
+    /**
      * Minimum interval between two archive entries for the same document.
      * Saves within this window collapse — the running edit-burst becomes
      * a single archived version timestamped at the first save. Configured
@@ -1253,37 +1265,93 @@ public class DocumentService {
     }
 
     /**
-     * Returns the list of unique folder paths that contain at least
-     * one active document in this project. Sorted alphabetically.
-     * Implementation reads <em>only the path field</em> via the
-     * {@link MongoTemplate#findDistinct} projection — the rest of
-     * the document doesn't load. Folders are then derived in-process
-     * by splitting each path at {@code "/"}.
+     * The folders of a project as <b>destinations</b> — where a document may
+     * be moved or copied to. Sorted alphabetically, capped, and
+     * {@code _ext/**} is not in it.
      *
-     * <p>The empty-string entry (top-level documents not nested in
-     * any folder) is intentionally omitted; the UI shows "(all)" /
-     * blank input for that case.
+     * <p>Reads <em>only the path field</em> via the
+     * {@link MongoTemplate#findDistinct} projection; folders are derived
+     * in-process by splitting each path at {@code "/"}. The empty-string entry
+     * (top-level documents) is intentionally omitted — the UI shows "(all)" /
+     * a blank input for that case.
+     *
+     * <p><b>Why two namespaces are excluded, unlike in every other folder
+     * surface.</b> The other surfaces answer "what is there" and need
+     * {@code _ext} to have an entrance. This one answers "where may this go",
+     * and neither namespace is an answer to that: a mount is somebody else's
+     * file system, usually read-only, so a move into it either fails on the
+     * lock or writes into a foreign source; and the trash is where documents
+     * go to be forgotten — offering it as a destination turns a
+     * misclick into a deletion that looks like a move. Excluding {@code _ext}
+     * in the <i>query</i> rather than afterwards is also what bounds the scan
+     * — mount rows are the one part of a project whose count has no upper
+     * limit.
+     *
+     * <p>The cap ({@code vance.documents.folder-list-limit}, {@code 0} = off)
+     * is the second half: a project can hold more folders than a suggestion
+     * list can usefully offer, and the truncation is reported rather than
+     * silent — a list that stops without saying so reads as "there is nowhere
+     * else to move this".
      */
-    public List<String> listFolders(String tenantId, String projectId) {
+    public FolderNames listFolders(String tenantId, String projectId) {
         Query query = new Query(Criteria.where("tenantId").is(tenantId)
                 .and("projectId").is(projectId)
-                .and("status").is(DocumentStatus.ACTIVE));
+                .and("status").is(DocumentStatus.ACTIVE)
+                // One negated regex, not two criteria: Mongo's document model
+                // rejects a second condition on the same field.
+                .and("path").not().regex("^("
+                        + java.util.regex.Pattern.quote(JaglanPaths.PREFIX) + "|"
+                        + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX) + ")"));
         List<String> paths = mongoTemplate.findDistinct(
                 query, "path", DocumentDocument.class, String.class);
         TreeSet<String> folders = new TreeSet<>();
         for (String p : paths) {
             for (String f : foldersOfPath(p)) {
+                // Also checked here, not only in the query above. The query
+                // bounds the scan; this bounds the *answer*, and the two are
+                // worth keeping independent: "no document is ever offered a
+                // destination inside a mount or the trash" should not rest on
+                // one quoted regex against a Mongo field.
+                if (isNotADestination(f)) continue;
                 folders.add(f);
             }
         }
-        // Same injection as extractFolders — a caller that only wants the
-        // paths must not get a different set of folders than one that wants
-        // the counts too.
-        for (FolderInfo synthetic : syntheticMountFolders(tenantId, projectId)) {
-            folders.add(synthetic.path());
+        if (folderListLimit > 0 && folders.size() > folderListLimit) {
+            List<String> capped = new ArrayList<>(folderListLimit);
+            for (String f : folders) {
+                if (capped.size() == folderListLimit) break;
+                capped.add(f);
+            }
+            log.info("listFolders {}/{}: {} folders, capped at {}",
+                    tenantId, projectId, folders.size(), folderListLimit);
+            return new FolderNames(capped, true);
         }
-        return new ArrayList<>(folders);
+        return new FolderNames(new ArrayList<>(folders), false);
     }
+
+    /**
+     * Folders nothing may be moved or copied into — see {@link #listFolders}.
+     *
+     * <p>Both namespaces are matched as the folder itself <em>and</em> as a
+     * prefix: {@code _ext} is as unusable a destination as {@code _ext/lib},
+     * and the same holds for the trash. {@code _vance} on its own is <b>not</b>
+     * excluded — control-plane documents legitimately live there.
+     */
+    private static boolean isNotADestination(String folder) {
+        return folder.equals(JaglanPaths.ROOT)
+                || folder.startsWith(JaglanPaths.PREFIX)
+                || folder.equals(TRASH_FOLDER)
+                || folder.startsWith(TRASH_FOLDER_PREFIX);
+    }
+
+
+    /**
+     * Folder destinations plus whether the list was cut short.
+     *
+     * @param truncated more folders exist than are listed — the client has to
+     *        say so, because a suggestion list that just ends looks complete
+     */
+    public record FolderNames(List<String> folders, boolean truncated) {}
 
     /** All {@link DocumentStatus#ACTIVE} documents in the project that carry {@code tag}. */
     public List<DocumentDocument> listByTag(String tenantId, String projectId, String tag) {
@@ -3386,6 +3454,10 @@ public class DocumentService {
      *  the document's <em>visible</em> path (original or restore target),
      *  not this reserved trash path, so it stays usable without ADMIN. */
     public static final String TRASH_FOLDER_PREFIX = "_vance/trash/";
+
+    /** The same folder without the trailing slash — see {@link #isNotADestination}. */
+    private static final String TRASH_FOLDER =
+            TRASH_FOLDER_PREFIX.substring(0, TRASH_FOLDER_PREFIX.length() - 1);
 
     /** Default folder for user-content documents. Search / list tools
      *  scope to this prefix by default so trash, kit manifests

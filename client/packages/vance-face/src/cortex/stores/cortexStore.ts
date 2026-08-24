@@ -404,7 +404,11 @@ export const useCortexStore = defineStore('cortex', () => {
         folders: [...(data.folders ?? [])],
         loaded: true,
         loading: false,
-        error: null,
+        // A mounted folder can answer 200 and still not hold what the source
+        // holds — a failed refresh, or a folder too large to materialise. The
+        // rows are then stale or absent, and only this says so; an untouched
+        // `error` would render the folder as plainly empty.
+        error: data.mountFailure ?? null,
         totalFiles: data.totalCount ?? rows.length,
         loadedFiles: rows.length,
       });

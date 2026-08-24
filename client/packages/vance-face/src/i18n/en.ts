@@ -618,6 +618,11 @@ export default {
       mountUnreachableHeadline: 'Source is not answering',
       mountUnreachableBody:
         'The mount “{mount}” is configured but currently unreachable: {status}',
+      // Folder-scoped and therefore ahead of the mount-wide status: the
+      // source may answer perfectly and this one folder still be unreadable
+      // (too large to hold, or its last refresh failed).
+      mountFolderProblemHeadline: 'This folder could not be read',
+      mountFolderProblemBody: '“{mount}”: {reason}',
       mountEmptyBody: 'The external source “{mount}” reports no entries for this folder.',
       mountRetry: 'Try again',
       searchUnsupportedHeadline: 'Nothing was searched here',

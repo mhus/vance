@@ -794,7 +794,35 @@ public class DocumentService {
         injectMountFolderNames(tenantId, projectId, prefix, needle, folders);
         folders.sort(Comparator.naturalOrder());
 
-        return new FolderListing(folders, files, safePage, safeSize, totalFiles, null);
+        return new FolderListing(folders, files, safePage, safeSize, totalFiles, null,
+                mountFailureFor(tenantId, projectId, prefix));
+    }
+
+    /**
+     * The reader-facing reason a mounted folder's rows are incomplete, or
+     * {@code null}.
+     *
+     * <p>Asked <em>after</em> the refresh above, so it reports what just
+     * happened rather than the previous attempt. Mongo-only and cheap: a
+     * findById on the folder marker.
+     */
+    private @Nullable String mountFailureFor(
+            String tenantId, String projectId, String prefix) {
+        if (shellService == null || !JaglanPaths.isMounted(prefix)) return null;
+        String folderPath = prefix.endsWith("/")
+                ? prefix.substring(0, prefix.length() - 1)
+                : prefix;
+        if (!JaglanPaths.isMounted(folderPath)) return null;
+        try {
+            JaglanShellService.FolderFailure failure = shellService.folderFailure(
+                    tenantId, projectId,
+                    JaglanPaths.mountNameOf(folderPath),
+                    JaglanPaths.pathInMount(folderPath));
+            return failure == null ? null : failure.message();
+        } catch (IllegalArgumentException e) {
+            // `_ext/` itself names no mount — nothing to explain there.
+            return null;
+        }
     }
 
     /**
@@ -918,7 +946,22 @@ public class DocumentService {
             int page,
             int pageSize,
             long totalFiles,
-            @Nullable MountSearchOutcome mountSearch) {}
+            @Nullable MountSearchOutcome mountSearch,
+            /**
+             * Why this mounted folder's contents are not what the source
+             * holds — a failed refresh, or a folder too large to materialise.
+             * {@code null} for an ordinary folder and a clean mounted one.
+             */
+            @Nullable String mountFailure) {
+
+        /** Ordinary (non-mounted) listing — nothing to explain. */
+        public FolderListing(
+                List<String> folders, List<DocumentDocument> files,
+                int page, int pageSize, long totalFiles,
+                @Nullable MountSearchOutcome mountSearch) {
+            this(folders, files, page, pageSize, totalFiles, mountSearch, null);
+        }
+    }
 
     /**
      * Project-scoped image listing — every active document whose

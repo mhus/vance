@@ -64,6 +64,30 @@ public class JaglanShellService {
     @Value("${vance.jaglan.outage-memory-seconds:30}")
     private long outageMemorySeconds = 30;
 
+    /**
+     * The most entries a single mount folder may have before this refuses to
+     * materialise it.
+     *
+     * <p><b>Why a refusal and not a page.</b> A listing is authoritative for
+     * its folder — {@link #pruneVanished} deletes every row the listing did
+     * not mention. Taking the first N entries of a wide folder would therefore
+     * not be a partial view, it would be a deletion of everything after N.
+     * The contract's completeness requirement is load-bearing, so the only
+     * honest reaction to a folder that cannot be listed completely is to say
+     * so and write nothing.
+     *
+     * <p><b>Why a limit at all.</b> Without one, a mount pointed at a
+     * directory of 100k files turns one expand into 100k upserts plus a
+     * folder-wide prune scan — the source is within its rights, the reader is
+     * not prepared for it. A source that expects to hold that many entries
+     * partitions them (the archive source's tree is year/month/day/hour/minute
+     * for exactly this reason).
+     *
+     * <p>{@code 0} disables the limit.
+     */
+    @Value("${vance.jaglan.max-folder-entries:5000}")
+    private int maxFolderEntries = 5000;
+
     /** Key is {@code tenant|project|mount}; value is when to try again. */
     private final Map<String, Instant> outages = new ConcurrentHashMap<>();
 
@@ -224,6 +248,23 @@ public class JaglanShellService {
                     List<MountedStat> entries =
                             port.list(tenantId, projectId, mount, folderInMount);
                     Duration ttl = ttlFor(tenantId, projectId, mount);
+                    if (isOversized(entries.size())) {
+                        // Nothing written and nothing pruned: this is not a
+                        // partial view of the folder, it is a refusal to hold
+                        // it. Recorded as a folder failure so the surfaces say
+                        // "too large" instead of showing an empty folder —
+                        // which is what "we did not list it" would look like.
+                        String message = "folder holds " + entries.size()
+                                + " entries, above the limit of " + maxFolderEntries
+                                + " — partition the source or mount a narrower path";
+                        log.warn("Jaglan: refusing to materialise '{}' in mount '{}' ({}/{}): {}",
+                                folderInMount, mount, tenantId, projectId, message);
+                        writeFolderState(stateId, tenantId, projectId, mount, folderInMount,
+                                state == null ? null : state.getListedAt(),
+                                state == null ? 0 : state.getEntryCount(),
+                                Duration.ofSeconds(outageMemorySeconds), message);
+                        return readFolderRows(tenantId, projectId, mount, folderInMount);
+                    }
                     MountAccess mountAccess = accessOf(tenantId, projectId, mount);
                     for (MountedStat entry : entries) {
                         upsertShell(tenantId, projectId, mount, entry, ttl, mountAccess, now);
@@ -561,6 +602,11 @@ public class JaglanShellService {
             row.setId(id);
         }
         return row;
+    }
+
+    /** Whether a listing of this size is above the configured limit ({@code 0} = no limit). */
+    private boolean isOversized(int entryCount) {
+        return maxFolderEntries > 0 && entryCount > maxFolderEntries;
     }
 
     /**

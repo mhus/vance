@@ -614,6 +614,11 @@ export default {
       mountUnreachableHeadline: 'Quelle antwortet nicht',
       mountUnreachableBody:
         'Der Mount „{mount}" ist konfiguriert, aber gerade nicht erreichbar: {status}',
+      // Ordner-bezogen und deshalb vor dem Mount-weiten Status: die Quelle
+      // kann einwandfrei antworten und dieser eine Ordner trotzdem nicht
+      // lesbar sein (zu groß, oder die letzte Aktualisierung schlug fehl).
+      mountFolderProblemHeadline: 'Dieser Ordner konnte nicht gelesen werden',
+      mountFolderProblemBody: '„{mount}": {reason}',
       mountEmptyBody: 'Die externe Quelle „{mount}" liefert für diesen Ordner keine Einträge.',
       mountRetry: 'Erneut versuchen',
       searchUnsupportedHeadline: 'Hier wurde nicht gesucht',

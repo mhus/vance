@@ -78,6 +78,12 @@ export function useDocuments(pageSize = 20): {
   folders: Ref<string[]>;
   subFolders: Ref<string[]>;
   mountSearch: Ref<MountSearchOutcome | null>;
+  /**
+   * Why this mounted folder's contents are not what the source holds — a
+   * failed refresh, or a folder too large to materialise. Folder-scoped, so it
+   * outranks the mount-wide status text.
+   */
+  mountFailure: Ref<string | null>;
   mounts: Ref<MountDto[]>;
   pathPrefix: Ref<string>;
   kinds: Ref<string[]>;
@@ -128,6 +134,7 @@ export function useDocuments(pageSize = 20): {
   /** Outcome of a search inside a mounted folder — see {@link loadPage}.
    *  `null` on every ordinary listing. */
   const mountSearch = ref<MountSearchOutcome | null>(null);
+  const mountFailure = ref<string | null>(null);
   /** The project's mounted external sources, so an empty mounted folder can
    *  be explained rather than just looking empty. */
   const mounts = ref<MountDto[]>([]);
@@ -192,6 +199,7 @@ export function useDocuments(pageSize = 20): {
       // two mean nobody looked. Without it an empty result reads as "not
       // there", which for a mount is usually wrong.
       mountSearch.value = data.mountSearch ?? null;
+      mountFailure.value = data.mountFailure ?? null;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load documents.';
     } finally {
@@ -635,6 +643,7 @@ export function useDocuments(pageSize = 20): {
     folders,
     subFolders,
     mountSearch,
+    mountFailure,
     mounts,
     pathPrefix,
     kinds,

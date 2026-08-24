@@ -13,4 +13,5 @@ export interface DocumentFolderListResponse {
   pageSize: number;
   totalCount: number;
   mountSearch?: MountSearchOutcome;
+  mountFailure?: string;
 }

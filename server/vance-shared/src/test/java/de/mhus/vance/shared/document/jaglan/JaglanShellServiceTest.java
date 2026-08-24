@@ -451,6 +451,95 @@ class JaglanShellServiceTest {
         verify(mongoTemplate).remove(any(Query.class), eq(DocumentDocument.class));
     }
 
+    /**
+     * The limit is a property with a four-digit default; lowered by reflection
+     * rather than by building five thousand fixtures for a boundary that the
+     * configuration defines anyway.
+     */
+    private void limitFolderEntriesTo(int limit) {
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                service, "maxFolderEntries", limit);
+    }
+
+    private static MountedStat statAt(String pathInMount) {
+        return new MountedStat(
+                pathInMount, false, 10, "text/plain", "etag", null, MountAccess.RW);
+    }
+
+    @Test
+    void listFolder_aboveTheLimit_writesNothingAndPrunesNothing() {
+        // A listing is authoritative for its folder, so taking the first N of
+        // a wide folder would not be a partial view — pruneVanished would
+        // delete everything after N. The only honest reaction is to refuse.
+        limitFolderEntriesTo(2);
+        when(mongoTemplate.findById(anyString(), eq(JaglanFolderState.class))).thenReturn(null);
+        DocumentDocument existing = row(Instant.now().plusSeconds(60));
+        existing.setId("ext_existing");
+        existing.setPath("_ext/library/books/keep.pdf");
+        when(mongoTemplate.find(any(Query.class), eq(DocumentDocument.class)))
+                .thenReturn(List.of(existing));
+        when(port.list(TENANT, PROJECT, MOUNT, "books")).thenReturn(List.of(
+                statAt("books/a.txt"), statAt("books/b.txt"), statAt("books/c.txt")));
+
+        service.listFolder(TENANT, PROJECT, MOUNT, "books", false);
+
+        verify(mongoTemplate, never()).upsert(
+                any(Query.class), any(Update.class), eq(DocumentDocument.class));
+        verify(mongoTemplate, never()).remove(any(Query.class), eq(DocumentDocument.class));
+    }
+
+    @Test
+    void listFolder_aboveTheLimit_recordsWhySoTheFolderCanSayIt() {
+        // Without the recorded reason the surfaces show an empty folder, and
+        // "empty" is the one thing a reader must not be told about a folder
+        // nobody could read.
+        limitFolderEntriesTo(1);
+        when(mongoTemplate.findById(anyString(), eq(JaglanFolderState.class))).thenReturn(null);
+        when(mongoTemplate.find(any(Query.class), eq(DocumentDocument.class)))
+                .thenReturn(List.of());
+        when(port.list(TENANT, PROJECT, MOUNT, "books")).thenReturn(List.of(
+                statAt("books/a.txt"), statAt("books/b.txt")));
+
+        service.listFolder(TENANT, PROJECT, MOUNT, "books", false);
+
+        ArgumentCaptor<Update> update = ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).upsert(
+                any(Query.class), update.capture(), eq(JaglanFolderState.class));
+        assertThat(update.getValue().toString())
+                .contains("failureMessage")
+                .contains("above the limit");
+    }
+
+    @Test
+    void listFolder_atTheLimit_stillMaterialises() {
+        limitFolderEntriesTo(2);
+        when(mongoTemplate.findById(anyString(), eq(JaglanFolderState.class))).thenReturn(null);
+        when(mongoTemplate.find(any(Query.class), eq(DocumentDocument.class)))
+                .thenReturn(List.of());
+        when(port.list(TENANT, PROJECT, MOUNT, "books")).thenReturn(List.of(
+                statAt("books/a.txt"), statAt("books/b.txt")));
+
+        service.listFolder(TENANT, PROJECT, MOUNT, "books", false);
+
+        verify(mongoTemplate, times(2)).upsert(
+                any(Query.class), any(Update.class), eq(DocumentDocument.class));
+    }
+
+    @Test
+    void listFolder_limitDisabled_materialisesAnything() {
+        limitFolderEntriesTo(0);
+        when(mongoTemplate.findById(anyString(), eq(JaglanFolderState.class))).thenReturn(null);
+        when(mongoTemplate.find(any(Query.class), eq(DocumentDocument.class)))
+                .thenReturn(List.of());
+        when(port.list(TENANT, PROJECT, MOUNT, "books")).thenReturn(List.of(
+                statAt("books/a.txt"), statAt("books/b.txt"), statAt("books/c.txt")));
+
+        service.listFolder(TENANT, PROJECT, MOUNT, "books", false);
+
+        verify(mongoTemplate, times(3)).upsert(
+                any(Query.class), any(Update.class), eq(DocumentDocument.class));
+    }
+
     @Test
     void listFolder_sourceDown_keepsListedAtAndMutesTheMount() {
         when(mongoTemplate.findById(anyString(), eq(JaglanFolderState.class))).thenReturn(null);

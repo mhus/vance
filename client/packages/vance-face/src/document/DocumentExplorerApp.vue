@@ -265,6 +265,19 @@ const mountEmptyReason = computed(() => {
   if (!mount || !isEmpty.value) return null;
   const name = mount.displayName || mount.name;
   const outcome = docsState.mountSearch.value;
+  // First, because it is folder-scoped: a source can answer perfectly and this
+  // one folder still be unreadable (above the entry limit, or its last refresh
+  // failed). The mount-wide status below would then say nothing is wrong.
+  if (docsState.mountFailure.value) {
+    return {
+      headline: t('documents.empty.mountFolderProblemHeadline'),
+      body: t('documents.empty.mountFolderProblemBody', {
+        mount: name,
+        reason: docsState.mountFailure.value,
+      }),
+      retryable: true,
+    };
+  }
   if (outcome === MountSearchOutcome.UNSUPPORTED) {
     // Not retryable: the source will still not be searchable next time.
     return {

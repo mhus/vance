@@ -21,12 +21,10 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { brainFetch } from '@vance/shared';
 import type {
   ApplicationEntryDto,
-  ApplicationListResponse,
-  ApplicationTargetDto,
-  ApplicationTargetsResponse,
   DocumentSearchItem,
   DocumentSearchResponse,
 } from '@vance/generated';
+import { groupTargets, useApplicationPicker } from './useApplicationPicker';
 import { vanceRef } from './vanceUri';
 
 /** One place inside the surrounding app, as the host describes it. */
@@ -126,58 +124,10 @@ const ownTargets = computed<AppLinkTarget[]>(() => props.appTargets?.targets ?? 
 const ownQuery = ref('');
 const filteredOwnTargets = computed(() => filterTargets(ownTargets.value, ownQuery.value));
 
-const appsLoading = ref(false);
-const appsError = ref<string | null>(null);
-const starredApps = ref<ApplicationEntryDto[]>([]);
-const projectApps = ref<ApplicationEntryDto[]>([]);
-let appsLoaded = false;
-
-/** The app whose places are being shown, or null while picking an app. */
-const openApp = ref<ApplicationEntryDto | null>(null);
-const appTargetList = ref<ApplicationTargetDto[]>([]);
-const appTargetsLoading = ref(false);
-const appTargetsError = ref<string | null>(null);
-
-async function loadApps() {
-  if (appsLoaded) return;
-  appsLoading.value = true;
-  appsError.value = null;
-  try {
-    const params = new URLSearchParams({ projectId: props.projectId });
-    const resp = await brainFetch<ApplicationListResponse>('GET', `applications?${params}`);
-    starredApps.value = resp.starred ?? [];
-    projectApps.value = resp.project ?? [];
-    appsLoaded = true;
-  } catch (e) {
-    appsError.value = e instanceof Error ? e.message : 'Could not load applications';
-  } finally {
-    appsLoading.value = false;
-  }
-}
-
-/**
- * Step two: the places inside a chosen app. An empty result is a normal answer
- * (most apps have none) — the app itself stays pickable either way, so there is
- * always something to do on this screen.
- */
-async function openAppTargets(app: ApplicationEntryDto) {
-  openApp.value = app;
-  appTargetList.value = [];
-  appTargetsError.value = null;
-  appTargetsLoading.value = true;
-  try {
-    const params = new URLSearchParams({ projectId: app.project, path: app.path });
-    const resp = await brainFetch<ApplicationTargetsResponse>(
-      'GET',
-      `applications/targets?${params}`,
-    );
-    appTargetList.value = resp.targets ?? [];
-  } catch (e) {
-    appTargetsError.value = e instanceof Error ? e.message : 'Could not load places';
-  } finally {
-    appTargetsLoading.value = false;
-  }
-}
+// Shared two-step state (listing, then one app's places). An empty target list
+// is a normal answer — the app itself stays pickable, so there is always
+// something to do on this screen.
+const apps = useApplicationPicker(() => props.projectId);
 
 function pickOwnTarget(handle: string | null) {
   const app = props.appTargets;
@@ -200,19 +150,6 @@ function filterTargets<T extends { label: string }>(list: T[], query: string): T
   const q = query.trim().toLowerCase();
   if (!q) return list;
   return list.filter((t) => t.label.toLowerCase().includes(q));
-}
-
-/** Rows grouped by their `group`, ungrouped first, groups in first-seen order. */
-function grouped<T extends { group?: string | null }>(list: T[]): { name: string | null; items: T[] }[] {
-  const out: { name: string | null; items: T[] }[] = [];
-  const byName = new Map<string | null, { name: string | null; items: T[] }>();
-  for (const item of list) {
-    const name = item.group || null;
-    let bucket = byName.get(name);
-    if (!bucket) { bucket = { name, items: [] }; byName.set(name, bucket); out.push(bucket); }
-    bucket.items.push(item);
-  }
-  return out;
 }
 
 // ── Tab 2: Direct URL ──────────────────────────────────────────────
@@ -260,8 +197,8 @@ watch(tab, async (next) => {
   // Lazily, and only once: the listing is one request, but it is pointless for
   // the many links that are a document or a plain URL.
   if (next === 'starred' || next === 'apps') {
-    openApp.value = null;
-    void loadApps();
+    apps.back();
+    void apps.load();
   }
 });
 </script>
@@ -369,7 +306,7 @@ watch(tab, async (next) => {
               <span class="link-picker__list-path">The app itself, no particular page</span>
             </span>
           </button>
-          <template v-for="g in grouped(filteredOwnTargets)" :key="g.name ?? ''">
+          <template v-for="g in groupTargets(filteredOwnTargets)" :key="g.name ?? ''">
             <div v-if="g.name" class="link-picker__group">{{ g.name }}</div>
             <button
               v-for="t in g.items"
@@ -389,13 +326,13 @@ watch(tab, async (next) => {
 
       <!-- ── Tabs: starred apps / apps in this project ───────────── -->
       <template v-else-if="tab === 'starred' || tab === 'apps'">
-        <div v-if="appsError" class="link-picker__error">{{ appsError }}</div>
-        <div v-else-if="appsLoading" class="link-picker__loading">Loading…</div>
+        <div v-if="apps.error.value" class="link-picker__error">{{ apps.error.value }}</div>
+        <div v-else-if="apps.loading.value" class="link-picker__loading">Loading…</div>
 
         <!-- step 1: pick an app -->
-        <template v-else-if="!openApp">
+        <template v-else-if="!apps.openApp.value">
           <div
-            v-if="(tab === 'starred' ? starredApps : projectApps).length === 0"
+            v-if="(tab === 'starred' ? apps.starred.value : apps.project.value).length === 0"
             class="link-picker__empty"
           >
             {{ tab === 'starred'
@@ -404,11 +341,11 @@ watch(tab, async (next) => {
           </div>
           <div v-else class="link-picker__list">
             <button
-              v-for="a in (tab === 'starred' ? starredApps : projectApps)"
+              v-for="a in (tab === 'starred' ? apps.starred.value : apps.project.value)"
               :key="a.project + a.path"
               type="button"
               class="link-picker__list-item"
-              @click="openAppTargets(a)"
+              @click="apps.choose(a)"
             >
               <span class="link-picker__list-title">
                 <span v-if="a.icon">{{ a.icon }} </span>{{ a.title || a.path }}
@@ -425,31 +362,37 @@ watch(tab, async (next) => {
 
         <!-- step 2: pick a place inside it, or the app itself -->
         <template v-else>
-          <div class="link-picker__actions">
-            <button type="button" class="link-picker__btn" @click="openApp = null">← Back</button>
-            <span class="link-picker__crumb">{{ openApp.title || openApp.path }}</span>
+          <div class="link-picker__actions link-picker__actions--row">
+            <button type="button" class="link-picker__btn" @click="apps.back()">← Back</button>
+            <span class="link-picker__crumb">
+              {{ apps.openApp.value.title || apps.openApp.value.path }}
+            </span>
           </div>
-          <div v-if="appTargetsError" class="link-picker__error">{{ appTargetsError }}</div>
-          <div v-else-if="appTargetsLoading" class="link-picker__loading">Loading…</div>
+          <div v-if="apps.targetsError.value" class="link-picker__error">
+            {{ apps.targetsError.value }}
+          </div>
+          <div v-else-if="apps.targetsLoading.value" class="link-picker__loading">Loading…</div>
           <div v-else class="link-picker__list">
             <button
               type="button"
               class="link-picker__list-item"
-              @click="pickApp(openApp, null)"
+              @click="pickApp(apps.openApp.value, null)"
             >
-              <span class="link-picker__list-title">{{ openApp.title || openApp.path }}</span>
+              <span class="link-picker__list-title">
+                {{ apps.openApp.value.title || apps.openApp.value.path }}
+              </span>
               <span class="link-picker__list-meta">
                 <span class="link-picker__list-path">The app itself, no particular place</span>
               </span>
             </button>
-            <template v-for="g in grouped(appTargetList)" :key="g.name ?? ''">
+            <template v-for="g in groupTargets(apps.targets.value)" :key="g.name ?? ''">
               <div v-if="g.name" class="link-picker__group">{{ g.name }}</div>
               <button
                 v-for="t in g.items"
                 :key="t.handle"
                 type="button"
                 class="link-picker__list-item"
-                @click="pickApp(openApp, t.handle)"
+                @click="pickApp(apps.openApp.value, t.handle)"
               >
                 <span class="link-picker__list-title">{{ t.label }}</span>
               </button>
@@ -515,7 +458,14 @@ watch(tab, async (next) => {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
   width: 100%;
   max-width: 36rem;
-  max-height: 80vh;
+  /*
+   * Fixed, not max-height: with five tabs the content length swings wildly
+   * (40 search hits vs. one URL field vs. "Loading…"), and a panel that
+   * resizes on every tab click moves the tab bar out from under the cursor.
+   * A stable box costs some empty space on the short tabs; a moving target
+   * costs a misclick.
+   */
+  height: 80vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -563,6 +513,13 @@ watch(tab, async (next) => {
   padding: 0.5rem 1rem;
   border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
 }
+/* Back button + crumb on one line, in the second step of the app tabs. */
+.link-picker__actions--row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  min-width: 0;
+}
 .link-picker__search-input,
 .link-picker__url-input {
   width: 100%;
@@ -581,6 +538,12 @@ watch(tab, async (next) => {
 }
 .link-picker__loading,
 .link-picker__empty {
+  /* Fill and centre, so the fixed panel height reads as intentional instead
+     of leaving one line of text above a large blank area. */
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 2rem;
   color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   text-align: center;
@@ -658,6 +621,9 @@ watch(tab, async (next) => {
   color: color-mix(in oklab, var(--color-base-content) 75%, transparent);
 }
 .link-picker__url-form {
+  /* Grows so the fixed panel has one element absorbing the slack; the fields
+     stay top-aligned because the column does not justify. */
+  flex: 1;
   padding: 1rem;
   display: flex;
   flex-direction: column;

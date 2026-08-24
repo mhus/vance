@@ -16,7 +16,7 @@ import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 import { getUsername } from '@vance/shared/auth';
 import { brainFetch } from '@vance/shared';
-import { VButton, usePointers } from '@vance/components';
+import { VButton, usePointers, vanceRef } from '@vance/components';
 import CanvasNodeCard from './CanvasNodeCard.vue';
 import InputDialog from './InputDialog.vue';
 import DocPicker, { type AppTargets } from './DocPicker.vue';
@@ -126,7 +126,7 @@ const docPicker = ref<{
   open: (
     pid: string,
     appTargets?: AppTargets | null,
-  ) => Promise<{ path: string; kind?: string; entry?: string } | null>;
+  ) => Promise<{ path: string; project?: string; kind?: string; entry?: string } | null>;
 } | null>(null);
 type EdgeStyleInit = {
   label: string; color: string; fromArrow: boolean; toArrow: boolean; dashed: boolean; thick: boolean;
@@ -523,16 +523,17 @@ function placement(): { x: number; y: number } {
 }
 
 /**
- * The `vance:` reference a pick becomes. `entry` is percent-encoded because a
- * handle is app-owned text and may carry `&`, `#` or `=` — unencoded, it would
- * silently swallow the rest of the query.
+ * The `vance:` reference a pick becomes. Delegated to `vanceRef` because the
+ * grammar has two silent traps — the cross-project form needs a *double* slash,
+ * and an unencoded `entry` handle swallows the rest of the query.
  */
-function refFor(picked: { path: string; kind?: string; entry?: string }): string {
-  const params = new URLSearchParams();
-  if (picked.kind) params.set('kind', picked.kind);
-  if (picked.entry) params.set('entry', picked.entry);
-  const qs = params.toString();
-  return `vance:/${picked.path}${qs ? `?${qs}` : ''}`;
+function refFor(picked: {
+  path: string;
+  project?: string;
+  kind?: string;
+  entry?: string;
+}): string {
+  return vanceRef(picked);
 }
 
 async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {

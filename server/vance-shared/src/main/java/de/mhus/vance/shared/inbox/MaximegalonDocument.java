@@ -28,7 +28,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
  * Persistent inbox item — answers AND outputs ({@link MaximegalonType}).
  * See {@code specification/user-interaction.md} §3 for the full shape.
  */
-@Document(collection = "maximegalon_threads")
+@Document(collection = MaximegalonDocument.COLLECTION)
 @CompoundIndexes({
         @CompoundIndex(
                 name = "tenant_assigned_status_crit_idx",
@@ -59,6 +59,22 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @NoArgsConstructor
 @AllArgsConstructor
 public class MaximegalonDocument {
+
+    /**
+     * The Mongo collection.
+     *
+     * <p>A constant rather than a literal in the annotation, because the
+     * literal has already cost once: this collection was renamed from
+     * {@code inbox_items}, and eleven end-to-end tests that query it through
+     * the driver kept the old string. They did not fail to compile — they
+     * found nothing, and three of them spent fifteen seconds each waiting for
+     * an item that had been written all along, under the new name.
+     *
+     * <p>Anything reaching past the repository — a test, a migration — refers
+     * to this, so the next rename is a compile error instead of an empty
+     * result set.
+     */
+    public static final String COLLECTION = "maximegalon_threads";
 
     @Id
     private @Nullable String id;

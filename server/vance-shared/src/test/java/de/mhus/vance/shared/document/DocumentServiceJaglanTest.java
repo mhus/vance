@@ -143,7 +143,11 @@ class DocumentServiceJaglanTest {
         try (InputStream in = service.loadContent(ordinaryDoc())) {
             assertThat(new String(in.readAllBytes(), StandardCharsets.UTF_8)).isEqualTo("body");
         }
-        verify(port, never()).open(anyString(), anyString(), anyString(), anyString());
+        // The five-argument form, because that is the one DocumentService calls.
+        // Verifying the four-argument default here would pass no matter what —
+        // a green assertion that has stopped watching anything.
+        verify(port, never()).open(anyString(), anyString(), anyString(), anyString(),
+                org.mockito.ArgumentMatchers.any());
     }
 
     // ─── write ──────────────────────────────────────────────────────────

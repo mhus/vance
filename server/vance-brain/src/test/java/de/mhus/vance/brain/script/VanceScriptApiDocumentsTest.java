@@ -51,11 +51,66 @@ class VanceScriptApiDocumentsTest {
         DocumentDocument doc = doc("notes/hello.md", "Hello world");
         when(documentService.findByPath("acme", "proj", "notes/hello.md"))
                 .thenReturn(Optional.of(doc));
-        when(documentService.readContent(doc)).thenReturn("Hello world");
+        // The two-argument form, because that is the one read() calls.
+        when(documentService.readContent(doc, null)).thenReturn("Hello world");
 
         String text = api.documents.read("notes/hello.md");
 
         assertThat(text).isEqualTo("Hello world");
+    }
+
+    // ─── a query in the path must not be dropped ────────────────────────
+
+    @Test
+    void read_pathWithQuery_forwardsItRatherThanReadingThePlainDocument() {
+        // DocumentRefResolver splits a ?query off every path it is given.
+        // Taking ref.path() and ignoring the rest returns the plain document
+        // while the script believes it asked for a view of it — a wrong answer
+        // in the shape of a right one, and the exact failure this whole
+        // feature exists to prevent.
+        DocumentDocument doc = doc("_ext/demo/analysis.yaml", "");
+        when(documentService.findByPath("acme", "proj", "_ext/demo/analysis.yaml"))
+                .thenReturn(Optional.of(doc));
+        when(documentService.readContent(doc, "from=2026-02-01&to=2026-03-31"))
+                .thenReturn("computed:");
+
+        String text = api.documents.read("/_ext/demo/analysis.yaml?from=2026-02-01&to=2026-03-31");
+
+        assertThat(text).isEqualTo("computed:");
+        verify(documentService).readContent(doc, "from=2026-02-01&to=2026-03-31");
+    }
+
+    @Test
+    void read_queryAgainstAStoredDocument_surfacesTheRefusal() {
+        // A stored document has nothing to parameterise. DocumentService says
+        // so; the script API must pass that on as a normal Error instead of
+        // letting an IllegalArgumentException escape into the engine.
+        DocumentDocument doc = doc("apps/thing/main.js", "");
+        when(documentService.findByPath("acme", "proj", "apps/thing/main.js"))
+                .thenReturn(Optional.of(doc));
+        when(documentService.readContent(doc, "from=2026-02-01"))
+                .thenThrow(new IllegalArgumentException(
+                        "document 'apps/thing/main.js' is stored, not mounted"));
+
+        assertThatThrownBy(() -> api.documents.read("/apps/thing/main.js?from=2026-02-01"))
+                .isInstanceOf(VanceScriptApi.ScriptHostException.class)
+                .hasMessageContaining("stored, not mounted");
+    }
+
+    @Test
+    void write_pathWithQuery_isRefused() {
+        // Writing "the view" is not a thing. Dropping the query would write to
+        // a different document than the one named.
+        assertThatThrownBy(() -> api.documents.write("notes/a.md?x=1", "body"))
+                .isInstanceOf(VanceScriptApi.ScriptHostException.class)
+                .hasMessageContaining("only read()");
+    }
+
+    @Test
+    void exists_pathWithQuery_isRefused() {
+        assertThatThrownBy(() -> api.documents.exists("notes/a.md?x=1"))
+                .isInstanceOf(VanceScriptApi.ScriptHostException.class)
+                .hasMessageContaining("only read()");
     }
 
     @Test
@@ -246,7 +301,7 @@ class VanceScriptApiDocumentsTest {
         DocumentDocument doc = doc("apps/ws/data/in.json", "{}");
         when(documentService.findByPath("acme", "proj", "apps/ws/data/in.json"))
                 .thenReturn(Optional.of(doc));
-        when(documentService.readContent(doc)).thenReturn("{}");
+        when(documentService.readContent(doc, null)).thenReturn("{}");
 
         assertThat(apiWithBasePath("apps/ws").documents.read("data/in.json")).isEqualTo("{}");
     }

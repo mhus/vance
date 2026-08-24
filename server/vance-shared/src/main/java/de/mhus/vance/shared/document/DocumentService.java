@@ -494,7 +494,16 @@ public class DocumentService {
      * try/catch for a corner case that already produces a WARN line.
      */
     public String readContent(DocumentDocument doc) {
-        return readAsString(doc);
+        return readAsString(doc, null);
+    }
+
+    /**
+     * Content as text, optionally as a parameterised view of a mounted
+     * document. See {@link #loadContent(DocumentDocument, String)} — including
+     * that a query against a stored document is an error rather than a no-op.
+     */
+    public String readContent(DocumentDocument doc, @Nullable String query) {
+        return readAsString(doc, query);
     }
 
     /** All {@link DocumentStatus#ACTIVE} documents in the project. */
@@ -2193,7 +2202,7 @@ public class DocumentService {
                 .findByTenantIdAndProjectIdAndPath(tenantId, projectId, normalizedPath)
                 .filter(doc -> doc.getStatus() == DocumentStatus.ACTIVE)
                 .map(doc -> new LookupResult(
-                        doc.getPath(), readAsString(doc), source, doc));
+                        doc.getPath(), readAsString(doc, null), source, doc));
     }
 
     /**
@@ -2214,7 +2223,7 @@ public class DocumentService {
                 tenantId, projectId, DocumentStatus.ACTIVE, prefix)) {
             String path = doc.getPath();
             if (path == null || !matchesOneLevel(path, prefix)) continue;
-            acc.put(path, new LookupResult(path, readAsString(doc), source, doc));
+            acc.put(path, new LookupResult(path, readAsString(doc, null), source, doc));
         }
     }
 
@@ -2263,8 +2272,8 @@ public class DocumentService {
         }
     }
 
-    private String readAsString(DocumentDocument doc) {
-        try (InputStream in = loadContent(doc)) {
+    private String readAsString(DocumentDocument doc, @Nullable String query) {
+        try (InputStream in = loadContent(doc, query)) {
             String text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             backfillMountedKind(doc, text);
             return text;
@@ -2476,7 +2485,7 @@ public class DocumentService {
 
         if (newInlineText != null) {
             byte[] bytes = newInlineText.getBytes(StandardCharsets.UTF_8);
-            String currentContent = readAsString(doc);
+            String currentContent = readAsString(doc, null);
             contentChanged = !newInlineText.equals(currentContent);
 
             // Archive the *current* version before overwriting — but only

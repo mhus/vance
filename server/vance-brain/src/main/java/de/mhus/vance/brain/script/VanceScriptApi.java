@@ -1209,6 +1209,31 @@ public final class VanceScriptApi {
          * (startsWith match) and must not be canonicalised away.
          */
         private String resolveDoc(String path) {
+            de.mhus.vance.shared.document.DocumentRef ref = resolveDocRef(path);
+            if (ref.query() != null) {
+                // Every caller of this form does something a parameterised view
+                // has no meaning for — writing, deleting, asking whether it
+                // exists. Dropping the query instead would answer about a
+                // different document than the one named.
+                throw new ScriptHostException(
+                        "vance.documents: '" + path + "' carries a query, and this operation "
+                                + "has no parameterised form — only read() does", null);
+            }
+            return ref.path();
+        }
+
+        /**
+         * The full reference, query included.
+         *
+         * <p>Split out from {@link #resolveDoc} because the query is only
+         * meaningful for {@code read}, and because it must not be silently
+         * discarded anywhere: {@code DocumentRefResolver} splits a
+         * {@code ?from=…} off every path it is given, so a caller that takes
+         * {@link de.mhus.vance.shared.document.DocumentRef#path()} and ignores
+         * the rest hands back the plain document while the script believes it
+         * asked for a view of it.
+         */
+        private de.mhus.vance.shared.document.DocumentRef resolveDocRef(String path) {
             de.mhus.vance.shared.document.DocumentRef ref;
             try {
                 ref = de.mhus.vance.shared.document.DocumentRefResolver.resolveRef(
@@ -1224,7 +1249,7 @@ public final class VanceScriptApi {
                         "vance.documents: cross-project access is not allowed "
                                 + "from scripts ('" + path + "')", null);
             }
-            return ref.path();
+            return ref;
         }
 
         private static String normalizeBasePath(@Nullable String base) {
@@ -1241,8 +1266,22 @@ public final class VanceScriptApi {
          */
         @HostAccess.Export
         public String read(String path) {
-            DocumentDocument doc = requireDoc(path);
-            return documentService.readContent(doc);
+            requireProject();
+            requirePath(path);
+            de.mhus.vance.shared.document.DocumentRef ref = resolveDocRef(path);
+            DocumentDocument doc = documentService.findByPath(
+                            scope.tenantId(), scope.projectId(), ref.path())
+                    .orElseThrow(() -> new ScriptHostException(
+                            "vance.documents: not found '" + ref.path() + "'", null));
+            try {
+                // The query travels. A mounted source turns it into a computed
+                // view; a stored document has nothing to parameterise and says
+                // so, rather than handing back the plain file as if it were the
+                // answer.
+                return documentService.readContent(doc, ref.query());
+            } catch (IllegalArgumentException e) {
+                throw new ScriptHostException("vance.documents.read: " + e.getMessage(), null);
+            }
         }
 
         /**

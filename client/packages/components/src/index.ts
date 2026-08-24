@@ -15,6 +15,7 @@ export {
 export * from './cortexLink';
 export * from './useAppEntry';
 export * from './useApplicationPicker';
+export * from './useLinkPickerHost';
 export * from './vanceUri';
 export * from './useDocumentPrefixReaction';
 export * from './usePointers';

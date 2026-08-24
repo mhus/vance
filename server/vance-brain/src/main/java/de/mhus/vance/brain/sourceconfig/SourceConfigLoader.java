@@ -69,13 +69,35 @@ public class SourceConfigLoader {
                 continue;
             }
             try {
-                out.add(parse(name, path, hit.getValue().content()));
+                SourceConfig config = parse(name, path, hit.getValue().content());
+                warnOnRetiredKeys(config);
+                out.add(config);
             } catch (RuntimeException e) {
                 log.warn("SourceConfig: skipping '{}' ({}): {}",
                         path, hit.getValue().source(), e.getMessage());
             }
         }
         return List.copyOf(applyTenantCeiling(tenantId, projectId, pathPrefix, out));
+    }
+
+    /**
+     * Say something when a document uses a key we retired.
+     *
+     * <p>Central rather than per subsystem, and for the same reason the ceiling
+     * is: a document that still says {@code sendActor: true} is otherwise
+     * indistinguishable from one that says nothing — the new field defaults to
+     * {@code none}, so the old switch does not fail, it silently stops working.
+     * That is the exact case {@code warnOnUnsupportedReaderIdentity} already
+     * covers for a misspelled <em>new</em> value; an obsolete key deserves the
+     * same line, in every subsystem that reads a source document.
+     */
+    private static void warnOnRetiredKeys(SourceConfig config) {
+        if (config.extras().containsKey(ReaderIdentityMode.RETIRED_FIELD)) {
+            log.warn("SourceConfig: '{}' still sets '{}' — that switch was replaced by "
+                            + "'{}: pseudonym' and now has no effect at all",
+                    config.documentPath(), ReaderIdentityMode.RETIRED_FIELD,
+                    ReaderIdentityMode.FIELD);
+        }
     }
 
     /**

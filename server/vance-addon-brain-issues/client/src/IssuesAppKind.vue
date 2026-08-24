@@ -16,7 +16,7 @@ import {
   pollComposeRun,
   cancelComposeRun,
 } from '@vance/shared';
-import { useDocumentPrefixReaction, VLinkPicker } from '@vance/components';
+import { useDocumentPrefixReaction, useLinkPickerHost, VLinkPicker } from '@vance/components';
 import { WorkPageEditor, type ComposeRunResult } from '@vance/block-editor';
 import {
   scanIssues,
@@ -81,29 +81,17 @@ const editorRef = ref<{
   currentLinkHref: () => string | null;
 } | null>(null);
 
-// Link picker — the shared modal (project-document search + direct URL).
-// The block editor has no server access, so it delegates via the
-// `openLinkPicker` callback; the pick comes back here and we apply the
-// mark on the editor's current selection. Without this the editor falls
-// back to a bare window.prompt.
-const linkPickerOpen = ref(false);
-const linkPickerInitialHref = ref<string | null>(null);
-function openLinkPicker() {
-  linkPickerInitialHref.value = editorRef.value?.currentLinkHref() ?? null;
-  linkPickerOpen.value = true;
-}
-function closeLinkPicker() {
-  linkPickerOpen.value = false;
-  linkPickerInitialHref.value = null;
-}
-function onLinkPicked(href: string, openInNewTab: boolean) {
-  editorRef.value?.applyLink(href, openInNewTab);
-  closeLinkPicker();
-}
-function onLinkClear() {
-  editorRef.value?.clearLink();
-  closeLinkPicker();
-}
+// Link picker. The handshake (editor asks → dialog → apply to the current
+// selection) is in `useLinkPickerHost`; the names are destructured so the
+// template reads as before.
+const {
+  isOpen: linkPickerOpen,
+  initialHref: linkPickerInitialHref,
+  open: openLinkPicker,
+  close: closeLinkPicker,
+  onPicked: onLinkPicked,
+  onClear: onLinkClear,
+} = useLinkPickerHost(() => editorRef.value);
 
 const embedComponent = inject<Component | null>('vance:embed-component', null);
 const formComponent = inject<Component | null>('vance:form-component', null);

@@ -106,11 +106,22 @@ function scheduleSearch() {
   }, 200);
 }
 
+/**
+ * A document in this project.
+ *
+ * <p>`openInNewTab` is `false`, not the URL tab's checkbox. A `vance:` target is
+ * internal by definition, and the host's link handler bails out on `newTab`
+ * (`EditorApp.onVanceLink`) — so inheriting the other tab's default, which is
+ * `true`, meant every document picked here opened a second browser window
+ * instead of a tab beside the one you were in. It read as intentional because
+ * the ref was shared; it was the URL tab's state leaking one tab over. The app
+ * tabs below already pass `false` for the same reason.
+ */
 function pickDoc(doc: DocumentSearchItem) {
   const params: string[] = [];
   if (doc.kind) params.push(`kind=${encodeURIComponent(doc.kind)}`);
   const href = `vance:/${encodeURI(doc.path)}${params.length ? '?' + params.join('&') : ''}`;
-  emit('pick', href, urlOpensInNewTab.value);
+  emit('pick', href, false);
 }
 
 // ── Tabs 3–5: link into an application ─────────────────────────────

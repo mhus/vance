@@ -22,7 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -932,85 +931,21 @@ public class ThinkProcessService {
     }
 
     // ─────────── Legacy <-> EngineMessage conversion ───────────
-    // These helpers bridge the {@link PendingMessageDocument} façade
-    // (which the engine and tool layers still pass around) to the
-    // {@link EngineMessageDocument} persistence form. They will be
-    // removed when the engine layer adopts EngineMessage natively.
+    // Delegated to {@link PendingMessageMapper}, which is the only copy of
+    // the field list. It used to live here and was duplicated in
+    // EngineMessageRouter — see that class's javadoc for what the second copy
+    // cost. These two wrappers stay so the call sites in this file read as
+    // before; they go away with the façade.
 
     private EngineMessageDocument toEngineMessage(
             PendingMessageDocument m, String targetProcessId, String tenantId,
             String senderProcessId) {
-        String messageId = (m.getIdempotencyKey() != null && !m.getIdempotencyKey().isBlank())
-                ? m.getIdempotencyKey()
-                : UUID.randomUUID().toString();
-        Instant createdAt = m.getAt() == null || m.getAt().equals(Instant.EPOCH)
-                ? Instant.now() : m.getAt();
-        return EngineMessageDocument.builder()
-                .messageId(messageId)
-                .tenantId(tenantId == null ? "" : tenantId)
-                .senderProcessId(senderProcessId == null ? "" : senderProcessId)
-                .targetProcessId(targetProcessId)
-                .createdAt(createdAt)
-                .type(m.getType())
-                .fromUser(m.getFromUser())
-                .fromUserDisplayName(m.getFromUserDisplayName())
-                .content(m.getContent())
-                .voiceMode(m.getVoiceMode())
-                .attachmentDocumentIds(m.getAttachmentDocumentIds())
-                .activeApp(m.getActiveApp())
-                .boundDocumentId(m.getBoundDocumentId())
-                .boundDocSelection(m.getBoundDocSelection())
-                .activeInbox(m.getActiveInbox())
-                .sourceProcessId(m.getSourceProcessId())
-                .eventType(m.getEventType())
-                .eventId(m.getEventId())
-                .inResponseToAt(m.getInResponseToAt())
-                .toolCallId(m.getToolCallId())
-                .toolName(m.getToolName())
-                .toolStatus(m.getToolStatus())
-                .error(m.getError())
-                .command(m.getCommand())
-                .inboxItemId(m.getInboxItemId())
-                .inboxItemType(m.getInboxItemType())
-                .inboxAnswer(m.getInboxAnswer())
-                .sourceEddieProcessId(m.getSourceEddieProcessId())
-                .peerUserId(m.getPeerUserId())
-                .peerEventType(m.getPeerEventType())
-                .payload(m.getPayload())
-                .build();
+        return PendingMessageMapper.toEngineMessage(
+                m, targetProcessId, tenantId, senderProcessId);
     }
 
     private PendingMessageDocument toPendingMessage(EngineMessageDocument e) {
-        return PendingMessageDocument.builder()
-                .at(e.getCreatedAt())
-                .idempotencyKey(e.getMessageId())
-                .type(e.getType())
-                .fromUser(e.getFromUser())
-                .fromUserDisplayName(e.getFromUserDisplayName())
-                .content(e.getContent())
-                .voiceMode(e.getVoiceMode())
-                .attachmentDocumentIds(e.getAttachmentDocumentIds())
-                .activeApp(e.getActiveApp())
-                .boundDocumentId(e.getBoundDocumentId())
-                .boundDocSelection(e.getBoundDocSelection())
-                .activeInbox(e.getActiveInbox())
-                .sourceProcessId(e.getSourceProcessId())
-                .eventType(e.getEventType())
-                .eventId(e.getEventId())
-                .inResponseToAt(e.getInResponseToAt())
-                .toolCallId(e.getToolCallId())
-                .toolName(e.getToolName())
-                .toolStatus(e.getToolStatus())
-                .error(e.getError())
-                .command(e.getCommand())
-                .inboxItemId(e.getInboxItemId())
-                .inboxItemType(e.getInboxItemType())
-                .inboxAnswer(e.getInboxAnswer())
-                .sourceEddieProcessId(e.getSourceEddieProcessId())
-                .peerUserId(e.getPeerUserId())
-                .peerEventType(e.getPeerEventType())
-                .payload(e.getPayload())
-                .build();
+        return PendingMessageMapper.toPendingMessage(e);
     }
 
     /**

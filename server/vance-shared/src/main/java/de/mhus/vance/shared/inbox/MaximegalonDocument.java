@@ -45,7 +45,14 @@ import org.springframework.data.mongodb.core.mapping.Document;
         // equality term, status the range/inequality term — hence this order.
         @CompoundIndex(
                 name = "tenant_unread_status_idx",
-                def = "{ 'tenantId': 1, 'unreadFor': 1, 'status': 1 }")
+                def = "{ 'tenantId': 1, 'unreadFor': 1, 'status': 1 }"),
+        // "Which threads are about this document" — the Cortex discussion tab.
+        // Without it the query has only the tenantId prefix of the index above
+        // to work with and filters the rest in memory, i.e. it walks every
+        // thread of the tenant on every document the reader opens.
+        @CompoundIndex(
+                name = "tenant_docref_idx",
+                def = "{ 'tenantId': 1, 'documentRef.documentId': 1 }")
 })
 @Data
 @Builder

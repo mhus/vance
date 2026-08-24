@@ -55,6 +55,16 @@ public enum ReaderIdentityMode {
     public static final String FIELD = "readerIdentity";
 
     /**
+     * The boolean this replaced. Kept as a constant, not as a fallback: the
+     * point of the rename was that one word meant a salted pseudonym in one
+     * subsystem and a resolvable login in another, so honouring the old key
+     * would reinstate exactly the ambiguity. It is named here so a document
+     * that still carries it can be reported ({@code SourceConfigLoader}) and
+     * so it does not travel on to a protocol as an extra.
+     */
+    public static final String RETIRED_FIELD = "sendActor";
+
+    /**
      * Parse a configured value, falling back when absent, blank or unknown.
      *
      * <p>An unknown word falls back rather than throwing, and always

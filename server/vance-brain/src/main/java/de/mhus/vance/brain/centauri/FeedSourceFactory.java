@@ -288,9 +288,17 @@ public class FeedSourceFactory implements SourceConfigCache {
                 config.protocol());
     }
 
+    /**
+     * The endpoint's own knobs, minus the ones this layer answers itself.
+     *
+     * <p>The retired {@code sendActor} goes too. It has no reader left, but
+     * extras are the channel {@code ode} forwards to the far side — an obsolete
+     * key of ours has no business showing up in a foreign request.
+     */
     private static Map<String, Object> protocolExtras(SourceConfig config) {
         Map<String, Object> extras = new LinkedHashMap<>(config.extras());
         extras.remove(ReaderIdentityMode.FIELD);
+        extras.remove(ReaderIdentityMode.RETIRED_FIELD);
         return extras;
     }
 

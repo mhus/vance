@@ -8,4 +8,5 @@ import { MaximegalonDto } from './MaximegalonDto';
 export interface InboxListResponse {
   items: MaximegalonDto[];
   count: number;
+  truncated: boolean;
 }

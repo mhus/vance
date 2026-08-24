@@ -5,12 +5,11 @@ import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.shared.enginemessage.EngineMessageDocument;
 import de.mhus.vance.shared.enginemessage.EngineMessageService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
+import de.mhus.vance.shared.thinkprocess.PendingMessageMapper;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.Optional;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -80,7 +79,13 @@ public class EngineMessageRouter {
         }
         ThinkProcessDocument target = targetOpt.get();
 
-        EngineMessageDocument doc = toEngineMessage(
+        // One mapping for both routes into EngineMessageDocument. This used to
+        // be a private copy here, and the copy is what dropped
+        // fromUserDisplayName and activeInbox: both were added to the
+        // ThinkProcessService bridge when they were introduced, and a field
+        // that stops at this hop simply arrives as null at the engine, with
+        // nothing reporting it. See PendingMessageMapper.
+        EngineMessageDocument doc = PendingMessageMapper.toEngineMessage(
                 message, targetProcessId, target.getTenantId(),
                 senderProcessId == null ? "" : senderProcessId);
 
@@ -126,47 +131,5 @@ public class EngineMessageRouter {
             // Outbox keeps the row; replay handles retry.
             return false;
         }
-    }
-
-    /**
-     * Same field-mapping as {@code ThinkProcessService}'s legacy bridge —
-     * duplicated here so the engine-to-engine call sites can drop the
-     * shim once the bridge is removed in the {@code pendingMessages}
-     * cleanup phase.
-     */
-    private EngineMessageDocument toEngineMessage(
-            PendingMessageDocument m, String targetProcessId, String tenantId,
-            String senderProcessId) {
-        String messageId = (m.getIdempotencyKey() != null && !m.getIdempotencyKey().isBlank())
-                ? m.getIdempotencyKey()
-                : UUID.randomUUID().toString();
-        Instant createdAt = m.getAt() == null || m.getAt().equals(Instant.EPOCH)
-                ? Instant.now() : m.getAt();
-        return EngineMessageDocument.builder()
-                .messageId(messageId)
-                .tenantId(tenantId == null ? "" : tenantId)
-                .senderProcessId(senderProcessId == null ? "" : senderProcessId)
-                .targetProcessId(targetProcessId)
-                .createdAt(createdAt)
-                .type(m.getType())
-                .fromUser(m.getFromUser())
-                .content(m.getContent())
-                .sourceProcessId(m.getSourceProcessId())
-                .eventType(m.getEventType())
-                .eventId(m.getEventId())
-                .inResponseToAt(m.getInResponseToAt())
-                .toolCallId(m.getToolCallId())
-                .toolName(m.getToolName())
-                .toolStatus(m.getToolStatus())
-                .error(m.getError())
-                .command(m.getCommand())
-                .inboxItemId(m.getInboxItemId())
-                .inboxItemType(m.getInboxItemType())
-                .inboxAnswer(m.getInboxAnswer())
-                .sourceEddieProcessId(m.getSourceEddieProcessId())
-                .peerUserId(m.getPeerUserId())
-                .peerEventType(m.getPeerEventType())
-                .payload(m.getPayload())
-                .build();
     }
 }

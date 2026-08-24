@@ -9,7 +9,13 @@ import {
   pollComposeRun,
   cancelComposeRun,
 } from '@vance/shared';
-import { useAppEntry, useDocumentPrefixReaction, usePointers, VLinkPicker } from '@vance/components';
+import {
+  useAppEntry,
+  useDocumentPrefixReaction,
+  useLinkPickerHost,
+  usePointers,
+  VLinkPicker,
+} from '@vance/components';
 import { getUsername } from '@vance/shared/auth';
 import { WorkPageEditor, parseDocument, type ComposeRunResult } from '@vance/block-editor';
 import {
@@ -193,29 +199,17 @@ function onAssetPick(src: string, alt: string) {
   assetPickerOpen.value = false;
 }
 
-// Link picker — modal with two tabs (project document search + direct
-// URL). Opened by the editor's bubble-menu link button via the
-// `openLinkPicker` callback. The modal emits the chosen href +
-// "open in new tab" flag back; we call into the editor ref to apply
-// the mark on the current selection.
-const linkPickerOpen = ref(false);
-const linkPickerInitialHref = ref<string | null>(null);
-function openLinkPicker() {
-  linkPickerInitialHref.value = editorRef.value?.currentLinkHref() ?? null;
-  linkPickerOpen.value = true;
-}
-function closeLinkPicker() {
-  linkPickerOpen.value = false;
-  linkPickerInitialHref.value = null;
-}
-function onLinkPicked(href: string, openInNewTab: boolean) {
-  editorRef.value?.applyLink(href, openInNewTab);
-  closeLinkPicker();
-}
-function onLinkClear() {
-  editorRef.value?.clearLink();
-  closeLinkPicker();
-}
+// Link picker. The handshake (editor asks → dialog → apply to the current
+// selection) is in `useLinkPickerHost`; the names are destructured so the
+// template reads as before.
+const {
+  isOpen: linkPickerOpen,
+  initialHref: linkPickerInitialHref,
+  open: openLinkPicker,
+  close: closeLinkPicker,
+  onPicked: onLinkPicked,
+  onClear: onLinkClear,
+} = useLinkPickerHost(() => editorRef.value);
 
 // Kind-aware embed renderer — vance-face provides a component that
 // takes a single `uri` prop and renders the full embed (mindmap /

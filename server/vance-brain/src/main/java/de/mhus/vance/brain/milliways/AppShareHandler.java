@@ -283,6 +283,17 @@ public class AppShareHandler implements ShareHandler {
     /**
      * An app that throws while listing its places loses the places, not its row
      * — same rule as {@link #accepts}: one broken app must not hide the others.
+     *
+     * <p><b>Cost, stated because it is the asymmetry here.</b>
+     * {@code ApplicationsController} splits listing apps from listing one app's
+     * places precisely because the second is expensive — and this asks every
+     * candidate on every {@code form()}, i.e. on every dialog open. It is cheap
+     * today: only the links app answers {@code INTAKE} at all (a manifest read),
+     * everyone else checks {@code purpose} and returns immediately, and the
+     * candidate list is the sharer's favourites. The first {@code INTAKE}
+     * implementation that walks a folder makes this the wrong shape, and the
+     * answer then is a dependent form field — the same conclusion the
+     * {@link Choice} javadoc reaches about the list's <em>length</em>.
      */
     private List<VanceApplication.AppTarget> intakeTargets(Candidate candidate, ShareScope scope) {
         try {

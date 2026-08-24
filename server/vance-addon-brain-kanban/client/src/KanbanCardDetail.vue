@@ -9,6 +9,7 @@ import {
   VModal,
   VSelect,
   VTagEditor,
+  useLinkPickerHost,
 } from '@vance/components';
 import { AccentColor } from '@vance/generated';
 import { postComposeRun, pollComposeRun, cancelComposeRun } from '@vance/shared';
@@ -88,33 +89,18 @@ const editorRef = ref<{
   currentLinkHref: () => string | null;
 } | null>(null);
 
-// Link picker — the shared modal (project-document search + direct URL).
-// The block editor has no server access, so it delegates via the
-// `openLinkPicker` callback; the pick comes back here and we apply the
-// mark on the editor's current selection. Without this the editor falls
-// back to a bare window.prompt.
-//
-// Rendered INSIDE the content VModal on purpose: that one is a native
-// <dialog> opened with showModal(), so it lives in the top layer and
-// would paint over any fixed-position sibling outside it.
-const linkPickerOpen = ref(false);
-const linkPickerInitialHref = ref<string | null>(null);
-function openLinkPicker() {
-  linkPickerInitialHref.value = editorRef.value?.currentLinkHref() ?? null;
-  linkPickerOpen.value = true;
-}
-function closeLinkPicker() {
-  linkPickerOpen.value = false;
-  linkPickerInitialHref.value = null;
-}
-function onLinkPicked(href: string, openInNewTab: boolean) {
-  editorRef.value?.applyLink(href, openInNewTab);
-  closeLinkPicker();
-}
-function onLinkClear() {
-  editorRef.value?.clearLink();
-  closeLinkPicker();
-}
+// Link picker (see `useLinkPickerHost`). Rendered INSIDE the content VModal on
+// purpose: that one is a native <dialog> opened with showModal(), so it lives in
+// the browser's top layer and would paint over a fixed-position sibling outside
+// it.
+const {
+  isOpen: linkPickerOpen,
+  initialHref: linkPickerInitialHref,
+  open: openLinkPicker,
+  close: closeLinkPicker,
+  onPicked: onLinkPicked,
+  onClear: onLinkClear,
+} = useLinkPickerHost(() => editorRef.value);
 const editorDocument = computed(() => ({
   id: props.card.path,
   path: props.card.path,

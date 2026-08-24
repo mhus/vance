@@ -114,8 +114,15 @@ const helpPath = computed<string | null>(() => resolveHelpPath(props.activeDocum
           @open-session="(id: string) => emit('open-session', id)"
         />
       </div>
+      <!-- Kept mounted (the panel holds a two-level position), so it is told
+           when it is on screen: everything it fetches follows the document in
+           the foreground, and doing that behind a hidden tab is work for
+           nobody. -->
       <div v-show="activeTab === 'threads'" class="h-full">
-        <CortexThreadsPanel :active-document="activeDocument" />
+        <CortexThreadsPanel
+          :active-document="activeDocument"
+          :visible="activeTab === 'threads'"
+        />
       </div>
       <div v-show="activeTab === 'help'" class="h-full">
         <CortexHelpPanel :help-path="helpPath" />

@@ -85,6 +85,12 @@ public class WorkbookApplication implements VanceApplication {
      * path, and a link stored last month should still resolve. The generated
      * {@code _index} is left out — it is derived, and a link into it would point
      * at something the next rebuild rewrites.
+     *
+     * <p>A page without an id or without any label is skipped rather than
+     * allowed to throw out of {@link AppTarget}'s constructor: both callers read
+     * an exception as "this app has no places", so one unusable row would cost
+     * the whole list — and "no places" is a normal answer that does not look
+     * like a failure.
      */
     @Override
     public List<AppTarget> targets(TargetsContext ctx) {
@@ -94,9 +100,13 @@ public class WorkbookApplication implements VanceApplication {
         List<AppTarget> out = new ArrayList<>(scan.pages().size());
         for (WorkbookPage page : scan.pages()) {
             String id = page.doc().getId();
-            if (id == null) continue;
+            if (id == null || id.isBlank()) continue;
             String label = page.title() != null && !page.title().isBlank()
                     ? page.title() : page.relativePath();
+            if (label == null || label.isBlank()) {
+                log.debug("workbook targets: page '{}' has no label — skipped", id);
+                continue;
+            }
             out.add(new AppTarget(id, label, blankToNull(page.section())));
         }
         return List.copyOf(out);

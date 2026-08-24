@@ -85,6 +85,13 @@ import org.springframework.web.server.ResponseStatusException;
 @Slf4j
 public class InboxController {
 
+    /**
+     * How many threads the by-document listing looks at. Same order as every
+     * other picker-shaped read in the house (the document search shows 40), and
+     * the panel it feeds is a narrow column without pagination.
+     */
+    private static final int BY_DOCUMENT_LIMIT = 40;
+
     private final MaximegalonService inboxItemService;
     private final InboxEffectRegistry effectRegistry;
     private final TeamService teamService;
@@ -174,6 +181,14 @@ public class InboxController {
      * answer can be <b>empty while threads exist</b>. The empty state therefore
      * says "no discussions", never "none you may see" — the second phrasing
      * would confirm existence, which is the thing the filter is protecting.
+     *
+     * <p>Bounded at {@link #BY_DOCUMENT_LIMIT}, and the bound is reported. How
+     * many threads a document collects is written by whatever automation posts
+     * them, so an unbounded read here is a promise about somebody else's
+     * behaviour. {@code truncated} means "there are older ones I did not look
+     * at" — deliberately not "there are more you may see", because the
+     * visibility filter runs after the window and counting past it would cost
+     * the very read the ceiling avoids.
      */
     @GetMapping("/brain/{tenant}/inbox/by-document/{documentId}")
     public InboxListResponse byDocument(
@@ -182,14 +197,20 @@ public class InboxController {
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
         String currentUser = currentUser(httpRequest);
+        // One more than we show: the extra row is how we learn that the window
+        // has an outside, without a second counting query.
+        List<MaximegalonDocument> page =
+                inboxItemService.listByDocument(tenant, documentId, BY_DOCUMENT_LIMIT + 1);
+        boolean truncated = page.size() > BY_DOCUMENT_LIMIT;
         List<MaximegalonDocument> visible = new ArrayList<>();
-        for (MaximegalonDocument doc : inboxItemService.listByDocument(tenant, documentId)) {
+        for (MaximegalonDocument doc : truncated ? page.subList(0, BY_DOCUMENT_LIMIT) : page) {
             if (inboxAuthz.maySee(tenant, currentUser, doc)) visible.add(doc);
         }
         List<MaximegalonDto> dtos = InboxMapper.toDtos(visible, inboxItemService.countMessages(
                 tenant, visible.stream().map(MaximegalonDocument::getId)
                         .filter(Objects::nonNull).toList()));
-        return InboxListResponse.builder().items(dtos).count(dtos.size()).build();
+        return InboxListResponse.builder()
+                .items(dtos).count(dtos.size()).truncated(truncated).build();
     }
 
     /**

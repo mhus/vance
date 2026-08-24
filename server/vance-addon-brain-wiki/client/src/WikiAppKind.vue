@@ -18,7 +18,12 @@ import {
   pollComposeRun,
   cancelComposeRun,
 } from '@vance/shared';
-import { useAppEntry, useDocumentPrefixReaction, VLinkPicker } from '@vance/components';
+import {
+  useAppEntry,
+  useDocumentPrefixReaction,
+  useLinkPickerHost,
+  VLinkPicker,
+} from '@vance/components';
 import {
   WorkPageEditor,
   parseDocument,
@@ -103,30 +108,16 @@ const editorRef = ref<{
   currentLinkHref: () => string | null;
 } | null>(null);
 
-// Link picker — the shared modal (project-document search + direct URL).
-// The block editor has no server access, so it delegates via the
-// `openLinkPicker` callback; the pick comes back here and we apply the
-// mark on the editor's current selection. Without this the editor falls
-// back to a bare window.prompt. Orthogonal to `[[wiki links]]`, which
+// Link picker (see `useLinkPickerHost`). Orthogonal to `[[wiki links]]`, which
 // have their own resolver pair.
-const linkPickerOpen = ref(false);
-const linkPickerInitialHref = ref<string | null>(null);
-function openLinkPicker() {
-  linkPickerInitialHref.value = editorRef.value?.currentLinkHref() ?? null;
-  linkPickerOpen.value = true;
-}
-function closeLinkPicker() {
-  linkPickerOpen.value = false;
-  linkPickerInitialHref.value = null;
-}
-function onLinkPicked(href: string, openInNewTab: boolean) {
-  editorRef.value?.applyLink(href, openInNewTab);
-  closeLinkPicker();
-}
-function onLinkClear() {
-  editorRef.value?.clearLink();
-  closeLinkPicker();
-}
+const {
+  isOpen: linkPickerOpen,
+  initialHref: linkPickerInitialHref,
+  open: openLinkPicker,
+  close: closeLinkPicker,
+  onPicked: onLinkPicked,
+  onClear: onLinkClear,
+} = useLinkPickerHost(() => editorRef.value);
 
 // ── Self-write quiet window — mirrors WorkbookAppKind. Suppresses the WS
 // echo of our own save so the ProseMirror doc (and cursor) isn't rebuilt.

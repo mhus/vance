@@ -88,6 +88,16 @@ public class WikiApplication implements VanceApplication {
      * person would type. A rename that changes the slug breaks it — that is the
      * same trade the wiki already makes for every wikilink in its pages, and
      * two identities for one page would be worse.
+     *
+     * <p><b>A page without a usable handle is skipped, not fatal.</b>
+     * {@code slugify} can return empty — {@code humanise} has a branch for it,
+     * so it is a case that happens (a file named {@code ###.md}) — and
+     * {@link AppTarget} rejects a blank handle by throwing. Letting that
+     * propagate would cost the <em>whole</em> list: both callers read an
+     * exception as "this app has no places", which is a normal answer and
+     * therefore does not look like a failure. Same rule as
+     * {@code AppShareHandler.accepts} applies inside an app: one broken page
+     * must not hide the others.
      */
     @Override
     public List<AppTarget> targets(TargetsContext ctx) {
@@ -98,6 +108,11 @@ public class WikiApplication implements VanceApplication {
         for (WikiPage page : scan.pages()) {
             String handle = page.space().isBlank()
                     ? page.slug() : page.space() + "/" + page.slug();
+            if (handle.isBlank()) {
+                log.debug("wiki targets: page '{}' has no addressable slug — skipped",
+                        page.relativePath());
+                continue;
+            }
             String label = page.title() != null && !page.title().isBlank()
                     ? page.title() : handle;
             out.add(new AppTarget(handle, label, page.space().isBlank() ? null : page.space()));

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VAlert, VButton, VEmptyState, VInput, VModal, VSelect, VTextarea } from '@/components';
 import { MaximegalonStatus, type MaximegalonDto } from '@vance/generated';
@@ -31,6 +31,17 @@ import type { CortexDocument } from '../types';
 const props = defineProps<{
   /** The document in the foreground, or {@code null} when no tab is open. */
   activeDocument: CortexDocument | null;
+  /**
+   * Whether this tab is the one on screen.
+   *
+   * <p>The panel is kept mounted across tab switches (its two-level position
+   * would be lost otherwise), which means every request it makes on a document
+   * change is made whether or not anybody is looking. The host therefore says
+   * when it is visible, and the fetches follow: the neighbouring chat panel
+   * makes the same distinction, only the other way round — it is expensive to
+   * build, so it is mounted behind a condition and only *hidden* by v-show.
+   */
+  visible?: boolean;
 }>();
 
 const { t } = useI18n();
@@ -48,10 +59,37 @@ const openThreadId = ref<string | null>(null);
 
 const documentId = computed<string | null>(() => props.activeDocument?.id ?? null);
 
+/**
+ * Set when the document changed while the tab was hidden. The list is then
+ * fetched on the way in rather than on the way past — a reader who never opens
+ * Discussion never pays for it, and one who does sees the current document's
+ * threads, not the previous document's.
+ */
+const stale = ref(true);
+
 watch(documentId, async (id) => {
   openThreadId.value = null;
   inbox.clearSelection();
-  if (id) await inbox.loadForDocument(id);
+  if (!id) {
+    stale.value = false;
+    return;
+  }
+  if (!props.visible) {
+    stale.value = true;
+    return;
+  }
+  stale.value = false;
+  await inbox.loadForDocument(id);
+}, { immediate: true });
+
+// Becoming visible with a document whose threads were never fetched (or fetched
+// for a different document) is the other half of the same rule.
+watch(() => props.visible, async (isVisible) => {
+  if (!isVisible || !stale.value) return;
+  const id = documentId.value;
+  if (!id) return;
+  stale.value = false;
+  await inbox.loadForDocument(id);
 }, { immediate: true });
 
 async function openThread(item: MaximegalonDto): Promise<void> {
@@ -101,11 +139,27 @@ const assigneeOptions = computed(() => {
   ];
 });
 
-// The team list has to be fetched, not just read: without this the recipient
-// dropdown offers only "mine" and the feature looks half-built.
-onMounted(() => { void teamsState.reload(); });
+/**
+ * The team list has to be fetched, not just read: without it the recipient
+ * dropdown offers only "mine" and the feature looks half-built.
+ *
+ * <p>Fetched when the dialog opens, not on mount. The panel is mounted for
+ * every Cortex session whether or not anyone opens Discussion, and this list is
+ * needed by one dropdown inside one modal — a request nobody waits for is still
+ * a request every boot makes. Once is enough; the membership does not change
+ * while a dialog is open.
+ */
+let teamsLoaded = false;
+async function ensureTeams(): Promise<void> {
+  if (teamsLoaded) return;
+  await teamsState.reload();
+  // Marked loaded only on success: a failed fetch leaves the dropdown with just
+  // "Mine", and the next attempt at the dialog is the natural place to retry.
+  teamsLoaded = teamsState.error.value === null;
+}
 
 function openDialog(): void {
+  void ensureTeams();
   // Prefilled with the document's name: a discussion about a document almost
   // always starts by naming it, and an empty title field invites "Frage".
   newTitle.value = props.activeDocument?.title || props.activeDocument?.name || '';
@@ -300,6 +354,12 @@ function when(at: Date | string | undefined): string {
             </div>
           </li>
         </ul>
+        <!-- The server stopped at its ceiling. Said explicitly: this column has
+             no pagination, so a cut list would otherwise read as complete. -->
+        <p
+          v-if="inbox.itemsTruncated.value"
+          class="px-3 py-2 text-xs opacity-60 border-t border-base-300"
+        >{{ t('cortexThreads.truncated', { count: inbox.items.value.length }) }}</p>
       </template>
 
       <!-- Level 2: one thread. The question, then the clarification. -->

@@ -100,7 +100,17 @@ public class BrainSchemaMigrations implements SchemaMigrationSource {
             // right — and unlike most entries, skipping this one costs only two
             // unused indexes, never a wrong read.
             new Registered("2026-08-24_002",
-                    Migrator_2026_08_24_002_MegadodoFeedIndexes.class));
+                    Migrator_2026_08_24_002_MegadodoFeedIndexes.class),
+            // runOnBaseline, and it travels with 2026-08-23_002/_003 for the
+            // same reason they do: on the baseline path the rename brings the
+            // inbox rows across, and a merely-stamped move would leave every
+            // one of them with a document reference under a key nothing reads
+            // any more. That failure is silent — a thread without a link looks
+            // like a thread that never had one. Self-emptying filter, so on a
+            // genuinely new database it costs one query.
+            new Registered("2026-08-24_003",
+                    Migrator_2026_08_24_003_ThreadDocumentRef.class,
+                    /*runOnBaseline*/ true));
 
     @Override
     public List<Registered> migrations() {

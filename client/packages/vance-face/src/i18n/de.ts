@@ -132,6 +132,7 @@ export default {
     newCancel: 'Abbrechen',
     newConfirm: 'Eröffnen',
     backToList: 'Zurück zur Liste',
+    truncated: 'Die neuesten {count} — ältere Diskussionen sind nicht aufgeführt.',
   },
   inboxThread: {
     addReaction: 'Reaktion hinzufügen',

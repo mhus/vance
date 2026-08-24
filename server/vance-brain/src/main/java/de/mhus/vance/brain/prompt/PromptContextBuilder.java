@@ -66,6 +66,17 @@ import org.jspecify.annotations.Nullable;
  */
 public final class PromptContextBuilder {
 
+    private static final System.Logger log =
+            System.getLogger(PromptContextBuilder.class.getName());
+
+    /**
+     * What an identifier the brain issued looks like: a Mongo ObjectId, a UUID,
+     * a generated message id. Used for the {@code activeInbox} ids, which are
+     * the only client-supplied values in this map that a template renders into
+     * a system-prompt sentence unwrapped.
+     */
+    private static final Pattern ID_SHAPE = Pattern.compile("[A-Za-z0-9_-]{1,64}");
+
     private final Map<String, Object> map = new LinkedHashMap<>();
 
     private PromptContextBuilder() {}
@@ -210,19 +221,56 @@ public final class PromptContextBuilder {
      * belongs. Only ids travel — the thread is read with {@code thread_get}.
      *
      * <p>Per-turn, never persisted beyond the pending message.
+     *
+     * <p><b>Both values are checked against the id shape here, and this is the
+     * only place that can.</b> They arrive from a client frame that reaches the
+     * engine through {@code objectMapper.convertValue} — no bean validation runs
+     * on that path, so the constraints on {@link ActiveInboxContext} are
+     * documentation, not a gate. And unlike every other piece of foreign text in
+     * a prompt, this one is not wrapped or marked: the template renders it as
+     * part of a system-prompt sentence. In a multi-user session that means one
+     * participant's frame would otherwise decide what the shared session's
+     * system prompt says.
+     *
+     * <p>A value that is not id-shaped drops the whole hint rather than being
+     * escaped or truncated: the ids exist to be handed to {@code thread_get},
+     * and one that cannot be a thread id is not a reference we should resolve.
+     * Absent is a state the templates already handle.
      */
     public PromptContextBuilder activeInbox(
             @Nullable ActiveInboxContext activeInbox) {
-        if (activeInbox != null && activeInbox.getThreadId() != null
-                && !activeInbox.getThreadId().isBlank()) {
-            Map<String, Object> view = new LinkedHashMap<>();
-            view.put("threadId", activeInbox.getThreadId());
-            if (activeInbox.getMessageId() != null && !activeInbox.getMessageId().isBlank()) {
-                view.put("messageId", activeInbox.getMessageId());
+        if (activeInbox == null || !isIdShaped(activeInbox.getThreadId())) {
+            if (activeInbox != null) {
+                log.log(System.Logger.Level.TRACE,
+                        "activeInbox dropped — threadId is not id-shaped");
             }
-            map.put("activeInbox", view);
+            return this;
         }
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("threadId", activeInbox.getThreadId());
+        String messageId = activeInbox.getMessageId();
+        if (messageId != null && !messageId.isBlank()) {
+            // A bad messageId costs the message, not the thread: the reader does
+            // have the thread open, and that half of the reference is still true.
+            if (isIdShaped(messageId)) {
+                view.put("messageId", messageId);
+            } else {
+                log.log(System.Logger.Level.TRACE,
+                        "activeInbox.messageId dropped — not id-shaped");
+            }
+        }
+        map.put("activeInbox", view);
         return this;
+    }
+
+    /**
+     * Whether {@code raw} could be an identifier the brain issued — a Mongo
+     * ObjectId, a UUID, a generated message id. Deliberately a whitelist: the
+     * question is not "does it contain something dangerous" (an unanswerable
+     * question about prompt text) but "is it one of ours".
+     */
+    private static boolean isIdShaped(@Nullable String raw) {
+        return raw != null && !raw.isBlank() && ID_SHAPE.matcher(raw).matches();
     }
 
     /**

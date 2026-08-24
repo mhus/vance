@@ -282,6 +282,28 @@ class MaximegalonServiceTest {
 
     // ──── helpers ───────────────────────────────────────────────────────
 
+    // ──── Threads about one document ────────────────────────────────────
+
+    @Test
+    void listByDocument_appliesTheCallersCeiling() {
+        // How many threads a document collects is written by whatever automation
+        // posts them, so this read must not be a promise about somebody else's
+        // behaviour. The caller asks for one more than it shows and learns from
+        // the extra row that it is looking at a window.
+        when(mongoTemplate.find(any(Query.class), eq(MaximegalonDocument.class)))
+                .thenReturn(List.of());
+        ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
+
+        service.listByDocument("acme", "doc-1", 41);
+
+        verify(mongoTemplate).find(query.capture(), eq(MaximegalonDocument.class));
+        assertThat(query.getValue().getLimit()).isEqualTo(41);
+        assertThat(query.getValue().getQueryObject().toJson())
+                .contains("documentRef.documentId").contains("doc-1");
+        // Messages stay behind: a discussion list wants titles.
+        assertThat(query.getValue().getFieldsObject().toJson()).contains("messages");
+    }
+
     private static MaximegalonDocument.MaximegalonDocumentBuilder item(String tenant, String assignee) {
         return MaximegalonDocument.builder()
                 .tenantId(tenant)

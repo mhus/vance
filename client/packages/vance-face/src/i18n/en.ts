@@ -138,6 +138,7 @@ export default {
     newCancel: 'Cancel',
     newConfirm: 'Open',
     backToList: 'Back to the list',
+    truncated: 'Showing the newest {count} — older discussions are not listed.',
   },
   inboxThread: {
     addReaction: 'Add a reaction',

@@ -3,6 +3,7 @@ package de.mhus.vance.api.thinkprocess;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -40,8 +41,26 @@ import org.jspecify.annotations.Nullable;
 @GenerateTypeScript("thinkprocess")
 public class ActiveInboxContext {
 
-    /** The thread the reader has open in the inbox panel. Required. */
+    /**
+     * The thread the reader has open in the inbox panel. Required.
+     *
+     * <p>The pattern is the shape of an identifier the brain issued — Mongo
+     * ObjectId, UUID, generated message id.
+     *
+     * <p><b>These constraints are documentation, not the gate.</b> This request
+     * arrives over the WebSocket and is deserialized with
+     * {@code objectMapper.convertValue}, where no bean validation runs. The
+     * enforcing check is in {@code PromptContextBuilder.activeInbox}, and it has
+     * to be there: that is the point where the value would otherwise be rendered
+     * into a system-prompt sentence unwrapped.
+     *
+     * <p>Spelled out twice rather than pulled into a constant: the TS generator
+     * turns every {@code static final} on an annotated class into an exported
+     * const, and {@code @vance/generated}'s barrel is flat — a name as generic
+     * as {@code ID_PATTERN} has no business in it.
+     */
     @NotBlank
+    @Pattern(regexp = "[A-Za-z0-9_-]{1,64}")
     private String threadId;
 
     /**
@@ -49,5 +68,6 @@ public class ActiveInboxContext {
      * {@code null} when they have the thread open without singling anything out.
      */
     @Nullable
+    @Pattern(regexp = "[A-Za-z0-9_-]{1,64}")
     private String messageId;
 }

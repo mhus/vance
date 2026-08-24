@@ -41,6 +41,12 @@ function encodeAssignedTo(a: AssignedToFilter): string | null {
  */
 export function useInbox(): {
   items: Ref<MaximegalonDto[]>;
+  /**
+   * True when the last load hit the server's ceiling and older threads were
+   * not looked at. Only the by-document listing can set it; the filtered
+   * inbox list returns everything it matched.
+   */
+  itemsTruncated: Ref<boolean>;
   selected: Ref<MaximegalonDto | null>;
   /** Server-rendered facts for the selected item's effect, if it has one. */
   effect: Ref<EffectDescription | null>;
@@ -74,6 +80,7 @@ export function useInbox(): {
   react: (id: string, key: string, on: boolean, messageId?: string | null) => Promise<boolean>;
 } {
   const items = ref<MaximegalonDto[]>([]);
+  const itemsTruncated = ref(false);
   const selected = ref<MaximegalonDto | null>(null);
   const effect = ref<EffectDescription | null>(null);
   const tags = ref<string[]>([]);
@@ -104,6 +111,10 @@ export function useInbox(): {
         qs ? `inbox?${qs}` : 'inbox',
       );
       items.value = data.items ?? [];
+      // The filtered list returns everything it matched, so this is always
+      // false here — set rather than left alone, because the flag belongs to
+      // whatever is currently in `items`.
+      itemsTruncated.value = false;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load inbox.';
     } finally {
@@ -127,9 +138,13 @@ export function useInbox(): {
       const data = await brainFetch<InboxListResponse>(
         'GET', `inbox/by-document/${encodeURIComponent(documentId)}`);
       items.value = data.items ?? [];
+      // Said, not implied: a list cut at the ceiling reads as "that is all of
+      // them", and the panel has no pagination to discover otherwise.
+      itemsTruncated.value = data.truncated === true;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load discussions.';
       items.value = [];
+      itemsTruncated.value = false;
     } finally {
       loading.value = false;
     }
@@ -439,6 +454,7 @@ export function useInbox(): {
 
   return {
     items,
+    itemsTruncated,
     selected,
     effect,
     tags,

@@ -299,11 +299,20 @@ public class MaximegalonService {
      *
      * <p>Messages are projected out, as in {@link #listFiltered}: a discussion
      * list wants titles.
+     *
+     * <p><b>Bounded.</b> Every neighbouring read has a ceiling ({@code
+     * inbox_list} clamps at 50, the document search at 200) and this one needs
+     * it more than most: the number of threads about one document is written by
+     * whatever automation posts them, not by a person. The caller asks for one
+     * more than it wants to show and learns from the extra row that it is
+     * looking at a window. Sorted newest-first, so the window is the useful end.
      */
-    public List<MaximegalonDocument> listByDocument(String tenantId, String documentId) {
+    public List<MaximegalonDocument> listByDocument(
+            String tenantId, String documentId, int limit) {
         Query query = Query.query(Criteria.where(F_TENANT).is(tenantId)
                         .and(F_DOC_REF_ID).is(documentId))
-                .with(Sort.by(Sort.Direction.DESC, "createdAt"));
+                .with(Sort.by(Sort.Direction.DESC, "createdAt"))
+                .limit(Math.max(1, limit));
         query.fields().exclude(F_MESSAGES);
         return mongoTemplate.find(query, MaximegalonDocument.class);
     }

@@ -13,6 +13,15 @@ export interface RunnerDocument {
   path: string;
   mimeType?: string | null;
   kind?: string | null;
+  /**
+   * Current editor body, when the host has it loaded. Matchers that
+   * key on a declaration inside the document (the JS runner reads the
+   * {@code @server} header tag) need the content, not just the path.
+   * {@code null} / absent while a tab is still loading — a matcher
+   * must read that as "not declared" and re-evaluate once the body
+   * arrives.
+   */
+  inlineText?: string | null;
 }
 
 /**

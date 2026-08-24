@@ -1,6 +1,7 @@
 import type { CortexDocument } from './types';
 import { resolveBinding } from './docTypeRegistry';
 import { resolveRunAdapter } from './runners/runnerRegistry';
+import { isJsDocument } from './runners/jsDocument';
 
 /**
  * Default Cortex help — covers the generic UX (tabs, View/Edit toggle,
@@ -38,9 +39,12 @@ const BINDING_HELP: Record<string, string> = {
  * Resolve which help file to show for the given document. Lookup
  * order:
  *
- *  1. If a {@link resolveRunAdapter run adapter} matches the doc, its
- *     own help wins — the user just ran (or is about to run) a script;
- *     ScriptCortex's help is the most useful thing to surface.
+ *  1. Script languages win — the user just ran (or is about to write)
+ *     a script; the script help is the most useful thing to surface.
+ *     JS is keyed on the language rather than on a matching
+ *     {@link resolveRunAdapter run adapter}: a frontend script without
+ *     the {@code @server} header tag has no adapter but the very same
+ *     header / validate documentation applies.
  *  2. Hand-rolled binding mapping (see {@link BINDING_HELP}).
  *  3. Kind-registry binding → {@code doc-kind-<kindId>.md} (convention).
  *  4. {@link DEFAULT_HELP_PATH} as the final fallback.
@@ -51,9 +55,8 @@ const BINDING_HELP: Record<string, string> = {
 export function resolveHelpPath(doc: CortexDocument | null): string {
   if (!doc) return DEFAULT_HELP_PATH;
 
-  const adapter = resolveRunAdapter(doc);
-  if (adapter?.id === 'js') return 'script-cortex.md';
-  if (adapter?.id === 'py') return 'python-cortex.md';
+  if (isJsDocument(doc)) return 'script-cortex.md';
+  if (resolveRunAdapter(doc)?.id === 'py') return 'python-cortex.md';
 
   const binding = resolveBinding(doc);
   if (binding.mode === 'kind-registry' && binding.kindEntry) {

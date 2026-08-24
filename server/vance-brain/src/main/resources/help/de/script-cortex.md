@@ -15,10 +15,12 @@ JavaScript-Snippets überall ablegen, z.B.:
   virtuelle Tools eingehängt werden.
 - Jeder andere Pfad — Script Cortex zwingt keine Struktur auf.
 
-Die Ausführbarkeit hängt allein an der **Extension**, nicht am
+Womit der Editor umgeht, hängt an der **Extension**, nicht am
 Ablage-Ort:
 
-- **`.js`** — ausführbares JavaScript. Hat einen **Execute**-Button.
+- **`.js`** — JavaScript. Ob es im Brain ausgeführt werden kann,
+  entscheidet der Header (siehe „Server-Script oder Frontend-Script"
+  direkt unten).
 - **`.json`** — statische Daten. Wird später per
   `vance.script.load(pfad)` aus anderen Scripten geladen.
 - **`.md`** — Markdown-Notizen. Nützlich um ein Script-Bundle zu
@@ -30,6 +32,40 @@ den Ordner `utils/math/` in der Sidebar an. Beim Neu-Anlegen wird
 `scripts/` als Default vorgeschlagen; du kannst jeden anderen
 Projekt-Pfad eintippen.
 
+## Server-Script oder Frontend-Script — `@server`
+
+Im Cortex liegen zwei Sorten JavaScript nebeneinander: **Server-
+Scripte**, die in der GraalJS-Sandbox des Brains laufen, und
+**Frontend-Scripte**, die dort nichts zu suchen haben. Beide sind
+`.js`, die Endung kann sie also nicht unterscheiden — deshalb sagt es
+der Author selbst, mit einer Zeile im Header:
+
+```js
+/**
+ * @server
+ */
+```
+
+`@server` ist ein **reines Flag ohne Wert**. Steht es im ersten
+JSDoc-Block, ist das Dokument ein Server-Script; fehlt es, ist es ein
+Frontend-Script.
+
+Was daran hängt:
+
+| | mit `@server` | ohne `@server` |
+|---|---|---|
+| **▶ Run JS** | ja | nein — der Brain würde das Script nicht sinnvoll ausführen |
+| **✨ Update** | ja | nein — Slart schreibt gegen die server-seitige `vance.*`-API |
+| **✓ Validate** | ja | **ja** — Syntax und Review gelten für beide |
+| **✨ Generate** | ja | ja (nur bei leerer Datei; das Ergebnis ist ein Server-Script) |
+
+Der Rest dieser Hilfe beschreibt Server-Scripte: `args`, `vance.*`,
+Timeouts, Execute-Verhalten. Für ein Frontend-Script ist davon nur
+der Validate-Teil relevant.
+
+Fehlt der Run-Button an einem Script, das eigentlich im Brain laufen
+soll, dann fehlt fast immer nur diese eine Header-Zeile.
+
 ## Leeres Script — Standard-Vorlage
 
 Eine neue `.js`-Datei startet leer. Die typische Form ist eine
@@ -38,6 +74,7 @@ sofort-aufgerufene Funktion (IIFE), die einen Wert zurückgibt:
 ```js
 /**
  * @description was dieses Script macht
+ * @server
  * @timeout     5s
  */
 (function () {
@@ -89,6 +126,9 @@ for (var i = 0; i < N; i++) {
 
 Optional, aber praktisch:
 
+- `@server` — Flag ohne Wert: dieses Script darf im Brain laufen.
+  Ohne die Zeile gibt es kein **▶ Run JS** und kein **✨ Update**
+  (siehe oben).
 - `@timeout 30s` — Wall-Clock-Limit (Default 30s, max 1h).
 - `@description ...` — taucht in der Script-Liste auf.
 
@@ -97,14 +137,19 @@ Tag-Werte schlagen fail-fast vor dem Eval fehl.
 
 ## Validieren
 
-Zwei Buttons im rechten Panel (wenn Hilfe geschlossen ist):
+Zwei Buttons direkt in der Kopfzeile des Dokuments, für jedes `.js`
+— auch für ein Frontend-Script ohne `@server`:
 
-- **Quick Validate** — Parser-only-Check. Findet Syntax-Errors,
+- **✓ Validate** — Parser-only-Check. Findet Syntax-Errors,
   unschlossene Strings, kaputte Header. Kostenlos, instant.
-- **Deep Validate (LLM)** — schickt das Script an ein kleines Modell,
+- **🔍 Deep Review (LLM)** — schickt das Script an ein kleines Modell,
   das verdächtige Patterns flaggt: Endlosschleifen, Blocking-I/O,
   fehlende Returns, Header-Anomalien. Cached pro Content-Hash, also
   bei unverändertem Script kommt das Ergebnis instant aus dem Cache.
+
+Beide Ergebnisse landen in einem Panel unter dem Editor — der Code,
+auf den die Warnungen zeigen, bleibt dabei sichtbar. Das Panel
+schließt mit ✕ und geht beim nächsten Lauf wieder auf.
 
 Der Deep-Review-Cache überlebt Reloads — beim erneuten Öffnen einer
 Datei sagt das Banner entweder *"matches current"* (grün) oder

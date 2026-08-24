@@ -16,9 +16,11 @@ JavaScript snippets anywhere in the project tree:
   mounts as virtual tools.
 - Any other path — Script Cortex imposes no structure.
 
-Executability hangs on the **extension**, not the location:
+What the editor makes of a file hangs on the **extension**, not the
+location:
 
-- **`.js`** — executable JavaScript. Has an **Execute** button.
+- **`.js`** — JavaScript. Whether the brain can execute it is decided
+  by the header — see "Server script or frontend script" right below.
 - **`.json`** — static data. Loaded with `vance.script.load(path)` from
   other scripts (planned).
 - **`.md`** — Markdown notes. Useful for documenting a script bundle.
@@ -30,6 +32,40 @@ pre-fills `scripts/` at root level; type any other project path you
 want. Move a file by renaming its path (path-edits land in a
 follow-up — v1 keeps the create path stable).
 
+## Server script or frontend script — `@server`
+
+Two kinds of JavaScript live side by side in the Cortex: **server
+scripts**, which run in the brain's GraalJS sandbox, and **frontend
+scripts**, which have no business running there. Both are `.js`, so
+the extension cannot tell them apart — the author says so instead,
+with one line in the header:
+
+```js
+/**
+ * @server
+ */
+```
+
+`@server` is a **bare flag, no value**. Present in the first JSDoc
+block, the document is a server script; absent, it is a frontend
+script.
+
+What follows from it:
+
+| | with `@server` | without `@server` |
+|---|---|---|
+| **▶ Run JS** | yes | no — the brain could not meaningfully execute it |
+| **✨ Update** | yes | no — Slart writes against the server-side `vance.*` API |
+| **✓ Validate** | yes | **yes** — syntax and review apply to both |
+| **✨ Generate** | yes | yes (empty file only; what it writes is a server script) |
+
+The rest of this help describes server scripts: `args`, `vance.*`,
+timeouts, execute behaviour. For a frontend script only the Validate
+part applies.
+
+When the Run button is missing on a script that is meant to run in
+the brain, it is almost always just this one header line.
+
 ## Writing a script — the empty template
 
 A new `.js` file starts blank. The most common shape is an immediately
@@ -38,6 +74,7 @@ invoked function expression (IIFE) that returns a value:
 ```js
 /**
  * @description what this script does
+ * @server
  * @timeout     5s
  */
 (function () {
@@ -89,6 +126,9 @@ for (var i = 0; i < N; i++) {
 
 Optional, but useful:
 
+- `@server` — bare flag, no value: this script may run in the brain.
+  Without the line there is no **▶ Run JS** and no **✨ Update**
+  (see above).
 - `@timeout 30s` — wall-clock cap (defaults to 30s, max 1h).
 - `@description ...` — shows up in script-listings.
 
@@ -97,14 +137,19 @@ values fail-fast before evaluation.
 
 ## Validate
 
-Two buttons live in the right panel (when help is closed):
+Two buttons sit in the document header line, for every `.js` — a
+frontend script without `@server` included:
 
-- **Quick Validate** — parser-only check. Catches syntax errors,
+- **✓ Validate** — parser-only check. Catches syntax errors,
   unterminated strings, malformed headers. Free, instantaneous.
-- **Deep Validate (LLM)** — sends the script to a small model that
+- **🔍 Deep Review (LLM)** — sends the script to a small model that
   flags suspect patterns: infinite loops, blocking I/O, missing
   returns, header anomalies. Cached per content-hash, so re-running
   on an unchanged script returns the cached result instantly.
+
+Both results land in a panel below the editor, so the code the
+warnings point at stays visible. Close it with ✕; the next run
+reopens it.
 
 A Deep-Review cache survives reloads — when you re-open a file the
 banner says either *"matches current"* (green) or *"content has

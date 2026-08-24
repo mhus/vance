@@ -94,6 +94,7 @@ public class JsScriptArchitect implements SchemaArchitect {
 
                 /**
                  * @description <one-line human description>
+                 * @server
                  * @version     1.0.0
                  * @timeout     <duration: 30s | 10m | 1h>
                  * @statements  <count: 1M | 5M>
@@ -168,6 +169,10 @@ public class JsScriptArchitect implements SchemaArchitect {
 
             ## Required tags
 
+            - `@server` MUST be present as a bare flag line (no
+              value). It marks the script as server-side; the Cortex
+              editor only offers Run / Update for scripts that carry
+              it, so a generated script without it lands unrunnable.
             - `@requiresTools` MUST list every tool the script
               actually calls via `vance.tools.call`. Hactar uses
               this to fail-fast before execution if the caller's

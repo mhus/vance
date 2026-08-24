@@ -37,10 +37,12 @@ import { useCortexStore } from '../stores/cortexStore';
 import { resolveBinding } from '../docTypeRegistry';
 import { useViewEditMode } from '../useViewEditMode';
 import { resolveRunAdapter } from '../runners/runnerRegistry';
+import { hasServerTag, isJsDocument } from '../runners/jsDocument';
 import type { RunHandle } from '../runners/types';
 import { useDocumentNotes } from '../composables/useDocumentNotes';
+import { useScriptValidation } from '../composables/useScriptValidation';
 import { useStarredStore } from '@/starred/starredStore';
-import CortexValidateDialog from './CortexValidateDialog.vue';
+import CortexValidatePanel from './CortexValidatePanel.vue';
 import CortexHactarDialog from './CortexHactarDialog.vue';
 import DocumentPropertiesPanel from './DocumentPropertiesPanel.vue';
 import DocumentNotesPanel from './DocumentNotesPanel.vue';
@@ -609,20 +611,35 @@ onBeforeUnmount(() => {
   }
 });
 
-// ─── Validate + Hactar dialogs (JS-only for V1) ─────────────────
+// ─── Validate + Hactar (JS-only for V1) ─────────────────────────
 //
-// Both gated by {@code runAdapter.id === 'js'} — Python / Shell
-// runners later get their own (or none); the per-language gating
-// keeps the toolbar from showing buttons whose endpoint would 404.
+// Gated on the *language*, not on the run adapter: validating and
+// generating work for a frontend script just as well as for a
+// server-side one, while Run needs the `@server` header tag. Python /
+// Shell get their own (or none); the per-language gating keeps the
+// toolbar from showing buttons whose endpoint would 404.
+//
+// Quick and deep validate are two toolbar buttons of their own — the
+// modal that used to offer both behind one "Validate" button was a
+// click that never carried a decision, and it covered the code its
+// warnings point at. Output goes to the inline panel below the editor.
 
-const showValidate = ref(false);
+const validation = useScriptValidation(() => props.document);
 const showSlart = ref(false);
 /** Mode the script-generate dialog opens in. {@code 'CREATE'} blanks
  *  the editor context; {@code 'UPDATE'} includes the current body
  *  and (optionally) the prior run-failure reason from the run panel. */
 const slartMode = ref<'CREATE' | 'UPDATE'>('CREATE');
 
-const isJsLanguage = computed<boolean>(() => runAdapter.value?.id === 'js');
+const isJsLanguage = computed<boolean>(() => isJsDocument(props.document));
+
+/** JS that declares {@code @server} — the brain may execute it, and
+ *  Slart's SCRIPT_JS architect (which writes against the server-side
+ *  `vance.*` API) is the right tool to rewrite it. A frontend script
+ *  is neither. */
+const isServerScript = computed<boolean>(
+  () => isJsLanguage.value && hasServerTag(props.document.inlineText),
+);
 
 /** Heuristic: editor is "empty" when there is no content yet (new
  *  doc) or only whitespace. Drives which of the two architect
@@ -789,15 +806,28 @@ function fmtDuration(ms: number | null): string {
           placeholder="{}"
         />
       </template>
-      <!-- JS-only side actions. Hactar generates / improves a script
-           via LLM; Validate runs quick (parse) + deep (LLM review). -->
+      <!-- JS-only side actions. Validate runs quick (parse) + deep
+           (LLM review) and applies to any JS. Slart writes server-side
+           SCRIPT_JS, so Update only shows for a document that declares
+           `@server`; Generate stays on an empty file — that is the
+           bootstrap path, and the script it writes carries the tag. -->
       <template v-if="isJsLanguage">
         <button
           type="button"
-          class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200"
-          title="Validate (quick + deep)"
-          @click="showValidate = true"
-        >✓ Validate</button>
+          class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200
+                 disabled:opacity-50 disabled:cursor-default"
+          :disabled="validation.quickBusy.value"
+          title="Quick validate — parse + header check"
+          @click="validation.runQuick()"
+        >{{ validation.quickBusy.value ? '⏳' : '✓' }} Validate</button>
+        <button
+          type="button"
+          class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200
+                 disabled:opacity-50 disabled:cursor-default"
+          :disabled="validation.deepBusy.value"
+          title="Deep review — LLM static review (slow, cached server-side)"
+          @click="validation.runDeep()"
+        >{{ validation.deepBusy.value ? '⏳' : '🔍' }} Deep Review</button>
         <button
           v-if="!editorHasContent"
           type="button"
@@ -806,7 +836,7 @@ function fmtDuration(ms: number | null): string {
           @click="openSlart('CREATE')"
         >✨ Generate</button>
         <button
-          v-else
+          v-else-if="isServerScript"
           type="button"
           class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200"
           title="Update this script — describe the change and Slart rewrites it preserving structure"
@@ -1056,6 +1086,15 @@ function fmtDuration(ms: number | null): string {
       </div>
     </div>
 
+    <!-- Validate results — same shape as the run log panel, and open
+         alongside it: a deep review of the script that just failed is
+         exactly when both are wanted at once. -->
+    <CortexValidatePanel
+      v-if="validation.open.value"
+      :document="document"
+      :validation="validation"
+    />
+
       </div>
       <DocumentNotesPanel
         v-if="notesOpen && !isAppView"
@@ -1069,11 +1108,6 @@ function fmtDuration(ms: number | null): string {
       />
     </div>
 
-    <CortexValidateDialog
-      v-if="showValidate"
-      :document="document"
-      @close="showValidate = false"
-    />
     <CortexHactarDialog
       v-if="showSlart && store.projectId"
       :document="document"

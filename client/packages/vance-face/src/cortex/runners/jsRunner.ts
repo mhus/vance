@@ -12,23 +12,7 @@ import type {
   RunState,
   RunnerDocument,
 } from '@vance/runner-registry';
-
-const JS_MIMES = new Set([
-  'text/javascript',
-  'application/javascript',
-  'application/x-javascript',
-  'application/x-mjs',
-  'text/x-javascript',
-]);
-
-const JS_EXTS = ['.js', '.mjs', '.mjsh'];
-
-function isJsDocument(doc: RunnerDocument): boolean {
-  const m = (doc.mimeType ?? '').toLowerCase().trim();
-  if (m && JS_MIMES.has(m)) return true;
-  const p = doc.path.toLowerCase();
-  return JS_EXTS.some((ext) => p.endsWith(ext));
-}
+import { hasServerTag, isJsDocument } from './jsDocument';
 
 /**
  * JS-execution adapter: drives the brain's {@code scripts/execute}
@@ -39,11 +23,19 @@ function isJsDocument(doc: RunnerDocument): boolean {
  * <p>Drives the run inline below the editor (no modal). Same backend
  * endpoints the deleted Script-Cortex modal used — only the UI
  * shape changed.
+ *
+ * <p>Matching takes two facts: the document is JavaScript <em>and</em>
+ * its header declares {@code @server}. Being JS is not enough — the
+ * same editor holds frontend scripts, and offering to run those in
+ * the brain would be an offer that cannot work. The language-level
+ * actions (Validate, Generate / Update) are not gated on this
+ * adapter; see {@link isJsDocument}.
  */
 export const jsRunner: RunAdapter = {
   id: 'js',
   label: 'Run JS',
-  matches: isJsDocument,
+  matches: (doc: RunnerDocument) =>
+    isJsDocument(doc) && hasServerTag(doc.inlineText),
   async execute({ doc, projectId, args }: RunInput): Promise<RunHandle> {
     const state: Ref<RunState> = ref('starting');
     const logLines: Ref<string[]> = ref([]);

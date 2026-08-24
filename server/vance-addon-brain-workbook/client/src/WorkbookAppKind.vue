@@ -9,7 +9,7 @@ import {
   pollComposeRun,
   cancelComposeRun,
 } from '@vance/shared';
-import { useDocumentPrefixReaction, usePointers } from '@vance/components';
+import { useDocumentPrefixReaction, usePointers, VLinkPicker } from '@vance/components';
 import { getUsername } from '@vance/shared/auth';
 import { WorkPageEditor, parseDocument, type ComposeRunResult } from '@vance/block-editor';
 import {
@@ -25,7 +25,6 @@ import {
 } from './api';
 import AssetPickerModal from './AssetPickerModal.vue';
 import EmojiPickerModal from './EmojiPickerModal.vue';
-import LinkPickerModal from './LinkPickerModal.vue';
 import EmbedPickerModal from './EmbedPickerModal.vue';
 import FormPickerModal from './FormPickerModal.vue';
 import InputPickerModal from './InputPickerModal.vue';
@@ -1802,7 +1801,7 @@ onBeforeUnmount(() => {
           @remove="removeIcon"
           @close="closeIconPicker"
         />
-        <LinkPickerModal
+        <VLinkPicker
           v-if="linkPickerOpen"
           :project-id="projectId"
           :initial-href="linkPickerInitialHref"

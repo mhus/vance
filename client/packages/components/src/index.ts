@@ -29,6 +29,7 @@ export { default as VEmojiPicker } from './VEmojiPicker.vue';
 export { default as VEmptyState } from './VEmptyState.vue';
 export { default as VFileInput } from './VFileInput.vue';
 export { default as VInput } from './VInput.vue';
+export { default as VLinkPicker } from './VLinkPicker.vue';
 export { default as VModal } from './VModal.vue';
 export { default as VPagination } from './VPagination.vue';
 export { default as VSelect } from './VSelect.vue';

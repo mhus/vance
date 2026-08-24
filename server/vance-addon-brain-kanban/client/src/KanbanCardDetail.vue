@@ -5,6 +5,7 @@ import {
   VCheckbox,
   VColorPicker,
   VInput,
+  VLinkPicker,
   VModal,
   VSelect,
   VTagEditor,
@@ -79,7 +80,41 @@ let latestBody = props.card.body ?? '';
 // the editor's parse→serialize round-trip is not byte-identical to the
 // on-disk source, so an untouched body must never look changed.
 const bodyDirty = ref(false);
-const editorRef = ref<{ save: () => void; flush: () => boolean } | null>(null);
+const editorRef = ref<{
+  save: () => void;
+  flush: () => boolean;
+  applyLink: (href: string, openInNewTab?: boolean) => void;
+  clearLink: () => void;
+  currentLinkHref: () => string | null;
+} | null>(null);
+
+// Link picker — the shared modal (project-document search + direct URL).
+// The block editor has no server access, so it delegates via the
+// `openLinkPicker` callback; the pick comes back here and we apply the
+// mark on the editor's current selection. Without this the editor falls
+// back to a bare window.prompt.
+//
+// Rendered INSIDE the content VModal on purpose: that one is a native
+// <dialog> opened with showModal(), so it lives in the top layer and
+// would paint over any fixed-position sibling outside it.
+const linkPickerOpen = ref(false);
+const linkPickerInitialHref = ref<string | null>(null);
+function openLinkPicker() {
+  linkPickerInitialHref.value = editorRef.value?.currentLinkHref() ?? null;
+  linkPickerOpen.value = true;
+}
+function closeLinkPicker() {
+  linkPickerOpen.value = false;
+  linkPickerInitialHref.value = null;
+}
+function onLinkPicked(href: string, openInNewTab: boolean) {
+  editorRef.value?.applyLink(href, openInNewTab);
+  closeLinkPicker();
+}
+function onLinkClear() {
+  editorRef.value?.clearLink();
+  closeLinkPicker();
+}
 const editorDocument = computed(() => ({
   id: props.card.path,
   path: props.card.path,
@@ -381,6 +416,8 @@ onBeforeUnmount(() => {
           :auto-save-ms="0"
           body-only
           :current-project-id="projectId"
+          :open-link-picker="openLinkPicker"
+          :suppress-floating="linkPickerOpen"
           :run-compose="runCompose"
           :poll-compose="pollCompose"
           :cancel-compose="cancelCompose"
@@ -389,6 +426,14 @@ onBeforeUnmount(() => {
           @dirty="onBodyDirty"
         />
       </div>
+      <VLinkPicker
+        v-if="linkPickerOpen"
+        :project-id="projectId"
+        :initial-href="linkPickerInitialHref"
+        @pick="onLinkPicked"
+        @clear="onLinkClear"
+        @close="closeLinkPicker"
+      />
       <template #actions>
         <span class="text-xs text-base-content/50 mr-auto self-center">
           {{ saveStatusLabel }}

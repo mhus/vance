@@ -10,9 +10,16 @@
  *
  * The picker emits the resolved {@code href} + {@code openInNewTab}
  * back to the host; the host calls {@code editorRef.applyLink(...)}.
+ *
+ * Lives here rather than in {@code @vance/block-editor}: the editor has
+ * no Vance dependency (Tiptap + Vue only) and talks to no server, which
+ * is why its {@code openLinkPicker} is a host callback in the first
+ * place. It is shared by every host that mounts the block editor —
+ * workbook, wiki, kanban, gtd, issues, journal.
  */
 import { computed, onMounted, ref, watch } from 'vue';
 import { brainFetch } from '@vance/shared';
+import type { DocumentSearchItem, DocumentSearchResponse } from '@vance/generated';
 
 const props = defineProps<{
   projectId: string;
@@ -30,15 +37,8 @@ type TabId = 'project' | 'url';
 const tab = ref<TabId>('project');
 
 // ── Tab 1: Project document search ─────────────────────────────────
-interface DocSummary {
-  id: string;
-  path: string;
-  kind: string | null;
-  title: string | null;
-}
-
 const docQuery = ref('');
-const docResults = ref<DocSummary[]>([]);
+const docResults = ref<DocumentSearchItem[]>([]);
 const docLoading = ref(false);
 const docError = ref<string | null>(null);
 const docTotal = ref(0);
@@ -48,17 +48,16 @@ async function searchDocs(query: string) {
   docLoading.value = true;
   docError.value = null;
   try {
-    // Recursive project-wide search via the workbook addon's
-    // document search endpoint. /documents/folder?search would only
-    // hit the root-level files (one folder layer deep), which makes
-    // it useless for "find the yaml file somewhere in the project".
+    // Recursive project-wide search. /documents/folder?search would only
+    // hit the root-level files (one folder layer deep), which makes it
+    // useless for "find the yaml file somewhere in the project".
     const params = new URLSearchParams();
     params.set('projectId', props.projectId);
     if (query) params.set('query', query);
     params.set('size', '40');
-    const resp = await brainFetch<{ items: DocSummary[]; total: number }>(
+    const resp = await brainFetch<DocumentSearchResponse>(
       'GET',
-      `addon/workbook/documents/search?${params}`,
+      `documents/search?${params}`,
     );
     docResults.value = resp.items ?? [];
     docTotal.value = resp.total ?? docResults.value.length;
@@ -79,7 +78,7 @@ function scheduleSearch() {
   }, 200);
 }
 
-function pickDoc(doc: DocSummary) {
+function pickDoc(doc: DocumentSearchItem) {
   const params: string[] = [];
   if (doc.kind) params.push(`kind=${encodeURIComponent(doc.kind)}`);
   const href = `vance:/${encodeURI(doc.path)}${params.length ? '?' + params.join('&') : ''}`;
@@ -167,9 +166,9 @@ watch(tab, async (next) => {
           />
         </div>
         <div v-if="docError" class="link-picker__error">{{ docError }}</div>
-        <div v-if="docLoading" class="link-picker__loading">Suche…</div>
+        <div v-if="docLoading" class="link-picker__loading">Searching…</div>
         <div v-else-if="docResults.length === 0" class="link-picker__empty">
-          Keine Documents gefunden.
+          No documents found.
         </div>
         <div v-else class="link-picker__list">
           <button

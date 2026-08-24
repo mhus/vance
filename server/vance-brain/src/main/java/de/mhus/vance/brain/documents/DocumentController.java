@@ -13,6 +13,8 @@ import de.mhus.vance.api.documents.DocumentMoveChunkRequest;
 import de.mhus.vance.api.documents.DocumentMoveChunkResponse;
 import de.mhus.vance.api.documents.DocumentRenameChunkRequest;
 import de.mhus.vance.api.documents.DocumentRenameChunkResponse;
+import de.mhus.vance.api.documents.DocumentSearchItem;
+import de.mhus.vance.api.documents.DocumentSearchResponse;
 import de.mhus.vance.api.documents.DocumentTrashChunkRequest;
 import de.mhus.vance.api.documents.DocumentTrashChunkResponse;
 import de.mhus.vance.api.documents.DocumentUnpackResponse;
@@ -216,6 +218,41 @@ public class DocumentController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
         List<String> kinds = documentService.listKinds(tenant, projectId);
         return DocumentKindsResponse.builder().kinds(kinds).build();
+    }
+
+    /**
+     * Project-wide recursive document search by path / title substring —
+     * the shared backend for every picker that has to find a document
+     * anywhere in the project (link picker, embed picker, …).
+     *
+     * <p>Deliberately separate from {@link #folderView}: that one lists a
+     * single folder level, so it cannot answer "find the yaml file
+     * somewhere in this project". The optional {@code pathPrefix} scopes
+     * the search to one folder subtree.
+     *
+     * <p>Generic on purpose. Four addons (workbook, wiki, binder, canvas)
+     * each grew their own {@code documents/search} over this same
+     * {@code DocumentService} call because there was no route here; a
+     * picker shared across addons cannot depend on any one of them.
+     */
+    @GetMapping("/brain/{tenant}/documents/search")
+    public DocumentSearchResponse search(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam(value = "pathPrefix", required = false) @Nullable String pathPrefix,
+            @RequestParam(value = "query", required = false) @Nullable String query,
+            @RequestParam(value = "size", defaultValue = "40") int size,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
+        DocumentService.DocumentListing listing =
+                documentService.searchProjectDocuments(tenant, projectId, pathPrefix, query, size);
+        List<DocumentSearchItem> items = new ArrayList<>(listing.items().size());
+        for (DocumentService.DocumentMatch m : listing.items()) {
+            items.add(new DocumentSearchItem(
+                    m.id(), m.path(), m.title(), m.kind(), m.mimeType()));
+        }
+        return new DocumentSearchResponse(items, listing.total());
     }
 
     /**

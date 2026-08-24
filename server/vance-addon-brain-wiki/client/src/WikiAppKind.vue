@@ -19,7 +19,7 @@ import {
   pollComposeRun,
   cancelComposeRun,
 } from '@vance/shared';
-import { useDocumentPrefixReaction } from '@vance/components';
+import { useDocumentPrefixReaction, VLinkPicker } from '@vance/components';
 import {
   WorkPageEditor,
   parseDocument,
@@ -99,7 +99,35 @@ const lastSaveError = ref<string | null>(null);
 const editorRef = ref<{
   save: () => void;
   flush: () => boolean;
+  applyLink: (href: string, openInNewTab?: boolean) => void;
+  clearLink: () => void;
+  currentLinkHref: () => string | null;
 } | null>(null);
+
+// Link picker — the shared modal (project-document search + direct URL).
+// The block editor has no server access, so it delegates via the
+// `openLinkPicker` callback; the pick comes back here and we apply the
+// mark on the editor's current selection. Without this the editor falls
+// back to a bare window.prompt. Orthogonal to `[[wiki links]]`, which
+// have their own resolver pair.
+const linkPickerOpen = ref(false);
+const linkPickerInitialHref = ref<string | null>(null);
+function openLinkPicker() {
+  linkPickerInitialHref.value = editorRef.value?.currentLinkHref() ?? null;
+  linkPickerOpen.value = true;
+}
+function closeLinkPicker() {
+  linkPickerOpen.value = false;
+  linkPickerInitialHref.value = null;
+}
+function onLinkPicked(href: string, openInNewTab: boolean) {
+  editorRef.value?.applyLink(href, openInNewTab);
+  closeLinkPicker();
+}
+function onLinkClear() {
+  editorRef.value?.clearLink();
+  closeLinkPicker();
+}
 
 // ── Self-write quiet window — mirrors WorkbookAppKind. Suppresses the WS
 // echo of our own save so the ProseMirror doc (and cursor) isn't rebuilt.
@@ -890,6 +918,8 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
             :upload-image="uploadImage"
             :resolve-image-src="resolveVanceImageSrc"
             :open-link="openVanceLink"
+            :open-link-picker="openLinkPicker"
+            :suppress-floating="linkPickerOpen"
             :resolve-wiki-link="resolveWikiLinkSync"
             :open-wiki-link="openWikiLink"
             :resolve-embed-doc="resolveEmbedDoc"
@@ -901,6 +931,14 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
             :cancel-compose="cancelCompose"
             @save="onEditorSave"
             @dirty="onEditorDirty"
+          />
+          <VLinkPicker
+            v-if="linkPickerOpen"
+            :project-id="projectId"
+            :initial-href="linkPickerInitialHref"
+            @pick="onLinkPicked"
+            @clear="onLinkClear"
+            @close="closeLinkPicker"
           />
         </template>
       </main>

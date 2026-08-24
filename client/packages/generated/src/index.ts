@@ -69,6 +69,8 @@ export * from './documents/DocumentNoteDto';
 export * from './documents/DocumentNoteUpdateRequest';
 export * from './documents/DocumentRenameChunkRequest';
 export * from './documents/DocumentRenameChunkResponse';
+export * from './documents/DocumentSearchItem';
+export * from './documents/DocumentSearchResponse';
 export * from './documents/DocumentSummary';
 export * from './documents/DocumentSummaryRequest';
 export * from './documents/DocumentTrashChunkRequest';

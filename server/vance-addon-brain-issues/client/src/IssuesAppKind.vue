@@ -16,7 +16,7 @@ import {
   pollComposeRun,
   cancelComposeRun,
 } from '@vance/shared';
-import { useDocumentPrefixReaction } from '@vance/components';
+import { useDocumentPrefixReaction, VLinkPicker } from '@vance/components';
 import { WorkPageEditor, type ComposeRunResult } from '@vance/block-editor';
 import {
   scanIssues,
@@ -73,7 +73,37 @@ const commentDraft = ref('');
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 const saveStatus = ref<SaveStatus>('idle');
 
-const editorRef = ref<{ save: () => void; flush: () => boolean } | null>(null);
+const editorRef = ref<{
+  save: () => void;
+  flush: () => boolean;
+  applyLink: (href: string, openInNewTab?: boolean) => void;
+  clearLink: () => void;
+  currentLinkHref: () => string | null;
+} | null>(null);
+
+// Link picker — the shared modal (project-document search + direct URL).
+// The block editor has no server access, so it delegates via the
+// `openLinkPicker` callback; the pick comes back here and we apply the
+// mark on the editor's current selection. Without this the editor falls
+// back to a bare window.prompt.
+const linkPickerOpen = ref(false);
+const linkPickerInitialHref = ref<string | null>(null);
+function openLinkPicker() {
+  linkPickerInitialHref.value = editorRef.value?.currentLinkHref() ?? null;
+  linkPickerOpen.value = true;
+}
+function closeLinkPicker() {
+  linkPickerOpen.value = false;
+  linkPickerInitialHref.value = null;
+}
+function onLinkPicked(href: string, openInNewTab: boolean) {
+  editorRef.value?.applyLink(href, openInNewTab);
+  closeLinkPicker();
+}
+function onLinkClear() {
+  editorRef.value?.clearLink();
+  closeLinkPicker();
+}
 
 const embedComponent = inject<Component | null>('vance:embed-component', null);
 const formComponent = inject<Component | null>('vance:form-component', null);
@@ -509,6 +539,8 @@ function commentDate(c: { createdAt?: string | null }): string {
               :current-project-id="projectId"
               :upload-image="uploadImage"
               :resolve-image-src="resolveVanceImageSrc"
+              :open-link-picker="openLinkPicker"
+              :suppress-floating="linkPickerOpen"
               :embed-component="embedComponent ?? undefined"
               :form-component="formComponent ?? undefined"
               :compose-output-component="composeOutputComponent ?? undefined"
@@ -517,6 +549,14 @@ function commentDate(c: { createdAt?: string | null }): string {
               :cancel-compose="cancelCompose"
               @save="onBodySave"
               @dirty="onBodyDirty"
+            />
+            <VLinkPicker
+              v-if="linkPickerOpen"
+              :project-id="projectId"
+              :initial-href="linkPickerInitialHref"
+              @pick="onLinkPicked"
+              @clear="onLinkClear"
+              @close="closeLinkPicker"
             />
           </div>
 

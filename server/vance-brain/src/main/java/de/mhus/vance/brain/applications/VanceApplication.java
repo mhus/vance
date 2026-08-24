@@ -286,7 +286,27 @@ public interface VanceApplication {
             ShareIntake intake,
             /** The sharer's own remark, or {@code null}. */
             @Nullable String note,
-            @Nullable String userId) {
+            @Nullable String userId,
+            /**
+             * The {@link AppTarget#handle() handle} the sharer picked from
+             * {@link #targets} with {@link TargetPurpose#INTAKE}, or {@code null}
+             * for "wherever this app puts things by default".
+             *
+             * <p>Nullable rather than required, because the default is the older
+             * and still the common case: an app with no intake targets is offered
+             * as a single choice and must keep behaving exactly as before. An app
+             * that does not recognise the handle should fall back to its default
+             * intake rather than fail — the list it offered may have changed
+             * between the dialog opening and the share being sent.
+             */
+            @Nullable String target) {
+
+        /** Without a chosen place — the app's default intake. */
+        public ShareIntakeContext(String tenantId, String projectName, String folder,
+                                 ShareIntake intake, @Nullable String note,
+                                 @Nullable String userId) {
+            this(tenantId, projectName, folder, intake, note, userId, null);
+        }
 
         /**
          * The parts that do not fit into a title, as markdown: the sharer's

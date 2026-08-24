@@ -31,12 +31,17 @@ import org.springframework.stereotype.Component;
  * methods, not another handler — and the menu keeps one entry where the user
  * expects one.
  *
- * <p><b>The form asks the app and a note, nothing else.</b> A handler declares
- * its fields once, before a target is chosen, so per-app fields (a Kanban
- * column, a GTD list, a link group) would need a two-step form. Instead each
- * app writes into its own <em>intake</em> — the lead group, the inbox, the
- * backlog. A share is a hand-off, not an edit; refining happens in the app,
- * which is also where the sorting lives.
+ * <p><b>The form asks one flat question and a note, nothing else.</b> A handler
+ * declares its fields once, before a target is chosen, so per-app fields (a
+ * Kanban column, a GTD list, a link group) would need a two-step form. Instead
+ * the app and its intake places are rows of the <em>same</em> select — the app
+ * itself first, then {@code App › place} for whatever it offers under
+ * {@link VanceApplication.TargetPurpose#INTAKE}. An app with no places behaves
+ * exactly as before.
+ *
+ * <p>A share stays a hand-off, not an edit: the places are the app's own intakes
+ * (the lead group, the inbox, the backlog), not arbitrary positions. Refining
+ * still happens in the app, which is also where the sorting lives.
  *
  * <p>Lives in brain rather than in an addon because {@link VanceApplication}
  * does: the authorization then sits in one place instead of in every addon.
@@ -51,7 +56,11 @@ public class AppShareHandler implements ShareHandler {
     static final String FIELD_APP = "app";
     static final String FIELD_NOTE = "note";
 
-    /** Separator in the {@code app} value. Neither part may contain it. */
+    /**
+     * Separator in the {@code app} value ({@code project|path[|handle]}).
+     * No part may contain it — enforced for the handle where handles are
+     * produced ({@code AppTarget}), so no consumer has to escape them.
+     */
     private static final String APP_VALUE_SEPARATOR = "|";
 
     private final StarredService starredService;
@@ -83,16 +92,16 @@ public class AppShareHandler implements ShareHandler {
 
     @Override
     public List<FormFieldDto> form(ShareScope scope) {
-        List<Candidate> candidates = candidates(scope);
+        List<Choice> choices = choices(scope);
         List<FormFieldDto> fields = new ArrayList<>(2);
-        // One candidate needs no question — the same cut the smtp handler makes
+        // One choice needs no question — the same cut the smtp handler makes
         // for a single pack.
-        if (candidates.size() > 1) {
-            List<FormChoiceDto> choices = new ArrayList<>(candidates.size());
-            for (Candidate candidate : candidates) {
-                choices.add(FormChoiceDto.builder()
-                        .value(value(candidate.item()))
-                        .label(Map.of("en", label(candidate, scope)))
+        if (choices.size() > 1) {
+            List<FormChoiceDto> dtos = new ArrayList<>(choices.size());
+            for (Choice choice : choices) {
+                dtos.add(FormChoiceDto.builder()
+                        .value(choice.value())
+                        .label(Map.of("en", choice.label()))
                         .build());
             }
             fields.add(FormFieldDto.builder()
@@ -100,8 +109,8 @@ public class AppShareHandler implements ShareHandler {
                     .type("select")
                     .label(Map.of("en", "Add to", "de", "Hinzufügen zu"))
                     .required(true)
-                    .defaultValue(value(candidates.get(0).item()))
-                    .choices(choices)
+                    .defaultValue(choices.get(0).value())
+                    .choices(dtos)
                     .build());
         }
         // Optional, unlike the inbox handler's reason: there a human reads the
@@ -121,7 +130,8 @@ public class AppShareHandler implements ShareHandler {
     @Override
     public ShareResult share(ShareRequest request) {
         ShareScope scope = request.scope();
-        Candidate target = pick(scope, request.string(FIELD_APP));
+        Choice choice = pick(scope, request.string(FIELD_APP));
+        Candidate target = choice.candidate();
 
         // The app may live in another project than the share: the starred list
         // is per user, across projects. So the write is authorized against the
@@ -135,18 +145,23 @@ public class AppShareHandler implements ShareHandler {
         VanceApplication.ShareIntakeResult result = target.app().acceptShare(
                 new VanceApplication.ShareIntakeContext(
                         scope.tenantId(), target.item().project(), folder,
-                        intakeOf(scope), request.string(FIELD_NOTE), scope.sharer()));
+                        intakeOf(scope), request.string(FIELD_NOTE), scope.sharer(),
+                        choice.target()));
 
         Map<String, Object> details = ShareResult.newDetails();
         details.put("app", target.item().project() + "/" + target.item().path());
         details.put("appType", target.app().appName());
         details.put("created", result.created());
+        if (choice.target() != null) details.put("target", choice.target());
 
-        log.info("Milliways app share: type='{}' app='{}/{}' created={}",
-                target.app().appName(), target.item().project(), folder, result.created());
+        log.info("Milliways app share: type='{}' app='{}/{}' target='{}' created={}",
+                target.app().appName(), target.item().project(), folder,
+                choice.target() == null ? "" : choice.target(), result.created());
         // Already there is not a refusal — nothing is broken, it is just there.
+        String where = choice.target() == null
+                ? result.label() : result.label() + " › " + choice.target();
         return new ShareResult(
-                (result.created() ? "Added to " : "Already in ") + result.label(),
+                (result.created() ? "Added to " : "Already in ") + where,
                 details);
     }
 
@@ -208,18 +223,77 @@ public class AppShareHandler implements ShareHandler {
         }
     }
 
-    private Candidate pick(ShareScope scope, @Nullable String requested) {
-        List<Candidate> candidates = candidates(scope);
-        if (candidates.isEmpty()) {
+    private Choice pick(ShareScope scope, @Nullable String requested) {
+        List<Choice> choices = choices(scope);
+        if (choices.isEmpty()) {
             throw new ShareException("No starred app takes this");
         }
-        if (requested == null) return candidates.get(0);
-        for (Candidate candidate : candidates) {
-            if (value(candidate.item()).equals(requested)) return candidate;
+        if (requested == null) return choices.get(0);
+        for (Choice choice : choices) {
+            if (choice.value().equals(requested)) return choice;
         }
         // A value the form never offered — the starred list changed, or the
         // submission was hand-made. Not a project to write into either way.
         throw new ShareException("Unknown app '" + requested + "'");
+    }
+
+    /**
+     * One row of the picker: an app, optionally at one of its intake places.
+     *
+     * <p><b>Flat, not a dependent field.</b> {@code form()} is declared once,
+     * before anything is chosen, so a per-app "which group" select would need a
+     * two-step form — the reason
+     * {@code planning/milliways-app-handler.md} §2 dropped group and position in
+     * the first place. Putting the place into the *same* list keeps one request
+     * and one field, at the price of more rows.
+     *
+     * <p>The list stays short because {@code INTAKE} is short by nature (a
+     * backlog, an inbox, a handful of groups) and because the app decides how
+     * many it offers. If it ever gets long, the answer is a dependent field in
+     * the form grammar, not silently truncating here.
+     */
+    private record Choice(Candidate candidate, @Nullable String target, String label) {
+
+        /** {@code project|path} for the app itself, {@code project|path|handle} for a place. */
+        String value() {
+            String base = candidate.item().project() + APP_VALUE_SEPARATOR + candidate.item().path();
+            return target == null ? base : base + APP_VALUE_SEPARATOR + target;
+        }
+    }
+
+    /**
+     * The picker rows: every accepting app, each followed by its intake places.
+     *
+     * <p>The app itself stays first in its block — it is the behaviour every
+     * share had before places existed, and the one a sharer who does not care
+     * should get by pressing return.
+     */
+    private List<Choice> choices(ShareScope scope) {
+        List<Choice> out = new ArrayList<>();
+        for (Candidate candidate : candidates(scope)) {
+            String appLabel = label(candidate, scope);
+            out.add(new Choice(candidate, null, appLabel));
+            for (VanceApplication.AppTarget target : intakeTargets(candidate, scope)) {
+                out.add(new Choice(candidate, target.handle(), appLabel + " › " + target.label()));
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * An app that throws while listing its places loses the places, not its row
+     * — same rule as {@link #accepts}: one broken app must not hide the others.
+     */
+    private List<VanceApplication.AppTarget> intakeTargets(Candidate candidate, ShareScope scope) {
+        try {
+            return candidate.app().targets(new VanceApplication.TargetsContext(
+                    scope.tenantId(), candidate.item().project(), folderOf(candidate.item()),
+                    scope.sharer(), VanceApplication.TargetPurpose.INTAKE, Map.of()));
+        } catch (RuntimeException e) {
+            log.warn("App '{}' failed to list intake targets: {}",
+                    candidate.app().appName(), e.toString());
+            return List.of();
+        }
     }
 
     private static VanceApplication.ShareIntake intakeOf(ShareScope scope) {
@@ -235,10 +309,6 @@ public class AppShareHandler implements ShareHandler {
         return path.endsWith(suffix)
                 ? path.substring(0, path.length() - suffix.length())
                 : path;
-    }
-
-    private static String value(StarredItem item) {
-        return item.project() + APP_VALUE_SEPARATOR + item.path();
     }
 
     /** Title if the starred entry carries one, else the folder; project when foreign. */

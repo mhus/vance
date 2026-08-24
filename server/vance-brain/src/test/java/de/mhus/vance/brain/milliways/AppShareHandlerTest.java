@@ -13,6 +13,9 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.api.form.FormChoiceDto;
 import de.mhus.vance.api.form.FormFieldDto;
 import de.mhus.vance.brain.applications.VanceApplication;
+import de.mhus.vance.brain.applications.VanceApplication.AppTarget;
+import de.mhus.vance.brain.applications.VanceApplication.TargetPurpose;
+import de.mhus.vance.brain.applications.VanceApplication.TargetsContext;
 import de.mhus.vance.brain.applications.VanceApplicationRegistry;
 import de.mhus.vance.shared.document.DocumentRef;
 import de.mhus.vance.shared.permission.Action;
@@ -128,6 +131,94 @@ class AppShareHandlerTest {
                 .containsExactly(AppShareHandler.FIELD_APP, AppShareHandler.FIELD_NOTE);
         assertThat(fields.get(0).getChoices()).extracting(FormChoiceDto::getValue)
                 .containsExactly("plan|todo/_app.yaml", PROJECT + "|bugs/_app.yaml");
+    }
+
+    @Test
+    void form_appWithIntakePlaces_offersThemFlatUnderTheApp() {
+        // Flat, because form() is declared before anything is chosen: a per-app
+        // "which group" select would need a two-step form.
+        FakeApp links = new FakeApp("links", intake -> true);
+        links.intakeTargets = List.of(AppTarget.of("Lesen", "Lesen"), AppTarget.of("Tools", "Tools"));
+        apps.add(links);
+        givenStarred(starred("plan", "bookmarks/_app.yaml", "links", "Lesezeichen", false));
+
+        List<FormFieldDto> fields = handler().form(linkScope());
+
+        assertThat(fields).extracting(FormFieldDto::getName)
+                .containsExactly(AppShareHandler.FIELD_APP, AppShareHandler.FIELD_NOTE);
+        assertThat(fields.get(0).getChoices()).extracting(FormChoiceDto::getValue)
+                .containsExactly(
+                        "plan|bookmarks/_app.yaml",
+                        "plan|bookmarks/_app.yaml|Lesen",
+                        "plan|bookmarks/_app.yaml|Tools");
+        // The app itself leads its block: pressing return keeps the behaviour
+        // every share had before places existed.
+        assertThat(fields.get(0).getDefaultValue()).isEqualTo("plan|bookmarks/_app.yaml");
+        // The app label is whatever the chooser shows — including the project
+        // suffix when the app lives elsewhere; the place is appended to that.
+        assertThat(fields.get(0).getChoices()).extracting(c -> c.getLabel().get("en"))
+                .containsExactly(
+                        "Lesezeichen (plan)",
+                        "Lesezeichen (plan) › Lesen",
+                        "Lesezeichen (plan) › Tools");
+    }
+
+    @Test
+    void form_appThatThrowsListingPlaces_keepsItsOwnRow() {
+        // Same rule as acceptsShare: one broken app loses its places, not its row.
+        FakeApp links = new FakeApp("links", intake -> true);
+        links.targetsThrow = true;
+        apps.add(links);
+        apps.add(new FakeApp("gtd", intake -> true));
+        givenStarred(
+                starred("plan", "bookmarks/_app.yaml", "links", "Lesezeichen", false),
+                starred("plan", "todo/_app.yaml", "gtd", "Aufgaben", false));
+
+        List<FormFieldDto> fields = handler().form(linkScope());
+
+        assertThat(fields.get(0).getChoices()).extracting(FormChoiceDto::getValue)
+                .containsExactly("plan|bookmarks/_app.yaml", "plan|todo/_app.yaml");
+    }
+
+    @Test
+    void share_pickedPlace_reachesTheApp() {
+        FakeApp links = new FakeApp("links", intake -> true);
+        links.intakeTargets = List.of(AppTarget.of("Lesen", "Lesen"));
+        apps.add(links);
+        givenStarred(starred("plan", "bookmarks/_app.yaml", "links", "Lesezeichen", false));
+
+        ShareResult result = handler().share(new ShareRequest(linkScope(),
+                Map.of(AppShareHandler.FIELD_APP, "plan|bookmarks/_app.yaml|Lesen")));
+
+        assertThat(links.lastContext).isNotNull();
+        assertThat(links.lastContext.target()).isEqualTo("Lesen");
+        assertThat(result.message()).contains("› Lesen");
+    }
+
+    @Test
+    void share_theAppItself_leavesTheTargetUnset() {
+        // The default must stay distinguishable from "a place called empty".
+        FakeApp links = new FakeApp("links", intake -> true);
+        links.intakeTargets = List.of(AppTarget.of("Lesen", "Lesen"));
+        apps.add(links);
+        givenStarred(starred("plan", "bookmarks/_app.yaml", "links", "Lesezeichen", false));
+
+        handler().share(new ShareRequest(linkScope(),
+                Map.of(AppShareHandler.FIELD_APP, "plan|bookmarks/_app.yaml")));
+
+        assertThat(links.lastContext.target()).isNull();
+    }
+
+    @Test
+    void share_placeThatWasNeverOffered_isRefused() {
+        FakeApp links = new FakeApp("links", intake -> true);
+        apps.add(links);
+        givenStarred(starred("plan", "bookmarks/_app.yaml", "links", "Lesezeichen", false));
+
+        assertThatThrownBy(() -> handler().share(new ShareRequest(linkScope(),
+                Map.of(AppShareHandler.FIELD_APP, "plan|bookmarks/_app.yaml|Erfunden"))))
+                .isInstanceOf(ShareException.class);
+        assertThat(links.lastContext).isNull();
     }
 
     @Test
@@ -349,10 +440,20 @@ class AppShareHandlerTest {
         private final java.util.function.Predicate<ShareIntake> accepts;
         boolean created = true;
         @Nullable ShareIntakeContext lastContext;
+        /** Intake places this app offers; empty = "wherever I put things". */
+        List<AppTarget> intakeTargets = List.of();
+        /** Set to make targets() throw — one broken app must not hide the rest. */
+        boolean targetsThrow = false;
 
         FakeApp(String name, java.util.function.Predicate<ShareIntake> accepts) {
             this.name = name;
             this.accepts = accepts;
+        }
+
+        @Override
+        public List<AppTarget> targets(TargetsContext ctx) {
+            if (targetsThrow) throw new IllegalStateException("broken folder");
+            return ctx.purpose() == TargetPurpose.INTAKE ? intakeTargets : List.of();
         }
 
         @Override

@@ -158,9 +158,49 @@ public class LinksApplication implements VanceApplication {
     }
 
     /**
-     * Add the shared URL as an entry, at the end of the lead ("ungrouped")
-     * section — the one the app renders first, so the newcomer is visible
-     * without opening anything.
+     * The declared groups, as places a share can go.
+     *
+     * <p>{@code INTAKE} only. A group is not a *destination* one navigates to —
+     * the app renders every group on one page, so there is no "open group" state
+     * for a link to land in; that is the same reason Kanban columns are not
+     * navigation targets.
+     *
+     * <p>This is the case the flat share list exists for. When the app handler
+     * became one-for-all, group and position dropped out of the Links dialog as
+     * an accepted loss (`planning/milliways-app-handler.md` §2); the handle gives
+     * the group back without the dependent form fields that were refused there.
+     *
+     * <p>Declared groups only — not the ones merely used by an entry. The
+     * declared list is the one the owner curated and ordered, and it is the only
+     * one that can contain an *empty* group, which is exactly where somebody
+     * would want incoming links to land.
+     */
+    @Override
+    public List<AppTarget> targets(TargetsContext ctx) {
+        if (ctx.purpose() != TargetPurpose.INTAKE) return List.of();
+        LinksConfig config;
+        try {
+            config = store.load(ctx.tenantId(), ctx.projectName(),
+                    LinksStore.normaliseFolder(ctx.folder())).config();
+        } catch (RuntimeException e) {
+            // A broken manifest is reported where it is edited. Here it means
+            // "no places", and the app itself stays a valid share target.
+            log.debug("LinksApplication.targets folder='{}' unreadable: {}",
+                    ctx.folder(), e.toString());
+            return List.of();
+        }
+        List<AppTarget> out = new ArrayList<>(config.groups().size());
+        for (String group : config.groups()) {
+            if (group == null || group.isBlank()) continue;
+            out.add(AppTarget.of(group, group));
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * Add the shared URL as an entry — into the group the sharer picked, or at
+     * the end of the lead ("ungrouped") section, the one the app renders first,
+     * so the newcomer is visible without opening anything.
      *
      * <p>{@code teaser} and {@code image} stay empty on purpose: an empty
      * teaser means "whatever the page says today", resolved live from the
@@ -179,14 +219,24 @@ public class LinksApplication implements VanceApplication {
         // "Links" and reads "Already in links1" has to work out that those are
         // the same thing.
         LinksStore.Loaded loaded = store.load(ctx.tenantId(), ctx.projectName(), folder);
+        // An unknown handle falls back to the lead section instead of failing:
+        // the group list may have changed between the dialog opening and the
+        // share arriving, and losing the group is better than losing the link.
+        String group = resolveGroup(loaded.config(), ctx.target());
         boolean added = manifestOps.addEntry(ctx.tenantId(), ctx.projectName(), folder, url,
-                new LinksManifestOps.LinkFields(ctx.intake().title(), null, null, null, null,
+                new LinksManifestOps.LinkFields(ctx.intake().title(), null, null, group, null,
                         ctx.note()),
                 ctx.userId());
 
         String label = loaded.manifestDoc().title();
         if (label == null || label.isBlank()) label = leafFolderName(folder);
         return new ShareIntakeResult(added, label);
+    }
+
+    /** The picked group if this list still declares it, else the lead section. */
+    private static @Nullable String resolveGroup(LinksConfig config, @Nullable String target) {
+        if (target == null || target.isBlank()) return null;
+        return config.groups().contains(target) ? target : null;
     }
 
     @Override

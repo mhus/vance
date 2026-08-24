@@ -56,7 +56,7 @@ import FileTreeSidebar from './components/FileTreeSidebar.vue';
 import EditorTabs from './components/EditorTabs.vue';
 import TabRendererHost from './components/TabRendererHost.vue';
 import CortexRightPanel from './components/CortexRightPanel.vue';
-import SessionPickerPanel from './components/SessionPickerPanel.vue';
+import SessionPickerPanel from '@/components/SessionPickerPanel.vue';
 import CreateDocumentModal, {
   type CreateModalResult,
 } from './components/CreateDocumentModal.vue';

@@ -1917,6 +1917,11 @@ export default {
       noTitle: '(no title)',
       replies: '{count} reply | {count} replies',
     },
+    chat: {
+      show: 'Show chat',
+      hide: 'Hide chat',
+      sessions: 'Sessions',
+    },
     effect: {
       title: 'This decision will be executed',
       detail: 'Note: {detail}',

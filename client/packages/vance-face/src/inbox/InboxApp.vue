@@ -17,8 +17,10 @@ import {
 } from '@/components';
 import { useInbox, type AssignedToFilter, type InboxFilter } from '@/composables/useInbox';
 import { useTeams } from '@/composables/useTeams';
-import { getUsername, safeUrl } from '@vance/shared';
+import { getUsername, hubProjectName, safeUrl } from '@vance/shared';
 import { VBadge } from '@/components';
+import SessionPickerPanel from '@/components/SessionPickerPanel.vue';
+import ChatSidePanel from '@/chat/ChatSidePanel.vue';
 import { setDocumentDraft } from '@/platform';
 import InboxThreadPanel from '@/inbox/InboxThreadPanel.vue';
 import InboxReactionBar from '@/inbox/InboxReactionBar.vue';
@@ -603,6 +605,84 @@ async function onListReact(item: MaximegalonDto, key: string, on: boolean): Prom
   if (item.id) await inbox.react(item.id, key, on, null);
 }
 
+// ─── Chat side panel ───────────────────────────────────────────────────
+//
+// Same right-hand column as Cortex, minus the Help tab: a session picker
+// until one is chosen, then the conversation.
+
+/**
+ * The project the conversation runs in.
+ *
+ * <p>A thread deliberately carries no {@code projectId} (see
+ * `maximegalon-system.md`), so the inbox has none to inherit — and taking it
+ * from whichever thread is selected would swap the session list, and the open
+ * chat with it, on every click through the list. Fixed for the page instead:
+ * the user's own Hub project, which is where their assistant already lives and
+ * is the symmetric choice to an inbox that is likewise theirs. `?project=`
+ * overrides it for the case where someone wants the conversation to sit in a
+ * shared project — the agent otherwise reaches foreign documents through the
+ * `foreign_*` tools.
+ */
+const chatProjectId = new URLSearchParams(window.location.search).get('project')
+  || hubProjectName(currentUser);
+
+/**
+ * The session shown in the panel, or {@code null} for the picker. Lives in the
+ * URL so a reload lands back in the same conversation — and so a link can
+ * carry it.
+ */
+const chatSessionId = ref<string | null>(
+  new URLSearchParams(window.location.search).get('chat'),
+);
+
+/**
+ * Whether the column is open at all. Closed by default: the inbox is the point
+ * of the page, and the chat is something the reader asks for — except when a
+ * URL named a session, which is that request already made.
+ */
+const chatPanelOpen = ref<boolean>(chatSessionId.value !== null);
+
+const panelToggle = computed(() => ({
+  icon: '💬',
+  title: chatPanelOpen.value ? t('inbox.chat.hide') : t('inbox.chat.show'),
+  active: chatPanelOpen.value,
+}));
+
+function toggleChatPanel(): void {
+  chatPanelOpen.value = !chatPanelOpen.value;
+}
+
+/** Keep {@code ?chat=} in step without adding a history entry per switch. */
+function writeChatParam(sid: string | null): void {
+  const url = new URL(window.location.href);
+  if (sid) url.searchParams.set('chat', sid);
+  else url.searchParams.delete('chat');
+  window.history.replaceState(window.history.state, '', url.toString());
+}
+
+/**
+ * Open a session in the panel. In place, with no navigation: unlike Cortex
+ * there are no open tabs whose loss a reload would cost, and reloading would
+ * throw away the list scroll position and the selected thread. The panel is
+ * keyed on the id, so switching remounts it and it binds the new session
+ * itself.
+ */
+function openChatSession(sid: string): void {
+  chatSessionId.value = sid;
+  chatPanelOpen.value = true;
+  writeChatParam(sid);
+}
+
+/**
+ * Back to the picker — the session ended, or the user asked for the hub.
+ * Cortex leaves for chat.html here because it has nothing left to show; the
+ * inbox does, so it stays put.
+ */
+function leaveChatSession(): void {
+  chatSessionId.value = null;
+  writeChatParam(null);
+}
+
 const breadcrumbs = computed<string[]>(() => {
   // Breadcrumbs carry the path *within* the editor — the editor name
   // itself is in the topbar title and would otherwise read twice.
@@ -624,8 +704,11 @@ const breadcrumbs = computed<string[]>(() => {
     :full-height="true"
     :show-sidebar="true"
     focus-model="auto"
+    :show-right-panel="chatPanelOpen"
+    :panel-toggle="panelToggle"
     title-clickable
     @title-click="focusZone = 'sidebar'"
+    @toggle-panel="toggleChatPanel"
   >
     <!-- ─── Sidebar ─── -->
     <!--
@@ -1143,6 +1226,28 @@ const breadcrumbs = computed<string[]>(() => {
         >{{ $t('inbox.delegate.confirm') }}</VButton>
       </template>
     </VModal>
+
+    <!-- ─── Right column: the conversation beside the inbox ───
+         Page-level, not per-thread: the reader keeps one chat while working
+         through the list. Keyed on the session so picking another one
+         remounts the panel and it binds the new session cleanly. -->
+    <template #right-panel>
+      <ChatSidePanel
+        v-if="chatSessionId"
+        :key="chatSessionId"
+        :session-id="chatSessionId"
+        :project-id="chatProjectId"
+        :draft-key="`inbox:${chatSessionId}`"
+        :back-label="$t('inbox.chat.sessions')"
+        @leave="leaveChatSession"
+        @back="leaveChatSession"
+      />
+      <SessionPickerPanel
+        v-else
+        :project-id="chatProjectId"
+        @open-session="openChatSession"
+      />
+    </template>
   </EditorShell>
 </template>
 

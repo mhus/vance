@@ -1926,6 +1926,11 @@ export default {
       noTitle: '(kein Titel)',
       replies: '{count} Antwort | {count} Antworten',
     },
+    chat: {
+      show: 'Chat anzeigen',
+      hide: 'Chat ausblenden',
+      sessions: 'Sessions',
+    },
     effect: {
       title: 'Diese Entscheidung wird ausgeführt',
       detail: 'Hinweis: {detail}',

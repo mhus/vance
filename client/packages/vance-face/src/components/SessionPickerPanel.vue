@@ -1,13 +1,13 @@
 <script setup lang="ts">
 /**
- * Compact session picker that mounts in the right-panel slot of
- * Cortex when no sessionId is bound. Lists the current project's
- * sessions; click on a row emits {@code open-session} so the host
- * (EditorApp) can navigate to {@code cortex.html?sessionId=…} while
- * carrying the currently-open tabs across (they'd otherwise vanish).
- * The "+ New session" button opens a recipe-selection modal inline
- * and bootstraps the new session via WebSocket — no redirect to
- * chat.html, so open tabs are preserved.
+ * Compact session picker for a right-panel slot: lists one project's
+ * sessions, and a click emits {@code open-session} so the host decides what
+ * opening one means (Cortex navigates carrying its open tabs, the inbox
+ * swaps the panel in place).
+ *
+ * <p>The "+ New session" button opens a recipe-selection modal inline and
+ * bootstraps via WebSocket rather than sending the user to chat.html —
+ * whatever the host had on screen survives.
  */
 import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';

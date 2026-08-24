@@ -5,7 +5,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.1.0</version>
+        <version>4.1.1</version>
         <relativePath/>
     </parent>
 
@@ -54,9 +54,9 @@
     <properties>
         <java.version>25</java.version>
         <lombok.version>1.18.46</lombok.version>
-        <spring.boot.version>4.1.0</spring.boot.version>
-        <langchain4j.version>1.18.1</langchain4j.version>
-        <langgraph4j.version>1.8.23</langgraph4j.version>
+        <spring.boot.version>4.1.1</spring.boot.version>
+        <langchain4j.version>1.19.0</langchain4j.version>
+        <langgraph4j.version>1.8.24</langgraph4j.version>
         <picocli.version>4.7.7</picocli.version>
         <jspecify.version>1.0.1</jspecify.version>
         <jjwt.version>0.13.0</jjwt.version>
@@ -65,10 +65,10 @@
         <lanterna.version>3.1.5</lanterna.version>
         <graaljs.version>25.2.4</graaljs.version>
         <jgit.version>7.7.1.202607240634-r</jgit.version>
-        <anthropic.sdk.version>2.52.0</anthropic.sdk.version>
+        <anthropic.sdk.version>2.57.0</anthropic.sdk.version>
         <!-- swagger-parser 2.x supports both OpenAPI 3.x and Swagger 2.x. Used by
              RestApiToolPackFactory to materialise REST-API packs into Vance Tools. -->
-        <swagger.parser.version>2.1.46</swagger.parser.version>
+        <swagger.parser.version>2.1.47</swagger.parser.version>
         <!-- HTML → text extraction for WebFetchTool's 'text' flag. Robust against
              broken markup, drops script/style content, decodes entities. -->
         <jsoup.version>1.23.1</jsoup.version>
@@ -381,7 +381,7 @@
                     <dependency>
                         <groupId>de.skuzzle.enforcer</groupId>
                         <artifactId>restrict-imports-enforcer-rule</artifactId>
-                        <version>3.0.0</version>
+                        <version>3.0.1</version>
                     </dependency>
                 </dependencies>
             </plugin>

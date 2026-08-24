@@ -81,6 +81,7 @@ often here.
 | Call | Does |
 |---|---|
 | `vance.state.set(key, value)` | what widgets bound with `from:` show |
+| `vance.state.get(key)` | read it back — including what a reader typed into a `form` |
 | `vance.documents.list(path)` | documents directly in a folder |
 | `vance.documents.read(path)` | content; an object for YAML/JSON |
 | `vance.documents.write(path, content, opts?)` | store content; refused if it changed since read |

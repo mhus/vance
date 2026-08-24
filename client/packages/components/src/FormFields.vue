@@ -1,22 +1,29 @@
 <script setup lang="ts">
-import { VButton, VCheckbox, VInput, VSelect, VTextarea } from '@vance/components';
+import VButton from './VButton.vue';
+import VCheckbox from './VCheckbox.vue';
+import VInput from './VInput.vue';
+import VSelect from './VSelect.vue';
+import VTextarea from './VTextarea.vue';
 import { pickLocalized } from '@vance/shared';
 import { computed, ref } from 'vue';
-import { useI18n } from 'vue-i18n';
 import type { FormChoiceDto, FormFieldDto } from '@vance/generated';
 
 /**
  * Universal form renderer driven by {@link FormFieldDto} schemas.
  *
- * <p>Used by Prompt-Wizards (chat editor) and Kit-Tool-Templates —
- * everything UI primitive lives in {@code src/components/} so editor
- * code only ever sees this composite.
+ * <p>Used by Prompt-Wizards, Kit-Tool-Templates, Setting-Forms, Document-
+ * Templates and the Bistromath runtime — which is why it lives here and not in
+ * {@code vance-face}: an addon bundle cannot import the host's components.
+ *
+ * <p><b>No i18n.</b> Like every component in this package, the strings it shows
+ * are props with English defaults and the label language is a prop too. A host
+ * that has {@code vue-i18n} passes its {@code locale} and its translations in;
+ * an addon that has none gets readable English. Putting {@code useI18n()} here
+ * would make the package unusable in exactly the bundles that need it most.
  *
  * <p>Field types: {@code string}, {@code textarea}, {@code password},
  * {@code integer}, {@code boolean}, {@code select}, {@code multi_select},
- * {@code repeat}. Localized labels resolve against the active
- * {@code useI18n().locale} (or the {@code preferredLang} prop when
- * the host wants to force a different language).
+ * {@code repeat}.
  *
  * <p>Value encoding follows the tool-template convention: booleans /
  * integers / selects are stored as strings inside the modelValue
@@ -32,11 +39,22 @@ interface Props {
   modelValue: Record<string, FormValue>;
   /** Map of field-path → error code (e.g. "members[2].name" → "required"). */
   errors?: Record<string, string>;
-  /** Override the active i18n locale for label resolution. */
+  /** Language for label resolution. Falls back to English inside `pickLocalized`. */
   preferredLang?: string;
   /** Path prefix for nested error keys (used by repeat-recursion). */
   pathPrefix?: string;
   disabled?: boolean;
+  /** Placeholder of the filter box a long choice list gets. */
+  filterLabel?: string;
+  /** Shown when the filter matches none of the choices. */
+  noMatchesLabel?: string;
+  /**
+   * How many are selected — a function, not a template string, because this
+   * package has no message formatter to substitute a placeholder with.
+   */
+  selectedCountLabel?: (count: number) => string;
+  /** The button that empties a multi-select. */
+  clearSelectionLabel?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -44,14 +62,17 @@ const props = withDefaults(defineProps<Props>(), {
   preferredLang: undefined,
   pathPrefix: '',
   disabled: false,
+  filterLabel: 'Filter…',
+  noMatchesLabel: 'No matches',
+  selectedCountLabel: () => (n: number) => `${n} selected`,
+  clearSelectionLabel: 'Clear',
 });
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: Record<string, FormValue>): void;
 }>();
 
-const { t, locale } = useI18n();
-const activeLang = computed(() => props.preferredLang ?? locale.value);
+const activeLang = computed(() => props.preferredLang ?? 'en');
 
 function resolveLocalized(map: Record<string, string> | undefined): string {
   return pickLocalized(map, activeLang.value);
@@ -317,7 +338,7 @@ function canRemove(field: FormFieldDto): boolean {
         <VInput
           v-if="isLongChoiceList(field)"
           :model-value="choiceFilters[field.name] ?? ''"
-          :placeholder="t('form.filterPlaceholder')"
+          :placeholder="filterLabel"
           :disabled="disabled"
           @update:model-value="(v: string) => (choiceFilters[field.name] = v)"
         />
@@ -336,7 +357,7 @@ function canRemove(field: FormFieldDto): boolean {
           <span
             v-if="visibleChoices(field).length === 0"
             class="text-xs opacity-60 italic"
-          >{{ t('form.noMatches') }}</span>
+          >{{ noMatchesLabel }}</span>
         </div>
         <!-- The filter hides rows but never a selection — so say how many
              are picked, or a filtered-away choice would look unselected. -->
@@ -345,14 +366,14 @@ function canRemove(field: FormFieldDto): boolean {
           class="flex items-center gap-2 text-xs"
         >
           <span class="opacity-70">
-            {{ t('form.selectedCount', { count: selectedCount(field.name) }) }}
+            {{ selectedCountLabel(selectedCount(field.name)) }}
           </span>
           <button
             type="button"
             class="underline opacity-70 hover:opacity-100 disabled:no-underline"
             :disabled="disabled"
             @click="clearMultiSelect(field)"
-          >{{ t('form.clearSelection') }}</button>
+          >{{ clearSelectionLabel }}</button>
         </div>
         <span v-if="errorOf(field)" class="text-xs text-error">
           {{ errorOf(field) }}
@@ -400,6 +421,10 @@ function canRemove(field: FormFieldDto): boolean {
             :preferred-lang="preferredLang"
             :path-prefix="`${field.name}[${idx}]`"
             :disabled="disabled"
+            :filter-label="filterLabel"
+            :no-matches-label="noMatchesLabel"
+            :selected-count-label="selectedCountLabel"
+            :clear-selection-label="clearSelectionLabel"
             @update:model-value="(sub: Record<string, FormValue>) =>
               updateRepeatItem(field, idx, sub as FormValueObject)"
           />

@@ -6,14 +6,12 @@ import type { FormFieldDto } from '@vance/generated';
 /**
  * Read-only display of a form-engine field list against one table row.
  *
- * <p>This is a <b>viewer</b>, not a copy of the editor. `FormFields.vue` — the
- * editable renderer the wizards, setting forms and document templates share —
- * lives in `vance-face`, so an addon cannot import it: the form engine's
- * *model* (`FormFieldDto`) is shared through `@vance/generated`, its *renderer*
- * is not. Making it shared means moving it into `@vance/components`, which
- * pulls `vue-i18n` into a package that has no i18n dependency today and
- * touches six call sites in the host. That is the right move when editing
- * arrives; it is not worth doing for a display.
+ * <p>This is a <b>viewer</b>, not a disabled editor. `FormFields` — the shared
+ * editable renderer — now lives in `@vance/components` and the `form` widget
+ * uses it; this one is what a `details` widget renders. The difference is not
+ * a flag: an editor with its inputs greyed out still reads as a form somebody
+ * broke, while a label-over-value readout reads as information. Same fields,
+ * different job.
  *
  * <p>So this component renders labels and values and nothing else. The field
  * `type` is honoured only as far as display goes — a boolean reads as yes/no,

@@ -45,7 +45,8 @@ what the runtime actually found. Nothing else validates a view.
 
 ## The one rule you must not get wrong
 
-> A widget shows **state**. The **program** writes state. The program reads
+> A widget shows **state**. The **program** writes state, and so does a `form`
+> the reader types into. The program reads
 > documents through `vance.*`.
 
 There is no table declaration in the manifest, no `source:` on a widget, and no
@@ -56,9 +57,10 @@ runtime knows about.
 ## Before you promise anything
 
 This build reads **and writes** documents (`vance.documents.write` / `create` /
-`delete`; a write is refused if the document changed since the app read it). No
-`visibleIf`, no `import` in the program, and `if` / `repeat` / `chart` /
-`dialog` are reserved but not rendered. Form fields display; they do not edit.
+`delete`; a write is refused if the document changed since the app read it), and
+a `form` widget is **editable** — what the reader types goes into state, the
+program stores it. No `visibleIf`, no `import` in the program, and `if` /
+`repeat` / `chart` / `dialog` are reserved but not rendered.
 
 ## The details
 

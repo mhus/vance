@@ -40,8 +40,26 @@ public enum WidgetType {
     /** Rows of a folder-as-table, in declared columns. */
     TABLE,
 
-    /** Form-engine field list bound to a state model. */
+    /**
+     * Form-engine field list bound to a state key, and <b>editable</b>.
+     *
+     * <p>What the reader types goes back into the same key, so the program
+     * picks it up with {@code vance.state.get(<key>)} and decides what to do
+     * with it. The widget itself never stores anything — a form is a variable,
+     * a button is the subroutine.
+     */
     FORM,
+
+    /**
+     * The same field list, <b>read-only</b>.
+     *
+     * <p>Separate widget rather than a {@code readOnly:} flag on {@code form}:
+     * a boolean would need a default, and both defaults are wrong. Editable by
+     * default surprises the reader of a detail view who types into a field that
+     * nothing saves; read-only by default makes "why can't I type" the first
+     * question every author asks. Two names, one meaning each.
+     */
+    DETAILS,
 
     /** Children as tab panes, captioned by their own label. */
     TABS;

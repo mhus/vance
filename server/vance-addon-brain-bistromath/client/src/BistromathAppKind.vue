@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, toRaw, watch } from 'vue';
 import { VAlert, VButton, VEmptyState, useAppEntry } from '@vance/components';
 import WidgetNode from './WidgetNode.vue';
 import { Sandbox, type SandboxHost } from './sandbox';
@@ -79,6 +79,12 @@ function splitEntry(raw: string | null): { handle: string | null; recordKey: str
 const host: SandboxHost = {
   stateSet(key, value) {
     state[key] = value;
+  },
+  stateGet(key) {
+    // `toRaw` first: a reactive proxy is not structured-cloneable in every
+    // engine, and what crosses to the guest has to survive postMessage. The
+    // raw object is what the guest — or a form — put here in the first place.
+    return toRaw(state)[key];
   },
   documentsList(path) {
     return docs.list(resolve(path)).catch(rethrow(path));
@@ -274,6 +280,16 @@ async function onAction(action: ViewAction, key?: string): Promise<void> {
   }
 }
 
+/**
+ * A form edit. The only path by which anything other than the program writes
+ * state — and it writes the same keys the program does, on purpose: the
+ * program reads back what the reader typed with `vance.state.get(key)`, so
+ * there is one place a value lives, not a form model beside it.
+ */
+function onStateEdit(key: string, value: unknown): void {
+  state[key] = value;
+}
+
 async function onRebuild(): Promise<void> {
   busy.value = true;
   error.value = null;
@@ -356,6 +372,7 @@ function message(e: unknown): string {
         :state="state"
         :record-key="recordKey"
         @action="onAction"
+        @state="onStateEdit"
       />
     </div>
   </div>

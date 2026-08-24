@@ -27,6 +27,8 @@ import { IframeTransport, type GuestTransport } from './sandboxTransport';
 export interface SandboxHost {
   /** `vance.state.set(key, value)` */
   stateSet(key: string, value: unknown): void;
+  /** `vance.state.get(key)` — what the program, or a form, last put there. */
+  stateGet(key: string): unknown;
   /** `vance.documents.list(path)` */
   documentsList(path: string): Promise<unknown>;
   /** `vance.documents.read(path)` */
@@ -409,6 +411,9 @@ export class Sandbox {
         case 'state.set':
           host.stateSet(String(args[0]), args[1]);
           post(true);
+          break;
+        case 'state.get':
+          post(true, host.stateGet(String(args[0])));
           break;
         case 'documents.list':
           post(true, await host.documentsList(String(args[0])));

@@ -19,6 +19,8 @@ export * from './useLinkPickerHost';
 export * from './vanceUri';
 export * from './useDocumentPrefixReaction';
 export * from './usePointers';
+export { default as FormFields } from './FormFields.vue';
+export type { FormValue, FormValueObject } from './FormFields.vue';
 export { default as VAlert } from './VAlert.vue';
 export { default as VBackButton } from './VBackButton.vue';
 export { default as VBadge } from './VBadge.vue';

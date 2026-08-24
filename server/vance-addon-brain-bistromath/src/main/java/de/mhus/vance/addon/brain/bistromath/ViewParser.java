@@ -129,16 +129,16 @@ public final class ViewParser {
         Map<String, ViewAction> on = handlers(raw.get("on"), docPath, at);
 
         List<FormFieldDto> fields = List.of();
-        if (type == WidgetType.FORM) {
+        if (type == WidgetType.FORM || type == WidgetType.DETAILS) {
             rejectSettingFormKeys(raw.get("fields"), docPath, at + ".fields");
             fields = FormFieldYamlParser.parseFields(raw.get("fields"), where(docPath, at));
             if (fields.isEmpty()) {
-                throw new ToolException(where(docPath, at)
-                        + ": a `form` needs at least one entry under `fields`.");
+                throw new ToolException(where(docPath, at) + ": a `" + type.wire()
+                        + "` needs at least one entry under `fields`.");
             }
         } else if (raw.get("fields") != null) {
-            throw new ToolException(where(docPath, at) + ": `fields` belongs to a `form`,"
-                    + " not to a `" + type.wire() + "`.");
+            throw new ToolException(where(docPath, at) + ": `fields` belongs to a `form` or a"
+                    + " `details`, not to a `" + type.wire() + "`.");
         }
 
         List<ViewNode> children = children(raw.get("children"), type, docPath, at, depth, budget);
@@ -177,10 +177,10 @@ public final class ViewParser {
                             + " the state key holding its rows.");
                 }
             }
-            case FORM -> {
+            case FORM, DETAILS -> {
                 if (from == null) {
-                    throw new ToolException(where(docPath, at) + ": a `form` needs `from`,"
-                            + " the state key holding the record it shows.");
+                    throw new ToolException(where(docPath, at) + ": a `" + type.wire()
+                            + "` needs `from`, the state key holding the record it shows.");
                 }
             }
             case TEXT, MARKDOWN -> {

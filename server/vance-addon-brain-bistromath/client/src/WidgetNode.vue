@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
-import { VAlert, VButton, VEmptyState } from '@vance/components';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { FormFields, VAlert, VButton, VEmptyState, type FormValue } from '@vance/components';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import FormFieldsView from './FormFieldsView.vue';
+import { fromFormModel, toFormModel } from './formModel';
 import type { ViewNode } from './generated/bistromath/ViewNode';
 import type { ViewAction } from './generated/bistromath/ViewAction';
 
@@ -18,6 +19,11 @@ import type { ViewAction } from './generated/bistromath/ViewAction';
  * <p><b>One binding.</b> A widget shows state, via `from: <key>`. There is no
  * path, no table name and no expression — the program writes the key, the
  * widget reads it. That is the whole data model on this side.
+ *
+ * <p>A `form` uses that same binding in the other direction: what the reader
+ * types goes back into the key it came from. Nothing is stored anywhere — the
+ * program reads the key and decides. A `details` is the read-only twin, so an
+ * author never has to reason about a `readOnly` default.
  */
 const props = defineProps<{
   node: ViewNode;
@@ -30,6 +36,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'action', action: ViewAction, recordKey?: string): void;
+  /** A form edit. The host owns state; this widget only says what it became. */
+  (e: 'state', key: string, value: unknown): void;
 }>();
 
 const depth = computed(() => props.depth ?? 0);
@@ -80,6 +88,72 @@ const record = computed<Record<string, unknown> | null>(() => {
   }
   if (v && typeof v === 'object') return v as Record<string, unknown>;
   return null;
+});
+
+/** What the form engine edits: the record, in its string encoding. */
+const formModel = computed<Record<string, FormValue>>(() =>
+  toFormModel(record.value, props.node.fields),
+);
+
+/**
+ * An edit: decode back to the program's types, put it where it came from.
+ *
+ * <p>Written to the bound key as a whole value rather than mutated in place —
+ * the host owns state, and one writer is what keeps "who changed this" a
+ * question with an answer. When the binding is a list indexed by the entry
+ * handle, the edited record replaces that one element and the rest is copied
+ * across untouched.
+ */
+function onFormInput(model: Record<string, FormValue>): void {
+  const key = props.node.from;
+  if (!key) return;
+  const merged = fromFormModel(model, props.node.fields, record.value);
+  const current = bound.value;
+
+  if (Array.isArray(current)) {
+    if (!props.recordKey) return;
+    emit(
+      'state',
+      key,
+      current.map((row) =>
+        row && typeof row === 'object'
+        && String((row as Record<string, unknown>).key) === props.recordKey
+          ? merged
+          : row,
+      ),
+    );
+  } else {
+    emit('state', key, merged);
+  }
+  scheduleChange();
+}
+
+/**
+ * `on: { change: … }`, one step behind the keystroke.
+ *
+ * <p>Debounced because the handler crosses into the sandbox, where calls are
+ * serialised: a fast typist would otherwise queue one program invocation per
+ * character and the last one — the only one whose result the reader sees —
+ * would arrive after all of them. The delay is short enough to read as
+ * immediate and long enough that a word costs one call, not eight.
+ */
+const CHANGE_DELAY_MS = 150;
+let changeTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleChange(): void {
+  const action = props.node.on.change;
+  if (!action) return;
+  if (changeTimer !== null) clearTimeout(changeTimer);
+  changeTimer = setTimeout(() => {
+    changeTimer = null;
+    emit('action', action);
+  }, CHANGE_DELAY_MS);
+}
+
+onBeforeUnmount(() => {
+  // A pending change would otherwise fire into a program that is being torn
+  // down, and the error would name a widget the reader can no longer see.
+  if (changeTimer !== null) clearTimeout(changeTimer);
 });
 
 /** Text: the state value when bound, else the literal. */
@@ -141,6 +215,7 @@ const headingClass = computed(() =>
       :record-key="recordKey"
       :depth="depth + 1"
       @action="(a, k) => emit('action', a, k)"
+      @state="(k, v) => emit('state', k, v)"
     />
   </section>
 
@@ -153,6 +228,7 @@ const headingClass = computed(() =>
       :record-key="recordKey"
       :depth="depth + 1"
       @action="(a, k) => emit('action', a, k)"
+      @state="(k, v) => emit('state', k, v)"
     />
   </div>
 
@@ -209,6 +285,23 @@ const headingClass = computed(() =>
 
   <div v-else-if="node.type === 'form'" class="flex flex-col gap-2">
     <h3 v-if="node.label" class="text-base font-semibold">{{ node.label }}</h3>
+    <!-- A form bound to a list needs to know which row; without a record key
+         there is nothing to edit, and an empty form would look like a bug. -->
+    <VEmptyState
+      v-if="!record && Array.isArray(bound)"
+      headline="Nothing selected"
+      body="Click a row in the table to edit it here."
+    />
+    <FormFields
+      v-else
+      :fields="node.fields"
+      :model-value="formModel"
+      @update:model-value="onFormInput"
+    />
+  </div>
+
+  <div v-else-if="node.type === 'details'" class="flex flex-col gap-2">
+    <h3 v-if="node.label" class="text-base font-semibold">{{ node.label }}</h3>
     <FormFieldsView :fields="node.fields" :record="record" />
   </div>
 
@@ -231,6 +324,7 @@ const headingClass = computed(() =>
       :record-key="recordKey"
       :depth="depth + 1"
       @action="(a, k) => emit('action', a, k)"
+      @state="(k, v) => emit('state', k, v)"
     />
   </div>
 

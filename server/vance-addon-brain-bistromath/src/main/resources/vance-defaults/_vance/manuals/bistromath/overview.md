@@ -15,7 +15,8 @@ middle, reading documents is one thing it can do.
 
 ## One rule, and everything follows from it
 
-> A widget shows **state**. The **program** writes state. The program reads
+> A widget shows **state**. The **program** writes state. A `form` writes it
+> too — that is what typing into one does. The program reads
 > documents through `vance.*`.
 
 There is no table declaration, no `source:` on a widget, and no data endpoint.
@@ -37,8 +38,7 @@ folder in the name: `manual_read('bistromath/views')`.
 
 This build reads **and writes** documents. It has no `visibleIf`, no `import`
 in the program, and `if` / `repeat` / `chart` / `dialog` are reserved but not
-rendered. Form fields are shown, not edited — a value reaches the program
-through `vance.state.set`, never from a field.
+rendered.
 
 Create with `bistromath_app_create(folder=…, title=…)`; it scaffolds a running
 Hello World. After editing anything, run `app_rebuild(folder=…)` — nothing else

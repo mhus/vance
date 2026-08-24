@@ -153,6 +153,65 @@ class ViewParserTest {
                 .hasMessageContaining("at least one entry under `fields`");
     }
 
+    /**
+     * The read-only twin of {@code form}. It exists so that "can the reader
+     * type here" is answered by the widget's name instead of by a boolean
+     * whose default would be wrong for one of the two uses.
+     */
+    @Test
+    void parse_details_readsTheSameFieldListAsAForm() {
+        String yaml = """
+                type: details
+                from: invoice
+                fields:
+                  - name: customer
+                    type: string
+                    label: { en: Customer }
+                """;
+
+        ViewNode node = ViewParser.parse(yaml, "v.yaml");
+
+        assertThat(node.type()).isEqualTo("details");
+        assertThat(node.fields()).hasSize(1);
+    }
+
+    @Test
+    void parse_detailsWithoutFrom_isRejected() {
+        String yaml = """
+                type: details
+                fields:
+                  - name: a
+                    type: string
+                    label: { en: A }
+                """;
+
+        assertThatThrownBy(() -> ViewParser.parse(yaml, "v.yaml"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("a `details` needs `from`");
+    }
+
+    /**
+     * The setting-form keys are refused on a {@code details} too. They are
+     * dropped by the shared field parser either way, so a condition written on
+     * a read-only field would be just as silently ineffective.
+     */
+    @Test
+    void parse_detailsFieldWithShowIf_isRejected() {
+        String yaml = """
+                type: details
+                from: invoice
+                fields:
+                  - name: a
+                    type: string
+                    label: { en: A }
+                    showIf: other
+                """;
+
+        assertThatThrownBy(() -> ViewParser.parse(yaml, "v.yaml"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("setting forms");
+    }
+
     @Test
     void parse_fieldsOnNonForm_isRejected() {
         String yaml = """
@@ -166,7 +225,7 @@ class ViewParserTest {
 
         assertThatThrownBy(() -> ViewParser.parse(yaml, "v.yaml"))
                 .isInstanceOf(ToolException.class)
-                .hasMessageContaining("`fields` belongs to a `form`");
+                .hasMessageContaining("`fields` belongs to a `form` or a `details`");
     }
 
     /**

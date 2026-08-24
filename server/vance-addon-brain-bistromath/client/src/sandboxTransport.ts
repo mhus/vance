@@ -50,7 +50,10 @@ export const GUEST_BOOTSTRAP = `<!doctype html><meta charset="utf-8"><script>
     });
   }
   window.vance = {
-    state: { set: function (k, v) { return call('state.set', [k, v]); } },
+    state: {
+      set: function (k, v) { return call('state.set', [k, v]); },
+      get: function (k) { return call('state.get', [k]); }
+    },
     documents: {
       list: function (p) { return call('documents.list', [p]); },
       read: function (p) { return call('documents.read', [p]); },

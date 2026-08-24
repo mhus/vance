@@ -304,8 +304,13 @@ public class BistromathApplication implements VanceApplication {
             }
         }
         sb.append("A widget shows state via `from: <key>`; the program writes it with")
-                .append(" `vance.state.set(key, value)` and reads documents with")
-                .append(" `vance.documents.rows(path)`. There is no table declaration.\n")
+                .append(" `vance.state.set(key, value)` and reads it back with")
+                .append(" `vance.state.get(key)`. Documents go through")
+                .append(" `vance.documents.list/read/write/create/delete`. There is no table")
+                .append(" declaration.\n")
+                .append("A `form` is EDITABLE and writes what the reader types back into its")
+                .append(" `from:` key; a `details` shows the same field list read-only. Nothing")
+                .append(" is stored until the program calls `vance.documents.write`.\n")
                 .append("Run `app_rebuild(folder=\"").append(folder).append("\")` after editing")
                 .append(" — it re-reads every view and reports what does not parse.\n");
         if (!found.problems().isEmpty()) {

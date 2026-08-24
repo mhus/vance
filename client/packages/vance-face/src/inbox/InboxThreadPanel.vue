@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 import { VAlert, VButton, VInput, VTextarea, VToggle } from '@vance/components';
 import { getUsername } from '@vance/shared';
 import type { MaximegalonDto, MaximegalonMessageDto } from '@vance/generated';
+import InboxReactionBar from './InboxReactionBar.vue';
 
 /**
  * The discussion below an inbox thread: contributions, reactions, who takes
@@ -42,25 +43,6 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const me = computed<string>(() => getUsername() ?? '');
-
-/**
- * The reaction palette, as explicit shortcode/character pairs.
- *
- * <p>Not {@code VEmojiPicker}: that one emits the unicode character and offers
- * a topic set built for document icons. The wire format wants shortcodes on
- * purpose — 👍 and 👍🏽 are different codepoints and would file the same
- * reaction twice. A fixed palette sidesteps the mapping entirely, and these six
- * are the ones that do work in a clarification: agree, on it, done, unclear,
- * thanks, celebrate.
- */
-const PALETTE: ReadonlyArray<{ key: string; char: string }> = [
-  { key: 'thumbsup', char: '👍' },
-  { key: 'eyes', char: '👀' },
-  { key: 'white_check_mark', char: '✅' },
-  { key: 'question', char: '❓' },
-  { key: 'pray', char: '🙏' },
-  { key: 'tada', char: '🎉' },
-];
 
 /**
  * Where the "new from here" line goes: the first message this user had not read
@@ -165,60 +147,6 @@ function submitInvite(): void {
   inviteName.value = '';
 }
 
-function toggleReaction(message: MaximegalonMessageDto | null, key: string): void {
-  const source = message ? message.reactions : props.item.reactions;
-  const mine = source?.find((r) => r.key === key)?.userIds?.includes(me.value) ?? false;
-  emit('react', key, !mine, message?.id ?? null);
-}
-
-/**
- * Only the reactions somebody actually gave, as chips — the way Slack does it.
- *
- * <p>Rendering the whole palette everywhere was the first attempt and it is
- * noise: six buttons per message plus six on the thread is thirty controls on a
- * short discussion, and the count of interest (how many agreed) drowns among
- * the ones nobody pressed. Existing reactions carry information; empty ones
- * carry only the offer, and one button is enough to make the offer.
- */
-function chipsFor(message: MaximegalonMessageDto | null): Array<{
-  key: string; char: string; count: number; mine: boolean;
-}> {
-  const source = (message ? message.reactions : props.item.reactions) ?? [];
-  return source
-    .filter((r) => (r.userIds?.length ?? 0) > 0)
-    .map((r) => ({
-      key: r.key,
-      // Unknown keys still render: the palette may grow, and a reaction from a
-      // newer client must not vanish from an older one. The shortcode is a
-      // readable fallback.
-      char: PALETTE.find((p) => p.key === r.key)?.char ?? `:${r.key}:`,
-      count: r.userIds?.length ?? 0,
-      mine: r.userIds?.includes(me.value) ?? false,
-    }));
-}
-
-/**
- * Which target currently has its palette open — a message id, or `'thread'`.
- *
- * <p>Explicit state and an inline expansion, not a dropdown: DaisyUI's dropdown
- * opens on `:focus-within`, so clicking a button inside it takes focus off the
- * trigger and the menu is gone before the click lands. That is fine for
- * `<li><a>` navigation, which is what {@code VDropdown} is built for, and wrong
- * for a grid of buttons — the first attempt looked right and silently did
- * nothing. Expanding in place needs no positioning and no focus timing.
- */
-const paletteFor = ref<string | null>(null);
-
-function togglePalette(target: MaximegalonMessageDto | null): void {
-  const id = target?.id ?? 'thread';
-  paletteFor.value = paletteFor.value === id ? null : id;
-}
-
-function pickReaction(target: MaximegalonMessageDto | null, key: string): void {
-  toggleReaction(target, key);
-  paletteFor.value = null;
-}
-
 /** The generator maps Instant to Date; a string still arrives over the wire. */
 function when(at: Date | string | undefined): string {
   return at ? new Date(at).toLocaleString() : '';
@@ -293,33 +221,13 @@ watch(() => [props.item.participants, props.error], () => {
       />
     </header>
 
-    <!-- Reactions on the thread's own question. -->
-    <div class="flex flex-wrap items-center gap-1">
-      <VButton
-        v-for="c in chipsFor(null)"
-        :key="c.key"
-        size="sm"
-        :variant="c.mine ? 'primary' : 'ghost'"
-        :title="c.key"
-        @click="emit('react', c.key, !c.mine, null)"
-      >{{ c.char }}<span class="ml-1 text-xs">{{ c.count }}</span></VButton>
-      <VButton
-        size="sm"
-        variant="ghost"
-        :title="t('inboxThread.addReaction')"
-        @click="togglePalette(null)"
-      >&#9786;+</VButton>
-      <template v-if="paletteFor === 'thread'">
-        <VButton
-          v-for="r in PALETTE"
-          :key="r.key"
-          size="sm"
-          variant="ghost"
-          :title="r.key"
-          @click="pickReaction(null, r.key)"
-        >{{ r.char }}</VButton>
-      </template>
-    </div>
+    <!-- Reactions on the thread's own question. The same bar the list row
+         carries, so a reaction given there is the one seen here. -->
+    <InboxReactionBar
+      :reactions="item.reactions"
+      :busy="busy"
+      @react="(key: string, on: boolean) => emit('react', key, on, null)"
+    />
 
     <!-- The clarification. Roots with one level of replies; deeper nesting is
          refused by the server. -->
@@ -336,35 +244,15 @@ watch(() => [props.item.participants, props.error], () => {
             <span class="text-xs opacity-60">{{ when(node.message.createdAt) }}</span>
           </div>
           <p class="whitespace-pre-wrap text-sm">{{ node.message.body }}</p>
-          <div class="flex flex-wrap items-center gap-1">
-            <VButton
-              v-for="c in chipsFor(node.message)"
-              :key="c.key"
-              size="sm"
-              :variant="c.mine ? 'primary' : 'ghost'"
-              :title="c.key"
-              @click="emit('react', c.key, !c.mine, node.message.id)"
-            >{{ c.char }}<span class="ml-1 text-xs">{{ c.count }}</span></VButton>
-            <VButton
-              size="sm"
-              variant="ghost"
-              :title="t('inboxThread.addReaction')"
-              @click="togglePalette(node.message)"
-            >&#9786;+</VButton>
-            <template v-if="paletteFor === node.message.id">
-              <VButton
-                v-for="r in PALETTE"
-                :key="r.key"
-                size="sm"
-                variant="ghost"
-                :title="r.key"
-                @click="pickReaction(node.message, r.key)"
-              >{{ r.char }}</VButton>
-            </template>
+          <InboxReactionBar
+            :reactions="node.message.reactions"
+            :busy="busy"
+            @react="(key: string, on: boolean) => emit('react', key, on, node.message.id)"
+          >
             <VButton size="sm" variant="ghost" @click="startReply(node.message.id)">
               {{ t('inboxThread.reply') }}
             </VButton>
-          </div>
+          </InboxReactionBar>
         </article>
 
         <ol v-if="node.replies.length" class="flex flex-col gap-2 pl-6 border-l">
@@ -378,32 +266,11 @@ watch(() => [props.item.participants, props.error], () => {
               <span class="text-xs opacity-60">{{ when(reply.createdAt) }}</span>
             </div>
             <p class="whitespace-pre-wrap text-sm">{{ reply.body }}</p>
-            <div class="flex flex-wrap items-center gap-1">
-              <VButton
-                v-for="c in chipsFor(reply)"
-                :key="c.key"
-                size="sm"
-                :variant="c.mine ? 'primary' : 'ghost'"
-                :title="c.key"
-                @click="emit('react', c.key, !c.mine, reply.id)"
-              >{{ c.char }}<span class="ml-1 text-xs">{{ c.count }}</span></VButton>
-              <VButton
-                size="sm"
-                variant="ghost"
-                :title="t('inboxThread.addReaction')"
-                @click="togglePalette(reply)"
-              >&#9786;+</VButton>
-              <template v-if="paletteFor === reply.id">
-                <VButton
-                  v-for="r in PALETTE"
-                  :key="r.key"
-                  size="sm"
-                  variant="ghost"
-                  :title="r.key"
-                  @click="pickReaction(reply, r.key)"
-                >{{ r.char }}</VButton>
-              </template>
-            </div>
+            <InboxReactionBar
+              :reactions="reply.reactions"
+              :busy="busy"
+              @react="(key: string, on: boolean) => emit('react', key, on, reply.id)"
+            />
           </li>
         </ol>
       </li>

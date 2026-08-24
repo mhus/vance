@@ -10,16 +10,22 @@ import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.inbox.ResolvedBy;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.annotation.Id;
 import org.springframework.data.domain.Sort;
 import org.jspecify.annotations.Nullable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.aggregation.Aggregation;
+import org.springframework.data.mongodb.core.aggregation.ArrayOperators;
+import org.springframework.data.mongodb.core.aggregation.ConditionalOperators;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
@@ -277,6 +283,45 @@ public class MaximegalonService {
                 .with(Sort.by(Sort.Direction.DESC, "createdAt"));
         query.fields().exclude(F_MESSAGES);
         return mongoTemplate.find(query, MaximegalonDocument.class);
+    }
+
+    /**
+     * How many contributions each of the given threads has, keyed by thread
+     * id. Ids without a match are absent from the result.
+     *
+     * <p>The companion to {@link #listFiltered}, which projects the messages
+     * out: a listing wants to say "3 replies" and must not transfer three
+     * transcripts to do it. Mongo computes the {@code $size}, so this stays a
+     * counting query no matter how long the discussions are.
+     *
+     * <p>Counted rather than read off a stored counter on purpose — the array
+     * already carries its own length, and a counter beside it would be a
+     * second truth that every append path has to remember to keep in step.
+     */
+    public Map<String, Integer> countMessages(String tenantId, Collection<String> itemIds) {
+        if (itemIds.isEmpty()) return Map.of();
+        Aggregation aggregation = Aggregation.newAggregation(
+                Aggregation.match(Criteria.where(F_ID).in(itemIds).and(F_TENANT).is(tenantId)),
+                Aggregation.project().and(ArrayOperators.Size.lengthOfArray(
+                                ConditionalOperators.ifNull(F_MESSAGES).then(List.of())))
+                        .as(MessageCountRow.F_COUNT));
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (MessageCountRow row : mongoTemplate
+                .aggregate(aggregation, MaximegalonDocument.class, MessageCountRow.class)
+                .getMappedResults()) {
+            if (row.getId() != null) counts.put(row.getId(), row.getCount());
+        }
+        return counts;
+    }
+
+    /** Read projection for {@link #countMessages} — one thread id, one number. */
+    @Data
+    static class MessageCountRow {
+        static final String F_COUNT = "count";
+
+        @Id
+        private @Nullable String id;
+        private int count;
     }
 
     /**

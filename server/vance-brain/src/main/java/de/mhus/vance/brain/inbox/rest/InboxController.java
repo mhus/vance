@@ -40,6 +40,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
@@ -113,7 +114,11 @@ public class InboxController {
         List<String> targetUsers = resolveTargetUsers(tenant, currentUser, assignedTo);
         List<MaximegalonDocument> docs = inboxItemService.listFiltered(
                 tenant, targetUsers, status, tag);
-        List<MaximegalonDto> dtos = InboxMapper.toDtos(docs);
+        // The list query leaves the transcripts behind; the sizes come back in
+        // a counting query, so a row can show that a thread has a discussion
+        // without transferring it.
+        List<MaximegalonDto> dtos = InboxMapper.toDtos(docs, inboxItemService.countMessages(
+                tenant, docs.stream().map(MaximegalonDocument::getId).filter(Objects::nonNull).toList()));
         return InboxListResponse.builder().items(dtos).count(dtos.size()).build();
     }
 

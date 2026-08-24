@@ -91,6 +91,21 @@ public class MaximegalonDto {
     @Builder.Default
     private List<MaximegalonMessageDto> messages = new ArrayList<>();
 
+    /**
+     * How many contributions the thread has.
+     *
+     * <p>Exists because {@link #messages} is absent in list responses: an
+     * empty array there says nothing about whether the thread has a
+     * discussion, and a listing wants to show that it does. Derived from the
+     * messages themselves — the server counts, it does not keep a counter
+     * beside the array (the array carries both the content and its length,
+     * and a second field would be a second truth to keep in step).
+     *
+     * <p>{@code null} means the count was not asked for, which is different
+     * from zero.
+     */
+    private @Nullable Integer messageCount;
+
     /** Reactions on the thread's own title and body. */
     @Builder.Default
     private List<MaximegalonReactionDto> reactions = new ArrayList<>();

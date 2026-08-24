@@ -38,5 +38,6 @@ export interface MaximegalonDto {
   participants: string[];
   readBy: string[];
   messages: MaximegalonMessageDto[];
+  messageCount?: number;
   reactions: MaximegalonReactionDto[];
 }

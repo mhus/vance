@@ -1915,6 +1915,7 @@ export default {
       emptyHeadline: 'Empty',
       emptyBody: 'No items in this view.',
       noTitle: '(no title)',
+      replies: '{count} reply | {count} replies',
     },
     effect: {
       title: 'This decision will be executed',

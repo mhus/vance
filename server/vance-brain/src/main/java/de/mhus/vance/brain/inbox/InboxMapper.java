@@ -8,6 +8,7 @@ import de.mhus.vance.shared.inbox.MaximegalonMessage;
 import de.mhus.vance.shared.inbox.MaximegalonReaction;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -21,6 +22,16 @@ public final class InboxMapper {
     private InboxMapper() {}
 
     public static MaximegalonDto toDto(MaximegalonDocument d) {
+        return toDto(d, null);
+    }
+
+    /**
+     * @param messageCount how many contributions the thread has, for
+     *     documents that came from the list query with the messages
+     *     projected out (see {@code MaximegalonService#countMessages}).
+     *     {@code null} means: read it off the messages themselves.
+     */
+    public static MaximegalonDto toDto(MaximegalonDocument d, @Nullable Integer messageCount) {
         return MaximegalonDto.builder()
                 .id(d.getId())
                 .tenantId(d.getTenantId())
@@ -57,6 +68,13 @@ public final class InboxMapper {
                 // index for the badge count, and the client derives the same
                 // thing from readBy when it has the thread open.
                 .messages(toMessageDtos(d.getMessages()))
+                // Stays null when neither the messages nor a count are at
+                // hand: "not asked for" and "none" are different answers, and
+                // a listing that showed "0 replies" for the former would be
+                // lying about every thread with a discussion.
+                .messageCount(messageCount != null
+                        ? messageCount
+                        : (d.getMessages() == null ? null : d.getMessages().size()))
                 .build();
     }
 
@@ -97,5 +115,17 @@ public final class InboxMapper {
 
     public static List<MaximegalonDto> toDtos(List<MaximegalonDocument> docs) {
         return docs.stream().map(InboxMapper::toDto).toList();
+    }
+
+    /**
+     * List variant that carries the discussion sizes, for documents whose
+     * messages were projected out. Ids missing from {@code messageCounts}
+     * keep a {@code null} count.
+     */
+    public static List<MaximegalonDto> toDtos(
+            List<MaximegalonDocument> docs, Map<String, Integer> messageCounts) {
+        return docs.stream()
+                .map(d -> toDto(d, messageCounts.get(d.getId())))
+                .toList();
     }
 }

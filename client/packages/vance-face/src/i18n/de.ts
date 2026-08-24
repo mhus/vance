@@ -1924,6 +1924,7 @@ export default {
       emptyHeadline: 'Leer',
       emptyBody: 'Keine Einträge in dieser Ansicht.',
       noTitle: '(kein Titel)',
+      replies: '{count} Antwort | {count} Antworten',
     },
     effect: {
       title: 'Diese Entscheidung wird ausgeführt',

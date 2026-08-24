@@ -21,6 +21,7 @@ import { getUsername, safeUrl } from '@vance/shared';
 import { VBadge } from '@/components';
 import { setDocumentDraft } from '@/platform';
 import InboxThreadPanel from '@/inbox/InboxThreadPanel.vue';
+import InboxReactionBar from '@/inbox/InboxReactionBar.vue';
 import {
   AnswerOutcome,
   Criticality,
@@ -590,6 +591,18 @@ async function onThreadReact(
   if (sel?.id) await inbox.react(sel.id, key, on, messageId);
 }
 
+/**
+ * Reacting straight from the list. Same call as in the open thread, only the
+ * item comes from the row instead of the selection — the mutation answers with
+ * the whole thread, which the composable folds back into the row.
+ *
+ * <p>Not guarded by `submitting`: that flag belongs to the open item's answer
+ * buttons, and a reaction in the list has nothing to do with them.
+ */
+async function onListReact(item: MaximegalonDto, key: string, on: boolean): Promise<void> {
+  if (item.id) await inbox.react(item.id, key, on, null);
+}
+
 const breadcrumbs = computed<string[]>(() => {
   // Breadcrumbs carry the path *within* the editor — the editor name
   // itself is in the topbar title and would otherwise read twice.
@@ -751,6 +764,12 @@ const breadcrumbs = computed<string[]>(() => {
               → {{ item.assignedToUserId }}
             </span>
             <span v-if="item.status !== MaximegalonStatus.PENDING" class="opacity-60">{{ item.status }}</span>
+            <!-- That a thread has a discussion is worth seeing before opening
+                 it. Absent when the server sent no count (an older brain) and
+                 when there is none — "0 replies" is noise on every row. -->
+            <span v-if="item.messageCount" class="opacity-60">
+              {{ $t('inbox.list.replies', item.messageCount) }}
+            </span>
           </div>
           <div v-if="item.tags && item.tags.length" class="mt-1 flex gap-1 flex-wrap">
             <VBadge
@@ -759,6 +778,15 @@ const breadcrumbs = computed<string[]>(() => {
               variant="ghost"
               size="sm"
             >{{ t }}</VBadge>
+          </div>
+          <!-- Reactions, right here. Clicks stop at the bar: the row opens the
+               item, and agreeing with a question is not the same gesture as
+               going in to answer it. -->
+          <div class="mt-1" @click.stop>
+            <InboxReactionBar
+              :reactions="item.reactions"
+              @react="(key: string, on: boolean) => onListReact(item, key, on)"
+            />
           </div>
         </li>
       </ul>

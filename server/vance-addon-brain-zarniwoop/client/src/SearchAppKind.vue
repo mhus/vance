@@ -12,7 +12,13 @@ import SearchHitDetail from './SearchHitDetail.vue';
 import { link, metaLine } from './hitView';
 import type { InvestigateResultView } from './generated/search/InvestigateResultView';
 import type { SearchConfigView } from './generated/search/SearchConfigView';
-import type { SearchHitView } from './generated/search/SearchHitView';
+// The state values come from the record that declares them — one authority
+// for what `contentState` can say, on both sides of the wire.
+import {
+  CONTENT_EMBEDDED,
+  CONTENT_ON_DEMAND,
+  type SearchHitView,
+} from './generated/search/SearchHitView';
 import type { SearchResultView } from './generated/search/SearchResultView';
 
 /**
@@ -817,9 +823,9 @@ function message(e: unknown): string {
                   >
                     {{ hit.snippet }}
                   </p>
-                  <span v-if="!isOpen(hit, i) && hit.contentState === 'embedded'"
+                  <span v-if="!isOpen(hit, i) && hit.contentState === CONTENT_EMBEDDED"
                         class="text-xs opacity-50">full text included</span>
-                  <span v-else-if="!isOpen(hit, i) && hit.contentState === 'on-demand'"
+                  <span v-else-if="!isOpen(hit, i) && hit.contentState === CONTENT_ON_DEMAND"
                         class="text-xs opacity-50">full text on request</span>
                 </div>
               </div>

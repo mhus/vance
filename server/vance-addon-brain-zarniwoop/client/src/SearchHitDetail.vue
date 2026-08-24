@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { VButton, VShareButton } from '@vance/components';
-import type { SearchHitView } from './generated/search/SearchHitView';
+// The state values come from the record that declares them — one authority for
+// what `contentState` can say, on both sides of the wire.
+import { CONTENT_ON_DEMAND, type SearchHitView } from './generated/search/SearchHitView';
 import HitPicture from './HitPicture.vue';
 import { extraLink, imageFile, link } from './hitView';
 
@@ -44,7 +46,7 @@ function shareSubject(hit: SearchHitView) {
     <!-- The ladder: the text is here, it is fetchable, or it is neither — and
          the third rung says so instead of showing a button that cannot work. -->
     <p v-if="hit.body" class="whitespace-pre-wrap text-sm">{{ hit.body }}</p>
-    <template v-else-if="hit.contentState === 'on-demand'">
+    <template v-else-if="hit.contentState === CONTENT_ON_DEMAND">
       <div>
         <VButton
           v-if="!fullText && !fullTextUrl"

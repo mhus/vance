@@ -116,10 +116,24 @@ public class JavaAstParser {
                     f.setName(v.getNameAsString());
                     Type t = v.getType();
                     f.setJavaType(t.asString());
-                    // Modifiers: static final → Konstante, nur public exportieren
+                    // Modifiers: static final → Konstante, nur public exportieren.
+                    //
+                    // Die beiden Flags sind getrennt, weil sie zwei Fragen
+                    // beantworten: staticFinal heisst "kein Interface-Feld",
+                    // publicVisible heisst "wird exportiert". Sie zu einem
+                    // zusammenzuziehen (staticFinal = static && final && public)
+                    // laesst eine private Konstante in den Feld-Zweig fallen —
+                    // aus einem internen Detail wuerde dann eine Wire-Property,
+                    // also genau das Gegenteil der Absicht.
+                    //
+                    // Bekannte Grenze: in einem Java-*Interface* sind Felder
+                    // implizit public static final, JavaParser synthetisiert die
+                    // Modifier aber nicht. Es gibt heute keinen annotierten
+                    // Interface-Typ; falls einer kommt, ist hier die Stelle.
                     boolean isStatic = fd.isStatic();
                     boolean isFinal = fd.isFinal();
                     f.setStaticFinal(isStatic && isFinal);
+                    f.setPublicVisible(fd.isPublic());
                     v.getInitializer().ifPresent(init -> f.setInitializer(init.toString()));
                     // @Nullable on either the field or the type counts as optional —
                     // matches JSpecify's semantics (`@Nullable T foo;` → `foo?: T;`).
@@ -211,6 +225,38 @@ public class JavaAstParser {
                         }
                     }
                     TypeNameExtractor.extractReferencedSimpleTypes(f.getJavaType()).forEach(rt -> f.getReferencedTypes().add(rt));
+                    model.getFields().add(f);
+                }
+            }
+
+            // Constants in the record body.
+            //
+            // Read for the same reason a class's are: the annotation is one
+            // contract, and "public static final in a class ships, the same
+            // declaration in a record does not" is a rule nobody can guess.
+            // SearchHitView is the case that showed it — it names the three
+            // legal values of one of its own components, and the client had
+            // re-typed them as string literals in three places.
+            //
+            // Record components are never static, so this cannot collide with
+            // the loop above.
+            for (BodyDeclaration<?> bd : recordDecl.getMembers()) {
+                if (!(bd instanceof FieldDeclaration fd)) continue;
+                if (!fd.isStatic() || !fd.isFinal()) continue;
+                for (var v : fd.getVariables()) {
+                    JavaFieldModel f = new JavaFieldModel();
+                    f.setName(v.getNameAsString());
+                    f.setJavaType(v.getType().asString());
+                    f.setStaticFinal(true);
+                    f.setPublicVisible(fd.isPublic());
+                    v.getInitializer().ifPresent(init -> f.setInitializer(init.toString()));
+                    for (AnnotationExpr an : fd.getAnnotations()) {
+                        if (simpleName(an.getNameAsString()).equals("TypeScript")) {
+                            getStringAttribute(an, "type").ifPresent(f::setTsTypeOverride);
+                            f.setIgnored(getBooleanAttribute(an, "ignore").orElse(false));
+                            getStringAttribute(an, "description").ifPresent(f::setDescription);
+                        }
+                    }
                     model.getFields().add(f);
                 }
             }

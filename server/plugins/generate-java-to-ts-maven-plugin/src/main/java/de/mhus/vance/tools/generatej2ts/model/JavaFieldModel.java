@@ -11,6 +11,11 @@ public class JavaFieldModel {
     private boolean ignored;
     private boolean follow;
     private boolean staticFinal; // true, wenn Feld static final ist (Konstante)
+    // Sichtbarkeit im Java-Quelltext. Entscheidet NUR, ob eine Konstante
+    // exportiert wird — ob sie ein Interface-Feld wird, entscheidet
+    // staticFinal, und das bleibt getrennt (siehe TypeScriptGenerator).
+    // Default true: eine vergessene Zuweisung verhält sich wie vorher.
+    private boolean publicVisible = true;
     private String initializer; // Rohwert der Initialisierung (z. B. "\"PLAYER\"" oder 123)
     // Import-Metadaten aus @TypeScript
     // import_/tsImport/importValue → Symbolname
@@ -46,6 +51,9 @@ public class JavaFieldModel {
 
     public boolean isStaticFinal() { return staticFinal; }
     public void setStaticFinal(boolean staticFinal) { this.staticFinal = staticFinal; }
+
+    public boolean isPublicVisible() { return publicVisible; }
+    public void setPublicVisible(boolean publicVisible) { this.publicVisible = publicVisible; }
 
     public String getInitializer() { return initializer; }
     public void setInitializer(String initializer) { this.initializer = initializer; }

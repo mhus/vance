@@ -3,6 +3,10 @@
  Source: de.mhus.vance.addon.brain.zarniwoop.SearchHitView
 */
 
+export const CONTENT_EMBEDDED = "embedded";
+export const CONTENT_ON_DEMAND = "on-demand";
+export const CONTENT_NONE = "none";
+
 export interface SearchHitView {
   title: string;
   url: string;

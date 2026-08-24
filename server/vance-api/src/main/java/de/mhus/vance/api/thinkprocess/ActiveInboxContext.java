@@ -42,25 +42,25 @@ import org.jspecify.annotations.Nullable;
 public class ActiveInboxContext {
 
     /**
-     * The thread the reader has open in the inbox panel. Required.
+     * Shape of an identifier the brain issued — Mongo ObjectId, UUID, generated
+     * message id.
      *
-     * <p>The pattern is the shape of an identifier the brain issued — Mongo
-     * ObjectId, UUID, generated message id.
-     *
-     * <p><b>These constraints are documentation, not the gate.</b> This request
-     * arrives over the WebSocket and is deserialized with
+     * <p><b>The constraints below are documentation, not the gate.</b> This
+     * request arrives over the WebSocket and is deserialized with
      * {@code objectMapper.convertValue}, where no bean validation runs. The
      * enforcing check is in {@code PromptContextBuilder.activeInbox}, and it has
      * to be there: that is the point where the value would otherwise be rendered
      * into a system-prompt sentence unwrapped.
      *
-     * <p>Spelled out twice rather than pulled into a constant: the TS generator
-     * turns every {@code static final} on an annotated class into an exported
-     * const, and {@code @vance/generated}'s barrel is flat — a name as generic
-     * as {@code ID_PATTERN} has no business in it.
+     * <p>Private, and that now means what it says: the TS generator exports only
+     * <em>public</em> constants of an annotated type, so this stays inside the
+     * class instead of becoming an {@code ID_PATTERN} export in a flat barrel.
      */
+    private static final String ID_PATTERN = "[A-Za-z0-9_-]{1,64}";
+
+    /** The thread the reader has open in the inbox panel. Required. */
     @NotBlank
-    @Pattern(regexp = "[A-Za-z0-9_-]{1,64}")
+    @Pattern(regexp = ID_PATTERN)
     private String threadId;
 
     /**
@@ -68,6 +68,6 @@ public class ActiveInboxContext {
      * {@code null} when they have the thread open without singling anything out.
      */
     @Nullable
-    @Pattern(regexp = "[A-Za-z0-9_-]{1,64}")
+    @Pattern(regexp = ID_PATTERN)
     private String messageId;
 }

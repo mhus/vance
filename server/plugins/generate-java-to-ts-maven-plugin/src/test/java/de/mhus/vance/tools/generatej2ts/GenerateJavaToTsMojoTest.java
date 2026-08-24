@@ -28,26 +28,7 @@ public class GenerateJavaToTsMojoTest {
 
     @Test
     void generateTypeScriptFromSampleJava() throws Exception {
-        File inputDir = locateResourceDir("java2ts/input");
-        Assertions.assertTrue(inputDir.isDirectory(), "Input-Verzeichnis nicht gefunden: " + inputDir);
-
-        outDir = Path.of("target", "test-output", "java2ts").toAbsolutePath();
-        Files.createDirectories(outDir);
-
-        GenerateJavaToTsMojo mojo = new GenerateJavaToTsMojo();
-        setPrivateField(mojo, "inputDirectory", inputDir);
-        setPrivateField(mojo, "outputDirectory", outDir.toFile());
-        // Konfigurationsdatei mit defaultImports erstellen
-        Path cfg = Path.of("target", "java-to-ts-test.yaml").toAbsolutePath();
-        String yaml = "defaultImports:\n" +
-                "  - \"import { Util } from 'utils/Util';\"\n" +
-                "  - \"import something from '@scope/some';\"\n";
-        Files.createDirectories(cfg.getParent());
-        Files.writeString(cfg, yaml, StandardCharsets.UTF_8);
-        setPrivateField(mojo, "configFile", cfg.toFile());
-
-        // execute
-        mojo.execute();
+        runMojo();
 
         // verify files
         Path personTs = outDir.resolve(Path.of("models", "Person.ts"));
@@ -97,6 +78,74 @@ public class GenerateJavaToTsMojoTest {
                 "Header sollte die ursprüngliche Java-Klasse enthalten");
         Assertions.assertTrue(human.contains("export interface Human"),
                 "Interface-Name sollte 'Human' sein");
+    }
+
+    /**
+     * Konstanten: exportiert wird, was public ist — und ein nicht-public
+     * static-Feld darf auch nicht als Interface-Property durchrutschen.
+     *
+     * <p>Das ist der eigentliche Punkt der zweiten Assertion: die naive Fassung
+     * des Fixes (staticFinal = static && final && public) laesst eine private
+     * Konstante in den Feld-Zweig fallen, und aus dem internen Detail wird eine
+     * Wire-Property — schlechter als der Export, den man verhindern wollte.
+     */
+    @Test
+    void constants_onlyPublicOnesAreExported() throws Exception {
+        runMojo();
+
+        String limits = Files.readString(
+                outDir.resolve(Path.of("models", "Limits.ts")), StandardCharsets.UTF_8);
+
+        Assertions.assertTrue(limits.contains("export const MAX_ITEMS = 25;"),
+                "public static final fehlt als exportierte Konstante");
+        Assertions.assertFalse(limits.contains("INTERNAL_PATTERN"),
+                "private static final darf nicht im generierten Contract stehen");
+        Assertions.assertFalse(limits.contains("BUILD_TAG"),
+                "@TypeScript(ignore=true) muss auch fuer Konstanten gelten");
+    }
+
+    /**
+     * Dieselbe Regel im Record-Body. Vorher las der Generator dort ueberhaupt
+     * keine Felder: dieselbe Deklaration lieferte aus einer Klasse eine
+     * Konstante und aus einem Record nichts.
+     */
+    @Test
+    void constants_inRecordBody_followTheSameRule() throws Exception {
+        runMojo();
+
+        String coords = Files.readString(
+                outDir.resolve(Path.of("models", "Coords.ts")), StandardCharsets.UTF_8);
+
+        Assertions.assertTrue(coords.contains("export const ORIGIN = \"0,0\";"),
+                "public static final im Record-Body fehlt");
+        Assertions.assertFalse(coords.contains("SCALE"),
+                "private static final im Record-Body darf nicht exportiert werden");
+        // Die Komponenten bleiben unberuehrt.
+        Assertions.assertTrue(coords.contains("x: number;") && coords.contains("y: number;"),
+                "Record-Komponenten fehlen");
+    }
+
+    /** Laesst das Mojo ueber die Fixtures laufen und setzt {@link #outDir}. */
+    private void runMojo() throws Exception {
+        File inputDir = locateResourceDir("java2ts/input");
+        Assertions.assertTrue(inputDir.isDirectory(), "Input-Verzeichnis nicht gefunden: " + inputDir);
+
+        outDir = Path.of("target", "test-output", "java2ts").toAbsolutePath();
+        Files.createDirectories(outDir);
+
+        GenerateJavaToTsMojo mojo = new GenerateJavaToTsMojo();
+        setPrivateField(mojo, "inputDirectory", inputDir);
+        setPrivateField(mojo, "outputDirectory", outDir.toFile());
+        // Konfigurationsdatei mit defaultImports erstellen
+        Path cfg = Path.of("target", "java-to-ts-test.yaml").toAbsolutePath();
+        String yaml = "defaultImports:\n" +
+                "  - \"import { Util } from 'utils/Util';\"\n" +
+                "  - \"import something from '@scope/some';\"\n";
+        Files.createDirectories(cfg.getParent());
+        Files.writeString(cfg, yaml, StandardCharsets.UTF_8);
+        setPrivateField(mojo, "configFile", cfg.toFile());
+
+        mojo.execute();
     }
 
     private static void setPrivateField(Object target, String fieldName, Object value) throws Exception {

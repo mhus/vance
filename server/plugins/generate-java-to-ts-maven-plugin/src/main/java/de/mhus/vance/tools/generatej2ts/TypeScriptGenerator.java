@@ -81,13 +81,23 @@ public class TypeScriptGenerator {
                 for (JavaFieldModel f : jm.getFields()) {
                     if (f == null) continue;
                     if (f.isIgnored()) continue;
-                    // static final Felder → als TS-Konstanten exportieren (nicht im Interface)
+                    // static final Felder → als TS-Konstanten exportieren (nicht im Interface).
+                    //
+                    // Exportiert wird nur, was public ist: eine private
+                    // Konstante ist ein Implementierungsdetail der Java-Klasse,
+                    // und der generierte Barrel ist flach — ein Name wie
+                    // ID_PATTERN dort ist eine Kollision, die auf sich warten
+                    // laesst. Das `continue` steht bewusst AUSSERHALB dieser
+                    // Bedingung: ein static-Feld darf unter keinen Umstaenden
+                    // Interface-Property werden, auch nicht als "Kompromiss".
                     if (f.isStaticFinal()) {
-                        String tsType = resolveTsType(f);
-                        String value = f.getInitializer();
-                        de.mhus.vance.tools.generatej2ts.ts.TypeScriptConstant c =
-                                new de.mhus.vance.tools.generatej2ts.ts.TypeScriptConstant(f.getName(), tsType, value);
-                        tt.getConstants().add(c);
+                        if (f.isPublicVisible()) {
+                            String tsType = resolveTsType(f);
+                            String value = f.getInitializer();
+                            de.mhus.vance.tools.generatej2ts.ts.TypeScriptConstant c =
+                                    new de.mhus.vance.tools.generatej2ts.ts.TypeScriptConstant(f.getName(), tsType, value);
+                            tt.getConstants().add(c);
+                        }
                         continue;
                     }
                     String tsType = resolveTsType(f);

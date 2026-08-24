@@ -61,6 +61,13 @@ public class InboxDelegateHandler implements WsHandler {
                         item.getId() == null ? "" : item.getId(),
                         item.getAssignedToUserId() == null ? "" : item.getAssignedToUserId()),
                 Action.WRITE);
+        // And WRITE on the *target's* inbox: the check above says the caller may
+        // settle this thread, not that they may put it on that person's desk.
+        // Mirrors the REST path and invite(); see InboxAuthz — change both or
+        // neither.
+        authority.enforce(ctx, new Resource.InboxItem(
+                        ctx.getTenantId(), "", request.getToUserId()),
+                Action.WRITE);
 
         Optional<MaximegalonDocument> updated = inboxService.delegate(
                 ctx.getTenantId(), request.getItemId(),

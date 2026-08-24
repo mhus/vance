@@ -76,7 +76,7 @@ public class InboxMarkReadTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String tenantId = support.tenantOrThrow(ctx);
         String owner = support.ownerOrThrow(ctx);
-        List<String> ids = idList(params);
+        List<String> ids = InboxToolSupport.idList(params, "threadIds", MAX_IDS);
 
         List<String> marked = new ArrayList<>();
         List<Map<String, Object>> skipped = new ArrayList<>();
@@ -108,28 +108,5 @@ public class InboxMarkReadTool implements Tool {
         row.put("threadId", threadId);
         row.put("reason", why);
         return row;
-    }
-
-    private static List<String> idList(Map<String, Object> params) {
-        Object raw = params == null ? null : params.get("threadIds");
-        List<String> ids = new ArrayList<>();
-        if (raw instanceof List<?> list) {
-            for (Object o : list) {
-                if (o instanceof String s && !s.isBlank()) ids.add(s.trim());
-            }
-        } else if (raw instanceof String s && !s.isBlank()) {
-            // A single id as a bare string is the obvious slip; accepting it
-            // costs nothing and refusing it costs a turn.
-            ids.add(s.trim());
-        }
-        if (ids.isEmpty()) {
-            throw new ToolException("'threadIds' is required — name at least one thread id "
-                    + "from inbox_list.");
-        }
-        if (ids.size() > MAX_IDS) {
-            throw new ToolException("at most " + MAX_IDS
-                    + " threads per call — name them in batches.");
-        }
-        return ids;
     }
 }

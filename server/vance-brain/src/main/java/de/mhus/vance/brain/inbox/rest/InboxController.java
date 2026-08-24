@@ -293,6 +293,13 @@ public class InboxController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Delegate target userId is required");
         }
+        // Delegating *delivers* into someone else's inbox, so it needs WRITE
+        // there — the same rule invite() applies below, and for the same reason:
+        // handing a matter to a person spends their attention. The check on the
+        // item above only says the caller may settle this thread; it says
+        // nothing about whose desk it may land on.
+        authority.enforce(httpRequest,
+                new Resource.InboxItem(tenant, "", request.getToUserId()), Action.WRITE);
         MaximegalonDocument updated = inboxItemService.delegate(
                         tenant, id, request.getToUserId(), currentUser, request.getNote())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));

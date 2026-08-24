@@ -75,11 +75,11 @@ class InboxArchiveToolTest {
     void archive_openAsk_isRefusedAndSaysWhatToDoInstead() {
         given(MaximegalonStatus.PENDING, true);
 
-        assertThatThrownBy(() -> tool.invoke(Map.of("threadId", "t1"), ctx()))
-                .isInstanceOf(ToolException.class)
-                .hasMessageContaining("open request")
-                .hasMessageContaining("add a contribution");
+        Map<String, Object> out = tool.invoke(Map.of("threadIds", java.util.List.of("t1")), ctx());
 
+        assertThat((java.util.List<?>) out.get("archived")).isEmpty();
+        assertThat(out.get("skipped").toString())
+                .contains("open request").contains("add a contribution");
         verify(threads, never()).archive(any(), any(), any());
     }
 
@@ -90,9 +90,10 @@ class InboxArchiveToolTest {
                 .id("t1").tenantId(TENANT).status(MaximegalonStatus.ARCHIVED).build();
         when(threads.archive(TENANT, "t1", OWNER)).thenReturn(Optional.of(archived));
 
-        Map<String, Object> out = tool.invoke(Map.of("threadId", "t1"), ctx());
+        Map<String, Object> out = tool.invoke(Map.of("threadIds", java.util.List.of("t1")), ctx());
 
-        assertThat(out.get("status")).isEqualTo("ARCHIVED");
+        assertThat(out.get("archived")).isEqualTo(java.util.List.of("t1"));
+        assertThat((java.util.List<?>) out.get("skipped")).isEmpty();
         assertThat(doc.getStatus()).isEqualTo(MaximegalonStatus.ANSWERED); // service owns the write
     }
 
@@ -104,8 +105,8 @@ class InboxArchiveToolTest {
         when(threads.archive(TENANT, "t1", OWNER)).thenReturn(Optional.of(
                 MaximegalonDocument.builder().id("t1").status(MaximegalonStatus.ARCHIVED).build()));
 
-        assertThat(tool.invoke(Map.of("threadId", "t1"), ctx()).get("status"))
-                .isEqualTo("ARCHIVED");
+        assertThat(tool.invoke(Map.of("threadIds", java.util.List.of("t1")), ctx()).get("archived"))
+                .isEqualTo(java.util.List.of("t1"));
     }
 
     @Test
@@ -113,19 +114,22 @@ class InboxArchiveToolTest {
         given(MaximegalonStatus.ANSWERED, false);
         when(authz.mayDecide(TENANT, OWNER, OWNER)).thenReturn(false);
 
-        assertThatThrownBy(() -> tool.invoke(Map.of("threadId", "t1"), ctx()))
-                .isInstanceOf(ToolException.class)
-                .hasMessageContaining("may read")
-                .hasMessageContaining("not settle it");
+        Map<String, Object> out = tool.invoke(Map.of("threadIds", java.util.List.of("t1")), ctx());
+
+        assertThat((java.util.List<?>) out.get("archived")).isEmpty();
+        assertThat(out.get("skipped").toString())
+                .contains("may read").contains("not settle it");
     }
 
     @Test
     void archive_alreadyArchived_isAStatementNotAFailure() {
         given(MaximegalonStatus.ARCHIVED, false);
 
-        Map<String, Object> out = tool.invoke(Map.of("threadId", "t1"), ctx());
+        Map<String, Object> out = tool.invoke(Map.of("threadIds", java.util.List.of("t1")), ctx());
 
-        assertThat(out.get("alreadyArchived")).isEqualTo(true);
+        // Idempotent: counting it as archived keeps a re-run from reading as a
+        // partial failure.
+        assertThat(out.get("archived")).isEqualTo(java.util.List.of("t1"));
         verify(threads, never()).archive(any(), any(), any());
     }
 }

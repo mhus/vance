@@ -2,7 +2,8 @@
 triggers: inbox, was liegt an, meine inbox, was ist offen, inbox thread, decision
   request, approval pending, thread lesen, beitrag, clarification, inbox aufräumen,
   als gelesen markieren, archivieren, offene entscheidungen, what is waiting,
-  open decisions, pending approval, mark as read
+  open decisions, pending approval, mark as read, delegieren, weitergeben,
+  zuweisen, delegate, hand over, reassign
 summary: Reading the Vancetope inbox and contributing to a thread — what the
   inbox_* and thread_* tools do, and why none of them answers a request.
 requires-tools: inbox_list, thread_get
@@ -46,7 +47,8 @@ mistake here:
 | `thread_get({ threadId: 'x' })` | One matter and its contributions, paginated. Changes nothing. |
 | `thread_message_add({ threadId: 'x', body: '…' })` | Add a contribution. Does **not** answer. |
 | `inbox_mark_read({ threadIds: ['x'] })` | Clear the unread mark on named threads. |
-| `inbox_archive({ threadId: 'x' })` | Take a settled matter off the list. Refused while an ask is open. |
+| `inbox_archive({ threadIds: ['x','y'] })` | Take settled matters off the list. Refusals appear in `skipped`. |
+| `thread_delegate({ threadId: 'x', toUserId: 'robin' })` | Hand a matter to the person who should decide it. |
 | `inbox_post({ … })` | Put something in front of someone. See `manual_read('inbox-post')`. |
 
 ## What none of them does
@@ -60,7 +62,11 @@ that asked could answer itself, and the request would have been pointless.
 So when you find an open ask, your move is one of these:
 
 - report it to the user and let them decide,
-- or add what you know with `thread_message_add` so their decision is easier.
+- add what you know with `thread_message_add` so their decision is easier,
+- or, if the user says it belongs to somebody else, `thread_delegate` it. That
+  **routes** the decision without making it: the thread stays open and waits on
+  the new assignee. Only ever name a person the user named — putting a matter on
+  someone's desk spends their attention.
 
 **Reading is not answering, and reading is not marking read.** `thread_get`
 leaves every axis untouched. Only call `inbox_mark_read` when the user asked you
@@ -80,7 +86,12 @@ thread_message_add({ threadId: 'a1b2…',
                      body: 'Checked: migration 2026-08-12_001 ran on staging, no drift.' })
 ```
 
-Then tell the user the decision is theirs.
+Then tell the user the decision is theirs. And when clearing up afterwards:
+
+```
+inbox_archive({ threadIds: ['c3d4…', 'e5f6…', 'g7h8…'] })
+  → archived: ['c3d4…', 'e5f6…'], skipped: [{ threadId: 'g7h8…', reason: 'open request …' }]
+```
 
 ## Common mistakes
 
@@ -98,7 +109,13 @@ Then tell the user the decision is theirs.
 - **Expecting a team inbox.** These tools read the inbox of the process owner,
   nobody else's.
 - **Archiving an open ask.** Refused on purpose: a process may be blocked on that
-  decision. Add a contribution saying why it is moot instead.
+  decision. Add a contribution saying why it is moot instead. In a batch the
+  refusal is per thread — read `skipped`, do not assume the whole call worked.
+- **Delegating instead of reporting.** Handing a matter on is not the same as
+  telling the user about it. Delegate when they said whose it is; otherwise say
+  what you found.
+- **Guessing a recipient.** A login you inferred is a matter landing on the wrong
+  desk. If the user did not name someone, ask.
 
 ## See also
 

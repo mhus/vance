@@ -9,6 +9,7 @@ import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -102,6 +103,38 @@ public class InboxToolSupport {
                         doc.getId() == null ? "" : doc.getId(),
                         doc.getAssignedToUserId() == null ? "" : doc.getAssignedToUserId()),
                 Action.WRITE);
+    }
+
+    /**
+     * Reads a bounded, explicitly named id list. Shared so the two batch tools
+     * cannot drift apart on the bound — and because "name them, do not filter"
+     * is the same rule in both: an enumerable blast radius is one the transcript
+     * records.
+     *
+     * <p>A bare string is accepted as the obvious slip; refusing it would cost a
+     * turn for something unambiguous.
+     */
+    static java.util.List<String> idList(
+            @org.jspecify.annotations.Nullable Map<String, Object> params,
+            String key, int max) {
+        Object raw = params == null ? null : params.get(key);
+        java.util.List<String> ids = new java.util.ArrayList<>();
+        if (raw instanceof java.util.List<?> list) {
+            for (Object o : list) {
+                if (o instanceof String s && !s.isBlank()) ids.add(s.trim());
+            }
+        } else if (raw instanceof String s && !s.isBlank()) {
+            ids.add(s.trim());
+        }
+        if (ids.isEmpty()) {
+            throw new ToolException("'" + key + "' is required — name at least one thread "
+                    + "id from inbox_list.");
+        }
+        if (ids.size() > max) {
+            throw new ToolException("at most " + max
+                    + " threads per call — name them in batches.");
+        }
+        return ids;
     }
 
     static ToolException notVisible(String threadId) {

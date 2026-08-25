@@ -25,6 +25,7 @@ import org.jspecify.annotations.Nullable;
  *                table names, no expression — a name.
  * @param columns columns of a {@code table}; empty means "the table's declared
  *                fields", which is the normal case.
+ * @param options choices of a {@code select}.
  * @param fields  form-engine fields of a {@code form}. The same
  *                {@link FormFieldDto} the wizards and setting forms use — this
  *                addon adds nothing to it.
@@ -51,12 +52,14 @@ public record ViewNode(
          */
         @Nullable String show,
         List<String> columns,
+        List<ViewOption> options,
         List<FormFieldDto> fields,
         Map<String, ViewAction> on,
         List<ViewNode> children) {
 
     public ViewNode {
         if (columns == null) columns = List.of();
+        if (options == null) options = List.of();
         if (fields == null) fields = List.of();
         if (on == null) on = Map.of();
         if (children == null) children = List.of();

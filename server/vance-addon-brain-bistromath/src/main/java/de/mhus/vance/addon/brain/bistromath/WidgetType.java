@@ -28,6 +28,23 @@ public enum WidgetType {
     /** Horizontal strip of buttons. */
     TOOLBAR,
 
+    /**
+     * Children side by side, sharing the width evenly.
+     *
+     * <p>The one layout widget, and the only thing {@code @vance/components}
+     * does <b>not</b> supply — layout there is Tailwind classes, not a
+     * component. Named rather than configured: a {@code gap} or a
+     * {@code flex-direction} in an app document is the line §1.3 draws, and a
+     * row that splits evenly covers the case that actually comes up (two or
+     * three inputs that belong together on one line).
+     *
+     * <p>{@link #TOOLBAR} stays separate. It wraps, is meant for controls, and
+     * sizes to content; a row divides the width. Same axis, different job — and
+     * a single widget with a flag would need a default that is wrong for one of
+     * them.
+     */
+    ROW,
+
     /** Clickable label bound to an action. */
     BUTTON,
 
@@ -49,6 +66,33 @@ public enum WidgetType {
      * a button is the subroutine.
      */
     FORM,
+
+    /**
+     * A single text input bound to one state key.
+     *
+     * <p>Together with {@link #NUMBER}, {@link #TOGGLE} and {@link #SELECT} this
+     * is the <b>direct</b> way in — no {@code FormFieldDto}, no field list, and
+     * <b>no string encoding</b>. A {@code number} hands the program a number and
+     * a {@code toggle} a boolean, because these write into <em>state</em>, not
+     * into a document: there is no round trip to preserve, so there is nothing
+     * to encode.
+     *
+     * <p>Deliberately <b>beside</b> {@link #FORM} rather than an extension of
+     * it. {@code FormFieldDto} is a server-side model with four other consumers
+     * — wizards, setting forms, document templates, kit tool templates — and
+     * none of them wants a widget type added for this runtime. A model serving
+     * five masters gets worse for each.
+     */
+    INPUT,
+
+    /** A number input. Writes a number into state, or {@code null} when empty. */
+    NUMBER,
+
+    /** A checkbox. Writes a boolean. */
+    TOGGLE,
+
+    /** A choice from {@code options}. Writes the chosen value. */
+    SELECT,
 
     /**
      * The same field list, <b>read-only</b>.
@@ -100,7 +144,7 @@ public enum WidgetType {
 
     /** Widgets that carry children. */
     boolean allowsChildren() {
-        return this == PAGE || this == TOOLBAR || this == TABS
+        return this == PAGE || this == TOOLBAR || this == ROW || this == TABS
                 || this == REPEAT || this == DIALOG;
     }
 

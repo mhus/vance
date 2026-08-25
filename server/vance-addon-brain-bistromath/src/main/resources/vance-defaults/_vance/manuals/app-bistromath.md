@@ -58,8 +58,10 @@ runtime knows about.
 
 This build reads **and writes** documents (`vance.documents.write` / `create` /
 `delete`; a write is refused if the document changed since the app read it), and
-a `form` widget is **editable** — what the reader types goes into state, the
-program stores it. A `records`/`sheet`/`list`/`tree` document is read and
+a `form` widget is **editable**, and `input`/`number`/`toggle`/`select` are
+single controls bound to one state key each — **natively typed**, no string
+encoding. `row` puts widgets side by side. What the reader types goes into
+state, the program stores it. A `records`/`sheet`/`list`/`tree` document is read and
 written **as a structure**, so an app edits the same files the built-in editors
 and the `records_*` tools do. It also reacts to writes in its own folder
 (`onDocumentChanged`), so an agent writing a record shows up without a reload.

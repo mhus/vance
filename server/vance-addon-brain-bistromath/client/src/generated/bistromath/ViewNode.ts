@@ -4,6 +4,7 @@
 */
 
 import type { FormFieldDto } from '@vance/generated';
+import { ViewOption } from './ViewOption';
 import { ViewAction } from './ViewAction';
 
 export interface ViewNode {
@@ -13,6 +14,7 @@ export interface ViewNode {
   from?: string;
   show?: string;
   columns: string[];
+  options: ViewOption[];
   fields: FormFieldDto[];
   on: Record<string, ViewAction>;
   children: ViewNode[];

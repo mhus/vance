@@ -18,6 +18,67 @@ disappearing, so a typo looks like a typo.
 
 A row's `key` field identifies it; `vance.documents.list` already returns one.
 
+## The four direct inputs
+
+`input`, `number`, `toggle`, `select`. One widget, one state key, **no field
+list** — and the value lands in state with its **native type**:
+
+```yaml
+- type: row
+  children:
+    - { type: input,  from: query,  label: Suche }
+    - { type: select, from: status, label: Status,
+        options: [alle, { value: paid, label: Bezahlt }] }
+    - { type: toggle, from: onlyBig, label: "nur > 1000" }
+```
+
+```js
+const q      = await vance.state.get('query');    // string
+const status = await vance.state.get('status');   // string — the VALUE, not the label
+const big    = await vance.state.get('onlyBig');  // boolean
+const amount = await vance.state.get('newAmount'); // number, or null when empty
+```
+
+**Why native and not strings** (the way a `form` works): these write into
+*state*, not into a document. A form's values are on their way into a file and
+have to round-trip, so they are encoded; these are on their way to your program,
+which decides what to do with them. Nothing to preserve, so nothing to encode.
+
+`options` takes either a bare value — which is then also its caption — or
+`{value, label}` where the two differ. Not `"paid|Bezahlt"`: a separator inside
+a value means everyone has to learn an escaping rule, and YAML can already write
+two things.
+
+An **emptied** `number` writes `null`, not `0`. Zero is a number somebody may
+have typed on purpose.
+
+All four take `on: { change: "main.js:…" }`, debounced — the running-total and
+live-filter case. The handler gets no arguments; it reads the current values
+with `vance.state.get`.
+
+**When to use a `form` instead:** you already have a field list — from a kit, a
+setting form, or because a record has eight fields and listing them as eight
+widgets is noise. The direct inputs are for the two or three controls that
+*aren't* a record: a search box, a filter, a mode switch.
+
+## `row`
+
+Children side by side, sharing the width evenly. Wraps when it runs out.
+
+```yaml
+- type: row
+  children:
+    - { type: input, from: a }
+    - { type: input, from: b }
+```
+
+The only layout widget, and there will not be a second one: no `gap`, no widths,
+no `flex-direction`. A view says *what*, the renderer decides *how* — a
+stylesheet in an app document is the line this schema draws.
+
+`toolbar` looks similar and is a different job: it sizes to its content and is
+meant for buttons; a `row` divides the width.
+
 ## `form` and `details`
 
 Both take `fields:`, the ordinary form-engine field list (the one wizards and

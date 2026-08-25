@@ -38,12 +38,17 @@ not an expression — a name the program wrote with
 | Widget | Carries | Notes |
 |---|---|---|
 | `page` | `title`, `children` | root of a view |
-| `toolbar` | `children` | a row of controls |
+| `toolbar` | `children` | controls in a line; sizes to content, wraps |
+| `row` | `children` | children side by side, sharing the width evenly |
 | `button` | `label`, `on.click` | |
 | `text` | `text` **or** `from` | literal, or a state value |
 | `markdown` | `text` **or** `from` | rendered, sanitised |
 | `table` | `from`, `columns?`, `on.rowClick` | `from` must hold an array of objects |
-| `form` | `from`, `fields`, `on.change?` | **editable** — writes back into `from` |
+| `input` | `from`, `label?` | one text field, writes a **string** |
+| `number` | `from`, `label?` | one number field, writes a **number** or `null` |
+| `toggle` | `from`, `label?` | a checkbox, writes a **boolean** |
+| `select` | `from`, `options`, `label?` | a choice, writes the chosen **value** |
+| `form` | `from`, `fields`, `on.change?` | a whole field list — **editable** |
 | `details` | `from`, `fields` | the same field list, read-only |
 | `tabs` | `children` | each child's `label` captions its tab |
 | `repeat` | `from`, `children` | children once per element of a list |

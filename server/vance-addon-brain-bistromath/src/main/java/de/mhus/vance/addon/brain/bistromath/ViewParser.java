@@ -129,6 +129,7 @@ public final class ViewParser {
         String from = str(raw.get("from"));
         String show = str(raw.get("show"));
         List<String> columns = strings(raw.get("columns"), docPath, at + ".columns");
+        List<ViewOption> options = options(raw.get("options"), docPath, at + ".options");
         Map<String, ViewAction> on = handlers(raw.get("on"), docPath, at);
 
         List<FormFieldDto> fields = List.of();
@@ -144,12 +145,21 @@ public final class ViewParser {
                     + " `details`, not to a `" + type.wire() + "`.");
         }
 
+        // A separate check, not another `else if`: chained onto the branch above
+        // it would never run for a `form`, so a stray `options:` on one would be
+        // dropped without a word — the failure this parser exists to prevent.
+        if (type != WidgetType.SELECT && raw.get("options") != null) {
+            throw new ToolException(where(docPath, at) + ": `options` belongs to a `select`,"
+                    + " not to a `" + type.wire() + "`.");
+        }
+
         List<ViewNode> children = children(raw.get("children"), type, docPath, at, depth, budget);
 
         rejectRemovedKeys(raw, docPath, at);
-        requireShape(type, label, text, from, show, docPath, at);
+        requireShape(type, label, text, from, show, options, docPath, at);
 
-        return new ViewNode(type.wire(), label, text, from, show, columns, fields, on, children);
+        return new ViewNode(type.wire(), label, text, from, show, columns, options, fields, on,
+                children);
     }
 
     /**
@@ -172,7 +182,8 @@ public final class ViewParser {
     /** Per-widget requirements, in one place so the messages stay uniform. */
     private static void requireShape(WidgetType type, @Nullable String label,
                                      @Nullable String text, @Nullable String from,
-                                     @Nullable String show, String docPath, String at) {
+                                     @Nullable String show, List<ViewOption> options,
+                                     String docPath, String at) {
         switch (type) {
             case TABLE -> {
                 if (from == null) {
@@ -184,6 +195,23 @@ public final class ViewParser {
                 if (from == null) {
                     throw new ToolException(where(docPath, at) + ": a `" + type.wire()
                             + "` needs `from`, the state key holding the record it shows.");
+                }
+            }
+            case INPUT, NUMBER, TOGGLE -> {
+                if (from == null) {
+                    throw new ToolException(where(docPath, at) + ": a `" + type.wire()
+                            + "` needs `from`, the state key it reads and writes back.");
+                }
+            }
+            case SELECT -> {
+                if (from == null) {
+                    throw new ToolException(where(docPath, at) + ": a `select` needs `from`,"
+                            + " the state key it reads and writes back.");
+                }
+                if (options.isEmpty()) {
+                    throw new ToolException(where(docPath, at) + ": a `select` needs `options`."
+                            + " Write them as a list — `options: [open, paid]`, or"
+                            + " `{value: paid, label: Bezahlt}` where the two differ.");
                 }
             }
             case EMBED -> {
@@ -350,6 +378,41 @@ public final class ViewParser {
                     + "` is not a function name.");
         }
         return ViewAction.script(ref, function, s);
+    }
+
+    /**
+     * Read a {@code select}'s choices.
+     *
+     * <p>A bare scalar is a value that is also its own caption; a mapping
+     * separates the two. Anything else is refused rather than coerced: an
+     * option list is short and hand-written, so a nested list in there is a
+     * mistake worth naming, not something to flatten quietly.
+     */
+    private static List<ViewOption> options(@Nullable Object raw, String docPath, String at) {
+        if (raw == null) return List.of();
+        if (!(raw instanceof List<?> list)) {
+            throw new ToolException(where(docPath, at) + ": expected a list of choices.");
+        }
+        List<ViewOption> out = new ArrayList<>();
+        for (int i = 0; i < list.size(); i++) {
+            Object entry = list.get(i);
+            String entryAt = at + "[" + i + "]";
+            if (entry instanceof Map<?, ?> map) {
+                String value = str(map.get("value"));
+                if (value == null) {
+                    throw new ToolException(where(docPath, entryAt) + ": needs a `value`.");
+                }
+                out.add(new ViewOption(value, str(map.get("label"))));
+                continue;
+            }
+            String value = str(entry);
+            if (value == null) {
+                throw new ToolException(where(docPath, entryAt) + ": expected a value or a"
+                        + " `{value, label}` mapping.");
+            }
+            out.add(new ViewOption(value, value));
+        }
+        return List.copyOf(out);
     }
 
     private static List<String> strings(@Nullable Object raw, String docPath, String at) {

@@ -108,6 +108,87 @@ class ViewParserTest {
         assertThat(node.show()).isEqualTo("hasRows");
     }
 
+    /**
+     * The direct inputs exist beside `form`, not inside it: one widget, one
+     * state key, no field list. So `from` is the whole contract and its absence
+     * is the one thing worth refusing.
+     */
+    @Test
+    void parse_inputWithoutFrom_isRejected() {
+        for (String widget : new String[] {"input", "number", "toggle"}) {
+            assertThatThrownBy(() -> ViewParser.parse("type: " + widget + "\n", "v.yaml"))
+                    .isInstanceOf(ToolException.class)
+                    .hasMessageContaining("needs `from`");
+        }
+    }
+
+    @Test
+    void parse_selectWithoutOptions_isRejected() {
+        assertThatThrownBy(() -> ViewParser.parse("type: select\nfrom: status\n", "v.yaml"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("a `select` needs `options`");
+    }
+
+    /**
+     * A bare scalar is a value that is also its own caption; a mapping
+     * separates the two. Both, because most option lists are short technical
+     * words that read fine as they are.
+     */
+    @Test
+    void parse_selectOptions_takeBothSpellings() {
+        String yaml = """
+                type: select
+                from: status
+                options:
+                  - open
+                  - { value: paid, label: Bezahlt }
+                """;
+
+        ViewNode node = ViewParser.parse(yaml, "v.yaml");
+
+        assertThat(node.options()).hasSize(2);
+        assertThat(node.options().get(0).value()).isEqualTo("open");
+        assertThat(node.options().get(0).label()).isEqualTo("open");
+        assertThat(node.options().get(1).value()).isEqualTo("paid");
+        assertThat(node.options().get(1).label()).isEqualTo("Bezahlt");
+    }
+
+    @Test
+    void parse_optionEntryWithoutValue_isRejected() {
+        String yaml = """
+                type: select
+                from: status
+                options:
+                  - { label: Bezahlt }
+                """;
+
+        assertThatThrownBy(() -> ViewParser.parse(yaml, "v.yaml"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("needs a `value`");
+    }
+
+    /**
+     * The check that made this a separate branch rather than another `else if`:
+     * chained onto the fields branch it would never run for a `form`, so the
+     * key would be dropped without a word.
+     */
+    @Test
+    void parse_optionsOnAForm_isRejectedRatherThanIgnored() {
+        String yaml = """
+                type: form
+                from: draft
+                options: [a, b]
+                fields:
+                  - name: x
+                    type: string
+                    label: { en: X }
+                """;
+
+        assertThatThrownBy(() -> ViewParser.parse(yaml, "v.yaml"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("`options` belongs to a `select`");
+    }
+
     @Test
     void parse_embedWithoutAPath_isRejected() {
         assertThatThrownBy(() -> ViewParser.parse("type: embed\n", "v.yaml"))

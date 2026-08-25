@@ -20,6 +20,9 @@ cause is not obvious from the wording.
 | `` `source` no longer exists `` | use `from:`, and have the program fill the key |
 | `a \`table\` needs \`from\`` | name the state key holding the rows |
 | `a \`dialog\` needs \`show\`` | the key that opens and closes it |
+| `` a `select` needs `options` `` | list the choices |
+| `` `options` belongs to a `select` `` | you put them on another widget |
+| `needs a \`value\`` | an option mapping without one |
 | `field \`x\` carries \`showIf\`` | that is the setting-form condition, not read here |
 
 A view is only re-read when the app reloads. If you edited it in the tab next

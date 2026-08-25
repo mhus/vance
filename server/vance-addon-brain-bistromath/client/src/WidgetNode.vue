@@ -4,8 +4,11 @@ import {
   FormFields,
   VAlert,
   VButton,
+  VCheckbox,
   VEmptyState,
+  VInput,
   VModal,
+  VSelect,
   type FormValue,
 } from '@vance/components';
 import { marked } from 'marked';
@@ -119,6 +122,58 @@ const embedUri = computed<string | null>(() => {
  * why there is no `chart` and no `image` widget.
  */
 const embedComponent = inject<Component | null>('vance:embed-component', null);
+
+// ── direct input ───────────────────────────────────────────────────
+
+/**
+ * What an input shows, as the control wants it.
+ *
+ * <p>The four direct inputs write **native** values into state — a number stays
+ * a number, a toggle a boolean. That is the whole difference to `form`, which
+ * goes through `FormFieldDto` and its string encoding: a form's values are on
+ * their way into a *document* and have to round-trip, while these are on their
+ * way into *state*, where the program decides what to make of them. Nothing to
+ * preserve, so nothing to encode.
+ */
+const inputText = computed<string>(() => {
+  const v = bound.value;
+  return v === undefined || v === null ? '' : String(v);
+});
+
+const inputChecked = computed<boolean>(() => {
+  const v = bound.value;
+  return v === true || v === 'true' || v === 1;
+});
+
+/** Write a value into the bound key, then let `on.change` fire if there is one. */
+function writeBound(value: unknown): void {
+  const key = props.node.from;
+  if (!key) return;
+  emit('state', key, value);
+  scheduleChange();
+}
+
+/**
+ * An emptied number field means "no value", not zero.
+ *
+ * <p>Zero is a number somebody may have typed on purpose, so it cannot double
+ * as the empty marker. `null` says the field is blank and survives the trip to
+ * the guest, which `undefined` would not.
+ */
+function writeNumber(raw: string): void {
+  const text = raw.trim();
+  if (text === '') {
+    writeBound(null);
+    return;
+  }
+  const n = Number(text);
+  writeBound(Number.isNaN(n) ? text : n);
+}
+
+/** Options as `VSelect` wants them. The parser already filled every label. */
+const selectOptions = computed(() =>
+  props.node.options.map((o) => ({ value: o.value, label: o.label })),
+);
 
 /** Rows of a `table`: whatever the program put there, if it is a list. */
 const rows = computed<Record<string, unknown>[]>(() => {
@@ -297,6 +352,23 @@ const headingClass = computed(() =>
     />
   </section>
 
+  <!-- A row divides the width; a toolbar sizes to its content and wraps. Same
+       axis, different job — `flex-1` on the children is the whole difference. -->
+  <div v-else-if="node.type === 'row'" class="flex flex-wrap items-end gap-3">
+    <div v-for="(child, i) in node.children" :key="i" class="min-w-40 flex-1">
+      <WidgetNode
+        :node="child"
+        :state="state"
+        :record-key="recordKey"
+        :resolve="resolve"
+        :scope="scope"
+        :depth="depth + 1"
+        @action="(a, k) => emit('action', a, k)"
+        @state="(k, v) => emit('state', k, v)"
+      />
+    </div>
+  </div>
+
   <div v-else-if="node.type === 'toolbar'" class="flex flex-wrap items-center gap-2">
     <WidgetNode
       v-for="(child, i) in node.children"
@@ -326,6 +398,39 @@ const headingClass = computed(() =>
   </p>
 
   <div v-else-if="node.type === 'markdown'" class="prose prose-sm max-w-none" v-html="mdHtml" />
+
+  <!-- The four direct inputs. One widget, one state key, the native type —
+       no field list and no string encoding on the way in. -->
+  <VInput
+    v-else-if="node.type === 'input'"
+    :model-value="inputText"
+    :label="node.label ?? undefined"
+    @update:model-value="(v: string) => writeBound(v)"
+  />
+
+  <VInput
+    v-else-if="node.type === 'number'"
+    :model-value="inputText"
+    type="number"
+    :label="node.label ?? undefined"
+    @update:model-value="(v: string) => writeNumber(v)"
+  />
+
+  <VCheckbox
+    v-else-if="node.type === 'toggle'"
+    :model-value="inputChecked"
+    :label="node.label ?? ''"
+    @update:model-value="(v: boolean) => writeBound(v)"
+  />
+
+  <VSelect
+    v-else-if="node.type === 'select'"
+    :model-value="inputText || null"
+    :label="node.label ?? undefined"
+    :options="selectOptions"
+    placeholder="—"
+    @update:model-value="(v: string | null) => writeBound(v ?? '')"
+  />
 
   <div v-else-if="node.type === 'table'" class="flex flex-col gap-2">
     <h3 v-if="node.label" class="text-base font-semibold">{{ node.label }}</h3>

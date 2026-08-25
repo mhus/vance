@@ -15,8 +15,8 @@ middle, reading documents is one thing it can do.
 
 ## One rule, and everything follows from it
 
-> A widget shows **state**. The **program** writes state. A `form` writes it
-> too — that is what typing into one does. The program reads
+> A widget shows **state**. The **program** writes state. So does anything the
+> reader types into — a `form`, an `input`, a `select`. The program reads
 > documents through `vance.*`.
 
 There is no table declaration, no `source:` on a widget, and no data endpoint.

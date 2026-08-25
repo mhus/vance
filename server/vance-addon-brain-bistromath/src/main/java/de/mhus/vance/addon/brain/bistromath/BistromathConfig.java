@@ -58,10 +58,33 @@ public record BistromathConfig(
          * {@link RequireResolver}. All three end up in one ordered load list,
          * because the guest has one global scope and no module system.
          */
-        List<String> required) {
+        List<String> required,
+        /**
+         * Route families this app says it needs for {@code vance.rest(...)}, as
+         * top-level segments: {@code rest: [documents, inbox]}.
+         *
+         * <p><b>Three states, and the difference matters.</b> Absent
+         * ({@code null}) means unrestricted — every app written before this key
+         * existed, and the honest default, because inventing a narrower one
+         * would break them silently. An empty list means the app declares it
+         * needs nothing. A list narrows to what it names.
+         *
+         * <p><b>Not a security boundary by itself</b> — the same author writes
+         * this line and the program. Its value is that it is the sentence a
+         * reviewer reads, and the thing a future signature covers: code and
+         * declared reach signed together, so an app cannot quietly widen after
+         * approval. The floor in {@code restPolicy.ts} holds regardless.
+         *
+         * <p>Families, not paths: the same granularity the floor uses. A glob
+         * grammar would suggest a precision that "may read a folder but not a
+         * document" does not actually have, and every grammar is a bypass
+         * surface.
+         */
+        @Nullable List<String> rest) {
 
     public BistromathConfig {
         if (required == null) required = List.of();
+        if (rest != null) rest = List.copyOf(rest);
     }
 
     /** App discriminator and manifest block key. */
@@ -103,7 +126,7 @@ public record BistromathConfig(
     static final Pattern HANDLE = Pattern.compile("^[a-z0-9][a-z0-9_-]{0,63}$");
 
     public static BistromathConfig empty() {
-        return new BistromathConfig(null, null, List.of());
+        return new BistromathConfig(null, null, List.of(), null);
     }
 
     public static BistromathConfig from(ApplicationDocument manifest) {
@@ -115,7 +138,8 @@ public record BistromathConfig(
             throw new ToolException("Manifest block `" + BLOCK + "` is not a mapping.");
         }
         return new BistromathConfig(optional(map.get("landing")), optional(map.get("init")),
-                requiredList(map.get("required")));
+                stringList(map.get("required"), "required"),
+                map.containsKey("rest") ? stringList(map.get("rest"), "rest") : null);
     }
 
     /** The program path, relative to the app folder. */
@@ -129,6 +153,10 @@ public record BistromathConfig(
         if (landing != null) out.put("landing", landing);
         if (init != null) out.put("init", init);
         if (!required.isEmpty()) out.put("required", List.copyOf(required));
+        // An empty `rest:` is written out, unlike an empty `required:` — there it
+        // means "nothing to say", here it means "needs no route", and losing that
+        // on a round trip would widen the app back to unrestricted.
+        if (rest != null) out.put("rest", List.copyOf(rest));
         return out;
     }
 
@@ -137,14 +165,14 @@ public record BistromathConfig(
     }
 
     /** A single string is accepted as a one-element list — the common case. */
-    private static List<String> requiredList(@Nullable Object raw) {
+    private static List<String> stringList(@Nullable Object raw, String key) {
         if (raw == null) return List.of();
         if (raw instanceof String s) {
             String t = s.trim();
             return t.isEmpty() ? List.of() : List.of(t);
         }
         if (!(raw instanceof List<?> list)) {
-            throw new ToolException("Manifest key `required` is neither a list nor a string.");
+            throw new ToolException("Manifest key `" + key + "` is neither a list nor a string.");
         }
         List<String> out = new ArrayList<>();
         for (Object o : list) {

@@ -22,7 +22,7 @@ import WidgetNode from './WidgetNode.vue';
 import { Sandbox, type SandboxHost } from './sandbox';
 import { PATCHES, applyPatch, type PatchMap, type WidgetPatch } from './patches';
 import { getTenantId, getUsername } from '@vance/shared';
-import { DocumentAccess, loadScript, loadView, rebuildApp, scanApp } from './api';
+import { DocumentAccess, callRest, loadScript, loadView, rebuildApp, scanApp } from './api';
 import type { AppScan } from './generated/bistromath/AppScan';
 import type { RenderedView } from './generated/bistromath/RenderedView';
 import type { ViewAction } from './generated/bistromath/ViewAction';
@@ -185,6 +185,16 @@ const host: SandboxHost = {
   },
   documentsDelete(path) {
     return docs.delete(resolve(path)).catch(rethrow(path));
+  },
+  restCall(method, path, body) {
+    // No `resolve()` here, on purpose: a REST path is not a document path. The
+    // app folder is the root of the document grammar, not of the API — folding
+    // one into the other would make `documents/folder` mean
+    // `apps/mine/documents/folder`, which is not a route.
+    // The declaration comes from the scan, so an edited manifest takes effect on
+    // the next open rather than needing a rebuild — same as every other
+    // manifest key.
+    return callRest(method, path, body, scan.value?.rest ?? null);
   },
   appCurrent() {
     // What a constant cannot carry: the reader has moved since the program

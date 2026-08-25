@@ -79,7 +79,7 @@ class RequireResolverTest {
     }
 
     private static BistromathConfig config(String... required) {
-        return new BistromathConfig(null, null, List.of(required));
+        return new BistromathConfig(null, null, List.of(required), null);
     }
 
     // ── the three sources ────────────────────────────────────────────

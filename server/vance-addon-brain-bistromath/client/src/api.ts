@@ -15,6 +15,7 @@ import {
 import { dump as dumpYaml, load as parseYaml } from 'js-yaml';
 import type { AppScan } from './generated/bistromath/AppScan';
 import type { RenderedView } from './generated/bistromath/RenderedView';
+import { vetRestMethod, vetRestPath } from './restPolicy';
 
 /**
  * Two surfaces, and the split is the point.
@@ -78,6 +79,44 @@ export async function loadScript(projectId: string, path: string): Promise<strin
 
 export async function rebuildApp(projectId: string, folder: string): Promise<AppScan> {
   return brainFetch<AppScan>('POST', `addon/bistromath/rebuild?${qs({ projectId, folder })}`);
+}
+
+// ── the open REST surface, as the program sees it ──────────────────
+
+/**
+ * One REST call on the reader's behalf: `vance.rest(method, path, body)`.
+ *
+ * <p><b>The host performs it, the guest never holds a credential.</b> That is
+ * the difference that matters and it is not the same as handing the token in: a
+ * proxied call cannot be replayed from outside the browser and cannot be posted
+ * to another host, whereas a bearer token can be both, silently, for its whole
+ * lifetime. The app gets the reach; the credential stays where it was.
+ *
+ * <p>Reach is the reader's own — the session is theirs, so the permission system
+ * answers every question about what may be seen or written. Two things are
+ * subtracted: the floor, which no app can re-open, and the app's own
+ * declaration in its manifest, when it made one.
+ *
+ * <p>A failure comes back as a message with its status, because a program's
+ * recovery differs by status: 404 is often an answer, 409 means read again, 403
+ * means stop asking.
+ */
+export async function callRest(
+  rawMethod: unknown,
+  rawPath: unknown,
+  body?: unknown,
+  declared?: readonly string[] | null,
+): Promise<unknown> {
+  const method = vetRestMethod(rawMethod);
+  const path = vetRestPath(rawPath, declared);
+  try {
+    return await brainFetch<unknown>(method, path, body === undefined ? {} : { body });
+  } catch (e) {
+    if (e instanceof RestError) {
+      throw new Error(`${method} ${path} failed with ${e.status}: ${e.message}`);
+    }
+    throw e;
+  }
 }
 
 // ── the generic document API, as the program sees it ───────────────

@@ -39,6 +39,11 @@ export interface SandboxHost {
   documentsCreate(path: string, content: unknown): Promise<unknown>;
   /** `vance.documents.delete(path)` */
   documentsDelete(path: string): Promise<unknown>;
+  /**
+   * `vance.rest(method, path, body?)` — any Brain route the reader may use,
+   * minus the floor in `restPolicy.ts`. The host holds the session.
+   */
+  restCall(method: unknown, path: unknown, body?: unknown): Promise<unknown>;
   /** `vance.app.current()` — what about the app can still change while it runs. */
   appCurrent(): unknown;
   /** `vance.view.patch(id, changes)` — change how a widget looks, or hide it. */
@@ -536,6 +541,9 @@ export class Sandbox {
           break;
         case 'documents.delete':
           post(true, await host.documentsDelete(String(args[0])));
+          break;
+        case 'rest':
+          post(true, await host.restCall(args[0], args[1], args[2]));
           break;
         case 'app.current':
           post(true, host.appCurrent());

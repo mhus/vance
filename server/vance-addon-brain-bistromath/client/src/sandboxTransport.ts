@@ -80,6 +80,7 @@ export const GUEST_BOOTSTRAP = `<!doctype html><meta charset="utf-8">
       create: function (p, c) { return call('documents.create', [p, c]); },
       delete: function (p) { return call('documents.delete', [p]); }
     },
+    rest: function (method, path, body) { return call('rest', [method, path, body]); },
     ui: {
       notify: function (t, s) { return call('ui.notify', [t, s]); },
       show: function (h) { return call('ui.show', [h]); }

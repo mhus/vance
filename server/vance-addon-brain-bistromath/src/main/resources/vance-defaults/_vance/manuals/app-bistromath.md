@@ -93,6 +93,7 @@ Do not guess at the schema — the four manuals below are short and exact:
 | Widgets, bindings, handler grammar | `manual_read('bistromath/views')` |
 | Lifecycle functions, sandbox limits, async | `manual_read('bistromath/program')` |
 | Reading documents, folders, mounted files | `manual_read('bistromath/data')` |
+| Calling any Brain route (`vance.rest`), what is closed to apps | `manual_read('bistromath/rest')` |
 | Data and input — table, controls, form, pagination, file | `manual_read('bistromath/widgets')` |
 | Arranging — row, column, card, tabs, dialog | `manual_read('bistromath/layout')` |
 | Showing — markdown, code, badge, alert, embed | `manual_read('bistromath/content')` |

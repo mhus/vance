@@ -98,6 +98,7 @@ function makeHost(overrides: Partial<SandboxHost> = {}): SandboxHost {
     viewReset: vi.fn(),
     documentsRead: vi.fn().mockResolvedValue(''),
     documentsWrite: vi.fn().mockResolvedValue(undefined),
+    restCall: vi.fn().mockResolvedValue(undefined),
     documentsCreate: vi.fn().mockResolvedValue(undefined),
     documentsDelete: vi.fn().mockResolvedValue(undefined),
     uiNotify: vi.fn(),
@@ -344,6 +345,41 @@ describe('host calls', () => {
     expect(host.documentsRead).toHaveBeenCalledWith('x.yaml');
     const result = guest.posted.find((m) => m.t === 'result')!;
     expect(result).toMatchObject({ ok: true, value: { a: 1 } });
+  });
+
+  it('routes vance.rest with its three arguments', async () => {
+    const guest = new FakeGuest();
+    autoRespond(guest);
+    const restCall = vi.fn().mockResolvedValue({ ok: 1 });
+    const box = new Sandbox({ host: makeHost({ restCall }), onError: vi.fn(), transport: guest });
+    await box.start('code');
+
+    guest.emit({ t: 'call', id: 'c1', method: 'rest', args: ['POST', 'inbox', { a: 1 }] });
+    await vi.waitFor(() => expect(guest.posted.some((m) => m.t === 'result')).toBe(true));
+
+    // Unvetted on the way through: the floor is the host's, checked in
+    // `callRest`, and the bridge must not quietly reinterpret an argument
+    // before the check that decides whether the call is allowed at all.
+    expect(restCall).toHaveBeenCalledWith('POST', 'inbox', { a: 1 });
+    expect(guest.posted.find((m) => m.t === 'result')).toMatchObject({ ok: true, value: { ok: 1 } });
+  });
+
+  it('answers a denied rest call as a failure the program can catch', async () => {
+    const guest = new FakeGuest();
+    autoRespond(guest);
+    const restCall = vi.fn().mockRejectedValue(
+      new Error("vance.rest cannot call 'admin/x': 'admin/…' is closed to apps"),
+    );
+    const box = new Sandbox({ host: makeHost({ restCall }), onError: vi.fn(), transport: guest });
+    await box.start('code');
+
+    guest.emit({ t: 'call', id: 'c1', method: 'rest', args: ['GET', 'admin/x'] });
+    await vi.waitFor(() => expect(guest.posted.some((m) => m.t === 'result')).toBe(true));
+
+    expect(guest.posted.find((m) => m.t === 'result')).toMatchObject({
+      ok: false,
+      message: expect.stringContaining('closed to apps'),
+    });
   });
 
   it('answers a rejected host call instead of leaving the guest waiting', async () => {

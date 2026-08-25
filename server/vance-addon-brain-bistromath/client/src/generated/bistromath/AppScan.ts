@@ -15,4 +15,5 @@ export interface AppScan {
   programPath?: string;
   problems: string[];
   requires: RequireReport;
+  rest?: string[];
 }

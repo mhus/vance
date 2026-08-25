@@ -41,7 +41,15 @@ public record AppScan(
         @Nullable String landingHandle,
         @Nullable String programPath,
         List<String> problems,
-        RequireReport requires) {
+        RequireReport requires,
+        /**
+         * Route families the manifest declares for {@code vance.rest(...)}, or
+         * {@code null} for "not declared" — which means unrestricted below the
+         * floor. Nullable rather than an empty list, because "declares nothing"
+         * and "does not say" are different answers and the client narrows on one
+         * of them only.
+         */
+        @Nullable List<String> rest) {
 
     public AppScan {
         if (views == null) views = List.of();

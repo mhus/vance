@@ -42,41 +42,67 @@ one is simply not called.
 
 | Function | When |
 |---|---|
-| `init()` | once, after the program is loaded |
-| `shutdown()` | when the app closes — see the warning below |
-| `onBeforeUnload()` | returns `true` if leaving would lose something |
-| `onDocumentChanged(paths)` | somebody else wrote a document in the app folder |
-| `onViewOpened(handle)` | a view was rendered — where runtime view patches go |
+| `onAppInit()` | once, after the program is loaded |
+| `onAppShutdown()` | when the app closes — see the warning below |
+| `onAppBeforeUnload()` | returns `true` if leaving would lose something |
+| `onAppDocumentChanged(paths)` | somebody else wrote a document in the app folder |
+| `onAppViewOpened(handle)` | a view was rendered — where runtime view patches go |
+| `onAppRefresh()` | every `refresh:` seconds, when the manifest asks for it |
 
-**`init()` does not render.** The view is drawn first — `init` is async, and
+**`onAppInit()` does not render.** The view is drawn first — `onAppInit` is async, and
 waiting for it would leave the app blank until the first document read returns.
-`init` fills the state the view reads.
+`onAppInit` fills the state the view reads.
 
-**No handler runs before `init()` has finished.** Guest calls are serialised, so
+**No handler runs before `onAppInit()` has finished.** Guest calls are serialised, so
 a click during startup waits its turn.
 
-**`shutdown()` is not guaranteed.** On a normal close it runs and is awaited
+**`onAppShutdown()` is not guaranteed.** On a normal close it runs and is awaited
 briefly. When the whole page goes away — tab closed, reload, crash — an async
-`shutdown` does **not** get to finish; the browser does not wait for promises
+`onAppShutdown` does **not** get to finish; the browser does not wait for promises
 there. So never keep the only copy of something until shutdown. Write it when
 you have it.
 
-**`onBeforeUnload()` is re-asked after every call**, and its answer is cached,
+**`onAppBeforeUnload()` is re-asked after every call**, and its answer is cached,
 because the browser decides synchronously. Return a plain flag:
 
 ```js
-function onBeforeUnload() { return unsavedChanges; }
+function onAppBeforeUnload() { return unsavedChanges; }
 ```
 
 The browser shows its own generic wording, and skips the prompt entirely if the
 reader never interacted with the page. A courtesy, not a safety net.
 
-**`onDocumentChanged(paths)` is somebody else's write, never your own.** The
+### `onAppRefresh()` — polling, when the manifest asks
+
+```yaml
+# _app.yaml
+custom:
+  refresh: 30
+```
+
+```js
+async function onAppRefresh() {
+  await vance.state.set('rows', await core.rows('records/'));
+}
+```
+
+For a screen showing something that changes without the reader doing anything.
+**The interval is in the manifest, not in your code** — it is a property of the
+app, and a reader looking at the folder can see that it polls. Minimum 5
+seconds, refused below that rather than clamped.
+
+It does not fire in a hidden tab (nobody is reading it), never overlaps itself (a
+still-running call skips the next tick — a slower rate, not a queue), never runs
+before `onAppInit()` finished, and stops when the app closes. Leave the function
+out and `refresh:` does nothing. Use it to **read**: a write on a timer nobody
+asked for is a surprise.
+
+**`onAppDocumentChanged(paths)` is somebody else's write, never your own.** The
 app watches its own folder; when an agent, a colleague or the Cortex editor
 writes a document under it, the hook runs with the paths of that batch:
 
 ```js
-async function onDocumentChanged(paths) {
+async function onAppDocumentChanged(paths) {
   await load();
 }
 ```
@@ -122,7 +148,7 @@ What can change is a call:
 const { view, session } = await vance.app.current();
 ```
 
-`view` is the open view's handle — the same value `onViewOpened` gets. `session`
+`view` is the open view's handle — the same value `onAppViewOpened` gets. `session`
 is the id of the chat beside the app, or `null` when there is none, which is the
 normal case in a chatless tab.
 

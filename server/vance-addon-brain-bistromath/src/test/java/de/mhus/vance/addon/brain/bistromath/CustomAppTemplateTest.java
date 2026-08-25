@@ -142,7 +142,7 @@ class CustomAppTemplateTest {
         String program = BistromathApplication.starterProgram();
         assertThat(program).contains("function " + click.function() + "(");
         assertThat(program).contains("vance.state.set('" + text.from() + "'");
-        assertThat(program).contains("function init(");
+        assertThat(program).contains("function onAppInit(");
     }
 
     /** The view declares itself a view — that is how discovery finds it. */
@@ -161,7 +161,7 @@ class CustomAppTemplateTest {
     @Test
     void starterProgram_initWritesTheSameKeyTheViewShows() {
         String program = BistromathApplication.starterProgram();
-        int init = program.indexOf("function init(");
+        int init = program.indexOf("function onAppInit(");
         int hello = program.indexOf("function hello(");
 
         assertThat(init).isGreaterThanOrEqualTo(0);

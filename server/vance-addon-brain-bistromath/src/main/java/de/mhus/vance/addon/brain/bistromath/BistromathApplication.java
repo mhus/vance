@@ -378,9 +378,14 @@ public class BistromathApplication implements VanceApplication {
                 // The program of this app. It runs in a sandbox: no DOM, no
                 // cookies, no network except through `vance.*`.
                 //
-                // `init` runs once when the app opens, `shutdown` when it closes.
-                // Everything between is events — and module state survives them,
-                // because this is one long-running program, not one call per click.
+                // `onAppInit` runs once when the app opens, `onAppShutdown` when
+                // it closes. Everything between is events — and module state
+                // survives them, because this is one long-running program, not
+                // one call per click.
+                //
+                // Every function the runtime calls is prefixed `onApp…`: the
+                // guest has ONE global scope, shared with your own functions and
+                // with every library, so the short names stay yours.
 
                 let greetings = 0;
 
@@ -388,7 +393,7 @@ public class BistromathApplication implements VanceApplication {
                 // needs `await`, and `await` in a plain function is a syntax
                 // error. Nothing waits on the view — the page is drawn first —
                 // but no handler runs until init has finished.
-                async function init() {
+                async function onAppInit() {
                   vance.state.set('greeting', 'Ready — press Hello.');
                 }
 
@@ -398,7 +403,7 @@ public class BistromathApplication implements VanceApplication {
                   vance.state.set('greeting', now + ' — Hello World (' + greetings + ')');
                 }
 
-                async function shutdown() {
+                async function onAppShutdown() {
                   // Nothing to release here — and be careful what you put here.
                   //
                   // On a normal close (tab switched, document closed) this runs
@@ -409,12 +414,23 @@ public class BistromathApplication implements VanceApplication {
                   // shutdown. Write it when you have it.
                 }
 
+                // Put `refresh: 30` in the `custom:` block of _app.yaml and this
+                // is called every 30 seconds — for a screen that shows something
+                // which changes without the reader doing anything. It does not
+                // fire in a hidden tab and never overlaps itself:
+                //
+                // async function onAppRefresh() {
+                //   vance.state.set('rows', await core.rows('records/'));
+                // }
+                //
+                // Five seconds is the shortest interval a manifest may ask for.
+
                 // Define this one and the browser asks before the page is
                 // closed or reloaded — but only while it returns true, and only
                 // with the browser's own generic wording. It is re-asked after
                 // every handler, so returning a plain flag is enough:
                 //
-                // function onBeforeUnload() {
+                // function onAppBeforeUnload() {
                 //   return unsavedChanges;
                 // }
                 //

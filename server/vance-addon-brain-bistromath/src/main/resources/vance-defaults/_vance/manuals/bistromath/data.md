@@ -13,7 +13,7 @@ The bundled `core@1` does the four lines below in one — `core.rows(folder)`; s
 `manual_read('libraries')`. Written out, so the shape is clear:
 
 ```js
-async function init() {
+async function onAppInit() {
   const files = await vance.documents.list('invoices/');
   const rows = [];
   for (const f of files) {

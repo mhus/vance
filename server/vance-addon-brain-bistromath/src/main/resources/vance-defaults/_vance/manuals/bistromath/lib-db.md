@@ -11,7 +11,7 @@ triggers: you wrote `@require db@1`, an app needs records it can add to and edit
 
 const invoices = db.table('/invoices/');
 
-async function init() {
+async function onAppInit() {
   await vance.state.set('rows', await invoices.all());
 }
 

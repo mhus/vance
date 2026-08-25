@@ -49,7 +49,12 @@ public record AppScan(
          * and "does not say" are different answers and the client narrows on one
          * of them only.
          */
-        @Nullable List<String> rest) {
+        @Nullable List<String> rest,
+        /**
+         * Seconds between {@code onAppRefresh()} calls, or {@code null} for no
+         * polling. Validated in the manifest — the client only obeys.
+         */
+        @Nullable Integer refreshSeconds) {
 
     public AppScan {
         if (views == null) views = List.of();

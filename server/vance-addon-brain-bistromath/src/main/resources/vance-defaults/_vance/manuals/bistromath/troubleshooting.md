@@ -54,8 +54,8 @@ Almost always the same cause: **nothing put anything in that state key.** A
 widget shows state; the program writes it. Check that
 
 - the key in `from:` and the key in `vance.state.set(...)` are spelled the same,
-- the function that fills it actually ran — `init()` runs once at open,
-- and it did not throw. An error in `init` shows above the page.
+- the function that fills it actually ran — `onAppInit()` runs once at open,
+- and it did not throw. An error in `onAppInit` shows above the page.
 
 A widget that vanished instead of being empty has a `show:` key that is unset or
 false. **An unset key counts as hidden.**

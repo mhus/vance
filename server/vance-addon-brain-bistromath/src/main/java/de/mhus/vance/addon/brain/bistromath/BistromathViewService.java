@@ -56,7 +56,7 @@ public class BistromathViewService {
 
         return new AppScan(loaded.folder(), title, loaded.manifestDoc().description(),
                 found.views(), landing == null ? null : landing.handle(),
-                programPath, List.copyOf(problems), requires, config.rest());
+                programPath, List.copyOf(problems), requires, config.rest(), config.refresh());
     }
 
     /**

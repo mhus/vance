@@ -16,4 +16,5 @@ export interface AppScan {
   problems: string[];
   requires: RequireReport;
   rest?: string[];
+  refreshSeconds?: number;
 }

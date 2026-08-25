@@ -305,7 +305,7 @@ useDocumentPrefixReaction({
       void load();
       return;
     }
-    void sandbox?.invokeHook('onDocumentChanged', [paths]);
+    void sandbox?.invokeHook('onAppDocumentChanged', [paths]);
   },
 });
 
@@ -479,7 +479,7 @@ async function openView(target: string | null): Promise<void> {
   }
   // Told after the view is up, so a patch in the hook lands on something that
   // exists. Silent when the program has no such hook.
-  void sandbox?.invokeHook('onViewOpened', [view.value.handle]);
+  void sandbox?.invokeHook('onAppViewOpened', [view.value.handle]);
 }
 
 /**
@@ -527,10 +527,61 @@ async function boot(s: AppScan): Promise<void> {
     await box.startAll(parts);
   } catch (e) {
     notice.value = `The program failed to start: ${message(e)}`;
+    return;
   }
+  startRefresh(s.refreshSeconds ?? null);
+}
+
+// ── periodic refresh ───────────────────────────────────────────────
+
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
+let refreshInFlight = false;
+
+/**
+ * Call `onAppRefresh()` every `refresh:` seconds, while it makes sense to.
+ *
+ * <p>Two things it deliberately does not do.
+ *
+ * <p><b>It does not fire in a hidden tab.</b> A background tab polling a server
+ * forever is pure waste, and nobody is reading the result — the point of a
+ * refresh is that somebody is looking. `document.hidden` is checked at each
+ * tick rather than by listening for visibility changes, because the answer only
+ * matters at the moment the tick would fire.
+ *
+ * <p><b>It does not queue.</b> A call still running when the next tick arrives
+ * skips that tick: an interval shorter than the work would otherwise build a
+ * backlog that never drains, and the honest behaviour there is a slower
+ * effective rate, not a growing queue.
+ *
+ * <p>Started after the program is up — so it can never overtake
+ * `onAppInit()` — and only when the program actually defines the hook, so a
+ * manifest with `refresh:` and a program without the function is silent rather
+ * than a repeating error.
+ */
+function startRefresh(seconds: number | null): void {
+  stopRefresh();
+  if (!seconds || seconds <= 0) return;
+  if (!sandbox?.has('onAppRefresh')) return;
+  refreshTimer = setInterval(() => {
+    if (refreshInFlight) return;
+    if (typeof document !== 'undefined' && document.hidden) return;
+    const box = sandbox;
+    if (!box?.alive) return;
+    refreshInFlight = true;
+    void box.invokeHook('onAppRefresh').finally(() => {
+      refreshInFlight = false;
+    });
+  }, seconds * 1000);
+}
+
+function stopRefresh(): void {
+  if (refreshTimer !== null) clearInterval(refreshTimer);
+  refreshTimer = null;
+  refreshInFlight = false;
 }
 
 async function teardown(): Promise<void> {
+  stopRefresh();
   const box = sandbox;
   sandbox = null;
   if (box) await box.dispose();

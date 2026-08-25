@@ -99,18 +99,24 @@ const DEFAULT_DRAIN_MS = 1500;
 /**
  * The functions the runtime calls **if the program defines them**.
  *
- * <p>All three are optional, and their presence is asked about **once**, right
- * after the program is evaluated — not discovered from a failed call. The
- * earlier version invoked and matched the error text against
- * "no function named …", which is a string comparison standing in for a fact
- * the guest can simply be asked.
+ * <p>All optional, and their presence is asked about **once**, right after the
+ * program is evaluated — not discovered from a failed call. The earlier version
+ * invoked and matched the error text against "no function named …", which is a
+ * string comparison standing in for a fact the guest can simply be asked.
+ *
+ * <p><b>One prefix, on purpose.</b> The guest has a single global scope shared
+ * with the program's own functions and with every library it loads, so a hook
+ * called `init` is a name the runtime has quietly reserved out of the middle of
+ * that scope. `onApp…` says who calls it, and leaves the author the short
+ * names.
  */
 export const HOOKS = [
-  'init',
-  'shutdown',
-  'onBeforeUnload',
-  'onDocumentChanged',
-  'onViewOpened',
+  'onAppInit',
+  'onAppShutdown',
+  'onAppBeforeUnload',
+  'onAppRefresh',
+  'onAppDocumentChanged',
+  'onAppViewOpened',
 ] as const;
 
 interface Waiter {
@@ -187,8 +193,8 @@ export class Sandbox {
     // browser will not wait for a promise here, so a synchronous `shutdown` may
     // run and an async one will not finish.
     this.onPageHide = () => {
-      if (!this.hooks.has('shutdown')) return;
-      this.transport.post({ t: 'invoke', id: 'unload', fn: 'shutdown' });
+      if (!this.hooks.has('onAppShutdown')) return;
+      this.transport.post({ t: 'invoke', id: 'unload', fn: 'onAppShutdown' });
     };
 
     // The browser shows its own generic wording and nothing else; a custom text
@@ -210,14 +216,14 @@ export class Sandbox {
     return this.hooks.has(hook);
   }
 
-  /** The program's last answer to `onBeforeUnload()`. */
+  /** The program's last answer to `onAppBeforeUnload()`. */
   get warnsOnLeave(): boolean {
     return this.warnOnLeave;
   }
 
   /**
    * Bring the guest up, evaluate the program, ask which hooks it has, run
-   * `init()` if it has one.
+   * `onAppInit()` if it has one.
    */
   async start(programSource: string | null, sourceName?: string): Promise<void> {
     return this.startAll(
@@ -297,7 +303,7 @@ export class Sandbox {
         if (present) this.hooks.add(name);
       }
 
-      if (this.hooks.has('init')) await this.send('invoke', { fn: 'init' });
+      if (this.hooks.has('onAppInit')) await this.send('invoke', { fn: 'onAppInit' });
       await this.refreshLeaveGuard();
     });
   }
@@ -376,11 +382,11 @@ export class Sandbox {
         this.queue.catch(() => undefined),
         new Promise((r) => setTimeout(r, this.drainMs)),
       ]);
-      if (this.hooks.has('shutdown')) {
+      if (this.hooks.has('onAppShutdown')) {
         try {
           // Sent directly, not through the queue: the queue is closed by now,
           // and shutdown carries its own watchdog window.
-          await this.send('invoke', { fn: 'shutdown' });
+          await this.send('invoke', { fn: 'onAppShutdown' });
         } catch {
           // Throwing or timed out — both mean the same at this point.
         }
@@ -412,9 +418,10 @@ export class Sandbox {
    * polling a sandbox on a schedule, which costs more than the case is worth.
    */
   private async refreshLeaveGuard(): Promise<void> {
-    if (!this.hooks.has('onBeforeUnload')) return;
+    if (!this.hooks.has('onAppBeforeUnload')) return;
     try {
-      this.warnOnLeave = Boolean(await this.send<unknown>('invoke', { fn: 'onBeforeUnload' }));
+      this.warnOnLeave = Boolean(
+        await this.send<unknown>('invoke', { fn: 'onAppBeforeUnload' }));
     } catch {
       // Keep the last answer: a throwing guard is not a reason to decide
       // silently that nothing would be lost.

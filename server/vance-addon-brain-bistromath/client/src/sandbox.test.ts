@@ -79,7 +79,7 @@ function autoRespond(
     if (m.t === 'invoke') {
       // A test may take over one invocation; returning true means "handled".
       if (opts.onInvoke?.(m)) return;
-      if (m.fn === 'onBeforeUnload') {
+      if (m.fn === 'onAppBeforeUnload') {
         guest.emit({ t: 'done', id: m.id, value: opts.leave ?? false });
         return;
       }
@@ -116,14 +116,14 @@ afterEach(() => {
 describe('lifecycle hooks', () => {
   it('asks once which hooks exist instead of calling and reading the error', async () => {
     const guest = new FakeGuest();
-    autoRespond(guest, { hooks: ['init'] });
+    autoRespond(guest, { hooks: ['onAppInit'] });
     const box = new Sandbox({ host: makeHost(), onError: vi.fn(), transport: guest });
 
     await box.start('code', 'main.js');
 
     expect(guest.posted.filter((m) => m.t === 'has')).toHaveLength(1);
-    expect(box.has('init')).toBe(true);
-    expect(box.has('shutdown')).toBe(false);
+    expect(box.has('onAppInit')).toBe(true);
+    expect(box.has('onAppShutdown')).toBe(false);
   });
 
   it('does not call a hook the program does not define', async () => {
@@ -136,14 +136,14 @@ describe('lifecycle hooks', () => {
     expect(guest.invocations()).toEqual([]);
   });
 
-  it('runs init when it exists', async () => {
+  it('runs onAppInit when it exists', async () => {
     const guest = new FakeGuest();
-    autoRespond(guest, { hooks: ['init'] });
+    autoRespond(guest, { hooks: ['onAppInit'] });
     const box = new Sandbox({ host: makeHost(), onError: vi.fn(), transport: guest });
 
     await box.start('code', 'main.js');
 
-    expect(guest.invocations()).toEqual(['init']);
+    expect(guest.invocations()).toEqual(['onAppInit']);
   });
 
   it('evaluates the program with a sourceURL so errors name the document', async () => {
@@ -177,13 +177,13 @@ describe('serialisation', () => {
    * module state nobody set up yet. Only reproducible under timing, which is
    * why it needs a test rather than a look.
    */
-  it('runs no handler before init has answered', async () => {
+  it('runs no handler before onAppInit has answered', async () => {
     const guest = new FakeGuest();
     let releaseInit: (() => void) | null = null;
     autoRespond(guest, {
-      hooks: ['init'],
+      hooks: ['onAppInit'],
       onInvoke: (m) => {
-        if (m.fn !== 'init') return false;
+        if (m.fn !== 'onAppInit') return false;
         releaseInit = () => guest.emit({ t: 'done', id: m.id });
         return true; // held open
       },
@@ -196,16 +196,16 @@ describe('serialisation', () => {
     // Wait until init is genuinely out — the handshake takes several promise
     // hops, and asserting after a fixed number of them tests the flush count
     // rather than the ordering.
-    await vi.waitFor(() => expect(guest.invocations()).toContain('init'));
+    await vi.waitFor(() => expect(guest.invocations()).toContain('onAppInit'));
     // Then give the queue every chance to let `hello` through wrongly.
     for (let i = 0; i < 10; i++) await Promise.resolve();
 
-    expect(guest.invocations()).toEqual(['init']);
+    expect(guest.invocations()).toEqual(['onAppInit']);
 
     releaseInit!();
     await starting;
     await clicked;
-    expect(guest.invocations()).toEqual(['init', 'hello']);
+    expect(guest.invocations()).toEqual(['onAppInit', 'hello']);
   });
 
   it('keeps the queue usable after a handler fails', async () => {
@@ -461,13 +461,13 @@ describe('host calls', () => {
 describe('invokeHook', () => {
   it('passes its arguments through to the guest', async () => {
     const guest = new FakeGuest();
-    autoRespond(guest, { hooks: ['onDocumentChanged'] });
+    autoRespond(guest, { hooks: ['onAppDocumentChanged'] });
     const box = new Sandbox({ host: makeHost(), onError: vi.fn(), transport: guest });
     await box.start('code');
 
-    await box.invokeHook('onDocumentChanged', [['a.yaml', 'b.yaml']]);
+    await box.invokeHook('onAppDocumentChanged', [['a.yaml', 'b.yaml']]);
 
-    const call = guest.posted.find((m) => m.t === 'invoke' && m.fn === 'onDocumentChanged');
+    const call = guest.posted.find((m) => m.t === 'invoke' && m.fn === 'onAppDocumentChanged');
     expect(call).toBeDefined();
     expect(call!.args).toEqual([['a.yaml', 'b.yaml']]);
   });
@@ -484,7 +484,7 @@ describe('invokeHook', () => {
     await box.start('code');
     const before = guest.posted.length;
 
-    await expect(box.invokeHook('onDocumentChanged', [[]])).resolves.toBeUndefined();
+    await expect(box.invokeHook('onAppDocumentChanged', [[]])).resolves.toBeUndefined();
 
     expect(guest.posted.length).toBe(before);
   });
@@ -548,15 +548,15 @@ describe('app context', () => {
 // ── teardown ───────────────────────────────────────────────────────
 
 describe('dispose', () => {
-  it('runs shutdown when there is one, then takes the guest down', async () => {
+  it('runs onAppShutdown when there is one, then takes the guest down', async () => {
     const guest = new FakeGuest();
-    autoRespond(guest, { hooks: ['shutdown'] });
+    autoRespond(guest, { hooks: ['onAppShutdown'] });
     const box = new Sandbox({ host: makeHost(), onError: vi.fn(), transport: guest });
     await box.start('code');
 
     await box.dispose();
 
-    expect(guest.invocations()).toContain('shutdown');
+    expect(guest.invocations()).toContain('onAppShutdown');
     expect(guest.disposed).toBe(true);
     expect(box.alive).toBe(false);
   });
@@ -616,13 +616,13 @@ describe('dispose', () => {
     await box.dispose();
     await box.dispose();
 
-    expect(guest.posted.filter((m) => m.t === 'invoke' && m.fn === 'shutdown')).toHaveLength(0);
+    expect(guest.posted.filter((m) => m.t === 'invoke' && m.fn === 'onAppShutdown')).toHaveLength(0);
   });
 });
 
 // ── the leave guard ────────────────────────────────────────────────
 
-describe('onBeforeUnload', () => {
+describe('onAppBeforeUnload', () => {
   /**
    * `beforeunload` decides synchronously while the guest is only reachable
    * asynchronously, so the answer has to be here already when the event fires.
@@ -632,9 +632,9 @@ describe('onBeforeUnload', () => {
     const guest = new FakeGuest();
     let dirty = false;
     autoRespond(guest, {
-      hooks: ['onBeforeUnload'],
+      hooks: ['onAppBeforeUnload'],
       onInvoke: (m) => {
-        if (m.fn === 'onBeforeUnload') {
+        if (m.fn === 'onAppBeforeUnload') {
           guest.emit({ t: 'done', id: m.id, value: dirty });
           return true;
         }
@@ -655,12 +655,12 @@ describe('onBeforeUnload', () => {
 
   it('is never asked when the program does not define it', async () => {
     const guest = new FakeGuest();
-    autoRespond(guest, { hooks: ['init'] });
+    autoRespond(guest, { hooks: ['onAppInit'] });
     const box = new Sandbox({ host: makeHost(), onError: vi.fn(), transport: guest });
     await box.start('code');
 
     await box.invoke('hello');
 
-    expect(guest.invocations()).toEqual(['init', 'hello']);
+    expect(guest.invocations()).toEqual(['onAppInit', 'hello']);
   });
 });

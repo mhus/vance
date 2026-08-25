@@ -74,7 +74,7 @@ two things.
 **A select whose choices come from data writes `options: []`**, and the program
 fills them (`ui.options(...)`, `manual_read('lib-ui')`). Absent is an error,
 `[]` says "the program supplies these" — a placeholder choice would sit there as
-a wrong answer until `init()` has run.
+a wrong answer until `onAppInit()` has run.
 
 An **emptied** `number` writes `null`, not `0`. Zero is a number somebody may
 have typed on purpose.

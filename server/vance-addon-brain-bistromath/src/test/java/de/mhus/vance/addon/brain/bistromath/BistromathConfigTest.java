@@ -112,7 +112,7 @@ class BistromathConfigTest {
      */
     @Test
     void manifest_roundTripsThroughTheCodecWithTheBlockAtTopLevel() {
-        BistromathConfig original = new BistromathConfig("list", "setup.js", List.of(), null);
+        BistromathConfig original = new BistromathConfig("list", "setup.js", List.of(), null, null);
         Map<String, Object> config = new LinkedHashMap<>();
         config.put(BistromathConfig.BLOCK, original.toBlock());
         ApplicationDocument doc = new ApplicationDocument("application",

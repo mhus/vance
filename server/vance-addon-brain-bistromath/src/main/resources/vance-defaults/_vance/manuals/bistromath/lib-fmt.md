@@ -9,7 +9,7 @@ triggers: you wrote `@require fmt@1`, a number needs a currency or a locale, a f
 ```js
 // @require fmt@1
 
-async function init() {
+async function onAppInit() {
   fmt.setup({ locale: 'de-CH', currency: 'CHF' });   // optional
 }
 ```
@@ -67,4 +67,4 @@ in the field.
 `locale` starts as the reader's (`navigator.language`), because the app does not
 know where its reader is. `currency` starts as `EUR`, which is arbitrary — but a
 wrong currency symbol shows up in the first row, unlike a wrong decimal
-separator, so it is cheap to catch. Override both in `init()`.
+separator, so it is cheap to catch. Override both in `onAppInit()`.

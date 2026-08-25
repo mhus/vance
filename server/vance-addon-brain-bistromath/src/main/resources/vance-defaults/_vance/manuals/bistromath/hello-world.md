@@ -65,7 +65,7 @@ program writes it.
 ```js
 let greetings = 0;
 
-async function init() {
+async function onAppInit() {
   vance.state.set('greeting', 'Ready — press Hello.');
 }
 
@@ -82,7 +82,7 @@ script, so a top-level function is reachable by name, which is what
 `greetings` keeps its value between clicks: this is one program that keeps
 running while the app is open, not one call per event.
 
-`init()` writes something **visible** on purpose. If it only did invisible
+`onAppInit()` writes something **visible** on purpose. If it only did invisible
 setup you could not tell "the program ran" from "the program failed to load",
 which is the first question you will ask.
 

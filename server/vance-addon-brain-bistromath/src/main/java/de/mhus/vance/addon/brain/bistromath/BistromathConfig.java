@@ -80,12 +80,35 @@ public record BistromathConfig(
          * document" does not actually have, and every grammar is a bypass
          * surface.
          */
-        @Nullable List<String> rest) {
+        @Nullable List<String> rest,
+        /**
+         * Seconds between calls to the program's {@code onAppRefresh()}, or
+         * {@code null} for no polling.
+         *
+         * <p>In the manifest rather than in the program, because it is a
+         * property of the app and not a decision its code should be able to
+         * change while running — and because a reader looking at a folder can
+         * see that it polls.
+         *
+         * <p>A **floor** applies ({@link #MIN_REFRESH_SECONDS}) and it is
+         * refused, not clamped: a one-second interval is one round trip per
+         * second per open tab, and someone who wrote it meant something else.
+         * Silently correcting it would leave that belief in place.
+         */
+        @Nullable Integer refresh) {
 
     public BistromathConfig {
         if (required == null) required = List.of();
         if (rest != null) rest = List.copyOf(rest);
     }
+
+    /**
+     * The shortest interval a manifest may ask for.
+     *
+     * <p>Five seconds. Below that an app is polling faster than a person can
+     * read the result, and every tab that has it open pays for it.
+     */
+    public static final int MIN_REFRESH_SECONDS = 5;
 
     /** App discriminator and manifest block key. */
     public static final String BLOCK = "custom";
@@ -126,7 +149,7 @@ public record BistromathConfig(
     static final Pattern HANDLE = Pattern.compile("^[a-z0-9][a-z0-9_-]{0,63}$");
 
     public static BistromathConfig empty() {
-        return new BistromathConfig(null, null, List.of(), null);
+        return new BistromathConfig(null, null, List.of(), null, null);
     }
 
     public static BistromathConfig from(ApplicationDocument manifest) {
@@ -139,7 +162,8 @@ public record BistromathConfig(
         }
         return new BistromathConfig(optional(map.get("landing")), optional(map.get("init")),
                 stringList(map.get("required"), "required"),
-                map.containsKey("rest") ? stringList(map.get("rest"), "rest") : null);
+                map.containsKey("rest") ? stringList(map.get("rest"), "rest") : null,
+                refreshSeconds(map.get("refresh")));
     }
 
     /** The program path, relative to the app folder. */
@@ -157,11 +181,43 @@ public record BistromathConfig(
         // means "nothing to say", here it means "needs no route", and losing that
         // on a round trip would widen the app back to unrestricted.
         if (rest != null) out.put("rest", List.copyOf(rest));
+        if (refresh != null) out.put("refresh", refresh);
         return out;
     }
 
     public static boolean isValidHandle(String handle) {
         return HANDLE.matcher(handle).matches();
+    }
+
+    /** Whole seconds, at or above the floor, or an error naming both. */
+    private static @Nullable Integer refreshSeconds(@Nullable Object raw) {
+        if (raw == null) return null;
+        int seconds;
+        if (raw instanceof Number n) {
+            // A fractional interval is a sub-second poll asked for indirectly.
+            if (n.doubleValue() != Math.floor(n.doubleValue())) {
+                throw new ToolException("Manifest key `refresh` is whole seconds, not `"
+                        + raw + "`.");
+            }
+            seconds = n.intValue();
+        } else if (raw instanceof String str) {
+            try {
+                seconds = Integer.parseInt(str.trim());
+            } catch (NumberFormatException e) {
+                throw new ToolException("Manifest key `refresh` is a number of seconds, not `"
+                        + raw + "`.");
+            }
+        } else {
+            throw new ToolException("Manifest key `refresh` is a number of seconds, not `"
+                    + raw + "`.");
+        }
+        if (seconds < MIN_REFRESH_SECONDS) {
+            throw new ToolException("Manifest key `refresh` is " + seconds
+                    + " seconds; the shortest allowed is " + MIN_REFRESH_SECONDS
+                    + ". Below that the app polls faster than anybody reads it, once per"
+                    + " open tab. Remove the key for no polling.");
+        }
+        return seconds;
     }
 
     /** A single string is accepted as a one-element list — the common case. */

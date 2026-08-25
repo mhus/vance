@@ -74,12 +74,12 @@ A patch names a widget of *this* view; the next view has never heard of it. So
 switching views clears them, and the program is told:
 
 ```js
-async function onViewOpened(handle) {
+async function onAppViewOpened(handle) {
   if (handle === 'edit') await applyMyShape();
 }
 ```
 
-Presence-checked like every hook: no `onViewOpened`, no call. It runs **after**
+Presence-checked like every hook: no `onAppViewOpened`, no call. It runs **after**
 the view is up, so a patch inside it lands on something that exists.
 
 ## `hide` and `show:` are two gates

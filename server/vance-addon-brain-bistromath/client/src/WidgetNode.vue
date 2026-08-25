@@ -180,6 +180,19 @@ const embedComponent = inject<Component | null>('vance:embed-component', null);
  */
 const markdownComponent = inject<Component | null>('vance:markdown-component', null);
 
+/**
+ * The host's HTML renderer, for the `html` widget.
+ *
+ * <p>Injected rather than sanitising here, and that is the whole point: the
+ * allow-list is one decision, and it lives in the host (`sanitizeHtml.ts`). A
+ * second copy inside a federated addon would be a second security decision,
+ * and the one that drifts is always the one nobody is looking at.
+ *
+ * <p>Absent means **no HTML** — see the template. There is no local fallback,
+ * because the fallback for "cannot sanitise" cannot be "insert anyway".
+ */
+const htmlComponent = inject<Component | null>('vance:html-component', null);
+
 // ── direct input ───────────────────────────────────────────────────
 
 /**
@@ -600,6 +613,18 @@ const headingClass = computed(() =>
          for a surface with no Cortex around it, and visibly less. -->
     <component :is="markdownComponent" v-if="markdownComponent" :source="textValue" />
     <div v-else class="prose prose-sm max-w-none" v-html="mdHtml" />
+  </div>
+
+  <div v-else-if="node.type === 'html'">
+    <!-- Markdown restructures HTML — a blank line inside a block element gets a
+         `<p>` the author never wrote. This widget passes the markup through as
+         written, after the host's sanitiser.
+
+         No fallback: without a host there is nothing to sanitise with, and
+         "insert it unsanitised" is not the lesser evil. The markup is shown as
+         text instead, which says plainly what happened. -->
+    <component :is="htmlComponent" v-if="htmlComponent" :content="textValue" />
+    <pre v-else class="text-xs whitespace-pre-wrap opacity-70">{{ textValue }}</pre>
   </div>
 
   <VCard v-else-if="node.type === 'card'" :title="node.label ?? undefined">

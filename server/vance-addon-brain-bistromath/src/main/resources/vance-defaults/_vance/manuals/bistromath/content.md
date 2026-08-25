@@ -83,6 +83,46 @@ author means and occasionally a surprise.
 On a surface with no Cortex around it — the standalone view preview — this falls
 back to plain markdown. Links stay text and fences stay code blocks there.
 
+## `html`
+
+When Markdown **restructures** your markup, use this instead:
+
+```yaml
+- type: html
+  from: karte
+```
+
+Markdown is a lossy channel for HTML, and the loss is structural rather than
+about which tags survive. Measured, same input through both widgets:
+
+```
+markdown:  <div class="karte"><p>  <b>nach einer Leerzeile</b></p></div>
+html:      <div class="karte">\n\n  <b>nach einer Leerzeile</b>\n</div>
+```
+
+The `<p>` is not in the source. A blank line inside a block element makes the
+Markdown parser treat what follows as a paragraph — right for prose, wrong for a
+layout you designed. A line beginning with `-` or `#` goes the same way.
+
+**Same sanitiser, no extra authority.** Both widgets run the same allow-list, so
+this is not a way to get a `<script>` onto the page — see the table above. The
+difference is fidelity, not permission.
+
+Two things `html` does *not* do, and `markdown` does:
+
+- **`vance:` links do not navigate.** The href survives sanitisation, but the
+  click delegation belongs to the Markdown renderer, which creates those links
+  itself. Write links in a `markdown` widget.
+- **No fenced kinds.** ` ```records ` is not markup; it is Markdown.
+
+So the rule is simple: **prose and links → `markdown`; a layout you control →
+`html`.** Both take `text:` for a literal and `from:` for a state key.
+
+Without a host renderer (the standalone view preview) an `html` widget shows its
+markup **as text**. There is deliberately no local fallback: without a host
+there is nothing to sanitise with, and "insert it anyway" is not the lesser
+evil.
+
 ## `code`
 
 Read-only source with syntax highlighting:

@@ -362,7 +362,7 @@ public final class ViewParser {
                             + " `from`, the state key holding the list it repeats over.");
                 }
             }
-            case TEXT, MARKDOWN -> {
+            case TEXT, MARKDOWN, HTML -> {
                 // Either a literal or a state key. A widget with neither shows
                 // nothing, which in a generic renderer is indistinguishable
                 // from a layout mistake.

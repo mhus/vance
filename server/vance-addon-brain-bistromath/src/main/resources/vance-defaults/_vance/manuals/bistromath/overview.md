@@ -29,7 +29,7 @@ There is no table declaration, no `source:` on a widget, and no data endpoint.
 | Which widgets are there, how do I wire a button? | `manual_read('views')` |
 | Data and input — table, the single controls, form, pagination, file | `manual_read('widgets')` |
 | Arranging — row, column, card, tabs, dialog | `manual_read('layout')` |
-| Showing — markdown, code, badge, alert, embed | `manual_read('content')` |
+| Showing — markdown, **html**, code, badge, alert, embed | `manual_read('content')` |
 | Sharing code, `@require`, and the five bundled libraries | `manual_read('libraries')` |
 | Changing the view from JS, and your own drawing surface | `manual_read('shaping')` |
 | Which functions does the runtime call? What can the program do? | `manual_read('program')` |

@@ -2,7 +2,8 @@
 /**
  * Markdown renderer with Vance-specific rich-content dispatch.
  *
- * - Standard Markdown via {@code marked} + DOMPurify (block + inline).
+ * - Standard Markdown via {@code marked} + the shared sanitiser
+ *   ({@code sanitizeHtml.ts}), block + inline.
  * - Code blocks with a kind tag → {@link InlineKindBox} (canvas
  *   rendering by registry).
  * - Markdown links / images with {@code vance:} URI → {@link
@@ -17,7 +18,7 @@
  */
 import { computed, defineComponent, h, inject, type PropType, type VNode } from 'vue';
 import { marked, type Tokens } from 'marked';
-import DOMPurify from 'dompurify';
+import { sanitizeHtml as sanitize } from './sanitizeHtml';
 import InlineKindBox from './InlineKindBox.vue';
 import EmbeddedKindBox from './EmbeddedKindBox.vue';
 import LinkCard from './LinkCard.vue';
@@ -313,24 +314,9 @@ function normalizeRelativeHrefs(tokens: Tokens.Generic[]): void {
   }
 }
 
-// DOMPurify's default URI allowlist (http/https/mailto/tel/cid/xmpp/…)
-// strips the href off any other scheme. Inline `vance:` links — Markdown
-// like `… see [Doc title](vance:/documents/foo.md?kind=document) …` —
-// would render as anchors without an href and be unclickable. We extend
-// the regex with `vance:` so the attribute survives sanitisation, then
-// the click delegation below intercepts navigation client-side and
-// routes through the document store / documents editor.
-//
-// The leading `(?:f|ht)tps?|mailto|…|vance` block mirrors DOMPurify's
-// own default — keep it in sync if upstream changes (no programmatic
-// way to "append a scheme to the default allowlist").
-const ALLOWED_URI_REGEXP =
-  /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|vance):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;
+// The allow-list lives in `sanitizeHtml.ts` — one copy, shared with the
+// `html` widget's renderer.
 
-const SANITIZE_CONFIG = {
-  USE_PROFILES: { html: true, mathMl: true },
-  ALLOWED_URI_REGEXP,
-} as const;
 
 function renderHtmlForTokens(tokens: Tokens.Generic[]): string {
   if (tokens.length === 0) return '';
@@ -338,7 +324,7 @@ function renderHtmlForTokens(tokens: Tokens.Generic[]): string {
   const list = tokens as any;
   if (!list.links) list.links = {};
   const raw = marked.parser(list) as string;
-  return DOMPurify.sanitize(raw, SANITIZE_CONFIG);
+  return sanitize(raw);
 }
 
 function flushHtmlBuffer(buffer: Tokens.Generic[], out: VNode[]): void {
@@ -752,7 +738,7 @@ export default defineComponent({
       const { body } = extractFrontmatter(src);
       if (!body) return '';
       const raw = marked.parseInline(body) as string;
-      return DOMPurify.sanitize(raw, SANITIZE_CONFIG);
+      return sanitize(raw);
     });
 
     const blockNodes = computed<VNode[]>(() => {

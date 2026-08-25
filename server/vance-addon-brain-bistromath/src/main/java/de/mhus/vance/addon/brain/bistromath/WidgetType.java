@@ -69,6 +69,23 @@ public enum WidgetType {
     /** Markdown body, rendered read-only. */
     MARKDOWN,
 
+    /**
+     * Sanitised HTML, passed through <b>unchanged</b>.
+     *
+     * <p>Beside {@link #MARKDOWN} rather than inside it, because Markdown is a
+     * lossy channel for HTML and the loss is structural: a blank line inside a
+     * block element makes the parser wrap the content in a {@code <p>} the
+     * author never wrote, and anything that looks like a list or a heading is
+     * taken as one. For prose that is right; for a layout somebody designed it
+     * is a different layout.
+     *
+     * <p>Not a wider permission. The same sanitiser runs — no {@code <script>},
+     * no {@code on*} handlers, no {@code javascript:} links, no
+     * {@code <iframe>}. What differs is fidelity, not authority: HTML is for
+     * formatting, and behaviour stays a widget with {@code on:}.
+     */
+    HTML,
+
     /** Rows of a folder-as-table, in declared columns. */
     TABLE,
 

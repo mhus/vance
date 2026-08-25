@@ -39,6 +39,7 @@ import {
   tryThreeWayMerge,
 } from '@/composables/useDocumentChangeReaction';
 import { onDocumentChanged, useWsConnection } from '@/ws/wsConnectionStore';
+import SanitizedHtmlView from '@/components/SanitizedHtmlView.vue';
 import MarkdownView from '@/components/MarkdownView.vue';
 import VanceEmbedView from '@/components/VanceEmbedView.vue';
 import VanceFormView from '@/components/VanceFormView.vue';
@@ -239,6 +240,13 @@ provide('vance:form-component', VanceFormView);
 // renderer reaches the document-ref store, the kind registry and the link
 // handler, so it belongs where those live. The component takes `source`.
 provide('vance:markdown-component', MarkdownView);
+
+/**
+ * Raw HTML, sanitised — the `html` widget of a custom app, and anything else
+ * that has markup rather than prose. Separate from the Markdown component
+ * because Markdown restructures HTML; see `SanitizedHtmlView`.
+ */
+provide('vance:html-component', SanitizedHtmlView);
 // The workbook vance-compose block mounts this to render its outputs
 // (markdown/text/image/pdf/structured kinds) exactly like the Cortex view.
 provide('vance:compose-output-component', ComposeOutput);

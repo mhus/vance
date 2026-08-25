@@ -11,6 +11,7 @@ export enum WidgetType {
   BUTTON = 'BUTTON',
   TEXT = 'TEXT',
   MARKDOWN = 'MARKDOWN',
+  HTML = 'HTML',
   TABLE = 'TABLE',
   FORM = 'FORM',
   INPUT = 'INPUT',

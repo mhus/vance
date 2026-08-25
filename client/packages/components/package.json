@@ -22,7 +22,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@codemirror/commands": "^6.10.4",
+    "@codemirror/commands": "^6.11.0",
     "@codemirror/lang-css": "^6.3.1",
     "@codemirror/lang-html": "^6.4.12",
     "@codemirror/lang-java": "^6.0.2",
@@ -36,7 +36,7 @@
     "@codemirror/language": "^6.12.4",
     "@codemirror/legacy-modes": "^6.5.2",
     "@codemirror/state": "^6.7.1",
-    "@codemirror/view": "^6.43.8",
+    "@codemirror/view": "^6.43.9",
     "@vance/generated": "workspace:*",
     "@vance/shared": "workspace:*"
   },
@@ -45,6 +45,6 @@
   },
   "devDependencies": {
     "vue": "^3.5.41",
-    "vue-tsc": "^3.3.9"
+    "vue-tsc": "^3.3.11"
   }
 }

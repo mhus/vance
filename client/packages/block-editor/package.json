@@ -28,30 +28,30 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@tiptap/core": "^3.29.2",
-    "@tiptap/pm": "^3.29.2",
-    "@tiptap/starter-kit": "^3.29.2",
-    "@tiptap/vue-3": "^3.29.2",
-    "@tiptap/extension-image": "^3.29.2",
-    "@tiptap/extension-table": "^3.29.2",
-    "@tiptap/extension-link": "^3.29.2",
-    "@tiptap/extension-list": "^3.29.2",
-    "@tiptap/extensions": "^3.29.2",
-    "@tiptap/suggestion": "^3.29.2",
-    "@tiptap/extension-code-block-lowlight": "^3.29.2",
+    "@tiptap/core": "^3.30.2",
+    "@tiptap/pm": "^3.30.2",
+    "@tiptap/starter-kit": "^3.30.2",
+    "@tiptap/vue-3": "^3.30.2",
+    "@tiptap/extension-image": "^3.30.2",
+    "@tiptap/extension-table": "^3.30.2",
+    "@tiptap/extension-link": "^3.30.2",
+    "@tiptap/extension-list": "^3.30.2",
+    "@tiptap/extensions": "^3.30.2",
+    "@tiptap/suggestion": "^3.30.2",
+    "@tiptap/extension-code-block-lowlight": "^3.30.2",
     "@floating-ui/dom": "^1.6.13",
     "tiptap-extension-global-drag-handle": "^0.1.16",
     "tippy.js": "^6.3.7",
     "js-yaml": "^4.1.0",
     "lowlight": "^3.1.0",
-    "highlight.js": "^11.10.0"
+    "highlight.js": "^11.12.0"
   },
   "peerDependencies": {
     "vue": "^3.5.0"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
-    "vitest": "^4.1.10",
+    "vitest": "^4.1.11",
     "vue": "^3.5.41"
   }
 }

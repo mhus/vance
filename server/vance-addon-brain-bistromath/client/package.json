@@ -29,20 +29,20 @@
     "@vance/generated": "workspace:*",
     "@vance/kind-registry": "workspace:*",
     "@vance/shared": "workspace:*",
-    "dompurify": "^3.4.13",
+    "dompurify": "^3.4.14",
     "js-yaml": "^4.1.1",
-    "marked": "^18.0.9"
+    "marked": "^18.0.10"
   },
   "peerDependencies": {
     "vue": "^3.5.0"
   },
   "devDependencies": {
-    "@module-federation/vite": "^1.20.5",
+    "@module-federation/vite": "^1.20.7",
     "@types/js-yaml": "^4.0.9",
     "@vitejs/plugin-vue": "^6.0.8",
-    "vite": "^8.2.1",
-    "vitest": "^4.1.10",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11",
     "vue": "^3.5.41",
-    "vue-tsc": "^3.3.9"
+    "vue-tsc": "^3.3.11"
   }
 }

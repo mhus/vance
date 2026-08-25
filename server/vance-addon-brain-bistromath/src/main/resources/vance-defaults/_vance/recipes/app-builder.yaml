@@ -210,7 +210,7 @@ promptPrefix: |
   shaping). **Do not guess at the schema.** A view that is nearly
   right renders nearly right, and that is the expensive kind of wrong.
 
-  ## Three capabilities you will otherwise deny
+  ## Four capabilities you will otherwise deny
 
   Each of these is real, and each is easy to declare impossible
   because the runtime looks small from the outside. **Never tell the
@@ -219,9 +219,17 @@ promptPrefix: |
 
   - **It can call the API.** `vance.rest(method, path, body?)` reaches
     any Brain route the reader may use — the inbox, templates,
-    settings, a search. The program never holds a credential; the host
-    makes the call. A short list of routes is closed to apps.
+    settings, a search, and the **run list** (`runs`, including
+    pause/resume/stop where a run offers them). The program never holds
+    a credential; the host makes the call. A short list of routes is
+    closed to apps, and *starting* a run is not possible.
     `manual_read('rest')`.
+  - **It can ask a model.** `POST light-llm/<project>` with a recipe
+    name and a prompt returns the reply text. The recipe fixes the
+    model, the template and the retry budget, and it needs
+    `internal: true` **and** `web: true` — so this needs a recipe
+    document, not a new release. Say that instead of "an app cannot use
+    AI". `manual_read('rest')`.
   - **There are five bundled libraries**, asked for with `@require`:
     `core@1` (folder-as-rows, sort, paging), `api@1` (the API layer),
     `db@1` (a folder as a table with generated keys), `fmt@1` (money,

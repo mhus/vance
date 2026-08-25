@@ -9,7 +9,7 @@ import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.permission.RequestAuthority;
-import de.mhus.vance.brain.thinkengine.ThinkEngineService;
+import de.mhus.vance.brain.thinkprocess.ProcessSpawnService;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
@@ -46,12 +46,10 @@ public class ProcessCreateHandler implements WsHandler {
     private final ObjectMapper objectMapper;
     private final WebSocketSender sender;
     private final ThinkProcessService thinkProcessService;
-    private final ThinkEngineService thinkEngineService;
     private final ChatMessageService chatMessageService;
-    private final RecipeResolver recipeResolver;
+    private final ProcessSpawnService spawnService;
     private final SessionService sessionService;
     private final RequestAuthority authority;
-    private final de.mhus.vance.brain.scheduling.LaneScheduler laneScheduler;
 
     @Override
     public String type() {
@@ -86,82 +84,33 @@ public class ProcessCreateHandler implements WsHandler {
                 new Resource.Session(tenantId, projectId == null ? "" : projectId, sessionId),
                 Action.START);
 
-        AppliedRecipe applied;
+        ThinkProcessDocument refreshed;
         try {
-            applied = recipeResolver.applyDefaulting(
-                    tenantId, projectId,
-                    request.getRecipe(),
-                    ctx.getProfile(), request.getParams());
-        } catch (RecipeResolver.UnknownRecipeException e) {
+            refreshed = spawnService.spawn(ProcessSpawnService.SpawnRequest.builder()
+                    .tenantId(tenantId)
+                    .projectId(projectId)
+                    .sessionId(sessionId)
+                    .name(request.getName())
+                    .recipe(request.getRecipe())
+                    .profile(ctx.getProfile())
+                    .title(request.getTitle())
+                    .goal(request.getGoal())
+                    .params(request.getParams())
+                    .build());
+        } catch (ProcessSpawnService.UnknownTargetException e) {
             sender.sendError(wsSession, envelope, 404, e.getMessage());
             return;
-        } catch (RecipeResolver.UnknownEngineException e) {
-            sender.sendError(wsSession, envelope, 404, e.getMessage());
-            return;
-        }
-
-        ThinkEngine engine = thinkEngineService.resolve(applied.engine())
-                .orElse(null);
-        if (engine == null) {
-            sender.sendError(wsSession, envelope, 404,
-                    "Recipe '" + applied.name() + "' references unknown engine '"
-                            + applied.engine() + "'");
-            return;
-        }
-
-        ThinkProcessDocument created;
-        try {
-            created = thinkProcessService.create(
-                    tenantId, projectId, sessionId, request.getName(),
-                    engine.name(), engine.version(),
-                    request.getTitle(), request.getGoal(),
-                    /*parentProcessId*/ null,
-                    applied.params(),
-                    applied.name(),
-                    applied.promptOverride(),
-                    applied.promptOverrideAppend(),
-                    applied.promptMode(),
-                    applied.dataRelayCorrection(),
-                    applied.effectiveAllowedTools(),
-                    applied.connectionProfile(),
-                    applied.defaultActiveSkills(),
-                    applied.allowedSkills() == null
-                            ? null : java.util.Set.copyOf(applied.allowedSkills()));
-        } catch (ThinkProcessService.ThinkProcessAlreadyExistsException e) {
+        } catch (ProcessSpawnService.AlreadyExistsException e) {
             sender.sendError(wsSession, envelope, 409, e.getMessage());
             return;
-        }
-
-        // Run start() ON the process lane, like the other spawn sites
-        // (SessionChatBootstrapper / AgrajagSpawnerService / Trillian): an
-        // off-lane start would race a concurrent runTurn/steer for the same
-        // process on a multi-client session, both mutating the doc/chat log.
-        // Lane-Serialisierung invariant, CLAUDE.md.
-        Throwable startFailure = null;
-        try {
-            laneScheduler.submit(created.getId(), () -> {
-                thinkEngineService.start(created);
-                return null;
-            }).get();
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            startFailure = ie;
-        } catch (java.util.concurrent.ExecutionException ee) {
-            startFailure = ee.getCause() == null ? ee : ee.getCause();
-        }
-        if (startFailure != null) {
-            log.error("Engine start failed for process id='{}' engine='{}'",
-                    created.getId(), created.getThinkEngine(), startFailure);
-            sender.sendError(wsSession, envelope, 500,
-                    "Engine start failed: " + startFailure.getMessage());
+        } catch (ProcessSpawnService.StartFailedException e) {
+            sender.sendError(wsSession, envelope, 500, e.getMessage());
             return;
         }
 
         // CHAT_MESSAGE_APPENDED frames are pushed by the central
         // ChatMessageNotificationDispatcher on every chatMessageService.append.
         // No need to replay history here.
-        ThinkProcessDocument refreshed = thinkProcessService.findById(created.getId())
-                .orElse(created);
         ProcessCreateResponse response = ProcessCreateResponse.builder()
                 .thinkProcessId(refreshed.getId())
                 .name(refreshed.getName())

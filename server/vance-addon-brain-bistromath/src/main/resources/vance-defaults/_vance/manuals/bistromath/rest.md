@@ -98,9 +98,28 @@ the answer to "why can't I call `fook`": nothing is released by default.
 So a model call needs a recipe document. Ask the reader to add one, or write it
 yourself if you may — it is `_vance/recipes/<name>.yaml` in the project.
 
-## Watching a run
+## Starting and watching a run
 
-`runs` is open, and it is more than a list:
+An app can start a worker, and then watch it:
+
+```js
+const started = await vance.rest('POST', 'processes/' + vance.app.project,
+  { recipe: 'app-plan', session: (await vance.app.current()).session,
+    goal: 'Plan the inventory app' });
+// started.runId is the handle for the run routes below
+```
+
+Same release as a model call: the recipe needs **`web: true`**. Which route
+applies follows from `internal` — a config profile (`internal: true`) is a
+one-shot `light-llm` call, a worker recipe (`internal: false`) is spawnable
+here. Asking for the wrong one is refused and says which to use.
+
+A **session** is required, because a think process is owned by one: that is
+where its chat log lives and what the reader opens to see what the worker said.
+`vance.app.current().session` is the chat beside your app — `null` in a chatless
+tab, and then there is nothing to start into.
+
+Watching it:
 
 ```js
 const runs = await vance.rest('GET', 'runs?projectId=' + vance.app.project);
@@ -111,9 +130,16 @@ await vance.rest('POST', 'runs/' + id + '/actions/pause?projectId='
 
 Each run says in `allowedActions` what it currently offers (`PAUSE`, `RESUME`,
 `STOP`) — read that rather than guessing, because a run that has moved on
-accepts nothing. **Starting** a run is not possible from an app: there is no
-route for it, and `compose` — the one thing that would start something — is
-closed because it runs code on the server.
+accepts nothing, and an action it does not offer is a silent no-op rather than
+an error.
+
+**Read the state back rather than trusting the reply.** The action's response is
+the run as it was a moment later, but a stop on a busy lane is *staged* — the
+status may still say `RUNNING` in that answer and be `STOPPED` a second later.
+Measured, not assumed.
+
+`compose` stays closed even now: it runs code on the server, and that is a
+different question from starting a worker.
 
 ## What it does not do
 

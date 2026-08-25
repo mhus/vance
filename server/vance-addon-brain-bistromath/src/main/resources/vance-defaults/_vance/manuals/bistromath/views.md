@@ -44,7 +44,7 @@ not an expression — a name the program wrote with
 | `button` | `label`, `on.click` | |
 | `text` | `text` **or** `from` | literal, or a state value |
 | `markdown` | `text` **or** `from` | rendered **the Vance way** — see below |
-| `table` | `from`, `columns?`, `on.rowClick` | `from` must hold an array of objects |
+| `table` | `from`, `columns?`, `on.rowClick` | sortable by header, filter box above 10 rows |
 | `input` | `from`, `label?` | one text field, writes a **string** |
 | `number` | `from`, `label?` | one number field, writes a **number** or `null` |
 | `toggle` | `from`, `label?` | a checkbox, writes a **boolean** |

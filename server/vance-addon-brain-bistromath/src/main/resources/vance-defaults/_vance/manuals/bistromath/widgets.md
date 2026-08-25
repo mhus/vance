@@ -18,6 +18,28 @@ A named column the rows do not have shows as empty cells rather than
 disappearing, so a typo looks like a typo.
 
 A row's `key` field identifies it; `vance.documents.list` already returns one.
+Without one, a row is identified by its **position in your array** — so give
+rows a `key` if you also bind a `form` or `details` to the same list.
+
+**Sorting and filtering are the reader's, not yours.** Nothing is declared and
+nothing reaches state:
+
+- **Click a column header** to sort. Three steps: ascending → descending → your
+  own order again. That last step matters — the order your program produced is
+  itself information (newest first, ranked, whatever `list` returned), so it has
+  to be reachable without a reload.
+- **A filter box appears above the table once it has more than 10 rows.** It
+  matches a substring against every shown column, case-insensitively. No flag
+  for it: how many rows justify a filter box is a property of the renderer, and
+  you cannot know at authoring time how many rows your program will put there.
+
+Sorting compares **numerically when both values are numbers** — an `amount`
+column sorts 9 before 77 — and textually otherwise. Empty cells sort last in
+both directions: an empty value is the absence of one, not the smallest one.
+
+Neither survives a reload, and neither is visible to your program. A filter your
+program should know about is a `field` plus your own filtering
+(`manual_read('widgets')` → the four direct inputs).
 
 ## The four direct inputs
 

@@ -197,12 +197,112 @@ const selectOptions = computed(() =>
   props.node.options.map((o) => ({ value: o.value, label: o.label })),
 );
 
-/** Rows of a `table`: whatever the program put there, if it is a list. */
-const rows = computed<Record<string, unknown>[]>(() => {
+/**
+ * Rows of a `table`, each carrying the key it had **before** any sorting.
+ *
+ * <p>The key is fixed here rather than derived from the display position, and
+ * that is what makes sorting safe: a row without its own `key` field falls back
+ * to its index, and if that index were the *displayed* one, sorting would
+ * silently rename every such row — a `rowClick` would then hand a detail view
+ * the wrong record. The program's order is the row's identity.
+ */
+const rows = computed<{ row: Record<string, unknown>; key: string; index: number }[]>(() => {
   const v = bound.value;
   if (!Array.isArray(v)) return [];
-  return v.filter((r): r is Record<string, unknown> => !!r && typeof r === 'object');
+  const out: { row: Record<string, unknown>; key: string; index: number }[] = [];
+  for (let i = 0; i < v.length; i++) {
+    const r = v[i];
+    if (!r || typeof r !== 'object') continue;
+    const row = r as Record<string, unknown>;
+    const k = row.key;
+    // The position in the *program's* array, not in this list: it is what a
+    // write has to put the edited record back into.
+    out.push({ row, key: k === undefined || k === null ? String(i) : String(k), index: i });
+  }
+  return out;
 });
+
+// ── sorting and filtering: client state, like the open tab ──────────
+//
+// Neither is a state key and neither is in the URL. A reader's sort order is
+// not something the program decided, so it has no business in the program's
+// state — and putting it there would mean every table write triggered a guest
+// round trip.
+
+const sortColumn = ref<string | null>(null);
+const sortDescending = ref(false);
+const tableFilter = ref('');
+
+/**
+ * Three steps, not two: ascending, descending, **off**.
+ *
+ * <p>Off has to be reachable, because the order the program produced is itself
+ * information — newest first, ranked, in the sequence the documents were read.
+ * A two-state toggle would make that order unrecoverable without a reload.
+ */
+function toggleSort(column: string): void {
+  if (sortColumn.value !== column) {
+    sortColumn.value = column;
+    sortDescending.value = false;
+  } else if (!sortDescending.value) {
+    sortDescending.value = true;
+  } else {
+    sortColumn.value = null;
+    sortDescending.value = false;
+  }
+}
+
+function sortMarker(column: string): string {
+  if (sortColumn.value !== column) return '';
+  return sortDescending.value ? ' ↓' : ' ↑';
+}
+
+/**
+ * Above this many rows a table gets a filter box.
+ *
+ * <p>A threshold rather than a schema flag, for the reason already written down
+ * for long choice lists in `FormFields`: how many rows justify a filter box is
+ * a property of the renderer, not of the table's meaning — and an author cannot
+ * know how many rows a program will put there at render time. It also spares
+ * the schema a boolean whose default would be arguable either way.
+ */
+const FILTER_THRESHOLD = 10;
+
+const showFilter = computed(() => rows.value.length > FILTER_THRESHOLD);
+
+/**
+ * What the table shows: filtered, then sorted.
+ *
+ * <p>Comparison is numeric when **both** values parse as numbers and textual
+ * otherwise, so an `amount` column sorts 9 before 77 instead of after it. Mixed
+ * columns fall back to text, which is at least stable.
+ */
+const tableRows = computed(() => {
+  const needle = tableFilter.value.trim().toLowerCase();
+  let out = rows.value;
+  if (needle) {
+    out = out.filter(({ row }) =>
+      columns.value.some((c) => cell(row, c).toLowerCase().includes(needle)),
+    );
+  }
+  const column = sortColumn.value;
+  if (!column) return out;
+  const factor = sortDescending.value ? -1 : 1;
+  // Copied before sorting: `out` may still be the array the program owns.
+  return [...out].sort((a, b) => factor * compareCells(a.row[column], b.row[column]));
+});
+
+function compareCells(a: unknown, b: unknown): number {
+  const emptyA = a === undefined || a === null || a === '';
+  const emptyB = b === undefined || b === null || b === '';
+  // Empty sorts last in both directions: it is the absence of a value, not the
+  // smallest one, and a column of blanks at the top hides the data.
+  if (emptyA || emptyB) return emptyA && emptyB ? 0 : emptyA ? 1 : -1;
+  const na = Number(a);
+  const nb = Number(b);
+  if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+  return String(a).localeCompare(String(b));
+}
 
 /**
  * Columns: what the widget asks for, else the union of the keys present.
@@ -213,7 +313,7 @@ const rows = computed<Record<string, unknown>[]>(() => {
 const columns = computed<string[]>(() => {
   if (props.node.columns.length > 0) return props.node.columns;
   const seen = new Set<string>();
-  for (const r of rows.value) for (const k of Object.keys(r)) seen.add(k);
+  for (const { row } of rows.value) for (const k of Object.keys(row)) seen.add(k);
   seen.delete('key');
   return [...seen];
 });
@@ -229,10 +329,9 @@ const record = computed<Record<string, unknown> | null>(() => {
   const v = bound.value;
   if (Array.isArray(v)) {
     if (!props.recordKey) return null;
-    const hit = v.find(
-      (r) => r && typeof r === 'object' && String((r as Record<string, unknown>).key) === props.recordKey,
-    );
-    return (hit as Record<string, unknown>) ?? null;
+    // The same keying the table displays, so a row without its own `key` field
+    // is reachable too — matching `row.key` directly never found one of those.
+    return rows.value.find((e) => e.key === props.recordKey)?.row ?? null;
   }
   if (v && typeof v === 'object') return v as Record<string, unknown>;
   return null;
@@ -259,16 +358,14 @@ function onFormInput(model: Record<string, FormValue>): void {
   const current = bound.value;
 
   if (Array.isArray(current)) {
-    if (!props.recordKey) return;
+    const hit = rows.value.find((e) => e.key === props.recordKey);
+    if (!hit) return;
+    // By position, not by matching the key again: one place decides what a row
+    // is called, and the write puts the record back exactly where it came from.
     emit(
       'state',
       key,
-      current.map((row) =>
-        row && typeof row === 'object'
-        && String((row as Record<string, unknown>).key) === props.recordKey
-          ? merged
-          : row,
-      ),
+      current.map((row, i) => (i === hit.index ? merged : row)),
     );
   } else {
     emit('state', key, merged);
@@ -332,12 +429,6 @@ function fire(event: string, key?: string): void {
 
 function hasHandler(event: string): boolean {
   return Boolean(props.node.on[event]);
-}
-
-/** A row's key, by convention its `key` field — what `documents.list` returns. */
-function keyOf(row: Record<string, unknown>, index: number): string {
-  const k = row.key;
-  return k === undefined || k === null ? String(index) : String(k);
 }
 
 function cell(row: Record<string, unknown>, column: string): string {
@@ -478,33 +569,58 @@ const headingClass = computed(() =>
   <div v-else-if="node.type === 'table'" class="flex flex-col gap-2">
     <h3 v-if="node.label" class="text-base font-semibold">{{ node.label }}</h3>
 
+    <!-- The filter is the reader's, not the program's: it narrows what is on
+         screen and never touches state. -->
+    <VInput
+      v-if="showFilter"
+      :model-value="tableFilter"
+      placeholder="Filter…"
+      @update:model-value="(v: string) => (tableFilter = v)"
+    />
+
     <VEmptyState
       v-if="rows.length === 0"
       headline="Nothing to show"
       :body="`The program has not put rows into \`${node.from}\` yet. It fills state with vance.state.set('${node.from}', rows).`"
     />
 
+    <VEmptyState
+      v-else-if="tableRows.length === 0"
+      headline="Nothing matches the filter"
+      :body="`${rows.length} row(s) are hidden by »${tableFilter}«.`"
+    />
+
     <div v-else class="overflow-x-auto">
       <table class="w-full border-collapse text-sm">
         <thead>
           <tr class="border-b border-base-300 text-left">
-            <th v-for="col in columns" :key="col" class="px-2 py-1 font-semibold opacity-60">
-              {{ col }}
+            <!-- A header is a button in effect: three clicks cycle
+                 ascending → descending → the program's own order. -->
+            <th
+              v-for="col in columns"
+              :key="col"
+              class="cursor-pointer px-2 py-1 font-semibold opacity-60 select-none hover:opacity-100"
+              :title="`Sort by ${col}`"
+              @click="toggleSort(col)"
+            >
+              {{ col }}{{ sortMarker(col) }}
             </th>
           </tr>
         </thead>
         <tbody>
           <tr
-            v-for="(row, i) in rows"
-            :key="keyOf(row, i)"
+            v-for="entry in tableRows"
+            :key="entry.key"
             :class="[
               'border-b border-base-200',
               hasHandler('rowClick') ? 'cursor-pointer hover:bg-base-200' : '',
-              recordKey && keyOf(row, i) === recordKey ? 'bg-base-200' : '',
+              recordKey && entry.key === recordKey ? 'bg-base-200' : '',
             ]"
-            @click="fire('rowClick', keyOf(row, i))"
+            @click="fire('rowClick', entry.key)"
           >
-            <td v-for="col in columns" :key="col" class="px-2 py-1">{{ cell(row, col) }}</td>
+            <td v-for="col in columns" :key="col" class="px-2 py-1">
+              {{ cell(entry.row, col) }}
+            </td>
           </tr>
         </tbody>
       </table>

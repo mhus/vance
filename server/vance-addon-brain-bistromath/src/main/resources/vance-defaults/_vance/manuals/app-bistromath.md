@@ -60,7 +60,8 @@ This build reads **and writes** documents (`vance.documents.write` / `create` /
 `delete`; a write is refused if the document changed since the app read it), and
 a `form` widget is **editable**, and `input`/`number`/`toggle`/`select` are
 single controls bound to one state key each — **natively typed**, no string
-encoding. `row` puts widgets side by side. What the reader types goes into
+encoding. `row` puts widgets side by side. A `table` sorts by header click and gets a
+filter box above 10 rows — reader-side, invisible to the program. What the reader types goes into
 state, the program stores it. A `records`/`sheet`/`list`/`tree` document is read and
 written **as a structure**, so an app edits the same files the built-in editors
 and the `records_*` tools do. It also reacts to writes in its own folder

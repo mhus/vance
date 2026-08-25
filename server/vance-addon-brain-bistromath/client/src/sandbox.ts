@@ -508,14 +508,14 @@ export class Sandbox {
   /** Answer one host call. Every rejection travels as a message, never as a throw. */
   private async serve(id: string, method: string, args: unknown[]): Promise<void> {
     let answered = false;
-    const post = (ok: boolean, value?: unknown, message?: string) => {
+    const post = (ok: boolean, value?: unknown, message?: string, status?: number) => {
       if (answered) return;
       answered = true;
       this.outstandingHostCalls--;
       // Re-arm on the way back too: the guest resumes here, so the clock on the
       // pending invoke should start from now rather than from before the read.
       for (const [, w] of this.waiters) w.rearm();
-      this.transport.post({ t: 'result', id, ok, value, message });
+      this.transport.post({ t: 'result', id, ok, value, message, status });
     };
     try {
       const host = this.opts.host;
@@ -571,7 +571,15 @@ export class Sandbox {
           post(false, undefined, `no such host function: ${method}`);
       }
     } catch (e) {
-      post(false, undefined, e instanceof Error ? e.message : String(e));
+      // A numeric `status` travels beside the message, because only a string
+      // crosses the bridge otherwise — and a program that had to read the HTTP
+      // code out of prose would break the day the wording improves. Absent for
+      // anything that is not an answer from a server (a refused path, a bad
+      // argument): those are not 4xx and must not look like one.
+      const status = e && typeof (e as { status?: unknown }).status === 'number'
+        ? (e as { status: number }).status
+        : undefined;
+      post(false, undefined, e instanceof Error ? e.message : String(e), status);
     }
   }
 }

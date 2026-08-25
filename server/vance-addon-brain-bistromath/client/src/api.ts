@@ -84,6 +84,20 @@ export async function rebuildApp(projectId: string, folder: string): Promise<App
 // ── the open REST surface, as the program sees it ──────────────────
 
 /**
+ * A call the server answered with an error status.
+ *
+ * <p>Separate from `RestDeniedError`, which has **no** status: a path the floor
+ * closed was never sent, so calling it a 403 would claim the server had an
+ * opinion about it.
+ */
+export class RestCallError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = 'RestCallError';
+  }
+}
+
+/**
  * One REST call on the reader's behalf: `vance.rest(method, path, body)`.
  *
  * <p><b>The host performs it, the guest never holds a credential.</b> That is
@@ -97,9 +111,10 @@ export async function rebuildApp(projectId: string, folder: string): Promise<App
  * subtracted: the floor, which no app can re-open, and the app's own
  * declaration in its manifest, when it made one.
  *
- * <p>A failure comes back as a message with its status, because a program's
- * recovery differs by status: 404 is often an answer, 409 means read again, 403
- * means stop asking.
+ * <p>A failure carries its status as a **number on the error**, not only in the
+ * text: a program's recovery differs by status — 404 is often an answer, 409
+ * means read again, 403 means stop asking — and reading it out of a sentence
+ * would break the day the wording improves.
  */
 export async function callRest(
   rawMethod: unknown,
@@ -113,7 +128,7 @@ export async function callRest(
     return await brainFetch<unknown>(method, path, body === undefined ? {} : { body });
   } catch (e) {
     if (e instanceof RestError) {
-      throw new Error(`${method} ${path} failed with ${e.status}: ${e.message}`);
+      throw new RestCallError(e.status, `${method} ${path} failed with ${e.status}: ${e.message}`);
     }
     throw e;
   }

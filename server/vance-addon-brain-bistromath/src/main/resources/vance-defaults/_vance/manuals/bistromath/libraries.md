@@ -1,6 +1,6 @@
 ---
 name: libraries
-summary: Sharing code between custom apps — the bundled core@1, @require, libraries under _vance/app-libs, app-local scripts, and what happens on a version conflict.
+summary: Sharing code between custom apps — what is bundled, @require, libraries under _vance/app-libs, app-local scripts, testing, and what happens on a version conflict.
 triggers: you are writing a program that reads a folder, sorts, filters or pages, your program is getting long, two apps need the same helper, a require is not found, or the app says a library loads in a version nobody asked for
 ---
 
@@ -61,51 +61,23 @@ document at the same path.
 The `Loads` panel in the app toolbar says which layer each one came from — the
 difference between "my override works" and "my override is at the wrong path".
 
-## `core@1` — what ships with Vancetope
+## What ships with Vancetope
 
-One library is bundled. Require it and it is there:
+Three, and **nothing is loaded that nobody asked for** — that is why they are
+separate rather than one big helper. An app that shows no data never pays for
+`db@1`; a calculator loads none of them.
 
-```js
-// @require core@1
-```
+| | | |
+|---|---|---|
+| `core@1` | folder-as-rows, state, filter/sort/paging, formatting | `manual_read('bistromath/lib-core')` |
+| `api@1` | calling Brain routes: project parameter, status branching, `tryGet` | `manual_read('bistromath/lib-api')` |
+| `db@1` | a folder **as a table**: `get`/`where`/`insert`/`update`/`nextKey`, cached | `manual_read('bistromath/lib-db')` |
 
-Everything in it was written by hand in every app before it existed. It is
-**shorter, not more powerful** — a program that never loads it is not missing a
-capability.
+`db@1` requires `core@1` and says so in its own header, so asking for `db@1`
+alone is enough. `api@1` requires nothing.
 
-| | |
-|---|---|
-| `core.rows(folder)` | a folder of documents as records, `key` mixed in |
-| `core.save(folder, record)` | write one back by its `key` (which is dropped from the body) |
-| `core.remove(folder, key)` | delete one |
-| `core.set({a, b})` | several state keys at once |
-| `core.get('a', 'b')` | several back, as one object |
-| `core.filter(rows, needle, fields?)` | substring match, any field or the named ones |
-| `core.sort(rows, field, descending?)` | numeric when both are numbers, empties last **both ways** |
-| `core.paging(rows, size, previous?)` | the object a `pagination` binds to, clamped |
-| `core.page(rows, paging)` | the slice it describes |
-| `core.num(v, digits?)` | a number, or `''` for a non-number |
-| `core.date(v)` | the reader's locale, or the raw value if unparseable |
-| `core.say(t)` / `core.warn(t)` | notify, with the severity at the call site |
-
-```js
-// @require core@1
-
-async function load() {
-  const rows = await core.rows('/invoices/');
-  const sorted = core.sort(rows, 'amount', true);
-  const paging = core.paging(sorted, 20);
-  await core.set({ rows: core.page(sorted, paging), paging: paging });
-}
-```
-
-**No policy in it.** No currency, no date format, no default page size that
-pretends to know your data. `core.num` formats a number; what a number *means*
-is your app's business — a shared library deciding that is how a helper becomes
-something to work around.
-
-To replace it, put your own document at `_vance/app-libs/core@1.js` in your
-project or tenant. The `Loads` panel then says `project` instead of `bundled`.
+**Ask for what you use, not for all three.** They are cheap, but the habit is
+what keeps a library list meaningful.
 
 ## Writing a library
 

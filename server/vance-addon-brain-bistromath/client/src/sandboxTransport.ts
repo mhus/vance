@@ -113,7 +113,14 @@ export const GUEST_BOOTSTRAP = `<!doctype html><meta charset="utf-8">
       var p = pending[m.id];
       if (!p) return;
       delete pending[m.id];
-      if (m.ok) p.resolve(m.value); else p.reject(new Error(m.message));
+      if (m.ok) { p.resolve(m.value); return; }
+      var err = new Error(m.message);
+      // err.status is how a program branches on 404 or 409 without matching
+      // text -- only set when the host sent one. No backticks in here: this
+      // whole bootstrap is a template literal, so one would end it and the
+      // rest of the guest would be parsed as TypeScript.
+      if (typeof m.status === 'number') err.status = m.status;
+      p.reject(err);
       return;
     }
     if (m.t === 'context') {

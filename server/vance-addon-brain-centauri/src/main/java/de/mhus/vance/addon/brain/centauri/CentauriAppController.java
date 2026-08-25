@@ -1,6 +1,7 @@
 package de.mhus.vance.addon.brain.centauri;
 
 import de.mhus.vance.brain.centauri.CentauriItem;
+import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.toolpack.facet.Facet;
 import de.mhus.vance.toolpack.facet.FacetValue;
 import de.mhus.vance.brain.centauri.CentauriNote;
@@ -640,7 +641,9 @@ public class CentauriAppController {
     }
 
     private static @Nullable String currentUser(HttpServletRequest req) {
-        Object o = req.getAttribute("vanceUserId");
-        return o instanceof String s ? s : null;
+        // One spelling for "who is doing this". Reading the attribute by
+        // hand is what put the wrong name here: nothing ever set
+        // "vanceUserId", so every actor recorded from this request was null.
+        return AccessFilterBase.usernameOrNull(req);
     }
 }

@@ -467,6 +467,26 @@ class TimelineKindHandlerTest {
         assertThat(codes(validate(body))).containsExactly("timeline.axis.direction-unknown");
     }
 
+    /**
+     * The aliases are part of the wire, so the validator has to know them too.
+     * It used to compare the declared word against the canonical one it parsed
+     * to, and told the author their correctly-read document was unreadable.
+     */
+    @Test
+    void documentedAxisAliases_areNotReportedAsUnknown() {
+        String body = """
+                $meta:
+                  kind: timeline
+                axis: { mode: date, direction: backwards }
+                entries:
+                  - title: A
+                    from: 1969-07-20
+                """;
+
+        assertThat(codes(validate(body)))
+                .doesNotContain("timeline.axis.mode-unknown", "timeline.axis.direction-unknown");
+    }
+
     @Test
     void unitOnADatetimeAxis_warnsThatItIsUnused() {
         String body = """

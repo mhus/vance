@@ -215,6 +215,30 @@ class ThreadLifeToolsTest {
     }
 
     @Test
+    void leave_refusedForTheAssignee_leavesNoFarewellBehind() {
+        // The note has to go out before the leave (visibility), so a refusal
+        // that arrives afterwards would strand "I am off this, ask somebody
+        // else" on a thread the author is still the assignee of — and a
+        // message cannot be taken back.
+        when(threads.findById(TENANT, "t1")).thenReturn(Optional.of(openAsk()));
+
+        assertThatThrownBy(() ->
+                leave.invoke(Map.of("threadId", "t1", "note", "not mine"), ctx()))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("thread_delegate");
+
+        verify(threads, never()).postMessage(any(), any(), any(), any(), any());
+        verify(threads, never()).setFollowing(any(), any(), any(), anyBoolean());
+    }
+
+    /** The one shape that holds its assignee: an ask, open, waiting on them. */
+    private static MaximegalonDocument openAsk() {
+        MaximegalonDocument doc = doc();
+        doc.setRequiresAction(true);
+        return doc;
+    }
+
+    @Test
     void leave_postsItsNoteWhileItStillCanSeeTheThread() {
         when(threads.setFollowing(any(), any(), any(), anyBoolean()))
                 .thenReturn(Optional.of(doc()));

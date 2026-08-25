@@ -117,8 +117,12 @@ function inferKindFromPath(path: string): string | undefined {
  * {@code MountQuery.RESERVED}. Two namespaces share one query string, so
  * the split has to be made identically on both sides or a source receives
  * a word that was never meant for it.
+ *
+ * `token` is credentials rather than grammar: the content route accepts
+ * `?token=<jwt>` because an `<img src>` carries no Authorization header, and
+ * a credential must never be forwarded outwards as a read parameter.
  */
-const RESERVED_QUERY_PARAMS = new Set(['kind', 'entry', 'mode', 'caption', 'download']);
+const RESERVED_QUERY_PARAMS = new Set(['kind', 'entry', 'mode', 'caption', 'download', 'token']);
 
 /**
  * The part of a query a source would receive, or undefined when nothing is

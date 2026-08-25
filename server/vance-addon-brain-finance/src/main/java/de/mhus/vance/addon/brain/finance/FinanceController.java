@@ -9,6 +9,7 @@ import de.mhus.vance.addon.brain.finance.report.FinanceReportRegistry;
 import de.mhus.vance.addon.brain.finance.report.ReportContext;
 import de.mhus.vance.addon.brain.finance.report.ReportParams;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.permission.Action;
@@ -177,7 +178,9 @@ public class FinanceController {
     }
 
     private static @Nullable String currentUser(HttpServletRequest request) {
-        Object v = request.getAttribute("vanceUserId");
-        return v instanceof String s ? s : null;
+        // One spelling for "who is doing this". Reading the attribute by
+        // hand is what put the wrong name here: nothing ever set
+        // "vanceUserId", so every actor recorded from this request was null.
+        return AccessFilterBase.usernameOrNull(request);
     }
 }

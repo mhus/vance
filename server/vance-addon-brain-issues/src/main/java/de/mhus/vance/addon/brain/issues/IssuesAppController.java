@@ -2,6 +2,7 @@ package de.mhus.vance.addon.brain.issues;
 
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentNote;
 import de.mhus.vance.shared.document.DocumentService;
@@ -265,7 +266,9 @@ public class IssuesAppController {
     }
 
     private static @Nullable String currentUser(HttpServletRequest req) {
-        Object o = req.getAttribute("vanceUserId");
-        return o instanceof String s ? s : null;
+        // One spelling for "who is doing this". Reading the attribute by
+        // hand is what put the wrong name here: nothing ever set
+        // "vanceUserId", so every actor recorded from this request was null.
+        return AccessFilterBase.usernameOrNull(req);
     }
 }

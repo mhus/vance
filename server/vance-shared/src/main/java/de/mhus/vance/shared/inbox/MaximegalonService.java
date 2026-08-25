@@ -989,10 +989,7 @@ public class MaximegalonService {
         if (existing.isEmpty()) return Optional.empty();
         MaximegalonDocument doc = existing.get();
 
-        if (!following
-                && userId.equals(doc.getAssignedToUserId())
-                && doc.isRequiresAction()
-                && doc.getStatus() == MaximegalonStatus.PENDING) {
+        if (!following && mustStay(doc, userId)) {
             throw new MaximegalonRuleException(
                     MaximegalonRuleException.ASSIGNEE_MUST_STAY,
                     "user '" + userId + "' is the assignee of the open ask '" + itemId
@@ -1004,6 +1001,24 @@ public class MaximegalonService {
                 : new Update().pull(F_PARTICIPANTS, userId).pull(F_UNREAD_FOR, userId);
         mongoTemplate.updateFirst(byId(tenantId, itemId), update, MaximegalonDocument.class);
         return findById(tenantId, itemId);
+    }
+
+    /**
+     * Whether {@code userId} is held on {@code doc}: the assignee of an ask
+     * that is still open. A process is waiting on them, so leaving is refused
+     * and delegating is the way out.
+     *
+     * <p>Public because a caller may need the answer <em>before</em> it does
+     * anything it cannot take back — {@code ThreadLeaveTool} posts a farewell
+     * note on the way out, and a note on a thread the author then failed to
+     * leave is not removable. The authoritative check stays inside
+     * {@link #setFollowing}; this is the same question asked early, not a
+     * second rule.
+     */
+    public static boolean mustStay(MaximegalonDocument doc, String userId) {
+        return userId.equals(doc.getAssignedToUserId())
+                && doc.isRequiresAction()
+                && doc.getStatus() == MaximegalonStatus.PENDING;
     }
 
     // ────────────────── Thread: reactions ──────────────────

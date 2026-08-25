@@ -152,6 +152,51 @@ class RequireResolverTest {
                 .contains(FOLDER + "/_app.yaml");
     }
 
+    /**
+     * The same rule, but with the conflict discovered <i>during</i> the walk —
+     * which is the case it exists for, and the one that used to fail silently.
+     * {@code db} is reached first at v1 and emitted; only when {@code foo} is
+     * read does its header ask for {@code db@2}. A single pass had already
+     * decided by then and never looked again: v1 loaded, no warning, and an
+     * author with a v2-only call sees a runtime error with nothing pointing at
+     * the cause.
+     */
+    @Test
+    void transitiveConflict_stillTakesTheHighestAndWarns() {
+        library("db@1", "");
+        library("db@2", "");
+        library("foo@1", "// @require db@2\n");
+        doc(FOLDER + "/main.js", "// @require db@1\n// @require foo@1\n");
+
+        RequireReport r = resolve(config());
+
+        assertThat(paths(r)).containsExactly(
+                "_vance/app-libs/db@2.js",
+                "_vance/app-libs/foo@1.js",
+                FOLDER + "/main.js");
+        assertThat(r.warnings()).hasSize(1);
+        assertThat(r.warnings().get(0))
+                .contains("db@1").contains("db@2")
+                .contains(FOLDER + "/main.js")
+                .contains("_vance/app-libs/foo@1.js");
+    }
+
+    /** Nothing new to find means one pass decides, and it is not narrated twice. */
+    @Test
+    void settledGraph_reportsEachWarningOnce() {
+        library("db@1", "");
+        library("db@2", "");
+        library("foo@1", "// @require db@2\n");
+        library("bar@1", "// @require foo@1\n");
+        doc(FOLDER + "/main.js", "// @require db@1\n// @require bar@1\n");
+
+        RequireReport r = resolve(config());
+
+        assertThat(r.missing()).isEmpty();
+        assertThat(r.warnings()).hasSize(1);
+        assertThat(names(r)).containsExactlyInAnyOrder("db", "foo", "bar");
+    }
+
     @Test
     void missingLibrary_isReportedWithThePathItLookedAt() {
         doc(FOLDER + "/main.js", "// @require ghost@3\n");

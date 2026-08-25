@@ -90,21 +90,25 @@ public class TimelineKindHandler implements KindHandler {
     private void validateAxis(TimelineAxis axis, Map<String, Object> raw, List<Finding> findings) {
         Object axisRaw = raw.get("axis");
         if (axisRaw instanceof Map<?, ?> map) {
+            // Asked of the enum, not of the canonical word it resolved to:
+            // `date` and `backwards` are documented spellings that parse
+            // correctly, and comparing against modeWire()/directionWire()
+            // reported exactly those as unknown.
             String declaredMode = string(map.get("mode"));
             if (declaredMode != null
-                    && !declaredMode.trim().toLowerCase(Locale.ROOT).equals(axis.modeWire())) {
+                    && !TimelineAxis.TimelineAxisMode.isKnownWire(declaredMode)) {
                 findings.add(Finding.warning("axis.mode", "timeline.axis.mode-unknown",
                         "axis.mode '" + declaredMode + "' is not a known mode — reading the "
-                        + "document as '" + axis.modeWire() + "'. Valid values: numeric, datetime."));
+                        + "document as '" + axis.modeWire() + "'. Valid values: "
+                        + TimelineAxis.TimelineAxisMode.acceptedWires() + "."));
             }
             String declaredDirection = string(map.get("direction"));
             if (declaredDirection != null
-                    && !declaredDirection.trim().toLowerCase(Locale.ROOT)
-                            .equals(axis.directionWire())) {
+                    && !TimelineAxis.TimelineDirection.isKnownWire(declaredDirection)) {
                 findings.add(Finding.warning("axis.direction", "timeline.axis.direction-unknown",
                         "axis.direction '" + declaredDirection + "' is not a known direction — "
                         + "reading the axis as '" + axis.directionWire() + "'. Valid values: "
-                        + "forward, ago."));
+                        + TimelineAxis.TimelineDirection.acceptedWires() + "."));
             }
         }
 

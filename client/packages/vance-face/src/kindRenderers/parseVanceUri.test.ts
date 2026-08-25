@@ -83,6 +83,14 @@ describe('parseVanceUri — what belongs to the source', () => {
     expect(parseVanceUri('vance:/a.yaml', opts()).viewQuery).toBeUndefined();
   });
 
+  it('never passes a query token to a source', () => {
+    // `?token=` is how a browser authenticates a content URL that cannot
+    // carry a header. It is a credential, not a read parameter.
+    const ref = parseVanceUri('vance:/a.yaml?token=eyJhbGciOiJIUzI1NiJ9.x.y&from=1', opts());
+
+    expect(ref.viewQuery).toBe('from=1');
+  });
+
   it('does not re-encode what it passes on', () => {
     // Re-serialising would collapse `a=1&b=2` into one opaque parameter.
     const ref = parseVanceUri('vance:/a.yaml?q=a%20b&n=1', opts());

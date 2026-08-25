@@ -1,6 +1,7 @@
 package de.mhus.vance.addon.brain.calendar;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;
@@ -63,12 +64,39 @@ public record TimelineAxis(
                 null, null, null, new LinkedHashMap<>());
     }
 
-    /** Mode of the axis — see {@link TimelineAxis}. */
+    /**
+     * One declared word, trimmed and lowercased, or {@code null} when nothing
+     * was declared. The single normalisation both wire enums parse against, so
+     * "what did the author write" is asked the same way everywhere.
+     */
+    static @Nullable String wireWord(@Nullable String raw) {
+        if (raw == null) return null;
+        String word = raw.trim().toLowerCase(Locale.ROOT);
+        return word.isEmpty() ? null : word;
+    }
+
+    /**
+     * Mode of the axis — see {@link TimelineAxis}.
+     *
+     * <p>The accepted spellings sit on the constants rather than in a
+     * {@code switch}, because two questions are asked of them and the answers
+     * have to agree: {@link #fromWire} decides how to read the document, and
+     * {@link #isKnownWire} decides whether {@code kind_validate} complains.
+     * Split across two lists, the validator warned that a documented alias was
+     * "not a known mode" on a document it had just read correctly.
+     */
     public enum TimelineAxisMode {
         /** Bare numbers with a {@link TimelineAxis#unit()} suffix. */
-        NUMERIC,
+        NUMERIC("numeric"),
         /** ISO-8601 dates / date-times, rendered on a calendar-aware ruler. */
-        DATETIME;
+        DATETIME("datetime", "date-time", "date", "time", "absolute");
+
+        /** Accepted spellings; the first is the canonical one {@code modeWire()} writes. */
+        private final List<String> wires;
+
+        TimelineAxisMode(String... wires) {
+            this.wires = List.of(wires);
+        }
 
         /**
          * Lenient wire parse. An unknown or missing value falls back
@@ -77,29 +105,75 @@ public record TimelineAxis(
          * and fix, and the kind validator reports it separately.
          */
         public static TimelineAxisMode fromWire(@Nullable String raw) {
-            if (raw == null) return NUMERIC;
-            return switch (raw.trim().toLowerCase(Locale.ROOT)) {
-                case "datetime", "date-time", "date", "time", "absolute" -> DATETIME;
-                default -> NUMERIC;
-            };
+            String word = wireWord(raw);
+            if (word == null) return NUMERIC;
+            for (TimelineAxisMode mode : values()) {
+                if (mode.wires.contains(word)) return mode;
+            }
+            return NUMERIC;
+        }
+
+        /** Whether {@code raw} is a spelling this enum recognises. */
+        public static boolean isKnownWire(@Nullable String raw) {
+            String word = wireWord(raw);
+            if (word == null) return true;
+            for (TimelineAxisMode mode : values()) {
+                if (mode.wires.contains(word)) return true;
+            }
+            return false;
+        }
+
+        /** Every accepted spelling, for a message that has to name them. */
+        public static String acceptedWires() {
+            return joinWires(java.util.Arrays.stream(values()).map(m -> m.wires).toList());
         }
     }
 
     /** Reading direction of the numeric axis — see {@link TimelineAxis}. */
     public enum TimelineDirection {
         /** Larger number = later. Ordinary counting. */
-        FORWARD,
+        FORWARD("forward"),
         /** Larger number = earlier. "Millions of years ago", "days before the incident". */
-        AGO;
+        AGO("ago", "backward", "backwards", "bp", "reverse");
+
+        /** Accepted spellings; the first is the canonical one {@code directionWire()} writes. */
+        private final List<String> wires;
+
+        TimelineDirection(String... wires) {
+            this.wires = List.of(wires);
+        }
 
         /** Lenient wire parse; unknown values mean {@link #FORWARD}. */
         public static TimelineDirection fromWire(@Nullable String raw) {
-            if (raw == null) return FORWARD;
-            return switch (raw.trim().toLowerCase(Locale.ROOT)) {
-                case "ago", "backward", "backwards", "bp", "reverse" -> AGO;
-                default -> FORWARD;
-            };
+            String word = wireWord(raw);
+            if (word == null) return FORWARD;
+            for (TimelineDirection direction : values()) {
+                if (direction.wires.contains(word)) return direction;
+            }
+            return FORWARD;
         }
+
+        /** Whether {@code raw} is a spelling this enum recognises. */
+        public static boolean isKnownWire(@Nullable String raw) {
+            String word = wireWord(raw);
+            if (word == null) return true;
+            for (TimelineDirection direction : values()) {
+                if (direction.wires.contains(word)) return true;
+            }
+            return false;
+        }
+
+        /** Every accepted spelling, for a message that has to name them. */
+        public static String acceptedWires() {
+            return joinWires(java.util.Arrays.stream(values()).map(d -> d.wires).toList());
+        }
+    }
+
+    /** Flattens the per-constant spellings into one comma-separated line. */
+    private static String joinWires(List<List<String>> perConstant) {
+        List<String> all = new java.util.ArrayList<>();
+        for (List<String> wires : perConstant) all.addAll(wires);
+        return String.join(", ", all);
     }
 
     /** Lower-case wire token for {@link #mode}. */

@@ -41,6 +41,16 @@ public final class MountQuery {
      * collision here is not resolvable in the source's favour without us
      * losing the meaning we depend on.
      *
+     * <p>{@code token} is in the list for a second reason. It is not part of
+     * the reference grammar — it is credentials: the content route lets a
+     * browser authenticate with {@code ?token=<jwt>} because an
+     * {@code <img src>} cannot carry an {@code Authorization} header
+     * ({@code BrainAccessFilter#allowsQueryToken}). Leaving it out did both
+     * halves of the damage — a stored document answered 400 because the
+     * leftover query looked like a parameterised read, and a mounted one
+     * handed the caller's live session token to a third-party source as a read
+     * parameter. Credentials never travel outwards.
+     *
      * <p>The set is mirrored in {@code parseVanceUri.ts}, which makes the same
      * split on the client before a query is handed to a tab. Two namespaces
      * share one query string, so the two sides have to cut it identically —
@@ -48,7 +58,7 @@ public final class MountQuery {
      * the way there.
      */
     public static final Set<String> RESERVED =
-            Set.of("kind", "entry", "mode", "caption", "download");
+            Set.of("kind", "entry", "mode", "caption", "download", "token");
 
     private MountQuery() {}
 

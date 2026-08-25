@@ -58,6 +58,23 @@ class MountQueryTest {
                 .isEqualTo("from=1");
     }
 
+    /**
+     * The one reserved word that is not grammar but credentials. The content
+     * route authenticates a browser with {@code ?token=<jwt>}, because an
+     * {@code <img src>} carries no Authorization header — so the parameter is
+     * on ordinary, legitimate links. Forwarded, it did both halves of the
+     * damage: a stored document answered 400 because the leftover query looked
+     * like a parameterised read, and a mounted one handed the caller's live
+     * session token to a third-party source.
+     */
+    @Test
+    void forward_neverCarriesTheQueryToken() {
+        assertThat(MountQuery.forward("token=eyJhbGciOiJIUzI1NiJ9.x.y")).isNull();
+        assertThat(MountQuery.forward("token=eyJhbGciOiJIUzI1NiJ9.x.y&from=2026-01"))
+                .isEqualTo("from=2026-01");
+        assertThat(MountQuery.forward("Token=abc&a=1")).isEqualTo("a=1");
+    }
+
     @Test
     void forward_reservedNameMatchIsCaseInsensitive() {
         assertThat(MountQuery.forward("Download=true&a=1")).isEqualTo("a=1");

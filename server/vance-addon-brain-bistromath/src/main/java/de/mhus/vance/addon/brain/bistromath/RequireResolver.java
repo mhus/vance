@@ -83,6 +83,17 @@ public class RequireResolver {
     /** Bound on the walk, so a pathological graph cannot spin. */
     private static final int MAX_LIBRARIES = 64;
 
+    /**
+     * Bound on how often the walk is repeated after it discovered new wants.
+     *
+     * <p>Each pass can only add wants, and a version once asked for is never
+     * withdrawn, so the graph settles — usually after two passes, one to find
+     * the transitive requires and one to decide with them in hand. The cap is
+     * the same kind of insurance as {@link #MAX_LIBRARIES}: it makes a
+     * pathological graph slow rather than endless.
+     */
+    private static final int MAX_RESOLVE_PASSES = 8;
+
     private final DocumentService documentService;
 
     public RequireResolver(DocumentService documentService) {
@@ -270,14 +281,59 @@ public class RequireResolver {
         /**
          * Walk the wants depth-first and emit in post-order, so a library lands
          * after everything it needs.
+         *
+         * <p><b>Repeated until the want graph stops growing.</b> A want is not
+         * a static input here: a library's own header is only read once it has
+         * been located, which needs a version, which is decided from the wants
+         * known <i>at that moment</i>. So a transitive {@code @require db@2}
+         * inside {@code foo@1} arrives strictly after {@code db} was already
+         * picked and emitted at v1 — and {@link #visit} returns early on
+         * anything emitted, so the higher version was never loaded and
+         * {@link #pickVersion} never saw two versions to warn about. That is
+         * the silent lower-version resolution this loop exists to prevent, in
+         * exactly the case "highest version wins, and says so" was written for.
+         *
+         * <p>Each pass starts from an empty {@code emitted} but keeps the
+         * accumulated {@code wanted}, which only ever grows; the narration of a
+         * discarded pass is rolled back, because it was reasoned out on an
+         * incomplete graph and would otherwise be reported twice.
          */
         List<LoadedScript> resolveLibraries() {
-            Map<String, LoadedScript> emitted = new LinkedHashMap<>();
-            Set<String> onStack = new LinkedHashSet<>();
-            for (String name : List.copyOf(wanted.keySet())) {
-                visit(name, emitted, onStack);
+            int warningMark = warnings.size();
+            int missingMark = missing.size();
+            for (int pass = 1; ; pass++) {
+                int before = wantSize();
+                Map<String, LoadedScript> emitted = new LinkedHashMap<>();
+                for (String name : List.copyOf(wanted.keySet())) {
+                    visit(name, emitted, new LinkedHashSet<>());
+                }
+                if (wantSize() == before) {
+                    return List.copyOf(emitted.values());
+                }
+                if (pass >= MAX_RESOLVE_PASSES) {
+                    warnings.add("The require graph was still growing after " + MAX_RESOLVE_PASSES
+                            + " passes; loading what the last one worked out. Some library may"
+                            + " be loaded at a lower version than something asked for.");
+                    return List.copyOf(emitted.values());
+                }
+                warnings.subList(warningMark, warnings.size()).clear();
+                missing.subList(missingMark, missing.size()).clear();
             }
-            return List.copyOf(emitted.values());
+        }
+
+        /**
+         * How much the want graph holds — every {@code (name, version, asker)}
+         * triple. Askers count too: a second caller for a version already known
+         * changes no decision but does change the {@code asked for by} line a
+         * conflict warning is read for, and that line is only right once every
+         * asker is in.
+         */
+        private int wantSize() {
+            int n = 0;
+            for (Map<String, Set<String>> versions : wanted.values()) {
+                for (Set<String> askers : versions.values()) n += askers.size();
+            }
+            return n;
         }
 
         private void visit(String name, Map<String, LoadedScript> emitted, Set<String> onStack) {

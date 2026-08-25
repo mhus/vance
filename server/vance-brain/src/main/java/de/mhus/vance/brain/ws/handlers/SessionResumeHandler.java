@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.ws.handlers;
 
 import de.mhus.vance.api.thinkprocess.ActiveProcessRef;
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.SessionResumeRequest;
 import de.mhus.vance.api.ws.SessionResumeResponse;
@@ -246,14 +247,18 @@ public class SessionResumeHandler implements WsHandler {
      * into a running turn can restore its busy state instead of showing an
      * idle composer while answers keep arriving.
      *
-     * <p>Uses the same {@link SessionLifecycleService#isInterruptible} filter
-     * as the pause path — deliberately, because it answers the identical
-     * question ("is there a turn to interrupt?"). Two predicates for one
-     * question is how they drift.
+     * <p>Deliberately <b>not</b> {@link SessionLifecycleService#isInterruptible},
+     * which also admits {@code INIT}. The pause path asks "is there a turn to
+     * interrupt?"; this one asks "is a turn in flight whose
+     * {@code ENGINE_TURN_END} will arrive?" — and those come apart at exactly
+     * one status. A process whose engine {@code start()} threw stays in
+     * {@code INIT} forever and emits no end frame, so handing it to the client
+     * arms a busy indicator that nothing ever clears, re-armed on every
+     * reconnect.
      */
     private java.util.List<ActiveProcessRef> activeProcesses(SessionDocument doc) {
         return thinkProcessService.findBySession(doc.getTenantId(), doc.getSessionId()).stream()
-                .filter(SessionLifecycleService::isInterruptible)
+                .filter(p -> p.getStatus() == ThinkProcessStatus.RUNNING)
                 .map(p -> ActiveProcessRef.builder()
                         .processId(p.getId())
                         .name(p.getName())

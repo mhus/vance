@@ -3,6 +3,7 @@ package de.mhus.vance.addon.brain.links;
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.applications.VanceApplication.ArtefactResult;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import jakarta.servlet.http.HttpServletRequest;
@@ -167,7 +168,9 @@ public class LinksAppController {
     }
 
     private static @Nullable String currentUser(HttpServletRequest req) {
-        Object o = req.getAttribute("vanceUserId");
-        return o instanceof String s ? s : null;
+        // One spelling for "who is doing this". Reading the attribute by
+        // hand is what put the wrong name here: nothing ever set
+        // "vanceUserId", so every actor recorded from this request was null.
+        return AccessFilterBase.usernameOrNull(req);
     }
 }

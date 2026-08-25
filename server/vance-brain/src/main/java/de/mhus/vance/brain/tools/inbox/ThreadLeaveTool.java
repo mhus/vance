@@ -87,8 +87,16 @@ public class ThreadLeaveTool implements Tool {
         String note = optString(params, "note");
 
         MaximegalonDocument doc = support.loadVisible(tenantId, threadId, ctx);
-        // Before leaving: afterwards visibility may be gone, and the note would
-        // fail on a thread the caller can no longer reach.
+        // The refusal is asked first, because the note is not takeable back.
+        // The note has to be posted *before* the leave — afterwards visibility
+        // may be gone and the post would fail — which means a leave refused
+        // after the fact leaves "I am off this, ask somebody else" standing on
+        // a thread the author is still on. Same question the service asks
+        // authoritatively a moment later; a race between the two only costs
+        // the ordinary refusal below.
+        if (MaximegalonService.mustStay(doc, owner)) {
+            throw assigneeMustStay();
+        }
         if (note != null) {
             threads.postMessage(tenantId, doc.getId(), owner, note, null);
         }
@@ -99,9 +107,7 @@ public class ThreadLeaveTool implements Tool {
                     .orElseThrow(() -> InboxToolSupport.notVisible(threadId));
         } catch (MaximegalonRuleException e) {
             if (MaximegalonRuleException.ASSIGNEE_MUST_STAY.equals(e.getReason())) {
-                throw new ToolException("this thread is waiting on your decision, so you "
-                        + "cannot leave it. Answer it, or give it to somebody who can decide "
-                        + "with thread_delegate.");
+                throw assigneeMustStay();
             }
             throw new ToolException(e.getMessage() == null ? e.getReason() : e.getMessage());
         }
@@ -114,6 +120,13 @@ public class ThreadLeaveTool implements Tool {
         out.put("note", "You will not hear about this thread again. Nothing about the "
                 + "matter changed — its status is still " + updated.getStatus() + ".");
         return out;
+    }
+
+    /** The one refusal this tool has, worded once for both places that raise it. */
+    private static ToolException assigneeMustStay() {
+        return new ToolException("this thread is waiting on your decision, so you "
+                + "cannot leave it. Answer it, or give it to somebody who can decide "
+                + "with thread_delegate.");
     }
 
     private static String requiredString(Map<String, Object> params, String key) {

@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.trillian.nature;
 
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
+import de.mhus.vance.brain.prompt.ForeignPromptText;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.brain.trillian.TrillianAttributeStore;
 import de.mhus.vance.brain.trillian.TrillianJournalStore;
@@ -420,10 +421,19 @@ public class TrillianNatureAdam extends TrillianNatureBase {
      * to cost tokens on every quiet round and short enough that the loop
      * would answer from a fragment. It gets the handle and reads the thread
      * if it cares.
+     *
+     * <p>Title and originator are somebody else's words, and this line is
+     * delivered as an {@code ExternalCommand} the loop reads as its reason to
+     * act — so they go through {@link ForeignPromptText#quoted}, like every
+     * other borrowed string on a prompt path. Anyone who may write to this
+     * Trillian's inbox ({@code thread_invite}, {@code inbox_post}) picks the
+     * title; unquoted, a multi-line one would break out of the bullet and read
+     * as another statement by the system that wrote the block.
      */
     private static String unreadDetail(MaximegalonDocument thread) {
-        return "unread " + thread.getType() + " from '" + thread.getOriginatorUserId() + "': \""
-                + thread.getTitle() + "\""
+        return "unread " + thread.getType()
+                + " from " + ForeignPromptText.quoted(thread.getOriginatorUserId(), 80)
+                + ": " + ForeignPromptText.quoted(thread.getTitle())
                 + (thread.isRequiresAction() ? " — waits on an answer" : "")
                 + " (read it with thread_get)";
     }

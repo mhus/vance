@@ -18,6 +18,7 @@ import de.mhus.vance.brain.memory.CompactionResult;
 import de.mhus.vance.brain.memory.MemoryContextLoader;
 import de.mhus.vance.brain.memory.MemoryCompactionService;
 import de.mhus.vance.brain.progress.LlmCallTracker;
+import de.mhus.vance.brain.prompt.ForeignPromptText;
 import de.mhus.vance.brain.prompt.PromptContextBuilder;
 import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
 import de.mhus.vance.brain.thinkengine.OrchestratorInterrupt;
@@ -811,6 +812,11 @@ public class TrillianUserEngine implements ThinkEngine {
                 StringBuilder sb = new StringBuilder("<self-check>\n");
                 sb.append("Nobody asked you anything. You woke on your own clock, "
                         + "and these are the things that will not resolve themselves:\n");
+                // A finding can carry somebody else's words — an inbox thread's
+                // title is written by whoever opened it. The Nature delimits
+                // those with «…»; this is the one sentence that says what the
+                // delimiters mean, without which quoting marks nothing.
+                sb.append(ForeignPromptText.PROVENANCE_NOTE).append('\n');
                 Object findings = ec.params() == null
                         ? null : ec.params().get(TrillianWakeupService.PARAM_FINDINGS);
                 if (findings instanceof java.util.Collection<?> lines) {

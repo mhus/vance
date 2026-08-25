@@ -3,6 +3,7 @@ package de.mhus.vance.addon.brain.canvas;
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
+import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.permission.Action;
@@ -185,7 +186,9 @@ public class CanvasbookAppController {
     }
 
     private static @Nullable String currentUser(HttpServletRequest req) {
-        Object o = req.getAttribute("vanceUserId");
-        return o instanceof String s ? s : null;
+        // One spelling for "who is doing this". Reading the attribute by
+        // hand is what put the wrong name here: nothing ever set
+        // "vanceUserId", so every actor recorded from this request was null.
+        return AccessFilterBase.usernameOrNull(req);
     }
 }

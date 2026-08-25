@@ -13,6 +13,7 @@ import de.mhus.vance.api.kit.KitOriginDto;
 import de.mhus.vance.api.kit.KitPolicyAction;
 import de.mhus.vance.api.kit.KitPolicyDto;
 import de.mhus.vance.api.kit.KitPolicyRuleDto;
+import de.mhus.vance.api.kit.KitSecretEncoding;
 import de.mhus.vance.api.kit.KitSignatureDto;
 import de.mhus.vance.api.kit.KitSignaturePolicy;
 import de.mhus.vance.api.kit.KitSignatureStatus;
@@ -825,7 +826,25 @@ public final class KitYamlMapper {
 
     // ──────────────────── settings/<key>.yaml ────────────────────
 
-    public record ParsedSetting(SettingType type, @Nullable String value, @Nullable String description) {}
+    /**
+     * One {@code settings/<key>.yaml} file.
+     *
+     * @param encoding how {@code value} is encoded; only consulted for
+     *        encrypted types, and {@link KitSecretEncoding#VAULT} for
+     *        everything else so a caller never has to special-case it
+     */
+    public record ParsedSetting(
+            SettingType type,
+            @Nullable String value,
+            @Nullable String description,
+            KitSecretEncoding encoding) {
+
+        /** The shape every caller that does not ship a credential wants. */
+        public ParsedSetting(
+                SettingType type, @Nullable String value, @Nullable String description) {
+            this(type, value, description, KitSecretEncoding.DEFAULT);
+        }
+    }
 
     // ──────────────────── template.yaml ────────────────────
 
@@ -1167,12 +1186,45 @@ public final class KitYamlMapper {
         }
         Object valueRaw = map.get("value");
         String value = valueRaw == null ? null : valueRaw.toString();
-        return new ParsedSetting(type, value, stringOrNull(map.get("description")));
+        return new ParsedSetting(type, value, stringOrNull(map.get("description")),
+                parseEncoding(map.get("encoding"), type, filename));
+    }
+
+    /**
+     * Read the {@code encoding:} line.
+     *
+     * <p>Two refusals rather than a lenient default. An unknown word is a
+     * typo in a security-relevant field, and taking it as {@code vault}
+     * would turn {@code encoding: plian} into a decryption failure three
+     * layers away. And the field on a type that has nothing to encode means
+     * the author believed something about this file that is not true —
+     * most likely that it would be encrypted.
+     */
+    private static KitSecretEncoding parseEncoding(
+            @Nullable Object raw, SettingType type, String filename) {
+        if (raw == null) return KitSecretEncoding.DEFAULT;
+        KitSecretEncoding encoding;
+        try {
+            encoding = KitSecretEncoding.valueOf(raw.toString().trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new KitException(filename + ": unknown setting encoding '" + raw
+                    + "' — expected one of vault, plain");
+        }
+        if (!type.encrypted()) {
+            throw new KitException(filename + ": encoding is only meaningful for an encrypted "
+                    + "setting type, not for " + type);
+        }
+        return encoding;
     }
 
     public static String writeSetting(ParsedSetting setting) {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("type", setting.type().name());
+        // Omitted at the default, so an export keeps producing the file it
+        // always did and a diff against an older kit shows nothing new.
+        if (setting.encoding() != KitSecretEncoding.DEFAULT) {
+            root.put("encoding", setting.encoding().name().toLowerCase());
+        }
         if (setting.value() != null) root.put("value", setting.value());
         if (setting.description() != null) root.put("description", setting.description());
         return dump(root);

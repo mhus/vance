@@ -143,6 +143,7 @@ export * from './kit/KitPolicyAction';
 export * from './kit/KitProvisioningAuthority';
 export * from './kit/KitPolicyDto';
 export * from './kit/KitPolicyRuleDto';
+export * from './kit/KitSecretEncoding';
 export * from './kit/KitSignatureDto';
 export * from './kit/KitSignaturePolicy';
 export * from './kit/KitSignatureStatus';

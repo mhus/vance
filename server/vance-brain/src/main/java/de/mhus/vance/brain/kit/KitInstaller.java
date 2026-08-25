@@ -12,6 +12,7 @@ import de.mhus.vance.api.kit.KitMetadataDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.api.kit.KitOriginDto;
 import de.mhus.vance.api.kit.KitPolicyAction;
+import de.mhus.vance.api.kit.KitSecretEncoding;
 import de.mhus.vance.brain.servertool.ServerToolRegistry;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentHeader;
@@ -750,27 +751,38 @@ public class KitInstaller {
                     keepOwnership(known.get(key), artefacts);
                     continue;
                 }
-                if (vaultPassword == null || vaultPassword.isBlank()) {
-                    if (!haveWarnedAboutMissingVault && kitDeclaresEncrypted) {
-                        result.warnings(addWarning(result.build().getWarnings(),
-                                "vault password not provided — encrypted settings skipped"));
-                        haveWarnedAboutMissingVault = true;
+                // The kit's declared type is preserved on both branches — never
+                // promoted to PASSWORD (it would stop resolving through the tool
+                // documents the same kit installs) and never demoted to HIDDEN
+                // (the value came from the kit, not from anyone's context).
+                if (parsed.encoding() == KitSecretEncoding.PLAIN) {
+                    // Delivered in the clear, which only an ODE source may do —
+                    // KitPlaintextSecretGate refused every other kind of source
+                    // before this tree was ever merged. No vault password is
+                    // involved, so the one reason this path used to fail
+                    // silently does not exist here.
+                    settingService.setEncryptedSecret(
+                            tenantId, SettingService.SCOPE_PROJECT, projectId, key,
+                            parsed.value(), parsed.type());
+                } else {
+                    if (vaultPassword == null || vaultPassword.isBlank()) {
+                        if (!haveWarnedAboutMissingVault && kitDeclaresEncrypted) {
+                            result.warnings(addWarning(result.build().getWarnings(),
+                                    "vault password not provided — encrypted settings skipped"));
+                            haveWarnedAboutMissingVault = true;
+                        }
+                        skippedPw.add(key);
+                        keepOwnership(known.get(key), artefacts);
+                        continue;
                     }
-                    skippedPw.add(key);
-                    keepOwnership(known.get(key), artefacts);
-                    continue;
-                }
-                // The kit's declared type is preserved — never promoted to
-                // PASSWORD (it would stop resolving through the tool documents
-                // the same kit installs) and never demoted to HIDDEN (the value
-                // came from the repo, not from anyone's context).
-                boolean ok = settingService.encryptFromImport(
-                        tenantId, SettingService.SCOPE_PROJECT, projectId, key,
-                        vaultPassword, parsed.value(), parsed.type());
-                if (!ok) {
-                    skippedPw.add(key);
-                    keepOwnership(known.get(key), artefacts);
-                    continue;
+                    boolean ok = settingService.encryptFromImport(
+                            tenantId, SettingService.SCOPE_PROJECT, projectId, key,
+                            vaultPassword, parsed.value(), parsed.type());
+                    if (!ok) {
+                        skippedPw.add(key);
+                        keepOwnership(known.get(key), artefacts);
+                        continue;
+                    }
                 }
             } else {
                 settingService.set(
@@ -1088,9 +1100,18 @@ public class KitInstaller {
         return buckets.computeIfAbsent(name, InheritBucket::new);
     }
 
+    /**
+     * Whether installing this kit needs a vault password.
+     *
+     * <p>That question, and not "does it carry a credential" — the flag's one
+     * job is to make the import dialog ask for a password. A kit whose
+     * encrypted settings all arrive as {@link KitSecretEncoding#PLAIN} needs
+     * none, and saying otherwise would prompt for something that cannot be
+     * wrong because it is never used.
+     */
     private static boolean hasAnyEncryptedSetting(BuildTreeScan scan) {
         for (KitYamlMapper.ParsedSetting s : scan.settings().values()) {
-            if (s.type().encrypted()) return true;
+            if (s.type().encrypted() && s.encoding() == KitSecretEncoding.VAULT) return true;
         }
         return false;
     }

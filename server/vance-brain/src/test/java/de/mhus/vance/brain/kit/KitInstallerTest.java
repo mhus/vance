@@ -18,9 +18,11 @@ import de.mhus.vance.api.kit.KitImportMode;
 import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.KitInstalledRecordDto;
 import de.mhus.vance.api.kit.KitMetadataDto;
+import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.api.kit.KitOriginDto;
 import de.mhus.vance.api.kit.KitSignatureStatus;
 import de.mhus.vance.api.kit.KitSourceType;
+import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.brain.servertool.ServerToolRegistry;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentHeader;
@@ -162,6 +164,70 @@ class KitInstallerTest {
         assertThatThrownBy(() -> install(false))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("_vance/kits/");
+    }
+
+    // ─── delivered credentials ──────────────────────────────────────────
+
+    @Test
+    void install_plaintextCredential_isWrittenWithoutAVaultPassword() {
+        // The whole point of `encoding: plain`. Every install below runs with
+        // vaultPassword = null, which is what the provisioning path has and
+        // is the reason a delivered credential used to vanish.
+        writeBuildFile("settings/hrafnagud.mount.apiKey.yaml", """
+                type: PASSWORD
+                encoding: plain
+                value: "sk-live-abc"
+                """);
+
+        KitOperationResultDto result = installer.apply(
+                access(), PROJECT, source(), resolved(), KitImportMode.INSTALL,
+                false, false, /*vaultPassword*/ null, false, SettingWriteOrigin.USER, "alice");
+
+        verify(settingService).setEncryptedSecret(
+                eq(TENANT), eq(SettingService.SCOPE_PROJECT), eq(PROJECT),
+                eq("hrafnagud.mount.apiKey"), eq("sk-live-abc"), eq(SettingType.PASSWORD));
+        assertThat(result.getSkippedPasswords()).isEmpty();
+        assertThat(result.getSettingsAdded()).containsExactly("hrafnagud.mount.apiKey");
+    }
+
+    @Test
+    void install_vaultCredentialWithoutAVaultPassword_isStillSkipped() {
+        // The behaviour `encoding: plain` exists to sidestep, pinned so the
+        // new branch cannot quietly widen into the old one: a vault blob
+        // without its password is unopenable, and pretending otherwise would
+        // persist the ciphertext as if it were the secret.
+        writeBuildFile("settings/some.apiKey.yaml", """
+                type: PASSWORD
+                value: "<vault blob>"
+                """);
+
+        KitOperationResultDto result = installer.apply(
+                access(), PROJECT, source(), resolved(), KitImportMode.INSTALL,
+                false, false, /*vaultPassword*/ null, false, SettingWriteOrigin.USER, "alice");
+
+        verify(settingService, never()).setEncryptedSecret(
+                any(), any(), any(), any(), any(), any());
+        assertThat(result.getSkippedPasswords()).containsExactly("some.apiKey");
+    }
+
+    @Test
+    void install_plaintextCredential_doesNotReplaceOneAlreadyThere() {
+        // A rotated key stays rotated. The delivered value is set once, when
+        // the project has none — an install that reset a credential somebody
+        // changed would be an outage rather than an update.
+        writeBuildFile("settings/hrafnagud.mount.apiKey.yaml", """
+                type: PASSWORD
+                encoding: plain
+                value: "sk-live-abc"
+                """);
+        when(settingService.exists(
+                TENANT, SettingService.SCOPE_PROJECT, PROJECT, "hrafnagud.mount.apiKey"))
+                .thenReturn(true);
+
+        install(false);
+
+        verify(settingService, never()).setEncryptedSecret(
+                any(), any(), any(), any(), any(), any());
     }
 
     // ─── prune ──────────────────────────────────────────────────────────

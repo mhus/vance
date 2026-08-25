@@ -3,6 +3,7 @@ package de.mhus.vance.brain.kit.provisioning;
 import de.mhus.vance.api.kit.KitImportRequestDto;
 import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.KitInstalledRecordDto;
+import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import de.mhus.vance.brain.kit.KitRecordStore;
 import de.mhus.vance.brain.kit.KitService;
@@ -216,8 +217,9 @@ public class KitProvisioningService {
                 // The entry granted unattended refresh and the source moved on.
                 // Not routed through updateInstalled: that rebuilds the request
                 // from the record and would lose the params and the new stamp.
-                kitService.update(tenantId, requestFor(projectId, entry, kit), ACTOR,
-                        SettingWriteOrigin.USER);
+                report(tenantId, projectId, kit, kitService.update(
+                        tenantId, requestFor(projectId, entry, kit), ACTOR,
+                        SettingWriteOrigin.USER));
                 updated.add(kit.path());
                 return;
             }
@@ -234,9 +236,46 @@ public class KitProvisioningService {
             return;
         }
 
-        kitService.install(tenantId, requestFor(projectId, entry, kit), ACTOR,
-                SettingWriteOrigin.USER);
+        report(tenantId, projectId, kit, kitService.install(
+                tenantId, requestFor(projectId, entry, kit), ACTOR,
+                SettingWriteOrigin.USER));
         installed.add(kit.path());
+    }
+
+    /**
+     * Say what the install held back.
+     *
+     * <p>Every other caller of {@code install} hands the result to somebody —
+     * a REST response, a tool result, a line in the CLI. This path had
+     * nowhere to hand it and therefore dropped it, which made a partial
+     * install indistinguishable from a complete one: a credential the kit
+     * could not deliver left the setting simply absent, and the first symptom
+     * was an opaque 401 from whatever the kit configured, days later.
+     *
+     * <p>Only the held-back parts. What was written is already in the run's
+     * summary line, and a provisioning tick that logged every document of
+     * every kit on every project would not be read.
+     */
+    private static void report(
+            String tenantId, String projectId, DesiredKit kit, KitOperationResultDto result) {
+        if (result == null) return;
+        if (!isEmpty(result.getSkippedPasswords())) {
+            log.warn("Provisioning of {}/{}: kit '{}' could not deliver {} — the setting stays"
+                            + " absent and whatever needs it will fail at first use",
+                    tenantId, projectId, kit.path(), result.getSkippedPasswords());
+        }
+        if (!isEmpty(result.getWarnings())) {
+            log.warn("Provisioning of {}/{}: kit '{}' reported {}",
+                    tenantId, projectId, kit.path(), result.getWarnings());
+        }
+        if (!isEmpty(result.getDocumentsSkipped())) {
+            log.info("Provisioning of {}/{}: kit '{}' left {} untouched (locked)",
+                    tenantId, projectId, kit.path(), result.getDocumentsSkipped());
+        }
+    }
+
+    private static boolean isEmpty(@Nullable List<String> list) {
+        return list == null || list.isEmpty();
     }
 
     /** The same request either way — only the mode differs, and the caller picks it. */

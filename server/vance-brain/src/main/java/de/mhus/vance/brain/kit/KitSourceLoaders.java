@@ -28,6 +28,7 @@ public class KitSourceLoaders {
     private final KitSourceRegistry sources;
     private final KitSignatureGate signatureGate;
     private final KitLicenseGate licenseGate;
+    private final KitPlaintextSecretGate plaintextSecretGate;
     private final List<KitSourceLoader> loaders;
 
     /**
@@ -84,6 +85,9 @@ public class KitSourceLoaders {
         // whether the answer can be trusted.
         licenseGate.enforce(loaded.descriptor(), signature, access.storeAccount(),
                 config, Instant.now());
+        // Last of the three, because it is the narrowest: whether this
+        // particular source is one a credential may travel to in the clear.
+        plaintextSecretGate.enforce(loaded.root(), config);
         return new LoadResult(loaded, config, signature);
     }
 

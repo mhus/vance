@@ -27,8 +27,19 @@ import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
 defineOptions({ name: 'DiagramView' });
 
 interface Props {
-  mode?: 'editor' | 'embedded';
+  mode?: 'editor' | 'inline' | 'embedded';
   doc?: DiagramDocument;
+  /**
+   * Inline only — the raw fence body, as `InlineKindBox` passes it.
+   *
+   * <p>This was missing, and the failure was quiet in the worst way: the box
+   * mounts the component, `content` falls through as an HTML attribute because
+   * no prop of that name is declared, and the reader gets "No diagram yet" for
+   * a fence that contains a perfectly good diagram. Every other inline-capable
+   * kind view (records, tree, mindmap) declares `mode: 'inline'` plus
+   * `content`; `diagram` never got the contract.
+   */
+  content?: string;
   document?: DocumentDto;
   embedRef?: EmbedRef;
 }
@@ -54,6 +65,24 @@ const renderId = `vance-diagram-${Math.random().toString(36).slice(2, 10)}`;
 const resolvedDoc = computed<DiagramDocument>(() => {
   if (props.mode === 'editor') {
     return props.doc ?? emptyDoc();
+  }
+  if (props.mode === 'inline') {
+    const body = props.content ?? '';
+    // Two spellings, and both have to work.
+    //
+    // A `diagram` document in Markdown is front-matter plus a fenced source
+    // block, so `parseDiagram` looks for a fence. But inside a ```diagram fence
+    // in a *page*, nobody writes a fence within a fence — they write the
+    // Mermaid source directly, and that is what the syntax reads as. So: parse
+    // it as a document first, and when that finds no source, the body **is**
+    // the source.
+    try {
+      const parsed = parseDiagram(body, 'text/markdown');
+      if (parsed.source.trim() !== '') return parsed;
+    } catch {
+      // Not a diagram document — falls through to the bare-source reading.
+    }
+    return { ...emptyDoc(), source: body };
   }
   const d = props.document;
   if (!d || !d.inlineText) return emptyDoc();

@@ -43,6 +43,43 @@ await vance.state.set('note', await vance.documents.read('note.md'));
 `calendar`, `formula`, `youtube`. An unknown name stays a plain code block —
 which is correct, and is what `` ```mermaid `` gets you.
 
+### Plain HTML works too
+
+You can write HTML in a `markdown` widget and it renders — this is ordinary
+Markdown, so raw HTML passes through. Measured, not assumed: `b i u s small
+mark code`, `div` and `span` **with a `style` attribute**, `table thead tbody tr
+th td`, `details summary`, `form input button`, `img`, `a`, `br`, `hr`.
+
+```yaml
+- type: markdown
+  from: bericht
+```
+
+```js
+await vance.state.set('bericht',
+  'Summe: <b>' + fmt.money(total) + '</b>'
+  + '<div style="color:#b00">' + warnung + '</div>');
+```
+
+It is then **sanitised**, and the same list is what does not arrive:
+
+| Removed | |
+|---|---|
+| `<script>` | never runs |
+| `on*` attributes | `onclick`, `onerror` — stripped from every element |
+| `href="javascript:…"` | the link stays, its `href` does not |
+| `<iframe>`, `<svg>` | not in the allow-list |
+
+So HTML is for **formatting**, not for behaviour: a button you write as HTML is a
+button nothing is wired to. Behaviour is a widget with `on:`
+(`manual_read('views')`).
+
+Two consequences worth keeping in mind. Anything you interpolate is rendered as
+markup, so a document field containing `<b>` will be **bold rather than
+visible** — for text you did not write yourself, prefer a `text` widget. And
+`breaks: true` is on: a single newline is a line break, which is usually what an
+author means and occasionally a surprise.
+
 On a surface with no Cortex around it — the standalone view preview — this falls
 back to plain markdown. Links stay text and fences stay code blocks there.
 

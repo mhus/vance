@@ -21,6 +21,7 @@ export interface ViewNode {
   mimeType?: string;
   accept?: string;
   fields: FormFieldDto[];
+  agent: boolean;
   on: Record<string, ViewAction>;
   children: ViewNode[];
 }

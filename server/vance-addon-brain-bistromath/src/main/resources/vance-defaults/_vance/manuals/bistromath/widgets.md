@@ -72,10 +72,9 @@ a value means everyone has to learn an escaping rule, and YAML can already write
 two things.
 
 **A select whose choices come from data writes `options: []`**, and the program
-fills them (`ui.options(...)`, `manual_read('lib-ui')`). Absent and empty are
-different answers: leaving `options` out is an error, `[]` says "the program
-supplies these". A placeholder choice instead would sit on screen as a wrong
-answer until `init()` has run.
+fills them (`ui.options(...)`, `manual_read('lib-ui')`). Absent is an error,
+`[]` says "the program supplies these" — a placeholder choice would sit there as
+a wrong answer until `init()` has run.
 
 An **emptied** `number` writes `null`, not `0`. Zero is a number somebody may
 have typed on purpose.
@@ -142,6 +141,10 @@ handle — which is how "click a row, see it in a form" works.
 The difference is the only thing their names say: **a `form` can be typed into,
 a `details` cannot.** Two widgets rather than one with a `readOnly:` flag,
 because both defaults for that flag are wrong.
+
+For a heading, a computed total or an explanation beside the fields, put a
+`markdown` widget next to the form — it takes Markdown **and plain HTML**
+(`manual_read('content')`).
 
 ```yaml
   - type: form

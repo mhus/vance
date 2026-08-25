@@ -55,6 +55,12 @@ public final class ViewParser {
     private static final Pattern FUNCTION_NAME =
             Pattern.compile("^[A-Za-z_$][A-Za-z0-9_$]*$");
 
+    /** The drawing surface takes whatever space is left. */
+    static final String REGION_FILL = "fill";
+
+    /** Upper bound on a declared surface height, so a typo cannot make a page endless. */
+    static final int MAX_REGION_PX = 4000;
+
     /** A widget id: what a program writes in a patch call. */
     private static final Pattern WIDGET_ID = Pattern.compile("^[A-Za-z][A-Za-z0-9_-]*$");
 
@@ -171,6 +177,7 @@ public final class ViewParser {
         String text = str(raw.get("text"));
         String from = str(raw.get("from"));
         String show = str(raw.get("show"));
+        String region = region(raw.get("region"), depth, docPath, at);
         String id = str(raw.get("id"));
         if (id != null && !WIDGET_ID.matcher(id).matches()) {
             throw new ToolException(where(docPath, at) + ": `" + id + "` is not a widget id."
@@ -221,8 +228,8 @@ public final class ViewParser {
         rejectRemovedKeys(raw, docPath, at);
         requireShape(type, label, text, from, show, options, docPath, at);
 
-        return new ViewNode(type.wire(), label, text, from, id, show, columns, options, variant,
-                mimeType, accept, fields, on, children);
+        return new ViewNode(type.wire(), label, text, from, id, region, show, columns, options,
+                variant, mimeType, accept, fields, on, children);
     }
 
     /**
@@ -459,6 +466,35 @@ public final class ViewParser {
                     + "` is not a function name.");
         }
         return ViewAction.script(ref, function, s);
+    }
+
+    /**
+     * The drawing surface's height, and it may only be asked for once.
+     *
+     * <p>Refused below the root, because there is exactly one surface — the
+     * guest's own document — and it cannot be moved to where a nested widget
+     * sits. Accepting the key there and rendering elsewhere would be the
+     * "almost right" this parser exists to prevent.
+     */
+    private static @Nullable String region(@Nullable Object raw, int depth, String docPath,
+                                           String at) {
+        if (raw == null) return null;
+        if (depth > 0) {
+            throw new ToolException(where(docPath, at) + ": `region` belongs on the view's"
+                    + " root, not on a widget inside it. There is one drawing surface per view"
+                    + " and it cannot be moved into the tree.");
+        }
+        String value = String.valueOf(raw).trim().toLowerCase(java.util.Locale.ROOT);
+        if (REGION_FILL.equals(value)) return REGION_FILL;
+        try {
+            int px = Integer.parseInt(value);
+            if (px > 0 && px <= MAX_REGION_PX) return String.valueOf(px);
+        } catch (NumberFormatException ignored) {
+            // Falls through to the message below, which names both spellings.
+        }
+        throw new ToolException(where(docPath, at) + ": `region` is a height in pixels"
+                + " (1–" + MAX_REGION_PX + ") or `" + REGION_FILL + "` for the rest of the"
+                + " space. Got `" + raw + "`.");
     }
 
     private static @Nullable String variant(@Nullable Object raw, WidgetType type,

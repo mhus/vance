@@ -13,6 +13,7 @@ export interface ViewNode {
   text?: string;
   from?: string;
   id?: string;
+  region?: string;
   show?: string;
   columns: string[];
   options: ViewOption[];

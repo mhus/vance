@@ -67,6 +67,25 @@ const state = reactive<Record<string, unknown>>({});
 const patches = ref<PatchMap>({});
 provide(PATCHES, patches);
 
+/**
+ * The container the guest's frame lives in, for as long as the app is open.
+ *
+ * <p>Rendered unconditionally and never moved. An `<iframe>` reloads when it is
+ * re-parented, which would restart the program — so the frame is created *in*
+ * this div and stays; whether it is seen, and how tall, is decided by styling
+ * the div. That is also why the drawing surface is one per app and sits where
+ * the app puts it rather than where a widget would.
+ */
+const guestSlot = ref<HTMLElement | null>(null);
+
+/**
+ * The height the current view asks for: a number of pixels, `fill`, or nothing.
+ *
+ * <p>A view without `region:` leaves the div at zero height, so an app that
+ * only uses widgets is unchanged — the guest is there, just not seen.
+ */
+const region = computed<string | null>(() => view.value?.root.region ?? null);
+
 let sandbox: Sandbox | null = null;
 
 /**
@@ -336,6 +355,9 @@ async function boot(s: AppScan): Promise<void> {
     onError: (msg) => {
       notice.value = msg;
     },
+    // Handed over once. The frame is created here and never leaves, so a view
+    // that asks for a surface later needs no second frame — the div grows.
+    mount: guestSlot.value,
   });
   sandbox = box;
   try {
@@ -528,5 +550,14 @@ function message(e: unknown): string {
         @state="onStateEdit"
       />
     </div>
+
+    <!-- The program's own document, made visible. Always in the tree so the
+         frame inside it is never re-parented; sized to nothing when the view
+         asks for no surface. -->
+    <div
+      ref="guestSlot"
+      :class="region === 'fill' ? 'min-h-0 flex-1' : ''"
+      :style="region && region !== 'fill' ? { height: `${region}px` } : { height: '0' }"
+    />
   </div>
 </template>

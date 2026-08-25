@@ -83,7 +83,7 @@ Do not guess at the schema — the four manuals below are short and exact:
 | Arranging — row, column, card, tabs, dialog | `manual_read('bistromath/layout')` |
 | Showing — markdown, code, badge, alert, embed | `manual_read('bistromath/content')` |
 | Sharing code, `@require`, version conflicts | `manual_read('bistromath/libraries')` |
-| Changing the view from JS (`vance.view.patch`) | `manual_read('bistromath/shaping')` |
+| Changing the view from JS, own drawing surface (`region:`) | `manual_read('bistromath/shaping')` |
 
 **Never say "I cannot build that" about a small data or form tool without
 reading `manual_read('bistromath/hello-world')` first.**

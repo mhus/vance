@@ -21,6 +21,14 @@
 
 /** What the sandbox needs from wherever the program runs. */
 export interface GuestTransport {
+  /**
+   * Where the guest should appear, when it is meant to be seen.
+   *
+   * <p>Given once, at construction, and never changed: an `<iframe>` reloads
+   * when it is moved in the DOM, which would restart the program. So the host
+   * supplies a container it owns and keeps, and controls visibility by styling
+   * *that* — never by moving the frame.
+   */
   /** Bring the guest up and route its messages to `onMessage`. */
   start(onMessage: (message: unknown) => void): void;
   /** Send one message to the guest. A no-op once disposed. */
@@ -39,7 +47,18 @@ export interface GuestTransport {
  * without the program exporting anything. And every host call is a promise
  * resolved by message id, because everything across this boundary is async.
  */
-export const GUEST_BOOTSTRAP = `<!doctype html><meta charset="utf-8"><script>
+export const GUEST_BOOTSTRAP = `<!doctype html><meta charset="utf-8">
+<style>
+  /* The minimum so a *visible* surface is not broken on arrival. CSS does not
+     cross a document boundary, so the guest inherits nothing from the host —
+     no Tailwind, no DaisyUI, not even the font. Three lines is the honest
+     floor: no stray margin, a readable face, and light/dark from the OS so
+     black-on-black cannot happen. Everything beyond that is the author's. */
+  html, body { margin: 0; padding: 0; }
+  body { font: 14px/1.5 system-ui, -apple-system, sans-serif; }
+  :root { color-scheme: light dark; }
+</style>
+<script>
 (function () {
   var pending = {}, nextId = 1;
   function call(method, args) {
@@ -129,12 +148,24 @@ export class IframeTransport implements GuestTransport {
   private frame: HTMLIFrameElement | null = null;
   private listener: ((ev: MessageEvent) => void) | null = null;
 
+  /**
+   * @param mount container the frame is appended to and stays in. Without one
+   *     the frame is hidden at the document root, which is the case for an app
+   *     with no drawing surface — and for every test.
+   */
+  constructor(private readonly mount?: HTMLElement | null) {}
+
   start(onMessage: (message: unknown) => void): void {
     const frame = document.createElement('iframe');
     frame.setAttribute('sandbox', 'allow-scripts');
-    frame.setAttribute('aria-hidden', 'true');
-    frame.style.display = 'none';
     frame.srcdoc = GUEST_BOOTSTRAP;
+    if (this.mount) {
+      // Fills its container; the container decides whether and how big it is.
+      frame.style.cssText = 'display:block;width:100%;height:100%;border:0;background:transparent';
+    } else {
+      frame.setAttribute('aria-hidden', 'true');
+      frame.style.display = 'none';
+    }
 
     this.listener = (ev: MessageEvent) => {
       // Identity by window, not by origin: a null-origin frame reports "null",
@@ -143,7 +174,7 @@ export class IframeTransport implements GuestTransport {
       onMessage(ev.data);
     };
     window.addEventListener('message', this.listener);
-    document.body.appendChild(frame);
+    (this.mount ?? document.body).appendChild(frame);
     this.frame = frame;
   }
 

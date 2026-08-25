@@ -266,6 +266,45 @@ class ViewParserTest {
         assertThat(node.children()).hasSize(1);
     }
 
+    /**
+     * There is exactly one drawing surface — the guest's own document — and it
+     * cannot be moved to where a nested widget sits, because re-parenting an
+     * iframe restarts the program. Accepting the key inside the tree and
+     * rendering it elsewhere would be the "almost right" this parser prevents.
+     */
+    @Test
+    void parse_region_isOnlyAllowedOnTheRoot() {
+        assertThat(ViewParser.parse("type: page\nregion: 320\n", "v.yaml").region())
+                .isEqualTo("320");
+        assertThat(ViewParser.parse("type: page\nregion: FILL\n", "v.yaml").region())
+                .isEqualTo("fill");
+
+        String nested = """
+                type: page
+                children:
+                  - { type: text, text: hi, region: 100 }
+                """;
+        assertThatThrownBy(() -> ViewParser.parse(nested, "v.yaml"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("`region` belongs on the view's root");
+    }
+
+    @Test
+    void parse_regionWithANonsenseHeight_isRejected() {
+        for (String bad : new String[] {"0", "-5", "9999", "gross"}) {
+            assertThatThrownBy(() -> ViewParser.parse("type: page\nregion: " + bad + "\n",
+                    "v.yaml"))
+                    .as(bad)
+                    .isInstanceOf(ToolException.class)
+                    .hasMessageContaining("height in pixels");
+        }
+    }
+
+    @Test
+    void parse_withoutRegion_isNull() {
+        assertThat(ViewParser.parse("type: page\n", "v.yaml").region()).isNull();
+    }
+
     @Test
     void parse_embedWithoutAPath_isRejected() {
         assertThatThrownBy(() -> ViewParser.parse("type: embed\n", "v.yaml"))

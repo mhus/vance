@@ -59,6 +59,12 @@ export interface SandboxOptions {
   drainMs?: number;
   /** Where the program runs. Defaults to a null-origin iframe. */
   transport?: GuestTransport;
+  /**
+   * Where the guest is shown, for an app whose view declares a drawing
+   * surface. Omitted, the guest runs hidden — which is every app that only
+   * uses widgets, and every test.
+   */
+  mount?: HTMLElement | null;
 }
 
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -154,7 +160,7 @@ export class Sandbox {
     this.opts = opts;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.drainMs = opts.drainMs ?? DEFAULT_DRAIN_MS;
-    this.transport = opts.transport ?? new IframeTransport();
+    this.transport = opts.transport ?? new IframeTransport(opts.mount);
 
     // The page going away is the case nothing else covers: no Vue hook runs and
     // the guest dies with the document. Best effort and it cannot be more — the

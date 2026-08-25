@@ -123,9 +123,13 @@ See `manual_read('data')` for paths, reading and the write rule.
 
 ## What it may not do
 
-No DOM, no `window`, no cookies, no `localStorage`, no `fetch`. The program runs
-in a sandboxed frame with an opaque origin; `vance.*` is the only way out, and
-it never carries the reader's credentials into the program.
+No `window` of the host, no cookies, no `localStorage`, no `fetch`. The program
+runs in a sandboxed frame with an opaque origin; `vance.*` is the only way out,
+and it never carries the reader's credentials into the program.
+
+It *does* have a **DOM of its own** — that frame's document. Invisible unless the
+view asks for it with `region:`, and then it is a rectangle you render into
+yourself: `manual_read('shaping')`.
 
 ## Two things that stop a program
 

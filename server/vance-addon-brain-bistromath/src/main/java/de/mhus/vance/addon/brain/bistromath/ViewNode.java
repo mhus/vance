@@ -31,6 +31,16 @@ import org.jspecify.annotations.Nullable;
  *                within a view, because an ambiguous address would patch
  *                whichever node the renderer reached first, which is the kind
  *                of almost-right this schema refuses.
+ * @param region height of the program's own drawing surface, on the view's
+ *                root: a number of pixels, or {@code fill} for the rest of the
+ *                space. {@code null} means the view has none.
+ *
+ *                <p>A property of the <b>view</b>, not of a widget, and that is
+ *                the honest shape: the surface is the guest's own document made
+ *                visible, so there is exactly one of it and it cannot move
+ *                (re-parenting an iframe reloads it, which would restart the
+ *                program). Pretending it were a widget in the tree would put it
+ *                somewhere the author did not write it.
  * @param options choices of a {@code select}.
  * @param variant severity of an {@code alert} or colour of a {@code badge} —
  *                one of {@link ViewParser#VARIANTS}. A literal, not a state
@@ -60,6 +70,7 @@ public record ViewNode(
         @Nullable String text,
         @Nullable String from,
         @Nullable String id,
+        @Nullable String region,
         /**
          * State key deciding whether this widget is shown at all.
          *

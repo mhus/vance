@@ -92,5 +92,20 @@ public class VanceProjectConfig {
         private @Nullable String recipe;
         /** Same as {@code --no-sandbox} — set to {@code false} to disable the file/exec sandbox. */
         private boolean sandbox = true;
+        /**
+         * Remote-control mode for this project: {@code off} (never announce,
+         * same as {@code --no-remote-control}), {@code ask} (announce and
+         * stream, refuse input until a local {@code /remote allow}) or
+         * {@code allow} (accept remote input right away, same as
+         * {@code --remote-control}). {@code true}/{@code false} are accepted
+         * as aliases for {@code allow}/{@code off}.
+         *
+         * <p>Nullable rather than defaulted to {@code ask}: a project that
+         * says nothing must not silently pull a client back out of
+         * {@code allow} that {@code application.yaml} put there. An
+         * unrecognized value falls back to {@code ask} — a typo never widens
+         * access.
+         */
+        private @Nullable String remoteControl;
     }
 }

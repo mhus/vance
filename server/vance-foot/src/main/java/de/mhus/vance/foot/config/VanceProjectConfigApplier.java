@@ -66,10 +66,17 @@ public class VanceProjectConfigApplier {
         if (!src.isSandbox()) {
             config.getIde().setNoSandboxDefault(true);
         }
+        // Written into FootConfig, not into the gate: RemoteControlGate reads
+        // its mode in the constructor, i.e. before this file is even loaded.
+        // VanceFootCommand re-applies the value through the gate (which
+        // normalizes it) once the CLI flags have had their say.
+        if (src.getRemoteControl() != null && !src.getRemoteControl().isBlank()) {
+            config.getRemote().setMode(src.getRemoteControl().trim());
+        }
 
-        log.debug("applied project config: defaults.intellijClaude={} intellijMcpDefault={} recipe={} sandbox={}",
+        log.debug("applied project config: defaults.intellijClaude={} intellijMcpDefault={} recipe={} sandbox={} remoteControl={}",
                 src.isIntellijClaude(), src.isIntellijMcpDefault(),
-                src.getRecipe(), src.isSandbox());
+                src.getRecipe(), src.isSandbox(), src.getRemoteControl());
     }
 
     /**

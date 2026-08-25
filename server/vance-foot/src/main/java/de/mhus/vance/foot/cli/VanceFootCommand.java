@@ -147,11 +147,13 @@ public class VanceFootCommand implements Callable<Integer> {
             description = "Accept remote input from your own web/mobile clients right away "
                     + "(vance.remote.mode=allow). Without it the client is listed and streams "
                     + "output, but input needs a local /remote allow — set this before walking "
-                    + "away from a long run, since there is nobody left at the terminal to ask.")
+                    + "away from a long run, since there is nobody left at the terminal to ask. "
+                    + "Overrides defaults.remoteControl in .vancetope/config.yaml.")
     boolean remoteControl;
 
     @Option(names = "--no-remote-control",
-            description = "Never announce this client for remote control (vance.remote.mode=off).")
+            description = "Never announce this client for remote control (vance.remote.mode=off). "
+                    + "Overrides defaults.remoteControl in .vancetope/config.yaml.")
     boolean noRemoteControl;
 
     @Option(names = "--no-tool-output",
@@ -594,9 +596,17 @@ public class VanceFootCommand implements Callable<Integer> {
         }
         if (remoteControl) {
             remoteGate.setMode(de.mhus.vance.foot.remote.RemoteControlGate.MODE_ALLOW);
-        }
-        if (noRemoteControl) {
+        } else if (noRemoteControl) {
             remoteGate.setMode(de.mhus.vance.foot.remote.RemoteControlGate.MODE_OFF);
+        } else if (projectConfig.isPresent()
+                && projectConfig.get().getDefaults() != null
+                && projectConfig.get().getDefaults().getRemoteControl() != null
+                && !projectConfig.get().getDefaults().getRemoteControl().isBlank()) {
+            // defaults.remoteControl from .vancetope/config.yaml — the applier
+            // wrote it into FootConfig, but the gate read its mode at
+            // construction time, before config.yaml existed. Re-apply it here
+            // (the gate normalizes) so the file has the same reach as the flag.
+            remoteGate.setMode(config.getRemote().getMode());
         }
         if (noToolOutput) {
             config.getUi().getToolOutput().setEnabled(false);

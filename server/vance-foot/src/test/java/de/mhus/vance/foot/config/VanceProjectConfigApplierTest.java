@@ -139,6 +139,29 @@ class VanceProjectConfigApplierTest {
     }
 
     @Test
+    void defaultsRemoteControl_setsRemoteMode() {
+        VanceProjectConfig project = new VanceProjectConfig();
+        project.getDefaults().setRemoteControl("allow");
+        FootConfig config = new FootConfig();
+
+        applier.apply(project, config);
+
+        assertThat(config.getRemote().getMode()).isEqualTo("allow");
+    }
+
+    @Test
+    void defaultsRemoteControlBlank_doesNotOverride() {
+        VanceProjectConfig project = new VanceProjectConfig();
+        project.getDefaults().setRemoteControl("   ");
+        FootConfig config = new FootConfig();
+        config.getRemote().setMode("allow");
+
+        applier.apply(project, config);
+
+        assertThat(config.getRemote().getMode()).isEqualTo("allow");
+    }
+
+    @Test
     void defaultsAllDefault_doesNotChangeConfig() {
         VanceProjectConfig project = new VanceProjectConfig();
         // defaults are all false/null by default, except sandbox=true
@@ -147,6 +170,7 @@ class VanceProjectConfigApplierTest {
         config.getIde().getIntellijMcp().setUrl(null);
         config.getBootstrap().setChatRecipe("pre-existing");
         config.getIde().setNoSandboxDefault(false);
+        config.getRemote().setMode("allow");
 
         applier.apply(project, config);
 
@@ -155,6 +179,8 @@ class VanceProjectConfigApplierTest {
         assertThat(config.getBootstrap().getChatRecipe()).isEqualTo("pre-existing");
         // sandbox defaults to true → noSandboxDefault stays false
         assertThat(config.getIde().isNoSandboxDefault()).isFalse();
+        // remoteControl is null → the running mode is left alone
+        assertThat(config.getRemote().getMode()).isEqualTo("allow");
     }
 
     @Test

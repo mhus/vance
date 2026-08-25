@@ -682,6 +682,8 @@ export default {
       title: 'Actions',
       empty: 'No actions',
       rename: 'Rename',
+      duplicate: 'Duplicate',
+      duplicateDone: 'Created copy “{name}”.',
       unpack: 'Unpack',
       unpackDone:
         'Extracted {extracted} files to “{folder}” ({skipped} skipped, {failed} failed).',

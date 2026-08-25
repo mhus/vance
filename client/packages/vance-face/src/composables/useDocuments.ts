@@ -120,6 +120,7 @@ export function useDocuments(pageSize = 20): {
     folders?: string[],
   ) => Promise<{ blob: Blob; filename: string | null } | null>;
   unpack: (projectId: string, id: string) => Promise<DocumentUnpackResponse | null>;
+  duplicate: (projectId: string, id: string) => Promise<DocumentDto | null>;
   moveChunk: (projectId: string, args: MoveChunkArgs) => Promise<DocumentMoveChunkResponse | null>;
   copyChunk: (projectId: string, args: CopyChunkArgs) => Promise<DocumentCopyChunkResponse | null>;
   trashChunk: (projectId: string, args: TrashChunkArgs) => Promise<DocumentTrashChunkResponse | null>;
@@ -525,6 +526,29 @@ export function useDocuments(pageSize = 20): {
   }
 
   /**
+   * Copy a document next to itself — same folder, name suffixed with the
+   * first free {@code copy <n>}. The free number is picked server-side: this
+   * page holds one folder page at a time and would collide with siblings it
+   * never loaded. Returns the new document.
+   */
+  async function duplicate(projectId: string, id: string): Promise<DocumentDto | null> {
+    loading.value = true;
+    error.value = null;
+    try {
+      const params = new URLSearchParams({ projectId });
+      return await brainFetch<DocumentDto>(
+        'POST',
+        `documents/${encodeURIComponent(id)}/duplicate?${params}`,
+      );
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to duplicate document.';
+      return null;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  /**
    * Move one bounded chunk of the selection to a target folder. The caller
    * loops, passing {@code args.cursor} back from each response, until the
    * response reports {@code done}. The server skips anything it cannot move.
@@ -673,6 +697,7 @@ export function useDocuments(pageSize = 20): {
     remove,
     exportZip,
     unpack,
+    duplicate,
     moveChunk,
     copyChunk,
     trashChunk,

@@ -51,6 +51,7 @@ import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
@@ -1156,6 +1157,135 @@ public class DocumentController {
         return new FilterInputStream(in) {
             @Override public void close() { /* keep the underlying ZipInputStream open */ }
         };
+    }
+
+    // ──────────────────── Duplicate ────────────────────
+
+    /**
+     * Upper bound on the running copy number. A folder holding this many
+     * copies of one document is a runaway loop, not a use case — refusing
+     * beats scanning forever, and the message names the limit.
+     */
+    private static final int DUPLICATE_MAX_INDEX = 999;
+
+    /** Trailing {@code " copy <n>"} on a file stem — the marker this endpoint writes. */
+    private static final Pattern DUPLICATE_SUFFIX = Pattern.compile(" copy \\d+$");
+
+    /**
+     * Copy a document next to itself: same folder, name suffixed with a free
+     * running {@code copy <n>} ({@code notes/ch1.md} → {@code notes/ch1 copy 1.md}).
+     *
+     * <p>The free number is found here rather than in the client on purpose:
+     * the browser only ever holds one page of one folder, so a client-side
+     * guess would collide with any sibling it has not loaded. An existing
+     * {@code copy <n>} on the source is stripped first, so duplicating a
+     * duplicate yields {@code copy 2} rather than {@code copy 1 copy 1}.
+     *
+     * <p>Content is streamed ({@link DocumentService#loadContent}) rather than
+     * read as a string, so a binary document duplicates byte for byte.
+     * {@code READ} on the source is enforced here; {@code CREATE} on the new
+     * path is enforced inside {@link DocumentService#create}.
+     */
+    @PostMapping("/brain/{tenant}/documents/{id}/duplicate")
+    public ResponseEntity<DocumentDto> duplicate(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @RequestParam("projectId") String projectId,
+            HttpServletRequest httpRequest) {
+
+        DocumentDocument source = documentService.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (!tenant.equals(source.getTenantId()) || !projectId.equals(source.getProjectId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, source.getProjectId(), source.getPath()), Action.READ);
+
+        String basePath = stripDuplicateSuffix(source.getPath());
+        String targetPath = null;
+        int index = 0;
+        for (int i = 1; i <= DUPLICATE_MAX_INDEX; i++) {
+            String candidate = duplicatePath(basePath, i);
+            if (documentService.findByPath(tenant, projectId, candidate).isEmpty()) {
+                targetPath = candidate;
+                index = i;
+                break;
+            }
+        }
+        if (targetPath == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "No free copy name for '" + source.getPath()
+                            + "' — tried 1.." + DUPLICATE_MAX_INDEX + ".");
+        }
+
+        String username = (String) httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
+        DocumentDocument created;
+        try (InputStream content = documentService.loadContent(source)) {
+            created = documentService.create(
+                    tenant,
+                    projectId,
+                    targetPath,
+                    duplicateTitle(source.getTitle(), index),
+                    source.getTags(),
+                    source.getMimeType(),
+                    content,
+                    username,
+                    source.isAutoSummary() ? Boolean.TRUE : Boolean.FALSE,
+                    source.getRagEnabled(),
+                    actor(httpRequest));
+        } catch (DocumentService.DocumentAlreadyExistsException e) {
+            // Lost a race against a concurrent write to the same free name.
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        } catch (IOException e) {
+            log.warn("Duplicate failed for tenant='{}' project='{}' path='{}'",
+                    tenant, projectId, source.getPath(), e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to read document content.");
+        }
+        return ResponseEntity.status(HttpStatus.CREATED).body(toDto(created));
+    }
+
+    /**
+     * Insert {@code " copy <index>"} before the file extension:
+     * {@code notes/ch1.md} → {@code notes/ch1 copy 1.md}.
+     *
+     * <p>The suffix goes before the extension, not after the whole name, so the
+     * duplicate keeps the type its extension declares — kind dispatch, codecs
+     * and syntax highlighting all read it. A dot-file ({@code .gitignore}) has
+     * no extension to preserve and gets the suffix appended.
+     */
+    static String duplicatePath(String path, int index) {
+        int slash = path.lastIndexOf('/');
+        String dir = slash >= 0 ? path.substring(0, slash + 1) : "";
+        String name = slash >= 0 ? path.substring(slash + 1) : path;
+        int dot = name.lastIndexOf('.');
+        String stem = dot > 0 ? name.substring(0, dot) : name;
+        String ext = dot > 0 ? name.substring(dot) : "";
+        return dir + stem + " copy " + index + ext;
+    }
+
+    /** Drop a trailing {@code " copy <n>"} from the file stem, if present. */
+    static String stripDuplicateSuffix(String path) {
+        int slash = path.lastIndexOf('/');
+        String dir = slash >= 0 ? path.substring(0, slash + 1) : "";
+        String name = slash >= 0 ? path.substring(slash + 1) : path;
+        int dot = name.lastIndexOf('.');
+        String stem = dot > 0 ? name.substring(0, dot) : name;
+        String ext = dot > 0 ? name.substring(dot) : "";
+        return dir + DUPLICATE_SUFFIX.matcher(stem).replaceFirst("") + ext;
+    }
+
+    /**
+     * The duplicate's display title. Kept in step with the file name because
+     * the document lists show the title, not the path — two rows reading
+     * "Meeting Notes" would be indistinguishable. A titleless document stays
+     * titleless (the list falls back to the file name, which already differs).
+     */
+    private static @Nullable String duplicateTitle(@Nullable String title, int index) {
+        if (title == null || title.isBlank()) return title;
+        return DUPLICATE_SUFFIX.matcher(title).replaceFirst("") + " copy " + index;
     }
 
     // ──────────────────── Chunked move ────────────────────

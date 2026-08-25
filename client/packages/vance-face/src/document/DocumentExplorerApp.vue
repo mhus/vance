@@ -521,7 +521,10 @@ function isZip(doc: DocumentSummary): boolean {
 }
 
 function rowMenuItems(doc: DocumentSummary): RowMenuItem[] {
-  const items: RowMenuItem[] = [{ key: 'rename', label: t('documents.rowMenu.rename') }];
+  const items: RowMenuItem[] = [
+    { key: 'rename', label: t('documents.rowMenu.rename') },
+    { key: 'duplicate', label: t('documents.rowMenu.duplicate') },
+  ];
   if (isZip(doc)) items.push({ key: 'unpack', label: t('documents.rowMenu.unpack') });
   items.push({ key: 'delete', label: t('documents.rowMenu.delete'), danger: true });
   return items;
@@ -542,6 +545,18 @@ async function onRowAction(doc: DocumentSummary, key: string): Promise<void> {
   }
   if (key === 'delete') {
     pendingDelete.value = doc;
+    return;
+  }
+  if (key === 'duplicate') {
+    const pid = selectedProjectId.value;
+    if (!pid) return;
+    notice.value = '';
+    const copy = await docsState.duplicate(pid, doc.id);
+    if (!copy) return; // failure already surfaced via docsState.error
+    // Reload first — it fires the items watch which clears the notice — then
+    // name the copy so the summary survives the refresh.
+    await docsState.loadPage(pid, docsState.page.value, docsState.pathPrefix.value);
+    notice.value = t('documents.rowMenu.duplicateDone', { name: fileBasename(copy.path) });
     return;
   }
   if (key !== 'unpack') return;

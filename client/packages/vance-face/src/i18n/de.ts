@@ -679,6 +679,8 @@ export default {
       title: 'Aktionen',
       empty: 'Keine Aktionen',
       rename: 'Umbenennen',
+      duplicate: 'Duplizieren',
+      duplicateDone: 'Kopie „{name}" angelegt.',
       unpack: 'Auspacken',
       unpackDone:
         '{extracted} Dateien nach „{folder}" entpackt ({skipped} übersprungen, {failed} fehlgeschlagen).',

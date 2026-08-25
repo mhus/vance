@@ -40,6 +40,33 @@
   `manual_read('calendar-app-create')` for the full canonical
   flow. The single-event `calendar_create` path is the wrong
   tool when the user is thinking in lanes / phases / teams.
+- **Timeline / Zeitleiste / Zeitstrahl / Chronologie / Erdzeitalter /
+  Epochen / "rekonstruiere den Ablauf" / Tathergang / Projektphasen /
+  "Geschichte von X" / Meilensteine über Jahre** →
+  `timeline_create(axis={…}, entries=[…], lanes=[…])`. This is the
+  kind for **periods and points on a declared axis**, and it is a
+  *different* kind from `calendar`: a calendar is appointments on the
+  Gregorian calendar, a timeline declares its own axis and therefore
+  reaches deep time (`mode: numeric`, `unit: Ma`, `direction: ago`)
+  and minute-resolution reconstruction alike, in parallel `lanes`.
+  Three rules to get right on the first call: `axis.mode` is
+  **required** and never inferred; the unit lives in `axis.unit` and
+  never inside a position; on an `ago` axis a period runs **from the
+  larger to the smaller number** (`from: 201.4, to: 143.1`). An entry
+  with `to` is a period, one without is a point — same list, no
+  separate event type. Genuine uncertainty ("gegen 22 Uhr", "±0.2
+  Ma") goes into `fromEarliest`/`fromLatest`/`toEarliest`/`toLatest`,
+  **never** into `notes` — the drawing would otherwise assert a
+  precision nobody claimed. **Before the first timeline call this
+  session** read `manual_read('doc-kind-timeline')`.
+- **Don't** answer a timeline request with a Mermaid `gantt` or
+  `timeline` diagram. Mermaid's `timeline` spaces entries equally
+  regardless of the gaps between them, its `gantt` cannot express
+  negative years, and neither does lanes, nesting or uncertainty. If
+  the user asks for eras, a chronology or a reconstruction, it is
+  `timeline_create`. Conversely, `timeline` is **not** project
+  management: no dependencies, no resources, no progress — say so and
+  point at MS Project / Linear instead of approximating.
 - **Don't**: invent calendar tool names from Google Calendar
   training data — names like `calendar_rest__events_insert` or
   `calendar_events_insert` look plausible but **do not exist**

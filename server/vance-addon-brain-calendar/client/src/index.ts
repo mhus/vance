@@ -2,6 +2,7 @@
 
 export { default as CalendarPlanner } from './CalendarPlanner.vue';
 export { default as CalendarView } from './CalendarView.vue';
+export { default as TimelineView } from './TimelineView.vue';
 export {
   parseCalendar,
   serializeCalendar,
@@ -10,6 +11,24 @@ export {
   CalendarCodecError,
 } from './calendarCodec';
 export type { CalendarDocument, CalendarEvent } from './calendarCodec';
+export {
+  parseTimeline,
+  serializeTimeline,
+  isTimelineMime,
+  emptyTimeline,
+  timelinePosition,
+  numericValue,
+  instantSeconds,
+  TimelineCodecError,
+} from './timelineCodec';
+export type {
+  TimelineAxis,
+  TimelineAxisMode,
+  TimelineDirection,
+  TimelineDocument,
+  TimelineEntry,
+  TimelineLane,
+} from './timelineCodec';
 export {
   createCalendarEvent,
   deleteCalendarEvent,

@@ -1,0 +1,54 @@
+$meta:
+  kind: timeline
+title: "{{ title }}"
+axis:
+  mode: {{ mode }}
+{% if mode == "numeric" and unit %}  unit: "{{ unit }}"
+{% endif %}
+{% if mode == "numeric" and ago %}  direction: ago    # larger number = earlier
+{% endif %}
+{% if label %}  label: "{{ label }}"
+{% endif %}
+{% if lanes %}lanes:
+{% for lane in lanes | split(",") %}  - id: "{{ lane | trim }}"
+{% endfor %}
+{% endif %}
+entries:
+{% if mode == "numeric" and ago %}
+  # A period has from + to and is drawn as a bar. On an "ago" axis it
+  # runs from the larger number to the smaller one.
+  - id: first
+    title: "Erste Periode"
+    from: 100
+    to: 50
+  # No "to" makes it a point, drawn as a marker.
+  - title: "Erstes Ereignis"
+    from: 75
+{% elseif mode == "numeric" %}
+  # A period has from + to and is drawn as a bar.
+  - id: first
+    title: "Erste Periode"
+    from: 0
+    to: 50
+  # No "to" makes it a point, drawn as a marker.
+  - title: "Erstes Ereignis"
+    from: 25
+{% else %}
+  # A period has from + to and is drawn as a bar.
+  - id: first
+    title: "Erste Periode"
+    from: "{{ date }}T09:00"
+    to: "{{ date }}T17:00"
+  # No "to" makes it a point, drawn as a marker.
+  - title: "Erstes Ereignis"
+    from: "{{ date }}T12:30"
+{% endif %}
+# Put every entry into a lane with `lane: <id>`; lanes are the parallel
+# strands read against one clock.
+#
+# Uncertainty belongs in the bounds, never in the notes — otherwise the
+# drawing asserts a precision nobody claimed:
+#   fromEarliest / fromLatest   bound the start
+#   toEarliest   / toLatest     bound the end
+#
+# `parent: <entry-id>` nests a period inside another (era > period > epoch).

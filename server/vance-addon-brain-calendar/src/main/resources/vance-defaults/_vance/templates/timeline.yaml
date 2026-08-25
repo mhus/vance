@@ -1,0 +1,59 @@
+title:       { de: "Zeitleiste",  en: "Timeline" }
+description: { de: "Perioden und Ereignisse auf einer eigenen Zeitachse — Erdzeitalter, Chronologie, Tathergang, Projektphasen",
+               en: "Periods and events on a declared axis — geological eras, a chronology, a reconstruction, project phases" }
+icon: hourglass
+tags: [timeline, chronology, note]
+
+name:
+  mode: free
+  default: "zeitleiste-{{ date }}"
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel",     en: "Title" }
+  - name: mode
+    type: select
+    required: true
+    defaultValue: "datetime"
+    label: { de: "Zeitachse", en: "Axis" }
+    help:  { de: "`datetime` für Datum/Uhrzeit (ISO-8601, auch nur Jahre).
+                 `numeric` für eine reine Zahlenachse mit eigener Einheit —
+                 Millionen Jahre, Stunden nach T0, Seiten. Eine Achse pro Dokument.",
+             en: "`datetime` for dates and times (ISO-8601, bare years too).
+                 `numeric` for a plain number line with a unit of your own —
+                 millions of years, hours after T0, pages. One axis per document." }
+    choices:
+      - value: "datetime"
+        label: { de: "Datum / Uhrzeit", en: "Date / time" }
+      - value: "numeric"
+        label: { de: "Zahlenachse",     en: "Number line" }
+  - name: unit
+    type: string
+    label: { de: "Einheit",   en: "Unit" }
+    help:  { de: "Nur bei Zahlenachse: Suffix der Achsenbeschriftung, z.B. `Ma`,
+                 `ka`, `min`. Gehört NIE in einen Positionswert.",
+             en: "Number line only: suffix on the tick labels, e.g. `Ma`, `ka`,
+                 `min`. Never belongs inside a position value." }
+  - name: ago
+    type: boolean
+    label: { de: "Rückwärts zählen", en: "Count backwards" }
+    help:  { de: "Nur bei Zahlenachse: größere Zahl = früher („vor 201,4 Mio. Jahren\").
+                 Eine Periode läuft dann von der größeren zur kleineren Zahl.",
+             en: "Number line only: a larger number is earlier (\"201.4 million years
+                 ago\"). A period then runs from the larger to the smaller number." }
+  - name: label
+    type: string
+    label: { de: "Achsenbeschriftung", en: "Axis caption" }
+    help:  { de: "Optionale Zeile unter dem Lineal, z.B. „Millionen Jahre vor heute\".",
+             en: "Optional line under the ruler, e.g. \"millions of years before present\"." }
+  - name: lanes
+    type: string
+    label: { de: "Spuren",    en: "Lanes" }
+    help:  { de: "Komma-getrennt. Die parallelen Stränge, die gegen dieselbe Uhr
+                 gelesen werden — Täter, Opfer, Zeuge / Stratigraphie, Klima, Fauna.
+                 Leer lassen für eine einzelne Spur.",
+             en: "Comma-separated. The parallel strands read against one clock —
+                 suspect, victim, witness / stratigraphy, climate, fauna. Leave
+                 empty for a single track." }

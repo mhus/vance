@@ -19,12 +19,18 @@
     "./CalendarView.vue": {
       "types": "./dist/CalendarView.vue.d.ts",
       "import": "./src/CalendarView.vue"
+    },
+    "./TimelineView.vue": {
+      "types": "./dist/TimelineView.vue.d.ts",
+      "import": "./src/TimelineView.vue"
     }
   },
   "files": ["src", "dist"],
   "scripts": {
     "build": "vue-tsc -b && vite build",
     "dev": "vite",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
@@ -39,6 +45,7 @@
     "@module-federation/vite": "^1.20.5",
     "@vitejs/plugin-vue": "^6.0.8",
     "vite": "^8.2.1",
+    "vitest": "^4.1.10",
     "vue": "^3.5.41",
     "vue-tsc": "^3.3.9"
   }

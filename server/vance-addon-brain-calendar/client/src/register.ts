@@ -14,9 +14,14 @@ import {
   parseCalendar,
   type CalendarDocument,
 } from './calendarCodec';
+import {
+  parseTimeline,
+  type TimelineDocument,
+} from './timelineCodec';
 
 const CalendarView = defineAsyncComponent(() => import('./CalendarView.vue'));
 const CalendarAppKind = defineAsyncComponent(() => import('./CalendarAppKind.vue'));
+const TimelineView = defineAsyncComponent(() => import('./TimelineView.vue'));
 
 /**
  * Type-guard the host's DocumentApp uses to surface a Calendar-specific
@@ -37,6 +42,11 @@ function isCalendarMime(mime: string | null | undefined): boolean {
     || mime === 'text/x-yaml';
 }
 
+/** Same predicate as the calendar's — both kinds are YAML/JSON only. */
+function isTimelineParseError(e: unknown): boolean {
+  return e instanceof Error && e.name === 'TimelineCodecError';
+}
+
 export function register(): void {
   // eslint-disable-next-line no-console
   console.log('[vance-addon/calendar] register() called');
@@ -49,6 +59,20 @@ export function register(): void {
     isParseError: isCalendarParseError,
     tabLabelKey: 'documents.detail.tabCalendar',
     parseErrorKey: 'documents.detail.calendarParseError',
+  });
+  // Timeline shares the addon and the mime set, not the data model: a
+  // declared axis with lanes and nested periods, rather than
+  // appointments on the Gregorian calendar.
+  registerKind<TimelineDocument>({
+    id: 'timeline',
+    matches: (kind, mime) =>
+      (kind ?? '').toLowerCase() === 'timeline' && isCalendarMime(mime),
+    view: TimelineView,
+    parse: (body, mime) => parseTimeline(body, mime),
+    isParseError: isTimelineParseError,
+    // No tabLabelKey / parseErrorKey: a federated remote does not share
+    // the host's i18n instance, so a key here would render as its own
+    // path. The host falls back to the kind id, which reads correctly.
   });
   // Application-kind entry: kind: application + app: calendar inside
   // an _app.yaml manifest dispatches to the folder-level Planner. The

@@ -33,6 +33,7 @@ export default defineConfig({
       exposes: {
         './CalendarPlanner': './src/CalendarPlanner.vue',
         './CalendarView': './src/CalendarView.vue',
+        './TimelineView': './src/TimelineView.vue',
         './register': './src/register.ts',
       },
       shared: {

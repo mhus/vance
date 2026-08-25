@@ -237,7 +237,7 @@ const kindAllowed = computed(() => KIND_ALLOWED_MIMES.has(createMime.value));
 
 const KIND_CREATE_OPTIONS = [
   'list', 'checklist', 'tree', 'text', 'mindmap', 'graph', 'chart', 'sheet',
-  'slides', 'diagram', 'calendar', 'application', 'data', 'records', 'schema',
+  'slides', 'diagram', 'calendar', 'timeline', 'application', 'data', 'records', 'schema',
   'compose', 'vance-workflow',
 ] as const;
 
@@ -321,6 +321,13 @@ function buildKindStub(kind: string, mime: string): string {
   if (kind === 'calendar') {
     if (isJson) return '{\n  "$meta": { "kind": "calendar" },\n  "events": [\n    {\n      "id": "ev-1",\n      "title": "Sprint Planning",\n      "start": "2026-06-12T09:00",\n      "end": "2026-06-12T11:00",\n      "location": "Büro"\n    },\n    {\n      "id": "ev-2",\n      "title": "Urlaub",\n      "start": "2026-07-15",\n      "end": "2026-07-28",\n      "allDay": true,\n      "tags": ["private"]\n    }\n  ]\n}\n';
     if (isYaml) return '$meta:\n  kind: calendar\nevents:\n  - id: ev-1\n    title: Sprint Planning\n    start: "2026-06-12T09:00"\n    end: "2026-06-12T11:00"\n    location: Büro\n  - id: ev-2\n    title: Urlaub\n    start: "2026-07-15"\n    end: "2026-07-28"\n    allDay: true\n    tags: [private]\n';
+  }
+  if (kind === 'timeline') {
+    // Deep time as the starter: it is the shape that shows the two
+    // things a calendar cannot do — an axis counting backwards with its
+    // own unit, and periods nested inside periods.
+    if (isJson) return '{\n  "$meta": { "kind": "timeline" },\n  "title": "Mesozoikum",\n  "axis": {\n    "mode": "numeric",\n    "unit": "Ma",\n    "direction": "ago",\n    "label": "Millionen Jahre vor heute"\n  },\n  "lanes": [\n    { "id": "strat", "title": "Stratigraphie" },\n    { "id": "fauna", "title": "Fauna", "color": "green" }\n  ],\n  "entries": [\n    { "id": "trias", "title": "Trias", "from": 251.9, "to": 201.4, "lane": "strat" },\n    { "id": "jura", "title": "Jura", "from": 201.4, "to": 143.1, "lane": "strat" },\n    { "id": "oberjura", "title": "Oberjura", "from": 161.5, "to": 143.1, "parent": "jura", "lane": "strat" },\n    { "id": "tr-j", "title": "Trias-Jura-Aussterben", "from": 201.4, "fromEarliest": 201.6, "fromLatest": 201.2, "lane": "fauna", "color": "red" }\n  ]\n}\n';
+    if (isYaml) return '$meta:\n  kind: timeline\ntitle: Mesozoikum\naxis:\n  mode: numeric        # numeric | datetime — one axis per document\n  unit: Ma             # label suffix; the unit never goes into a position\n  direction: ago       # larger number = EARLIER\n  label: Millionen Jahre vor heute\nlanes:\n  - id: strat\n    title: Stratigraphie\n  - id: fauna\n    title: Fauna\n    color: green\nentries:\n  # A period has from + to. On an "ago" axis it runs from the larger\n  # number to the smaller one.\n  - id: trias\n    title: Trias\n    from: 251.9\n    to: 201.4\n    lane: strat\n  - id: jura\n    title: Jura\n    from: 201.4\n    to: 143.1\n    lane: strat\n  # parent nests a period inside another — flat list, no nested objects.\n  - id: oberjura\n    title: Oberjura\n    from: 161.5\n    to: 143.1\n    parent: jura\n    lane: strat\n  # No "to" makes it a point. The bounds say 201.4 ± 0.2 Ma — draw the\n  # uncertainty, never hide it in the notes.\n  - id: tr-j\n    title: Trias-Jura-Aussterben\n    from: 201.4\n    fromEarliest: 201.6\n    fromLatest: 201.2\n    lane: fauna\n    color: red\n';
   }
   if (kind === 'application') {
     if (isJson) return '{\n  "$meta": { "kind": "application", "app": "calendar" },\n  "title": "My Calendar App",\n  "description": "Planning suite — one calendar per lane.",\n  "calendar": {\n    "window": { "from": "2026-06-01", "until": "2026-09-30" },\n    "lanes": {\n      "design":  { "title": "Design",  "color": "blue",   "order": 1 },\n      "backend": { "title": "Backend", "color": "green",  "order": 2 }\n    },\n    "gantt":     { "outputPath": "_gantt.md", "includeRecurring": false },\n    "conflicts": { "outputPath": "_conflicts.yaml", "ignoreWithinTags": ["private"] }\n  }\n}\n';

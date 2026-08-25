@@ -145,6 +145,31 @@ declaration is not an error to redeclare, and the one that loads last wins. A
 `const` collides *loudly* (a SyntaxError naming it), which is why a library is
 better off exposing one object than a handful of loose functions.
 
+## Testing a library
+
+A library that other apps depend on can have real tests — but only if it lives
+**in the repository** as a bundled library. `core@1` does, and its tests read
+the resource and evaluate it the way the runtime does:
+
+```ts
+const { core } = loadLibraries({
+  sources: [{ library: 'core@1' }],
+  expose: ['core'],
+  vance: stubVance({ ui: { notify } }),
+});
+```
+
+A dependent library is the same call with two entries, dependency first —
+`core` is a top-level `const` in another file and is visible, exactly as in the
+app.
+
+A library that lives as a **project or tenant document** has no such test: the
+test runner reads the repository, not the database, so there is nothing for it
+to load. That is the trade-off to make deliberately — a helper that a handful of
+apps rely on belongs in the repo as a bundled library (still overridable per
+project through the cascade), and a library that only one project will ever use
+is fine as a document.
+
 ## Version conflicts
 
 If two things ask for different versions of one library, the **highest wins**

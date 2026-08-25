@@ -1,7 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadLibraries } from './testing/libraryHarness';
 
 /**
  * The bundled `core@1` library, actually evaluated.
@@ -15,13 +13,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * a `vance` global. So it also pins the load contract — a library that expected
  * a module wrapper would fail here.
  */
-
-const here = dirname(fileURLToPath(import.meta.url));
-const source = readFileSync(
-  // From client/src up to the addon root, then into its resources.
-  resolve(here, '../../src/main/resources/vance-defaults/_vance/app-libs/core@1.js'),
-  'utf8',
-);
 
 interface Core {
   rows(folder: string): Promise<Record<string, unknown>[]>;
@@ -67,10 +58,13 @@ beforeEach(() => {
     state: { set: vi.fn().mockResolvedValue(undefined), get: vi.fn() },
     ui: { notify: vi.fn().mockResolvedValue(undefined) },
   };
-  // One scope, one script, a `vance` global — the runtime's contract. A `const`
-  // at the top level of the library is reachable afterwards, which is exactly
-  // what the joined evaluation in the sandbox provides.
-  core = new Function('vance', `${source}\nreturn core;`)(vance) as Core;
+  // The harness reproduces the runtime's contract: one scope, sources joined in
+  // load order, a `vance` global — see `testing/libraryHarness.ts`.
+  core = loadLibraries({
+    sources: [{ library: 'core@1' }],
+    expose: ['core'],
+    vance,
+  }).core as Core;
 });
 
 describe('rows', () => {

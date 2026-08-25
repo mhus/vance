@@ -47,6 +47,16 @@ const CalendarView = defineAsyncComponent(async () => {
   const m = mod as { default?: unknown };
   return (m?.default ?? mod) as ReturnType<typeof defineAsyncComponent>;
 });
+// Timeline ships in the same addon as the calendar (different data
+// model, shared codec conventions) and reaches us the same way.
+const TimelineView = defineAsyncComponent(async () => {
+  const { loadRemote } = await import('@module-federation/runtime');
+  const mod = await loadRemote<{ default?: unknown } | unknown>(
+    'vance_addon_calendar/TimelineView',
+  );
+  const m = mod as { default?: unknown };
+  return (m?.default ?? mod) as ReturnType<typeof defineAsyncComponent>;
+});
 // Finance-tree summary lives in the finance addon (embedded channel only).
 // Same dynamic-federation pattern as CalendarView — the remote is registered
 // at boot by loadAddonRegistrations; full editing happens in its own dialog.
@@ -93,6 +103,7 @@ export const kindRegistry: Record<string, KindRenderer> = {
   chart:   { inline: ChartView,   embedded: ChartView,   label: 'Chart',   icon: '📊' },
   map:     { inline: MapView,     embedded: MapView,     label: 'Map',     icon: '🗺' },
   calendar: { inline: CalendarView, embedded: CalendarView, label: 'Calendar', icon: '📅' },
+  timeline: { inline: TimelineView, embedded: TimelineView, label: 'Timeline', icon: '⏳' },
   // Finance-tree is embedded-only (no inline fence form) — a data-only summary
   // card with an "Edit" dialog; authoring lives in the Cortex kind editor.
   'finance-tree': { embedded: FinanceView, label: 'Finance', icon: '🧮' },

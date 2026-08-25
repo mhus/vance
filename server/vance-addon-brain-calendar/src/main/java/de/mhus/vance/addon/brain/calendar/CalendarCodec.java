@@ -2,13 +2,10 @@ package de.mhus.vance.addon.brain.calendar;
 
 import de.mhus.vance.shared.document.kind.KindCodecException;
 import de.mhus.vance.shared.document.kind.KindHeaderCodec;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TimeZone;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.core.JacksonException;
@@ -180,37 +177,13 @@ public final class CalendarCodec {
     }
 
     /**
-     * Coerce a YAML/JSON scalar value to a non-blank string. The
-     * codec stores temporal values as strings so they round-trip
-     * verbatim regardless of source format — but YAML's tag resolver
-     * silently promotes unquoted ISO-8601 dates like
-     * {@code 2026-07-15} to {@link Date}, which would otherwise cause
-     * the event to be dropped. Numbers and other scalars go through
-     * {@link Object#toString()}.
-     *
-     * <p>For {@link Date} we emit a UTC ISO-8601 string; a midnight-UTC
-     * stamp (the shape SnakeYAML produces for date-only inputs) is
-     * stripped to {@code yyyy-MM-dd}. That biases towards the common
-     * case — users who deliberately want a literal "midnight UTC"
-     * timestamp should quote the value to keep it as a string.
+     * Coerce a YAML/JSON scalar value to a non-blank string — see
+     * {@link ScalarCoercion#coerceToString}. Shared with the timeline
+     * codec because both kinds store temporal values as verbatim
+     * strings and face the same YAML tag-resolver hazard.
      */
     private static @Nullable String coerceToString(@Nullable Object raw) {
-        if (raw == null) return null;
-        if (raw instanceof String s) return s.isBlank() ? null : s;
-        if (raw instanceof Date d) {
-            SimpleDateFormat fmt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX");
-            fmt.setTimeZone(TimeZone.getTimeZone("UTC"));
-            String s = fmt.format(d);
-            // SnakeYAML emits midnight UTC for unquoted date-only values
-            // (yyyy-MM-dd). Strip the time portion so allDay events keep
-            // a clean date-only string on round-trip.
-            if (s.endsWith("T00:00:00Z") || s.endsWith("T00:00:00+00:00")) {
-                return s.substring(0, 10);
-            }
-            return s;
-        }
-        String s = raw.toString();
-        return s.isBlank() ? null : s;
+        return ScalarCoercion.coerceToString(raw);
     }
 
     // ── Body builder ───────────────────────────────────────────────

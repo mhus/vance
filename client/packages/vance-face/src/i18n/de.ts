@@ -671,9 +671,15 @@ export default {
       copyTargetProjectLabel: 'Zielprojekt',
       copyTargetFolderLabel: 'Zielordner',
       copyCurrentProject: 'Aktuelles Projekt',
+      copyOverwriteLabel: 'Vorhandene Dokumente überschreiben',
+      copyOverwriteHelp:
+        'Ohne diese Option werden bereits vorhandene Dokumente übersprungen. '
+        + 'Gesperrte Dokumente werden immer übersprungen.',
       copyConfirm: 'Kopieren',
       copyRunning: '{copied} kopiert…',
       copyDone: '{copied} kopiert, {skipped} übersprungen.',
+      copyDoneOverwrite:
+        '{copied} kopiert, {overwritten} überschrieben, {skipped} übersprungen.',
     },
     rowMenu: {
       title: 'Aktionen',

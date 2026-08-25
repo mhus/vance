@@ -8,6 +8,7 @@ export interface DocumentCopyChunkRequest {
   folders?: string[];
   targetProjectId?: string;
   targetFolder: string;
+  overwrite?: boolean;
   limit?: number;
   cursor?: string;
 }

@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.documents.DocumentCopyChunkRequest;
 import de.mhus.vance.api.documents.DocumentCopyChunkResponse;
+import de.mhus.vance.api.documents.WriterRole;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
@@ -36,7 +37,8 @@ import org.mockito.quality.Strictness;
  * <p>The copy endpoint mirrors the move endpoint's chunk loop but creates a new
  * document in the target project instead of updating the source's path. These
  * tests verify the core behaviours: single-id copy, folder scan, cross-project
- * copy, permission denial, and collision skipping — all with mocked
+ * copy, permission denial, collision skipping and the {@code overwrite} flag
+ * that turns a collision into an in-place replace — all with mocked
  * {@link DocumentService} and {@link RequestAuthority} so no Spring context is
  * needed.
  */
@@ -227,6 +229,179 @@ class DocumentControllerCopyChunkTest {
 
         assertThat(res.getCopied()).isZero();
         assertThat(res.getSkipped()).isEqualTo(1);
+    }
+
+    // ── Overwrite: collision replaces the target ──────────────────
+
+    @Test
+    void copyChunk_overwrite_existingTarget_replacesInsteadOfSkipping() {
+        DocumentDocument source = doc("d1", "notes/ch1.md");
+        DocumentDocument target = doc("d2", "archive/ch1.md");
+        when(documentService.findById("d1")).thenReturn(Optional.of(source));
+        when(documentService.findByPath(TENANT, PROJECT, "archive/ch1.md"))
+                .thenReturn(Optional.of(target));
+        when(documentService.readContent(source)).thenReturn("# Hello");
+        when(authority.check(eq(httpRequest), any(Resource.Document.class), any(Action.class)))
+                .thenReturn(true);
+        when(documentService.replaceContent(
+                        anyString(), any(InputStream.class), any(), any(), any()))
+                .thenReturn(target);
+
+        DocumentCopyChunkRequest req = DocumentCopyChunkRequest.builder()
+                .ids(List.of("d1"))
+                .targetFolder("archive")
+                .overwrite(true)
+                .build();
+
+        DocumentCopyChunkResponse res = controller.copyChunk(
+                TENANT, PROJECT, req, null, httpRequest);
+
+        assertThat(res.getOverwritten()).isEqualTo(1);
+        assertThat(res.getCopied()).isZero();
+        assertThat(res.getSkipped()).isZero();
+        verify(documentService).replaceContent(
+                eq("d2"), any(InputStream.class), eq("text/markdown"), any(), any());
+        verify(documentService, never()).create(
+                anyString(), anyString(), anyString(),
+                any(), any(), any(), any(InputStream.class), any(),
+                any(), any(), any());
+    }
+
+    @Test
+    void copyChunk_overwrite_noWritePermissionOnTarget_skipsDocument() {
+        DocumentDocument source = doc("d1", "notes/ch1.md");
+        DocumentDocument target = doc("d2", "archive/ch1.md");
+        when(documentService.findById("d1")).thenReturn(Optional.of(source));
+        when(documentService.findByPath(TENANT, PROJECT, "archive/ch1.md"))
+                .thenReturn(Optional.of(target));
+        when(authority.check(eq(httpRequest), any(Resource.Document.class), eq(Action.READ)))
+                .thenReturn(true);
+        // CREATE would be granted — overwriting must not fall back to it.
+        when(authority.check(eq(httpRequest), any(Resource.Document.class), eq(Action.CREATE)))
+                .thenReturn(true);
+        when(authority.check(eq(httpRequest), any(Resource.Document.class), eq(Action.WRITE)))
+                .thenReturn(false);
+
+        DocumentCopyChunkRequest req = DocumentCopyChunkRequest.builder()
+                .ids(List.of("d1"))
+                .targetFolder("archive")
+                .overwrite(true)
+                .build();
+
+        DocumentCopyChunkResponse res = controller.copyChunk(
+                TENANT, PROJECT, req, null, httpRequest);
+
+        assertThat(res.getSkipped()).isEqualTo(1);
+        assertThat(res.getOverwritten()).isZero();
+        verify(documentService, never()).replaceContent(
+                anyString(), any(InputStream.class), any(), any(), any());
+    }
+
+    @Test
+    void copyChunk_overwrite_lockedTarget_skipsWithoutFailingTheChunk() {
+        DocumentDocument source = doc("d1", "notes/ch1.md");
+        DocumentDocument target = doc("d2", "archive/ch1.md");
+        when(documentService.findById("d1")).thenReturn(Optional.of(source));
+        when(documentService.findByPath(TENANT, PROJECT, "archive/ch1.md"))
+                .thenReturn(Optional.of(target));
+        when(documentService.readContent(source)).thenReturn("# Hello");
+        when(authority.check(eq(httpRequest), any(Resource.Document.class), any(Action.class)))
+                .thenReturn(true);
+        when(documentService.replaceContent(
+                        anyString(), any(InputStream.class), any(), any(), any()))
+                .thenThrow(new DocumentService.DocumentLockedException(
+                        WriterRole.USER, java.util.Set.of(WriterRole.USER)));
+
+        DocumentCopyChunkRequest req = DocumentCopyChunkRequest.builder()
+                .ids(List.of("d1"))
+                .targetFolder("archive")
+                .overwrite(true)
+                .build();
+
+        DocumentCopyChunkResponse res = controller.copyChunk(
+                TENANT, PROJECT, req, null, httpRequest);
+
+        assertThat(res.getSkipped()).isEqualTo(1);
+        assertThat(res.getOverwritten()).isZero();
+        assertThat(res.isDone()).isTrue();
+    }
+
+    @Test
+    void copyChunk_overwrite_documentOntoItself_skipsDocument() {
+        // Target folder == the document's own folder: the collision found at
+        // the destination IS the source.
+        DocumentDocument source = doc("d1", "notes/ch1.md");
+        when(documentService.findById("d1")).thenReturn(Optional.of(source));
+        when(documentService.findByPath(TENANT, PROJECT, "notes/ch1.md"))
+                .thenReturn(Optional.of(source));
+        when(authority.check(eq(httpRequest), any(Resource.Document.class), any(Action.class)))
+                .thenReturn(true);
+
+        DocumentCopyChunkRequest req = DocumentCopyChunkRequest.builder()
+                .ids(List.of("d1"))
+                .targetFolder("notes")
+                .overwrite(true)
+                .build();
+
+        DocumentCopyChunkResponse res = controller.copyChunk(
+                TENANT, PROJECT, req, null, httpRequest);
+
+        assertThat(res.getSkipped()).isEqualTo(1);
+        assertThat(res.getOverwritten()).isZero();
+        verify(documentService, never()).replaceContent(
+                anyString(), any(InputStream.class), any(), any(), any());
+    }
+
+    @Test
+    void copyChunk_overwrite_freeTargetPath_stillCreates() {
+        DocumentDocument source = doc("d1", "notes/ch1.md");
+        when(documentService.findById("d1")).thenReturn(Optional.of(source));
+        when(documentService.findByPath(TENANT, PROJECT, "archive/ch1.md"))
+                .thenReturn(Optional.empty());
+        when(documentService.readContent(source)).thenReturn("# Hello");
+        when(authority.check(eq(httpRequest), any(Resource.Document.class), any(Action.class)))
+                .thenReturn(true);
+        when(documentService.create(
+                        anyString(), anyString(), anyString(),
+                        any(), any(), any(), any(InputStream.class), any(),
+                        any(), any(), any()))
+                .thenReturn(source);
+
+        DocumentCopyChunkRequest req = DocumentCopyChunkRequest.builder()
+                .ids(List.of("d1"))
+                .targetFolder("archive")
+                .overwrite(true)
+                .build();
+
+        DocumentCopyChunkResponse res = controller.copyChunk(
+                TENANT, PROJECT, req, null, httpRequest);
+
+        assertThat(res.getCopied()).isEqualTo(1);
+        assertThat(res.getOverwritten()).isZero();
+    }
+
+    @Test
+    void copyChunk_withoutOverwrite_neverLooksUpTheTarget() {
+        DocumentDocument source = doc("d1", "notes/ch1.md");
+        when(documentService.findById("d1")).thenReturn(Optional.of(source));
+        when(documentService.readContent(source)).thenReturn("# Hello");
+        when(authority.check(eq(httpRequest), any(Resource.Document.class), any(Action.class)))
+                .thenReturn(true);
+        when(documentService.create(
+                        anyString(), anyString(), anyString(),
+                        any(), any(), any(), any(InputStream.class), any(),
+                        any(), any(), any()))
+                .thenReturn(source);
+
+        DocumentCopyChunkRequest req = DocumentCopyChunkRequest.builder()
+                .ids(List.of("d1"))
+                .targetFolder("archive")
+                .build();
+
+        controller.copyChunk(TENANT, PROJECT, req, null, httpRequest);
+
+        // The collision stays the create funnel's business — no extra read.
+        verify(documentService, never()).findByPath(anyString(), anyString(), anyString());
     }
 
     // ── Folder scan with cursor paging ────────────────────────────

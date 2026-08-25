@@ -674,9 +674,14 @@ export default {
       copyTargetProjectLabel: 'Target project',
       copyTargetFolderLabel: 'Target folder',
       copyCurrentProject: 'Current project',
+      copyOverwriteLabel: 'Overwrite existing documents',
+      copyOverwriteHelp:
+        'Without this, documents that already exist at the destination are skipped. '
+        + 'Locked documents are always skipped.',
       copyConfirm: 'Copy',
       copyRunning: 'Copied {copied}…',
       copyDone: 'Copied {copied}, skipped {skipped}.',
+      copyDoneOverwrite: 'Copied {copied}, overwrote {overwritten}, skipped {skipped}.',
     },
     rowMenu: {
       title: 'Actions',

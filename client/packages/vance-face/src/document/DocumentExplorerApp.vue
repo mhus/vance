@@ -434,6 +434,9 @@ const copyTargetProject = ref<string>('');
 const copyTargetPath = ref('');
 const copyFolderSuggestions = ref<string[]>([]);
 const copyFoldersLoading = ref(false);
+// Off on every open: overwriting is destructive, so it is a per-run decision
+// rather than a setting that survives into the next copy.
+const copyOverwrite = ref(false);
 // Own flag: the cross-project fetch below bypasses the composable state.
 const copyFoldersTruncated = ref(false);
 
@@ -706,6 +709,7 @@ const copyProjectOptions = computed(() => [
 
 async function openCopyModal(): Promise<void> {
   copyTargetProject.value = '';
+  copyOverwrite.value = false;
   copyTargetPath.value = docsState.pathPrefix.value.replace(/\/+$/, '');
   if (selectedProjectId.value && docsState.folders.value.length === 0) {
     // Awaited, unlike the move dialog's fire-and-forget: the suggestions are
@@ -749,7 +753,9 @@ async function confirmCopy(): Promise<void> {
   bulkBusy.value = true;
   bulkAbort.value = false;
   bulkProgress.value = 0;
+  const overwrite = copyOverwrite.value;
   let copiedTotal = 0;
+  let overwrittenTotal = 0;
   let skippedTotal = 0;
   let cursor: string | undefined;
   try {
@@ -760,20 +766,31 @@ async function confirmCopy(): Promise<void> {
         folders,
         targetProjectId: targetProject,
         targetFolder: target,
+        overwrite,
         limit: MOVE_CHUNK,
         cursor,
       });
       if (!r) break; // error surfaced via docsState.error
       copiedTotal += r.copied;
+      overwrittenTotal += r.overwritten;
       skippedTotal += r.skipped;
-      bulkProgress.value = copiedTotal;
+      // Progress counts written documents, new or replaced alike.
+      bulkProgress.value = copiedTotal + overwrittenTotal;
       cursor = r.cursor ?? undefined;
       done = r.done;
     }
-    notice.value = t('documents.selection.copyDone', {
-      copied: copiedTotal,
-      skipped: skippedTotal,
-    });
+    // Only mention replacements when they were asked for — an always-present
+    // "0 overwritten" would be noise in the common case.
+    notice.value = overwrite
+      ? t('documents.selection.copyDoneOverwrite', {
+          copied: copiedTotal,
+          overwritten: overwrittenTotal,
+          skipped: skippedTotal,
+        })
+      : t('documents.selection.copyDone', {
+          copied: copiedTotal,
+          skipped: skippedTotal,
+        });
   } finally {
     bulkBusy.value = false;
     showCopyModal.value = false;
@@ -1312,6 +1329,12 @@ function confirmNewFolder(): void {
         <p v-if="copyFoldersTruncated" class="text-xs opacity-60 mt-1">
           {{ $t('documents.selection.folderSuggestionsTruncated') }}
         </p>
+        <VCheckbox
+          v-model="copyOverwrite"
+          :label="$t('documents.selection.copyOverwriteLabel')"
+          :help="$t('documents.selection.copyOverwriteHelp')"
+          class="mt-3"
+        />
       </template>
       <template #actions>
         <VButton

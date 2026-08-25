@@ -5,6 +5,7 @@
 
 export interface DocumentCopyChunkResponse {
   copied: number;
+  overwritten: number;
   skipped: number;
   cursor?: string;
   done: boolean;

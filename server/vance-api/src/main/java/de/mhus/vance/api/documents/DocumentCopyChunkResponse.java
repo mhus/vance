@@ -21,10 +21,18 @@ import org.jspecify.annotations.Nullable;
 @GenerateTypeScript("documents")
 public class DocumentCopyChunkResponse {
 
-    /** Documents copied in this chunk. */
+    /** Documents newly created in this chunk. */
     private int copied;
 
-    /** Documents skipped in this chunk (no permission or collision). */
+    /**
+     * Documents replaced in this chunk because they already existed at the
+     * destination and {@code overwrite} was requested. Always {@code 0}
+     * without that flag — counted separately from {@link #copied} so the
+     * client can tell "wrote 12 new files" from "replaced 12 existing ones".
+     */
+    private int overwritten;
+
+    /** Documents skipped in this chunk (no permission, lock or collision). */
     private int skipped;
 
     /** Keyset cursor to pass into the next call; {@code null} once done. */

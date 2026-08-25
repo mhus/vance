@@ -30,6 +30,8 @@ export interface CopyChunkArgs {
   folders?: string[];
   targetProjectId?: string;
   targetFolder: string;
+  /** Replace documents that already exist at the destination (default: skip). */
+  overwrite?: boolean;
   limit?: number;
   cursor?: string;
 }
@@ -576,7 +578,10 @@ export function useDocuments(pageSize = 20): {
    * in a different project). The caller loops, passing {@code args.cursor}
    * back from each response, until the response reports {@code done}. The
    * server skips anything it cannot copy (no READ on source, no CREATE on
-   * destination, or a name collision).
+   * destination, or a name collision). With {@code args.overwrite} a
+   * collision rewrites the existing target instead — reported separately as
+   * {@code overwritten}, and still skipped when the target is locked or the
+   * caller has no WRITE there.
    */
   async function copyChunk(
     projectId: string,

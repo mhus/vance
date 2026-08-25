@@ -1444,6 +1444,12 @@ public class DocumentController {
      * anything it cannot copy (no READ on the source, no CREATE on the
      * destination, or a name collision in the target).
      *
+     * <p>With {@code overwrite} a collision is no longer a skip: the existing
+     * target document is rewritten in place instead. That is an edit of the
+     * target — it needs {@code WRITE} there and honours the document lock, so
+     * a protected target keeps being skipped. Rewritten documents are counted
+     * as {@code overwritten}, not {@code copied}.
+     *
      * <p>Explicit {@code ids} not inside a selected folder are copied on the
      * first call (blank cursor). {@code folders} are keyset-scanned by path
      * via {@link DocumentService#listUnderFoldersAfter}: the returned
@@ -1473,8 +1479,11 @@ public class DocumentController {
             }
         }
 
+        boolean overwrite = Boolean.TRUE.equals(request.getOverwrite());
+
         DocumentService.WriterIdentity writer = writerIdentity(httpRequest, editorId);
         int copied = 0;
+        int overwritten = 0;
         int skipped = 0;
 
         // First call: explicit ids that are not covered by a selected folder.
@@ -1489,8 +1498,9 @@ public class DocumentController {
                     continue;
                 }
                 CopyOutcome o = tryCopyDoc(tenant, doc, targetProject,
-                        moveNewPath(doc, folders, target), writer, httpRequest);
+                        moveNewPath(doc, folders, target), overwrite, writer, httpRequest);
                 if (o == CopyOutcome.COPIED) copied++;
+                else if (o == CopyOutcome.OVERWRITTEN) overwritten++;
                 else if (o == CopyOutcome.SKIPPED) skipped++;
             }
         }
@@ -1504,8 +1514,9 @@ public class DocumentController {
             for (DocumentDocument doc : batch) {
                 cursor = doc.getPath();
                 CopyOutcome o = tryCopyDoc(tenant, doc, targetProject,
-                        moveNewPath(doc, folders, target), writer, httpRequest);
+                        moveNewPath(doc, folders, target), overwrite, writer, httpRequest);
                 if (o == CopyOutcome.COPIED) copied++;
+                else if (o == CopyOutcome.OVERWRITTEN) overwritten++;
                 else if (o == CopyOutcome.SKIPPED) skipped++;
             }
             done = batch.size() < limit;
@@ -1513,6 +1524,7 @@ public class DocumentController {
 
         return DocumentCopyChunkResponse.builder()
                 .copied(copied)
+                .overwritten(overwritten)
                 .skipped(skipped)
                 .cursor(done ? null : cursor)
                 .done(done)
@@ -1523,14 +1535,52 @@ public class DocumentController {
      * Copy a single document into {@code targetProjectId} at {@code newPath}.
      * Requires READ on the source and CREATE on the destination; skips on
      * collision or any other failure.
+     *
+     * <p>With {@code overwrite} an occupied destination is rewritten instead
+     * of skipped. That path asks {@code WRITE} rather than {@code CREATE} —
+     * the caller is editing an existing document, and a permission model that
+     * grants edits without creates would otherwise reject a write it allows.
+     * The document lock is enforced by {@code replaceContent} and turns into a
+     * skip here, so a chunk never dies on one protected target.
      */
     private CopyOutcome tryCopyDoc(String tenant, DocumentDocument doc, String targetProjectId,
-            String newPath, DocumentService.WriterIdentity writer, HttpServletRequest httpRequest) {
+            String newPath, boolean overwrite, DocumentService.WriterIdentity writer,
+            HttpServletRequest httpRequest) {
         // READ on the source — the caller must be allowed to read what they copy.
         if (!authority.check(httpRequest,
                 new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ)) {
             return CopyOutcome.SKIPPED;
         }
+
+        DocumentDocument existing = overwrite
+                ? documentService.findByPath(tenant, targetProjectId, newPath).orElse(null)
+                : null;
+        if (existing != null) {
+            // Copying a document onto itself is the one collision overwrite
+            // must not resolve: it would rewrite the source with its own bytes
+            // and burn an archive slot for nothing.
+            if (existing.getId() != null && existing.getId().equals(doc.getId())) {
+                return CopyOutcome.SKIPPED;
+            }
+            if (!authority.check(httpRequest,
+                    new Resource.Document(tenant, targetProjectId, newPath), Action.WRITE)) {
+                return CopyOutcome.SKIPPED;
+            }
+            try {
+                String content = documentService.readContent(doc);
+                documentService.replaceContent(
+                        existing.getId(),
+                        new java.io.ByteArrayInputStream(
+                                content.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                        doc.getMimeType(),
+                        writer,
+                        actor(httpRequest));
+                return CopyOutcome.OVERWRITTEN;
+            } catch (DocumentService.DocumentLockedException | IllegalArgumentException e) {
+                return CopyOutcome.SKIPPED;
+            }
+        }
+
         // CREATE on the destination — the caller must be allowed to create in
         // the target project / path.
         if (!authority.check(httpRequest,
@@ -1558,7 +1608,7 @@ public class DocumentController {
         }
     }
 
-    private enum CopyOutcome { COPIED, SKIPPED }
+    private enum CopyOutcome { COPIED, OVERWRITTEN, SKIPPED }
 
     // ──────────────────── Chunked trash ────────────────────
 

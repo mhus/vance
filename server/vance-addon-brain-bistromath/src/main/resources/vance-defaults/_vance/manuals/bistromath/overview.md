@@ -39,6 +39,11 @@ There is no table declaration, no `source:` on a widget, and no data endpoint.
 Reading these from a general agent (not the app-building recipe) needs the
 folder in the name: `manual_read('bistromath/views')`.
 
+A `records`, `sheet`, `list` or `tree` document is one the app reads and writes
+**as a structure** — and the `records_*` / `sheet_*` / `list_*` / `tree_*` tool
+families edit that same document. Use them when you edit one yourself; writing
+their grammar by hand into `doc_write` is how a body stops matching its kind.
+
 ## Before you promise anything
 
 This build reads **and writes** documents — including `records`, `sheet`,

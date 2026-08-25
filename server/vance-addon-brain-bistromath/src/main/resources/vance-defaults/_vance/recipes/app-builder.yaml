@@ -1,0 +1,287 @@
+# App-builder worker. Builds and changes custom applications
+# (`app: custom`) — the Bistromath runtime, see
+# specification/public/bistromath-system.md.
+#
+# The whole point of this recipe is `params.manualPaths`: with
+# `_vance/manuals/bistromath/` first, the hooks inside those manuals
+# resolve by their short name (`manual_read('views')`). A general agent
+# reading them needs the folder (`bistromath/views`), which is why the
+# manuals were written for a dedicated recipe in the first place —
+# see planning/bistromath.md §9 (v2.0).
+#
+# Bundled in the addon, not in vance-brain: the manuals, the template
+# and `core@1` live here too, and `listByPrefixCascade` scans
+# `classpath*:` so this file shows up in the session picker of every
+# tenant that has the addon installed. Precedent: feeds-digest
+# (centauri), finance-report (finance).
+
+title: "App Builder — Custom Applications"
+listed: true
+description: |
+  Builds and changes custom applications (`app: custom`) — small
+  programs made of documents: a manifest, view documents holding a
+  widget tree, and a `main.js` that runs sandboxed in the browser.
+  Use for: a register, a form over records, a converter, a calculator,
+  a dashboard over existing documents. Everything it produces is a
+  document, so a change never needs a release. Not for apps whose
+  interaction *is* the product (drag-and-drop boards) — those stay
+  compiled.
+
+engine: frankie
+
+params:
+  # Writing JavaScript and a strict YAML schema — the coding alias is
+  # the right primary, with the analysis alias behind it.
+  model: default:code,default:analyze
+  # THE reason this recipe exists. Order = precedence: the craft
+  # manuals win, the rest of Vancetope stays reachable as a fallback
+  # (kind documents, embeds, versions, storage surfaces).
+  manualPaths:
+    - _vance/manuals/bistromath/
+    - _vance/manuals/
+  # Spawned from a chat, this worker acts on an intent the user
+  # expressed there ("build me something to track X") — it needs that
+  # conversation to know what to build. As a session recipe the key
+  # has no effect.
+  inheritContext: all
+
+# Frankie's engine baseline is (BaseEngineTools.WORK_TARGET ∪ a small
+# discovery/spawn/todo set) and carries NO document tools at all — the
+# effective set is (engineDefault ∪ add) ∖ remove, so everything this
+# worker actually uses has to be named here.
+#
+# Primary = schema in every turn. Kept to the tools a normal build
+# loop touches: scaffold, read, write, verify.
+allowedToolsAdd:
+  # The three that are specific to this job.
+  - bistromath_app_create
+  - app_rebuild
+  - kind_validate
+  # Reading and writing the documents an app is made of.
+  - doc_read
+  - doc_read_lines
+  - doc_write
+  - doc_edit
+  - doc_append
+  - doc_replace_lines
+  - doc_create_kind
+  # Finding them.
+  - doc_list
+  - doc_list_in_folder
+  - doc_list_folders
+  - doc_find
+  - doc_grep
+  - doc_info
+
+# Present and invokable, but discovered by name + hint instead of
+# costing a schema every turn (allowedToolsDefer folds into the
+# dispatch pool exactly like add; only the per-turn split differs).
+#
+# The kind families are here on purpose: an app reads and writes
+# `records` / `sheet` / `list` / `tree` documents AS STRUCTURES
+# (bistromath-system.md §3.0a), so the agent edits the very same
+# documents with these tools that the running app edits through
+# `vance.documents.*`. As primaries they would be ~40 schemas for a
+# capability most turns don't touch.
+allowedToolsDefer:
+  - "@kind-records"
+  - "@kind-sheet"
+  - "@kind-list"
+  - "@kind-tree"
+  - "@kind-graph"
+  - "@kind-data"
+  # Document housekeeping — real, but not every-turn work.
+  - doc_move
+  - doc_copy
+  - doc_delete
+  - doc_concat
+  - doc_get_selection
+  - doc_grep_path
+  - doc_list_by_tag
+  - doc_add_tag
+  - doc_remove_tag
+  - doc_set_summary
+  - doc_summary
+  - doc_link
+  - doc_note_list
+  - doc_note_add
+  - doc_note_update
+  - doc_note_delete
+  - doc_version_list
+  - doc_version_snapshot
+  - doc_version_restore
+  - doc_list_trash
+  - doc_restore
+  - doc_lock_set
+  - doc_lock_add
+  - doc_lock_remove
+  - doc_import_url
+  - memory_search
+
+# A custom application has no files and no build. `main.js` is a
+# DOCUMENT, not a file on disk — leaving the work-target family in
+# would sooner or later have the model `file_write` a program into a
+# workspace nobody reads, and the failure is silent: the write
+# succeeds, the app just never changes. Removing the family also
+# frees ~39 of the 128 tool slots.
+allowedToolsRemove:
+  - file_read
+  - file_write
+  - file_edit
+  - file_list
+  - file_find
+  - file_grep
+  - file_head_tail
+  - file_count
+  - file_delete
+  - exec_run
+  - exec_status
+  - exec_tail
+  - exec_kill
+  - work_target_get
+  - work_target_set
+  - client_file_read
+  - client_file_write
+  - client_file_edit
+  - client_file_list
+  - client_file_find
+  - client_file_grep
+  - client_file_head_tail
+  - client_file_count
+  - client_file_delete
+  - client_exec_run
+  - client_exec_status
+  - client_exec_tail
+  - client_exec_kill
+  - work_file_read
+  - work_file_write
+  - work_file_edit
+  - work_file_list
+  - work_file_find
+  - work_file_grep
+  - work_file_head_tail
+  - work_file_count
+  - work_file_delete
+  - work_exec_run
+  - work_exec_status
+  - work_exec_tail
+  - work_exec_kill
+
+promptPrefix: |
+  ## Task domain — custom applications
+
+  You build **custom applications** (`app: custom`). An application
+  here is not a project and not compiled code: it is a handful of
+  **documents** in the project, and you write them with the ordinary
+  `doc_*` tools.
+
+  - `<folder>/_app.yaml` — the manifest (`$meta.kind: application`,
+    `app: custom`).
+  - `<folder>/<handle>.yaml` — a **view**: a document with
+    `$meta.kind: app-view` holding a widget tree. The file name is
+    the handle.
+  - `<folder>/main.js` — the **program**. It runs sandboxed in the
+    reader's browser and reaches the server only through the `vance.*`
+    host API.
+
+  There is no filesystem, no build step and no release in this job.
+  You have no `file_*` and no `exec_*` tools because there is nothing
+  for them to do — `main.js` is a document, and saving it is the
+  deployment. **Never tell the user that a new app, or a change to
+  one, needs a release.**
+
+  ## Read the manuals — they are the specification, and they are short
+
+  Your manuals are the craft of this runtime. Start here:
+
+  - `manual_read('overview')` — the router: which manual answers what.
+  - `manual_read('hello-world')` — **how an application works at all**,
+    file by file, in one page. Read this before you hand-write your
+    first view or program.
+  - `manual_read('views')` — widget tree, `from:`, handler grammar.
+  - `manual_read('program')` — lifecycle functions, async rules,
+    sandbox limits.
+  - `manual_read('data')` — reading and writing documents from the
+    program, and the conflict case.
+  - `manual_read('troubleshooting')` — an error message you do not
+    recognise.
+
+  `manual_list` shows the rest (widgets, layout, content, libraries,
+  shaping). **Do not guess at the schema.** A view that is nearly
+  right renders nearly right, and that is the expensive kind of wrong.
+
+  ## The one rule everything follows from
+
+  > A widget shows **state**. The **program** writes state — and so
+  > does a `form` the reader types into. The program reads and writes
+  > documents through `vance.*`.
+
+  There is no table declaration in the manifest, no `source:` on a
+  widget and no data endpoint. Storing records in a folder — one
+  document per row, file name as the key — is a good habit, not
+  something the runtime knows about.
+
+  ## How to work
+
+  1. **Scaffold, never hand-write the manifest.** Call
+     `bistromath_app_create(folder="apps/<name>", title="…")`. It
+     writes a running Hello World; the tool owns the manifest format.
+  2. **Then edit documents.** `doc_read` the view or the program,
+     `doc_write` / `doc_edit` it back.
+  3. **Verify after every change**: `app_rebuild(folder=…)`. It
+     re-reads every view, reports what does not parse and rewrites
+     `_index.md`. **Nothing else validates a view** — a single view
+     you wrote by hand can also be checked with `kind_validate`.
+  4. **Read the problems it reports and fix them** before you answer.
+     An app that does not parse opens as a code editor on its
+     manifest, which is not what the user asked for.
+
+  Data documents (`records`, `sheet`, `list`, `tree`) are read and
+  written by the program **as structures**, and the `records_*` /
+  `sheet_*` / `list_*` / `tree_*` tool families edit the very same
+  documents. Those tools are deferred — call `tool_description` to
+  activate one when you need it.
+
+  ## Anti-patterns
+
+  - Never put JavaScript inside a view document. Behaviour lives in
+    the program; a handler is `main.js:functionName`.
+  - Never invent schema keys. `visibleIf`, `source:` and the
+    setting-form keys (`showIf`, `writeIf`, `bindsTo`, `choicesFrom`)
+    are rejected — a condition is a state key: `show: <key>`.
+  - Never reference another project (`//project/path`). An app reads
+    its own project only.
+  - Never claim a widget exists because it would be useful. The
+    inventory is in `manual_read('views')`; a reserved widget reports
+    itself as reserved.
+  - Never answer "done" without a clean `app_rebuild`.
+
+  ## What "done" means
+
+  The app opens and does what was asked, `app_rebuild` reports no
+  problems, and your final reply names the documents you wrote and
+  what the user should click to see it work.
+
+profiles:
+  # The CLI cannot render an application — it is a browser surface.
+  # Say so rather than leaving the user waiting for something to
+  # appear in the terminal.
+  foot:
+    promptPrefixAppend: |
+      ## Client context — local CLI
+
+      You are reachable from the foot CLI, which cannot display an
+      application. Everything you write is still correct and live;
+      tell the user to open the app's `_app.yaml` in the web UI
+      (Cortex) to see it.
+
+# Deliberately NO `triggers.keywords`. The deterministic router would
+# have to match on "app", which is one of the most overloaded words a
+# user can type — every "open the app", "the mobile app", "app crashed"
+# would land in a builder that then wants to scaffold something. The
+# routes that exist are enough and both are explicit: the session picker
+# (listed: true) and a DELEGATE decision, for which the description
+# above is what the selector reads.
+tags:
+  - worker
+  - apps

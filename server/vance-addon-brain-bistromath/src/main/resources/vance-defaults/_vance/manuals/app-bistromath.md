@@ -43,6 +43,20 @@ After editing anything in an app folder, run `app_rebuild(folder=…)`. It
 re-reads every view, reports what does not parse, and rewrites `_index.md` with
 what the runtime actually found. Nothing else validates a view.
 
+## When it is more than a small edit
+
+Building an app from nothing, or reworking one, is a job with its own
+manuals — spawn the worker that has them:
+
+```
+process_spawn(recipe="app-builder", task="…")
+```
+
+It reads `_vance/manuals/bistromath/` as its own manual set (the widget
+schema, the program lifecycle, the data path) and carries no file or shell
+tools, because an app is documents. Small changes — one label, one column,
+one handler — are yours to make right here.
+
 ## The one rule you must not get wrong
 
 > A widget shows **state**. The **program** writes state, and so does a `form`

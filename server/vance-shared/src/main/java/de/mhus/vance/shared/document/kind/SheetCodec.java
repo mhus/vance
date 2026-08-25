@@ -23,7 +23,7 @@ import tools.jackson.databind.ObjectMapper;
  * throw.
  *
  * <p><b>Parity harness.</b> This codec and its TS twin
- * {@code client/packages/vance-face/src/document/sheetCodec.ts} must agree on the wire
+ * {@code client/packages/shared/src/kindCodecs/sheetCodec.ts} must agree on the wire
  * format. A shared fixture corpus at
  * {@code test-fixtures/kind-codecs/sheet/} pins that agreement; it
  * is read by both {@code SheetCodecParityTest} (Java) and

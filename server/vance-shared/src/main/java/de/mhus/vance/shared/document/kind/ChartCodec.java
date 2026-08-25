@@ -25,7 +25,7 @@ import tools.jackson.databind.ObjectMapper;
  * does not normalise between the two.
  *
  * <p><b>Parity harness.</b> This codec and its TS twin
- * {@code client/packages/vance-face/src/document/chartCodec.ts} must agree on the wire
+ * {@code client/packages/vance-face/src/kindViews/chartCodec.ts} must agree on the wire
  * format. A shared fixture corpus at
  * {@code test-fixtures/kind-codecs/chart/} pins that agreement; it
  * is read by both {@code ChartCodecParityTest} (Java) and

@@ -102,7 +102,7 @@ often here.
 | `vance.state.set(key, value)` | what widgets bound with `from:` show |
 | `vance.state.get(key)` | read it back — including what a reader typed into a `form` |
 | `vance.documents.list(path)` | documents directly in a folder |
-| `vance.documents.read(path)` | content; an object for YAML/JSON |
+| `vance.documents.read(path)` | content; a structure for YAML/JSON and for kind documents |
 | `vance.documents.write(path, content, opts?)` | store content; refused if it changed since read |
 | `vance.documents.create(path, content)` | like `write`, but fails if one is there |
 | `vance.documents.delete(path)` | remove it |

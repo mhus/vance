@@ -19,7 +19,7 @@ import {
   parseYamlBody,
   unwrapJsonMeta,
   wrapJsonMeta,
-} from '@vance/shared';
+} from '../documentHeaderCodec';
 
 export interface SheetCell {
   /** A1-Adresse, kanonisch uppercase (`A1`, `B5`, `AB99`). */
@@ -151,7 +151,23 @@ export function parseSheet(body: string, mimeType: string): SheetDocument {
   throw new SheetCodecError(`Unsupported mime type for sheet: ${mimeType}`);
 }
 
+function fillSheet(doc: SheetDocument): SheetDocument {
+  return {
+    ...doc,
+    kind: doc.kind || 'sheet',
+    schema: doc.schema ?? [],
+    rows: doc.rows ?? null,
+    extra: doc.extra ?? {},
+    columns: doc.columns ?? {},
+    rowHeights: doc.rowHeights ?? {},
+    rowBorders: doc.rowBorders ?? {},
+    cells: (doc.cells ?? []).map((c) => ({ ...c, data: c.data ?? '', extra: c.extra ?? {} })),
+  };
+}
+
+/** @see fillRecords in recordsCodec — same reason, same guarantee. */
 export function serializeSheet(doc: SheetDocument, mimeType: string): string {
+  doc = fillSheet(doc);
   if (isJson(mimeType)) return serializeSheetJson(doc);
   if (isYaml(mimeType)) return serializeSheetYaml(doc);
   throw new SheetCodecError(`Unsupported mime type for sheet: ${mimeType}`);

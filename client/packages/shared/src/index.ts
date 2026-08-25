@@ -1,6 +1,7 @@
 export * from './auth/index';
 export * from './damogran';
 export * from './documentHeaderCodec';
+export * from './kindCodecs/index';
 export * from './facelift/index';
 export * from './localized';
 export * from './rest/index';

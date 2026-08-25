@@ -6,7 +6,7 @@
 // `link`) out of `TreeItem.extra`, because the tree codec parses
 // unknown json/yaml keys into that pass-through map.
 
-import type { TreeDocument, TreeItem } from './treeItemsCodec';
+import type { TreeDocument, TreeItem } from '@vance/shared';
 
 /** Document-level mindmap options carried in the `mindmap:` block. */
 export interface MindmapOptions {

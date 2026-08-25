@@ -23,7 +23,7 @@ import {
   parseYamlBody,
   unwrapJsonMeta,
   wrapJsonMeta,
-} from '@vance/shared';
+} from '../documentHeaderCodec';
 
 /** A single list item. Extra fields are preserved across round-trip
  *  for json/yaml; markdown can only carry `text`. */
@@ -74,7 +74,17 @@ export function parseList(body: string, mimeType: string): ListDocument {
   throw new ListCodecError(`Unsupported mime type for list: ${mimeType}`);
 }
 
+function fillList(doc: ListDocument): ListDocument {
+  return {
+    kind: doc.kind || 'list',
+    extra: doc.extra ?? {},
+    items: (doc.items ?? []).map((i) => ({ text: i.text ?? '', extra: i.extra ?? {} })),
+  };
+}
+
+/** @see fillRecords in recordsCodec — same reason, same guarantee. */
 export function serializeList(doc: ListDocument, mimeType: string): string {
+  doc = fillList(doc);
   if (isMarkdown(mimeType)) return serializeListMarkdown(doc);
   if (isJson(mimeType)) return serializeListJson(doc);
   if (isYaml(mimeType)) return serializeListYaml(doc);

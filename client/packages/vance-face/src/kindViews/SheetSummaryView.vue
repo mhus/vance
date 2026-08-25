@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { VButton, VModal } from '@/components';
 import SheetView from './SheetView.vue';
-import { parseSheet, serializeSheet, type SheetDocument } from './sheetCodec';
+import { parseSheet, serializeSheet, type SheetDocument } from '@vance/shared';
 import { useDocuments } from '@/composables/useDocuments';
 
 /**

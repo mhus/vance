@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { Transformer } from 'markmap-lib';
 import { Markmap } from 'markmap-view';
-import { parseTree, type TreeDocument } from './treeItemsCodec';
+import { parseTree, type TreeDocument } from '@vance/shared';
 import { treeToMarkmapMarkdown } from './mindmapAdapter';
 import type { DocumentDto } from '@vance/generated';
 import type { EmbedRef } from '@/kindRenderers/parseVanceUri';

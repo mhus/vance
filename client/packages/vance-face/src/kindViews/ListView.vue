@@ -3,7 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VueDraggable } from 'vue-draggable-plus';
 import { VButton } from '@/components';
-import { parseList, type ListDocument, type ListItem } from './listItemsCodec';
+import { parseList, type ListDocument, type ListItem } from '@vance/shared';
 import type { DocumentDto } from '@vance/generated';
 import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
 import type { FenceMeta } from '@/kindRenderers/parseFenceLang';

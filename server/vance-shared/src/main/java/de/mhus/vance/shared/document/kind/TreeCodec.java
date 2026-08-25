@@ -23,7 +23,7 @@ import tools.jackson.databind.ObjectMapper;
  * <p>Stateless utility — all methods static.
  *
  * <p><b>Parity harness.</b> This codec and its TS twin
- * {@code client/packages/vance-face/src/document/treeItemsCodec.ts} must agree on the wire
+ * {@code client/packages/shared/src/kindCodecs/treeItemsCodec.ts} must agree on the wire
  * format. A shared fixture corpus at
  * {@code test-fixtures/kind-codecs/tree/} pins that agreement; it
  * is read by both {@code TreeCodecParityTest} (Java) and

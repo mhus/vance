@@ -9,7 +9,7 @@
  * stable.
  *
  * <p>Server-side counterpart of the TypeScript codecs under
- * {@code packages/vance-face/src/document/*Codec.ts}. Same wire
+ * {@code packages/shared/src/kindCodecs/*Codec.ts} (records, sheet, list, tree) and {@code packages/vance-face/src/kindViews/*Codec.ts} (the rest). Same wire
  * format, same backward-compat rules — both sides must agree.
  *
  * <p>Specs (one per kind):

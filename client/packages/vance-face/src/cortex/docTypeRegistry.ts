@@ -28,36 +28,34 @@ const DiagramView = defineAsyncComponent(
   () => import('@/kindViews/DiagramView.vue'),
 );
 
+// The four data codecs live in `@vance/shared` so surfaces outside this host
+// can reach them too — a Brain addon's bundle cannot import from `vance-face`.
+// The presentation codecs below stay here: a program has little reason to write
+// a chart or a slide deck, and an embed already displays one.
 import {
-  parseList,
-  serializeList,
   isListMime,
-} from '@/kindViews/listItemsCodec';
+  isRecordsMime,
+  isSheetMime,
+  isTreeMime,
+  parseList,
+  parseRecords,
+  parseSheet,
+  parseTree,
+  serializeList,
+  serializeRecords,
+  serializeSheet,
+  serializeTree,
+} from '@vance/shared';
 import {
   parseChecklist,
   serializeChecklist,
   isChecklistMime,
 } from '@/kindViews/checklistCodec';
 import {
-  parseTree,
-  serializeTree,
-  isTreeMime,
-} from '@/kindViews/treeItemsCodec';
-import {
-  parseRecords,
-  serializeRecords,
-  isRecordsMime,
-} from '@/kindViews/recordsCodec';
-import {
   parseChart,
   serializeChart,
   isChartMime,
 } from '@/kindViews/chartCodec';
-import {
-  parseSheet,
-  serializeSheet,
-  isSheetMime,
-} from '@/kindViews/sheetCodec';
 import {
   parseGraph,
   serializeGraph,

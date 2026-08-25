@@ -21,7 +21,7 @@ import tools.jackson.databind.ObjectMapper;
  * <p>Stateless utility — all methods static.
  *
  * <p><b>Parity harness.</b> This codec and its TS twin
- * {@code client/packages/vance-face/src/document/recordsCodec.ts} must
+ * {@code client/packages/shared/src/kindCodecs/recordsCodec.ts} must
  * agree on the wire format. A shared fixture corpus at
  * {@code test-fixtures/kind-codecs/records/} pins that agreement; it is
  * read by both {@code RecordsCodecParityTest} (Java) and

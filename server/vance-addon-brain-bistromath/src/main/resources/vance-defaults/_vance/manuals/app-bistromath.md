@@ -59,7 +59,9 @@ runtime knows about.
 This build reads **and writes** documents (`vance.documents.write` / `create` /
 `delete`; a write is refused if the document changed since the app read it), and
 a `form` widget is **editable** — what the reader types goes into state, the
-program stores it. It also reacts to writes in its own folder
+program stores it. A `records`/`sheet`/`list`/`tree` document is read and
+written **as a structure**, so an app edits the same files the built-in editors
+and the `records_*` tools do. It also reacts to writes in its own folder
 (`onDocumentChanged`), so an agent writing a record shows up without a reload.
 No `visibleIf`, no `import` in the program, and `if` / `repeat` / `chart` /
 `dialog` are reserved but not rendered.

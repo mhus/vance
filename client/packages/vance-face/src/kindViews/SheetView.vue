@@ -9,10 +9,10 @@ import type {
   SheetComputed,
   SheetComputedValue,
   SheetDocument,
-} from './sheetCodec';
+} from '@vance/shared';
 import {
   columnIndexFromLetter, columnLetterFromIndex, normalizeBorders, parseSheet,
-} from './sheetCodec';
+} from '@vance/shared';
 
 /**
  * Editor for `kind: sheet` documents. HTML grid with A1 cell

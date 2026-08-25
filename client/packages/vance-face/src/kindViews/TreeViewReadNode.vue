@@ -5,7 +5,7 @@
  * as nested `<ul>`. No edit affordances, no drag handles — just the
  * structure.
  */
-import type { TreeItem } from './treeItemsCodec';
+import type { TreeItem } from '@vance/shared';
 
 defineOptions({ name: 'TreeViewReadNode' });
 

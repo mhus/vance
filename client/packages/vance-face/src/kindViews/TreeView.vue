@@ -2,7 +2,7 @@
 import { computed, inject, nextTick, provide, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VueDraggable } from 'vue-draggable-plus';
-import { parseTree, type TreeDocument, type TreeItem } from './treeItemsCodec';
+import { parseTree, type TreeDocument, type TreeItem } from '@vance/shared';
 import TreeViewReadNode from './TreeViewReadNode.vue';
 import type { DocumentDto } from '@vance/generated';
 import type { EmbedRef } from '@/kindRenderers/parseVanceUri';

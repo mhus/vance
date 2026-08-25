@@ -153,6 +153,35 @@ edit.
 Mounted documents (`/_ext/…`) carry no version, so nothing guards them; most
 mounts refuse writes outright.
 
+## Documents that are a structure
+
+`records`, `sheet`, `list` and `tree` store their body in their own grammar, not
+in YAML. `read` gives you the **structure** anyway — the host decodes by kind:
+
+```js
+const t = await vance.documents.read('table.md');
+// { kind: 'records', schema: ['customer','amount'], items: [{ values: {...} }] }
+
+t.items.push({ values: { customer: 'Acme', amount: '1250' } });
+await vance.documents.write('table.md', t);      // written back in its own grammar
+```
+
+This is the point of it: **your app edits the same documents everything else
+edits.** The built-in Records editor opens that file, `records_add_row` appends
+to it, an `embed` displays it — and your program reads and writes it. No copy,
+no export, no second format.
+
+Two things to know:
+
+- **Values are strings** in these formats. A `sheet` cell and a `records` field
+  hold text; convert in the program if you need a number.
+- **`create` has no codec**, because a kind lives in the document's header and
+  there is no document yet. Write the body as a string once — every later
+  `read`/`write` goes through the codec.
+
+Chart, diagram, map and slide documents are **not** decoded: a program has
+little reason to author one, and `embed` already shows them.
+
 ## Showing what you read
 
 Anything a widget shows goes through state (`manual_read('views')`). For values

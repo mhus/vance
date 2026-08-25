@@ -3,6 +3,14 @@ import {
   brainFetch,
   brainFetchTextWithMeta,
   brainSendRawWithMeta,
+  parseList,
+  parseRecords,
+  parseSheet,
+  parseTree,
+  serializeList,
+  serializeRecords,
+  serializeSheet,
+  serializeTree,
 } from '@vance/shared';
 import { dump as dumpYaml, load as parseYaml } from 'js-yaml';
 import type { AppScan } from './generated/bistromath/AppScan';
@@ -87,7 +95,34 @@ interface FolderResponse {
 interface DocSummary {
   id?: string;
   mimeType?: string;
+  /** `$meta.kind`, mirrored onto the document. Decides how the body is read. */
+  kind?: string;
 }
+
+/**
+ * The kinds whose body is a structure rather than prose.
+ *
+ * <p>These four have a codec on both sides of the wire (Java in
+ * `vance-shared`, TypeScript in `@vance/shared`, one shared fixture corpus
+ * pinning them together). A program reading such a document gets the structure
+ * — the same structure the built-in editor and the `records_*` / `sheet_*` /
+ * `tree_*` / `list_*` tools work on. Which is the point: an app edits the
+ * documents the rest of the system already edits.
+ *
+ * <p>Presentation kinds (`chart`, `diagram`, `map`, `slides`, `workflow`) are
+ * deliberately absent. A program has little reason to author one, an `embed`
+ * already displays it, and their codecs stay in the web host.
+ */
+const CODECS: Record<
+  string,
+  { parse: (body: string, mime: string) => unknown;
+    serialize: (doc: never, mime: string) => string }
+> = {
+  records: { parse: parseRecords, serialize: serializeRecords as never },
+  sheet: { parse: parseSheet, serialize: serializeSheet as never },
+  list: { parse: parseList, serialize: serializeList as never },
+  tree: { parse: parseTree, serialize: serializeTree as never },
+};
 
 /** Raised when a write lost a race. The program can catch it by name. */
 export class DocumentChangedError extends Error {
@@ -197,7 +232,7 @@ export class DocumentAccess {
     const url = `documents/${encodeURIComponent(doc.id!)}/content${query ? `?${query}` : ''}`;
     const { text, response } = await brainFetchTextWithMeta(url);
     this.remember(path, response);
-    return decode(text ?? '', doc.mimeType ?? '');
+    return decode(text ?? '', doc.mimeType ?? '', doc.kind);
   }
 
   /**
@@ -236,7 +271,7 @@ export class DocumentAccess {
       const { response } = await brainSendRawWithMeta<unknown>(
         'PUT',
         `documents/${encodeURIComponent(doc.id!)}/content`,
-        encode(content, mime),
+        encode(content, mime, doc.kind),
         `${mime}; charset=utf-8`,
         headers,
       );
@@ -265,6 +300,11 @@ export class DocumentAccess {
     }
     // Mime is left to the server, which derives it from the extension; sending
     // our own guess would be a second rule for the same question.
+    //
+    // No codec path here, and that is a real limit rather than an oversight: a
+    // kind lives in the document's header, and there is no document yet. To
+    // create a kind document, write its body as a string once — then every
+    // later `read`/`write` goes through the codec.
     await brainFetch<unknown>('POST', `documents?${qs({ projectId: this.projectId })}`, {
       body: { path, inlineText: encode(content, mimeFromPath(path)) },
     });
@@ -318,7 +358,32 @@ function mimeFromPath(path: string): string {
   return 'text/plain';
 }
 
-function decode(text: string, mime: string): unknown {
+/**
+ * Bytes → what the program sees.
+ *
+ * <p><b>Kind before mime.</b> A `kind: records` document is markdown on disk,
+ * so reading it by mime would hand the program a wall of CSV-light text. The
+ * host knows the kind — the same argument that already put mime-based parsing
+ * here: the decision belongs where the knowledge is, once.
+ *
+ * <p>A codec that throws falls back to the mime path rather than failing the
+ * read. A document whose header claims a kind its body does not match is a
+ * real state (somebody hand-edited it), and the useful answer there is the raw
+ * text the author can look at, not an error where the data should be.
+ */
+function decode(text: string, mime: string, kind?: string): unknown {
+  const codec = kind ? CODECS[kind.toLowerCase()] : undefined;
+  if (codec) {
+    try {
+      return codec.parse(text, mime);
+    } catch {
+      return decodeByMime(text, mime);
+    }
+  }
+  return decodeByMime(text, mime);
+}
+
+function decodeByMime(text: string, mime: string): unknown {
   if (mime.includes('json')) {
     try {
       return strip(JSON.parse(text));
@@ -343,8 +408,13 @@ function decode(text: string, mime: string): unknown {
  * Anything else is serialised by the document's own type, so `read` then
  * `write` round-trips through the same representation.
  */
-function encode(content: unknown, mime: string): string {
+function encode(content: unknown, mime: string, kind?: string): string {
+  // A string is always taken literally, kind or no kind: the program said
+  // exactly what it wanted on disk, and re-serialising it would be the host
+  // overruling that.
   if (typeof content === 'string') return content;
+  const codec = kind ? CODECS[kind.toLowerCase()] : undefined;
+  if (codec) return codec.serialize(content as never, mime);
   if (mime.includes('json')) return `${JSON.stringify(content, null, 2)}\n`;
   return dumpYaml(content, { noRefs: true, lineWidth: 100 });
 }

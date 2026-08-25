@@ -22,7 +22,7 @@ import tools.jackson.databind.ObjectMapper;
  * collision). Writes only the canonical form.
  *
  * <p><b>Parity harness.</b> This codec and its TS twin
- * {@code client/packages/vance-face/src/document/graphCodec.ts} must agree on the wire
+ * {@code client/packages/vance-face/src/kindViews/graphCodec.ts} must agree on the wire
  * format. A shared fixture corpus at
  * {@code test-fixtures/kind-codecs/graph/} pins that agreement; it
  * is read by both {@code GraphCodecParityTest} (Java) and

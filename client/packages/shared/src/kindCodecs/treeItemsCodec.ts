@@ -18,7 +18,7 @@ import {
   parseYamlBody,
   unwrapJsonMeta,
   wrapJsonMeta,
-} from '@vance/shared';
+} from '../documentHeaderCodec';
 
 /** A tree item. Extra fields are preserved across round-trip for
  *  json/yaml; markdown can only carry `text` + nesting. */
@@ -70,7 +70,17 @@ export function parseTree(body: string, mimeType: string): TreeDocument {
   throw new TreeCodecError(`Unsupported mime type for tree: ${mimeType}`);
 }
 
+function fillTreeItems(items: TreeItem[] | undefined): TreeItem[] {
+  return (items ?? []).map((i) => ({
+    text: i.text ?? '',
+    extra: i.extra ?? {},
+    children: fillTreeItems(i.children),
+  }));
+}
+
+/** @see fillRecords in recordsCodec — same reason, same guarantee. */
 export function serializeTree(doc: TreeDocument, mimeType: string): string {
+  doc = { kind: doc.kind || 'tree', extra: doc.extra ?? {}, items: fillTreeItems(doc.items) };
   if (isMarkdown(mimeType)) return serializeTreeMarkdown(doc);
   if (isJson(mimeType)) return serializeTreeJson(doc);
   if (isYaml(mimeType)) return serializeTreeYaml(doc);

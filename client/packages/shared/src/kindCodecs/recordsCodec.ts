@@ -27,7 +27,7 @@ import {
   parseYamlBody,
   unwrapJsonMeta,
   wrapJsonMeta,
-} from '@vance/shared';
+} from '../documentHeaderCodec';
 
 /** A single record. `values` holds the schema-field-keyed strings.
  *  `extra` keeps unknown json/yaml keys for round-trip; `overflow`
@@ -83,10 +83,39 @@ export function parseRecords(body: string, mimeType: string): RecordsDocument {
 }
 
 export function serializeRecords(doc: RecordsDocument, mimeType: string): string {
+  doc = fillRecords(doc);
   if (isMarkdown(mimeType)) return serializeRecordsMarkdown(doc);
   if (isJson(mimeType)) return serializeRecordsJson(doc);
   if (isYaml(mimeType)) return serializeRecordsYaml(doc);
   throw new RecordsCodecError(`Unsupported mime type for records: ${mimeType}`);
+}
+
+
+/**
+ * Fill in what a hand-built document may have left out.
+ *
+ * <p>The Java twin normalises these in its record's compact constructor, so a
+ * caller there can hand over a half-built row and get a document back. The
+ * TypeScript half did not, which made every optional collection a crash
+ * waiting for the first caller that builds a document rather than parsing one —
+ * and that caller now exists: a program reading a document, pushing a row and
+ * writing it back.
+ *
+ * <p>Parity, not a wire-format change: a well-formed document serialises
+ * byte-identically, so the shared fixture corpus is untouched. Fixtures could
+ * never have caught this — they are all well-formed by construction.
+ */
+function fillRecords(doc: RecordsDocument): RecordsDocument {
+  return {
+    kind: doc.kind || 'records',
+    schema: doc.schema ?? [],
+    extra: doc.extra ?? {},
+    items: (doc.items ?? []).map((i) => ({
+      values: i.values ?? {},
+      extra: i.extra ?? {},
+      overflow: i.overflow ?? [],
+    })),
+  };
 }
 
 /** Whether the codec can handle this mime type — used by the editor

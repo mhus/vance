@@ -5,8 +5,12 @@
  * Spec: specification/inline-and-embedded-content.md §3.1 / §3.2 /
  * §11.7.
  *
- * URI forms:
- *   vance:/<path>?kind=<kind>                  current project
+ * URI forms — the scheme is a marker, not a mode: what follows it
+ * decides where the reference lands, exactly as on the server
+ * ({@code DocumentRefResolver}).
+ *
+ *   vance:<path>?kind=<kind>                   relative to the referrer folder
+ *   vance:/<path>?kind=<kind>                  current project, from its root
  *   vance://<projectId>/<path>?kind=<kind>     cross-project
  *
  * Cross-tenant is intentionally not part of the schema — any URI
@@ -34,6 +38,16 @@ export interface EmbedRef {
   mode: 'preview' | 'reference';
   /** `?caption=` query param when present. */
   caption?: string;
+  /**
+   * Everything in the query that is *not* ours — the read parameters of a
+   * parameterised view (`?from=…&to=…` on a mounted document), passed on
+   * as written and undefined when there is nothing left over.
+   *
+   * Kept because dropping it is the failure with no symptom: the base
+   * document renders, and it looks like the link worked. Mirrors
+   * {@code MountQuery.forward} on the server, down to the reserved list.
+   */
+  viewQuery?: string;
   /** Link text (Markdown `[text](...)`) or image alt (`![alt](...)`). */
   text: string;
   /** Original href, kept for debugging / a11y. */
@@ -45,6 +59,17 @@ export interface ParseVanceUriOptions {
   text: string;
   /** Whether the source was image syntax (`![]()`). */
   imageStyle: boolean;
+  /**
+   * Folder of the document this reference was authored in — the base a
+   * relative form resolves against. Omitted (chat, inbox, any surface
+   * whose text belongs to no document) means the project root, which is
+   * also what an empty string means.
+   *
+   * A *folder*, not the document: the caller strips the file name (see
+   * {@code referrerDirOf}), because that is what the reference is
+   * relative to.
+   */
+  referrerDir?: string;
 }
 
 export class VanceUriParseError extends Error {
@@ -85,6 +110,69 @@ function inferKindFromPath(path: string): string | undefined {
   return EXTENSION_KIND_MAP[ext];
 }
 
+/**
+ * Query parameters that belong to Vancetope and never travel to a source.
+ * The reference grammar's own words (`document-refs.md` §1.1) plus the
+ * content endpoint's disposition switch — the same set the server keeps in
+ * {@code MountQuery.RESERVED}. Two namespaces share one query string, so
+ * the split has to be made identically on both sides or a source receives
+ * a word that was never meant for it.
+ */
+const RESERVED_QUERY_PARAMS = new Set(['kind', 'entry', 'mode', 'caption', 'download']);
+
+/**
+ * The part of a query a source would receive, or undefined when nothing is
+ * left. Filtered, never re-serialised: the string is already percent-encoded
+ * and re-encoding would turn `a=1&b=2` into one opaque parameter.
+ */
+function forwardQuery(search: string): string | undefined {
+  const raw = search.replace(/^\?/, '');
+  if (!raw) return undefined;
+  const kept = raw
+    .split('&')
+    .filter((pair) => pair !== '')
+    .filter((pair) => {
+      const eq = pair.indexOf('=');
+      const key = (eq < 0 ? pair : pair.slice(0, eq)).toLowerCase();
+      return !RESERVED_QUERY_PARAMS.has(key);
+    });
+  return kept.length > 0 ? kept.join('&') : undefined;
+}
+
+/**
+ * The folder a document's references resolve against: the document path
+ * minus its file name. A path without a slash sits at the project root,
+ * whose folder is the empty string.
+ */
+export function referrerDirOf(documentPath: string | null | undefined): string {
+  const path = (documentPath ?? '').replace(/^\/+/, '');
+  const slash = path.lastIndexOf('/');
+  return slash < 0 ? '' : path.slice(0, slash);
+}
+
+/**
+ * Collapses `.` / `..` and empty segments, mirroring the server's
+ * {@code DocumentRefResolver.canonicalize}. A `..` that would climb above
+ * the project root throws rather than clamping: the caller asked for a
+ * document outside the project, and silently handing back a different one
+ * is the failure mode nobody can see.
+ */
+function canonicalize(path: string, href: string): string {
+  const out: string[] = [];
+  for (const seg of path.split('/')) {
+    if (seg === '' || seg === '.') continue;
+    if (seg === '..') {
+      if (out.length === 0) {
+        throw new VanceUriParseError('Reference escapes above the project root', href);
+      }
+      out.pop();
+      continue;
+    }
+    out.push(seg);
+  }
+  return out.join('/');
+}
+
 export function parseVanceUri(href: string, opts: ParseVanceUriOptions): EmbedRef {
   // URL constructor accepts custom schemes. We give it a base only
   // if needed; for `vance:` it works out of the box because the
@@ -100,9 +188,19 @@ export function parseVanceUri(href: string, opts: ParseVanceUriOptions): EmbedRe
   }
 
   const project = url.hostname ? decodeURIComponent(url.hostname) : undefined;
-  // url.pathname starts with '/' for both forms; strip the leading slash.
-  const rawPath = url.pathname.replace(/^\//, '');
-  const path = decodeURIComponent(rawPath);
+  // The leading slash is the whole signal: `vance:/a` and `vance://p/a`
+  // arrive with `pathname === '/a'`, `vance:a` with `pathname === 'a'`.
+  // Only the last one is relative, and only then does the referrer
+  // folder come into play — a cross-project ref never does, because its
+  // base is the other project's root.
+  const rawPath = url.pathname;
+  const absolute = rawPath.startsWith('/') || !!project;
+  // Decode before merging, never after: the referrer folder is already a
+  // plain path, and decoding it a second time would corrupt a name that
+  // legitimately contains a percent sign.
+  const decoded = decodeURIComponent(rawPath);
+  const base = absolute ? '' : (opts.referrerDir ?? '');
+  const path = canonicalize(base ? `${base}/${decoded}` : decoded, href);
 
   const explicitKind = url.searchParams.get('kind') ?? undefined;
   const inferredKind = inferKindFromPath(path);
@@ -131,6 +229,7 @@ export function parseVanceUri(href: string, opts: ParseVanceUriOptions): EmbedRe
     entry,
     mode,
     caption,
+    viewQuery: forwardQuery(url.search),
     text: opts.text,
     raw: href,
   };

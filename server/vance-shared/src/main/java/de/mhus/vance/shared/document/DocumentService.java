@@ -154,8 +154,70 @@ public class DocumentService {
     private InputStream openMountedContent(DocumentDocument doc, @Nullable String query) {
         String path = doc.getPath();
         JaglanPort port = requireJaglanPort(path);
-        return port.open(doc.getTenantId(), doc.getProjectId(),
+        InputStream raw = port.open(doc.getTenantId(), doc.getProjectId(),
                 JaglanPaths.mountNameOf(path), JaglanPaths.pathInMount(path), query);
+        return learnKindWhileStreaming(doc, raw);
+    }
+
+    /**
+     * Bytes a mounted read looks at to find the front matter. Bounded on
+     * purpose: it is the one thing standing between "learn the kind" and
+     * "hold a whole document in memory to learn one word from its first
+     * line". A header that does not fit in here is not a header.
+     */
+    private static final int MOUNT_KIND_PROBE_BYTES = 64 * 1024;
+
+    /**
+     * Learn a mounted document's {@code kind} <b>from the stream it is already
+     * being served on</b>, without materialising the body.
+     *
+     * <p>Same shape as the save path ({@link #streamingStoreContent}): read a
+     * bounded probe, act on it, then hand the caller a stitched stream of
+     * probe + remainder. Memory stays at the probe size whatever the document
+     * weighs, which is the whole reason this is not
+     * {@code new String(in.readAllBytes())} — a mounted document can be a
+     * gigabyte-sized export, and the reader asked for a stream, not a copy.
+     *
+     * <p>The alternative — fetching the body a second time just to look at its
+     * head — would double the traffic to the source for every mounted read.
+     * Here the bytes are passing by anyway; this only watches them go.
+     *
+     * <p>Learned from whatever body is served, including a parameterised one:
+     * a view keeps its kind with and without a query (that is the contract in
+     * `specification/public/jaglan-system.md` §5a), so the first read to arrive
+     * is as good as any.
+     */
+    private InputStream learnKindWhileStreaming(DocumentDocument doc, InputStream raw) {
+        if (!canLearnMountedKind(doc)) return raw;
+        byte[] probe = new byte[MOUNT_KIND_PROBE_BYTES];
+        int read;
+        try {
+            read = raw.readNBytes(probe, 0, probe.length);
+        } catch (IOException e) {
+            // The read has already failed; the caller would hit the same error
+            // on its first read. Hand back the stream and let it surface there.
+            log.debug("Could not probe '{}' for its kind: {}", doc.getPath(), e.toString());
+            return raw;
+        }
+        try (InputStream head = new ByteArrayInputStream(probe, 0, read)) {
+            applyLearnedKind(doc, headerParser.parseStream(doc.getMimeType(), head).orElse(null));
+        } catch (IOException | RuntimeException e) {
+            log.debug("Could not read the kind of '{}': {}", doc.getPath(), e.toString());
+        }
+        return new SequenceInputStream(new ByteArrayInputStream(probe, 0, read), raw);
+    }
+
+    /**
+     * Whether reading this row's head could tell us anything new: a mounted
+     * row, no kind yet, and a mime-type that can carry front matter at all
+     * (YAML, JSON, Markdown). The last check is what keeps the probe off
+     * images, archives and video.
+     */
+    private boolean canLearnMountedKind(DocumentDocument doc) {
+        return isMounted(doc.getPath())
+                && doc.getId() != null
+                && doc.getKind() == null
+                && headerParser.supports(doc.getMimeType());
     }
 
     /**
@@ -2273,10 +2335,13 @@ public class DocumentService {
     }
 
     private String readAsString(DocumentDocument doc, @Nullable String query) {
+        // No kind-learning here: every mounted read goes through loadContent,
+        // which learns from the stream itself (see learnKindWhileStreaming).
+        // A second learner on the materialised text would be a second thing to
+        // keep in step for no gain — and it would only ever cover the callers
+        // that happen to want a String.
         try (InputStream in = loadContent(doc, query)) {
-            String text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            backfillMountedKind(doc, text);
-            return text;
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             log.warn("Failed to read document id='{}' path='{}': {}",
                     doc.getId(), doc.getPath(), e.toString());
@@ -2285,38 +2350,33 @@ public class DocumentService {
     }
 
     /**
-     * Learn a mounted document's {@code kind} the first time its body is read.
+     * Write a learned header onto the row.
      *
      * <p>Kind comes from the front matter, so it needs the content — and a
      * mounted document's metadata is produced by a {@code stat}, which
      * deliberately does not fetch bytes: doing so would turn one folder
      * listing into a download per file. So the row starts without a kind, and
-     * the first read is the moment the content is present anyway.
+     * a read is the moment the content is present anyway.
      *
-     * <p>Guarded to stay a one-off: only for a mounted row, only when the kind
-     * is still unknown, and only for a textual mime type. Best-effort — a
-     * failed write must never break the read it rode along with, and the worst
-     * case is that the next read tries again.
+     * <p>Guarded to stay a one-off by {@link #canLearnMountedKind}.
+     * Best-effort — a failed write must never break the read it rode along
+     * with, and the worst case is that the next read tries again.
+     *
+     * <p>A header without a {@code kind} is not written: it would look like a
+     * successful learn while leaving the field null, and the row would be
+     * probed again on the next read anyway.
      */
-    private void backfillMountedKind(DocumentDocument doc, String text) {
-        if (!isMounted(doc.getPath()) || doc.getId() == null) return;
-        if (doc.getKind() != null || !isTextual(doc.getMimeType())) return;
-        try {
-            Optional<DocumentHeader> parsed = headerParser.parse(doc.getMimeType(), text);
-            if (parsed.isEmpty() || parsed.get().getKind() == null) return;
-            DocumentHeader header = parsed.get();
-            doc.setKind(header.getKind());
-            doc.setHeaders(new LinkedHashMap<>(header.getValues()));
-            mongoTemplate.updateFirst(
-                    Query.query(Criteria.where("_id").is(doc.getId())),
-                    new Update().set("kind", header.getKind())
-                            .set("headers", header.getValues()),
-                    DocumentDocument.class);
-            log.debug("Backfilled kind='{}' for mounted document '{}'",
-                    header.getKind(), doc.getPath());
-        } catch (RuntimeException e) {
-            log.debug("Could not backfill kind for '{}': {}", doc.getPath(), e.toString());
-        }
+    private void applyLearnedKind(DocumentDocument doc, @Nullable DocumentHeader header) {
+        if (header == null || header.getKind() == null) return;
+        doc.setKind(header.getKind());
+        doc.setHeaders(new LinkedHashMap<>(header.getValues()));
+        mongoTemplate.updateFirst(
+                Query.query(Criteria.where("_id").is(doc.getId())),
+                new Update().set("kind", header.getKind())
+                        .set("headers", header.getValues()),
+                DocumentDocument.class);
+        log.debug("Learned kind='{}' for mounted document '{}'",
+                header.getKind(), doc.getPath());
     }
 
     /**

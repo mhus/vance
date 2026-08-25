@@ -36,19 +36,25 @@ class DocumentRefResolverTest {
     }
 
     @Test
-    void schemeAbsolute_sameAsSchemeless() {
+    void scheme_changesNothing_whicheverFormFollowsIt() {
+        // The scheme marks the reference as ours; what follows decides where
+        // it lands. All three forms therefore read the same with and without.
         assertThat(resolver.resolve("vance:/_vance/guards/x.js", root))
                 .isEqualTo(resolver.resolve("/_vance/guards/x.js", root));
         assertThat(resolver.resolve("vance://shared/a/b.js", root))
                 .isEqualTo(resolver.resolve("//shared/a/b.js", root));
+        assertThat(resolver.resolve("vance:a/b.js", skillDir))
+                .isEqualTo(resolver.resolve("a/b.js", skillDir));
     }
 
     @Test
-    void schemeWithoutSlash_isAbsoluteInCurrentProject() {
-        // A scheme always means absolute — `vance:foo` is `/foo`, not relative.
+    void schemeWithoutSlash_isRelativeToTheReferrerDir() {
+        // `vance:a/b.js` next to a skill means the file next to the skill —
+        // reading it as a project-root path would silently address a
+        // different document, or none.
         DocumentRef ref = resolver.resolve("vance:a/b.js", skillDir);
         assertThat(ref.projectId()).isEqualTo("proj");
-        assertThat(ref.path()).isEqualTo("a/b.js");
+        assertThat(ref.path()).isEqualTo("_vance/skills/code-guard/a/b.js");
     }
 
     @Test

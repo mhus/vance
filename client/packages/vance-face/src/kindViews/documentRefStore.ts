@@ -24,10 +24,16 @@ const CURRENT_PROJECT_WAIT_MS = 5_000;
  * Spec: specification/inline-and-embedded-content.md §11.8.
  */
 
-type CacheKey = string; // `${projectId ?? ""}::${path}`
+type CacheKey = string; // `${projectId ?? ""}::${path}::${viewQuery ?? ""}`
 
-function keyFor(projectId: string | undefined, path: string): CacheKey {
-  return `${projectId ?? ''}::${path}`;
+/**
+ * The read parameters are part of the key, not decoration: a parameterised
+ * view is the same row answering differently, so two windows of one
+ * document must not share a cache entry — the second reader would get the
+ * first one's numbers under their own parameters.
+ */
+function keyFor(projectId: string | undefined, path: string, viewQuery?: string): CacheKey {
+  return `${projectId ?? ''}::${path}::${viewQuery ?? ''}`;
 }
 
 export const useDocumentRefStore = defineStore('documentRef', () => {
@@ -82,7 +88,7 @@ export const useDocumentRefStore = defineStore('documentRef', () => {
     if (!projectName) {
       throw new Error('No project context to resolve vance: URI');
     }
-    const key = keyFor(projectName, embedRef.path);
+    const key = keyFor(projectName, embedRef.path, embedRef.viewQuery);
     const hit = cache.value.get(key);
     if (hit) return hit;
     const inflight = pending.value.get(key);
@@ -103,8 +109,12 @@ export const useDocumentRefStore = defineStore('documentRef', () => {
       .then(async (doc) => {
         if (shouldFetchBody(doc)) {
           try {
+            // Carries the view's read parameters — an embed of a
+            // parameterised view that fetched the bare content would render
+            // the base document and look entirely successful doing it.
+            const suffix = embedRef.viewQuery ? `?${embedRef.viewQuery}` : '';
             const text = await brainFetchText(
-              `documents/${encodeURIComponent(doc.id)}/content`,
+              `documents/${encodeURIComponent(doc.id)}/content${suffix}`,
             );
             doc.inlineText = text ?? '';
             doc.inline = true;
@@ -142,8 +152,8 @@ export const useDocumentRefStore = defineStore('documentRef', () => {
   }
 
   /** Drop a single cache entry (e.g. when a document was edited). */
-  function invalidate(projectName: string, path: string): void {
-    cache.value.delete(keyFor(projectName, path));
+  function invalidate(projectName: string, path: string, viewQuery?: string): void {
+    cache.value.delete(keyFor(projectName, path, viewQuery));
   }
 
   /** Drop everything — page-reload-style reset for tenant/user switches. */

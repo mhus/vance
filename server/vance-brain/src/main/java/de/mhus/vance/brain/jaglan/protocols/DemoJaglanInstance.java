@@ -37,6 +37,7 @@ import org.jspecify.annotations.Nullable;
  * <h2>What it serves</h2>
  * <pre>
  *   readme.md                        what this mount is, in prose
+ *   report.md                        a document that links to one named view
  *   analysis.yaml                    kind: chart over a default window
  *   analysis.yaml?from=&amp;to=          the same chart over the window you asked for
  * </pre>
@@ -55,9 +56,23 @@ public class DemoJaglanInstance implements JaglanInstance {
 
     static final String README = "readme.md";
 
+    /**
+     * A document whose only content is a link to one named view.
+     *
+     * <p>Here because a query is otherwise something only a URL bar or an
+     * agent can produce: this is the one place a person can <em>click</em> on
+     * a parameterised view, which is also the only way to find out whether the
+     * consumers on that path carry the query or drop it.
+     */
+    static final String REPORT = "report.md";
+
     /** Window used when nobody asked for one. */
     static final LocalDate DEFAULT_FROM = LocalDate.of(2026, 1, 1);
     static final LocalDate DEFAULT_TO = LocalDate.of(2026, 6, 30);
+
+    /** The window {@link #REPORT} links to — deliberately not the default one,
+     *  so "the query arrived" is visible in the rendered chart's own title. */
+    static final String LINKED_QUERY = "from=2026-02-01&to=2026-03-31";
 
     /** Points per chart, whatever the window — a demo, not a data set. */
     private static final int POINTS = 12;
@@ -85,7 +100,7 @@ public class DemoJaglanInstance implements JaglanInstance {
         return new JaglanCapabilities(
                 MountAccess.RO,
                 /* canSearch */ false,
-                /* itemCount */ 2L,
+                /* itemCount */ 3L,
                 metadataTtl,
                 /* maxBytes */ null,
                 /* supportsQuery */ true,
@@ -107,6 +122,10 @@ public class DemoJaglanInstance implements JaglanInstance {
             return Optional.of(new MountedStat(
                     path, false, readme().length, "text/markdown", null, null, MountAccess.RO));
         }
+        if (REPORT.equals(path)) {
+            return Optional.of(new MountedStat(
+                    path, false, report().length, "text/markdown", null, null, MountAccess.RO));
+        }
         // An answer, not a failure: the reader forgets the row for this path.
         return Optional.empty();
     }
@@ -120,6 +139,7 @@ public class DemoJaglanInstance implements JaglanInstance {
         }
         return List.of(
                 stat(README).orElseThrow(),
+                stat(REPORT).orElseThrow(),
                 stat(ANALYSIS).orElseThrow());
     }
 
@@ -131,16 +151,16 @@ public class DemoJaglanInstance implements JaglanInstance {
     @Override
     public InputStream open(String pathInMount, @Nullable String query) {
         String path = normalise(pathInMount);
-        if (README.equals(path)) {
+        if (README.equals(path) || REPORT.equals(path)) {
             if (query != null && !query.isBlank()) {
                 // Refused rather than ignored, even here: handing back the
                 // plain file is exactly the silent-wrong-answer this whole
                 // feature exists to prevent, and a demo that models it wrongly
                 // teaches the wrong thing.
                 throw new JaglanProtocolException(mount,
-                        "mount '" + mount + "': '" + README + "' takes no parameters");
+                        "mount '" + mount + "': '" + path + "' takes no parameters");
             }
-            return stream(readme());
+            return stream(README.equals(path) ? readme() : report());
         }
         if (ANALYSIS.equals(path)) {
             Map<String, String> params = parse(query);
@@ -213,6 +233,7 @@ public class DemoJaglanInstance implements JaglanInstance {
                 | Path | |
                 |---|---|
                 | `readme.md` | this file |
+                | `report.md` | a document that links to one named view |
                 | `analysis.yaml` | a `kind: chart` document |
 
                 ## Parameterised view
@@ -231,7 +252,65 @@ public class DemoJaglanInstance implements JaglanInstance {
                 Both parameters are ISO dates and both are optional. `from`
                 must be before `to`, and anything else is refused rather than
                 quietly corrected.
+
+                `report.md` holds that address as a clickable link.
                 """).getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * A Markdown document whose entire point is the link inside it.
+     *
+     * <p>The link is the <b>relative</b> form, {@code vance:analysis.yaml} —
+     * the document next to this one, named the way one document names its
+     * neighbour. The scheme is a marker and not a mode (see
+     * {@code DocumentRefResolver}): the slashes decide, so this is the same
+     * reference as a bare {@code analysis.yaml}, only visibly one of ours.
+     *
+     * <p>It is written that way on purpose rather than spelled out from
+     * {@code _ext/}: a mount folder is named by whoever wrote the mount
+     * document, so an absolute link would hard-code a name this instance only
+     * learns at construction time — and would keep working while saying
+     * something false about where the target lives.
+     */
+    private byte[] report() {
+        return ("""
+                # Linked view
+
+                One link, and that is the whole document.
+
+                [Demo trend 2026-02-01 … 2026-03-31](vance:%s?%s)
+
+                The target is `%s` next to this file, read over a window. Same
+                path, same document row, same kind — the query is a parameter
+                of the read, so nothing here is a second document and nothing
+                new shows up in the folder.
+
+                ## About the link
+
+                It is the relative form: `vance:` marks the reference as one of
+                ours and says nothing about where it points — the slashes do
+                that. So this reads exactly like a bare `%s`, while
+                `vance:/%s` would mean the project root and `vance://p/%s`
+                a different project.
+
+                Relative on purpose: the folder this file sits in is named by
+                whoever wrote the mount document, and a link that spells that
+                name out would still resolve while claiming something false
+                about where its target lives.
+
+                ## What it is for
+
+                Reading the link tells you nothing; following it does. A
+                consumer that takes the path and drops the query answers with
+                the default window (`%s … %s`) and looks entirely successful
+                doing it. The chart carries its window in the title, so the
+                two are told apart by looking.
+                """).formatted(
+                        ANALYSIS, LINKED_QUERY,
+                        ANALYSIS,
+                        ANALYSIS, ANALYSIS, ANALYSIS,
+                        DEFAULT_FROM, DEFAULT_TO)
+                .getBytes(StandardCharsets.UTF_8);
     }
 
     // ── internals ────────────────────────────────────────────────────

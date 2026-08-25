@@ -18,6 +18,20 @@ export interface CortexDocument {
    */
   kind?: string | null;
   inlineText: string;
+  /**
+   * Read parameters this tab was opened with — the query of a
+   * parameterised view (`from=2026-02-01&to=2026-03-31` on a mounted
+   * document), without the leading `?`. Undefined is the ordinary case:
+   * the document as it stands.
+   *
+   * <p>It belongs to the <b>tab</b>, not to the document: the row is the
+   * same one either way, only the answer differs (see
+   * `specification/public/jaglan-system.md` §5a). Consequences: the
+   * content fetch carries it, the tab is read-only while it is set
+   * (writing back would target the base document), and it travels in the
+   * URL like every other piece of Cortex view state.
+   */
+  viewQuery?: string;
   /** True when {@link inlineText} has been edited since load/save. */
   dirty: boolean;
   /**

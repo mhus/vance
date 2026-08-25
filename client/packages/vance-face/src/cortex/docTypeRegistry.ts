@@ -41,6 +41,7 @@ import {
   parseRecords,
   parseSheet,
   parseTree,
+  readKindFromBody,
   serializeList,
   serializeRecords,
   serializeSheet,
@@ -376,7 +377,27 @@ const handRolled: HandRolledBinding[] = [
  *     via hard-coded {@code if/else}.
  *  4. Catch-all CodeEditor on the raw inlineText.
  */
-export function resolveBinding(doc: CortexDocument): DocTypeBinding {
+/**
+ * The kind to dispatch on: the row's own, or — when it has none — the one
+ * the body declares in its `$meta` / front matter.
+ *
+ * <p>Needed for **mounted** documents. Their row is built from a `stat`,
+ * which fetches no bytes, so `kind` is null until something reads the body;
+ * the server learns it from the stream it serves (see
+ * `DocumentService.learnKindWhileStreaming`), but Cortex asks for the
+ * metadata *before* the content, so on the first open the DTO it holds is
+ * still the one from before that read. Sniffing the body we already have
+ * closes that gap without a second round trip — and it is the same
+ * projection the server persists, not a competing rule.
+ */
+function effectiveKind(doc: CortexDocument): string | null | undefined {
+  if (doc.kind) return doc.kind;
+  return readKindFromBody(doc.inlineText, doc.mimeType) ?? doc.kind;
+}
+
+export function resolveBinding(input: CortexDocument): DocTypeBinding {
+  const sniffed = effectiveKind(input);
+  const doc = sniffed === input.kind ? input : { ...input, kind: sniffed };
   if ((doc.kind ?? '').toLowerCase() === 'application') {
     const appType = (doc.headers?.app ?? '').toLowerCase();
     if (appType) {

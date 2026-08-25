@@ -15,6 +15,63 @@ import yaml from 'js-yaml';
 const META_KEY = '$meta';
 
 /**
+ * How much of a body is looked at when sniffing its kind. The header sits at
+ * the head by construction (`$meta` first, front matter before anything
+ * else), so a bounded slice is not an approximation — it is the whole
+ * question. It also keeps this off the critical path for a large document,
+ * where parsing megabytes of YAML to read one word would be felt.
+ */
+const KIND_PROBE_CHARS = 8192;
+
+/**
+ * The `kind` a body declares, or `null` when it declares none.
+ *
+ * <p>Mirror of the server's header strategies (`{Json,Yaml,Markdown}HeaderStrategy`)
+ * for the one field a client needs before the server has had a chance to
+ * persist it: a **mounted** document's row carries no kind until something
+ * reads its body, and a reader that has the body already should not have to
+ * wait for a round trip to find out what it is looking at.
+ *
+ * <p>Deliberately narrow — one field, head only, never throws. Anything
+ * richer belongs to the codecs, which parse the whole document anyway once
+ * the kind has selected them.
+ */
+export function readKindFromBody(
+  body: string | null | undefined,
+  mimeType?: string | null,
+): string | null {
+  const head = (body ?? '').slice(0, KIND_PROBE_CHARS);
+  if (!head.trim()) return null;
+  const mime = (mimeType ?? '').toLowerCase();
+  try {
+    if (mime.includes('json') || head.trimStart().startsWith('{')) {
+      const m = /"\$meta"\s*:\s*\{[^}]*?"kind"\s*:\s*"([^"]+)"/.exec(head);
+      if (m) return m[1];
+    }
+    if (mime.includes('yaml') || mime.includes('yml')) {
+      // Only the `$meta` mapping, and only its `kind` — a top-level `kind:`
+      // elsewhere in the document is a field of that document, not its type.
+      const m = /(?:^|\n)\$meta:[^\S\n]*\n(?:[^\S\n]+[^\n]*\n)*?[^\S\n]+kind:[^\S\n]*(\S+)/.exec(head);
+      if (m) return stripQuotes(m[1]);
+    }
+    if (mime.includes('markdown') || head.startsWith('---')) {
+      const fm = /^---[^\S\n]*\n([\s\S]*?)\n---[^\S\n]*(?:\n|$)/.exec(head);
+      if (fm) {
+        const m = /(?:^|\n)kind:[^\S\n]*(\S+)/.exec(fm[1]);
+        if (m) return stripQuotes(m[1]);
+      }
+    }
+  } catch {
+    // A malformed body has no kind — same answer the server gives.
+  }
+  return null;
+}
+
+function stripQuotes(raw: string): string {
+  return raw.replace(/^["']|["'],?$/g, '').replace(/,$/, '');
+}
+
+/**
  * Lift a JSON object out of the {@code $meta} wrapper. If the
  * caller's object has a {@code $meta} key whose value is an object,
  * its scalar entries are merged on top of the body keys.

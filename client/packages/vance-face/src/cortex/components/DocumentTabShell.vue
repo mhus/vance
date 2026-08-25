@@ -24,7 +24,7 @@
  */
 import { computed, inject, onBeforeUnmount, ref, shallowRef, toRef, watch } from 'vue';
 import type { Ref } from 'vue';
-import { CodeEditor, VLockBadge, accentColorDotClass } from '@/components';
+import { CodeEditor, VLockBadge, accentColorDotClass, provideDocumentReferrer } from '@/components';
 import { brainFetch, brainFetchBlob } from '@vance/shared';
 import type { DocumentDto, FollowUpRequestDto, FollowUpResponseDto } from '@vance/generated';
 import { WriterRole } from '@vance/generated';
@@ -61,6 +61,13 @@ const emit = defineEmits<{
 
 const store = useCortexStore();
 const binding = computed(() => resolveBinding(props.document));
+
+// A tab is one document, which makes it the right place to declare the
+// base for relative `vance:` references rendered inside it — a link
+// reading `vance:analysis.yaml` in this document means the file next to
+// *this* document. Embedded content re-declares its own (see
+// EmbeddedKindBox), so nesting resolves against the innermost document.
+provideDocumentReferrer(computed(() => props.document.path ?? ''));
 
 // True when the binding dispatched to an application:<type> kind from
 // the kind-registry (i.e. the doc is an _app.yaml manifest mounted as a
@@ -245,6 +252,16 @@ const isUserLocked = computed<boolean>(() =>
   (props.document.lockedFor ?? []).includes(WriterRole.USER),
 );
 
+/**
+ * A parameterised view is read-only, and not as a precaution: the content
+ * was computed for a set of read parameters, while a save replaces the
+ * *document* — the row they share is the only thing they have in common.
+ * The store refuses the write either way (`saveTab`); this keeps the
+ * keystrokes from being accepted in the first place.
+ */
+const isParameterisedView = computed<boolean>(() => !!props.document.viewQuery);
+const isReadOnly = computed<boolean>(() => isUserLocked.value || isParameterisedView.value);
+
 // Derive a language hint for CodeEditor. Path extension wins over the
 // server-supplied mime: a file named {@code foo.js} should highlight
 // as JS whether the server returns {@code text/javascript},
@@ -411,6 +428,11 @@ const parseResult = computed<ParseResult>(() => {
 function onModelUpdate(model: unknown): void {
   const pair = codecPair.value;
   if (!pair?.serialize) return; // read-only view (e.g. mindmap render)
+  // A parameterised view has no document to write back to — the body was
+  // computed for a set of read parameters. Refused here, at the one place a
+  // typed view's edit becomes a document update, rather than three layers
+  // down in the store: there the edit would already look accepted.
+  if (isParameterisedView.value) return;
   const mime = props.document.mimeType ?? '';
   let text: string;
   try {
@@ -446,6 +468,11 @@ const viewBindings = computed<Record<string, unknown>>(() => {
       doc: parseResult.value.model,
       projectId: store.projectId ?? '',
       docPath: props.document.path,
+      // Offered, not enforced — a view that knows the prop can grey its
+      // controls out, one that does not simply ignores it (same contract as
+      // projectId / docPath above) and is caught by the guard in
+      // onModelUpdate instead.
+      readOnly: isReadOnly.value,
     };
   }
   return { document: docDtoForView.value };
@@ -750,6 +777,14 @@ function fmtDuration(ms: number | null): string {
         :aria-label="`color ${document.color}`"
       />
       <span class="font-mono opacity-80 truncate hidden md:inline">{{ document.path }}</span>
+      <!-- The window this tab is showing. Without it on screen, two tabs on
+           the same document look identical and the reader has no way to tell
+           which parameters produced the numbers in front of them. -->
+      <span
+        v-if="isParameterisedView"
+        class="font-mono text-xs px-1.5 py-0.5 rounded bg-base-300 truncate max-w-[16rem]"
+        :title="`Parameterised view — read with ?${document.viewQuery}`"
+      >?{{ document.viewQuery }}</span>
       <VLockBadge :locked-for="document.lockedFor" />
       <div
         v-if="showToggle"
@@ -924,7 +959,7 @@ function fmtDuration(ms: number | null): string {
         :model-value="document.inlineText"
         :mime-type="effectiveMimeType"
         :note-lines="docNotes.linesWithNotes.value"
-        :read-only="isUserLocked"
+        :read-only="isReadOnly"
         :follow-up="followUpOptions"
         @update:model-value="(v: string) => emit('update', v)"
         @selection-changed="onSelectionChanged"

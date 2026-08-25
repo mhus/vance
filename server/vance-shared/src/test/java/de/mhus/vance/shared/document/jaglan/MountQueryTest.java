@@ -49,6 +49,16 @@ class MountQueryTest {
     }
 
     @Test
+    void forward_dropsTheWholeReferenceVocabulary() {
+        // Not just `kind`: `entry`, `mode` and `caption` are the grammar's own
+        // words too (document-refs.md §1.1). Forwarding one would hand a source
+        // a parameter that describes how *we* render, and the client makes the
+        // same cut before a query ever reaches this endpoint.
+        assertThat(MountQuery.forward("entry=ops%2Fdeploys&mode=preview&caption=x&from=1"))
+                .isEqualTo("from=1");
+    }
+
+    @Test
     void forward_reservedNameMatchIsCaseInsensitive() {
         assertThat(MountQuery.forward("Download=true&a=1")).isEqualTo("a=1");
     }

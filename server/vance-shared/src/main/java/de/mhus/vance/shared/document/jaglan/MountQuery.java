@@ -32,13 +32,23 @@ public final class MountQuery {
     /**
      * Query parameters that belong to Vancetope and never travel to a source.
      *
-     * <p>{@code kind} is the word the reference grammar uses to say how a
-     * document should be interpreted; {@code download} is the content
-     * endpoint's disposition switch. A source needing a parameter of either
-     * name has to pick another — a collision here is not resolvable in the
-     * source's favour without us losing the meaning we depend on.
+     * <p>It is the reference grammar's own vocabulary — {@code kind} (how to
+     * interpret the document), {@code entry} (a place inside an application),
+     * {@code mode} and {@code caption} (how an embed is drawn), all listed in
+     * {@code specification/public/document-refs.md} §1.1 — plus
+     * {@code download}, the content endpoint's disposition switch. A source
+     * needing a parameter of any of these names has to pick another: a
+     * collision here is not resolvable in the source's favour without us
+     * losing the meaning we depend on.
+     *
+     * <p>The set is mirrored in {@code parseVanceUri.ts}, which makes the same
+     * split on the client before a query is handed to a tab. Two namespaces
+     * share one query string, so the two sides have to cut it identically —
+     * otherwise a word reaches a source that never asked for it, or is lost on
+     * the way there.
      */
-    public static final Set<String> RESERVED = Set.of("kind", "download");
+    public static final Set<String> RESERVED =
+            Set.of("kind", "entry", "mode", "caption", "download");
 
     private MountQuery() {}
 

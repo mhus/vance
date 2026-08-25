@@ -20,6 +20,7 @@ import { useDocumentRefStore } from '@/kindViews/documentRefStore';
 import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
 import { onDocumentChanged } from '@/ws/wsConnectionStore';
 import { VANCE_LINK_HANDLER_KEY } from './vanceLinkHandler';
+import { provideDocumentReferrer } from './documentReferrer';
 
 interface Props {
   embedRef: EmbedRef;
@@ -35,6 +36,19 @@ const loadError = ref<string | null>(null);
 // "Open" clicks and render the document in-place instead of letting us
 // jump to documents.html.
 const vanceLinkHandler = inject(VANCE_LINK_HANDLER_KEY, null);
+
+// Embedded content brings its own base for relative references: a link
+// inside the embedded document means "next to *that* document", not next
+// to the one that embedded it. Declared from the ref rather than the
+// loaded doc so it is right before the fetch returns — and it is the
+// resolved path, so it already carries the host's own base.
+//
+// Only the path travels, not the project: a relative reference inside a
+// document embedded from *another* project still resolves in the current
+// one. Carrying the project too would need a second channel, and the
+// case (cross-project embed whose content links relatively) has no
+// caller yet — noted here so it is a known gap rather than a surprise.
+provideDocumentReferrer(computed(() => props.embedRef.path));
 
 /**
  * Media kinds where the link/image source path (or explicit `?kind=`
@@ -91,7 +105,7 @@ async function load() {
  */
 function reloadFresh() {
   const project = props.embedRef.project ?? store.currentProject;
-  if (project) store.invalidate(project, props.embedRef.path);
+  if (project) store.invalidate(project, props.embedRef.path, props.embedRef.viewQuery);
   void load();
 }
 

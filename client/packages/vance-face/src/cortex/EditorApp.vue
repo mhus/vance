@@ -39,6 +39,7 @@ import {
   tryThreeWayMerge,
 } from '@/composables/useDocumentChangeReaction';
 import { onDocumentChanged, useWsConnection } from '@/ws/wsConnectionStore';
+import MarkdownView from '@/components/MarkdownView.vue';
 import VanceEmbedView from '@/components/VanceEmbedView.vue';
 import VanceFormView from '@/components/VanceFormView.vue';
 import ComposeOutput from '@/cortex/components/ComposeOutput.vue';
@@ -46,7 +47,13 @@ import { useDocumentRefStore } from '@/kindViews/documentRefStore';
 import { useStarredStore } from '@/starred/starredStore';
 import { isBinaryMime } from './stores/cortexStore';
 import { useCortexStore } from './stores/cortexStore';
-import { cortexHref, readCortexView, writeCortexView, type CortexView } from './cortexUrl';
+import {
+  cortexHref,
+  readCortexView,
+  splitForeignParams,
+  writeCortexView,
+  type CortexView,
+} from './cortexUrl';
 import { resolveDocumentIdByPath } from './resolveDocumentPath';
 import { useViewEditMode } from './useViewEditMode';
 import { resolveHelpPath } from './help';
@@ -194,7 +201,10 @@ const onVanceLink: VanceLinkHandler = async ({
     appEntries.value = { ...appEntries.value, [documentId]: embedRef.entry };
   }
   try {
-    await store.openFile(documentId);
+    // `viewQuery` is what the link asked the source for (`?from=…&to=…`).
+    // Dropping it here was the whole reason a parameterised link used to
+    // open the base document while looking like it had worked.
+    await store.openFile(documentId, embedRef.viewQuery);
   } catch (e) {
     console.warn('Editor: failed to open vance: link in editor', e);
     return false;
@@ -223,6 +233,12 @@ provide('vance:embed-component', VanceEmbedView);
 // remote injects 'vance:form-component' and mounts it with the
 // bound data doc `data` URI as the only prop.
 provide('vance:form-component', VanceFormView);
+// Markdown the Vance way — `vance:` links become embed cards, fenced kinds
+// become inline canvases — for a remote that has a markdown *string* rather
+// than a document. Provided rather than moved into @vance/components: this
+// renderer reaches the document-ref store, the kind registry and the link
+// handler, so it belongs where those live. The component takes `source`.
+provide('vance:markdown-component', MarkdownView);
 // The workbook vance-compose block mounts this to render its outputs
 // (markdown/text/image/pdf/structured kinds) exactly like the Cortex view.
 provide('vance:compose-output-component', ComposeOutput);
@@ -418,8 +434,23 @@ let lastActiveDoc: string | null = null;
  * surfaces as a boot error rather than an empty editor.
  */
 async function openPathHandoff(pid: string, rawPath: string): Promise<void> {
-  const wanted = rawPath.replace(/^\/+/, '');
+  // A `?` inside the handoff separates the document from the read
+  // parameters it should be read with — the same shape a `vance:` reference
+  // has, so a link can be typed by hand:
+  //   ?path=_ext/demo/analysis.yaml?from=2026-02-01&to=2026-03-31
+  // The path is the address, the query is a parameter of the read; only the
+  // first `?` splits, everything after it belongs to the source.
+  const cut = rawPath.indexOf('?');
+  const wanted = (cut < 0 ? rawPath : rawPath.slice(0, cut)).replace(/^\/+/, '');
   if (!wanted) return;
+  // …and the browser already ended the `path` param at the first `&`, so the
+  // rest of the read parameters arrived as URL params of their own. They are
+  // exactly the params Cortex does not own, and they are consumed here: left
+  // in the base they would survive every later URL rebuild.
+  const { known, foreign } = splitForeignParams(window.location.search);
+  const viewQuery = [cut < 0 ? '' : rawPath.slice(cut + 1), foreign]
+    .filter(Boolean)
+    .join('&');
   let id: string | null;
   try {
     id = await resolveDocumentIdByPath(pid, wanted, store.files);
@@ -433,7 +464,8 @@ async function openPathHandoff(pid: string, rawPath: string): Promise<void> {
   }
   const view = readCortexView();
   const open = view.open.includes(id) ? view.open : [...view.open, id];
-  const qs = writeCortexView(window.location.search, { ...view, open, doc: id });
+  const queries = viewQuery ? { ...view.queries, [id]: viewQuery } : view.queries;
+  const qs = writeCortexView(known, { ...view, open, doc: id, queries });
   window.history.replaceState({ cortex: true }, '', `/cortex.html${qs ? `?${qs}` : ''}`);
 }
 
@@ -447,6 +479,12 @@ function currentView(): CortexView {
     autoTarget: autoTarget.value,
     suggestions: suggestionsEnabled.value,
     entries: appEntries.value,
+    // Straight off the tabs: they are the authority for which window each
+    // one is showing, and a second copy here could disagree with what the
+    // user is looking at.
+    queries: Object.fromEntries(
+      store.openTabs.filter((t) => t.viewQuery).map((t) => [t.id, t.viewQuery as string]),
+    ),
   };
 }
 
@@ -477,11 +515,13 @@ async function restoreView(): Promise<void> {
     // Sub-positions first: an app tab opened below must mount on the page the
     // URL declares rather than on its default and then jump.
     appEntries.value = view.entries;
-    // Open tabs the URL declares that aren't open yet (URL order).
+    // Open tabs the URL declares that aren't open yet (URL order), each with
+    // the read parameters the URL gives it. Passed on an already-open tab too
+    // — back/forward between two windows of the same document changes only
+    // the query, and openFile turns that into a reload.
     for (const id of view.open) {
-      if (store.openTabs.some((t) => t.id === id)) continue;
       try {
-        await store.openFile(id);
+        await store.openFile(id, view.queries[id]);
       } catch {
         // Document gone or unreadable — skip silently.
       }
@@ -531,7 +571,15 @@ async function restoreView(): Promise<void> {
 // only rewrite the current entry (replaceState). Also drop a stale 'pinned'
 // binding when its tab is closed — otherwise it would silently bind nothing.
 watch(
-  () => [store.openTabs.map((t) => t.id).join(','), store.activeTabId ?? ''] as const,
+  () => [
+    store.openTabs.map((t) => t.id).join(','),
+    store.activeTabId ?? '',
+    // The window a tab shows is view state like any other. Without it in the
+    // key, following a link into a *different* window of an already-open tab
+    // would change the content and leave the address bar describing the old
+    // one — and F5 would then undo the navigation.
+    store.openTabs.map((t) => t.viewQuery ?? '').join(','),
+  ] as const,
   () => {
     if (restoring.value) return;
     if (

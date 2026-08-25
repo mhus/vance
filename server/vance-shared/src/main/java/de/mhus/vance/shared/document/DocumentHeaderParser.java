@@ -52,6 +52,22 @@ public class DocumentHeaderParser {
      * {@link IOException} from the underlying transport propagates to the
      * caller so it can distinguish transport errors from parse failures.
      */
+    /**
+     * {@code true} when some strategy claims this mime-type — i.e. when a body
+     * of this type <i>could</i> carry a header at all (YAML, JSON, Markdown).
+     *
+     * <p>Exists so a caller can decide <b>before</b> touching the body whether
+     * reading it is worth anything. The parse methods answer the same question
+     * by returning empty, but only after the bytes have been fetched — and for
+     * a mounted document those bytes come over the wire.
+     */
+    public boolean supports(@Nullable String mimeType) {
+        for (HeaderStrategy strategy : strategies) {
+            if (strategy.supports(mimeType)) return true;
+        }
+        return false;
+    }
+
     public Optional<DocumentHeader> parseStream(
             @Nullable String mimeType, @Nullable InputStream body) throws IOException {
         if (body == null) return Optional.empty();

@@ -15,7 +15,12 @@ import { computed, inject, onMounted, ref, watch, type Ref } from 'vue';
 import { brainFetch } from '@vance/shared';
 import type { FormFieldDto, FormChoiceDto } from '@vance/generated';
 import { FormFields, type FormValue } from './index';
-import { parseVanceUri, VanceUriParseError } from '@/kindRenderers/parseVanceUri';
+import {
+  parseVanceUri,
+  referrerDirOf,
+  VanceUriParseError,
+} from '@/kindRenderers/parseVanceUri';
+import { useDocumentReferrer } from './documentReferrer';
 import { useDocumentRefStore } from '@/kindViews/documentRefStore';
 
 interface FormDef {
@@ -39,6 +44,7 @@ const props = defineProps<{
 
 const pageMode = inject<Ref<'design' | 'work'>>('vance:page-mode', ref('work'));
 const store = useDocumentRefStore();
+const referrerPath = useDocumentReferrer();
 
 // Coerce a bare-string label/help (`label: Fach`) into the i18n map
 // FormFields expects. Fence YAML is written by humans/models in shorthand.
@@ -175,7 +181,13 @@ watch([() => props.form, pageMode], () => {
 
 // ── Load / save (data only) ───────────────────────────────────────
 async function resolveProject(): Promise<{ projectId: string; path: string }> {
-  const parsed = parseVanceUri(props.data, { text: '', imageStyle: false });
+  // The data pointer was authored inside a document, so a rootless one
+  // means the file next to it.
+  const parsed = parseVanceUri(props.data, {
+    text: '',
+    imageStyle: false,
+    referrerDir: referrerDirOf(referrerPath.value),
+  });
   const projectId = parsed.project ?? (await store.waitForCurrentProject());
   if (!projectId) throw new Error('No project context to resolve form document');
   return { projectId, path: parsed.path };

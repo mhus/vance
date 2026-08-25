@@ -33,6 +33,13 @@ import org.springframework.test.util.ReflectionTestUtils;
  * mounted row is built from a {@code stat}, which deliberately fetches no
  * bytes — otherwise one folder listing would be a download per file. The first
  * read is the moment the content is there anyway.
+ *
+ * <p>The learning sits on the <b>stream</b> the content is served on, so these
+ * exercise it through {@code loadContent}: a bounded probe is read, the header
+ * parsed from it, and the caller handed probe + remainder. That is why the
+ * parser is stubbed on {@code parseStream} and not on {@code parse} — a test
+ * that stubbed the string overload would pass while the streaming path did
+ * nothing.
  */
 class DocumentServiceMountKindTest {
 
@@ -86,12 +93,24 @@ class DocumentServiceMountKindTest {
         DocumentHeader header = new DocumentHeader();
         header.setKind(kind);
         header.setValues(new LinkedHashMap<>());
-        when(headerParser.parse(anyString(), anyString())).thenReturn(Optional.of(header));
+        try {
+            when(headerParser.parseStream(anyString(), any())).thenReturn(Optional.of(header));
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** The gate that decides whether the body is worth looking at at all. */
+    private void headerParserSupports(String... mimeTypes) {
+        for (String mime : mimeTypes) {
+            when(headerParser.supports(mime)).thenReturn(true);
+        }
     }
 
     @Test
     void firstRead_learnsTheKindAndPersistsIt() {
         sourceServes("---\nkind: workpage\n---\nhello");
+        headerParserSupports("text/markdown");
         headerYields("workpage");
         DocumentDocument doc = mountedMarkdown(null);
 
@@ -107,6 +126,7 @@ class DocumentServiceMountKindTest {
     void secondRead_doesNotWriteAgain() {
         sourceServes("---\nkind: workpage\n---\nhello");
         headerYields("workpage");
+        headerParserSupports("text/markdown");
         // Already known — the guard is what keeps this a one-off rather than a
         // Mongo write on every read of every mounted text file.
         DocumentDocument doc = mountedMarkdown("workpage");
@@ -118,9 +138,31 @@ class DocumentServiceMountKindTest {
     }
 
     @Test
+    void bodyLargerThanTheProbe_arrivesWhole() {
+        // The probe is bounded, so everything past it has to be stitched back
+        // on. Getting this wrong would truncate every mounted document at
+        // 64 KB — and only for the readers that learn, which is all of them.
+        String head = "---\nkind: workpage\n---\n";
+        String tail = "x".repeat(200_000);
+        sourceServes(head + tail);
+        headerParserSupports("text/markdown");
+        headerYields("workpage");
+
+        String text = service.readContent(mountedMarkdown(null));
+
+        assertThat(text).hasSize(head.length() + tail.length());
+        assertThat(text).startsWith(head).endsWith("x");
+    }
+
+    @Test
     void bodyWithoutAKind_writesNothing() {
         sourceServes("just prose, no front matter");
-        when(headerParser.parse(anyString(), anyString())).thenReturn(Optional.empty());
+        headerParserSupports("text/markdown");
+        try {
+            when(headerParser.parseStream(anyString(), any())).thenReturn(Optional.empty());
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(e);
+        }
 
         service.readContent(mountedMarkdown(null));
 
@@ -129,7 +171,7 @@ class DocumentServiceMountKindTest {
     }
 
     @Test
-    void binaryMountedFile_isNeverParsed() {
+    void binaryMountedFile_isNeverParsed() throws Exception {
         sourceServes("%PDF-1.7 binary junk");
         DocumentDocument pdf = DocumentDocument.builder()
                 .tenantId("acme").projectId("research")
@@ -140,9 +182,10 @@ class DocumentServiceMountKindTest {
 
         service.readContent(pdf);
 
-        // Front matter in a PDF is not a thing; parsing one would be wasted
-        // work on the largest files in a mount.
-        verify(headerParser, never()).parse(anyString(), anyString());
+        // Front matter in a PDF is not a thing; probing one would mean pulling
+        // 64 KB off the wire for the largest files in a mount. The mime gate
+        // answers that before a single byte is read.
+        verify(headerParser, never()).parseStream(anyString(), any());
         verify(mongoTemplate, never()).updateFirst(any(Query.class), any(Update.class),
                 eq(DocumentDocument.class));
     }
@@ -167,6 +210,7 @@ class DocumentServiceMountKindTest {
     @Test
     void failedWrite_doesNotBreakTheRead() {
         sourceServes("---\nkind: workpage\n---\nhello");
+        headerParserSupports("text/markdown");
         headerYields("workpage");
         when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
                 eq(DocumentDocument.class)))

@@ -23,7 +23,12 @@ import EmbeddedKindBox from './EmbeddedKindBox.vue';
 import LinkCard from './LinkCard.vue';
 import { hasRenderer } from '@/kindRenderers/registry';
 import { parseFenceLang } from '@/kindRenderers/parseFenceLang';
-import { isVanceUri, parseVanceUri, type EmbedRef } from '@/kindRenderers/parseVanceUri';
+import {
+  isVanceUri,
+  parseVanceUri,
+  referrerDirOf,
+  type EmbedRef,
+} from '@/kindRenderers/parseVanceUri';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 
@@ -41,6 +46,7 @@ const PREVIEW_MEDIA_KINDS = new Set(['image', 'svg', 'audio', 'video', 'pdf']);
 import { useDocumentRefStore } from '@/kindViews/documentRefStore';
 import { getOpenDocumentsInNewTab } from '@/platform/webUiSession';
 import { VANCE_LINK_HANDLER_KEY } from './vanceLinkHandler';
+import { useDocumentReferrer } from './documentReferrer';
 
 // Re-export the host-interception contract from its dedicated module so
 // existing import paths (`from '@/components/MarkdownView.vue'` and the
@@ -140,11 +146,18 @@ function renderFrontmatterVNode(entries: readonly FrontmatterEntry[]): VNode | n
 }
 
 /**
- * Markdown links inside chat content never address the Face UI itself
+ * Markdown links inside Vance content never address the Face UI itself
  * — a relative href like `documents/coding-modelle-vergleich.md` is
  * always meant as a Vance Document reference. Rewrite such hrefs to
  * the `vance:` scheme so they flow through the same EmbeddedKindBox /
  * click-delegation path as an explicit `vance:/...` URI would.
+ *
+ * <b>The scheme is all this adds.</b> A rootless href stays rootless
+ * (`foo.md` → `vance:foo.md`) so it keeps meaning "next to this
+ * document", and `..` survives for the resolver to collapse; a rooted
+ * one stays rooted (`/foo.md` → `vance:/foo.md`). Anchoring everything
+ * at the project root here — as this did — silently retargeted every
+ * relative link written inside a document in a subfolder.
  *
  * Pass through:
  * - anything with an explicit scheme (http, https, mailto, tel, vance, …)
@@ -157,8 +170,7 @@ function rewriteHrefIfRelative(href: string | undefined | null): string {
   if (!trimmed) return href;
   if (/^[a-z][a-z0-9+.\-]*:/i.test(trimmed)) return href;
   if (trimmed.startsWith('#') || trimmed.startsWith('//')) return href;
-  const path = trimmed.replace(/^(\.\/)+/, '').replace(/^\/+/, '');
-  return `vance:/${path}`;
+  return `vance:${trimmed.replace(/^(\.\/)+/, '')}`;
 }
 
 // Force external http(s) links to open in a new tab. `vance:` URIs are
@@ -518,7 +530,7 @@ function extractExternalUrls(token: Tokens.Generic): string[] {
  *   read fine inline
  * - duplicates within the same block
  */
-function extractVanceMediaRefs(token: Tokens.Generic): EmbedRef[] {
+function extractVanceMediaRefs(token: Tokens.Generic, referrerDir: string): EmbedRef[] {
   const refs: EmbedRef[] = [];
   const seen = new Set<string>();
   const CAP = 3;
@@ -536,7 +548,7 @@ function extractVanceMediaRefs(token: Tokens.Generic): EmbedRef[] {
             ? ((lt as Tokens.Image).text ?? '')
             : tokensToText((lt as Tokens.Link).tokens ?? []);
           try {
-            const embedRef = parseVanceUri(lt.href, { text, imageStyle: isImage });
+            const embedRef = parseVanceUri(lt.href, { text, imageStyle: isImage, referrerDir });
             if (embedRef.kindHint && PREVIEW_MEDIA_KINDS.has(embedRef.kindHint)) {
               seen.add(lt.href);
               refs.push(embedRef);
@@ -573,7 +585,7 @@ function extractVanceMediaRefs(token: Tokens.Generic): EmbedRef[] {
   return refs;
 }
 
-function vnodesForTokens(tokens: Tokens.Generic[]): VNode[] {
+function vnodesForTokens(tokens: Tokens.Generic[], referrerDir: string): VNode[] {
   const out: VNode[] = [];
   const buffer: Tokens.Generic[] = [];
 
@@ -613,6 +625,7 @@ function vnodesForTokens(tokens: Tokens.Generic[]): VNode[] {
           const embedRef = parseVanceUri((linkTok as Tokens.Link).href, {
             text,
             imageStyle: isImage,
+            referrerDir,
           });
           flushHtmlBuffer(buffer, out);
           out.push(h(EmbeddedKindBox, { embedRef }));
@@ -656,6 +669,7 @@ function vnodesForTokens(tokens: Tokens.Generic[]): VNode[] {
           const embedRef = parseVanceUri((media as Tokens.Link).href, {
             text,
             imageStyle: isImage,
+            referrerDir,
           });
           out.push(h(EmbeddedKindBox, { embedRef }));
         } catch (e) {
@@ -675,7 +689,7 @@ function vnodesForTokens(tokens: Tokens.Generic[]): VNode[] {
     // image preview / PDF button / audio + video player still shows
     // up. Sole-vance-link paragraphs are already handled by the
     // {@link isVanceLinkParagraph} branch above and skip this path.
-    const vanceMedia = extractVanceMediaRefs(token);
+    const vanceMedia = extractVanceMediaRefs(token, referrerDir);
     if (vanceMedia.length > 0) {
       flushHtmlBuffer(buffer, out);
       buffer.push(token);
@@ -723,6 +737,11 @@ export default defineComponent({
   setup(props) {
     const documentRefStore = useDocumentRefStore();
     const vanceLinkHandler = inject(VANCE_LINK_HANDLER_KEY, null);
+    // Which document this Markdown belongs to — the base for relative
+    // references. Empty on surfaces whose text belongs to no document
+    // (chat, inbox, search hits), which is the project root.
+    const referrerPath = useDocumentReferrer();
+    const referrerDir = computed(() => referrerDirOf(referrerPath.value));
 
     const inlineHtml = computed<string>(() => {
       const src = props.source ?? '';
@@ -746,7 +765,7 @@ export default defineComponent({
       if (body) {
         const tokens = marked.lexer(body);
         normalizeRelativeHrefs(tokens as Tokens.Generic[]);
-        nodes.push(...vnodesForTokens(tokens as Tokens.Generic[]));
+        nodes.push(...vnodesForTokens(tokens as Tokens.Generic[], referrerDir.value));
       }
       return nodes;
     });
@@ -778,7 +797,7 @@ export default defineComponent({
       const text = (anchor.textContent ?? '').trim();
       let embedRef;
       try {
-        embedRef = parseVanceUri(href, { text, imageStyle });
+        embedRef = parseVanceUri(href, { text, imageStyle, referrerDir: referrerDir.value });
       } catch (e) {
         console.warn('MarkdownView: invalid vance: URI on click', href, e);
         return;

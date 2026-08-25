@@ -19,10 +19,11 @@ import org.springframework.stereotype.Service;
  *   <li>{@code /path} — absolute in the <em>current</em> project (from its root).</li>
  *   <li>{@code //projectId/path} — the same path in another project
  *       (authority = project {@code name}, unique).</li>
- *   <li>{@code vance:/path}, {@code vance://projectId/path} — the same,
- *       with the scheme; a scheme always makes the reference absolute
- *       (never relative), so {@code vance:foo} means {@code /foo} in the
- *       current project.</li>
+ *   <li>{@code vance:path}, {@code vance:/path}, {@code vance://projectId/path}
+ *       — the same three forms with the scheme. The scheme marks the
+ *       reference as one of ours and says nothing about where it points:
+ *       what follows it decides, so {@code vance:foo} is relative just as
+ *       {@code foo} is.</li>
  * </ul>
  *
  * <p>A {@code ?query} (e.g. {@code ?kind=…}) is split off and returned on
@@ -41,7 +42,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class DocumentRefResolver {
 
-    /** The optional URI scheme. A ref carrying it is always absolute. */
+    /** The optional URI scheme. Carrying it changes nothing about the path. */
     public static final String SCHEME = "vance:";
 
     /**
@@ -82,13 +83,12 @@ public class DocumentRefResolver {
             raw = raw.substring(0, q);
         }
 
-        // A scheme makes the reference absolute — force a leading slash so
-        // `vance:foo` reads as `/foo` (current project root), never relative.
+        // The scheme is a marker, not a mode: what follows it decides where
+        // the reference lands, exactly as it does without one. `vance:foo`
+        // is therefore relative to the referrer directory — the same thing
+        // `foo` means — and `vance:/foo` is the absolute form.
         if (raw.startsWith(SCHEME)) {
             raw = raw.substring(SCHEME.length());
-            if (!raw.startsWith("/")) {
-                raw = "/" + raw;
-            }
         }
 
         String projectId;

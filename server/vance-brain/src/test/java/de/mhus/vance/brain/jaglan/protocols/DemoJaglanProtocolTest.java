@@ -49,7 +49,29 @@ class DemoJaglanProtocolTest {
 
         // A view is not a thing that exists — it is a thing you can ask for.
         assertThat(entries).extracting(MountedStat::path)
-                .containsExactlyInAnyOrder("readme.md", "analysis.yaml");
+                .containsExactlyInAnyOrder("readme.md", "report.md", "analysis.yaml");
+    }
+
+    @Test
+    void report_linksToTheParameterisedViewRelatively() {
+        String body = read(instance().open("report.md"));
+
+        // The relative form — the neighbour named as a neighbour. Spelling the
+        // mount folder out would hard-code a name this instance only learns at
+        // construction time.
+        assertThat(body).contains("(vance:analysis.yaml?from=2026-02-01&to=2026-03-31)");
+        assertThat(body).doesNotContain("(vance:/_ext/");
+    }
+
+    @Test
+    void report_asksForAWindowOtherThanTheDefault() {
+        // The whole value of the link is that following it looks different
+        // from not following it. Pointing it at the default window would make
+        // "the query arrived" indistinguishable from "the query was dropped".
+        String linked = read(instance().open("analysis.yaml", "from=2026-02-01&to=2026-03-31"));
+        String plain = read(instance().open("analysis.yaml"));
+
+        assertThat(linked).isNotEqualTo(plain);
     }
 
     @Test
@@ -105,7 +127,13 @@ class DemoJaglanProtocolTest {
     void open_queryAgainstAPathThatTakesNone_isRefused() {
         assertThatThrownBy(() -> instance().open("readme.md", "from=2026-01-01"))
                 .isInstanceOf(JaglanProtocolException.class)
-                .hasMessageContaining("takes no parameters");
+                .hasMessageContaining("takes no parameters")
+                .hasMessageContaining("readme.md");
+
+        assertThatThrownBy(() -> instance().open("report.md", "from=2026-01-01"))
+                .isInstanceOf(JaglanProtocolException.class)
+                .hasMessageContaining("takes no parameters")
+                .hasMessageContaining("report.md");
     }
 
     @Test

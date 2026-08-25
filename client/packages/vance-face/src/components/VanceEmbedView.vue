@@ -11,13 +11,26 @@
  */
 import { computed } from 'vue';
 import EmbeddedKindBox from './EmbeddedKindBox.vue';
-import { parseVanceUri, VanceUriParseError } from '@/kindRenderers/parseVanceUri';
+import {
+  parseVanceUri,
+  referrerDirOf,
+  VanceUriParseError,
+} from '@/kindRenderers/parseVanceUri';
+import { useDocumentReferrer } from './documentReferrer';
 
 const props = defineProps<{ uri: string }>();
 
+// The URI was authored inside a document (a workpage embed block, a
+// canvas node), so a rootless one means "next to that document".
+const referrerPath = useDocumentReferrer();
+
 const parsed = computed(() => {
   try {
-    return parseVanceUri(props.uri, { text: '', imageStyle: false });
+    return parseVanceUri(props.uri, {
+      text: '',
+      imageStyle: false,
+      referrerDir: referrerDirOf(referrerPath.value),
+    });
   } catch (e) {
     if (e instanceof VanceUriParseError) return null;
     throw e;

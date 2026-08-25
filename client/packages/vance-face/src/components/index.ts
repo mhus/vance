@@ -13,6 +13,11 @@ export {
   VANCE_LINK_HANDLER_KEY,
 } from './MarkdownView.vue';
 export type { VanceLinkHandler, VanceLinkInterception } from './MarkdownView.vue';
+export {
+  DOCUMENT_REFERRER_KEY,
+  provideDocumentReferrer,
+  useDocumentReferrer,
+} from './documentReferrer';
 export { default as ProjectListSidebar } from './ProjectListSidebar.vue';
 export type { PickerNode } from './ProjectListSidebar.vue';
 export { default as RowActionsMenu } from './RowActionsMenu.vue';

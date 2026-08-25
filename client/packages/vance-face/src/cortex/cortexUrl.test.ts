@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 
-import { readCortexView, writeCortexView, type CortexView } from './cortexUrl';
+import {
+  readCortexView,
+  splitForeignParams,
+  writeCortexView,
+  type CortexView,
+} from './cortexUrl';
 
 function view(patch: Partial<CortexView> = {}): CortexView {
   return {
@@ -11,6 +16,7 @@ function view(patch: Partial<CortexView> = {}): CortexView {
     autoTarget: true,
     suggestions: true,
     entries: {},
+    queries: {},
     ...patch,
   };
 }
@@ -104,5 +110,85 @@ describe('cortexUrl — per-tab app entries', () => {
     const second = writeCortexView('', view({ open: ['a', 'b'], doc: 'a', entries: { a: 'p1', b: 'p2' } }));
 
     expect(first).toBe(second);
+  });
+});
+
+describe('cortexUrl — per-tab read parameters', () => {
+  it('round-trips a query with its own separators intact', () => {
+    // `&` and `=` are the query's own grammar and must survive being one
+    // value inside another query — that is what the encoding is for.
+    const q = 'from=2026-02-01&to=2026-03-31';
+    const qs = writeCortexView('', view({ open: ['t'], doc: 't', queries: { t: q } }));
+
+    expect(readCortexView(qs).queries.t).toBe(q);
+  });
+
+  it('keeps two parameterised tabs apart', () => {
+    const qs = writeCortexView('', view({
+      open: ['a', 'b'],
+      doc: 'a',
+      queries: { a: 'from=1', b: 'from=2' },
+    }));
+
+    expect(readCortexView(qs).queries).toEqual({ a: 'from=1', b: 'from=2' });
+  });
+
+  it('drops a query whose tab is not open', () => {
+    // Otherwise closing the tab would leave a window in the address bar
+    // that reappears on the next open.
+    const qs = writeCortexView('', view({
+      open: ['a'],
+      doc: 'a',
+      queries: { a: 'from=1', gone: 'from=2' },
+    }));
+
+    expect(qs).not.toContain('gone');
+    expect(readCortexView(qs).queries).toEqual({ a: 'from=1' });
+  });
+
+  it('omits the param entirely when no tab is parameterised', () => {
+    expect(writeCortexView('', view({ open: ['a'], doc: 'a' }))).not.toMatch(/(^|&)q=/);
+  });
+
+  it('is independent of the entry param', () => {
+    const qs = writeCortexView('', view({
+      open: ['a'],
+      doc: 'a',
+      entries: { a: 'page-7' },
+      queries: { a: 'from=1' },
+    }));
+    const back = readCortexView(qs);
+
+    expect(back.entries).toEqual({ a: 'page-7' });
+    expect(back.queries).toEqual({ a: 'from=1' });
+  });
+});
+
+describe('cortexUrl — splitForeignParams', () => {
+  it('separates what Cortex owns from what it does not', () => {
+    // The case it exists for: `?path=a.yaml?from=1&to=2` — the browser ends
+    // the path param at the `&`, so `to` arrives as a param of its own and
+    // the read parameters would otherwise be cut in half.
+    const { known, foreign } = splitForeignParams('?project=p&path=a.yaml?from=1&to=2');
+
+    expect(known).toBe('project=p&path=a.yaml?from=1');
+    expect(foreign).toBe('to=2');
+  });
+
+  it('claims nothing when every param is ours', () => {
+    const { known, foreign } = splitForeignParams('open=a,b&doc=a&entry=a:p&q=a:from%3D1&at=0');
+
+    expect(foreign).toBe('');
+    expect(known).toBe('open=a,b&doc=a&entry=a:p&q=a:from%3D1&at=0');
+  });
+
+  it('keeps both halves percent-encoded as written', () => {
+    // Handed on, never re-serialised: re-encoding turns one parameter into
+    // a different one.
+    expect(splitForeignParams('label=a%20b').foreign).toBe('label=a%20b');
+  });
+
+  it('keeps a valueless foreign flag', () => {
+    expect(splitForeignParams('project=p&refresh').foreign).toBe('refresh');
   });
 });

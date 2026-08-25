@@ -459,10 +459,33 @@ export const useCortexStore = defineStore('cortex', () => {
     expanded.value = next;
   }
 
-  async function openFile(id: string): Promise<void> {
+  /**
+   * Path of the content endpoint for a tab, carrying its read parameters
+   * when it has any. One helper because every read of a parameterised view
+   * has to append them — a caller that forgets gets the base document back
+   * and no indication that it asked for something else.
+   */
+  function contentPath(id: string, viewQuery?: string): string {
+    const base = `documents/${encodeURIComponent(id)}/content`;
+    return viewQuery ? `${base}?${viewQuery}` : base;
+  }
+
+  /**
+   * Open a document as a tab, optionally as a parameterised view.
+   *
+   * <p>An already-open tab is re-read when {@code viewQuery} differs from
+   * what it currently shows — same row, different answer, so switching
+   * windows is a reload rather than a second tab. Opening the same view
+   * again is just an activation.
+   */
+  async function openFile(id: string, viewQuery?: string): Promise<void> {
     const existing = openTabs.value.find((t) => t.id === id);
     if (existing) {
       activeTabId.value = id;
+      if ((existing.viewQuery ?? undefined) !== (viewQuery || undefined)) {
+        existing.viewQuery = viewQuery || undefined;
+        await reloadTab(id);
+      }
       return;
     }
     // Two-step load after the inline→storage migration: DTO carries
@@ -473,10 +496,9 @@ export const useCortexStore = defineStore('cortex', () => {
       `documents/${encodeURIComponent(id)}`,
     );
     const file = dtoToDocument(dto);
+    file.viewQuery = viewQuery || undefined;
     if (!isBinaryMime(dto.mimeType)) {
-      const text = await brainFetchText(
-        `documents/${encodeURIComponent(id)}/content`,
-      );
+      const text = await brainFetchText(contentPath(id, file.viewQuery));
       file.inlineText = text ?? '';
       // dtoToDocument seeded baseline from the (null) DTO inlineText;
       // overwrite it with the actually-loaded body so the live-change
@@ -561,15 +583,18 @@ export const useCortexStore = defineStore('cortex', () => {
   async function reloadTab(id: string): Promise<void> {
     const idx = openTabs.value.findIndex((t) => t.id === id);
     if (idx < 0) return;
+    // Carried over from the tab, not re-derived: a reload of a
+    // parameterised view that dropped the parameters would silently swap
+    // the content for the base document's.
+    const viewQuery = openTabs.value[idx].viewQuery;
     const dto = await brainFetch<DocumentDto>(
       'GET',
       `documents/${encodeURIComponent(id)}`,
     );
     const fresh = dtoToDocument(dto);
+    fresh.viewQuery = viewQuery;
     if (!isBinaryMime(dto.mimeType)) {
-      const text = await brainFetchText(
-        `documents/${encodeURIComponent(id)}/content`,
-      );
+      const text = await brainFetchText(contentPath(id, viewQuery));
       fresh.inlineText = text ?? '';
       fresh.baselineInlineText = fresh.inlineText;
     }
@@ -600,6 +625,10 @@ export const useCortexStore = defineStore('cortex', () => {
     // path that reached here would mark the tab dirty and queue a save
     // that overwrites the server file with empty bytes — refuse.
     if (isBinaryDoc(tab)) return;
+    // A parameterised view has nothing to write back to: the content was
+    // computed for a set of read parameters, while a save would replace
+    // the *document* — a different thing that happens to share the row.
+    if (tab.viewQuery) return;
     tab.inlineText = text;
     tab.dirty = true;
   }
@@ -607,6 +636,12 @@ export const useCortexStore = defineStore('cortex', () => {
   async function saveTab(id: string): Promise<void> {
     const tab = openTabs.value.find((t) => t.id === id);
     if (!tab || !tab.dirty) return;
+    // Defense in depth, same shape as the binary guard below: whatever
+    // marked a view tab dirty, the save must not go out.
+    if (tab.viewQuery) {
+      tab.dirty = false;
+      return;
+    }
     // Defense in depth: same reason as {@link updateActiveContent}. A
     // binary doc that somehow has dirty=true (race, stale state) must
     // not get its bytes replaced with our blank inlineText.

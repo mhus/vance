@@ -536,6 +536,14 @@ export default {
       approvalHint: 'Antworte mit „ok"/„mach so" für Freigabe oder mit Korrekturen.',
       todosTitle: 'Plan-Schritte',
     },
+    activityStrip: {
+      working: 'arbeitet…',
+      toolCount: '{count} Tools',
+      doneTools: '{tools} Tools',
+      doneWithFailures: '{tools} Tools · {failed} fehlgeschlagen',
+      expand: 'Aktivität aufklappen',
+      collapse: 'Aktivität zuklappen',
+    },
   },
 
   runs: {

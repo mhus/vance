@@ -541,6 +541,14 @@ export default {
       approvalHint: 'Reply with "ok"/"go ahead" to approve, or with corrections.',
       todosTitle: 'Plan steps',
     },
+    activityStrip: {
+      working: 'working…',
+      toolCount: '{count} tools',
+      doneTools: '{tools} tools',
+      doneWithFailures: '{tools} tools · {failed} failed',
+      expand: 'Show activity',
+      collapse: 'Hide activity',
+    },
   },
 
   runs: {

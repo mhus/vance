@@ -10,6 +10,7 @@ import type {
   DocumentDto,
   PlanProposedNotification,
   ProcessModeChangedNotification,
+  ProcessProgressNotification,
   TodoItem,
   TodosUpdatedNotification,
 } from '@vance/generated';
@@ -26,6 +27,8 @@ import {
 import MessageBubble from './MessageBubble.vue';
 import FollowUpGhost from './FollowUpGhost.vue';
 import PlanModeIndicator from './PlanModeIndicator.vue';
+import ChatActivityStrip from './ChatActivityStrip.vue';
+import { applyProgress, createActivityState } from './chatActivity';
 import { OPTIMISTIC_PREFIX } from './optimisticEcho';
 import { buildFollowUpContext, type FollowUpContext } from './followUpContext';
 
@@ -541,6 +544,24 @@ function resetPlanModeState(): void {
   planMeta.value = null;
 }
 
+// ──────────────── Live activity strip ────────────────
+//
+// Tool calls, provider retries and compaction pings arrive on the
+// ephemeral progress side-channel. They are NOT rendered as messages —
+// the channel is never persisted, so bubbles would vanish on reload and
+// leave gaps in the transcript. Instead they fold into one line above the
+// composer; see chatActivity.ts for the reducer and the reasoning.
+
+const activityState = ref(createActivityState());
+
+function onProgress(data: ProcessProgressNotification): void {
+  // Reactivity: the reducer mutates in place (it owns the correlation
+  // bookkeeping), so hand Vue a fresh reference when something changed.
+  if (applyProgress(activityState.value, data, props.chatProcessName, Date.now())) {
+    activityState.value = { ...activityState.value };
+  }
+}
+
 function scrollToBottom(): void {
   nextTick(() => {
     const el = messageContainer.value;
@@ -598,6 +619,7 @@ function subscribeToSocket(): void {
       'process-mode-changed', onProcessModeChanged),
     props.socket.on<TodosUpdatedNotification>('todos-updated', onTodosUpdated),
     props.socket.on<PlanProposedNotification>('plan-proposed', onPlanProposed),
+    props.socket.on<ProcessProgressNotification>('process-progress', onProgress),
   );
 }
 
@@ -631,6 +653,8 @@ watch(() => props.sessionId, async (newId, oldId) => {
   liveMessages.value = [];
   streamingDrafts.value = new Map();
   resetPlanModeState();
+  // Another session's tool calls must not linger in the strip.
+  activityState.value = createActivityState();
   exportFeedback.value = null;
   if (exportFeedbackTimer) {
     clearTimeout(exportFeedbackTimer);
@@ -855,6 +879,11 @@ onBeforeUnmount(() => {
         />
       </div>
     </div>
+
+    <ChatActivityStrip
+      :state="activityState"
+      :suppressed="historyLoading"
+    />
 
     <PlanModeIndicator
       :mode="chatProcessMode"

@@ -33,6 +33,25 @@ public class StatusPayload {
     private @Nullable String detail;
 
     /**
+     * Bare tool name on tool-boundary pings ({@link StatusTag#TOOL_START},
+     * {@link StatusTag#TOOL_END}) — e.g. {@code "doc_read"}. Structured
+     * alongside the prose {@link #text} so clients can render their own
+     * compact, localised line ("doc_read · 4s") instead of parsing the
+     * English sentence out of {@code text}. {@code null} on every ping
+     * that isn't a tool boundary.
+     */
+    private @Nullable String tool;
+
+    /**
+     * {@code true} on a close-ping whose operation ended in an error.
+     * Deliberately three-state: {@code null} means "not applicable" (open
+     * pings, one-shot pings), so a client cannot mistake the absence of a
+     * failure flag on an open ping for a successful outcome. The human-
+     * readable cause is in {@link #detail}.
+     */
+    private @Nullable Boolean failed;
+
+    /**
      * Correlation key linking an open ({@link StatusTag#TOOL_START},
      * {@link StatusTag#DELEGATING}) ping with its close ({@link StatusTag#TOOL_END},
      * {@link StatusTag#NODE_DONE}, {@link StatusTag#PHASE_DONE}). Lets the

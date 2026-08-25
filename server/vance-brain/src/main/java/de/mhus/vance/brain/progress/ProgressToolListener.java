@@ -41,7 +41,7 @@ public class ProgressToolListener {
             @Override
             public void before(String toolName) {
                 String operationId = emitter.openOperation(
-                        process, StatusTag.TOOL_START, "Calling tool: " + toolName);
+                        process, StatusTag.TOOL_START, "Calling tool: " + toolName, toolName);
                 stack.push(new OpFrame(operationId, llmCallTracker.snapshot(processId)));
             }
 
@@ -51,8 +51,11 @@ public class ProgressToolListener {
                 if (frame == null) {
                     // Mismatched before/after — should never happen, but
                     // degrade gracefully to an uncorrelated end-ping.
-                    emitter.emitStatus(process, StatusTag.TOOL_END,
-                            "Tool " + toolName + " done (" + elapsedMs + "ms)");
+                    emitter.emitStatus(process, StatusPayload.builder()
+                            .tag(StatusTag.TOOL_END)
+                            .text("Tool " + toolName + " done (" + elapsedMs + "ms)")
+                            .tool(toolName)
+                            .build());
                     return;
                 }
                 UsageDelta usage = buildUsage(processId, frame.startSnapshot, elapsedMs);
@@ -61,6 +64,8 @@ public class ProgressToolListener {
                             .tag(StatusTag.TOOL_END)
                             .text("Tool " + toolName + " failed (" + elapsedMs + "ms)")
                             .detail(abbrev(error.getMessage()))
+                            .tool(toolName)
+                            .failed(true)
                             .operationId(frame.operationId)
                             .usage(usage)
                             .build());
@@ -71,6 +76,7 @@ public class ProgressToolListener {
                         frame.operationId,
                         StatusTag.TOOL_END,
                         "Tool " + toolName + " done (" + elapsedMs + "ms)",
+                        toolName,
                         usage);
             }
         };

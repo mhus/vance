@@ -10,6 +10,8 @@ export interface StatusPayload {
   tag: StatusTag;
   text: string;
   detail?: string;
+  tool?: string;
+  failed?: boolean;
   operationId?: string;
   usage?: UsageDelta;
 }

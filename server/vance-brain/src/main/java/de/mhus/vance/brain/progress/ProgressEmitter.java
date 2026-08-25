@@ -214,12 +214,17 @@ public class ProgressEmitter {
      * filter would suppress the push — callers don't have to special-case
      * {@code null}, and a later {@link #closeOperation} with the id will
      * also be suppressed consistently.
+     *
+     * @param tool bare tool name for tool-boundary pings, {@code null} for
+     *             every other tag (see {@link StatusPayload#getTool()})
      */
-    public String openOperation(ThinkProcessDocument process, StatusTag tag, String text) {
+    public String openOperation(
+            ThinkProcessDocument process, StatusTag tag, String text, @Nullable String tool) {
         String operationId = UUID.randomUUID().toString();
         emitStatus(process, StatusPayload.builder()
                 .tag(tag)
                 .text(text)
+                .tool(tool)
                 .operationId(operationId)
                 .build());
         return operationId;
@@ -231,16 +236,24 @@ public class ProgressEmitter {
      * {@link StatusTag#PHASE_DONE}) carrying the same {@code operationId}
      * that {@link #openOperation} returned, plus the operation's
      * {@link UsageDelta}.
+     *
+     * @param tool bare tool name for tool-boundary pings, {@code null} for
+     *             every other tag (see {@link StatusPayload#getTool()})
      */
     public void closeOperation(
             ThinkProcessDocument process,
             String operationId,
             StatusTag tag,
             String text,
+            @Nullable String tool,
             @Nullable UsageDelta usage) {
         emitStatus(process, StatusPayload.builder()
                 .tag(tag)
                 .text(text)
+                .tool(tool)
+                // A close through this path is the success path — the
+                // failure close is built by the caller with detail+failed.
+                .failed(false)
                 .operationId(operationId)
                 .usage(usage)
                 .build());

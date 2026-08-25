@@ -99,6 +99,7 @@ Do not guess at the schema — the four manuals below are short and exact:
 | Showing — markdown, code, badge, alert, embed | `manual_read('bistromath/content')` |
 | Sharing code, `@require`, what is bundled, version conflicts | `manual_read('bistromath/libraries')` |
 | Changing the view from JS, own drawing surface (`region:`) | `manual_read('bistromath/shaping')` |
+| Driving an app from the chat beside it (`app_*` tools, `agent:`) | `manual_read('bistromath/agent')` |
 
 **Never say "I cannot build that" about a small data or form tool without
 reading `manual_read('bistromath/hello-world')` first.**

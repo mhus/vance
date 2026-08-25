@@ -86,6 +86,21 @@ public record ViewNode(
         @Nullable String mimeType,
         @Nullable String accept,
         List<FormFieldDto> fields,
+        /**
+         * Whether an <b>agent</b> may trigger this widget's action.
+         *
+         * <p>Read by default, act by declaration: the chat beside an app can
+         * always read its state, and can set it (visible on screen, and
+         * committing nothing — a person still presses the button). Pressing the
+         * button is the sharp edge: it does whatever the app may do, on the
+         * agent's initiative, possibly while nobody is looking. So it is
+         * <b>deny unless the document says otherwise</b>.
+         *
+         * <p>In the document, not in a setting: it is a statement about *this
+         * button in this app*, it belongs where a reviewer of the app reads it,
+         * and it is the kind of thing a future signature should cover.
+         */
+        boolean agent,
         Map<String, ViewAction> on,
         List<ViewNode> children) {
 

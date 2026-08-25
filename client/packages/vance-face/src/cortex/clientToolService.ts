@@ -12,6 +12,28 @@ import type { CortexSelection } from './stores/cortexStore';
 
 type ToolSafety = 'SAFE_PROBE' | 'MUTATING';
 
+/**
+ * What a mounted custom app offers the chat beside it.
+ *
+ * <p>Mirrored structurally rather than imported: the app is a **federated**
+ * addon bundle and this page cannot import from it — the seam is
+ * `provide('vance:register-app-agent', …)`, and the shape is the contract. It
+ * matches `AppAgentApi` in `vance-addon-brain-bistromath/client/src/agentApi.ts`.
+ */
+export interface AppAgentApi {
+  describe(): {
+    app: string;
+    view: string | null;
+    stateKeys: string[];
+    actions: { id: string; label: string | null; type: string; agent: boolean }[];
+    views: string[];
+  };
+  stateGet(key?: string | null): unknown;
+  stateSet(key: string, value: unknown): void;
+  action(id: string, args?: unknown[]): Promise<void>;
+  reload(): Promise<void>;
+}
+
 interface ToolSpec {
   name: string;
   description: string;
@@ -74,6 +96,14 @@ export interface CortexToolDeps {
   getSelection(): CortexSelection | null;
 
   /**
+   * The custom app mounted in the foreground tab, or {@code null}.
+   *
+   * <p>A getter rather than a value: the app mounts and unmounts as tabs come
+   * and go, and this service outlives several of those.
+   */
+  getAppAgent?(): AppAgentApi | null;
+
+  /**
    * Open the document with the given path (relative inside the chat's
    * project) as a Cortex tab and activate it. Idempotent — when the
    * document is already open the existing tab is brought to the
@@ -113,6 +143,31 @@ export class CortexClientToolService {
   private invokeUnsub: (() => void) | null = null;
   private inflight = 0;
   private readonly handlers = new Map<string, ToolHandler>();
+
+  /**
+   * The app, or a refusal that says what to do instead.
+   *
+   * <p>Asked for through a **getter in the deps**, not held here: this service
+   * is a `computed` that is rebuilt whenever the session changes, and a
+   * registration stored on the instance would be silently lost the first time
+   * somebody switched sessions with an app open.
+   *
+   * <p>One app, not a map keyed by tab: the tools act on the app the reader is
+   * looking at. Two apps open means the background one is not addressable,
+   * which is right — the agent was asked about "the app" and there is one
+   * answer to that.
+   */
+  private requireApp(): AppAgentApi {
+    const app = this.deps.getAppAgent?.() ?? null;
+    if (!app) {
+      throw new Error(
+        'No custom app is open in the foreground. Open one (a folder with '
+          + '`app: custom`) and try again — these tools act on what the reader is '
+          + 'looking at.',
+      );
+    }
+    return app;
+  }
 
   constructor(private readonly deps: CortexToolDeps) {
     this.registerCortexHandlers();
@@ -238,6 +293,136 @@ export class CortexClientToolService {
         safety: 'SAFE_PROBE',
         requiresEngineRoles: [],
       },
+      // ── the custom app beside the chat ──────────────────────────
+      //
+      // Four names, always registered. NOT one tool per app: each app has its
+      // own state keys and buttons, so per-app registration would change the
+      // inventory on every tab switch — against the endpoint tool cap and, worse,
+      // against the cache-anchored prefix the whole prompt sits on. The
+      // *arguments* name the key or the action, and `app_describe` says what
+      // there is.
+      {
+        name: 'app_describe',
+        description:
+          'Describe the custom app (`app: custom`) open in the foreground of '
+          + 'the Cortex: which view is showing, its state keys, and its '
+          + 'widgets that have an action — each with whether you may trigger '
+          + 'it. Call this first: state keys and actions differ per app, so '
+          + 'guessing a name fails. Returns { app, view, stateKeys, actions, '
+          + 'views }. Fails when no such app is open.',
+        primary: true,
+        source: 'cortex',
+        paramsSchema: { type: 'object', properties: {}, required: [] },
+        labels: ['read-only', 'cortex', 'app'],
+        allowedProfiles: ['web'],
+        deferred: false,
+        searchHint: '',
+        safety: 'SAFE_PROBE',
+        requiresEngineRoles: [],
+      },
+      {
+        name: 'app_state_get',
+        description:
+          'Read the state of the custom app open in the foreground — one key, '
+          + 'or every key when none is named. This is what its widgets show, '
+          + 'including the values in its forms. Returns { state } for all keys '
+          + 'or { key, value } for one.',
+        primary: true,
+        source: 'cortex',
+        paramsSchema: {
+          type: 'object',
+          properties: {
+            key: {
+              type: 'string',
+              description:
+                'A state key from `app_describe`. Omit to read all of them.',
+            },
+          },
+          required: [],
+        },
+        labels: ['read-only', 'cortex', 'app'],
+        allowedProfiles: ['web'],
+        deferred: false,
+        searchHint: '',
+        safety: 'SAFE_PROBE',
+        requiresEngineRoles: [],
+      },
+      {
+        name: 'app_state_set',
+        description:
+          'Set one state key of the custom app open in the foreground — how '
+          + 'you fill in its form, since form values live in state. The change '
+          + 'is visible to the reader immediately and commits nothing: the '
+          + 'app\'s own handlers do NOT run, so a person still presses the '
+          + 'button. Use `app_action` for that, if the app allows it.',
+        primary: true,
+        source: 'cortex',
+        paramsSchema: {
+          type: 'object',
+          properties: {
+            key: { type: 'string', description: 'A state key from `app_describe`.' },
+            value: {
+              description:
+                'The new value. Any JSON — a string for a text field, a number, '
+                + 'a boolean for a toggle, an object for a form, an array for a table.',
+            },
+          },
+          required: ['key', 'value'],
+        },
+        labels: ['ui', 'cortex', 'app'],
+        allowedProfiles: ['web'],
+        deferred: false,
+        searchHint: '',
+        safety: 'MUTATING',
+        requiresEngineRoles: [],
+      },
+      {
+        name: 'app_action',
+        description:
+          'Press a button of the custom app open in the foreground, by widget '
+          + 'id. Only works for widgets the app opened to agents (`agent: '
+          + 'true` in its view document) — `app_describe` says which, and a '
+          + 'refusal here means the app did not offer it, not that you asked '
+          + 'wrongly. This runs the app\'s own code, so it can write '
+          + 'documents: read the state first and say what you are about to do.',
+        primary: true,
+        source: 'cortex',
+        paramsSchema: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              description: 'Widget id, from the `actions` list of `app_describe`.',
+            },
+          },
+          required: ['id'],
+        },
+        labels: ['ui', 'cortex', 'app'],
+        allowedProfiles: ['web'],
+        deferred: false,
+        searchHint: '',
+        safety: 'MUTATING',
+        requiresEngineRoles: [],
+      },
+      {
+        name: 'app_reload',
+        description:
+          'Re-read the custom app open in the foreground from its documents '
+          + 'and restart its program. This is the way back: it discards every '
+          + 'state value and widget change you or the app made, and shows '
+          + 'exactly what the documents say. Use it after editing the app\'s '
+          + 'view or program so the reader sees the new version, or when the '
+          + 'app is in a state you cannot explain. Commits nothing.',
+        primary: true,
+        source: 'cortex',
+        paramsSchema: { type: 'object', properties: {}, required: [] },
+        labels: ['ui', 'cortex', 'app'],
+        allowedProfiles: ['web'],
+        deferred: false,
+        searchHint: '',
+        safety: 'MUTATING',
+        requiresEngineRoles: [],
+      },
     ];
   }
 
@@ -245,6 +430,51 @@ export class CortexClientToolService {
     // Note: the selection *read* is now a server-side tool
     // (`doc_get_selection`), fed by the per-turn `boundDocSelection`
     // range that rides with the steer. The client no longer serves it.
+    this.handlers.set('app_describe', () => {
+      return this.requireApp().describe() as unknown as Record<string, unknown>;
+    });
+
+    this.handlers.set('app_state_get', (params) => {
+      const key = typeof params.key === 'string' && params.key ? params.key : null;
+      const app = this.requireApp();
+      if (!key) return { state: app.stateGet() };
+      return { key, value: app.stateGet(key) };
+    });
+
+    this.handlers.set('app_state_set', (params) => {
+      const key = typeof params.key === 'string' ? params.key : '';
+      if (!key) throw new Error('`key` is required — see `app_describe`.');
+      const app = this.requireApp();
+      // Named rather than accepted: writing a key no widget reads changes
+      // nothing visible, and an agent would report success on a spelling
+      // mistake. The keys are knowable, so the check is fair.
+      const known = app.describe().stateKeys;
+      if (known.length > 0 && !known.includes(key)) {
+        throw new Error(
+          `No widget reads '${key}'. This app's keys are: ${known.join(', ')}.`,
+        );
+      }
+      app.stateSet(key, params.value);
+      return { key, value: params.value };
+    });
+
+    this.handlers.set('app_action', async (params) => {
+      const id = typeof params.id === 'string' ? params.id : '';
+      if (!id) throw new Error('`id` is required — see `app_describe`.');
+      const app = this.requireApp();
+      await app.action(id);
+      return { id, triggered: true, state: app.stateGet() };
+    });
+
+    this.handlers.set('app_reload', async () => {
+      const app = this.requireApp();
+      await app.reload();
+      // The description afterwards, not before: an agent reloads because it
+      // changed the documents, and what it needs next is what the app looks
+      // like now.
+      return { reloaded: true, app: app.describe() as unknown as Record<string, unknown> };
+    });
+
     this.handlers.set('cortex_get_active_tab', () => {
       const tab = this.deps.getActiveTab();
       if (!tab) {

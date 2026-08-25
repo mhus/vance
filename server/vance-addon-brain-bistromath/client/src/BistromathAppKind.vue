@@ -23,6 +23,12 @@ import { Sandbox, type SandboxHost } from './sandbox';
 import { PATCHES, applyPatch, type PatchMap, type WidgetPatch } from './patches';
 import { getTenantId, getUsername } from '@vance/shared';
 import { DocumentAccess, callRest, loadScript, loadView, rebuildApp, scanApp } from './api';
+import {
+  ActionNotAllowedError,
+  actionAllowed,
+  describeView,
+  type AppAgentApi,
+} from './agentApi';
 import type { AppScan } from './generated/bistromath/AppScan';
 import type { RenderedView } from './generated/bistromath/RenderedView';
 import type { ViewAction } from './generated/bistromath/ViewAction';
@@ -341,15 +347,85 @@ const registerReset = inject<((fn: null | (() => void)) => void) | null>(
   null,
 );
 
+/**
+ * Lets the chat beside this app read and drive it — see `agentApi.ts` for what
+ * is allowed and why.
+ *
+ * <p>Injected like the reset button: the surrounding page owns the WS and the
+ * tool registration, and a federated addon cannot import from it. Handing over
+ * an object is the seam.
+ */
+const registerAgent = inject<((api: AppAgentApi | null) => void) | null>(
+  'vance:register-app-agent',
+  null,
+);
+
+/**
+ * What the agent may do. Deliberately built from the same pieces the reader
+ * uses: `state` is the same object the widgets read, and an action goes through
+ * the same `onAction` a click goes through — including its error notice.
+ */
+const agentApi: AppAgentApi = {
+  describe() {
+    return describeView(
+      folder.value,
+      view.value,
+      (scan.value?.views ?? []).map((v) => v.handle),
+    );
+  },
+  stateGet(key) {
+    const raw = toRaw(state);
+    if (key === undefined || key === null || key === '') return { ...raw };
+    return raw[key];
+  },
+  stateSet(key, value) {
+    // No handler is run. That is what makes an agent's write free of a
+    // declaration: it changes what is on screen and nothing else, so a person
+    // still presses the button. If it fired `on: change`, a half-filled form
+    // would run the app's logic three times and the write would need the same
+    // gate an action needs.
+    state[key] = value;
+  },
+  async reload() {
+    // The same `load()` the ⟳ button runs — one way back, not two.
+    await load();
+  },
+  async action(id, args) {
+    if (!actionAllowed(view.value, id)) throw new ActionNotAllowedError(id);
+    const node = findNode(view.value?.root ?? null, id);
+    const click = node?.on?.click;
+    if (!click) {
+      throw new Error(`'${id}' has no click handler, so there is nothing to press. `
+        + 'Set its state key instead.');
+    }
+    notice.value = null;
+    await onAction(click, args && args.length ? String(args[0]) : undefined);
+    if (notice.value) throw new Error(notice.value);
+  },
+};
+
+/** The node with this id, or null. */
+function findNode(node: RenderedView['root'] | null, id: string): RenderedView['root'] | null {
+  if (!node) return null;
+  if (node.id === id) return node;
+  for (const child of node.children ?? []) {
+    const hit = findNode(child, id);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 onMounted(() => {
   registerReset?.(() => {
     void load();
   });
+  registerAgent?.(agentApi);
   void load();
 });
 
 onBeforeUnmount(() => {
   registerReset?.(null);
+  registerAgent?.(null);
   void teardown();
 });
 

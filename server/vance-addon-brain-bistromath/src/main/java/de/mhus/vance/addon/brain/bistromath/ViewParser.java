@@ -194,6 +194,7 @@ public final class ViewParser {
         List<ViewOption> options = options(raw.get("options"), docPath, at + ".options");
         String variant = variant(raw.get("variant"), type, docPath, at);
         String mimeType = codeMime(raw.get("language"), type, docPath, at);
+        boolean agent = agentFlag(raw.get("agent"), docPath, at);
         String accept = str(raw.get("accept"));
         if (accept != null && type != WidgetType.FILE) {
             throw new ToolException(where(docPath, at) + ": `accept` belongs to a `file`,"
@@ -227,10 +228,10 @@ public final class ViewParser {
 
         rejectRemovedKeys(raw, docPath, at);
         requireShape(type, label, text, from, show, options,
-                raw.containsKey("options"), docPath, at);
+                raw.containsKey("options"), agent, on, docPath, at);
 
         return new ViewNode(type.wire(), label, text, from, id, region, show, columns, options,
-                variant, mimeType, accept, fields, on, children);
+                variant, mimeType, accept, fields, agent, on, children);
     }
 
     /**
@@ -250,12 +251,35 @@ public final class ViewParser {
         }
     }
 
+    /**
+     * The {@code agent:} flag: may a chat beside the app trigger this action.
+     *
+     * <p>Only a real boolean. A string {@code "true"} is refused rather than
+     * coerced, because this is the one field in a view where being wrong in the
+     * permissive direction hands an agent a button nobody meant to give it —
+     * and YAML would happily read {@code agent: yes-please} as a string.
+     */
+    private static boolean agentFlag(@Nullable Object raw, String docPath, String at) {
+        if (raw == null) return false;
+        if (raw instanceof Boolean b) return b;
+        throw new ToolException(where(docPath, at) + ": `agent` is true or false, not `"
+                + raw + "`. It says whether a chat beside the app may trigger this action.");
+    }
+
     /** Per-widget requirements, in one place so the messages stay uniform. */
     private static void requireShape(WidgetType type, @Nullable String label,
                                      @Nullable String text, @Nullable String from,
                                      @Nullable String show, List<ViewOption> options,
-                                     boolean optionsWritten,
+                                     boolean optionsWritten, boolean agent,
+                                     Map<String, ViewAction> on,
                                      String docPath, String at) {
+        // `agent: true` on something with nothing to trigger is not harmless
+        // noise: it reads as a granted permission, so the author believes an
+        // agent can drive a widget that has no action at all.
+        if (agent && on.isEmpty()) {
+            throw new ToolException(where(docPath, at) + ": `agent: true` needs an action to"
+                    + " trigger — put it on a widget that has `on:`.");
+        }
         switch (type) {
             case TABLE -> {
                 if (from == null) {

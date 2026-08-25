@@ -57,7 +57,7 @@ import {
 import { resolveDocumentIdByPath } from './resolveDocumentPath';
 import { useViewEditMode } from './useViewEditMode';
 import { resolveHelpPath } from './help';
-import { CortexClientToolService } from './clientToolService';
+import { CortexClientToolService, type AppAgentApi } from './clientToolService';
 import { useDocumentInvalidate } from './composables/useDocumentInvalidate';
 import FileTreeSidebar from './components/FileTreeSidebar.vue';
 import EditorTabs from './components/EditorTabs.vue';
@@ -246,6 +246,19 @@ provide('vance:compose-output-component', ComposeOutput);
 // pass it so the run binds to the session's primary chat process — the
 // workspace/target is then shared with the chat (see ComposeController).
 provide('vance:session-id', sessionId);
+
+/**
+ * The custom app in the foreground, when one is mounted.
+ *
+ * <p>Held here rather than in the tool service because that service is rebuilt
+ * on every session change, while the mounted app is not. The app registers
+ * itself on mount and clears on unmount — so "no app open" and "an app whose
+ * tab was closed" are the same state, which is what the tools report.
+ */
+const appAgent = ref<AppAgentApi | null>(null);
+provide('vance:register-app-agent', (api: AppAgentApi | null) => {
+  appAgent.value = api;
+});
 
 // Follow-up suggestion toggle for the code editors inside the tab
 // shells (see the View menu + cortexUrl `sg` param).
@@ -1044,6 +1057,7 @@ const clientToolService = computed<CortexClientToolService | null>(() => {
   if (!sessionId.value) return null;
   return new CortexClientToolService({
     getSelection: () => store.currentSelection,
+    getAppAgent: () => appAgent.value,
     getActiveTab: () => {
       const tab = store.activeTab;
       if (!tab) return null;

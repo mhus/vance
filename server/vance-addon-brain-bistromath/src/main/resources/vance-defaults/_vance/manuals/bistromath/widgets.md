@@ -71,6 +71,12 @@ which decides what to do with them. Nothing to preserve, so nothing to encode.
 a value means everyone has to learn an escaping rule, and YAML can already write
 two things.
 
+**A select whose choices come from data writes `options: []`**, and the program
+fills them (`ui.options(...)`, `manual_read('lib-ui')`). Absent and empty are
+different answers: leaving `options` out is an error, `[]` says "the program
+supplies these". A placeholder choice instead would sit on screen as a wrong
+answer until `init()` has run.
+
 An **emptied** `number` writes `null`, not `0`. Zero is a number somebody may
 have typed on purpose.
 

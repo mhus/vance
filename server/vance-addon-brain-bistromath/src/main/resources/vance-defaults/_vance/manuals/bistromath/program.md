@@ -157,14 +157,20 @@ often here.
 | `vance.view.reset(id?)` | undo one patch, or all of them |
 | `vance.ui.notify(text)` | a message above the page |
 | `vance.ui.show(handle)` | switch to another view |
+| `vance.rest(method, path, body?)` | any Brain route the reader may use — `manual_read('rest')` |
 
 See `manual_read('data')` for paths, reading and the write rule.
 
 ## What it may not do
 
-No `window` of the host, no cookies, no `localStorage`, no `fetch`. The program
-runs in a sandboxed frame with an opaque origin; `vance.*` is the only way out,
-and it never carries the reader's credentials into the program.
+No `window` of the host, no cookies, no `localStorage`. The program runs in a
+sandboxed frame with an opaque origin; `vance.*` is the only way out.
+
+**It never holds a credential**, and that is the point rather than a limitation:
+it is why a program written as a document is allowed to run at all. It can still
+reach the API — `vance.rest` has the *host* make the call with the reader's
+session and hands back the result (`manual_read('rest')`) — so "no token" and
+"no server" are different statements, and only the first one is true.
 
 It *does* have a **DOM of its own** — that frame's document. Invisible unless the
 view asks for it with `region:`, and then it is a rectangle you render into

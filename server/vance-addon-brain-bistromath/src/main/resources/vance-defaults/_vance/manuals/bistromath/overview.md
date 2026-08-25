@@ -30,10 +30,12 @@ There is no table declaration, no `source:` on a widget, and no data endpoint.
 | Data and input — table, the single controls, form, pagination, file | `manual_read('widgets')` |
 | Arranging — row, column, card, tabs, dialog | `manual_read('layout')` |
 | Showing — markdown, code, badge, alert, embed | `manual_read('content')` |
-| Sharing code, `@require`, version conflicts | `manual_read('libraries')` |
+| Sharing code, `@require`, and the five bundled libraries | `manual_read('libraries')` |
 | Changing the view from JS, and your own drawing surface | `manual_read('shaping')` |
 | Which functions does the runtime call? What can the program do? | `manual_read('program')` |
 | How do I read documents, folders, mounted files? | `manual_read('data')` |
+| Calling any Brain route from the program (`vance.rest`) | `manual_read('rest')` |
+| Letting the chat beside the app drive it (`app_*`, `agent:`) | `manual_read('agent')` |
 | An error message I do not recognise | `manual_read('troubleshooting')` |
 
 Reading these from a general agent (not the app-building recipe) needs the

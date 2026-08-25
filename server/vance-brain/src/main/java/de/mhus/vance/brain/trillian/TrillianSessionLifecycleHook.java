@@ -117,8 +117,10 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
                         account, e.toString());
             }
             // Grants next: they key on the user *name* too, and one must
-            // not outlive its subject. UserService.delete does not cascade
-            // into grant storage.
+            // not outlive its subject. Deleting the account below cascades
+            // there through UserLifecycleListener — but only if the account
+            // still exists, and the presence check further down is reached
+            // on paths where it does not. This covers exactly that case.
             try {
                 permissionBootstrapProvider.ifAvailable(
                         pb -> pb.revokeAll(session.getTenantId(), account));

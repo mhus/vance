@@ -4,17 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.shared.permission.PermissionBootstrap;
 import java.time.Instant;
 import java.util.Optional;
-import java.util.function.Consumer;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -42,7 +41,7 @@ class UserServiceTest {
     private static final String TENANT = "acme";
     private UserRepository repo;
     private MongoTemplate mongoTemplate;
-    private PermissionBootstrap permissionBootstrap;
+    private UserLifecycleListener listener;
     private UserService service;
 
     @BeforeEach
@@ -50,15 +49,14 @@ class UserServiceTest {
     void setUp() {
         repo = mock(UserRepository.class);
         mongoTemplate = mock(MongoTemplate.class);
-        permissionBootstrap = mock(PermissionBootstrap.class);
-        ObjectProvider<PermissionBootstrap> bootstrapProvider = mock(ObjectProvider.class);
-        // ifAvailable is a default method; a plain mock would swallow it and the
-        // "grants are revoked" tests below would pass without the wiring existing.
-        doAnswer(inv -> {
-            inv.<Consumer<PermissionBootstrap>>getArgument(0).accept(permissionBootstrap);
-            return null;
-        }).when(bootstrapProvider).ifAvailable(any());
-        service = new UserService(repo, mongoTemplate, bootstrapProvider, mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
+        listener = mock(UserLifecycleListener.class);
+        ObjectProvider<UserLifecycleListener> listenerProvider = mock(ObjectProvider.class);
+        // orderedStream() is a default method; a plain mock would return null
+        // and the lifecycle tests below would pass without the wiring existing.
+        // Fresh stream per call — the service iterates it more than once.
+        when(listenerProvider.orderedStream()).thenAnswer(inv -> Stream.of(listener));
+        service = new UserService(repo, mongoTemplate, listenerProvider,
+                mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
         when(repo.save(any(UserDocument.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
@@ -296,30 +294,87 @@ class UserServiceTest {
     }
 
     @Test
-    void delete_revokesEveryGrantHeldUnderTheName_beforeRemovingTheDocument() {
+    void delete_notifiesTheLifecycleListener_beforeRemovingTheDocument() {
         // Grants key on the username, not the Mongo id. Left behind, they are
         // inherited by the next account created under the same name — realistic
         // for service-account schemes (_daemon-prod-01) and reused human logins.
-        // Revocation runs first so a failing grant store aborts the delete rather
-        // than orphaning the grant.
+        // The listener runs first so a failing grant store aborts the delete
+        // rather than orphaning the grant.
         UserDocument admin = UserDocument.builder().tenantId(TENANT).name("marvin.acme").build();
         when(repo.findByTenantIdAndName(TENANT, "marvin.acme")).thenReturn(Optional.of(admin));
 
         service.delete(TENANT, "marvin.acme");
 
-        InOrder order = inOrder(permissionBootstrap, repo);
-        order.verify(permissionBootstrap).revokeAll(TENANT, "marvin.acme");
+        InOrder order = inOrder(listener, repo);
+        order.verify(listener).onUserDeleted(TENANT, "marvin.acme");
         order.verify(repo).delete(admin);
     }
 
     @Test
-    void delete_ofAnUnknownUser_touchesNoGrants() {
+    void delete_whenAListenerFails_leavesTheDocumentInPlace() {
+        // Fail-closed: a grant whose subject is gone is worse than an account
+        // that could not be deleted, so the exception must not be swallowed.
+        UserDocument admin = UserDocument.builder().tenantId(TENANT).name("marvin.acme").build();
+        when(repo.findByTenantIdAndName(TENANT, "marvin.acme")).thenReturn(Optional.of(admin));
+        doThrow(new IllegalStateException("grant store down"))
+                .when(listener).onUserDeleted(TENANT, "marvin.acme");
+
+        assertThatThrownBy(() -> service.delete(TENANT, "marvin.acme"))
+                .isInstanceOf(IllegalStateException.class);
+
+        verify(repo, never()).delete(any(UserDocument.class));
+    }
+
+    @Test
+    void delete_ofAnUnknownUser_notifiesNobody() {
         when(repo.findByTenantIdAndName(TENANT, "ghost")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.delete(TENANT, "ghost"))
                 .isInstanceOf(UserService.UserNotFoundException.class);
 
-        verify(permissionBootstrap, never()).revokeAll(any(), any());
+        verify(listener, never()).onUserDeleted(any(), any());
+    }
+
+    @Test
+    void create_notifiesTheLifecycleListener_withTheSavedAccount() {
+        // The create side exists for the same hazard: state left under a name
+        // that comes back. A listener clears it before the new owner can
+        // inherit it.
+        when(repo.existsByTenantIdAndName(TENANT, "alice")).thenReturn(false);
+
+        service.create(TENANT, "alice", "hash", "Alice", "alice@x.test");
+
+        ArgumentCaptor<UserDocument> created = ArgumentCaptor.forClass(UserDocument.class);
+        verify(listener).onUserCreated(created.capture());
+        assertThat(created.getValue().getName()).isEqualTo("alice");
+        assertThat(created.getValue().getTenantId()).isEqualTo(TENANT);
+    }
+
+    @Test
+    void create_whenAListenerFails_theAccountStillStands() {
+        // Nothing left to abort by then — the document is written. Reporting a
+        // failed create for an account that exists would be the worse answer.
+        when(repo.existsByTenantIdAndName(TENANT, "alice")).thenReturn(false);
+        doThrow(new IllegalStateException("grant store down"))
+                .when(listener).onUserCreated(any());
+
+        UserDocument user = service.create(TENANT, "alice", "hash", null, null);
+
+        assertThat(user.getName()).isEqualTo("alice");
+    }
+
+    @Test
+    void ensureVanceServiceAccount_onSecondCall_doesNotNotifyAgain() {
+        // Fires once per account, not once per call: the second call finds the
+        // document and creates nothing.
+        UserDocument existing = UserDocument.builder()
+                .tenantId(TENANT).name("_vance-admin").build();
+        when(repo.findByTenantIdAndName(TENANT, "_vance-admin"))
+                .thenReturn(Optional.of(existing));
+
+        service.ensureVanceServiceAccount(TENANT, "_vance-admin", null, null, null);
+
+        verify(listener, never()).onUserCreated(any());
     }
 
     @Test

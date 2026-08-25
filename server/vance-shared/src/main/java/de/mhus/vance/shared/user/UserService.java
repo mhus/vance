@@ -1,6 +1,5 @@
 package de.mhus.vance.shared.user;
 
-import de.mhus.vance.shared.permission.PermissionBootstrap;
 import de.mhus.vance.shared.session.SessionService;
 import java.time.Duration;
 import java.time.Instant;
@@ -76,10 +75,11 @@ public class UserService {
     private final UserRepository repository;
     private final MongoTemplate mongoTemplate;
     /**
-     * Optional: present only when a permission provider stores its grants inside
-     * Vance (the bundled simple-auth). See {@link #delete}.
+     * Everything that keys on the user <em>name</em> rather than on the Mongo
+     * id — grant storage above all. Empty unless an addon contributes one; see
+     * {@link UserLifecycleListener}.
      */
-    private final ObjectProvider<PermissionBootstrap> permissionBootstrapProvider;
+    private final ObjectProvider<UserLifecycleListener> lifecycleListeners;
     private final de.mhus.vance.shared.megadodo.MegadodoService megadodoService;
 
     public Optional<UserDocument> findByTenantAndName(String tenantId, String name) {
@@ -213,6 +213,16 @@ public class UserService {
                 .build();
         UserDocument saved = repository.save(user);
         megadodoService.userCreated(tenantId, name, serviceAccount);
+        // Best-effort, and one listener's failure does not hide the next:
+        // the account exists by now, so there is nothing left to abort.
+        lifecycleListeners.orderedStream().forEach(listener -> {
+            try {
+                listener.onUserCreated(saved);
+            } catch (RuntimeException e) {
+                log.warn("User-lifecycle listener {} failed for created user '{}' in tenant '{}'",
+                        listener.getClass().getSimpleName(), name, tenantId, e);
+            }
+        });
         log.info("Created user tenantId='{}' name='{}' id='{}' serviceAccount={} loginEnabled={}",
                 saved.getTenantId(), saved.getName(), saved.getId(),
                 saved.isServiceAccount(), saved.isLoginEnabled());
@@ -348,30 +358,31 @@ public class UserService {
     }
 
     /**
-     * Hard-deletes a user, together with every permission grant held under that
-     * name in the tenant.
+     * Hard-deletes a user, after every {@link UserLifecycleListener} has
+     * released what it holds under that name — permission grants above all.
      *
-     * <p><b>Why grants are part of the delete and team memberships are not.</b>
-     * A grant is keyed on the <em>username</em>, not on the Mongo id, so it does
-     * not disappear with the document — and a login can come back: service
-     * accounts follow a naming scheme ({@code _daemon-prod-01}) and human logins
-     * get reused. A left-behind TENANT-ADMIN grant would then be inherited,
-     * silently, by whoever is created next under the same name, without anybody
-     * having granted anything. A team membership carries no authority
-     * ({@code ProjectDocument.teamIds} is organisational), so it stays the
-     * caller's business — clean it up via {@code TeamService.removeMember}.
+     * <p><b>Why name-keyed state is part of the delete and team memberships are
+     * not.</b> A grant is keyed on the <em>username</em>, not on the Mongo id,
+     * so it does not disappear with the document — and a login can come back:
+     * service accounts follow a naming scheme ({@code _daemon-prod-01}) and
+     * human logins get reused. A left-behind TENANT-ADMIN grant would then be
+     * inherited, silently, by whoever is created next under the same name,
+     * without anybody having granted anything. A team membership carries no
+     * authority ({@code ProjectDocument.teamIds} is organisational), so it
+     * stays the caller's business — clean it up via
+     * {@code TeamService.removeMember}.
      *
-     * <p>Revocation runs <em>before</em> the document is removed, so a failing
-     * grant store aborts the delete rather than leaving the grant without its
-     * subject. It is a no-op when no permission provider owns grant storage
-     * (enterprise governor, or none at all) — the same {@code ifAvailable}
-     * convention every {@link PermissionBootstrap} consumer uses.
+     * <p>The listeners run <em>before</em> the document is removed, and their
+     * exceptions propagate: a failing grant store aborts the delete rather than
+     * leaving the grant without its subject. With no listener present
+     * (enterprise governor, or no permission addon at all) this is a plain
+     * document delete.
      */
     public void delete(String tenantId, String name) {
         UserDocument user = repository.findByTenantIdAndName(tenantId, name)
                 .orElseThrow(() -> new UserNotFoundException(
                         "User '" + name + "' not found in tenant '" + tenantId + "'"));
-        permissionBootstrapProvider.ifAvailable(pb -> pb.revokeAll(tenantId, name));
+        lifecycleListeners.orderedStream().forEach(l -> l.onUserDeleted(tenantId, name));
         repository.delete(user);
         megadodoService.userDeleted(tenantId, name);
         log.info("Deleted user tenantId='{}' name='{}'", tenantId, name);

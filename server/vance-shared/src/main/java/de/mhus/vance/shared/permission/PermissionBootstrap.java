@@ -56,12 +56,17 @@ public interface PermissionBootstrap {
      * survives the document unless somebody removes it — and a name can come
      * back (service accounts follow a scheme, human logins get reused), at which
      * point the new account silently inherits authority nobody granted it.
-     * {@code UserService.delete} therefore calls this for every deletion; the
-     * Trillian lifecycle hook calls it as well, ahead of the account delete, so
+     *
+     * <p>The account lifecycle no longer reaches this SPI directly: a provider
+     * that owns grant storage implements
+     * {@code de.mhus.vance.shared.user.UserLifecycleListener} and is called by
+     * {@code UserService} on every create and delete. What remains here are the
+     * callers that clean up <em>without</em> a user document to go with it —
+     * the Trillian lifecycle hook revokes ahead of the account delete, so
      * grants go even when the account itself is already gone.
      *
      * <p>Idempotent: removing grants of an unknown or already-cleaned user is
-     * a no-op. Both callers rely on that.
+     * a no-op. Every caller relies on that.
      */
     void revokeAll(String tenant, String username);
 }

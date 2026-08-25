@@ -35,7 +35,7 @@ class SmtpImapRoundtripTest {
                 "password", "secret",
                 "from", "alice@example.com")));
 
-        Map<String, Object> sendResult = sender.send(new SmtpSender.SendRequest(
+        Map<String, Object> sendResult = sender.send(new MailMessage(
                 List.of("alice@example.com"),
                 /*cc*/ null, /*bcc*/ null,
                 "Hello from Vance",
@@ -83,7 +83,7 @@ class SmtpImapRoundtripTest {
                 "password", "secret",
                 "from", "alice@example.com")));
 
-        sender.send(new SmtpSender.SendRequest(
+        sender.send(new MailMessage(
                 List.of("alice@example.com"), null, null,
                 "Rich mail",
                 "Plain version",

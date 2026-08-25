@@ -6,6 +6,7 @@ import de.mhus.vance.shared.servertool.ServerToolDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.mail.MailMessage;
 import de.mhus.vance.toolpack.mail.SmtpConfig;
 import de.mhus.vance.toolpack.mail.SmtpSender;
 import java.util.ArrayList;
@@ -162,7 +163,7 @@ public class SmtpSenderToolFactory implements ToolFactory {
             }
             SmtpSender sender = new SmtpSender(SmtpConfig.fromParameters(resolved));
             try {
-                return sender.send(new SmtpSender.SendRequest(
+                return sender.send(new MailMessage(
                         to, cc.isEmpty() ? null : cc, bcc.isEmpty() ? null : bcc,
                         subject, body, html, from, replyTo));
             } catch (RuntimeException ex) {

@@ -1,21 +1,11 @@
 package de.mhus.vance.toolpack.mail;
 
-import jakarta.activation.DataHandler;
-import jakarta.mail.Address;
 import jakarta.mail.Authenticator;
-import jakarta.mail.Message;
 import jakarta.mail.MessagingException;
-import jakarta.mail.Part;
 import jakarta.mail.PasswordAuthentication;
 import jakarta.mail.Session;
 import jakarta.mail.Transport;
-import jakarta.mail.internet.AddressException;
-import jakarta.mail.internet.InternetAddress;
-import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMessage;
-import jakarta.mail.internet.MimeMultipart;
-import jakarta.mail.util.ByteArrayDataSource;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,18 +16,15 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Single-shot SMTP sender using Jakarta Mail. Each
- * {@link #send(SendRequest) send} call opens a fresh transport — SMTP
+ * {@link #send(MailMessage) send} call opens a fresh transport — SMTP
  * servers handle this fine and we avoid sticky-session bugs across
  * LLM turns.
  *
- * <p>Plain-text only path: {@code body} is the message body.
- * Multipart path: pass {@code html != null} to send a multipart/
- * alternative with both plain and HTML versions (the canonical "rich
- * email with plain fallback" recipe).
- *
- * <p>With {@code attachments} the message becomes a multipart/mixed
- * whose first part is that body — plain or the alternative pair, nested
- * rather than flattened, so the plain/HTML choice survives.
+ * <p>What goes out is a {@link MailMessage}, which is also what the
+ * Gmail transport sends: the message assembly (plain vs. multipart,
+ * attachments, UTF-8 headers) lives there so both ways out of the house
+ * produce the same bytes. What lives here is what is genuinely SMTP:
+ * session properties, authentication, and the pack's abuse guards.
  */
 @Slf4j
 public final class SmtpSender {
@@ -49,53 +36,13 @@ public final class SmtpSender {
     }
 
     /**
-     * One file to attach. {@code bytes} is held as-is, not copied —
-     * callers must not mutate the array afterwards, and a record with an
-     * array component has no meaningful {@code equals}; neither matters
-     * for a single-shot send payload.
-     *
-     * <p>{@code mimeType} is nullable on purpose: a caller that does not
-     * know the type says so, and {@code application/octet-stream} is filled
-     * in at send time. The package is {@code @NullMarked}, so leaving it
-     * unannotated declared the opposite of what the sender implements.
-     */
-    public record Attachment(String filename, @Nullable String mimeType, byte[] bytes) {
-    }
-
-    /** Payload for one outgoing message. */
-    public record SendRequest(
-            List<String> to,
-            @Nullable List<String> cc,
-            @Nullable List<String> bcc,
-            String subject,
-            String body,
-            @Nullable String html,
-            @Nullable String from,
-            @Nullable String replyTo,
-            @Nullable List<Attachment> attachments) {
-
-        /** Attachment-free form — keeps the pre-attachment call sites intact. */
-        public SendRequest(
-                List<String> to,
-                @Nullable List<String> cc,
-                @Nullable List<String> bcc,
-                String subject,
-                String body,
-                @Nullable String html,
-                @Nullable String from,
-                @Nullable String replyTo) {
-            this(to, cc, bcc, subject, body, html, from, replyTo, null);
-        }
-    }
-
-    /**
      * Sends the message. Returns a small summary map ({@code messageId},
      * {@code recipients}, etc.) — useful for the LLM tool result.
      *
      * @throws SmtpException on transport failure (auth, network, refused).
      */
-    public Map<String, Object> send(SendRequest req) {
-        if (req == null) throw new IllegalArgumentException("SendRequest is required");
+    public Map<String, Object> send(MailMessage req) {
+        if (req == null) throw new IllegalArgumentException("MailMessage is required");
         if (req.to() == null || req.to().isEmpty()) {
             throw new IllegalArgumentException("send_message: 'to' must list at least one recipient");
         }
@@ -106,74 +53,39 @@ public final class SmtpSender {
             throw new IllegalArgumentException("send_message: 'body' is required");
         }
 
+        String fromAddr = pick(req.from(), config.from());
+        if (fromAddr == null || fromAddr.isBlank()) {
+            throw new IllegalArgumentException(
+                    "send_message: no 'from' address — set parameters.from on the pack "
+                            + "or pass from=... on the call");
+        }
+        // Abuse guards (defense-in-depth vs. prompt-injected send_message):
+        // an allowedFrom list blocks sender spoofing through the org relay;
+        // an allowedRecipientDomains list blocks data exfiltration to an
+        // attacker address. Empty lists = unrestricted (backward compatible).
+        // Before assembly, deliberately: a refused send must not first read
+        // every attachment into memory.
+        enforceFromPolicy(fromAddr);
+        enforceRecipientPolicy(req.to());
+        enforceRecipientPolicy(req.cc());
+        enforceRecipientPolicy(req.bcc());
+
         Session session = Session.getInstance(buildProperties(), authenticator());
         try {
-            MimeMessage msg = new MimeMessage(session);
-            String fromAddr = pick(req.from(), config.from());
-            if (fromAddr == null || fromAddr.isBlank()) {
-                throw new IllegalArgumentException(
-                        "send_message: no 'from' address — set parameters.from on the pack "
-                                + "or pass from=... on the call");
-            }
-            // Abuse guards (defense-in-depth vs. prompt-injected send_message):
-            // an allowedFrom list blocks sender spoofing through the org relay;
-            // an allowedRecipientDomains list blocks data exfiltration to an
-            // attacker address. Empty lists = unrestricted (backward compatible).
-            enforceFromPolicy(fromAddr);
-            enforceRecipientPolicy(req.to());
-            enforceRecipientPolicy(req.cc());
-            enforceRecipientPolicy(req.bcc());
-            msg.setFrom(new InternetAddress(fromAddr));
-            if (req.replyTo() != null && !req.replyTo().isBlank()) {
-                msg.setReplyTo(new Address[]{new InternetAddress(req.replyTo())});
-            }
-            msg.setRecipients(Message.RecipientType.TO, toAddresses(req.to()));
-            if (req.cc() != null && !req.cc().isEmpty()) {
-                msg.setRecipients(Message.RecipientType.CC, toAddresses(req.cc()));
-            }
-            if (req.bcc() != null && !req.bcc().isEmpty()) {
-                msg.setRecipients(Message.RecipientType.BCC, toAddresses(req.bcc()));
-            }
-            msg.setSubject(req.subject(), "UTF-8");
-
-            List<Attachment> attachments = req.attachments() == null
-                    ? List.of()
-                    : req.attachments();
-            if (!attachments.isEmpty()) {
-                // multipart/mixed with the whole body (plain, or the
-                // alternative pair) as the first part — nesting the
-                // alternative inside the mixed keeps the plain/HTML choice
-                // intact instead of flattening it next to the files.
-                MimeMultipart mixed = new MimeMultipart("mixed");
-                MimeBodyPart bodyPart = new MimeBodyPart();
-                if (req.html() != null && !req.html().isBlank()) {
-                    bodyPart.setContent(alternativeBody(req));
-                } else {
-                    bodyPart.setText(req.body(), "UTF-8");
-                }
-                mixed.addBodyPart(bodyPart);
-                for (Attachment a : attachments) {
-                    mixed.addBodyPart(attachmentPart(a));
-                }
-                msg.setContent(mixed);
-            } else if (req.html() != null && !req.html().isBlank()) {
-                msg.setContent(alternativeBody(req));
-            } else {
-                msg.setText(req.body(), "UTF-8");
-            }
-            msg.saveChanges();
+            MimeMessage msg = req.toMimeMessage(session, fromAddr);
             Transport.send(msg);
 
-            String messageId = msg.getMessageID();
+            List<MailMessage.Attachment> attachments = req.attachmentsOrEmpty();
             Map<String, Object> out = new LinkedHashMap<>();
-            out.put("messageId", messageId);
+            out.put("messageId", msg.getMessageID());
             out.put("from", fromAddr);
             out.put("to", req.to());
             if (req.cc() != null) out.put("cc", req.cc());
             if (req.bcc() != null) out.put("bcc", req.bcc());
             out.put("subject", req.subject());
             if (!attachments.isEmpty()) {
-                out.put("attachments", attachments.stream().map(Attachment::filename).toList());
+                out.put("attachments",
+                        attachments.stream().map(MailMessage.Attachment::filename).toList());
             }
             return out;
         } catch (MessagingException e) {
@@ -184,51 +96,6 @@ public final class SmtpSender {
     }
 
     // ──────────────────── Internals ────────────────────
-
-    /**
-     * multipart/alternative — plain first, HTML second is the canonical
-     * layout. Some clients pick the LAST part, hence HTML last so it wins
-     * for rich-capable clients.
-     */
-    private static MimeMultipart alternativeBody(SendRequest req) throws MessagingException {
-        MimeMultipart mp = new MimeMultipart("alternative");
-        MimeBodyPart text = new MimeBodyPart();
-        text.setText(req.body(), "UTF-8");
-        mp.addBodyPart(text);
-        MimeBodyPart html = new MimeBodyPart();
-        html.setContent(req.html(), "text/html; charset=UTF-8");
-        mp.addBodyPart(html);
-        return mp;
-    }
-
-    private static MimeBodyPart attachmentPart(Attachment a) throws MessagingException {
-        // Blank, not null: the package is @NullMarked, so a null filename or
-        // null bytes is a contract violation the caller has to fix, while an
-        // empty name is a value a form can produce.
-        if (a.filename().isBlank()) {
-            throw new IllegalArgumentException("attachment: 'filename' is required");
-        }
-        String mimeType = a.mimeType() == null || a.mimeType().isBlank()
-                ? "application/octet-stream"
-                : a.mimeType();
-        MimeBodyPart part = new MimeBodyPart();
-        part.setDataHandler(new DataHandler(new ByteArrayDataSource(a.bytes(), mimeType)));
-        part.setFileName(a.filename());
-        part.setDisposition(Part.ATTACHMENT);
-        return part;
-    }
-
-    private Address[] toAddresses(Collection<String> raw) throws AddressException {
-        List<Address> out = new ArrayList<>(raw.size());
-        for (String r : raw) {
-            if (r == null || r.isBlank()) continue;
-            out.add(new InternetAddress(r.trim()));
-        }
-        if (out.isEmpty()) {
-            throw new AddressException("no recipients after trimming");
-        }
-        return out.toArray(new Address[0]);
-    }
 
     private @Nullable Authenticator authenticator() {
         if (config.user().isEmpty() && config.password().isEmpty()) return null;

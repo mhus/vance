@@ -108,9 +108,9 @@ class SmtpShareHandlerTest {
         assertThat(handler.form(scope()))
                 .extracting(FormFieldDto::getName)
                 .containsExactly(
-                        SmtpShareHandler.FIELD_TO,
-                        SmtpShareHandler.FIELD_SUBJECT,
-                        SmtpShareHandler.FIELD_TEXT);
+                        MailShareSupport.FIELD_TO,
+                        MailShareSupport.FIELD_SUBJECT,
+                        MailShareSupport.FIELD_TEXT);
     }
 
     @Test
@@ -138,7 +138,7 @@ class SmtpShareHandlerTest {
 
         FormFieldDto subject = handler.form(scope()).get(1);
 
-        assertThat(subject.getName()).isEqualTo(SmtpShareHandler.FIELD_SUBJECT);
+        assertThat(subject.getName()).isEqualTo(MailShareSupport.FIELD_SUBJECT);
         assertThat(subject.getDefaultValue()).isEqualTo("Results");
     }
 
@@ -232,7 +232,7 @@ class SmtpShareHandlerTest {
         List<FormFieldDto> fields = handler.form(linkScope());
 
         FormFieldDto subject = fields.get(1);
-        assertThat(subject.getName()).isEqualTo(SmtpShareHandler.FIELD_SUBJECT);
+        assertThat(subject.getName()).isEqualTo(MailShareSupport.FIELD_SUBJECT);
         assertThat(subject.getDefaultValue()).isEqualTo("Canyon test results");
         // The help line must not promise an attachment there is none of.
         assertThat(fields.get(2).getHelp().values())
@@ -253,51 +253,6 @@ class SmtpShareHandlerTest {
 
         verify(documentService, org.mockito.Mockito.never())
                 .loadContent(any(DocumentDocument.class));
-    }
-
-    // ── The body projection ────────────────────────────────────────
-
-    @Test
-    void bodyOf_reasonOnly_isJustTheReason() {
-        assertThat(SmtpShareHandler.bodyOf(scope(), "  have a look  "))
-                .isEqualTo("have a look");
-    }
-
-    @Test
-    void bodyOf_reasonAndSnippet_quotesTheSnippetBelowTheReason() {
-        ShareScope scope = scopeWith(
-                new ShareSubject(null, null, "line one\nline two", null));
-
-        assertThat(SmtpShareHandler.bodyOf(scope, "have a look"))
-                .isEqualTo("have a look\n\n> line one\n> line two");
-    }
-
-    @Test
-    void bodyOf_linkOnly_isTheBareUrl() {
-        ShareScope scope = scopeWith(
-                new ShareSubject(null, "https://example.com/hit", null, null));
-
-        // A bare URL on its own line: every mail client makes that clickable
-        // without us handing it any markup.
-        assertThat(SmtpShareHandler.bodyOf(scope, "")).isEqualTo("https://example.com/hit");
-    }
-
-    @Test
-    void bodyOf_everything_keepsReasonSnippetLinkInThatOrder() {
-        ShareScope scope = scopeWith(new ShareSubject(
-                null, "https://example.com/hit", "the quote", null));
-
-        assertThat(SmtpShareHandler.bodyOf(scope, "have a look"))
-                .isEqualTo("have a look\n\n> the quote\n\nhttps://example.com/hit");
-    }
-
-    @Test
-    void bodyOf_snippetOnlyWithoutReason_startsWithTheQuote() {
-        // The empty-reason case is the one that used to sit one character away
-        // from a StringIndexOutOfBounds on an empty buffer.
-        ShareScope scope = scopeWith(new ShareSubject(null, null, "the quote", null));
-
-        assertThat(SmtpShareHandler.bodyOf(scope, "")).isEqualTo("> the quote");
     }
 
     // ── Secrets ────────────────────────────────────────────────────
@@ -371,11 +326,6 @@ class SmtpShareHandlerTest {
                 MARA, TENANT, PROJECT,
                 ShareSubject.ofDocument(DocumentRef.of(PROJECT, PATH)),
                 document);
-    }
-
-    /** A document-less scope carrying exactly the given subject. */
-    private static ShareScope scopeWith(ShareSubject subject) {
-        return new ShareScope(MARA, TENANT, PROJECT, subject, null);
     }
 
     /** A subject with no document — nothing to attach. */

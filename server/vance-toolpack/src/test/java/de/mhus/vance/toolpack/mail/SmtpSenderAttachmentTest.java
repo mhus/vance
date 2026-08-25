@@ -50,10 +50,10 @@ class SmtpSenderAttachmentTest {
     void send_withAttachment_deliversFileNameAndContent() throws Exception {
         String text = "# Results\n\nThe canyon test is done.\n";
 
-        Map<String, Object> result = sender().send(new SmtpSender.SendRequest(
+        Map<String, Object> result = sender().send(new MailMessage(
                 List.of("alice@example.com"), null, null,
                 "Results", "Look at this.", null, null, null,
-                List.of(new SmtpSender.Attachment(
+                List.of(new MailMessage.Attachment(
                         "results.md", "text/markdown", text.getBytes(StandardCharsets.UTF_8)))));
 
         assertThat(result).containsEntry("attachments", List.of("results.md"));
@@ -83,10 +83,10 @@ class SmtpSenderAttachmentTest {
     void send_binaryAttachment_isByteIdentical() throws Exception {
         byte[] payload = {0, 1, 2, (byte) 0xFF, '\n', '\r', 0x7F};
 
-        sender().send(new SmtpSender.SendRequest(
+        sender().send(new MailMessage(
                 List.of("alice@example.com"), null, null,
                 "Binary", "Attached.", null, null, null,
-                List.of(new SmtpSender.Attachment("blob.bin", "application/octet-stream", payload))));
+                List.of(new MailMessage.Attachment("blob.bin", "application/octet-stream", payload))));
 
         assertThat(mail.waitForIncomingEmail(3000, 1)).isTrue();
         Multipart mixed = (Multipart) mail.getReceivedMessages()[0].getContent();
@@ -98,10 +98,10 @@ class SmtpSenderAttachmentTest {
 
     @Test
     void send_withAttachmentAndHtml_keepsAlternativeNested() throws Exception {
-        sender().send(new SmtpSender.SendRequest(
+        sender().send(new MailMessage(
                 List.of("alice@example.com"), null, null,
                 "Rich", "Plain version", "<p>HTML version</p>", null, null,
-                List.of(new SmtpSender.Attachment("a.txt", "text/plain",
+                List.of(new MailMessage.Attachment("a.txt", "text/plain",
                         "x".getBytes(StandardCharsets.UTF_8)))));
 
         assertThat(mail.waitForIncomingEmail(3000, 1)).isTrue();
@@ -120,13 +120,13 @@ class SmtpSenderAttachmentTest {
 
     @Test
     void send_multipleAttachments_allArriveInOrder() throws Exception {
-        sender().send(new SmtpSender.SendRequest(
+        sender().send(new MailMessage(
                 List.of("alice@example.com"), null, null,
                 "Two files", "Both attached.", null, null, null,
                 List.of(
-                        new SmtpSender.Attachment("one.txt", "text/plain",
+                        new MailMessage.Attachment("one.txt", "text/plain",
                                 "1".getBytes(StandardCharsets.UTF_8)),
-                        new SmtpSender.Attachment("two.bin", null, new byte[]{0, 1, 2}))));
+                        new MailMessage.Attachment("two.bin", null, new byte[]{0, 1, 2}))));
 
         assertThat(mail.waitForIncomingEmail(3000, 1)).isTrue();
         Multipart mixed = (Multipart) mail.getReceivedMessages()[0].getContent();
@@ -141,7 +141,7 @@ class SmtpSenderAttachmentTest {
 
     @Test
     void send_withoutAttachments_staysPlainText() throws Exception {
-        sender().send(new SmtpSender.SendRequest(
+        sender().send(new MailMessage(
                 List.of("alice@example.com"), null, null,
                 "Plain", "No files here.", null, null, null));
 

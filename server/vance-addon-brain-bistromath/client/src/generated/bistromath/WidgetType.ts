@@ -7,6 +7,7 @@ export enum WidgetType {
   PAGE = 'PAGE',
   TOOLBAR = 'TOOLBAR',
   ROW = 'ROW',
+  COLUMN = 'COLUMN',
   BUTTON = 'BUTTON',
   TEXT = 'TEXT',
   MARKDOWN = 'MARKDOWN',

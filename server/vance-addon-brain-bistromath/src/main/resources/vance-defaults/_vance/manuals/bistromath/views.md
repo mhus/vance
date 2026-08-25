@@ -40,9 +40,10 @@ not an expression — a name the program wrote with
 | `page` | `title`, `children` | root of a view |
 | `toolbar` | `children` | controls in a line; sizes to content, wraps |
 | `row` | `children` | children side by side, sharing the width evenly |
+| `column` | `children` | children stacked — a pane of a `tabs`, a cell of a `row` |
 | `button` | `label`, `on.click` | |
 | `text` | `text` **or** `from` | literal, or a state value |
-| `markdown` | `text` **or** `from` | rendered, sanitised |
+| `markdown` | `text` **or** `from` | rendered **the Vance way** — see below |
 | `table` | `from`, `columns?`, `on.rowClick` | `from` must hold an array of objects |
 | `input` | `from`, `label?` | one text field, writes a **string** |
 | `number` | `from`, `label?` | one number field, writes a **number** or `null` |

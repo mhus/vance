@@ -6,9 +6,10 @@ triggers: you are writing a specific widget into a view and need its keys, editi
 
 # Widgets in detail
 
-The list of widgets and the rules that apply to all of them —
-`from:`, `show:`, handlers — are in `manual_read('views')`. This manual is the
-per-widget part.
+The widget list and the rules that apply to all of them — `from:`, `show:`,
+handlers — are in `manual_read('views')`. Arranging and showing (`row`,
+`column`, `tabs`, `dialog`, `markdown`, `embed`) is
+`manual_read('layout')`. This manual is **data and input**.
 
 ## `table`
 
@@ -60,24 +61,6 @@ with `vance.state.get`.
 setting form, or because a record has eight fields and listing them as eight
 widgets is noise. The direct inputs are for the two or three controls that
 *aren't* a record: a search box, a filter, a mode switch.
-
-## `row`
-
-Children side by side, sharing the width evenly. Wraps when it runs out.
-
-```yaml
-- type: row
-  children:
-    - { type: input, from: a }
-    - { type: input, from: b }
-```
-
-The only layout widget, and there will not be a second one: no `gap`, no widths,
-no `flex-direction`. A view says *what*, the renderer decides *how* — a
-stylesheet in an app document is the line this schema draws.
-
-`toolbar` looks similar and is a different job: it sizes to its content and is
-meant for buttons; a `row` divides the width.
 
 ## `form` and `details`
 
@@ -146,44 +129,3 @@ key, it is just asked of the element.
 
 Use `table` for rows and columns; `repeat` is for anything that is not a table.
 
-## `embed`
-
-Another document, rendered by whatever knows its kind — Markdown, an image, a
-mindmap, a canvas:
-
-```yaml
-  - type: embed
-    text: "reports/q3.md"      # or: from: someStateKey
-```
-
-The path is the **same grammar as everywhere else in an app**: relative to the
-app folder, a leading `/` for the project root.
-
-This is why there is no `chart` and no `image` widget. A chart document and an
-image document already have renderers; duplicating them here would mean this
-addon shipping a charting library.
-
-## `dialog`
-
-Children shown over the page while its `show:` key is true:
-
-```yaml
-  - type: dialog
-    title: Delete this invoice?
-    show: confirmOpen
-    children:
-      - { type: text, text: "This cannot be undone." }
-      - type: toolbar
-        children:
-          - { type: button, label: Delete, on: { click: "main.js:doDelete" } }
-          - { type: button, label: Cancel, on: { click: "main.js:closeDialog" } }
-```
-
-```js
-async function askDelete()   { await vance.state.set('confirmOpen', true); }
-async function closeDialog() { await vance.state.set('confirmOpen', false); }
-```
-
-There is **no** `dialog:` handler and no `vance.ui.closeDialog()`: a dialog is a
-widget whose condition happens to be interesting. The ✕ writes the same key back
-to false. `show:` is required — without it there would be no way to close it.

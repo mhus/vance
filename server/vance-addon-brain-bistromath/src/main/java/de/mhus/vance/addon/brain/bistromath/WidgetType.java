@@ -45,6 +45,21 @@ public enum WidgetType {
      */
     ROW,
 
+    /**
+     * Children stacked, one under the other.
+     *
+     * <p>The vertical counterpart to {@link #ROW}, and it exists because a
+     * {@link #TABS} pane holds exactly one widget: without it, a tab with three
+     * widgets had to be a {@code page} inside a {@code page}, which works and
+     * reads like a mistake. Same for a {@code row} cell that needs two things
+     * above each other.
+     *
+     * <p>A {@code page} is not a substitute: it is the <em>root</em> of a view
+     * and carries its heading. Nesting one inside another says "a view inside a
+     * view", which is not what an author means.
+     */
+    COLUMN,
+
     /** Clickable label bound to an action. */
     BUTTON,
 
@@ -144,8 +159,8 @@ public enum WidgetType {
 
     /** Widgets that carry children. */
     boolean allowsChildren() {
-        return this == PAGE || this == TOOLBAR || this == ROW || this == TABS
-                || this == REPEAT || this == DIALOG;
+        return this == PAGE || this == TOOLBAR || this == ROW || this == COLUMN
+                || this == TABS || this == REPEAT || this == DIALOG;
     }
 
     /** The lowercase spelling used in a view document. */

@@ -15,6 +15,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import FormFieldsView from './FormFieldsView.vue';
 import { fromFormModel, toFormModel } from './formModel';
+import { isVisible } from './visibility';
 import type { ViewNode } from './generated/bistromath/ViewNode';
 import type { ViewAction } from './generated/bistromath/ViewAction';
 
@@ -75,25 +76,28 @@ function lookup(key: string): unknown {
 
 const bound = computed<unknown>(() => (props.node.from ? lookup(props.node.from) : undefined));
 
+/** Whether this widget is shown at all — see `visibility.ts` for the rule. */
+const visible = computed<boolean>(() => isVisible(props.node, lookup));
+
 /**
- * Whether this widget is shown at all.
+ * The tabs a reader can actually reach.
  *
- * <p>A state key, never an expression — the program computes the boolean, the
- * widget reads it. That is why `visibleIf` is refused: one expression language
- * in the browser, and it is the sandbox's.
- *
- * <p><b>An unset key counts as hidden</b>, and that was not the first answer.
- * Treating it as visible avoids a widget flickering into existence during
- * startup — but it also means a `dialog` stands open before `init()` has run,
- * and a "show only to an admin" section is shown to everyone for a moment.
- * Briefly missing is a mistake the reader can see and the author can explain;
- * briefly showing what the document says to hide is not.
+ * <p>Filtered here rather than left to each pane's own gate, because the open
+ * tab is an **index**: a hidden child that still occupies a slot would shift
+ * every tab behind it, and clicking "Report" would open something else.
  */
-const visible = computed<boolean>(() => {
-  const key = props.node.show;
-  if (!key) return true;
-  const v = lookup(key);
-  return Boolean(v) && v !== 'false' && v !== '0';
+const visibleTabs = computed(() => props.node.children.filter((c) => isVisible(c, lookup)));
+
+/**
+ * Keep the open tab in range when the set of tabs changes under it.
+ *
+ * <p>A program that flips a `show:` key can make the open tab vanish. Clamping
+ * to the last one rather than resetting to the first: the author put the tabs in
+ * an order, and a reader deep in that order is closer to the end than to the
+ * beginning.
+ */
+watch(visibleTabs, (tabs) => {
+  if (activeTab.value >= tabs.length) activeTab.value = Math.max(0, tabs.length - 1);
 });
 
 /** Elements of a `repeat`. Anything not a list repeats zero times. */
@@ -122,6 +126,24 @@ const embedUri = computed<string | null>(() => {
  * why there is no `chart` and no `image` widget.
  */
 const embedComponent = inject<Component | null>('vance:embed-component', null);
+
+/**
+ * The host's markdown renderer — the same one the Cortex, the chat and the
+ * inbox use, so `vance:` links become embed cards and a fenced kind becomes an
+ * inline canvas.
+ *
+ * <p>Injected for the same reason as the embed renderer, and it is the reason
+ * this widget does not simply call `marked` itself: that path cannot resolve a
+ * document reference and does not know the kind registry, so it renders a
+ * `vance:` link as a dead URL and a `mermaid` fence as a code block. Moving the
+ * renderer into `@vance/components` was the alternative and it is the wrong
+ * one — it reaches the document-ref store, the registry and the link handler,
+ * so it belongs where those live.
+ *
+ * <p>Absent on a surface without a host (a standalone view preview). Then the
+ * local `marked` path renders, which is plain markdown and says so.
+ */
+const markdownComponent = inject<Component | null>('vance:markdown-component', null);
 
 // ── direct input ───────────────────────────────────────────────────
 
@@ -352,6 +374,21 @@ const headingClass = computed(() =>
     />
   </section>
 
+  <div v-else-if="node.type === 'column'" class="flex flex-col gap-3">
+    <WidgetNode
+      v-for="(child, i) in node.children"
+      :key="i"
+      :node="child"
+      :state="state"
+      :record-key="recordKey"
+      :resolve="resolve"
+      :scope="scope"
+      :depth="depth + 1"
+      @action="(a, k) => emit('action', a, k)"
+      @state="(k, v) => emit('state', k, v)"
+    />
+  </div>
+
   <!-- A row divides the width; a toolbar sizes to its content and wraps. Same
        axis, different job — `flex-1` on the children is the whole difference. -->
   <div v-else-if="node.type === 'row'" class="flex flex-wrap items-end gap-3">
@@ -397,7 +434,13 @@ const headingClass = computed(() =>
     {{ textValue }}
   </p>
 
-  <div v-else-if="node.type === 'markdown'" class="prose prose-sm max-w-none" v-html="mdHtml" />
+  <div v-else-if="node.type === 'markdown'">
+    <!-- The host renderer when there is one: `vance:` links resolve, fenced
+         kinds render. The local `marked` fallback is plain markdown — correct
+         for a surface with no Cortex around it, and visibly less. -->
+    <component :is="markdownComponent" v-if="markdownComponent" :source="textValue" />
+    <div v-else class="prose prose-sm max-w-none" v-html="mdHtml" />
+  </div>
 
   <!-- The four direct inputs. One widget, one state key, the native type —
        no field list and no string encoding on the way in. -->
@@ -493,7 +536,7 @@ const headingClass = computed(() =>
   <div v-else-if="node.type === 'tabs'" class="flex min-h-0 flex-col gap-2">
     <div class="flex flex-wrap gap-1">
       <VButton
-        v-for="(child, i) in node.children"
+        v-for="(child, i) in visibleTabs"
         :key="i"
         size="sm"
         :variant="activeTab === i ? 'primary' : 'ghost'"
@@ -503,8 +546,8 @@ const headingClass = computed(() =>
       </VButton>
     </div>
     <WidgetNode
-      v-if="node.children[activeTab]"
-      :node="node.children[activeTab]"
+      v-if="visibleTabs[activeTab]"
+      :node="visibleTabs[activeTab]"
       :state="state"
       :record-key="recordKey"
       :resolve="resolve"

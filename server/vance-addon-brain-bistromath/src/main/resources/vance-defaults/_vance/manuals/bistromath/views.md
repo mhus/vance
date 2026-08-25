@@ -41,6 +41,7 @@ not an expression — a name the program wrote with
 | `toolbar` | `children` | controls in a line; sizes to content, wraps |
 | `row` | `children` | children side by side, sharing the width evenly |
 | `column` | `children` | children stacked — a pane of a `tabs`, a cell of a `row` |
+| `card` | `title?`, `children` | a titled box around them |
 | `button` | `label`, `on.click` | |
 | `text` | `text` **or** `from` | literal, or a state value |
 | `markdown` | `text` **or** `from` | rendered **the Vance way** — see below |
@@ -49,6 +50,11 @@ not an expression — a name the program wrote with
 | `number` | `from`, `label?` | one number field, writes a **number** or `null` |
 | `toggle` | `from`, `label?` | a checkbox, writes a **boolean** |
 | `select` | `from`, `options`, `label?` | a choice, writes the chosen **value** |
+| `badge` | `text` **or** `from`, `variant?` | a short coloured label |
+| `alert` | `text` **or** `from`, `variant?` | a message with a severity |
+| `code` | `text` **or** `from`, `language?` | read-only source, highlighted |
+| `pagination` | `from` | a page switcher over `{page, pageSize, totalCount}` |
+| `file` | `from`, `accept?`, `label?` | pick a **text** file, program gets its content |
 | `form` | `from`, `fields`, `on.change?` | a whole field list — **editable** |
 | `details` | `from`, `fields` | the same field list, read-only |
 | `tabs` | `children` | each child's `label` captions its tab |
@@ -57,7 +63,9 @@ not an expression — a name the program wrote with
 | `dialog` | `show`, `children` | shown over the page while its key is true |
 
 Each one's details — what `columns:` does, how a `form` differs from a
-`details`, what a `repeat` scopes — are in `manual_read('widgets')`.
+`details`, what a `repeat` scopes — are in three manuals, split by what you are
+after: `manual_read('widgets')` for data and input, `manual_read('layout')` for
+arranging, `manual_read('content')` for showing.
 
 `title:` and `label:` are the same field — use whichever reads better.
 

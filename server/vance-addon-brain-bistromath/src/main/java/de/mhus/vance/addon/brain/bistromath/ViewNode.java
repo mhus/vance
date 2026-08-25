@@ -26,6 +26,17 @@ import org.jspecify.annotations.Nullable;
  * @param columns columns of a {@code table}; empty means "the table's declared
  *                fields", which is the normal case.
  * @param options choices of a {@code select}.
+ * @param variant severity of an {@code alert} or colour of a {@code badge} —
+ *                one of {@link ViewParser#VARIANTS}. A literal, not a state
+ *                key: a condition on the whole widget is what {@code show:} is
+ *                for, and two badges with a {@code show:} each need no new
+ *                binding concept.
+ * @param mimeType language of a {@code code}, already resolved from the
+ *                author's word to a mime type — the client passes it straight
+ *                to the editor, so the list of names lives in one place and a
+ *                typo is a parse error rather than plain text.
+ * @param accept  what a {@code file} offers to pick, as the HTML attribute:
+ *                {@code ".csv,text/plain"}.
  * @param fields  form-engine fields of a {@code form}. The same
  *                {@link FormFieldDto} the wizards and setting forms use — this
  *                addon adds nothing to it.
@@ -53,6 +64,9 @@ public record ViewNode(
         @Nullable String show,
         List<String> columns,
         List<ViewOption> options,
+        @Nullable String variant,
+        @Nullable String mimeType,
+        @Nullable String accept,
         List<FormFieldDto> fields,
         Map<String, ViewAction> on,
         List<ViewNode> children) {

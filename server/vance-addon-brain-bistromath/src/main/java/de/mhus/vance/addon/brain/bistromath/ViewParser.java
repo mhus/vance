@@ -58,6 +58,46 @@ public final class ViewParser {
     private static final String NAVIGATE_PREFIX = "navigate:";
     private static final String RELOAD = "reload";
 
+    /**
+     * Severities an {@code alert} and colours a {@code badge} may carry.
+     *
+     * <p>Closed, because these are meanings and not shades: "warning" says
+     * something about the message. An open string would let a document ask for
+     * a colour, and a colour in an app document is the line §1.3 draws.
+     */
+    static final List<String> VARIANTS =
+            List.of("neutral", "info", "success", "warning", "error");
+
+    /**
+     * Author's word → mime type, for a {@code code} widget.
+     *
+     * <p>Resolved here rather than in the client so the list exists once and a
+     * typo is a parse error instead of a silent fall-through to plain text —
+     * which is exactly the "renders almost right" failure this parser is for.
+     */
+    private static final Map<String, String> CODE_LANGUAGES = Map.ofEntries(
+            Map.entry("markdown", "text/markdown"),
+            Map.entry("md", "text/markdown"),
+            Map.entry("json", "application/json"),
+            Map.entry("yaml", "application/yaml"),
+            Map.entry("yml", "application/yaml"),
+            Map.entry("javascript", "text/javascript"),
+            Map.entry("js", "text/javascript"),
+            Map.entry("typescript", "application/typescript"),
+            Map.entry("ts", "application/typescript"),
+            Map.entry("python", "text/x-python"),
+            Map.entry("py", "text/x-python"),
+            Map.entry("shell", "application/x-sh"),
+            Map.entry("sh", "application/x-sh"),
+            Map.entry("bash", "application/x-sh"),
+            Map.entry("r", "text/x-r"),
+            Map.entry("html", "text/html"),
+            Map.entry("css", "text/css"),
+            Map.entry("xml", "application/xml"),
+            Map.entry("sql", "application/sql"),
+            Map.entry("java", "text/x-java"),
+            Map.entry("text", "text/plain"));
+
     /** Field keys that only a setting form reads. See {@code rejectSettingFormKeys}. */
     private static final List<String> SETTING_FORM_ONLY_KEYS =
             List.of("showIf", "writeIf", "bindsTo", "choicesFrom");
@@ -130,6 +170,13 @@ public final class ViewParser {
         String show = str(raw.get("show"));
         List<String> columns = strings(raw.get("columns"), docPath, at + ".columns");
         List<ViewOption> options = options(raw.get("options"), docPath, at + ".options");
+        String variant = variant(raw.get("variant"), type, docPath, at);
+        String mimeType = codeMime(raw.get("language"), type, docPath, at);
+        String accept = str(raw.get("accept"));
+        if (accept != null && type != WidgetType.FILE) {
+            throw new ToolException(where(docPath, at) + ": `accept` belongs to a `file`,"
+                    + " not to a `" + type.wire() + "`.");
+        }
         Map<String, ViewAction> on = handlers(raw.get("on"), docPath, at);
 
         List<FormFieldDto> fields = List.of();
@@ -158,8 +205,8 @@ public final class ViewParser {
         rejectRemovedKeys(raw, docPath, at);
         requireShape(type, label, text, from, show, options, docPath, at);
 
-        return new ViewNode(type.wire(), label, text, from, show, columns, options, fields, on,
-                children);
+        return new ViewNode(type.wire(), label, text, from, show, columns, options, variant,
+                mimeType, accept, fields, on, children);
     }
 
     /**
@@ -212,6 +259,24 @@ public final class ViewParser {
                     throw new ToolException(where(docPath, at) + ": a `select` needs `options`."
                             + " Write them as a list — `options: [open, paid]`, or"
                             + " `{value: paid, label: Bezahlt}` where the two differ.");
+                }
+            }
+            case BADGE, ALERT -> {
+                if (text == null && from == null) {
+                    throw new ToolException(where(docPath, at) + ": a `" + type.wire()
+                            + "` needs `text` (a literal) or `from` (a state key).");
+                }
+            }
+            case CODE -> {
+                if (text == null && from == null) {
+                    throw new ToolException(where(docPath, at) + ": a `code` needs `text`"
+                            + " (a literal) or `from` (a state key holding the source).");
+                }
+            }
+            case PAGINATION, FILE -> {
+                if (from == null) {
+                    throw new ToolException(where(docPath, at) + ": a `" + type.wire()
+                            + "` needs `from`, the state key it reads and writes back.");
                 }
             }
             case EMBED -> {
@@ -378,6 +443,40 @@ public final class ViewParser {
                     + "` is not a function name.");
         }
         return ViewAction.script(ref, function, s);
+    }
+
+    private static @Nullable String variant(@Nullable Object raw, WidgetType type,
+                                            String docPath, String at) {
+        String value = str(raw);
+        if (value == null) return null;
+        if (type != WidgetType.ALERT && type != WidgetType.BADGE) {
+            throw new ToolException(where(docPath, at) + ": `variant` belongs to an `alert`"
+                    + " or a `badge`, not to a `" + type.wire() + "`.");
+        }
+        String norm = value.trim().toLowerCase(java.util.Locale.ROOT);
+        if (!VARIANTS.contains(norm)) {
+            throw new ToolException(where(docPath, at) + ": unknown `variant` `" + value
+                    + "`. One of: " + String.join(", ", VARIANTS) + ".");
+        }
+        return norm;
+    }
+
+    private static @Nullable String codeMime(@Nullable Object raw, WidgetType type,
+                                             String docPath, String at) {
+        String value = str(raw);
+        if (value == null) return null;
+        if (type != WidgetType.CODE) {
+            throw new ToolException(where(docPath, at) + ": `language` belongs to a `code`,"
+                    + " not to a `" + type.wire() + "`.");
+        }
+        String norm = value.trim().toLowerCase(java.util.Locale.ROOT);
+        String mime = CODE_LANGUAGES.get(norm);
+        if (mime == null) {
+            throw new ToolException(where(docPath, at) + ": unknown `language` `" + value
+                    + "`. One of: "
+                    + String.join(", ", new java.util.TreeSet<>(CODE_LANGUAGES.keySet())) + ".");
+        }
+        return mime;
     }
 
     /**

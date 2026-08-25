@@ -1,14 +1,14 @@
 ---
 name: layout
-summary: Arranging and showing things in a custom app — row, column, tabs, dialog, plus markdown and embed as the two content widgets.
-triggers: your app is one long column, you want two things side by side or in tabs, a confirmation dialog, or you want to show markdown or another document inside your app
+summary: Bistromath widgets for arranging things — row, column, card, tabs, dialog.
+triggers: your app is one long column, you want two things side by side, tabs, a titled box or a confirmation dialog
 ---
 
-# Arranging and showing
+# Arranging
 
 The widget list and the rules that apply to all of them — `from:`, `show:`,
-handlers — are in `manual_read('views')`. Data and input widgets are in
-`manual_read('widgets')`. This manual is structure and content.
+handlers — are in `manual_read('views')`. The other two widget manuals are
+`manual_read('widgets')` and `manual_read('content')`.
 
 ## `row` and `column`
 
@@ -36,42 +36,17 @@ in an app document is the line this schema draws.
 `toolbar` looks like a `row` and is a different job: it sizes to its content and
 is meant for buttons; a `row` divides the width.
 
-## `markdown`
-
-Rendered by the **same renderer as the rest of Vancetope**, not by a private
-copy of `marked`. That means a `vance:` link and a fenced kind work:
-
-```markdown
-# Quartalsbericht
-
-Die Zahlen stehen in [der Tabelle](vance:/apps/demo/table.md).
-
-```records
----
-kind: records
-schema: posten, betrag
----
-- Miete, 1200
-- Strom, 90
+## `card`
+```yaml
+- type: card
+  title: Zusammenfassung
+  children:
+    - type: row
+      children:
+        - { type: badge, text: bezahlt, variant: success }
+        - { type: badge, from: offeneAnzahl }
+    - { type: alert, from: fehler, variant: error, show: hatFehler }
 ```
-```
-
-The link opens the document in the Cortex; the fence renders as a real table
-inside your page. `text:` for a literal, `from:` for a state key — so a program
-can `read` a markdown document and show it rendered:
-
-```js
-await vance.state.set('note', await vance.documents.read('note.md'));
-```
-
-**The fence name is the document kind**, not the tool: `diagram` (not
-`mermaid`), `records`, `tree`, `list`, `checklist`, `graph`, `chart`, `map`,
-`calendar`, `formula`, `youtube`. An unknown name stays a plain code block —
-which is correct, and is what `` ```mermaid `` gets you.
-
-On a surface with no Cortex around it — the standalone view preview — this falls
-back to plain markdown. Links stay text and fences stay code blocks there.
-
 
 ## `tabs`
 
@@ -85,7 +60,6 @@ URL. A reload lands on the first tab. Only the open pane is rendered, so an
 A tab may carry `show:`. It then disappears from the strip entirely, and the
 remaining tabs do **not** shift under the reader — the open tab is tracked
 against the visible ones.
-
 
 ## `dialog`
 
@@ -111,21 +85,3 @@ async function closeDialog() { await vance.state.set('confirmOpen', false); }
 There is **no** `dialog:` handler and no `vance.ui.closeDialog()`: a dialog is a
 widget whose condition happens to be interesting. The ✕ writes the same key back
 to false. `show:` is required — without it there would be no way to close it.
-
-## `embed`
-
-Another document, rendered by whatever knows its kind — Markdown, an image, a
-mindmap, a canvas:
-
-```yaml
-  - type: embed
-    text: "reports/q3.md"      # or: from: someStateKey
-```
-
-The path is the **same grammar as everywhere else in an app**: relative to the
-app folder, a leading `/` for the project root.
-
-This is why there is no `chart` and no `image` widget. A chart document and an
-image document already have renderers; duplicating them here would mean this
-addon shipping a charting library.
-

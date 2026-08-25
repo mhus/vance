@@ -27,8 +27,9 @@ There is no table declaration, no `source:` on a widget, and no data endpoint.
 |---|---|
 | What does the smallest working app look like? | `manual_read('hello-world')` |
 | Which widgets are there, how do I wire a button? | `manual_read('views')` |
-| Data and input widgets — table, the four inputs, form, repeat | `manual_read('widgets')` |
-| Arranging and showing — row, column, tabs, dialog, markdown, embed | `manual_read('layout')` |
+| Data and input — table, the single controls, form, pagination, file | `manual_read('widgets')` |
+| Arranging — row, column, card, tabs, dialog | `manual_read('layout')` |
+| Showing — markdown, code, badge, alert, embed | `manual_read('content')` |
 | Which functions does the runtime call? What can the program do? | `manual_read('program')` |
 | How do I read documents, folders, mounted files? | `manual_read('data')` |
 | An error message I do not recognise | `manual_read('troubleshooting')` |

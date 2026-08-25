@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, ref, watch, type Component } from 'vue';
 import {
+  CodeEditor,
   FormFields,
   VAlert,
+  VBadge,
   VButton,
+  VCard,
   VCheckbox,
   VEmptyState,
+  VFileInput,
   VInput,
   VModal,
+  VPagination,
   VSelect,
   type FormValue,
 } from '@vance/components';
@@ -190,6 +195,48 @@ function writeNumber(raw: string): void {
   }
   const n = Number(text);
   writeBound(Number.isNaN(n) ? text : n);
+}
+
+/**
+ * A `pagination`'s three numbers, from the one key it is bound to.
+ *
+ * <p>Missing fields count as zero rather than as an error: a program that has
+ * not filled the key yet renders a pager over nothing, which is the same
+ * "waiting for the program" state every other widget shows.
+ */
+const paging = computed(() => {
+  const v = bound.value;
+  const o = v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+  return {
+    page: Number(o.page) || 0,
+    pageSize: Number(o.pageSize) || 20,
+    totalCount: Number(o.totalCount) || 0,
+  };
+});
+
+/** Change the page and hand the rest of the object back untouched. */
+function writePage(page: number): void {
+  const v = bound.value;
+  const base = v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+  writeBound({ ...base, page });
+}
+
+/**
+ * Read picked files as **text** and put `{name, text}` into state.
+ *
+ * <p>The whole reason this widget is not a pass-through: a `File` object would
+ * cross into the sandbox and be useless there — nothing in `vance.*` takes one.
+ * Its text is useful in one line (`documents.write`), so that is what the
+ * program gets. Binary would arrive as mojibake; the manual says so rather than
+ * the code pretending to detect it, because "is this text" has no honest answer
+ * at this layer.
+ */
+async function readFiles(files: File[]): Promise<void> {
+  const out: { name: string; size: number; text: string }[] = [];
+  for (const f of files) {
+    out.push({ name: f.name, size: f.size, text: await f.text() });
+  }
+  writeBound(out);
 }
 
 /** Options as `VSelect` wants them. The parser already filled every label. */
@@ -532,6 +579,66 @@ const headingClass = computed(() =>
     <component :is="markdownComponent" v-if="markdownComponent" :source="textValue" />
     <div v-else class="prose prose-sm max-w-none" v-html="mdHtml" />
   </div>
+
+  <VCard v-else-if="node.type === 'card'" :title="node.label ?? undefined">
+    <div class="flex flex-col gap-3">
+      <WidgetNode
+        v-for="(child, i) in node.children"
+        :key="i"
+        :node="child"
+        :state="state"
+        :record-key="recordKey"
+        :resolve="resolve"
+        :scope="scope"
+        :depth="depth + 1"
+        @action="(a, k) => emit('action', a, k)"
+        @state="(k, v) => emit('state', k, v)"
+      />
+    </div>
+  </VCard>
+
+  <VBadge
+    v-else-if="node.type === 'badge'"
+    :variant="(node.variant ?? 'neutral') as never"
+  >
+    {{ textValue }}
+  </VBadge>
+
+  <VAlert
+    v-else-if="node.type === 'alert'"
+    :variant="(node.variant ?? 'info') as never"
+    class="whitespace-pre-line"
+  >
+    {{ textValue }}
+  </VAlert>
+
+  <!-- Read-only on purpose: `code` is to `markdown` what a listing is to
+       prose. An editable one would be an input widget and would say so in
+       its name. -->
+  <CodeEditor
+    v-else-if="node.type === 'code'"
+    :model-value="textValue"
+    :mime-type="node.mimeType"
+    :label="node.label ?? undefined"
+    readonly
+  />
+
+  <div v-else-if="node.type === 'pagination'" class="flex justify-center">
+    <VPagination
+      :page="paging.page"
+      :page-size="paging.pageSize"
+      :total-count="paging.totalCount"
+      @update:page="writePage"
+    />
+  </div>
+
+  <VFileInput
+    v-else-if="node.type === 'file'"
+    :model-value="[]"
+    :label="node.label ?? undefined"
+    :accept="node.accept ?? undefined"
+    @update:model-value="readFiles"
+  />
 
   <!-- The four direct inputs. One widget, one state key, the native type —
        no field list and no string encoding on the way in. -->

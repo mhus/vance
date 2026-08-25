@@ -79,8 +79,9 @@ Do not guess at the schema — the four manuals below are short and exact:
 | Widgets, bindings, handler grammar | `manual_read('bistromath/views')` |
 | Lifecycle functions, sandbox limits, async | `manual_read('bistromath/program')` |
 | Reading documents, folders, mounted files | `manual_read('bistromath/data')` |
-| Data and input widgets — table, inputs, form, repeat | `manual_read('bistromath/widgets')` |
-| Arranging and showing — row, column, tabs, dialog, markdown, embed | `manual_read('bistromath/layout')` |
+| Data and input — table, controls, form, pagination, file | `manual_read('bistromath/widgets')` |
+| Arranging — row, column, card, tabs, dialog | `manual_read('bistromath/layout')` |
+| Showing — markdown, code, badge, alert, embed | `manual_read('bistromath/content')` |
 
 **Never say "I cannot build that" about a small data or form tool without
 reading `manual_read('bistromath/hello-world')` first.**

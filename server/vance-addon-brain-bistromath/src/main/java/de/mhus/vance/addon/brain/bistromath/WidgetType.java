@@ -120,6 +120,49 @@ public enum WidgetType {
      */
     DETAILS,
 
+    /** A titled box around its children. */
+    CARD,
+
+    /** A short coloured label — a status, a count, a tag. */
+    BADGE,
+
+    /** A message with a severity: info, success, warning, error. */
+    ALERT,
+
+    /**
+     * Read-only source, syntax-highlighted.
+     *
+     * <p>The code counterpart to {@link #MARKDOWN}: it shows, it does not edit.
+     * An editable one would be a fifth input widget and is not this; the day it
+     * is wanted it gets its own name, so that "can the reader type here" stays
+     * answered by the widget's name (the same reason `form` and `details` are
+     * two widgets).
+     */
+    CODE,
+
+    /**
+     * A page switcher over a bound {@code {page, pageSize, totalCount}}.
+     *
+     * <p>The one widget with a compound binding, and the alternative was worse:
+     * three schema keys, of which two would be state keys the author has to
+     * keep in step. One object keeps the rule intact — the widget reads one key
+     * and writes one key — and the program computes those three numbers anyway,
+     * because it is the thing doing the slicing.
+     */
+    PAGINATION,
+
+    /**
+     * A file picker that hands the program the file's <b>text</b>.
+     *
+     * <p>Not a pass-through of {@code VFileInput}, and the difference matters: a
+     * picked {@code File} would cross into the sandbox as an object the program
+     * can do nothing with — there is no upload call in {@code vance.*}. Read as
+     * text it becomes useful in one line: write it to a document. So this is an
+     * <b>import</b> control, and it is text-only; binary has no path yet and
+     * would arrive as mojibake, which the manual says out loud.
+     */
+    FILE,
+
     /** Children as tab panes, captioned by their own label. */
     TABS,
 
@@ -160,7 +203,7 @@ public enum WidgetType {
     /** Widgets that carry children. */
     boolean allowsChildren() {
         return this == PAGE || this == TOOLBAR || this == ROW || this == COLUMN
-                || this == TABS || this == REPEAT || this == DIALOG;
+                || this == CARD || this == TABS || this == REPEAT || this == DIALOG;
     }
 
     /** The lowercase spelling used in a view document. */

@@ -1,15 +1,14 @@
 ---
 name: widgets
-summary: Each Bistromath widget in detail — table columns, form vs details and editing, repeat scope, embed paths, dialog.
-triggers: you are writing a specific widget into a view and need its keys, editing is not working, or you want to show a list, another document or a confirmation
+summary: Bistromath widgets for data and input — the table, the single controls, the form.
+triggers: your app needs to show rows, take a value, page through a list or import a file
 ---
 
-# Widgets in detail
+# Data and input
 
 The widget list and the rules that apply to all of them — `from:`, `show:`,
-handlers — are in `manual_read('views')`. Arranging and showing (`row`,
-`column`, `tabs`, `dialog`, `markdown`, `embed`) is
-`manual_read('layout')`. This manual is **data and input**.
+handlers — are in `manual_read('views')`. The other two widget manuals are
+`manual_read('layout')` and `manual_read('content')`.
 
 ## `table`
 
@@ -39,7 +38,7 @@ both directions: an empty value is the absence of one, not the smallest one.
 
 Neither survives a reload, and neither is visible to your program. A filter your
 program should know about is a `field` plus your own filtering
-(`manual_read('widgets')` → the four direct inputs).
+(the four direct inputs above).
 
 ## The four direct inputs
 
@@ -83,6 +82,49 @@ with `vance.state.get`.
 setting form, or because a record has eight fields and listing them as eight
 widgets is noise. The direct inputs are for the two or three controls that
 *aren't* a record: a search box, a filter, a mode switch.
+
+## `pagination`
+
+```yaml
+- { type: pagination, from: paging, on: { change: "main.js:onPage" } }
+```
+
+```js
+await vance.state.set('paging', { page: 0, pageSize: 20, totalCount: rows.length });
+
+async function onPage() {
+  const p = await vance.state.get('paging');          // page is a number
+  await vance.state.set('shown', all.slice(p.page * p.pageSize, (p.page + 1) * p.pageSize));
+}
+```
+
+**`page` is zero-based**, because that is what a `slice` wants and your program
+is the thing doing the slicing.
+
+The one widget bound to an **object** rather than a scalar. Three schema keys
+would have been the alternative, two of them state keys you have to keep in
+step; one object keeps the rule — the widget reads one key and writes one key,
+handing the rest of the object back untouched.
+
+## `file`
+
+```yaml
+- { type: file, from: importiert, accept: ".csv", on: { change: "main.js:onImport" } }
+```
+
+```js
+const files = await vance.state.get('importiert');
+// [{ name: 'k.csv', size: 34, text: 'posten,betrag\n…' }]
+await vance.documents.write('imported/' + files[0].name, files[0].text);
+```
+
+An **import** control, not a file picker: what reaches your program is the
+file's **text**, because a `File` object would cross into the sandbox and be
+useless there — nothing in `vance.*` takes one.
+
+**Text only.** A binary file arrives as mojibake. There is no binary path yet,
+and the runtime does not pretend to detect one — "is this text" has no honest
+answer at that layer.
 
 ## `form` and `details`
 
@@ -150,4 +192,3 @@ surrounding state. Two levels, no path syntax — `from: customer` still names a
 key, it is just asked of the element.
 
 Use `table` for rows and columns; `repeat` is for anything that is not a table.
-

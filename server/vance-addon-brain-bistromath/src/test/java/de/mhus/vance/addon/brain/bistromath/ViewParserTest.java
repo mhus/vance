@@ -189,6 +189,83 @@ class ViewParserTest {
                 .hasMessageContaining("`options` belongs to a `select`");
     }
 
+    /**
+     * A variant is a meaning, not a shade — so the set is closed and a typo is
+     * a parse error rather than a widget that silently renders neutral.
+     */
+    @Test
+    void parse_variant_isCheckedAgainstTheClosedSet() {
+        ViewNode ok = ViewParser.parse(
+                "type: alert\ntext: passt auf\nvariant: Warning\n", "v.yaml");
+        assertThat(ok.variant()).isEqualTo("warning");
+
+        assertThatThrownBy(() -> ViewParser.parse(
+                "type: alert\ntext: x\nvariant: chartreuse\n", "v.yaml"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("unknown `variant`");
+    }
+
+    @Test
+    void parse_variantOnAnotherWidget_isRejected() {
+        assertThatThrownBy(() -> ViewParser.parse(
+                "type: text\ntext: x\nvariant: info\n", "v.yaml"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("`variant` belongs to an `alert` or a `badge`");
+    }
+
+    /**
+     * The author writes a language, the client gets a mime type: the list of
+     * names exists once, and an unknown one fails here instead of falling
+     * through to plain text where nobody would notice.
+     */
+    @Test
+    void parse_codeLanguage_becomesAMimeType() {
+        ViewNode node = ViewParser.parse(
+                "type: code\nfrom: src\nlanguage: YAML\n", "v.yaml");
+
+        assertThat(node.mimeType()).isEqualTo("application/yaml");
+    }
+
+    @Test
+    void parse_unknownCodeLanguage_isRejected() {
+        assertThatThrownBy(() -> ViewParser.parse(
+                "type: code\nfrom: src\nlanguage: cobol\n", "v.yaml"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("unknown `language`");
+    }
+
+    @Test
+    void parse_paginationAndFile_needFrom() {
+        for (String widget : new String[] {"pagination", "file"}) {
+            assertThatThrownBy(() -> ViewParser.parse("type: " + widget + "\n", "v.yaml"))
+                    .isInstanceOf(ToolException.class)
+                    .hasMessageContaining("needs `from`");
+        }
+    }
+
+    @Test
+    void parse_acceptOnAnotherWidget_isRejected() {
+        assertThatThrownBy(() -> ViewParser.parse(
+                "type: input\nfrom: q\naccept: .csv\n", "v.yaml"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("`accept` belongs to a `file`");
+    }
+
+    @Test
+    void parse_card_carriesChildren() {
+        String yaml = """
+                type: card
+                title: Zusammenfassung
+                children:
+                  - { type: text, text: hallo }
+                """;
+
+        ViewNode node = ViewParser.parse(yaml, "v.yaml");
+
+        assertThat(node.label()).isEqualTo("Zusammenfassung");
+        assertThat(node.children()).hasSize(1);
+    }
+
     @Test
     void parse_embedWithoutAPath_isRejected() {
         assertThatThrownBy(() -> ViewParser.parse("type: embed\n", "v.yaml"))

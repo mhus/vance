@@ -15,6 +15,9 @@ export interface ViewNode {
   show?: string;
   columns: string[];
   options: ViewOption[];
+  variant?: string;
+  mimeType?: string;
+  accept?: string;
   fields: FormFieldDto[];
   on: Record<string, ViewAction>;
   children: ViewNode[];

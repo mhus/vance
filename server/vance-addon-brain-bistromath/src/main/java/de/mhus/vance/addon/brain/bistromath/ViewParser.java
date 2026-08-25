@@ -226,7 +226,8 @@ public final class ViewParser {
                 children(raw.get("children"), type, docPath, at, depth, budget, budgetIds);
 
         rejectRemovedKeys(raw, docPath, at);
-        requireShape(type, label, text, from, show, options, docPath, at);
+        requireShape(type, label, text, from, show, options,
+                raw.containsKey("options"), docPath, at);
 
         return new ViewNode(type.wire(), label, text, from, id, region, show, columns, options,
                 variant, mimeType, accept, fields, on, children);
@@ -253,6 +254,7 @@ public final class ViewParser {
     private static void requireShape(WidgetType type, @Nullable String label,
                                      @Nullable String text, @Nullable String from,
                                      @Nullable String show, List<ViewOption> options,
+                                     boolean optionsWritten,
                                      String docPath, String at) {
         switch (type) {
             case TABLE -> {
@@ -278,10 +280,20 @@ public final class ViewParser {
                     throw new ToolException(where(docPath, at) + ": a `select` needs `from`,"
                             + " the state key it reads and writes back.");
                 }
-                if (options.isEmpty()) {
+                // Absent and empty are different answers. Absent means the
+                // author forgot: a select with no choices is an unusable
+                // control, and saying so at parse time is the whole point of
+                // this check. An explicit `options: []` means "the program
+                // fills these" — which is the normal case once choices come
+                // from documents (`ui.options(...)`), and there is nothing
+                // honest to write in the document for it. Demanding a
+                // placeholder there would put a wrong choice on screen until
+                // `init()` has run.
+                if (!optionsWritten) {
                     throw new ToolException(where(docPath, at) + ": a `select` needs `options`."
                             + " Write them as a list — `options: [open, paid]`, or"
-                            + " `{value: paid, label: Bezahlt}` where the two differ.");
+                            + " `{value: paid, label: Bezahlt}` where the two differ."
+                            + " For choices the program supplies, write `options: []`.");
                 }
             }
             case BADGE, ALERT -> {

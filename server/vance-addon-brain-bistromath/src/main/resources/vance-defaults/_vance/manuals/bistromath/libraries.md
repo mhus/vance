@@ -63,7 +63,7 @@ difference between "my override works" and "my override is at the wrong path".
 
 ## What ships with Vancetope
 
-Three, and **nothing is loaded that nobody asked for** — that is why they are
+Five, and **nothing is loaded that nobody asked for** — that is why they are
 separate rather than one big helper. An app that shows no data never pays for
 `db@1`; a calculator loads none of them.
 
@@ -72,12 +72,19 @@ separate rather than one big helper. An app that shows no data never pays for
 | `core@1` | folder-as-rows, state, filter/sort/paging, formatting | `manual_read('bistromath/lib-core')` |
 | `api@1` | calling Brain routes: project parameter, status branching, `tryGet` | `manual_read('bistromath/lib-api')` |
 | `db@1` | a folder **as a table**: `get`/`where`/`insert`/`update`/`nextKey`, cached | `manual_read('bistromath/lib-db')` |
+| `fmt@1` | money, dates, percent, bytes — and `parseNumber` for what a person typed | `manual_read('bistromath/lib-fmt')` |
+| `ui@1` | shaping the view: hide/show, labels, select choices from data | `manual_read('bistromath/lib-ui')` |
 
 `db@1` requires `core@1` and says so in its own header, so asking for `db@1`
-alone is enough. `api@1` requires nothing.
+alone is enough. The other three require nothing.
 
-**Ask for what you use, not for all three.** They are cheap, but the habit is
-what keeps a library list meaningful.
+**Ask for what you use, not for all five.** They are cheap, but the habit is
+what keeps a library list meaningful — and it is the whole reason there are five
+of them rather than one.
+
+`fmt@1` is where **policy** lives — a currency, a locale, a byte base. `core@1`
+refuses those on purpose (a shared core deciding for you becomes something to
+work around) and a library nobody loads by accident can carry them.
 
 ## Writing a library
 

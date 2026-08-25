@@ -134,6 +134,28 @@ class ViewParserTest {
      * separates the two. Both, because most option lists are short technical
      * words that read fine as they are.
      */
+    /**
+     * The distinction that made this check useful rather than obstructive:
+     * absent means the author forgot, empty means the program supplies them.
+     *
+     * <p>Surfaced by {@code ui@1}: once a select's choices come from documents
+     * there is nothing honest to write in the view, and demanding a placeholder
+     * would show a wrong choice until {@code init()} has run.
+     */
+    @Test
+    void parse_selectWithEmptyOptions_isAccepted() {
+        ViewNode node = ViewParser.parse("type: select\nfrom: status\noptions: []\n", "v.yaml");
+
+        assertThat(node.options()).isEmpty();
+    }
+
+    @Test
+    void parse_selectWithoutOptions_saysHowToDeferThem() {
+        assertThatThrownBy(() -> ViewParser.parse("type: select\nfrom: status\n", "v.yaml"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("`options: []`");
+    }
+
     @Test
     void parse_selectOptions_takeBothSpellings() {
         String yaml = """

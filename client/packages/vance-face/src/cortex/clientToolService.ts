@@ -24,6 +24,8 @@ export interface AppAgentApi {
   describe(): {
     app: string;
     view: string | null;
+    /** The rendered view as an indented tree — the part a model reads. */
+    snapshot: string;
     stateKeys: string[];
     actions: { id: string; label: string | null; type: string; agent: boolean }[];
     views: string[];
@@ -304,12 +306,16 @@ export class CortexClientToolService {
       {
         name: 'app_describe',
         description:
-          'Describe the custom app (`app: custom`) open in the foreground of '
-          + 'the Cortex: which view is showing, its state keys, and its '
-          + 'widgets that have an action — each with whether you may trigger '
-          + 'it. Call this first: state keys and actions differ per app, so '
-          + 'guessing a name fails. Returns { app, view, stateKeys, actions, '
-          + 'views }. Fails when no such app is open.',
+          'Snapshot the custom app (`app: custom`) open in the foreground of '
+          + 'the Cortex — an indented tree of its widgets, like a browser '
+          + 'accessibility snapshot. One line per widget: its type, its `#id` '
+          + '(the handle you pass to other app tools), its label, the state key '
+          + 'it reads and that key\'s current value, and for anything with an '
+          + 'action whether it is `[agent]` (you may press it) or `[closed]`. '
+          + 'There is no selector language — read the tree and name an id. '
+          + 'Call this first: ids, keys and structure differ per app. Returns '
+          + '{ app, view, snapshot, stateKeys, actions, views }. Fails when no '
+          + 'such app is open.',
         primary: true,
         source: 'cortex',
         paramsSchema: { type: 'object', properties: {}, required: [] },

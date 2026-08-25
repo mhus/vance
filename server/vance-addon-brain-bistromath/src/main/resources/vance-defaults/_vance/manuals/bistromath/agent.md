@@ -11,7 +11,7 @@ the two:
 
 | | |
 |---|---|
-| `app_describe` | which view is open, its state keys, its actions — **call this first** |
+| `app_describe` | a **snapshot** of the rendered view — **call this first** |
 | `app_state_get` | one key, or all of them: what the widgets show, forms included |
 | `app_state_set` | fill a field. Visible at once, commits nothing |
 | `app_action` | press a button — only where the app allows it |
@@ -19,6 +19,44 @@ the two:
 
 They act on the app in the **foreground tab**. No app open is a refusal, not an
 empty answer.
+
+## The snapshot is what you read
+
+`app_describe` returns the view as an indented tree, the way a browser
+accessibility snapshot does:
+
+```
+page (stacked: 4) "Snapshot demo"
+  row (side by side: 2)
+    input #suche "Suche" ← query = ""
+    select #status "Status" ← status = "alle" (3 choices)
+  column (stacked: 2)
+    text #hinweis "Diese Zeile…" (hidden by the program)
+    card (stacked in a box: 1) "Summe"
+      text #summe ← summe = "5.290,00 €"
+  table #liste ← rows = [3 entries: key, kunde, betrag] columns: key, kunde, betrag
+  toolbar (side by side: 2)
+    button #neu "Neu" → main.js:neu [agent]
+    button #alleLoeschen "Alle löschen" → main.js:wipe [closed]
+```
+
+Reading it: `#id` is the handle you pass to `app_action` and the key after `←`
+is what you pass to `app_state_set`. `[agent]` means you may press it,
+`[closed]` means the app did not offer it. A container says how it arranges its
+children, so `row (side by side: 2)` and `column (stacked: 2)` are the
+difference between two boxes beside each other and two above each other.
+
+**There is no selector language** — no XPath, no CSS. Read the tree and name an
+id. A widget id is unique within a view and the parser enforces that, so the
+handle is already in the document.
+
+**Large values are summarised, never printed**: `[3 entries: …]` for a list,
+`{a, b}` for an object, a long string cut with its length. Use `app_state_get`
+when you need the value itself.
+
+**Structure, not pixels.** The snapshot says what contains what and in which
+direction — it does not report widths, wrapping, or whether something scrolled
+out of sight. If that matters, ask the reader.
 
 ## Read freely, act by declaration
 
@@ -52,9 +90,9 @@ is not always its author. Deny is the only defensible default for that.
 ## Working with it
 
 ```
-app_describe                        → keys: [name, ausgabe], actions: [greet(agent), wipe]
+app_describe                        → the tree: #nameFeld ← name, #gruessen [agent]
 app_state_set  key=name value=Ford
-app_action     id=greet
+app_action     id=gruessen
 app_state_get                       → { name: "Ford", ausgabe: "Hallo, Ford!" }
 ```
 

@@ -20,7 +20,7 @@ import {
 } from '@vance/components';
 import WidgetNode from './WidgetNode.vue';
 import { Sandbox, type SandboxHost } from './sandbox';
-import { PATCHES, applyPatch, type PatchMap, type WidgetPatch } from './patches';
+import { PATCHES, applyPatch, patchHides, type PatchMap, type WidgetPatch } from './patches';
 import { getTenantId, getUsername } from '@vance/shared';
 import { DocumentAccess, callRest, loadScript, loadView, rebuildApp, scanApp } from './api';
 import {
@@ -371,6 +371,8 @@ const agentApi: AppAgentApi = {
       folder.value,
       view.value,
       (scan.value?.views ?? []).map((v) => v.handle),
+      toRaw(state),
+      (node) => patchHides(node, patches.value),
     );
   },
   stateGet(key) {

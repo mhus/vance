@@ -11,8 +11,11 @@ triggers: you are writing or changing main.js of a custom application, wiring a 
 
 It is not necessarily *one* file any more: a library (`@require name@version`)
 and an app-local script (`@app-script` in its header) load into the same scope
-before it. `import` and runtime `require()` still do not work — see
-`manual_read('libraries')`.
+before it. `import` and runtime `require()` still do not work.
+
+**Before writing a loop over documents, look at `core@1`** — the bundled library
+has the folder-read, the sort, the filter and the paging that every app was
+writing by hand: `manual_read('libraries')`.
 
 Write **plain top-level functions, no `export`.** The source is evaluated as one
 script, so a top-level function is reachable by name — that is what a view's

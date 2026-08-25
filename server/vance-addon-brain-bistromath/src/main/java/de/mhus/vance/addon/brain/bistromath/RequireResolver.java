@@ -133,6 +133,22 @@ public class RequireResolver {
                 List.copyOf(collector.missing));
     }
 
+    /**
+     * The source of one document in the load list, through the cascade.
+     *
+     * <p>Needed because a **bundled** library is not a document: it is a
+     * classpath resource, so the generic document API cannot serve it. The
+     * client therefore cannot read the load list by itself, and the alternative
+     * — mirroring bundled libraries into documents at boot — would freeze them
+     * at the version of whichever build ran first.
+     */
+    public String read(String tenantId, String projectId, String path) {
+        return documentService.lookupCascade(tenantId, projectId, path)
+                .map(LookupResult::content)
+                .orElseThrow(() -> new ToolException("No document or bundled resource at '"
+                        + path + "'."));
+    }
+
     // ── sources ──────────────────────────────────────────────────────
 
     /**

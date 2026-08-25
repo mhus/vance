@@ -7,7 +7,10 @@ triggers: your app needs to show, store or change data, you are writing a list o
 # Data
 
 There is **no table declaration** anywhere — not in the manifest, not on a
-widget. The program reads documents and puts the result into state:
+widget. The program reads documents and puts the result into state.
+
+The bundled `core@1` does the four lines below in one — `core.rows(folder)`; see
+`manual_read('libraries')`. Written out, so the shape is clear:
 
 ```js
 async function init() {

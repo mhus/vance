@@ -20,6 +20,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import FormFieldsView from './FormFieldsView.vue';
 import { fromFormModel, toFormModel } from './formModel';
+import { compareInDirection } from './compare';
 import { isVisible } from './visibility';
 import type { ViewNode } from './generated/bistromath/ViewNode';
 import type { ViewAction } from './generated/bistromath/ViewAction';
@@ -334,22 +335,14 @@ const tableRows = computed(() => {
   }
   const column = sortColumn.value;
   if (!column) return out;
-  const factor = sortDescending.value ? -1 : 1;
-  // Copied before sorting: `out` may still be the array the program owns.
-  return [...out].sort((a, b) => factor * compareCells(a.row[column], b.row[column]));
+  // Copied before sorting: `out` may still be the array the program owns. And
+  // the direction goes *into* the comparison rather than multiplying it —
+  // multiplying reversed the empty-last rule too, which is the bug this file
+  // was extracted for (see `compare.ts`).
+  return [...out].sort((a, b) =>
+    compareInDirection(a.row[column], b.row[column], sortDescending.value),
+  );
 });
-
-function compareCells(a: unknown, b: unknown): number {
-  const emptyA = a === undefined || a === null || a === '';
-  const emptyB = b === undefined || b === null || b === '';
-  // Empty sorts last in both directions: it is the absence of a value, not the
-  // smallest one, and a column of blanks at the top hides the data.
-  if (emptyA || emptyB) return emptyA && emptyB ? 0 : emptyA ? 1 : -1;
-  const na = Number(a);
-  const nb = Number(b);
-  if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
-  return String(a).localeCompare(String(b));
-}
 
 /**
  * Columns: what the widget asks for, else the union of the keys present.

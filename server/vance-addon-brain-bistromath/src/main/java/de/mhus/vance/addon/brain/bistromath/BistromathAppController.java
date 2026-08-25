@@ -17,8 +17,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * REST surface of the Bistromath runtime, under
- * {@code /brain/{tenant}/addon/bistromath/...} — three routes, and that is
- * deliberately all.
+ * {@code /brain/{tenant}/addon/bistromath/...} — four routes, and each one had
+ * to argue for itself.
  *
  * <p><b>No data route.</b> An earlier draft had a {@code /table} endpoint, then
  * a {@code /rows} one. Both were wrong for the same reason: everything they
@@ -29,8 +29,11 @@ import org.springframework.web.bind.annotation.RestController;
  * app's own program.
  *
  * <p>So the program lists and reads documents through the ordinary document API
- * in the browser, and these three routes answer only what is genuinely about
- * *this app*: what views exist, what one view looks like, and re-check it.
+ * in the browser, and these routes answer only what is genuinely about *this
+ * app*: what views exist, what one view looks like, re-check it — and the source
+ * of one entry in the load list, which is the one thing the document API
+ * genuinely cannot do, because a bundled library is a classpath resource and not
+ * a document.
  *
  * <p>Authorisation is the project's: {@code READ} to look, {@code WRITE} to
  * rebuild. There is no per-view right — a view is a document and the document
@@ -42,6 +45,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class BistromathAppController {
 
     private final BistromathViewService viewService;
+    private final RequireResolver requireResolver;
     private final BistromathApplication application;
     private final RequestAuthority authority;
 
@@ -77,6 +81,28 @@ public class BistromathAppController {
                     + " or `path`.");
         }
         return viewService.view(tenant, projectId, folder, handle);
+    }
+
+    /**
+     * The source of one document in the app's load list.
+     *
+     * <p>The fourth route, and the first one that does not duplicate something
+     * the generic document API already does — because for a **bundled** library
+     * there is nothing to duplicate: it is a classpath resource with no document
+     * row, so `documents/by-path` answers 404. Serving it here keeps the cascade
+     * live (a project can still override a bundled library by writing a
+     * document at the same path) where mirroring at boot would freeze it.
+     *
+     * <p>Plain text, not JSON: it is source code on its way into an evaluator.
+     */
+    @GetMapping(value = "/brain/{tenant}/addon/bistromath/script",
+                produces = "text/plain; charset=utf-8")
+    public String script(@PathVariable String tenant,
+                         @RequestParam String projectId,
+                         @RequestParam String path,
+                         HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
+        return requireResolver.read(tenant, projectId, path);
     }
 
     /**

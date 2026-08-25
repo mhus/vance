@@ -61,6 +61,21 @@ export async function loadViewByPath(projectId: string, path: string): Promise<R
   return brainFetch<RenderedView>('GET', `addon/bistromath/view?${qs({ projectId, path })}`);
 }
 
+/**
+ * The source of one document in the load list.
+ *
+ * <p>Through the addon rather than the document API, because a **bundled**
+ * library has no document row — see the controller. The addon route resolves
+ * the same cascade the load list was built from, so what runs is what the
+ * `Loads` panel says.
+ */
+export async function loadScript(projectId: string, path: string): Promise<string> {
+  const { text } = await brainFetchTextWithMeta(
+    `addon/bistromath/script?${qs({ projectId, path })}`,
+  );
+  return text ?? '';
+}
+
 export async function rebuildApp(projectId: string, folder: string): Promise<AppScan> {
   return brainFetch<AppScan>('POST', `addon/bistromath/rebuild?${qs({ projectId, folder })}`);
 }
@@ -429,15 +444,4 @@ function strip(value: unknown): unknown {
   return out;
 }
 
-// Kept so the app host can read its program without a DocumentAccess instance.
-export async function readDocumentText(projectId: string, path: string): Promise<string> {
-  const doc = await brainFetch<DocSummary>(
-    'GET',
-    `documents/by-path?${qs({ projectId, path })}`,
-  );
-  if (!doc.id) throw new Error(`no document at '${path}'`);
-  const { text } = await brainFetchTextWithMeta(
-    `documents/${encodeURIComponent(doc.id)}/content`,
-  );
-  return text ?? '';
-}
+

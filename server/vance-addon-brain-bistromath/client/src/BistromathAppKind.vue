@@ -9,7 +9,7 @@ import {
 } from '@vance/components';
 import WidgetNode from './WidgetNode.vue';
 import { Sandbox, type SandboxHost } from './sandbox';
-import { DocumentAccess, loadView, readDocumentText, rebuildApp, scanApp } from './api';
+import { DocumentAccess, loadScript, loadView, rebuildApp, scanApp } from './api';
 import type { AppScan } from './generated/bistromath/AppScan';
 import type { RenderedView } from './generated/bistromath/RenderedView';
 import type { ViewAction } from './generated/bistromath/ViewAction';
@@ -285,7 +285,7 @@ async function boot(s: AppScan): Promise<void> {
     try {
       parts.push({
         path: entry.path,
-        source: await readDocumentText(props.document.projectId, entry.path),
+        source: await loadScript(props.document.projectId, entry.path),
       });
     } catch (e) {
       // Named, and then abandoned: a program missing a library it uses fails at

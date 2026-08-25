@@ -55,18 +55,41 @@ export async function loadAddonRegistrations(): Promise<void> {
   // Step 2: pull the optional `./register` expose from each remote and
   // invoke it. Missing exposes are silent — slideshow-style addons that
   // only contribute an editor without Kind registration don't ship one.
-  for (const addon of addons) {
-    const exposeId = `${addonRemoteName(addon.name)}/register`;
+  //
+  // Fetching is parallel, invoking is not. This used to be one `for` loop
+  // with the `await` inside it, which made 21 addons load strictly one after
+  // another: each remoteEntry.js plus its register chunk is a round trip, and
+  // on a WAN link that measured as 2.3 s of page-switch latency at a request
+  // parallelism of 1.1 (browser resource timing on eddie, 2026-08-25). The
+  // requests never depended on each other — the serialization was accidental.
+  //
+  // `register()` still runs in manifest order, deliberately. It writes into
+  // shared registries (Kinds, Hooks), so completion order would decide which
+  // addon wins a collision — a race that only shows up once two addons claim
+  // the same kind, and then only sometimes. Loading concurrently and applying
+  // in order costs nothing and keeps that question closed.
+  const loaded = await Promise.all(
+    addons.map(async (addon) => {
+      const exposeId = `${addonRemoteName(addon.name)}/register`;
+      try {
+        return (await loadRemote<RegisterExpose>(exposeId)) ?? undefined;
+      } catch {
+        // `./register` expose absent or threw — non-fatal, same as before.
+        return undefined;
+      }
+    }),
+  );
+
+  for (const mod of loaded) {
+    if (!mod) continue;
     try {
-      const mod = (await loadRemote<RegisterExpose>(exposeId)) ?? undefined;
-      if (!mod) continue;
       if (typeof mod.register === 'function') {
         mod.register();
       } else if (typeof mod.default?.register === 'function') {
         mod.default.register();
       }
     } catch {
-      // `./register` expose absent or threw — non-fatal.
+      // A throwing register() must not take the remaining addons down.
     }
   }
 }

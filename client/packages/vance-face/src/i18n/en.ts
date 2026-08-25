@@ -2136,6 +2136,7 @@ export default {
     },
   },
   starred: {
+    resetApp: 'Reset the app — restart its program, discard runtime state',
     menuToggle: 'Starred',
     menuOnStartPage: 'Show on the start page',
     star: 'Star',

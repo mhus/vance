@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, provide, reactive, ref, toRaw, watch } from 'vue';
+import {
+  computed,
+  inject,
+  onBeforeUnmount,
+  onMounted,
+  provide,
+  reactive,
+  ref,
+  toRaw,
+  watch,
+} from 'vue';
 import {
   VAlert,
   VButton,
@@ -261,9 +271,34 @@ function isDefinition(path: string): boolean {
 
 // ── lifecycle ──────────────────────────────────────────────────────
 
-onMounted(load);
+/**
+ * A reset the host renders outside this component.
+ *
+ * <p>Outside on purpose: a program can hide its own toolbar with a patch, or
+ * take the page with a drawing surface. The one way out must not be something
+ * the app can break — so the Cortex header holds the button and this component
+ * only says what it does.
+ *
+ * <p>**Reset is not Rebuild.** Rebuild re-reads the documents and re-validates
+ * them, which is the authoring loop and needs write access. Reset throws away
+ * what the *program* did — state, patches, the running guest — and starts it
+ * again from the documents as they are. A reader with no write access can still
+ * get out.
+ */
+const registerReset = inject<((fn: null | (() => void)) => void) | null>(
+  'vance:register-reset',
+  null,
+);
+
+onMounted(() => {
+  registerReset?.(() => {
+    void load();
+  });
+  void load();
+});
 
 onBeforeUnmount(() => {
+  registerReset?.(null);
   void teardown();
 });
 

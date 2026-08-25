@@ -2166,6 +2166,7 @@ export default {
     },
   },
   starred: {
+    resetApp: 'App zurücksetzen — Programm neu starten, Laufzeit-Zustand verwerfen',
     menuToggle: 'Angesternt',
     menuOnStartPage: 'Auf der Startseite zeigen',
     star: 'Ansternen',

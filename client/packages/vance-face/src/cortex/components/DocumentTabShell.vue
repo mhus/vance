@@ -22,7 +22,7 @@
  *    Calendar). Same render contract as {@code typed-model}; the host
  *    just sourced the entry differently.
  */
-import { computed, inject, onBeforeUnmount, ref, shallowRef, toRef, watch } from 'vue';
+import { computed, inject, onBeforeUnmount, provide, ref, shallowRef, toRef, watch } from 'vue';
 import type { Ref } from 'vue';
 import { CodeEditor, VLockBadge, accentColorDotClass, provideDocumentReferrer } from '@/components';
 import { brainFetch, brainFetchBlob } from '@vance/shared';
@@ -68,6 +68,23 @@ const binding = computed(() => resolveBinding(props.document));
 // *this* document. Embedded content re-declares its own (see
 // EmbeddedKindBox), so nesting resolves against the innermost document.
 provideDocumentReferrer(computed(() => props.document.path ?? ''));
+
+/**
+ * A reset the open kind view offers, rendered *outside* it.
+ *
+ * <p>Outside is the whole point: a kind whose own toolbar has stopped working —
+ * an app whose program hid it, or whose drawing surface took the page — cannot
+ * offer its own way out. So the shell holds the button and the view only says
+ * what it does.
+ *
+ * <p>Registered rather than declared, so this component learns nothing about
+ * which kinds are resettable: a view calls `inject('vance:register-reset')` on
+ * mount and passes `null` on unmount. No handler, no button.
+ */
+const resetHandler = shallowRef<null | (() => void)>(null);
+provide('vance:register-reset', (fn: null | (() => void)) => {
+  resetHandler.value = fn;
+});
 
 // True when the binding dispatched to an application:<type> kind from
 // the kind-registry (i.e. the doc is an _app.yaml manifest mounted as a
@@ -729,6 +746,13 @@ function fmtDuration(ms: number | null): string {
         :aria-pressed="isStarred"
         @click="toggleStar()"
       >{{ isStarred ? '★' : '☆' }}</button>
+      <button
+        v-if="resetHandler"
+        type="button"
+        class="px-1 text-base leading-none opacity-70 hover:opacity-100"
+        :title="$t('starred.resetApp')"
+        @click="resetHandler()"
+      >⟳</button>
       <div
         class="flex border border-base-300 rounded overflow-hidden text-xs"
         role="group"

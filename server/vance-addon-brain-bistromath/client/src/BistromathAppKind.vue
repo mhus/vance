@@ -9,6 +9,7 @@ import {
   ref,
   toRaw,
   watch,
+  type Ref,
 } from 'vue';
 import {
   VAlert,
@@ -20,6 +21,7 @@ import {
 import WidgetNode from './WidgetNode.vue';
 import { Sandbox, type SandboxHost } from './sandbox';
 import { PATCHES, applyPatch, type PatchMap, type WidgetPatch } from './patches';
+import { getTenantId, getUsername } from '@vance/shared';
 import { DocumentAccess, loadScript, loadView, rebuildApp, scanApp } from './api';
 import type { AppScan } from './generated/bistromath/AppScan';
 import type { RenderedView } from './generated/bistromath/RenderedView';
@@ -114,6 +116,15 @@ const docs = new DocumentAccess(props.document.projectId);
  */
 const { entry, report } = useAppEntry(() => props.document.id);
 
+/**
+ * The open chat's session, when the surface around this app has one.
+ *
+ * <p>Injected because only the Cortex knows: an app opened in a chatless tab
+ * has none, and the same app in a tab with a chat beside it does. `null` is a
+ * normal answer, not a failure.
+ */
+const cortexSession = inject<Ref<string | null> | null>('vance:session-id', null);
+
 const handle = computed(() => splitEntry(entry.value).handle);
 const recordKey = computed(() => splitEntry(entry.value).recordKey);
 
@@ -123,6 +134,28 @@ function splitEntry(raw: string | null): { handle: string | null; recordKey: str
   if (i < 0) return { handle: raw, recordKey: null };
   return { handle: raw.slice(0, i), recordKey: raw.slice(i + 1) || null };
 }
+
+/**
+ * What the program may know about itself and cannot change while it runs.
+ *
+ * <p>Handed over before the first line of program code, so it reads as plain
+ * properties. It answers questions the program could not otherwise ask — its own
+ * folder, for a link or a message; the project and tenant, for anything it
+ * displays — and it answers none it could act on: every call still goes through
+ * `vance.*` and is authorised there with the reader's real session.
+ *
+ * <p>`user` is information, **not** a permission. A program that hides something
+ * from a name is decoration; what a reader may actually see is decided by the
+ * permission system on every call the host makes.
+ */
+const appContext = computed<Record<string, unknown>>(() => ({
+  folder: folder.value,
+  project: props.document.projectId,
+  tenant: getTenantId(),
+  user: getUsername(),
+  docPath: props.document.path,
+  docId: props.document.id ?? null,
+}));
 
 // ── the host API the program is allowed to reach ───────────────────
 
@@ -152,6 +185,14 @@ const host: SandboxHost = {
   },
   documentsDelete(path) {
     return docs.delete(resolve(path)).catch(rethrow(path));
+  },
+  appCurrent() {
+    // What a constant cannot carry: the reader has moved since the program
+    // started, or opened a chat beside it.
+    return {
+      view: view.value?.handle ?? null,
+      session: cortexSession?.value ?? null,
+    };
   },
   viewPatch(id, changes) {
     patches.value = applyPatch(patches.value, id, (changes ?? {}) as WidgetPatch);
@@ -393,6 +434,7 @@ async function boot(s: AppScan): Promise<void> {
     // Handed over once. The frame is created here and never leaves, so a view
     // that asks for a surface later needs no second frame — the div grows.
     mount: guestSlot.value,
+    context: appContext.value,
   });
   sandbox = box;
   try {

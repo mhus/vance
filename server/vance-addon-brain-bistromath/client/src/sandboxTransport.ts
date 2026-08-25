@@ -87,6 +87,11 @@ export const GUEST_BOOTSTRAP = `<!doctype html><meta charset="utf-8">
     view: {
       patch: function (id, changes) { return call('view.patch', [id, changes]); },
       reset: function (id) { return call('view.reset', [id]); }
+    },
+    // Constants arrive by message before the program is evaluated (see the
+    // 'context' handler below); current() asks for what can still change.
+    app: {
+      current: function () { return call('app.current', []); }
     }
   };
   function reply(id, error, value) {
@@ -108,6 +113,15 @@ export const GUEST_BOOTSTRAP = `<!doctype html><meta charset="utf-8">
       if (!p) return;
       delete pending[m.id];
       if (m.ok) p.resolve(m.value); else p.reject(new Error(m.message));
+      return;
+    }
+    if (m.t === 'context') {
+      // Merged onto the object the bootstrap already built, then frozen: the
+      // program may read these without awaiting, and cannot rewrite them into
+      // something the host never said.
+      for (var k in m.app) { if (Object.prototype.hasOwnProperty.call(m.app, k)) window.vance.app[k] = m.app[k]; }
+      Object.freeze(window.vance.app);
+      reply(m.id);
       return;
     }
     if (m.t === 'eval') {

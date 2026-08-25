@@ -39,6 +39,8 @@ export interface SandboxHost {
   documentsCreate(path: string, content: unknown): Promise<unknown>;
   /** `vance.documents.delete(path)` */
   documentsDelete(path: string): Promise<unknown>;
+  /** `vance.app.current()` — what about the app can still change while it runs. */
+  appCurrent(): unknown;
   /** `vance.view.patch(id, changes)` — change how a widget looks, or hide it. */
   viewPatch(id: string, changes: unknown): void;
   /** `vance.view.reset(id?)` — undo one widget's patch, or all of them. */
@@ -59,6 +61,17 @@ export interface SandboxOptions {
   drainMs?: number;
   /** Where the program runs. Defaults to a null-origin iframe. */
   transport?: GuestTransport;
+  /**
+   * Facts about the app that cannot change while it is open — its folder, its
+   * project, the tenant, who is looking. Handed over **before** the program is
+   * evaluated and frozen there, so `vance.app.folder` is a plain read with no
+   * await and no chance of going stale.
+   *
+   * <p>Separate from {@link SandboxHost#appCurrent} on purpose: a constant that
+   * is served by a call invites the reader to wonder when it changes. These do
+   * not — a different project means a different document and a fresh mount.
+   */
+  context?: Record<string, unknown>;
   /**
    * Where the guest is shown, for an app whose view declares a drawing
    * surface. Omitted, the guest runs hidden — which is every app that only
@@ -108,6 +121,7 @@ export class Sandbox {
   private readonly timeoutMs: number;
   private readonly drainMs: number;
   private readonly transport: GuestTransport;
+  private readonly context?: Record<string, unknown>;
   private readonly waiters = new Map<string, Waiter>();
 
   private started = false;
@@ -161,6 +175,7 @@ export class Sandbox {
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.drainMs = opts.drainMs ?? DEFAULT_DRAIN_MS;
     this.transport = opts.transport ?? new IframeTransport(opts.mount);
+    this.context = opts.context;
 
     // The page going away is the case nothing else covers: no Vue hook runs and
     // the guest dies with the document. Best effort and it cannot be more — the
@@ -252,6 +267,10 @@ export class Sandbox {
     // within it would deadlock.
     return this.enqueue(async () => {
       await this.ready;
+
+      // Before any program code: the constants have to be there when the first
+      // top-level line runs, not merely before the first handler.
+      if (this.context) await this.send('context', { app: this.context });
 
       const files = sources.filter((f) => f.source.trim());
       if (files.length > 0) {
@@ -410,7 +429,7 @@ export class Sandbox {
   }
 
   private send<T = void>(
-    t: 'eval' | 'invoke' | 'has',
+    t: 'eval' | 'invoke' | 'has' | 'context',
     payload: Record<string, unknown>,
   ): Promise<T> {
     if (!this.started || this.disposed) {
@@ -517,6 +536,9 @@ export class Sandbox {
           break;
         case 'documents.delete':
           post(true, await host.documentsDelete(String(args[0])));
+          break;
+        case 'app.current':
+          post(true, host.appCurrent());
           break;
         case 'view.patch':
           host.viewPatch(String(args[0]), args[1]);

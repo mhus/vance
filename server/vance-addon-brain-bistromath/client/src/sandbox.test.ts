@@ -66,7 +66,7 @@ function autoRespond(
 ): void {
   const hooks = opts.hooks ?? [];
   guest.onPost = (m) => {
-    if (m.t === 'eval') {
+    if (m.t === 'eval' || m.t === 'context') {
       guest.emit({ t: 'done', id: m.id });
       return;
     }
@@ -93,6 +93,7 @@ function makeHost(overrides: Partial<SandboxHost> = {}): SandboxHost {
     stateSet: vi.fn(),
     documentsList: vi.fn().mockResolvedValue([]),
     stateGet: vi.fn().mockReturnValue(undefined),
+    appCurrent: vi.fn().mockReturnValue({ view: null, session: null }),
     viewPatch: vi.fn(),
     viewReset: vi.fn(),
     documentsRead: vi.fn().mockResolvedValue(''),
@@ -450,6 +451,61 @@ describe('invokeHook', () => {
     await expect(box.invokeHook('onDocumentChanged', [[]])).resolves.toBeUndefined();
 
     expect(guest.posted.length).toBe(before);
+  });
+});
+
+// ── the app's own facts ────────────────────────────────────────────
+
+describe('app context', () => {
+  /**
+   * Before the program, not merely before the first handler: a top-level line
+   * may read `vance.app.folder`, and it has to be there when it runs.
+   */
+  it('is handed over before any program code is evaluated', async () => {
+    const guest = new FakeGuest();
+    autoRespond(guest);
+    const box = new Sandbox({
+      host: makeHost(),
+      onError: vi.fn(),
+      transport: guest,
+      context: { folder: 'apps/mine', project: 'p1' },
+    });
+
+    await box.startAll([{ path: 'main.js', source: 'const x = 1;' }]);
+
+    const order = guest.posted.filter((m) => m.t === 'context' || m.t === 'eval')
+      .map((m) => m.t);
+    expect(order[0]).toBe('context');
+    expect(guest.posted.find((m) => m.t === 'context')!.app)
+      .toEqual({ folder: 'apps/mine', project: 'p1' });
+  });
+
+  it('is skipped entirely when there is nothing to say', async () => {
+    const guest = new FakeGuest();
+    autoRespond(guest);
+    const box = new Sandbox({ host: makeHost(), onError: vi.fn(), transport: guest });
+
+    await box.startAll([{ path: 'main.js', source: 'const x = 1;' }]);
+
+    expect(guest.posted.some((m) => m.t === 'context')).toBe(false);
+  });
+
+  it('answers what can still change through the host', async () => {
+    const guest = new FakeGuest();
+    autoRespond(guest);
+    const host = makeHost({
+      appCurrent: vi.fn().mockReturnValue({ view: 'edit', session: 's-1' }),
+    });
+    const box = new Sandbox({ host, onError: vi.fn(), transport: guest });
+    await box.start('code');
+
+    guest.emit({ t: 'call', id: 'c1', method: 'app.current', args: [] });
+    await vi.waitFor(() => expect(guest.posted.some((m) => m.t === 'result')).toBe(true));
+
+    expect(guest.posted.find((m) => m.t === 'result')).toMatchObject({
+      ok: true,
+      value: { view: 'edit', session: 's-1' },
+    });
   });
 });
 

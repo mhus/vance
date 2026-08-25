@@ -89,6 +89,43 @@ reload the whole app, which is why editing a view next door takes effect without
 pressing Rebuild), and a **newly added** view (no scan knows it yet — that one
 still needs Rebuild).
 
+## What the program knows about itself
+
+`vance.app` carries what cannot change while the app is open. It is there
+**before your first line runs**, so it needs no `await`:
+
+```js
+// @app-script
+const title = 'Rechnungen in ' + vance.app.project;   // works at top level
+```
+
+| | |
+|---|---|
+| `vance.app.folder` | this app's folder, e.g. `apps/invoices` |
+| `vance.app.project` | the project it lives in |
+| `vance.app.tenant` | the tenant |
+| `vance.app.user` | who is looking |
+| `vance.app.docPath` / `.docId` | the app manifest |
+
+**You do not need `folder` to read your own files** — a relative path already
+resolves against it, so `vance.documents.read('config.yaml')` reads
+`<folder>/config.yaml`. It is there for what you cannot compute: a link, a
+message, a log line.
+
+**`user` is information, not a permission.** Hiding something from a name is
+decoration; what a reader may actually see is decided by the permission system
+on every call the host makes for you. Do not build access control on it.
+
+What can change is a call:
+
+```js
+const { view, session } = await vance.app.current();
+```
+
+`view` is the open view's handle — the same value `onViewOpened` gets. `session`
+is the id of the chat beside the app, or `null` when there is none, which is the
+normal case in a chatless tab.
+
 ## `await` needs `async`
 
 Every `vance.*` call is asynchronous. A handler that reads must say so:
@@ -114,6 +151,8 @@ often here.
 | `vance.documents.write(path, content, opts?)` | store content; refused if it changed since read |
 | `vance.documents.create(path, content)` | like `write`, but fails if one is there |
 | `vance.documents.delete(path)` | remove it |
+| `vance.app.<…>` | facts about this app — read directly, no await (see below) |
+| `vance.app.current()` | what can still change: the open view, the chat session |
 | `vance.view.patch(id, changes)` | hide/relabel a widget or a field, replace a select's choices |
 | `vance.view.reset(id?)` | undo one patch, or all of them |
 | `vance.ui.notify(text)` | a message above the page |

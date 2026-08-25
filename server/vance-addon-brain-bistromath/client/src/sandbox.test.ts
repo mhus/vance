@@ -93,6 +93,8 @@ function makeHost(overrides: Partial<SandboxHost> = {}): SandboxHost {
     stateSet: vi.fn(),
     documentsList: vi.fn().mockResolvedValue([]),
     stateGet: vi.fn().mockReturnValue(undefined),
+    viewPatch: vi.fn(),
+    viewReset: vi.fn(),
     documentsRead: vi.fn().mockResolvedValue(''),
     documentsWrite: vi.fn().mockResolvedValue(undefined),
     documentsCreate: vi.fn().mockResolvedValue(undefined),

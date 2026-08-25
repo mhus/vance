@@ -35,7 +35,7 @@ Nothing survives to the next opening. Closing the app tab, switching documents
 or reloading starts a fresh program. **Whatever must outlive that goes into a
 document.**
 
-## The four functions the runtime calls
+## The five functions the runtime calls
 
 All optional. The runtime asks once, after loading, which ones exist; a missing
 one is simply not called.
@@ -46,6 +46,7 @@ one is simply not called.
 | `shutdown()` | when the app closes — see the warning below |
 | `onBeforeUnload()` | returns `true` if leaving would lose something |
 | `onDocumentChanged(paths)` | somebody else wrote a document in the app folder |
+| `onViewOpened(handle)` | a view was rendered — where runtime view patches go |
 
 **`init()` does not render.** The view is drawn first — `init` is async, and
 waiting for it would leave the app blank until the first document read returns.
@@ -113,6 +114,8 @@ often here.
 | `vance.documents.write(path, content, opts?)` | store content; refused if it changed since read |
 | `vance.documents.create(path, content)` | like `write`, but fails if one is there |
 | `vance.documents.delete(path)` | remove it |
+| `vance.view.patch(id, changes)` | hide/relabel a widget or a field, replace a select's choices |
+| `vance.view.reset(id?)` | undo one patch, or all of them |
 | `vance.ui.notify(text)` | a message above the page |
 | `vance.ui.show(handle)` | switch to another view |
 

@@ -25,6 +25,12 @@ import org.jspecify.annotations.Nullable;
  *                table names, no expression — a name.
  * @param columns columns of a {@code table}; empty means "the table's declared
  *                fields", which is the normal case.
+ * @param id      name a program can address this widget by, to patch it at
+ *                runtime — hide it, relabel it, replace a `select`'s choices.
+ *                Optional: a widget nobody patches needs no name. Unique
+ *                within a view, because an ambiguous address would patch
+ *                whichever node the renderer reached first, which is the kind
+ *                of almost-right this schema refuses.
  * @param options choices of a {@code select}.
  * @param variant severity of an {@code alert} or colour of a {@code badge} —
  *                one of {@link ViewParser#VARIANTS}. A literal, not a state
@@ -53,6 +59,7 @@ public record ViewNode(
         @Nullable String label,
         @Nullable String text,
         @Nullable String from,
+        @Nullable String id,
         /**
          * State key deciding whether this widget is shown at all.
          *

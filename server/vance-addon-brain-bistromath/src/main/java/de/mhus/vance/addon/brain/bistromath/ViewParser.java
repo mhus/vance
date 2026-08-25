@@ -55,6 +55,9 @@ public final class ViewParser {
     private static final Pattern FUNCTION_NAME =
             Pattern.compile("^[A-Za-z_$][A-Za-z0-9_$]*$");
 
+    /** A widget id: what a program writes in a patch call. */
+    private static final Pattern WIDGET_ID = Pattern.compile("^[A-Za-z][A-Za-z0-9_-]*$");
+
     private static final String NAVIGATE_PREFIX = "navigate:";
     private static final String RELOAD = "reload";
 
@@ -121,11 +124,11 @@ public final class ViewParser {
                     + "' is not a YAML mapping — a view starts with `type: page`.");
         }
         int[] budget = {MAX_NODES};
-        return node(map, docPath, "", 0, budget);
+        return node(map, docPath, "", 0, budget, new java.util.HashSet<>());
     }
 
     private static ViewNode node(Map<?, ?> raw, String docPath, String at, int depth,
-                                 int[] budget) {
+                                 int[] budget, java.util.Set<String> budgetIds) {
         if (depth > MAX_DEPTH) {
             throw new ToolException(where(docPath, at) + ": nested deeper than "
                     + MAX_DEPTH + " levels.");
@@ -168,6 +171,18 @@ public final class ViewParser {
         String text = str(raw.get("text"));
         String from = str(raw.get("from"));
         String show = str(raw.get("show"));
+        String id = str(raw.get("id"));
+        if (id != null && !WIDGET_ID.matcher(id).matches()) {
+            throw new ToolException(where(docPath, at) + ": `" + id + "` is not a widget id."
+                    + " Letters, digits, `-` and `_`, starting with a letter — it is a name a"
+                    + " program writes in `vance.view.patch(...)`.");
+        }
+        if (id != null && !budgetIds.add(id)) {
+            // Two widgets with one id make a patch ambiguous, and the renderer
+            // would silently apply it to whichever it reached first.
+            throw new ToolException(where(docPath, at) + ": id `" + id + "` is used twice in"
+                    + " this view. A program addresses a widget by id, so it has to name one.");
+        }
         List<String> columns = strings(raw.get("columns"), docPath, at + ".columns");
         List<ViewOption> options = options(raw.get("options"), docPath, at + ".options");
         String variant = variant(raw.get("variant"), type, docPath, at);
@@ -200,12 +215,13 @@ public final class ViewParser {
                     + " not to a `" + type.wire() + "`.");
         }
 
-        List<ViewNode> children = children(raw.get("children"), type, docPath, at, depth, budget);
+        List<ViewNode> children =
+                children(raw.get("children"), type, docPath, at, depth, budget, budgetIds);
 
         rejectRemovedKeys(raw, docPath, at);
         requireShape(type, label, text, from, show, options, docPath, at);
 
-        return new ViewNode(type.wire(), label, text, from, show, columns, options, variant,
+        return new ViewNode(type.wire(), label, text, from, id, show, columns, options, variant,
                 mimeType, accept, fields, on, children);
     }
 
@@ -362,7 +378,7 @@ public final class ViewParser {
 
     private static List<ViewNode> children(@Nullable Object raw, WidgetType type,
                                            String docPath, String at, int depth,
-                                           int[] budget) {
+                                           int[] budget, java.util.Set<String> budgetIds) {
         if (raw == null) return List.of();
         if (!type.allowsChildren()) {
             throw new ToolException(where(docPath, at) + ": a `" + type.wire()
@@ -379,7 +395,7 @@ public final class ViewParser {
                 throw new ToolException(where(docPath, childAt)
                         + ": expected a widget mapping.");
             }
-            out.add(node(m, docPath, childAt, depth + 1, budget));
+            out.add(node(m, docPath, childAt, depth + 1, budget, budgetIds));
         }
         return List.copyOf(out);
     }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, ref, watch, type Component } from 'vue';
+import { computed, inject, onBeforeUnmount, ref, watch, type Component, type Ref } from 'vue';
 import {
   CodeEditor,
   FormFields,
@@ -21,6 +21,7 @@ import DOMPurify from 'dompurify';
 import FormFieldsView from './FormFieldsView.vue';
 import { fromFormModel, toFormModel } from './formModel';
 import { compareInDirection } from './compare';
+import { PATCHES, patchHides, patched, type PatchMap } from './patches';
 import { isVisible } from './visibility';
 import type { ViewNode } from './generated/bistromath/ViewNode';
 import type { ViewAction } from './generated/bistromath/ViewAction';
@@ -70,6 +71,23 @@ const emit = defineEmits<{
 
 const depth = computed(() => props.depth ?? 0);
 
+/**
+ * Runtime changes a program made to this view — injected, not threaded through
+ * as a sixth prop, because every node in the tree needs them.
+ */
+const patches = inject<Ref<PatchMap>>(PATCHES, ref({}) as Ref<PatchMap>);
+
+/**
+ * The **effective** node: what the document says plus what the program changed.
+ *
+ * <p>Deliberately shadows the `node` prop, so every branch of the template below
+ * reads the patched shape without knowing patches exist. `props.node` stays
+ * reachable for the two places that need the *unpatched* node: this widget's own
+ * `hide` gate and the tab filter, both of which ask about the node's identity
+ * rather than its appearance.
+ */
+const node = computed<ViewNode>(() => patched(props.node, patches.value));
+
 /** Which tab is open. Client state — nothing is written. */
 const activeTab = ref(0);
 
@@ -80,10 +98,19 @@ function lookup(key: string): unknown {
   return props.state[key];
 }
 
-const bound = computed<unknown>(() => (props.node.from ? lookup(props.node.from) : undefined));
+const bound = computed<unknown>(() => (node.value.from ? lookup(node.value.from) : undefined));
 
-/** Whether this widget is shown at all — see `visibility.ts` for the rule. */
-const visible = computed<boolean>(() => isVisible(props.node, lookup));
+/**
+ * Whether this widget is shown at all.
+ *
+ * <p>Two independent gates and both must pass: the document's `show:` key (see
+ * `visibility.ts`) and a program's `hide` patch. Separate on purpose — a patch
+ * that could *un*-hide something the document gates would let a program
+ * override a condition the author wrote down.
+ */
+const visible = computed<boolean>(
+  () => isVisible(node.value, lookup) && !patchHides(props.node, patches.value),
+);
 
 /**
  * The tabs a reader can actually reach.
@@ -92,7 +119,9 @@ const visible = computed<boolean>(() => isVisible(props.node, lookup));
  * tab is an **index**: a hidden child that still occupies a slot would shift
  * every tab behind it, and clicking "Report" would open something else.
  */
-const visibleTabs = computed(() => props.node.children.filter((c) => isVisible(c, lookup)));
+const visibleTabs = computed(() =>
+  node.value.children.filter((c) => isVisible(c, lookup) && !patchHides(c, patches.value)),
+);
 
 /**
  * Keep the open tab in range when the set of tabs changes under it.
@@ -118,7 +147,7 @@ const items = computed<unknown[]>(() => (Array.isArray(bound.value) ? bound.valu
  * "this document".
  */
 const embedUri = computed<string | null>(() => {
-  const raw = props.node.from ? bound.value : props.node.text;
+  const raw = node.value.from ? bound.value : node.value.text;
   if (typeof raw !== 'string' || raw.trim() === '') return null;
   return `vance:/${props.resolve(raw.trim())}`;
 });
@@ -175,7 +204,7 @@ const inputChecked = computed<boolean>(() => {
 
 /** Write a value into the bound key, then let `on.change` fire if there is one. */
 function writeBound(value: unknown): void {
-  const key = props.node.from;
+  const key = node.value.from;
   if (!key) return;
   emit('state', key, value);
   scheduleChange();
@@ -242,7 +271,7 @@ async function readFiles(files: File[]): Promise<void> {
 
 /** Options as `VSelect` wants them. The parser already filled every label. */
 const selectOptions = computed(() =>
-  props.node.options.map((o) => ({ value: o.value, label: o.label })),
+  node.value.options.map((o) => ({ value: o.value, label: o.label })),
 );
 
 /**
@@ -351,7 +380,7 @@ const tableRows = computed(() => {
  * cells. Silently dropping it would make a typo look like missing data.
  */
 const columns = computed<string[]>(() => {
-  if (props.node.columns.length > 0) return props.node.columns;
+  if (node.value.columns.length > 0) return node.value.columns;
   const seen = new Set<string>();
   for (const { row } of rows.value) for (const k of Object.keys(row)) seen.add(k);
   seen.delete('key');
@@ -379,7 +408,7 @@ const record = computed<Record<string, unknown> | null>(() => {
 
 /** What the form engine edits: the record, in its string encoding. */
 const formModel = computed<Record<string, FormValue>>(() =>
-  toFormModel(record.value, props.node.fields),
+  toFormModel(record.value, node.value.fields),
 );
 
 /**
@@ -392,9 +421,9 @@ const formModel = computed<Record<string, FormValue>>(() =>
  * across untouched.
  */
 function onFormInput(model: Record<string, FormValue>): void {
-  const key = props.node.from;
+  const key = node.value.from;
   if (!key) return;
-  const merged = fromFormModel(model, props.node.fields, record.value);
+  const merged = fromFormModel(model, node.value.fields, record.value);
   const current = bound.value;
 
   if (Array.isArray(current)) {
@@ -426,7 +455,7 @@ const CHANGE_DELAY_MS = 150;
 let changeTimer: ReturnType<typeof setTimeout> | null = null;
 
 function scheduleChange(): void {
-  const action = props.node.on.change;
+  const action = node.value.on.change;
   if (!action) return;
   if (changeTimer !== null) clearTimeout(changeTimer);
   changeTimer = setTimeout(() => {
@@ -443,18 +472,18 @@ onBeforeUnmount(() => {
 
 /** Text: the bound value when there is one, else the literal. */
 const textValue = computed<string>(() => {
-  if (props.node.from) {
+  if (node.value.from) {
     const v = bound.value;
     if (v === undefined || v === null) return '';
     return typeof v === 'string' ? v : JSON.stringify(v);
   }
-  return props.node.text ?? '';
+  return node.value.text ?? '';
 });
 
 const mdHtml = ref('');
 
 watch(
-  () => [props.node.type, textValue.value] as const,
+  () => [node.value.type, textValue.value] as const,
   async ([type, text]) => {
     if (type !== 'markdown') return;
     mdHtml.value = DOMPurify.sanitize(await marked.parse(text));
@@ -463,12 +492,12 @@ watch(
 );
 
 function fire(event: string, key?: string): void {
-  const action = props.node.on[event];
+  const action = node.value.on[event];
   if (action) emit('action', action, key);
 }
 
 function hasHandler(event: string): boolean {
-  return Boolean(props.node.on[event]);
+  return Boolean(node.value.on[event]);
 }
 
 function cell(row: Record<string, unknown>, column: string): string {

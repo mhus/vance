@@ -69,6 +69,9 @@ arranging, `manual_read('content')` for showing.
 
 `title:` and `label:` are the same field — use whichever reads better.
 
+Any widget may carry `id:` — a name a program addresses it by to hide or
+relabel it at runtime (`manual_read('shaping')`). Optional, unique per view.
+
 **Reserved but not rendered:** `chart`. Using it is refused with a message
 saying it arrives later — that is different from an unknown widget, so do not go
 looking for a typo. (For a chart today: put the data in a chart document and

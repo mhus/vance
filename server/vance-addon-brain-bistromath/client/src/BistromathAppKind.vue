@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, toRaw, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, provide, reactive, ref, toRaw, watch } from 'vue';
 import {
   VAlert,
   VButton,
@@ -9,6 +9,7 @@ import {
 } from '@vance/components';
 import WidgetNode from './WidgetNode.vue';
 import { Sandbox, type SandboxHost } from './sandbox';
+import { PATCHES, applyPatch, type PatchMap, type WidgetPatch } from './patches';
 import { DocumentAccess, loadScript, loadView, rebuildApp, scanApp } from './api';
 import type { AppScan } from './generated/bistromath/AppScan';
 import type { RenderedView } from './generated/bistromath/RenderedView';
@@ -51,6 +52,20 @@ const busy = ref(false);
  * bookkeeping and no widget can see it.
  */
 const state = reactive<Record<string, unknown>>({});
+
+/**
+ * Runtime changes the program made to the rendered view.
+ *
+ * <p>Beside the fetched tree, never inside it — so a reload always means "what
+ * the document says", and that stays the way out of any confusing runtime state.
+ * Provided rather than passed down: every node needs it.
+ *
+ * <p>Cleared when the view changes, because a patch names a widget of *this*
+ * view and the next one has never heard of it. The program is told through
+ * `onViewOpened`, which is what makes re-applying possible.
+ */
+const patches = ref<PatchMap>({});
+provide(PATCHES, patches);
 
 let sandbox: Sandbox | null = null;
 
@@ -108,6 +123,18 @@ const host: SandboxHost = {
   },
   documentsDelete(path) {
     return docs.delete(resolve(path)).catch(rethrow(path));
+  },
+  viewPatch(id, changes) {
+    patches.value = applyPatch(patches.value, id, (changes ?? {}) as WidgetPatch);
+  },
+  viewReset(id) {
+    if (id === undefined) {
+      patches.value = {};
+      return;
+    }
+    const next = { ...patches.value };
+    delete next[id];
+    patches.value = next;
   },
   uiNotify(text) {
     notice.value = text;
@@ -258,12 +285,20 @@ async function load(): Promise<void> {
 
 async function openView(target: string | null): Promise<void> {
   error.value = null;
+  // A patch names a widget of the view being left; the next view has never
+  // heard of it. Cleared here rather than merged, so a stale patch cannot
+  // silently apply to a same-named widget somewhere else.
+  patches.value = {};
   try {
     view.value = await loadView(props.document.projectId, folder.value, target);
   } catch (e) {
     view.value = null;
     error.value = message(e);
+    return;
   }
+  // Told after the view is up, so a patch in the hook lands on something that
+  // exists. Silent when the program has no such hook.
+  void sandbox?.invokeHook('onViewOpened', [view.value.handle]);
 }
 
 /**

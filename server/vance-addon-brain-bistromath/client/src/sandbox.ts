@@ -39,6 +39,10 @@ export interface SandboxHost {
   documentsCreate(path: string, content: unknown): Promise<unknown>;
   /** `vance.documents.delete(path)` */
   documentsDelete(path: string): Promise<unknown>;
+  /** `vance.view.patch(id, changes)` — change how a widget looks, or hide it. */
+  viewPatch(id: string, changes: unknown): void;
+  /** `vance.view.reset(id?)` — undo one widget's patch, or all of them. */
+  viewReset(id?: string): void;
   /** `vance.ui.notify(text, severity)` */
   uiNotify(text: string, severity?: string): void;
   /** `vance.ui.show(handle)` */
@@ -77,7 +81,13 @@ const DEFAULT_DRAIN_MS = 1500;
  * "no function named …", which is a string comparison standing in for a fact
  * the guest can simply be asked.
  */
-export const HOOKS = ['init', 'shutdown', 'onBeforeUnload', 'onDocumentChanged'] as const;
+export const HOOKS = [
+  'init',
+  'shutdown',
+  'onBeforeUnload',
+  'onDocumentChanged',
+  'onViewOpened',
+] as const;
 
 interface Waiter {
   resolve: (value: unknown) => void;
@@ -501,6 +511,15 @@ export class Sandbox {
           break;
         case 'documents.delete':
           post(true, await host.documentsDelete(String(args[0])));
+          break;
+        case 'view.patch':
+          host.viewPatch(String(args[0]), args[1]);
+          post(true, null);
+          break;
+        case 'view.reset':
+          host.viewReset(args[0] === undefined || args[0] === null
+            ? undefined : String(args[0]));
+          post(true, null);
           break;
         case 'ui.notify':
           host.uiNotify(String(args[0]), args[1] === undefined ? undefined : String(args[1]));

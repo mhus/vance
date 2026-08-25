@@ -31,6 +31,7 @@ There is no table declaration, no `source:` on a widget, and no data endpoint.
 | Arranging — row, column, card, tabs, dialog | `manual_read('layout')` |
 | Showing — markdown, code, badge, alert, embed | `manual_read('content')` |
 | Sharing code, `@require`, version conflicts | `manual_read('libraries')` |
+| Changing the view from JS — hide a field, relabel, options from data | `manual_read('shaping')` |
 | Which functions does the runtime call? What can the program do? | `manual_read('program')` |
 | How do I read documents, folders, mounted files? | `manual_read('data')` |
 | An error message I do not recognise | `manual_read('troubleshooting')` |

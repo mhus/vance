@@ -64,6 +64,10 @@ export const GUEST_BOOTSTRAP = `<!doctype html><meta charset="utf-8"><script>
     ui: {
       notify: function (t, s) { return call('ui.notify', [t, s]); },
       show: function (h) { return call('ui.show', [h]); }
+    },
+    view: {
+      patch: function (id, changes) { return call('view.patch', [id, changes]); },
+      reset: function (id) { return call('view.reset', [id]); }
     }
   };
   function reply(id, error, value) {

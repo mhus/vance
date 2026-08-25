@@ -147,9 +147,12 @@ class ToolVocabularyTest {
     /**
      * Every {@link Tool} on the brain classpath whose name starts with one of
      * {@link #COVERED_PREFIXES}, instantiated with all-null constructor args.
-     * Null args are safe because these tools build their schema as a static
-     * constant; one that touches a collaborator in its constructor drops out of
-     * the scan and {@link #theSuiteActuallySeesTheToolsItClaimsToGuard} notices.
+     * Null args are safe because these tools' schemas do not need a
+     * collaborator to be *readable*: most are a static constant, and the two
+     * that append the registered document kinds fall back to their base schema
+     * when there is no registry. A tool that touches a collaborator in its
+     * constructor drops out of the scan and
+     * {@link #theSuiteActuallySeesTheToolsItClaimsToGuard} notices.
      */
     private static Map<String, Tool> coveredTools() {
         ClassPathScanningCandidateComponentProvider scanner =

@@ -10,10 +10,13 @@ import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -144,7 +147,56 @@ public class DocWriteTool implements Tool {
         return Set.of("knowledge", "documents");
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    /**
+     * The static schema, with the **actually registered** kinds appended to the
+     * {@code kind} description.
+     *
+     * <p>The prose list above says what each built-in kind is *for*, which no
+     * generated list can replace — and then claims the registry is open. That
+     * claim was only half true: an addon kind (`app-view`, `finance-tree`, …)
+     * was reachable but unnameable, so an agent had to be told about it out of
+     * band or conclude it did not exist. Naming them costs one line of prompt
+     * and removes a whole class of "that is not supported" answers.
+     *
+     * <p>Computed once. The registry is fixed after construction, so this is
+     * not per-turn work and the prompt prefix stays stable — which matters,
+     * because a description that changed between turns would break the cache.
+     */
+    @Override public Map<String, Object> paramsSchema() {
+        Map<String, Object> cached = schemaWithKinds;
+        if (cached == null) {
+            cached = buildSchemaWithKinds();
+            schemaWithKinds = cached;
+        }
+        return cached;
+    }
+
+    private volatile @Nullable Map<String, Object> schemaWithKinds;
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> buildSchemaWithKinds() {
+        // The base schema when there is no registry to ask. `paramsSchema()` is
+        // a *description* method: it is called while the prompt is assembled and
+        // by tooling that builds a tool without a full context. Throwing there
+        // costs the tool its place on the surface entirely, which is a far worse
+        // outcome than a description without the appended list.
+        if (kindRegistry == null) return SCHEMA;
+        List<String> names = new ArrayList<>(kindRegistry.names());
+        Collections.sort(names);
+        if (names.isEmpty()) return SCHEMA;
+
+        Map<String, Object> properties =
+                new LinkedHashMap<>((Map<String, Object>) SCHEMA.get("properties"));
+        Map<String, Object> kind =
+                new LinkedHashMap<>((Map<String, Object>) properties.get("kind"));
+        kind.put("description", kind.get("description")
+                + " Registered here: " + String.join(", ", names) + ".");
+        properties.put("kind", kind);
+
+        Map<String, Object> out = new LinkedHashMap<>(SCHEMA);
+        out.put("properties", properties);
+        return Map.copyOf(out);
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

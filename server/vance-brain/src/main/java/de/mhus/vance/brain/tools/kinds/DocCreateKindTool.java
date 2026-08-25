@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.kinds;
 
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
+import de.mhus.vance.shared.document.KindRegistry;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -11,7 +12,10 @@ import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -33,8 +37,11 @@ public class DocCreateKindTool implements Tool {
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
         p.remove("id");
+        // No enumeration here — see paramsSchema(). A hardcoded "One of: …"
+        // asserted a closed set that was already wrong for `diagram` and
+        // `application`, and silently wrong for every kind an addon adds.
         p.put("kind", Map.of("type", "string",
-                "description", "One of: list, checklist, tree, mindmap, records, sheet, graph, chart, slides, data, text, schema."));
+                "description", "Document kind, by content shape rather than file extension."));
         p.put("mimeType", Map.of("type", "string",
                 "description", "Mime type for the new body. Defaults to a kind-appropriate value: "
                         + "text/markdown for list/checklist/tree/mindmap/records/slides, application/json for sheet/graph/chart/data."));
@@ -48,6 +55,9 @@ public class DocCreateKindTool implements Tool {
 
     private final KindToolSupport support;
     private final DocumentLinkBuilder linkBuilder;
+    private final KindRegistry kindRegistry;
+
+    private volatile @Nullable Map<String, Object> schemaWithKinds;
 
     @Override public String name() { return "doc_create_kind"; }
     @Override public String description() {
@@ -63,7 +73,47 @@ public class DocCreateKindTool implements Tool {
     @Override public boolean primary() { return false; }
     @Override public Set<String> labels() { return Set.of("doc-management", "eddie", "write", "document"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    /**
+     * The schema, with the **registered** kinds named.
+     *
+     * <p>Derived rather than written down: the registry is open, so any list in
+     * the source is out of date the moment an addon adds a kind — and the
+     * failure is an agent confidently reporting that a kind does not exist.
+     * Computed once; the registry is fixed after construction, so the prompt
+     * prefix stays stable.
+     */
+    @Override public Map<String, Object> paramsSchema() {
+        Map<String, Object> cached = schemaWithKinds;
+        if (cached == null) {
+            cached = buildSchemaWithKinds();
+            schemaWithKinds = cached;
+        }
+        return cached;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> buildSchemaWithKinds() {
+        // The base schema when there is no registry to ask. `paramsSchema()` is
+        // a *description* method: it is called while the prompt is assembled and
+        // by tooling that builds a tool without a full context. Throwing there
+        // costs the tool its place on the surface entirely, which is a far worse
+        // outcome than a description without the appended list.
+        if (kindRegistry == null) return SCHEMA;
+        List<String> names = new ArrayList<>(kindRegistry.names());
+        Collections.sort(names);
+        if (names.isEmpty()) return SCHEMA;
+
+        Map<String, Object> properties =
+                new LinkedHashMap<>((Map<String, Object>) SCHEMA.get("properties"));
+        Map<String, Object> kind = new LinkedHashMap<>((Map<String, Object>) properties.get("kind"));
+        kind.put("description", kind.get("description")
+                + " One of: " + String.join(", ", names) + ".");
+        properties.put("kind", kind);
+
+        Map<String, Object> out = new LinkedHashMap<>(SCHEMA);
+        out.put("properties", properties);
+        return Map.copyOf(out);
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

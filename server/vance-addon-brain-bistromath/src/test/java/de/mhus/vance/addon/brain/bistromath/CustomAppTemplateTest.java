@@ -45,9 +45,17 @@ class CustomAppTemplateTest {
 
     private final BistromathStore store = mock(BistromathStore.class);
     private final DocumentLinkBuilder linkBuilder = mock(DocumentLinkBuilder.class);
-    private final BistromathApplication app = new BistromathApplication(store, linkBuilder);
+    private final RequireResolver requireResolver = mock(RequireResolver.class);
+    private final BistromathApplication app =
+            new BistromathApplication(store, linkBuilder, requireResolver);
 
     // ── definition ───────────────────────────────────────────────────
+
+    @org.junit.jupiter.api.BeforeEach
+    void requireResolverAnswersEmpty() {
+        when(requireResolver.resolve(any(), any(), any(), any(), any(), any()))
+                .thenReturn(RequireReport.empty());
+    }
 
     @Test
     void definition_routesThroughTheApplication() {

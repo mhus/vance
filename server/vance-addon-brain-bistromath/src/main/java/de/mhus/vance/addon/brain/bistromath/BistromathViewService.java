@@ -20,9 +20,11 @@ import org.springframework.stereotype.Service;
 public class BistromathViewService {
 
     private final BistromathStore store;
+    private final RequireResolver requireResolver;
 
-    public BistromathViewService(BistromathStore store) {
+    public BistromathViewService(BistromathStore store, RequireResolver requireResolver) {
         this.store = store;
+        this.requireResolver = requireResolver;
     }
 
     public AppScan scan(String tenantId, String projectId, String folder) {
@@ -43,10 +45,18 @@ public class BistromathViewService {
                     + "`, but no document is there.");
         }
 
+        String programPath = program.map(DocumentDocument::getPath).orElse(null);
+        RequireReport requires = requireResolver.resolve(tenantId, projectId, loaded.folder(),
+                config, found.views(), programPath);
+        // Warnings and misses are problems of the app, so they show wherever the
+        // app's problems show. The full report stays available for the analysis
+        // surface, which wants the load order too.
+        problems.addAll(requires.warnings());
+        problems.addAll(requires.missing());
+
         return new AppScan(loaded.folder(), title, loaded.manifestDoc().description(),
                 found.views(), landing == null ? null : landing.handle(),
-                program.map(DocumentDocument::getPath).orElse(null),
-                List.copyOf(problems));
+                programPath, List.copyOf(problems), requires);
     }
 
     /**

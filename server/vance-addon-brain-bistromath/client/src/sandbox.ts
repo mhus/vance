@@ -184,6 +184,36 @@ export class Sandbox {
    * `init()` if it has one.
    */
   async start(programSource: string | null, sourceName?: string): Promise<void> {
+    return this.startAll(
+      programSource && programSource.trim()
+        ? [{ path: sourceName ?? 'program', source: programSource }]
+        : [],
+    );
+  }
+
+  /**
+   * Bring the guest up and evaluate several documents, in order.
+   *
+   * <p>**Joined into one evaluation, not one per file** — and that was a
+   * correction, measured rather than reasoned. One eval per file gives each its
+   * own `sourceURL`, which is better for blame; but in an *indirect* eval only
+   * `var` and function declarations reach the global object, while `let`,
+   * `const` and `class` go into a lexical scope that dies with that call. So a
+   * library written the way anyone writes JavaScript today —
+   * `const core = {…}` — was simply invisible to the next file, and the error
+   * was `core is not defined` with nothing pointing at the cause.
+   *
+   * <p>Joining also makes a collision **loud**: two libraries declaring the
+   * same `const` is a SyntaxError naming it, where separate evals would have
+   * silently shadowed.
+   *
+   * <p>The price is that one `sourceURL` covers everything, so a runtime stack
+   * trace names the bundle. {@link blameFile} buys most of that back: when the
+   * joined evaluation fails, each file is evaluated alone to find which one
+   * does not parse. That path only runs on failure, so it costs nothing when
+   * things work.
+   */
+  async startAll(sources: { path: string; source: string }[]): Promise<void> {
     if (this.started) throw new Error('sandbox already started');
     this.started = true;
     this.ready = new Promise<void>((resolve) => {
@@ -206,15 +236,21 @@ export class Sandbox {
     // within it would deadlock.
     return this.enqueue(async () => {
       await this.ready;
-      if (!programSource || !programSource.trim()) return;
 
-      // A sourceURL makes the browser name the document in syntax errors and
-      // stack traces. Without it every message says "<anonymous>", and the one
-      // thing an author needs from an error is which file and which line.
-      const code = sourceName
-        ? `${programSource}\n//# sourceURL=${sourceName}`
-        : programSource;
-      await this.send('eval', { code });
+      const files = sources.filter((f) => f.source.trim());
+      if (files.length > 0) {
+        // A banner per file so a reader of the joined source can orient, and a
+        // sourceURL so the browser has a name at all instead of "<anonymous>".
+        const joined = files
+          .map((f) => `/* ── ${f.path} ── */\n${f.source}`)
+          .join('\n;\n');
+        const name = files.length === 1 ? files[0].path : `${files[files.length - 1].path}+${files.length - 1}`;
+        try {
+          await this.send('eval', { code: `${joined}\n//# sourceURL=${name}` });
+        } catch (e) {
+          throw await this.blameFile(files, e);
+        }
+      }
 
       const found = await this.send<Record<string, boolean>>('has', { names: [...HOOKS] });
       for (const [name, present] of Object.entries(found ?? {})) {
@@ -224,6 +260,30 @@ export class Sandbox {
       if (this.hooks.has('init')) await this.send('invoke', { fn: 'init' });
       await this.refreshLeaveGuard();
     });
+  }
+
+  /**
+   * Find which file broke, when the joined evaluation did.
+   *
+   * <p>Evaluates each file alone until one fails, and names it. A file that
+   * only fails *in company* — a redeclared `const`, say — will not fail alone,
+   * so the original error is returned unchanged rather than a misleading
+   * "everything is fine".
+   */
+  private async blameFile(
+    files: { path: string; source: string }[],
+    original: unknown,
+  ): Promise<Error> {
+    const message = original instanceof Error ? original.message : String(original);
+    for (const file of files) {
+      try {
+        await this.send('eval', { code: `${file.source}\n//# sourceURL=${file.path}` });
+      } catch (e) {
+        const detail = e instanceof Error ? e.message : String(e);
+        return new Error(`${file.path}: ${detail}`);
+      }
+    }
+    return new Error(`${message} (in one of ${files.map((f) => f.path).join(', ')})`);
   }
 
   /**

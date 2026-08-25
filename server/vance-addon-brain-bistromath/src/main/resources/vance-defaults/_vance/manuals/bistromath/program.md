@@ -7,8 +7,12 @@ triggers: you are writing or changing main.js of a custom application, wiring a 
 # The program
 
 `main.js` in the app folder, unless the manifest names another file with
-`custom.init`. It is **one file**: the guest cannot load anything, so `import`
-and `require` do not work.
+`custom.init`.
+
+It is not necessarily *one* file any more: a library (`@require name@version`)
+and an app-local script (`@app-script` in its header) load into the same scope
+before it. `import` and runtime `require()` still do not work — see
+`manual_read('libraries')`.
 
 Write **plain top-level functions, no `export`.** The source is evaluated as one
 script, so a top-level function is reachable by name — that is what a view's

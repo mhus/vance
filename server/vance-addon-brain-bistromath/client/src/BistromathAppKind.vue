@@ -266,17 +266,36 @@ async function openView(target: string | null): Promise<void> {
   }
 }
 
-/** Fetch the program and start it. An app without one renders and sits still. */
+/**
+ * Fetch everything the app loads and start it. An app without a program renders
+ * and sits still.
+ *
+ * <p>The guest has one global scope and no module system, so "loading" means
+ * evaluating the list the server resolved, in order: libraries first, then the
+ * app's own scripts, then the program. One eval per file, so a syntax error
+ * names the document it is in.
+ */
 async function boot(s: AppScan): Promise<void> {
   await teardown();
-  if (!s.programPath) return;
-  let source: string;
-  try {
-    source = await readDocumentText(props.document.projectId, s.programPath);
-  } catch (e) {
-    notice.value = `Could not read the program '${s.programPath}': ${message(e)}`;
-    return;
+  const list = s.requires.scripts;
+  if (list.length === 0) return;
+
+  const parts: { path: string; source: string }[] = [];
+  for (const entry of list) {
+    try {
+      parts.push({
+        path: entry.path,
+        source: await readDocumentText(props.document.projectId, entry.path),
+      });
+    } catch (e) {
+      // Named, and then abandoned: a program missing a library it uses fails at
+      // the first call with a message nobody can trace, so it is better not to
+      // start than to start half-loaded.
+      notice.value = `Could not read '${entry.path}': ${message(e)}`;
+      return;
+    }
   }
+
   const box = new Sandbox({
     host,
     onError: (msg) => {
@@ -285,7 +304,7 @@ async function boot(s: AppScan): Promise<void> {
   });
   sandbox = box;
   try {
-    await box.start(source, s.programPath);
+    await box.startAll(parts);
   } catch (e) {
     notice.value = `The program failed to start: ${message(e)}`;
   }
@@ -364,6 +383,18 @@ async function onRebuild(): Promise<void> {
 
 const problems = computed<string[]>(() => scan.value?.problems ?? []);
 
+/**
+ * The load-order panel — the "what actually loads" answer.
+ *
+ * <p>It exists because the list is assembled from three places (the manifest,
+ * each view, every script header) and written down in none of them. Warnings
+ * and misses already reach the problems strip; what only this panel can show is
+ * the **order**, and where each file came from — a library resolving to
+ * `bundled` is the addon's copy, and knowing that is the difference between
+ * "my override works" and "my override is at the wrong path".
+ */
+const showLoads = ref(false);
+
 function message(e: unknown): string {
   if (e && typeof e === 'object' && 'message' in e) return String((e as Error).message);
   return String(e);
@@ -390,6 +421,16 @@ function message(e: unknown): string {
       <span class="flex-1" />
 
       <VButton
+        v-if="scan"
+        variant="ghost"
+        size="sm"
+        :title="`${scan.requires.scripts.length} document(s) load for this app`"
+        @click="showLoads = !showLoads"
+      >
+        Loads ({{ scan.requires.scripts.length }})
+      </VButton>
+
+      <VButton
         variant="ghost"
         size="sm"
         :disabled="busy"
@@ -401,6 +442,27 @@ function message(e: unknown): string {
     </div>
 
     <VAlert v-if="error" variant="error" class="whitespace-pre-line">{{ error }}</VAlert>
+
+    <!-- Order matters and is invisible in the documents, so it is numbered. -->
+    <div
+      v-if="showLoads && scan"
+      class="rounded border border-base-300 p-3 text-sm"
+    >
+      <div class="mb-2 font-semibold">Loads, in this order</div>
+      <ol v-if="scan.requires.scripts.length > 0" class="flex list-decimal flex-col gap-1 pl-6">
+        <li v-for="entry in scan.requires.scripts" :key="entry.path">
+          <code class="font-mono">{{ entry.path }}</code>
+          <span v-if="entry.name" class="opacity-70">
+            — {{ entry.name }}@{{ entry.version }} ({{ entry.origin }})</span>
+          <span v-else class="opacity-70"> — {{ entry.kind }}</span>
+          <span v-if="entry.askedBy" class="opacity-50"> ← {{ entry.askedBy }}</span>
+        </li>
+      </ol>
+      <p v-else class="opacity-70">Nothing — this app has no program.</p>
+      <p v-if="scan.requires.missing.length > 0" class="mt-2 text-error whitespace-pre-line">{{
+        scan.requires.missing.join('\n')
+      }}</p>
+    </div>
     <VAlert v-if="notice" variant="warning" class="whitespace-pre-line">{{ notice }}</VAlert>
 
     <!-- What the scan had to refuse: an unusable file name, a colliding handle,

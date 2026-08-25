@@ -4,6 +4,7 @@
 */
 
 import { ViewRef } from './ViewRef';
+import { RequireReport } from './RequireReport';
 
 export interface AppScan {
   folder: string;
@@ -13,4 +14,5 @@ export interface AppScan {
   landingHandle?: string;
   programPath?: string;
   problems: string[];
+  requires: RequireReport;
 }

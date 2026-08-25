@@ -34,7 +34,10 @@ known to be a view.
 
 | Message | What happened |
 |---|---|
-| `no function named X` | the handler names a function `main.js` does not define |
+| `no function named X` | the handler names a function no loaded file defines |
+| `X is not defined` | a library that was not loaded — check the `Loads` panel |
+| `was not found. Expected a document at` | a `@require` with no library behind it |
+| `is required in 2 versions` | two callers disagree; the highest loaded |
 | `This app has no running program` | the program failed to load — look above for why |
 | `await is only valid in async functions` | the handler reads or writes: make it `async` |
 | `The program stopped responding` | an endless loop; the frame was stopped |

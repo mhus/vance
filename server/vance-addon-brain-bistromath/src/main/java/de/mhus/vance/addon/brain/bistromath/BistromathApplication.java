@@ -52,9 +52,13 @@ public class BistromathApplication implements VanceApplication {
     private final BistromathStore store;
     private final DocumentLinkBuilder linkBuilder;
 
-    public BistromathApplication(BistromathStore store, DocumentLinkBuilder linkBuilder) {
+    private final RequireResolver requireResolver;
+
+    public BistromathApplication(BistromathStore store, DocumentLinkBuilder linkBuilder,
+                                 RequireResolver requireResolver) {
         this.store = store;
         this.linkBuilder = linkBuilder;
+        this.requireResolver = requireResolver;
     }
 
     @Override
@@ -178,10 +182,19 @@ public class BistromathApplication implements VanceApplication {
         String title = loaded.manifestDoc().title();
         if (title == null || title.isBlank()) title = leafFolderName(folder);
 
+        // Resolved here as well as in the scan, and on purpose: refresh is the
+        // app's validator, so a missing library has to be a *rebuild* problem
+        // and not only something the reader finds when opening the app.
+        RequireReport requires = requireResolver.resolve(ctx.tenantId(), ctx.projectName(),
+                folder, config, found.views(),
+                program.map(DocumentDocument::getPath).orElse(null));
+        problems.addAll(requires.warnings());
+        problems.addAll(requires.missing());
+
         DocumentDocument index = store.writeDocument(ctx.tenantId(), ctx.projectName(),
                 folder + "/" + INDEX, "Index — " + title, MD_MIME,
                 renderIndex(found.views(), config, program.map(DocumentDocument::getPath)
-                        .orElse(null), title, problems),
+                        .orElse(null), title, problems, requires),
                 List.of(APP_NAME, "generated", "index"), ctx.userId());
 
         Map<String, Object> stats = new LinkedHashMap<>();
@@ -430,7 +443,7 @@ public class BistromathApplication implements VanceApplication {
 
     static String renderIndex(List<ViewRef> views, BistromathConfig config,
                               @Nullable String programPath, String title,
-                              List<String> problems) {
+                              List<String> problems, RequireReport requires) {
         String heading = oneLine(title);
         StringBuilder sb = new StringBuilder();
         sb.append("---\n$meta:\n  kind: workpage\n");
@@ -450,6 +463,27 @@ public class BistromathApplication implements VanceApplication {
                 sb.append("  - ").append(oneLine(p)).append('\n');
             }
             sb.append("```\n\n");
+        }
+
+        // Same reason as the Views section below, one layer down: the load
+        // order is assembled from three places and written down in none of
+        // them, so this is where an author can read it back.
+        sb.append("## Loads, in this order\n\n");
+        if (requires.scripts().isEmpty()) {
+            sb.append("Nothing — this app has no program.\n\n");
+        } else {
+            for (LoadedScript sc : requires.scripts()) {
+                sb.append("1. `").append(sc.path()).append('`');
+                if (sc.name() != null) {
+                    sb.append(" — ").append(sc.name()).append('@').append(sc.version())
+                            .append(" (").append(sc.origin()).append(')');
+                }
+                if (sc.askedBy() != null) {
+                    sb.append(" ← ").append(mdText(oneLine(sc.askedBy())));
+                }
+                sb.append('\n');
+            }
+            sb.append('\n');
         }
 
         // The point of this section: nothing here is declared anywhere, so this

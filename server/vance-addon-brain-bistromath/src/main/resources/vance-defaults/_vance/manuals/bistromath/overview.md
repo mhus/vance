@@ -30,6 +30,7 @@ There is no table declaration, no `source:` on a widget, and no data endpoint.
 | Data and input — table, the single controls, form, pagination, file | `manual_read('widgets')` |
 | Arranging — row, column, card, tabs, dialog | `manual_read('layout')` |
 | Showing — markdown, code, badge, alert, embed | `manual_read('content')` |
+| Sharing code, `@require`, version conflicts | `manual_read('libraries')` |
 | Which functions does the runtime call? What can the program do? | `manual_read('program')` |
 | How do I read documents, folders, mounted files? | `manual_read('data')` |
 | An error message I do not recognise | `manual_read('troubleshooting')` |
@@ -41,8 +42,8 @@ folder in the name: `manual_read('bistromath/views')`.
 
 This build reads **and writes** documents — including `records`, `sheet`,
 `list` and `tree` as structures rather than text — takes input in a `form`, and
-reacts to writes in its own folder. It has no `visibleIf`, no `import` in the program,
-and `if` / `repeat` / `chart` / `dialog` are reserved but not rendered.
+reacts to writes in its own folder. It has no `visibleIf` and no `import` in the program (libraries load by
+`@require` instead), and `chart` is reserved but not rendered.
 
 Create with `bistromath_app_create(folder=…, title=…)`; it scaffolds a running
 Hello World. After editing anything, run `app_rebuild(folder=…)` — nothing else

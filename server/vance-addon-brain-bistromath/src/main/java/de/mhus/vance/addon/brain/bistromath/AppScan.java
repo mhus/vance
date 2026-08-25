@@ -27,6 +27,10 @@ import org.jspecify.annotations.Nullable;
  *                      none — a view-only app is valid, it just cannot act.
  * @param problems      what the scan had to refuse (unusable file names,
  *                      colliding handles, a `landing` that names nothing).
+ * @param requires      the load list and what is wrong with it. The client
+ *                      evaluates {@code requires.scripts} in order — the
+ *                      program is the last entry, so {@code programPath} is a
+ *                      convenience, not a second source of truth.
  */
 @GenerateTypeScript("bistromath")
 public record AppScan(
@@ -36,7 +40,8 @@ public record AppScan(
         List<ViewRef> views,
         @Nullable String landingHandle,
         @Nullable String programPath,
-        List<String> problems) {
+        List<String> problems,
+        RequireReport requires) {
 
     public AppScan {
         if (views == null) views = List.of();

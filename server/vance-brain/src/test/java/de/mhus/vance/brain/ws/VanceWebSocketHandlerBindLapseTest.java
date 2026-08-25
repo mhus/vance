@@ -82,6 +82,7 @@ class VanceWebSocketHandlerBindLapseTest {
                 mock(de.mhus.vance.brain.script.cortex.ScriptExecutionWsRegistry.class),
                 new de.mhus.vance.brain.daemon.DaemonRegistry(),
                 emptyServerToolRegistryProvider(),
+                new DirectWsInboundExecutor(),
                 List.of(counting));
     }
 

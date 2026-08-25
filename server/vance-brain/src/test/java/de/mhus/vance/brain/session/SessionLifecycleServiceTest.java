@@ -8,6 +8,7 @@ import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -460,17 +461,28 @@ class SessionLifecycleServiceTest {
     }
 
     @Test
-    void pauseProcess_raisesTheHaltFlag_soAMidTurnEngineBailsOut() {
+    void pauseProcess_raisesTheHaltFlag_beforeItReturns() {
         // Same two channels as the session-wide pause: the PAUSED write is
         // a lane task and cannot run while the turn it is meant to stop
         // holds the lane, so the out-of-band flag is the only signal that
-        // reaches a running loop in time.
+        // reaches a running loop in time. It must therefore be written
+        // synchronously — everything else may lag.
         assertThat(lifecycle.pauseProcess(process("p-1", ThinkProcessStatus.RUNNING))).isTrue();
 
-        org.mockito.InOrder order = org.mockito.Mockito.inOrder(thinkProcessService);
-        order.verify(thinkProcessService).requestHalt("p-1");
-        order.verify(thinkProcessService).updateStatus("p-1", ThinkProcessStatus.PAUSED);
-        order.verify(thinkProcessService).clearHalt("p-1");
+        verify(thinkProcessService).requestHalt("p-1");
+    }
+
+    @Test
+    void pauseProcess_queuesThePausedWrite_withoutWaitingForTheLane() {
+        // The bug this guards: pause used to block its caller until the lane
+        // landed — up to a full model call — which on a WebSocket receive
+        // thread also stalled the client's pongs until the keep-alive sweep
+        // killed the connection. The lane task must still run, just not on
+        // the caller's clock.
+        lifecycle.pauseProcess(process("p-1", ThinkProcessStatus.RUNNING));
+
+        verify(thinkProcessService, timeout(2000)).updateStatus("p-1", ThinkProcessStatus.PAUSED);
+        verify(thinkProcessService, timeout(2000)).clearHalt("p-1");
     }
 
     @Test

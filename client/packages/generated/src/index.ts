@@ -250,6 +250,7 @@ export * from './skills/SkillTriggerType';
 
 export * from './thinkprocess/ActiveAppContext';
 export * from './thinkprocess/ActiveInboxContext';
+export * from './thinkprocess/ActiveProcessRef';
 export * from './thinkprocess/BootstrappedProcess';
 export * from './thinkprocess/BoundDocSelection';
 export * from './thinkprocess/IdeContext';

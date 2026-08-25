@@ -3,8 +3,11 @@
  Source: de.mhus.vance.api.ws.SessionResumeResponse
 */
 
+import { ActiveProcessRef } from '../thinkprocess/ActiveProcessRef';
+
 export interface SessionResumeResponse {
   sessionId: string;
   projectId: string;
   chatProcessName?: string;
+  activeProcesses: ActiveProcessRef[];
 }

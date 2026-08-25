@@ -61,6 +61,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
     private final de.mhus.vance.brain.daemon.DaemonRegistry daemonRegistry;
     private final org.springframework.beans.factory.ObjectProvider<
             de.mhus.vance.brain.servertool.ServerToolRegistry> serverToolRegistryProvider;
+    private final WsInboundExecutor inbound;
     private final Map<String, WsHandler> handlers;
 
     public VanceWebSocketHandler(
@@ -77,6 +78,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
             de.mhus.vance.brain.daemon.DaemonRegistry daemonRegistry,
             org.springframework.beans.factory.ObjectProvider<
                     de.mhus.vance.brain.servertool.ServerToolRegistry> serverToolRegistryProvider,
+            WsInboundExecutor inbound,
             List<WsHandler> handlers) {
         this.sessionService = sessionService;
         this.sessionLifecycle = sessionLifecycle;
@@ -90,6 +92,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
         this.scriptExecutionWsRegistry = scriptExecutionWsRegistry;
         this.daemonRegistry = daemonRegistry;
         this.serverToolRegistryProvider = serverToolRegistryProvider;
+        this.inbound = inbound;
         // Wire the stale-sweep callback so dropped daemons trigger a
         // refresh in the affected project — without this, sub-tools of
         // a long-gone daemon would linger in listings until the next
@@ -142,8 +145,18 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
         sender.sendNotification(wsSession, MessageType.WELCOME, welcome);
     }
 
+    /**
+     * Same hand-off as {@link LiveWebSocketHandler#handleTextMessage}: this
+     * endpoint (the pod-to-pod chat tunnel) runs the identical handler chain,
+     * so it inherits the identical hazard of a waiting handler stalling the
+     * whole connection.
+     */
     @Override
-    protected void handleTextMessage(WebSocketSession wsSession, TextMessage message) throws Exception {
+    protected void handleTextMessage(WebSocketSession wsSession, TextMessage message) {
+        inbound.submit(wsSession, () -> handleFrame(wsSession, message));
+    }
+
+    private void handleFrame(WebSocketSession wsSession, TextMessage message) throws Exception {
         ConnectionContext ctx = resolveContext(wsSession);
         // Raw inbound frame — every WS message, plain, at TRACE. The
         // single most useful thing when debugging "did the client send
@@ -235,6 +248,10 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession wsSession, CloseStatus status) {
+        // Ahead of the early return: a tunnel connection without a context
+        // still has an inbox to drop. Idempotent, so the Live-WS path calling
+        // it first costs nothing.
+        inbound.forget(wsSession.getId());
         Object attr = wsSession.getAttributes().get(VanceHandshakeInterceptor.ATTR_CONNECTION);
         if (!(attr instanceof ConnectionContext ctx)) return;
         // Daemon registrations are keyed by ws-session, not session-id —

@@ -62,6 +62,18 @@ public class VanceBrainProperties {
      */
     private int sendBufferSizeBytes = 32 * 1024 * 1024;
 
+    /**
+     * Max inbound frames that may sit queued for one connection before it is
+     * closed with {@code 1013 Service Overload}. Backs
+     * {@link OrderedWsInboundExecutor}, which runs frame work off the
+     * container's read thread so a waiting handler cannot stall the whole
+     * connection (pongs included). The queue is the price of that: it must be
+     * bounded, and generous enough that a legitimate burst — a reconnect
+     * handshake plus its tool registration and a typed message — never trips
+     * it.
+     */
+    private int inboundQueueLimit = 256;
+
     /** Feature flags advertised to clients. */
     private List<String> capabilities = List.of();
 

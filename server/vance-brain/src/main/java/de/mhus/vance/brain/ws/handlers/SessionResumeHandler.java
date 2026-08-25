@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ws.handlers;
 
+import de.mhus.vance.api.thinkprocess.ActiveProcessRef;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.SessionResumeRequest;
 import de.mhus.vance.api.ws.SessionResumeResponse;
@@ -235,8 +236,29 @@ public class SessionResumeHandler implements WsHandler {
                 .sessionId(doc.getSessionId())
                 .projectId(doc.getProjectId())
                 .chatProcessName(chatProcessName)
+                .activeProcesses(activeProcesses(doc))
                 .build();
         sender.sendReply(wsSession, envelope, MessageType.SESSION_RESUME, response);
+    }
+
+    /**
+     * The session's processes that are mid-turn, so a client that reconnected
+     * into a running turn can restore its busy state instead of showing an
+     * idle composer while answers keep arriving.
+     *
+     * <p>Uses the same {@link SessionLifecycleService#isInterruptible} filter
+     * as the pause path — deliberately, because it answers the identical
+     * question ("is there a turn to interrupt?"). Two predicates for one
+     * question is how they drift.
+     */
+    private java.util.List<ActiveProcessRef> activeProcesses(SessionDocument doc) {
+        return thinkProcessService.findBySession(doc.getTenantId(), doc.getSessionId()).stream()
+                .filter(SessionLifecycleService::isInterruptible)
+                .map(p -> ActiveProcessRef.builder()
+                        .processId(p.getId())
+                        .name(p.getName())
+                        .build())
+                .toList();
     }
 
     private static boolean isBlank(@org.jspecify.annotations.Nullable String s) {

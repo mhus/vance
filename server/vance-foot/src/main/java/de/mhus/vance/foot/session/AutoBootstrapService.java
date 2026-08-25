@@ -1,14 +1,11 @@
 package de.mhus.vance.foot.session;
 
 import de.mhus.vance.api.chat.ChatMessageDto;
+import de.mhus.vance.api.thinkprocess.ActiveProcessRef;
 import de.mhus.vance.api.thinkprocess.BootstrappedProcess;
-import de.mhus.vance.api.thinkprocess.ProcessListRequest;
-import de.mhus.vance.api.thinkprocess.ProcessListResponse;
 import de.mhus.vance.api.thinkprocess.ProcessSpec;
-import de.mhus.vance.api.thinkprocess.ProcessSummary;
 import de.mhus.vance.api.thinkprocess.SessionBootstrapRequest;
 import de.mhus.vance.api.thinkprocess.SessionBootstrapResponse;
-import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.SessionResumeRequest;
 import de.mhus.vance.api.ws.SessionResumeResponse;
@@ -199,45 +196,38 @@ public class AutoBootstrapService {
         }
         terminal.info("Reconnected → session re-adopted: " + response.getSessionId()
                 + " (project=" + response.getProjectId() + ", name=" + clientName + ")");
-        resyncBusyState();
+        resyncBusyState(response);
     }
 
     /**
-     * Rebuilds the busy/spinner state from the brain after a reconnect.
+     * Rebuilds the busy/spinner state from what the resume reply reported.
      *
      * <p>The engine keeps running while the transport is down, so the
      * {@code engine_turn_start}/{@code _end} pairs the {@link BusyIndicator}
      * counts get cut in half: the bind (which cannot know whether the
      * engine survived) resets the counter, and the matching END arrives on
-     * a connection that no longer has the START. Asking the brain which
-     * processes are mid-turn is the only authoritative answer — guessing
-     * either leaves a dead spinner over a working engine or spins forever
-     * over an idle one.
+     * a connection that no longer has the START. The brain has to say which
+     * processes are mid-turn — guessing either leaves a dead spinner over a
+     * working engine or spins forever over an idle one.
      *
-     * <p>Best-effort: a failed list leaves the indicator idle, which the
-     * next turn boundary corrects on its own.
+     * <p>It says so in the resume reply rather than in a follow-up
+     * {@code process-list}, and the reason is ordering, not the saved
+     * round-trip: a turn ending between two separate requests produced an
+     * {@code ENGINE_TURN_END} that arrived <em>before</em> the spinner it was
+     * supposed to close, leaving one nothing would ever clear. On one
+     * connection the reply necessarily precedes the ping.
      */
-    private void resyncBusyState() {
-        ProcessListResponse list;
-        try {
-            list = connection.request(
-                    MessageType.PROCESS_LIST,
-                    ProcessListRequest.builder().build(),
-                    ProcessListResponse.class,
-                    Duration.ofSeconds(10));
-        } catch (Exception e) {
-            terminal.verbose("Busy-state resync skipped: " + e.getMessage());
-            return;
-        }
-        if (list == null || list.getProcesses() == null) {
+    private void resyncBusyState(SessionResumeResponse response) {
+        List<ActiveProcessRef> active = response.getActiveProcesses();
+        if (active == null || active.isEmpty()) {
             return;
         }
         int running = 0;
-        for (ProcessSummary p : list.getProcesses()) {
-            if (p.getStatus() != ThinkProcessStatus.RUNNING || p.getId() == null) continue;
-            // Same key the progress handler uses (process-id), so the
+        for (ActiveProcessRef p : active) {
+            if (p.getProcessId() == null) continue;
+            // Keyed on the process-id the progress handler uses, so the
             // ENGINE_TURN_END that eventually arrives closes this entry.
-            if (busyIndicator.enterKeyed(p.getId(), "reconnect-resync:" + p.getName())) {
+            if (busyIndicator.enterKeyed(p.getProcessId(), "reconnect-resync:" + p.getName())) {
                 running++;
             }
         }

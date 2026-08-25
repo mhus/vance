@@ -117,6 +117,24 @@ const activeSessionId: Ref<string | null> = ref(null);
 const bindConflict: Ref<string | null> = ref(null);
 
 /**
+ * Whether the bound session's chat-process was mid-turn at the moment this
+ * connection resumed — straight from the {@code session-resume} reply.
+ *
+ * <p>Exists because a turn outlives the connection that started it. The
+ * composer's busy state is its pending {@code process-steer} promise, and a
+ * reconnect rejects that promise: the engine keeps working, its answers keep
+ * arriving, and the UI shows an idle composer. Reading as "the agent acts on
+ * its own" is exactly what a user reported.
+ *
+ * <p>Only the resume reply can say this. {@code ENGINE_TURN_START} was
+ * emitted before this connection existed; the matching
+ * {@code ENGINE_TURN_END} does arrive here and is what clears the state
+ * again — that part lives in the chat editor, which is the only place that
+ * knows which process is "the chat".
+ */
+const chatTurnActiveOnResume: Ref<boolean> = ref(false);
+
+/**
  * Desired-state of {@code documents}-channel subscriptions. The store is
  * the authority — components register/unregister paths here, the store
  * (re-)sends them over the wire to the server. On reconnect the whole
@@ -451,6 +469,7 @@ async function doSendUnbind(): Promise<void> {
   }
   activeSessionId.value = null;
   setActiveSessionId(null);
+  chatTurnActiveOnResume.value = false;
 }
 
 async function doSendResume(sessionId: string, takeover = false): Promise<void> {
@@ -458,10 +477,15 @@ async function doSendResume(sessionId: string, takeover = false): Promise<void> 
     throw new Error('WebSocket not connected');
   }
   try {
-    await socket.value.send<SessionResumeRequest, SessionResumeResponse>(
+    const resumed = await socket.value.send<SessionResumeRequest, SessionResumeResponse>(
       'session-resume',
       { sessionId, takeover },
     );
+    // Assigned before activeSessionId, so an editor watching the bind
+    // already sees the correct busy state on its first read.
+    const chatProcess = resumed.chatProcessName;
+    chatTurnActiveOnResume.value = chatProcess !== undefined && chatProcess !== null
+      && (resumed.activeProcesses ?? []).some((p) => p.name === chatProcess);
   } catch (e) {
     if (e instanceof WebSocketRequestError
         && e.errorCode === 409
@@ -1358,6 +1382,10 @@ export function markBound(sessionId: string): void {
   desiredSessionId.value = sessionId;
   activeSessionId.value = sessionId;
   setActiveSessionId(sessionId);
+  // session-bootstrap created this session in the same roundtrip — nothing
+  // can be mid-turn on it yet, and a stale true from the previous bind would
+  // pin the composer's spinner on a conversation that never started.
+  chatTurnActiveOnResume.value = false;
 }
 
 /**
@@ -1412,6 +1440,7 @@ export function useWsConnection(): {
   activeSessionId: Ref<string | null>;
   desiredSessionId: Ref<string | null>;
   bindConflict: Ref<string | null>;
+  chatTurnActiveOnResume: Ref<boolean>;
   reconnectAttempts: Ref<number>;
   maxReconnectAttempts: number;
   lastError: Ref<string | null>;
@@ -1424,6 +1453,7 @@ export function useWsConnection(): {
     activeSessionId,
     desiredSessionId,
     bindConflict,
+    chatTurnActiveOnResume,
     reconnectAttempts,
     maxReconnectAttempts: MAX_RECONNECT_ATTEMPTS,
     lastError,

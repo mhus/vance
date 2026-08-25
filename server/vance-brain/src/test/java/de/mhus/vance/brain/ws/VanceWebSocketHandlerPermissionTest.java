@@ -88,6 +88,7 @@ class VanceWebSocketHandlerPermissionTest {
                 connectionRegistry, executionRegistry,
                 scriptExecutionWsRegistry, new de.mhus.vance.brain.daemon.DaemonRegistry(),
                 emptyServerToolRegistryProvider(),
+                new DirectWsInboundExecutor(),
                 List.of(denyingHandler));
 
         TextMessage frame = envelopeOf("denied.message");
@@ -116,6 +117,7 @@ class VanceWebSocketHandlerPermissionTest {
                 connectionRegistry, executionRegistry,
                 scriptExecutionWsRegistry, new de.mhus.vance.brain.daemon.DaemonRegistry(),
                 emptyServerToolRegistryProvider(),
+                new DirectWsInboundExecutor(),
                 List.of(boomHandler));
 
         dispatcher.handleTextMessage(wsSession, envelopeOf("boom.message"));

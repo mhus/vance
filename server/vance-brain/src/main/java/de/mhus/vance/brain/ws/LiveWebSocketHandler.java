@@ -86,6 +86,7 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
     private final SignalBroadcaster signalBroadcaster;
     private final RemoteClientChannelHandler remoteClientChannelHandler;
     private final WebSocketKeepAliveService keepAlive;
+    private final WsInboundExecutor inbound;
     private final VanceBrainProperties properties;
 
     @Override
@@ -125,8 +126,19 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
         return target instanceof WebSocketSession decorated ? decorated : wsSession;
     }
 
+    /**
+     * Hands the frame to {@link WsInboundExecutor} and returns, so the
+     * container's read thread stays free to deliver the next frame — and,
+     * crucially, the PONG that keeps {@link WebSocketKeepAliveService} from
+     * evicting a connection whose handler is merely busy. Ordering within the
+     * connection is preserved by the executor.
+     */
     @Override
-    protected void handleTextMessage(WebSocketSession wsSession, TextMessage message)
+    protected void handleTextMessage(WebSocketSession wsSession, TextMessage message) {
+        inbound.submit(wsSession, () -> handleFrame(wsSession, message));
+    }
+
+    private void handleFrame(WebSocketSession wsSession, TextMessage message)
             throws Exception {
         ConnectionContext ctx = resolveContext(wsSession);
         // Raw inbound frame — every Live-WS message (the web-UI path),
@@ -196,6 +208,10 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession wsSession, CloseStatus status) {
         keepAlive.unregister(wsSession.getId());
+        // Before the teardown below: frames still queued for a socket that is
+        // gone can no longer be answered, and running them would mutate
+        // session state the client will never hear about.
+        inbound.forget(wsSession.getId());
         try {
             tunnelRegistry.closeFor(wsSession);
         } catch (RuntimeException e) {

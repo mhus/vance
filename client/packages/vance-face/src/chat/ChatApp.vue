@@ -59,6 +59,7 @@ const {
   status: wsStatus,
   activeSessionId,
   bindConflict,
+  chatTurnActiveOnResume,
 } = useWsConnection();
 
 // When the user dismisses the global "take over?" dialog (bindConflict
@@ -253,10 +254,34 @@ async function resolveSessionAndProcess(sessionId: string): Promise<void> {
 const PROGRESS_CAP = 50;
 const progressEvents = ref<ProcessProgressNotification[]>([]);
 
+/**
+ * A turn the server told us about, rather than one we started.
+ *
+ * <p>The composer's own busy flag is its pending {@code process-steer}
+ * promise, which a reconnect rejects — while the engine keeps working. This
+ * carries the state across that gap: set from the {@code session-resume}
+ * reply, cleared by the chat-process's own end-of-turn ping.
+ */
+const serverTurnActive = ref(false);
+
+watch(chatTurnActiveOnResume, (active) => {
+  serverTurnActive.value = active;
+}, { immediate: true });
+
+/** Tags that end a turn — normal finish, and the two ways it can be cut short. */
+const TURN_CLOSING_TAGS = ['ENGINE_TURN_END', 'ENGINE_PAUSED', 'ENGINE_CLOSED'];
+
 function recordProgress(data: ProcessProgressNotification): void {
   progressEvents.value.push(data);
   if (progressEvents.value.length > PROGRESS_CAP) {
     progressEvents.value.splice(0, progressEvents.value.length - PROGRESS_CAP);
+  }
+  // Scoped to the chat-process: a worker ending its turn says nothing about
+  // whether the conversation is still busy (same rule as chatActivity).
+  if (serverTurnActive.value
+      && data.processName === chatProcessName.value
+      && TURN_CLOSING_TAGS.includes(String(data.status?.tag ?? ''))) {
+    serverTurnActive.value = false;
   }
 }
 
@@ -998,7 +1023,9 @@ function openInCortex(): void {
         :follow-up-suggestion="followUpSuggestion"
         :ensure-connected="ensureConnected"
         :draft-key="activeSessionId ?? undefined"
+        :turn-active="serverTurnActive"
         @hub="backToHub"
+        @paused="serverTurnActive = false"
         @who="onWhoFromComposer"
         @engine-command="onEngineCommandFromComposer"
         @skill-command="onSkillCommandFromComposer"

@@ -7,6 +7,7 @@ import type {
   BoundDocSelection,
   ChatMessageDto,
   DocumentDto,
+  ProcessProgressNotification,
 } from '@vance/generated';
 import {
   bindSession,
@@ -112,7 +113,38 @@ const CHAT_PROCESS_NAME = 'chat';
 
 type Status = 'connecting' | 'live' | 'occupied' | 'failed' | 'elsewhere';
 
-const { socket, activeSessionId, bindConflict, status: wsStatus } = useWsConnection();
+const {
+  socket, activeSessionId, bindConflict, chatTurnActiveOnResume, status: wsStatus,
+} = useWsConnection();
+
+/**
+ * A turn that was already running when this connection bound — see
+ * {@code chatTurnActiveOnResume}. Without it the composer looks idle while
+ * the engine keeps answering, which reads as the agent acting unprompted.
+ * Cleared by the chat-process's own end-of-turn ping.
+ */
+const serverTurnActive = ref(false);
+watch(chatTurnActiveOnResume, (active) => {
+  serverTurnActive.value = active;
+}, { immediate: true });
+
+/** Tags that end a turn — normal finish, and the two ways it can be cut short. */
+const TURN_CLOSING_TAGS = ['ENGINE_TURN_END', 'ENGINE_PAUSED', 'ENGINE_CLOSED'];
+
+let turnProgressUnsubscribe: (() => void) | null = null;
+watch(socket, (next) => {
+  turnProgressUnsubscribe?.();
+  turnProgressUnsubscribe = next?.on<ProcessProgressNotification>(
+    'process-progress',
+    (data) => {
+      if (serverTurnActive.value
+          && data.processName === CHAT_PROCESS_NAME
+          && TURN_CLOSING_TAGS.includes(String(data.status?.tag ?? ''))) {
+        serverTurnActive.value = false;
+      }
+    },
+  ) ?? null;
+}, { immediate: true });
 
 /**
  * True once the user dismissed the "take over?" dialog for this session
@@ -267,6 +299,8 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  turnProgressUnsubscribe?.();
+  turnProgressUnsubscribe = null;
   props.toolService?.detach();
   // 10s grace timer — if the user comes back to a panel for the same
   // session within 10s, the bind survives and no roundtrip is made.
@@ -364,7 +398,9 @@ function onRollbackEcho(messageId: string): void {
           :active-inbox="activeInbox ?? null"
           :ensure-connected="ensureReady"
           :draft-key="draftKey"
+          :turn-active="serverTurnActive"
           @hub="emit('leave')"
+          @paused="serverTurnActive = false"
           @local-echo="onLocalEcho"
           @rollback-echo="onRollbackEcho"
         />

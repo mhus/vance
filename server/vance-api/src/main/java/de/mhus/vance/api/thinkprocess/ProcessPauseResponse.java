@@ -17,6 +17,14 @@ import lombok.NoArgsConstructor;
 @GenerateTypeScript("thinkprocess")
 public class ProcessPauseResponse {
 
-    /** Names of processes that were paused (may be empty). */
+    /**
+     * Names of the processes whose pause was requested (may be empty when
+     * nothing was interruptible).
+     *
+     * <p>Requested, not landed: the halt flag reaches a mid-turn engine
+     * immediately, the {@code PAUSED} status transition runs on the process's
+     * lane and therefore only after the current turn yields. Clients that need
+     * the landed state watch for the {@code ENGINE_PAUSED} progress ping.
+     */
     private List<String> pausedProcessNames;
 }

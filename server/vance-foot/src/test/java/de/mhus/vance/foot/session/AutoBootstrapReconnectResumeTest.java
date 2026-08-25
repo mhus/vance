@@ -8,10 +8,7 @@ import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.api.thinkprocess.ProcessListRequest;
-import de.mhus.vance.api.thinkprocess.ProcessListResponse;
-import de.mhus.vance.api.thinkprocess.ProcessSummary;
-import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.api.thinkprocess.ActiveProcessRef;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.SessionResumeRequest;
 import de.mhus.vance.api.ws.SessionResumeResponse;
@@ -92,34 +89,20 @@ class AutoBootstrapReconnectResumeTest {
         verify(sessions, timeout(2_000)).setActiveProcess("chat-orchestrator");
     }
 
-    private void stubProcessList(ProcessSummary... processes) throws Exception {
-        when(connection.request(
-                eq(MessageType.PROCESS_LIST),
-                any(ProcessListRequest.class),
-                eq(ProcessListResponse.class),
-                any(Duration.class)))
-                .thenReturn(ProcessListResponse.builder()
-                        .processes(List.of(processes)).build());
-    }
-
-    private static ProcessSummary process(String id, ThinkProcessStatus status) {
-        return ProcessSummary.builder().id(id).name(id).status(status).build();
+    private static ActiveProcessRef active(String id) {
+        return ActiveProcessRef.builder().processId(id).name(id).build();
     }
 
     @Test
     void reconnectResume_restoresBusyStateForProcessesStillRunning() throws Exception {
         stubResume(SessionResumeResponse.builder()
-                .sessionId("s1").projectId("p1").chatProcessName("chat").build());
-        stubProcessList(
-                process("running-1", ThinkProcessStatus.RUNNING),
-                process("idle-1", ThinkProcessStatus.IDLE));
+                .sessionId("s1").projectId("p1").chatProcessName("chat")
+                .activeProcesses(List.of(active("running-1"))).build());
 
         service().triggerReconnectResume(
                 new ConnectionService.ReconnectTarget("s1", "p1", "chat"));
 
-        verify(connection, timeout(2_000)).request(
-                eq(MessageType.PROCESS_LIST), any(ProcessListRequest.class),
-                eq(ProcessListResponse.class), any(Duration.class));
+        verify(sessions, timeout(2_000)).bind("s1", "p1");
         assertThat(busy.isBusy()).isTrue();
         assertThat(busy.depth()).isEqualTo(1);
         // Keyed on the process-id, so the ENGINE_TURN_END that eventually
@@ -131,15 +114,28 @@ class AutoBootstrapReconnectResumeTest {
     @Test
     void reconnectResume_leavesSpinnerOffWhenNothingRuns() throws Exception {
         stubResume(SessionResumeResponse.builder()
-                .sessionId("s1").projectId("p1").chatProcessName("chat").build());
-        stubProcessList(process("idle-1", ThinkProcessStatus.IDLE));
+                .sessionId("s1").projectId("p1").chatProcessName("chat")
+                .activeProcesses(List.of()).build());
 
         service().triggerReconnectResume(
                 new ConnectionService.ReconnectTarget("s1", "p1", "chat"));
 
-        verify(connection, timeout(2_000)).request(
-                eq(MessageType.PROCESS_LIST), any(ProcessListRequest.class),
-                eq(ProcessListResponse.class), any(Duration.class));
+        verify(sessions, timeout(2_000)).bind("s1", "p1");
+        assertThat(busy.isBusy()).isFalse();
+    }
+
+    @Test
+    void reconnectResume_survivesAnOlderBrainThatOmitsTheField() throws Exception {
+        // Rolling upgrade: a brain without activeProcesses sends null. The
+        // spinner then stays off, which the next turn boundary corrects —
+        // an NPE on reconnect would not correct itself.
+        stubResume(SessionResumeResponse.builder()
+                .sessionId("s1").projectId("p1").chatProcessName("chat").build());
+
+        service().triggerReconnectResume(
+                new ConnectionService.ReconnectTarget("s1", "p1", "chat"));
+
+        verify(sessions, timeout(2_000)).bind("s1", "p1");
         assertThat(busy.isBusy()).isFalse();
     }
 }

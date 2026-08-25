@@ -33,4 +33,24 @@ public class SessionResumeResponse {
      * (rare; expected only for legacy sessions or daemon-driven flows).
      */
     private @org.jspecify.annotations.Nullable String chatProcessName;
+
+    /**
+     * The session's processes that are mid-turn right now ({@code RUNNING} or
+     * {@code INIT}) — empty when the session is quiet.
+     *
+     * <p>A turn outlives the connection that started it, but a client's busy
+     * state does not: the web composer loses its pending {@code process-steer}
+     * promise, foot's {@link de.mhus.vance.api.progress.StatusTag} counter
+     * loses the {@code ENGINE_TURN_START} whose {@code _END} is still coming.
+     * Either way the engine keeps working and its answers keep arriving while
+     * the UI says idle — which reads as the agent acting on its own.
+     *
+     * <p>The reply is the right carrier, and not only for the saved
+     * round-trip: it travels the same connection as the progress pings, so a
+     * turn that ends right after this was computed is reported by an
+     * {@code ENGINE_TURN_END} that provably arrives <em>after</em> it. A
+     * separate "which processes are running" query has no such ordering and
+     * can leave a spinner nothing will ever close.
+     */
+    private java.util.List<de.mhus.vance.api.thinkprocess.ActiveProcessRef> activeProcesses;
 }

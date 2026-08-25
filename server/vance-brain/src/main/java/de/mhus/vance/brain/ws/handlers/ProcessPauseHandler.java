@@ -142,7 +142,9 @@ public class ProcessPauseHandler implements WsHandler {
                     sessionId, cancelled);
         }
 
-        log.info("process-pause sessionId='{}' paused={}", sessionId, paused);
+        // "requested", not "paused": the halt flag is set and the PAUSED write
+        // is queued on the lane, which lands once the current turn yields.
+        log.info("process-pause sessionId='{}' requested={}", sessionId, paused);
         ProcessPauseResponse response = ProcessPauseResponse.builder()
                 .pausedProcessNames(paused)
                 .build();

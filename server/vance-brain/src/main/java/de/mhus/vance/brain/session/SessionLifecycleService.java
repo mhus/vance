@@ -393,12 +393,20 @@ public class SessionLifecycleService {
      * inbound user input, so the user sees the next chat round-trip
      * naturally pick up the correction.
      *
-     * <p>Pause runs on each process's lane and serialises with any
-     * in-flight {@code runTurn}. The status transition to
-     * {@code PAUSED} happens at the next safe boundary — current
-     * LLM call (if any) finishes first.
+     * <p>Two channels, and only one of them is prompt: the halt flag is
+     * written here and now — that is what an engine's loop head reads, and
+     * what makes the pause take effect inside the current turn. The status
+     * transition to {@code PAUSED} is a lane task, so it lands at the next
+     * safe boundary, after the current LLM call.
      *
-     * @return the names of the processes that were paused (empty
+     * <p><b>Never waits for that lane task.</b> A pause is a request; the
+     * caller is a request thread (WS frame, REST call) and the lane it would
+     * wait on is by definition the busy one — that is why a pause was asked
+     * for. Waiting was measured at 70s on a single model call, and it took
+     * the connection down with it. The landed transition is observable
+     * through the {@code ENGINE_PAUSED} progress ping instead.
+     *
+     * @return the names of the processes whose pause was requested (empty
      *         when nothing was active)
      */
     public List<String> pauseActiveInSession(String sessionId) {
@@ -408,28 +416,36 @@ public class SessionLifecycleService {
         List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
                 session.getTenantId(), sessionId);
         List<String> pausedNames = new ArrayList<>();
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
         for (ThinkProcessDocument p : processes) {
             if (!isInterruptible(p)) {
                 continue;
             }
             pausedNames.add(p.getName());
-            // Set the out-of-band halt flag IMMEDIATELY (before queuing
-            // the lane task) so engines whose runTurn drain-loops can
-            // see it and bail out — otherwise their drain would keep
-            // gobbling new pendings and the queued pause-task would
-            // never get to fire on a busy lane.
-            thinkProcessService.requestHalt(p.getId());
-            futures.add(laneScheduler.submit(p.getId(), () -> {
-                thinkProcessService.updateStatus(p.getId(), ThinkProcessStatus.PAUSED);
-                thinkProcessService.clearHalt(p.getId());
-                return null;
-            }));
+            requestPauseOfInterruptible(p.getId());
         }
-        joinAll(futures);
-        log.info("Paused {} process(es) in session='{}': {}",
+        log.info("Pause requested for {} process(es) in session='{}': {}",
                 pausedNames.size(), sessionId, pausedNames);
         return pausedNames;
+    }
+
+    /**
+     * The two channels of a pause, for one already-{@linkplain #isInterruptible
+     * interruptible} process. Shared by both pause entry points so they cannot
+     * drift — the session-wide one once grew an unbounded wait the single-
+     * process one did not have.
+     *
+     * <p>Order matters: the halt flag goes out <em>before</em> the lane task is
+     * queued, so an engine whose {@code runTurn} drain-loop is still gobbling
+     * pendings sees it and bails out. The other way round, the drain would
+     * keep the lane busy and the queued task would never fire.
+     */
+    private void requestPauseOfInterruptible(String processId) {
+        thinkProcessService.requestHalt(processId);
+        laneScheduler.submit(processId, () -> {
+            thinkProcessService.updateStatus(processId, ThinkProcessStatus.PAUSED);
+            thinkProcessService.clearHalt(processId);
+            return null;
+        });
     }
 
     /**
@@ -545,30 +561,14 @@ public class SessionLifecycleService {
     }
 
     /**
-     * How long a caller waits for the pause to land on the lane before
-     * returning without the confirmation. The lane task stays queued
-     * either way — the cap is only about how long a request thread stays
-     * bound to a lane that is busy with a model call.
-     */
-    private static final long PAUSE_WAIT_SECONDS = 10;
-
-    /**
      * Pause a single process — the named-process counterpart of
-     * {@link #pauseActiveInSession(String)}, and built the same way.
+     * {@link #pauseActiveInSession(String)}, and the same two channels
+     * through {@link #requestPauseOfInterruptible}: halt flag now, status
+     * transition on the lane.
      *
-     * <p>Two channels, because one of them is always too late: the status
-     * transition runs on the process's lane so it cannot land in the
-     * middle of a turn, but a lane task cannot run while that turn holds
-     * the lane. So the out-of-band halt flag goes out first — that is what
-     * an engine's loop head reads (see {@code OrchestratorInterrupt}), and
-     * what makes the pause take effect inside the current turn rather than
-     * after it.
-     *
-     * <p>The wait for the lane is capped at {@link #PAUSE_WAIT_SECONDS}:
-     * callers reach this from a WebSocket receive thread, and an
-     * unbounded wait binds that thread for the length of whatever the
-     * engine is doing. A timeout is not a failure — the write is queued
-     * and the halt flag is already set.
+     * <p>Returns as soon as the halt is requested, for the reason spelled out
+     * on the session-wide variant: the lane a pause would wait for is the busy
+     * one by construction.
      *
      * <p>Only {@linkplain #isInterruptible interruptible} processes are
      * touched, the same filter the session-wide pause uses: an IDLE
@@ -577,7 +577,7 @@ public class SessionLifecycleService {
      * message; a BLOCKED one is owed an answer and pausing it strands the
      * party that owes it.
      *
-     * @return {@code true} when this call did the pausing
+     * @return {@code true} when this call requested the pause
      */
     public boolean pauseProcess(ThinkProcessDocument process) {
         if (!isInterruptible(process)) {
@@ -585,24 +585,7 @@ public class SessionLifecycleService {
                     process.getId(), process.getStatus());
             return false;
         }
-        thinkProcessService.requestHalt(process.getId());
-        CompletableFuture<Void> landed = laneScheduler.submit(process.getId(), () -> {
-            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.PAUSED);
-            thinkProcessService.clearHalt(process.getId());
-            return null;
-        });
-        try {
-            landed.get(PAUSE_WAIT_SECONDS, TimeUnit.SECONDS);
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Interrupted while pausing " + process.getId(), ie);
-        } catch (java.util.concurrent.TimeoutException te) {
-            log.warn("pauseProcess id='{}' — lane busy, PAUSED stays queued (halt flag is set)",
-                    process.getId());
-        } catch (ExecutionException ee) {
-            Throwable cause = ee.getCause() == null ? ee : ee.getCause();
-            throw new IllegalStateException("Pause failed: " + cause.getMessage(), cause);
-        }
+        requestPauseOfInterruptible(process.getId());
         return true;
     }
 
@@ -622,10 +605,15 @@ public class SessionLifecycleService {
                 }
                 thinkProcessService.clearHalt(process.getId());
                 return null;
-            }).get();
+            }).get(LANE_JOIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted resuming process", ie);
+        } catch (java.util.concurrent.TimeoutException te) {
+            // The lane is still busy with the turn we are resuming from. The
+            // status write stays queued and the drain below is a no-op until
+            // it lands — better than binding the caller to a stuck lane.
+            log.warn("resumeProcess id='{}' — lane busy, IDLE stays queued", process.getId());
         } catch (ExecutionException ee) {
             Throwable cause = ee.getCause() == null ? ee : ee.getCause();
             throw new IllegalStateException(
@@ -701,11 +689,16 @@ public class SessionLifecycleService {
                             process.getId(), CloseReason.STOPPED);
                 }
                 return null;
-            }).get();
+            }).get(LANE_JOIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(
                     "Interrupted waiting for engine.stop", ie);
+        } catch (java.util.concurrent.TimeoutException te) {
+            // Queued behind the turn being stopped. Reporting success is
+            // honest here — engine.stop will run, it just has not yet.
+            log.warn("stopProcess id='{}' — lane busy, engine.stop stays queued",
+                    process.getId());
         } catch (ExecutionException ee) {
             Throwable cause = ee.getCause() == null ? ee : ee.getCause();
             throw new IllegalStateException(
@@ -713,13 +706,31 @@ public class SessionLifecycleService {
         }
     }
 
+    /**
+     * Upper bound on how long a cascade waits for one lane to land.
+     *
+     * <p>The cascades below genuinely want their lane work finished before
+     * they flip the session terminal — but "genuinely want" is not "may wait
+     * forever". Every caller is a request thread, and a lane occupied by a
+     * model call holds it for as long as the provider takes. Unbounded, a
+     * single wedged engine turns a logout or a pod shutdown into a hang.
+     *
+     * <p>Generous on purpose: this is a backstop against a stuck lane, not a
+     * latency budget. A cascade that trips it says so and carries on — the
+     * lane task itself stays queued and still runs.
+     */
+    private static final long LANE_JOIN_TIMEOUT_SECONDS = 30;
+
     private static void joinAll(List<CompletableFuture<Void>> futures) {
         for (CompletableFuture<Void> f : futures) {
             try {
-                f.get();
+                f.get(LANE_JOIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 return;
+            } catch (java.util.concurrent.TimeoutException te) {
+                log.warn("Lane task did not land within {}s — cascade continues without it",
+                        LANE_JOIN_TIMEOUT_SECONDS);
             } catch (ExecutionException ee) {
                 // Already logged at the lane callback's catch.
             }

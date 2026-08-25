@@ -114,6 +114,15 @@ const props = defineProps<{
    * inbox page — every other host leaves it unset.
    */
   activeInbox?: ActiveInboxContext | null;
+  /**
+   * A turn the host knows is running that this composer did not start —
+   * set after a reconnect landed in the middle of one (see the
+   * {@code session-resume} reply). Folded into the same busy state as a
+   * local send, so the spinner and the stop button behave identically
+   * whether the turn is ours or inherited. The host clears it on the
+   * chat-process's end-of-turn ping.
+   */
+  turnActive?: boolean;
 }>();
 
 /**
@@ -169,6 +178,9 @@ const emit = defineEmits<{
    *  follow-up REST call (only fire when the user is plausibly about
    *  to type). */
   (e: 'focus-changed', focused: boolean): void;
+  /** User hit the stop button. Lets the host drop a {@code turnActive} it
+   *  set from a resume — the composer cannot clear a prop it does not own. */
+  (e: 'paused'): void;
 }>();
 
 const { t } = useI18n();
@@ -207,7 +219,15 @@ function writeDraft(value: string): void {
 }
 
 const composerText = ref(readDraft());
-const sending = ref(false);
+/**
+ * A send this composer started and is still awaiting the {@code
+ * process-steer} reply for. Distinct from {@link sending}: an inherited
+ * turn (host-set {@code turnActive}) is equally busy but has no promise of
+ * ours to settle, and clearing one must not clear the other.
+ */
+const localSend = ref(false);
+/** Busy either way — ours or the host's. Everything user-facing reads this. */
+const sending = computed(() => localSend.value || props.turnActive === true);
 const uploading = ref(false);
 const sendError = ref<string | null>(null);
 
@@ -830,7 +850,7 @@ async function send(): Promise<void> {
   // this?" rather than the UI silently rejecting the click.
   if (sending.value || !props.chatProcessName) return;
   if (!text && filesSnapshot.length === 0 && docsSnapshot.length === 0) return;
-  sending.value = true;
+  localSend.value = true;
   sendError.value = null;
   noteTalkActivity();
 
@@ -853,7 +873,7 @@ async function send(): Promise<void> {
           ? e.message
           : 'Attachment upload failed.';
       }
-      sending.value = false;
+      localSend.value = false;
       uploading.value = false;
       return;
     }
@@ -953,7 +973,7 @@ async function send(): Promise<void> {
       sendError.value = e instanceof Error ? e.message : t('chat.failedToSend');
     }
   } finally {
-    sending.value = false;
+    localSend.value = false;
   }
 }
 
@@ -969,7 +989,10 @@ function pause(): void {
   } catch (e) {
     sendError.value = e instanceof Error ? e.message : 'Pause failed.';
   }
-  sending.value = false;
+  localSend.value = false;
+  // The inherited half of the busy state belongs to the host — it set the
+  // prop, only it can drop it.
+  emit('paused');
 }
 
 function onComposerFocusIn(): void {

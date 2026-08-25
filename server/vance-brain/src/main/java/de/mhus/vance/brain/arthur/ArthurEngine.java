@@ -228,11 +228,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final UserMemoryService userMemoryService;
     private final de.mhus.vance.brain.notification.NotificationService notificationService;
     private final de.mhus.vance.brain.discovery.DiscoveryService discoveryService;
-    private final de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver;
-    private final de.mhus.vance.brain.tools.client.CortexBoundDocumentResolver cortexBoundDocumentResolver;
-    private final de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder cortexTurnSelectionHolder;
-    private final de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver;
-    private final de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver;
+    private final de.mhus.vance.brain.prompt.ClientTurnContextResolver clientTurnContextResolver;
     private final ObjectMapper objectMapper;
 
     /**
@@ -308,11 +304,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             UserMemoryService userMemoryService,
             @org.springframework.context.annotation.Lazy
                     de.mhus.vance.brain.discovery.DiscoveryService discoveryService,
-            de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver,
-            de.mhus.vance.brain.tools.client.CortexBoundDocumentResolver cortexBoundDocumentResolver,
-            de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder cortexTurnSelectionHolder,
-            de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver,
-            de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver,
+            de.mhus.vance.brain.prompt.ClientTurnContextResolver clientTurnContextResolver,
             de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService actionLoopJudgeService,
             de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver,
             de.mhus.vance.brain.prompt.ScratchpadPromptContributor scratchpadPromptContributor,
@@ -339,11 +331,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.memoryCompactionService = memoryCompactionService;
         this.userMemoryService = userMemoryService;
         this.discoveryService = discoveryService;
-        this.cortexPromptResolver = cortexPromptResolver;
-        this.cortexBoundDocumentResolver = cortexBoundDocumentResolver;
-        this.cortexTurnSelectionHolder = cortexTurnSelectionHolder;
-        this.collabContextResolver = collabContextResolver;
-        this.activeAppPromptResolver = activeAppPromptResolver;
+        this.clientTurnContextResolver = clientTurnContextResolver;
         this.objectMapper = objectMapper;
         this.promptDateContextResolver = promptDateContextResolver;
         this.scratchpadPromptContributor = scratchpadPromptContributor;
@@ -2484,74 +2472,25 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // below ride outside the cache hash. See
         // specification/prompt-caching.md §5 and
         // planning/tool-schema-deferral.md §4.5 / §7.
-        // Voice-mode flag: last UserChatInput in this drain batch
-        // wins. Per-turn signal — never persisted on the process. See
-        // specification/voice-mode.md §6.
-        boolean voiceMode = false;
-        String mentionedByDisplayName = null;
-        de.mhus.vance.api.thinkprocess.ActiveAppContext activeApp = null;
-        String boundDocumentId = null;
-        de.mhus.vance.api.thinkprocess.BoundDocSelection boundDocSelection = null;
-        de.mhus.vance.api.thinkprocess.ActiveInboxContext activeInbox = null;
-        for (SteerMessage m : inbox) {
-            if (m instanceof SteerMessage.UserChatInput uci) {
-                voiceMode = uci.voiceMode();
-                mentionedByDisplayName = uci.fromUserDisplayName();
-                activeApp = uci.activeApp();
-                boundDocumentId = uci.boundDocumentId();
-                boundDocSelection = uci.boundDocSelection();
-                activeInbox = uci.activeInbox();
-            }
-        }
-        String appInstructions = activeAppPromptResolver.resolve(process, activeApp);
-        // Strict-mode: see EddieEngine for the same pattern.
-        if (appInstructions == null) activeApp = null;
-
-        // Cortex-mode: live-checked from the client-tool registry per
-        // turn — fires only when a Cortex-view client is currently
-        // connected to this session. Persisted SessionDocument fields
-        // aren't enough on their own (they'd falsely linger after the
-        // user navigates back to plain chat).
-        de.mhus.vance.brain.tools.client.CortexPromptResolver.CortexContext cortex =
-                cortexPromptResolver.resolve(process.getSessionId());
-        // Bound file: resolved fresh this turn from the id that rode in
-        // with the steer — path only, the model reads content on demand
-        // via doc_read. Never persisted into chat history.
-        String cortexBoundDocPath = cortexBoundDocumentResolver.resolvePath(
-                boundDocumentId, process.getTenantId(), process.getProjectId());
-        // Stash this turn's selection so the no-arg doc_get_selection() can
-        // find it; clear when the turn carried none (tied to the bound doc).
-        cortexTurnSelectionHolder.set(process.getId(),
-                (boundDocSelection == null || boundDocumentId == null) ? null
-                        : new de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder.Selection(
-                                boundDocumentId, boundDocSelection.getFrom(), boundDocSelection.getTo()));
-
-        // Multi-user collab context — collabActive + participants +
-        // mentionedBy variables for the prompt-render. See
-        // planning/multi-user-sessions.md §5 / §6.
-        de.mhus.vance.brain.chat.CollabContextResolver.CollabContext collab =
-                collabContextResolver.resolve(process.getSessionId(), mentionedByDisplayName);
-
         de.mhus.vance.brain.prompt.PromptContextBuilder ctxBuilder =
                 de.mhus.vance.brain.prompt.PromptContextBuilder
                         .forProcess(process, modelInfo)
                         .tier(modelSize)
-                        .engine(NAME)
-                        .voiceMode(voiceMode)
-                        .activeApp(activeApp)
-                        .activeInbox(activeInbox)
-                        .appInstructions(appInstructions)
-                        .cortexMode(cortex.active())
-                        .cortexBoundDoc(cortexBoundDocPath)
-                        .cortexBoundDocSelection(boundDocSelection)
-                        .collabActive(collab.active())
-                        .participants(collab.participants())
-                        .mentionedBy(collab.mentionedBy())
-                        .withRootDirTypes(workspaceService.getRootDirTypes(
-                                process.getTenantId(), process.getProjectId()))
-                        // This turn's manifest, so the template can gate
-                        // tool-specific text on the tool being callable.
-                        .withAvailableTools(ctx.tools().primary());
+                        .engine(NAME);
+        // Per-turn client context: voice mode, the app the reader has
+        // open, the bound document + selection, the inbox thread beside
+        // the chat, collab participants. Last UserChatInput in the drain
+        // batch wins; never persisted on the process. See
+        // ClientTurnContextResolver, specification/voice-mode.md §6 and
+        // planning/multi-user-sessions.md §5 / §6.
+        de.mhus.vance.brain.prompt.ClientTurnContextResolver.ClientTurnContext client =
+                clientTurnContextResolver.resolve(process, inbox);
+        client.applyTo(ctxBuilder);
+        ctxBuilder.withRootDirTypes(workspaceService.getRootDirTypes(
+                        process.getTenantId(), process.getProjectId()))
+                // This turn's manifest, so the template can gate
+                // tool-specific text on the tool being callable.
+                .withAvailableTools(ctx.tools().primary());
         String base = composer.compose(process,
                 engineDefaultPrompt(process, modelSize), ctxBuilder);
         String discoveryBlock = ctx.tools().discoveryBlockMarkdown();
@@ -2691,7 +2630,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // content blocks for any attachments the user sent.
         int oldHistorySize = Math.max(0, history.size() - userInputCount);
         for (int i = 0; i < oldHistorySize; i++) {
-            messages.add(toLangchain(history.get(i), collab.active()));
+            messages.add(toLangchain(history.get(i), client.collabActive()));
         }
 
         // Current-turn user messages: rebuilt from the inbox so
@@ -2703,7 +2642,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             if (m instanceof SteerMessage.UserChatInput uci) {
                 messages.add(buildUserMessageWithAttachments(
                         uci, process, chatConfig.fullName(),
-                        providerType, modelInfo.capabilities(), collab.active()));
+                        providerType, modelInfo.capabilities(), client.collabActive()));
             }
         }
 

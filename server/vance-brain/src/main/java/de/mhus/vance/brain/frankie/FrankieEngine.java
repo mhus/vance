@@ -22,6 +22,7 @@ import de.mhus.vance.brain.memory.CompactionResult;
 import de.mhus.vance.brain.memory.MemoryCompactionService;
 import de.mhus.vance.brain.memory.MemoryContextLoader;
 import de.mhus.vance.brain.progress.LlmCallTracker;
+import de.mhus.vance.brain.prompt.ClientTurnContextResolver;
 import de.mhus.vance.brain.prompt.PromptContextBuilder;
 import de.mhus.vance.brain.skill.ResolvedSkill;
 import de.mhus.vance.brain.skill.SkillPromptComposer;
@@ -269,6 +270,7 @@ public class FrankieEngine implements ThinkEngine {
     private final de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers;
     private final de.mhus.vance.brain.guard.CompletionGuardService completionGuardService;
     private final AttachedUserMessageComposer attachedUserMessageComposer;
+    private final ClientTurnContextResolver clientTurnContextResolver;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -913,7 +915,9 @@ public class FrankieEngine implements ThinkEngine {
      * correspond to them are re-rendered from the inbox instead, which
      * is what lets an attachment ride along as a content block. Same
      * shape Arthur uses; without it an image attached to a Frankie
-     * session is silently dropped.
+     * session is silently dropped. It is also the batch the client
+     * context is read from — the last user input in it decides what the
+     * reader is looking at.
      */
     private List<ChatMessage> buildPromptMessages(
             ThinkProcessDocument process,
@@ -924,9 +928,17 @@ public class FrankieEngine implements ThinkEngine {
             @Nullable ModelInfo modelInfo,
             AttachedUserMessageComposer.@Nullable Context attachmentContext) {
         List<ChatMessage> messages = new ArrayList<>();
-        PromptContextBuilder ctxBuilder = PromptContextBuilder
-                .forProcess(process, modelInfo)
-                .engine(NAME);
+        // Per-turn client context: which app the reader has open, the
+        // bound document and selection, voice mode, inbox thread, collab.
+        // Frankie is a worker engine but also a session-primary one — the
+        // app-builder recipe runs a chat on it, and without this the
+        // builder of an app cannot see which app is open. See
+        // ClientTurnContextResolver.
+        PromptContextBuilder ctxBuilder = clientTurnContextResolver
+                .resolve(process, turnUserInputs)
+                .applyTo(PromptContextBuilder
+                        .forProcess(process, modelInfo)
+                        .engine(NAME));
         String basePath = paramString(process, "promptDocument", DEFAULT_PROMPT_PATH);
         String engineDefault = enginePromptResolver.resolve(
                 process, basePath, ENGINE_FALLBACK_PROMPT);

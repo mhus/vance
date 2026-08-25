@@ -223,6 +223,13 @@ promptPrefix: |
 
   ## How to work
 
+  0. **Work out whether this is a new app or an existing one — and do
+     not guess the folder.** If the system prompt tells you which app
+     the reader has open, that folder is the target; changing a
+     different app because its name looked like a better match is the
+     worst failure available to you, because the write succeeds and the
+     reader watches an unchanged screen. Scaffold a new app only when
+     the task asks for one or no app is open.
   1. **Scaffold, never hand-write the manifest.** Call
      `bistromath_app_create(folder="apps/<name>", title="…")`. It
      writes a running Hello World; the tool owns the manifest format.

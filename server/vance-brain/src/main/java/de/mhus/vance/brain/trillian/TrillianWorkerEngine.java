@@ -92,13 +92,14 @@ public class TrillianWorkerEngine extends FrankieEngine {
             MemoryCompactionService memoryCompactionService,
             de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers,
             de.mhus.vance.brain.guard.CompletionGuardService completionGuardService,
-            AttachedUserMessageComposer attachedUserMessageComposer) {
+            AttachedUserMessageComposer attachedUserMessageComposer,
+            de.mhus.vance.brain.prompt.ClientTurnContextResolver clientTurnContextResolver) {
         super(thinkProcessService, properties, engineChatFactory, llmCallTracker,
                 streamingProperties, objectMapper, enginePromptResolver, systemPromptComposer,
                 skillResolver, skillPromptComposer, sessionService, promptDateContextResolver,
                 scratchpadPromptContributor, memoryContextLoader, modelCatalog,
                 memoryCompactionService, turnContextHandlers, completionGuardService,
-                attachedUserMessageComposer);
+                attachedUserMessageComposer, clientTurnContextResolver);
         this.processes = thinkProcessService;
     }
 

@@ -160,6 +160,11 @@ class FrankieEngineSkeletonTest {
                 mock(de.mhus.vance.brain.guard.CompletionGuardService.class);
         lenient().when(completionGuard.evaluate(any(), any(), anyBoolean()))
                 .thenReturn(new de.mhus.vance.brain.guard.GuardEvaluation(false, null, null));
+        de.mhus.vance.brain.prompt.ClientTurnContextResolver clientTurnContextResolver =
+                mock(de.mhus.vance.brain.prompt.ClientTurnContextResolver.class);
+        lenient().when(clientTurnContextResolver.resolve(any(), any()))
+                .thenReturn(de.mhus.vance.brain.prompt.ClientTurnContextResolver
+                        .ClientTurnContext.EMPTY);
         engine = new FrankieEngine(
                 thinkProcessService, properties, engineChatFactory,
                 llmCallTracker, streaming, objectMapper,
@@ -172,7 +177,8 @@ class FrankieEngineSkeletonTest {
                 new de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry(java.util.List.of()),
                 completionGuard,
                 new de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer(
-                                attachmentResolver));
+                                attachmentResolver),
+                clientTurnContextResolver);
 
         process = new ThinkProcessDocument();
         process.setId(PROC_ID);

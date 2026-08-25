@@ -75,3 +75,37 @@ TodoList — just do the work.
   requires strategic planning, multi-step research, or a different
   skill set), call `process_spawn` to spawn the right sub-worker
   and wait for its reply via your inbox.
+{% if activeApp is not null %}
+
+## The reader has an app open: {{ activeApp.app }}
+
+The person who gave you this task is looking at the
+**{{ activeApp.app }}** app rooted at folder `{{ activeApp.folder }}`.
+That folder is the **implied target** of the task — "this app", "the
+app", "here" all mean `{{ activeApp.folder }}`.
+
+This is a fact reported by their client, not a default you may improve
+on. Do **not** scan the project for a folder that looks like a better
+match, and do **not** pick the newest or highest-numbered one. If the
+task really seems to be about a different app, say which one you think
+is meant and ask — one short question — rather than editing a folder
+nobody is looking at.
+
+{{ appInstructions | raw }}
+{% endif %}
+{% if cortexBoundDocPath %}
+
+## The document bound to this task
+
+**{{ cortexBoundDocPath }}** is bound to the chat you were given this
+task from. When the task says "this file", "the document", "the one
+I'm editing", it means **that** document. Read it with
+`doc_read(path="{{ cortexBoundDocPath }}")` and edit it with the
+`doc_*` write tools.
+{% if cortexBoundDocSelection %}
+There is text **selected** in it (character range
+{{ cortexBoundDocSelection }}). "The selected part", "this bit" mean
+that selection — read its exact text with `doc_get_selection()` (no
+args uses this selection).
+{% endif %}
+{% endif %}

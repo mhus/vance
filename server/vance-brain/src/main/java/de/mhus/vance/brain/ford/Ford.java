@@ -177,9 +177,7 @@ public class Ford implements ThinkEngine {
     private final de.mhus.vance.brain.prompt.ScratchpadPromptContributor scratchpadPromptContributor;
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
     private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
-    private final de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver;
-    private final de.mhus.vance.brain.tools.client.CortexBoundDocumentResolver cortexBoundDocumentResolver;
-    private final de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder cortexTurnSelectionHolder;
+    private final de.mhus.vance.brain.prompt.ClientTurnContextResolver clientTurnContextResolver;
     private final de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers;
 
     // ──────────────────── Metadata ────────────────────
@@ -1013,47 +1011,25 @@ public class Ford implements ThinkEngine {
             ModelInfo modelInfo, ModelSize tier, List<ResolvedSkill> activeSkills,
             ContextToolsApi tools) {
         List<ChatMessage> messages = new ArrayList<>();
-        // Cortex-mode: same per-turn injection as Arthur — fires only
-        // when a Cortex client is currently bound to this session's
-        // chat WS (workers delegated to from a Cortex session inherit
-        // the same answer). See arthur-prompt.md / ford-prompt.md
-        // {% if cortexMode %} blocks.
-        de.mhus.vance.brain.tools.client.CortexPromptResolver.CortexContext cortex =
-                cortexPromptResolver.resolve(process.getSessionId());
-        // Bound file: last UserChatInput in this batch wins. Path only —
-        // the model reads content on demand via doc_read.
-        String boundDocumentId = null;
-        de.mhus.vance.api.thinkprocess.BoundDocSelection boundDocSelection = null;
-        if (inboxExtras != null) {
-            for (SteerMessage m : inboxExtras) {
-                if (m instanceof SteerMessage.UserChatInput uci) {
-                    boundDocumentId = uci.boundDocumentId();
-                    boundDocSelection = uci.boundDocSelection();
-                }
-            }
-        }
-        String cortexBoundDocPath = cortexBoundDocumentResolver.resolvePath(
-                boundDocumentId, process.getTenantId(), process.getProjectId());
-        cortexTurnSelectionHolder.set(process.getId(),
-                (boundDocSelection == null || boundDocumentId == null) ? null
-                        : new de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder.Selection(
-                                boundDocumentId, boundDocSelection.getFrom(), boundDocSelection.getTo()));
-
         de.mhus.vance.brain.prompt.PromptContextBuilder ctxBuilder =
                 de.mhus.vance.brain.prompt.PromptContextBuilder
                         .forProcess(process, modelInfo)
                         .tier(tier)
-                        .engine(NAME)
-                        .cortexMode(cortex.active())
-                        .cortexBoundDoc(cortexBoundDocPath)
-                        .cortexBoundDocSelection(boundDocSelection)
-                        .withRootDirTypes(workspaceService.getRootDirTypes(
-                                process.getTenantId(), process.getProjectId()))
-                        // This turn's manifest, so the template can gate
-                        // tool-specific text on the tool being callable.
-                        // Ford already has the classified surface as a
-                        // parameter — no second classify() needed here.
-                        .withAvailableTools(tools.primary());
+                        .engine(NAME);
+        // Per-turn client context — cortex-mode fires only when a Cortex
+        // client is currently bound to this session's chat WS (workers
+        // delegated to from a Cortex session inherit the same answer);
+        // see the {% if cortexMode %} block in ford-prompt.md. Ford's
+        // template reads only the cortex half today, and setting the rest
+        // costs nothing — see ClientTurnContextResolver.
+        clientTurnContextResolver.resolve(process, inboxExtras).applyTo(ctxBuilder);
+        ctxBuilder.withRootDirTypes(workspaceService.getRootDirTypes(
+                        process.getTenantId(), process.getProjectId()))
+                // This turn's manifest, so the template can gate
+                // tool-specific text on the tool being callable.
+                // Ford already has the classified surface as a
+                // parameter — no second classify() needed here.
+                .withAvailableTools(tools.primary());
         String base = composer.compose(process,
                 engineDefaultPrompt(process), ctxBuilder);
         String memoryBlock = memoryContextLoader.composeBlock(process);

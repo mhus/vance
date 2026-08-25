@@ -118,7 +118,7 @@ class TrillianWorkerEngineTest {
         return p;
     }
 
-    /** Only the seam is exercised, so the 18 unused collaborators are mocks. */
+    /** Only the seam is exercised, so the 19 unused collaborators are mocks. */
     private TrillianWorkerEngine engine() {
         return new TrillianWorkerEngine(
                 processes, mock(de.mhus.vance.brain.frankie.FrankieProperties.class),
@@ -138,6 +138,7 @@ class TrillianWorkerEngineTest {
                 mock(de.mhus.vance.brain.memory.MemoryCompactionService.class),
                 mock(de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry.class),
                 mock(de.mhus.vance.brain.guard.CompletionGuardService.class),
-                mock(de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.class));
+                mock(de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.class),
+                mock(de.mhus.vance.brain.prompt.ClientTurnContextResolver.class));
     }
 }

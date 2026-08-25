@@ -240,11 +240,7 @@ public class EddieEngine extends StructuredActionEngine {
     private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
     private final de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService;
     private final de.mhus.vance.brain.discovery.DiscoveryService discoveryService;
-    private final de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver;
-    private final de.mhus.vance.brain.tools.client.CortexBoundDocumentResolver cortexBoundDocumentResolver;
-    private final de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder cortexTurnSelectionHolder;
-    private final de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver;
-    private final de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver;
+    private final de.mhus.vance.brain.prompt.ClientTurnContextResolver clientTurnContextResolver;
     private final ObjectMapper objectMapper;
     private final de.mhus.vance.brain.notification.NotificationService notificationService;
 
@@ -295,11 +291,7 @@ public class EddieEngine extends StructuredActionEngine {
             de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService,
             @org.springframework.context.annotation.Lazy
                     de.mhus.vance.brain.discovery.DiscoveryService discoveryService,
-            de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver,
-            de.mhus.vance.brain.tools.client.CortexBoundDocumentResolver cortexBoundDocumentResolver,
-            de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder cortexTurnSelectionHolder,
-            de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver,
-            de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver,
+            de.mhus.vance.brain.prompt.ClientTurnContextResolver clientTurnContextResolver,
             de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService actionLoopJudgeService,
             de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver,
             de.mhus.vance.brain.prompt.ScratchpadPromptContributor scratchpadPromptContributor,
@@ -329,11 +321,7 @@ public class EddieEngine extends StructuredActionEngine {
         this.historyStrengthFilter = historyStrengthFilter;
         this.memoryCompactionService = memoryCompactionService;
         this.discoveryService = discoveryService;
-        this.cortexPromptResolver = cortexPromptResolver;
-        this.cortexBoundDocumentResolver = cortexBoundDocumentResolver;
-        this.cortexTurnSelectionHolder = cortexTurnSelectionHolder;
-        this.collabContextResolver = collabContextResolver;
-        this.activeAppPromptResolver = activeAppPromptResolver;
+        this.clientTurnContextResolver = clientTurnContextResolver;
         this.objectMapper = objectMapper;
         this.promptDateContextResolver = promptDateContextResolver;
         this.scratchpadPromptContributor = scratchpadPromptContributor;
@@ -2539,69 +2527,26 @@ public class EddieEngine extends StructuredActionEngine {
         // block (displayName / userId) is session-stable too, so it
         // joins the static prefix; the cache marker lands on the
         // last static block. See specification/prompt-caching.md §5.
-        // Voice-mode flag: last UserChatInput in this drain batch
-        // wins. Per-turn signal — never persisted on the process. See
-        // specification/voice-mode.md §6.
-        boolean voiceMode = false;
-        String mentionedByDisplayName = null;
-        de.mhus.vance.api.thinkprocess.ActiveAppContext activeApp = null;
-        String boundDocumentId = null;
-        de.mhus.vance.api.thinkprocess.BoundDocSelection boundDocSelection = null;
-        de.mhus.vance.api.thinkprocess.ActiveInboxContext activeInbox = null;
-        for (SteerMessage m : inbox) {
-            if (m instanceof SteerMessage.UserChatInput uci) {
-                voiceMode = uci.voiceMode();
-                mentionedByDisplayName = uci.fromUserDisplayName();
-                activeApp = uci.activeApp();
-                boundDocumentId = uci.boundDocumentId();
-                boundDocSelection = uci.boundDocSelection();
-                activeInbox = uci.activeInbox();
-            }
-        }
-        String appInstructions = activeAppPromptResolver.resolve(process, activeApp);
-        // Strict-Mode: when the resolver couldn't produce inject text
-        // (unknown app, SPI returned null, threw) clear the activeApp
-        // hint too so the Pebble {% if activeApp %} block falls away
-        // cleanly instead of rendering a header with an empty body.
-        if (appInstructions == null) activeApp = null;
-
-        // Cortex-mode: same per-turn injection as Arthur / Ford. Eddie
-        // is the hub assistant — if a Cortex client is bound to her
-        // session she's the one fielding "welche datei?" before any
-        // worker delegation.
-        de.mhus.vance.brain.tools.client.CortexPromptResolver.CortexContext cortex =
-                cortexPromptResolver.resolve(process.getSessionId());
-        String cortexBoundDocPath = cortexBoundDocumentResolver.resolvePath(
-                boundDocumentId, process.getTenantId(), process.getProjectId());
-        cortexTurnSelectionHolder.set(process.getId(),
-                (boundDocSelection == null || boundDocumentId == null) ? null
-                        : new de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder.Selection(
-                                boundDocumentId, boundDocSelection.getFrom(), boundDocSelection.getTo()));
-
-        // Multi-user collab context — see planning/multi-user-sessions.md §5/§6.
-        de.mhus.vance.brain.chat.CollabContextResolver.CollabContext collab =
-                collabContextResolver.resolve(process.getSessionId(), mentionedByDisplayName);
-
         de.mhus.vance.brain.prompt.PromptContextBuilder ctxBuilder =
                 de.mhus.vance.brain.prompt.PromptContextBuilder
                         .forProcess(process, modelInfo)
                         .tier(modelSize)
-                        .engine(NAME)
-                        .voiceMode(voiceMode)
-                        .activeApp(activeApp)
-                        .activeInbox(activeInbox)
-                        .appInstructions(appInstructions)
-                        .cortexMode(cortex.active())
-                        .cortexBoundDoc(cortexBoundDocPath)
-                        .cortexBoundDocSelection(boundDocSelection)
-                        .collabActive(collab.active())
-                        .participants(collab.participants())
-                        .mentionedBy(collab.mentionedBy())
-                        .withRootDirTypes(workspaceService.getRootDirTypes(
-                                process.getTenantId(), process.getProjectId()))
-                        // This turn's manifest, so the template can gate
-                        // tool-specific text on the tool being callable.
-                        .withAvailableTools(engineCtx.tools().primary());
+                        .engine(NAME);
+        // Per-turn client context: voice mode, the app the reader has
+        // open, the bound document + selection, the inbox thread beside
+        // the chat, collab participants. Eddie is the hub assistant — if
+        // a Cortex client is bound to her session she's the one fielding
+        // "welche datei?" before any worker delegation. See
+        // ClientTurnContextResolver, specification/voice-mode.md §6 and
+        // planning/multi-user-sessions.md §5 / §6.
+        de.mhus.vance.brain.prompt.ClientTurnContextResolver.ClientTurnContext client =
+                clientTurnContextResolver.resolve(process, inbox);
+        client.applyTo(ctxBuilder);
+        ctxBuilder.withRootDirTypes(workspaceService.getRootDirTypes(
+                        process.getTenantId(), process.getProjectId()))
+                // This turn's manifest, so the template can gate
+                // tool-specific text on the tool being callable.
+                .withAvailableTools(engineCtx.tools().primary());
         // Fall back to the engine's cascade-resolved default prompt
         // (project → _vance → classpath) rather than the short
         // GREETING when the recipe didn't pin a promptOverride. The
@@ -2700,7 +2645,7 @@ public class EddieEngine extends StructuredActionEngine {
                 chatLog.activeHistory(
                         process.getTenantId(), process.getSessionId(), process.getId()));
         for (ChatMessageDocument msg : history) {
-            messages.add(toLangchain(msg, collab.active()));
+            messages.add(toLangchain(msg, client.collabActive()));
         }
 
         // Short-token map for the renderer — only events present in

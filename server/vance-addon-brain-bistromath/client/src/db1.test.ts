@@ -55,6 +55,7 @@ function build(initial: Record<string, unknown> = {}) {
   db = loadLibraries({
     sources: [{ library: 'core@1' }, { library: 'db@1' }],
     expose: ['db'],
+    // `stubVance` gives `app.folder = 'apps/test'`, which the messages spell out.
     vance: stubVance({ documents: fake.documents }),
   }).db as Db;
 }
@@ -128,6 +129,10 @@ describe('insert', () => {
   it('refuses an existing key instead of overwriting', async () => {
     await expect(db.table('inv/').insert({ key: '0001', customer: 'Other' }))
       .rejects.toThrow(/already exists/);
+    // The message spells the folder out against the app folder — `inv/` alone
+    // sends a reader looking at the project root.
+    await expect(db.table('inv/').insert({ key: '0001' }))
+      .rejects.toThrow(/apps\/test\/inv\//);
     expect(fake.store.get('inv/0001.yaml')).toMatchObject({ customer: 'Acme' });
   });
 

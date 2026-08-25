@@ -296,6 +296,17 @@ const selectOptions = computed(() =>
  * silently rename every such row — a `rowClick` would then hand a detail view
  * the wrong record. The program's order is the row's identity.
  */
+/**
+ * Whether the bound key has never been written, as opposed to holding an empty
+ * list.
+ *
+ * <p>`undefined` is "nothing wrote this" — a program that has not run, or a typo
+ * in `from:`. Anything else, including `[]`, is an answer. Distinguishing them
+ * is what lets an app show "no entries" without accusing itself of being
+ * broken.
+ */
+const tableStateMissing = computed(() => bound.value === undefined);
+
 const rows = computed<{ row: Record<string, unknown>; key: string; index: number }[]>(() => {
   const v = bound.value;
   if (!Array.isArray(v)) return [];
@@ -732,10 +743,21 @@ const headingClass = computed(() =>
       @update:model-value="(v: string) => (tableFilter = v)"
     />
 
+    <!-- Two different situations, and telling them apart is the whole value of
+         this message: a key nobody has written yet is a program that has not run
+         (or a typo in `from:`), while an empty list is a program that ran and
+         found nothing. The old text asserted the first for both, so an app
+         correctly showing "no records" accused itself of being broken. -->
     <VEmptyState
-      v-if="rows.length === 0"
+      v-if="rows.length === 0 && tableStateMissing"
       headline="Nothing to show"
-      :body="`The program has not put rows into \`${node.from}\` yet. It fills state with vance.state.set('${node.from}', rows).`"
+      :body="`Nothing has written \`${node.from}\` yet — the program fills it with vance.state.set('${node.from}', rows). Check the key if this is unexpected.`"
+    />
+
+    <VEmptyState
+      v-else-if="rows.length === 0"
+      headline="No entries"
+      :body="`\`${node.from}\` is empty.`"
     />
 
     <VEmptyState

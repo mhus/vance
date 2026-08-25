@@ -29,6 +29,10 @@ const db = {
   table: function (folder, options) {
     const opts = options || {};
     db.checkFolder(folder);
+    // Every message names this, not the bare argument: `records/` is relative to
+    // the app folder, and "already exists in records/" sent a reader looking at
+    // the project root. The full path is what they can go and check.
+    const where = db.describe(folder);
     const extension = opts.extension || '.yaml';
     const keyPrefix = opts.keyPrefix || '';
     let rows = null;
@@ -116,7 +120,7 @@ const db = {
         if (!rec.key) rec.key = table.nextKey(list);
         for (const row of list) {
           if (row.key === rec.key) {
-            throw new Error("db: '" + rec.key + "' already exists in " + folder
+            throw new Error("db: '" + rec.key + "' already exists in " + where
               + '. Use upsert() to replace it.');
           }
         }
@@ -135,7 +139,7 @@ const db = {
         const list = await all();
         const i = list.findIndex(function (r) { return r.key === key; });
         if (i < 0) {
-          throw new Error("db: no record '" + key + "' in " + folder + '.');
+          throw new Error("db: no record '" + key + "' in " + where + '.');
         }
         const merged = Object.assign({}, list[i], patch, { key: key });
         await core.save(folder, merged, extension);
@@ -193,6 +197,17 @@ const db = {
     };
 
     return table;
+  },
+
+  /**
+   * A folder as a reader can go and look it up: app-relative paths spelled out
+   * against the app folder, absolute ones left alone.
+   */
+  describe: function (folder) {
+    const f = String(folder == null ? '' : folder);
+    if (f.charAt(0) === '/') return f;
+    const app = (typeof vance !== 'undefined' && vance.app && vance.app.folder) || '';
+    return app ? app.replace(/\/+$/, '') + '/' + f.replace(/^\.?\//, '') : f;
   },
 
   /**

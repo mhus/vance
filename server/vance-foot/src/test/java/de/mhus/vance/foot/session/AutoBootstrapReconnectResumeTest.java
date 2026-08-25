@@ -2,6 +2,7 @@ package de.mhus.vance.foot.session;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.timeout;
@@ -34,6 +35,7 @@ class AutoBootstrapReconnectResumeTest {
 
     private final ConnectionService connection = mock(ConnectionService.class);
     private final SessionService sessions = mock(SessionService.class);
+    private final ChatTerminal terminal = mock(ChatTerminal.class);
     private final BusyIndicator busy = new BusyIndicator();
 
     private AutoBootstrapService service() {
@@ -42,7 +44,7 @@ class AutoBootstrapReconnectResumeTest {
                 connection,
                 mock(BrainRestClientService.class),
                 sessions,
-                mock(ChatTerminal.class),
+                terminal,
                 mock(VancePaths.class),
                 mock(SessionAnchorStore.class),
                 new RandomSessionNameGenerator(),
@@ -102,7 +104,16 @@ class AutoBootstrapReconnectResumeTest {
         service().triggerReconnectResume(
                 new ConnectionService.ReconnectTarget("s1", "p1", "chat"));
 
-        verify(sessions, timeout(2_000)).bind("s1", "p1");
+        // Waits for the line the resync itself writes, not for bind(). The
+        // whole flow runs on an executor, and bind() is four statements and a
+        // terminal write ahead of resyncBusyState — so "bind happened" says
+        // nothing about whether the spinner was restored yet. Anchored there,
+        // this test passed alone and failed in the full reactor, where the
+        // parallel forks widen exactly that window.
+        //
+        // This line is emitted after every enterKeyed call, so once it is
+        // observed the busy state is final.
+        verify(terminal, timeout(2_000)).info(contains("spinner restored"));
         assertThat(busy.isBusy()).isTrue();
         assertThat(busy.depth()).isEqualTo(1);
         // Keyed on the process-id, so the ENGINE_TURN_END that eventually

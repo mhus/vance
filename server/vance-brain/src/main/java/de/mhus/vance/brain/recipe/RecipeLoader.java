@@ -215,6 +215,7 @@ public class RecipeLoader {
         boolean locked = spec.get("locked") instanceof Boolean b && b;
         boolean internal = spec.get("internal") instanceof Boolean ib && ib;
         boolean listed = spec.get("listed") instanceof Boolean lb && lb;
+        boolean web = spec.get("web") instanceof Boolean wb && wb;
         String title = stringOrNull(spec.get("title"));
         List<String> tags = stringList(spec.get("tags"), "tags");
         List<GuardConfig> guards = parseGuards(spec.get("guard"));
@@ -231,7 +232,7 @@ public class RecipeLoader {
                 add, remove, defer, keep, dropFirst, baseModes, profiles,
                 defaultActiveSkills, allowedSkills,
                 triggerKeywords,
-                locked, internal, listed, title, tags,
+                locked, internal, listed, web, title, tags,
                 guards,
                 mapSource(hit.source()));
     }

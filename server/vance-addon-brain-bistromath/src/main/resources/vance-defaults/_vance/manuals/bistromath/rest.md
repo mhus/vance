@@ -75,6 +75,46 @@ This is not a security boundary on its own — whoever writes `main.js` can writ
 this line too. Its value is that it is the sentence a reviewer reads before
 trusting an app, and it keeps an app's reach as small as it actually is.
 
+## Asking a model
+
+```yaml
+# _app.yaml
+custom:
+  rest: [light-llm]
+```
+
+```js
+const r = await vance.rest('POST', 'light-llm/' + vance.app.project,
+  { recipe: 'app-summary', prompt: text });
+// r.text is the reply, verbatim
+```
+
+The recipe decides the model, the prompt template and the retry budget — you
+supply the input. It has to carry **both** `internal: true` (a config profile,
+not a spawnable worker) and **`web: true`** (released for web callers). Without
+the second one the call comes back `403` naming the missing line, and that is
+the answer to "why can't I call `fook`": nothing is released by default.
+
+So a model call needs a recipe document. Ask the reader to add one, or write it
+yourself if you may — it is `_vance/recipes/<name>.yaml` in the project.
+
+## Watching a run
+
+`runs` is open, and it is more than a list:
+
+```js
+const runs = await vance.rest('GET', 'runs?projectId=' + vance.app.project);
+const one  = await vance.rest('GET', 'runs/' + id + '?projectId=' + vance.app.project);
+await vance.rest('POST', 'runs/' + id + '/actions/pause?projectId='
+  + vance.app.project);
+```
+
+Each run says in `allowedActions` what it currently offers (`PAUSE`, `RESUME`,
+`STOP`) — read that rather than guessing, because a run that has moved on
+accepts nothing. **Starting** a run is not possible from an app: there is no
+route for it, and `compose` — the one thing that would start something — is
+closed because it runs code on the server.
+
 ## What it does not do
 
 - **No other host.** `vance.rest('GET', 'https://…')` is refused. The program can

@@ -392,7 +392,7 @@ class RecipeResolverModeFilterTest {
                                 /*keep*/ List.of("doc_read"),
                                 /*dropFirst*/ List.of())),
                         null, Map.of(), null)),
-                List.of(), null, List.of(), false, false, false, null, List.of(),
+                List.of(), null, List.of(), false, false, false, false, null, List.of(),
                 List.of(), RecipeSource.RESOURCE);
         when(loader.load(any(), any(), eq("arthur"))).thenReturn(Optional.of(r));
 
@@ -414,7 +414,7 @@ class RecipeResolverModeFilterTest {
                 /*add*/ List.of(), /*remove*/ List.of(), /*defer*/ List.of(),
                 baseKeep, baseDropFirst,
                 /*modes*/ Map.of(), profiles,
-                List.of(), null, List.of(), false, false, false, null, List.of(),
+                List.of(), null, List.of(), false, false, false, false, null, List.of(),
                 List.of(), RecipeSource.RESOURCE);
     }
 

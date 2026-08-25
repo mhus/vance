@@ -98,6 +98,31 @@ public record ResolvedRecipe(
          */
         boolean listed,
         /**
+         * Opt-in flag: may this recipe be invoked **from a web client**, over
+         * the generic light-LLM route.
+         *
+         * <p>Not "may an app call it" — an app *is* a web client, and every web
+         * client can reach the same route, so a per-app permission would be a
+         * fiction. The question that can actually be answered is whether this
+         * recipe is meant to be triggered from a browser at all, and only the
+         * person who wrote the recipe can answer it.
+         *
+         * <p>Independent of {@code internal}: the light-LLM service requires
+         * {@code internal: true} for every recipe it runs (a config profile, not
+         * a spawnable worker), so this is a **second** gate on top, not an
+         * alternative to it. A recipe reachable from the web is therefore
+         * `internal: true` *and* `web: true`.
+         *
+         * <p>Purpose-built endpoints keep their own contract — {@code follow-up}
+         * is called from the Web-UI through its own route and needs no flag. The
+         * flag governs the route that takes a recipe *name* from the caller.
+         *
+         * <p>Default {@code false}. Anything else would make every existing
+         * config profile — discovery, title generation, fook triage — callable
+         * with an arbitrary prompt by anyone who can open the app.
+         */
+        boolean web,
+        /**
          * Optional human-readable display name for clients that surface
          * the recipe to the user (Web-UI recipe picker, future mobile
          * UIs). When {@code null}, the {@link #name} is used as fallback.
@@ -145,7 +170,7 @@ public record ResolvedRecipe(
                 dataRelayCorrection, allowedToolsAdd, allowedToolsRemove,
                 allowedToolsDefer, List.of(), List.of(), modes, profiles,
                 defaultActiveSkills, allowedSkills,
-                triggerKeywords, locked, internal, listed, title, tags,
+                triggerKeywords, locked, internal, listed, false, title, tags,
                 guards, source);
     }
 }

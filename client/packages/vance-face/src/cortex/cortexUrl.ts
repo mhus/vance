@@ -270,20 +270,3 @@ function writePerTab(
     .map((id) => `${id}${ENTRY_SEPARATOR}${encodeURIComponent(map[id])}`);
   if (pairs.length > 0) p.set(param, pairs.join(',')); else p.delete(param);
 }
-
-/**
- * Build a full {@code /cortex} target for a hard navigation, carrying
- * the given view. Used when opening a chat from the session picker or
- * leaving a chat back into chatless mode, so the open tabs survive the
- * cross-mode reload instead of vanishing.
- */
-export function cortexHref(
-  ctx: { project?: string | null; sessionId?: string | null },
-  view: CortexView,
-): string {
-  const p = new URLSearchParams();
-  if (ctx.sessionId) p.set('sessionId', ctx.sessionId);
-  if (ctx.project) p.set('project', ctx.project);
-  const qs = writeCortexView(p.toString(), view);
-  return `/cortex${qs ? `?${qs}` : ''}`;
-}

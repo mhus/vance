@@ -38,7 +38,7 @@ import {
   isAudioVideoMime,
   tryThreeWayMerge,
 } from '@/composables/useDocumentChangeReaction';
-import { onDocumentChanged, useWsConnection } from '@/ws/wsConnectionStore';
+import { onDocumentChanged } from '@/ws/wsConnectionStore';
 import SanitizedHtmlView from '@/components/SanitizedHtmlView.vue';
 import MarkdownView from '@/components/MarkdownView.vue';
 import VanceEmbedView from '@/components/VanceEmbedView.vue';
@@ -49,7 +49,6 @@ import { useStarredStore } from '@/starred/starredStore';
 import { isBinaryMime } from './stores/cortexStore';
 import { useCortexStore } from './stores/cortexStore';
 import {
-  cortexHref,
   readCortexView,
   splitForeignParams,
   writeCortexView,
@@ -1409,19 +1408,23 @@ const bootReadyKey = computed(() => !!projectId.value);
  * Right-panel toggle.
  *
  * In session mode, "hide the chat" means **leave the session** — drop
- * the {@code sessionId} from the URL and reload, which brings us back
- * to chatless mode (the session-picker can then be re-opened with the
- * same toggle). This matches the user's mental model: the toggle is a
- * single "am I currently in a chat?" switch, not a panel-visibility
- * checkbox. The open tabs ride along via {@link cortexHref} so leaving
- * the chat doesn't wipe the workspace.
+ * the {@code sessionId} and show the picker in the slot the chat just
+ * vacated. This matches the user's mental model: the toggle is a single
+ * "am I currently in a chat?" switch, not a panel-visibility checkbox.
+ *
+ * <p>This used to reload, and the open tabs had to ride along through the
+ * address bar to survive it. In place they simply stay — they live in the
+ * store. One deliberate difference from the reload: it landed with the right
+ * panel *closed* (a side effect of `rightPanelOpen` defaulting to
+ * `hasSession` at boot, not a decision), whereas leaving now shows the
+ * session list, which is what the toggle promises.
  *
  * In chatless mode the toggle is a stupid show/hide of the picker
  * panel — no URL change.
  */
 function toggleRightPanel(): void {
   if (hasSession.value) {
-    window.location.href = cortexHref({ project: projectId.value }, currentView());
+    leaveSessionInPlace();
     return;
   }
   // Help overlays the same column rather than replacing the panel, so
@@ -1479,16 +1482,14 @@ const panelToggle = computed(() => ({
  * needed — the page reload will establish the WS and bind cleanly.
  */
 async function enterSession(sid: string): Promise<void> {
-  const { activeSessionId } = useWsConnection();
-  if (activeSessionId.value === sid) {
-    // The WS already has this session bound (bootstrap path) — switch
-    // in-place without reloading the page.
-    await switchToSessionInPlace(sid);
-    return;
-  }
-  // Session picked from the list (not bootstrapped) — full navigation
-  // so the page boots fresh and binds the WS to the session.
-  window.location.href = cortexHref({ sessionId: sid, project: projectId.value }, currentView());
+  // Always in-place. This used to reload the page for a session that was not
+  // already bound, "so the page boots fresh and binds the WS" — but boot never
+  // did the binding: `CortexChatPanel` binds in its own `onMounted`, and that
+  // fires the moment `sessionId` turns from null into an id and the panel
+  // appears. The reload was doing nothing the mount does not do, at the price
+  // of throwing away the whole workspace (and, since the cluster, the socket
+  // as well) on the way into a chat.
+  await switchToSessionInPlace(sid);
 }
 
 /**
@@ -1497,6 +1498,26 @@ async function enterSession(sid: string): Promise<void> {
  * this via {@code markBound}); we just need to resolve the session
  * metadata and let Vue reactivity mount the chat panel.
  */
+/**
+ * Leave the chat without leaving Cortex.
+ *
+ * <p>The mirror of {@link switchToSessionInPlace}, and it needs no teardown of
+ * its own: dropping {@code sessionId} unmounts {@code CortexChatPanel}, whose
+ * `onBeforeUnmount` releases the WS session (with the store's 10s grace, so
+ * stepping back in is free). The open tabs are untouched because they live in
+ * the store, not in the URL — which is also why this no longer reloads. The
+ * old reload carried them through the address bar to survive itself.
+ */
+function leaveSessionInPlace(): void {
+  sessionId.value = null;
+  sessionTitle.value = null;
+  // Right panel stays open: leaving a chat means "show me the sessions", and
+  // the picker renders in the same slot the chat just vacated.
+  rightPanelOpen.value = true;
+  const qs = writeCortexView(`project=${projectId.value ?? ''}`, currentView());
+  window.history.pushState({ cortex: true }, '', `/cortex?${qs}`);
+}
+
 async function switchToSessionInPlace(sid: string): Promise<void> {
   sessionId.value = sid;
   rightPanelOpen.value = true;

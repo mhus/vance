@@ -100,8 +100,16 @@ const helpPath = computed<string | null>(() => resolveHelpPath(props.activeDocum
       <!-- v-show keeps the chat panel mounted while the user is on the
            Help tab, preserving its WS state + message buffer. -->
       <div v-show="activeTab === 'chat'" class="h-full">
+        <!-- Keyed on the session, because binding the WS happens in the
+             panel's `onMounted` and releasing it in `onBeforeUnmount`. Without
+             the key, switching from one session straight to another would keep
+             the same instance and neither would run — the panel would show
+             session B while the socket stayed bound to A. Entering and leaving
+             a chat work without it (null ↔ id mounts and unmounts on their
+             own); this covers the third case. -->
         <CortexChatPanel
           v-if="sessionId"
+          :key="sessionId"
           :session-id="sessionId"
           :project-id="projectId"
           :tool-service="toolService ?? null"

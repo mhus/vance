@@ -151,9 +151,13 @@ function loadAddon(name: string): Promise<void> {
       const mod = await loadRemote<RegisterExpose>(`${addonRemoteName(name)}/register`);
       const fn = mod?.register ?? mod?.default?.register;
       if (typeof fn === 'function') fn();
-    } catch {
-      // `./register` absent or threw — same as before: the addon simply
-      // contributes nothing, and the host carries on with built-in kinds.
+    } catch (e) {
+      // `./register` absent or threw — non-fatal: the addon simply
+      // contributes nothing and the host carries on with built-in kinds.
+      // Named, though: a remote whose bundle was never deployed fails as
+      // an unattributed "Failed to load module script" from the browser,
+      // and without this line there is nothing tying it to an addon.
+      console.warn(`[addonRegistry] '${name}' registered no kinds`, e);
     } finally {
       loaded.add(name);
     }

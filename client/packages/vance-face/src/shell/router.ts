@@ -30,14 +30,24 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
 
 /**
- * Query parameters that survive a route change, because they mean the same
- * thing everywhere: which project the reader is in, and which document.
- * Everything else (`sessionId`, `create`, `createDraft`, `entry`, `open`, …)
- * belongs to the editor that wrote it and is dropped — otherwise a hop from
- * Chat to Cortex would carry a session id that Cortex cannot use and that
- * shows up in every link the reader copies afterwards.
+ * <h3>No query filtering, and that is a correction</h3>
+ *
+ * An earlier version of this router dropped "editor-specific" query keys on a
+ * hop, keeping only `project`/`projectId`/`path`. The idea was that a session
+ * id must not ride along from Chat into Cortex.
+ *
+ * <p>It was a rule invented for a mechanism that does not exist. Nothing
+ * carries a query across a route change by itself: `push('/cortex?project=p')`
+ * sets exactly that query and nothing else. What the filter actually did was
+ * strip the parameters an editor deliberately sends to another one — the
+ * Explorer's `doc=` (open this document), its `create=1` (start a new one),
+ * the Inbox's `createDraft=1`. Clicking a file in `/documents` landed in
+ * Cortex with nothing open.
+ *
+ * <p>So: the caller builds the target URL and is the authority on what belongs
+ * in it. A stale parameter is a bug at the call site, not something the router
+ * should paper over — and papering over it here cost three working flows.
  */
-const SHARED_QUERY_KEYS = ['project', 'projectId', 'path'];
 
 const routes: RouteRecordRaw[] = [
   // `meta.title` replaces the per-file <title> each of these had as its own
@@ -109,29 +119,6 @@ export const router = createRouter({
   // Each editor is a full-height application that manages its own scroll
   // containers; restoring a window scroll position would fight them.
   scrollBehavior: () => false,
-});
-
-/**
- * Drop the previous editor's query on a route change, keep the shared keys.
- *
- * Only rewrites when something would actually be dropped, so an ordinary
- * navigation is untouched and this cannot loop.
- */
-router.beforeEach((to, from) => {
-  // The very first navigation of the page is not a hop between editors — it
-  // IS the address the reader opened, and every parameter in it was put there
-  // on purpose. Stripping here broke deep links: `/cortex?project=x&doc=y`
-  // arrived as `/cortex?project=x` and opened no document. `matched.length`
-  // is empty only for that initial route.
-  if (from.matched.length === 0) return true;
-  if (to.path === from.path) return true;
-  const keys = Object.keys(to.query);
-  if (keys.length === 0) return true;
-  const kept = keys.filter((k) => SHARED_QUERY_KEYS.includes(k));
-  if (kept.length === keys.length) return true;
-  const query: Record<string, unknown> = {};
-  for (const k of kept) query[k] = to.query[k];
-  return { path: to.path, query: query as never };
 });
 
 /**

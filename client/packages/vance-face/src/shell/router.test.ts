@@ -2,19 +2,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * The shell router's query policy.
+ * The shell router's query handling — which is now: it does not touch it.
  *
- * <p>There is one rule and it has two halves that pull in opposite
- * directions: a hop between editors must drop the parameters the previous one
- * owned (a session id means nothing to Cortex, and it would ride along in
- * every link the reader copies afterwards), while the address someone
- * *opened* must be honoured verbatim.
+ * <p>These tests exist because the opposite was tried. An earlier version
+ * filtered "editor-specific" keys on a hop, keeping only `project`/`path`, to
+ * stop a session id riding from Chat into Cortex. Nothing ever rode: a
+ * `push('/cortex?project=p')` sets that query and nothing else. What the
+ * filter really stripped were the parameters one editor deliberately sends to
+ * another — `doc=` (open this document), `create=1`, `createDraft=1` — so
+ * clicking a file in `/documents` opened Cortex with nothing in it.
  *
- * <p>The second half is here because the first one broke it. The guard
- * originally ran on every navigation including the initial one, so
- * `/cortex?project=x&doc=y` arrived as `/cortex?project=x` and opened no
- * document — deep links from mail, from the inbox, from a bookmark, all
- * silently truncated. Found in the browser, not by the build.
+ * <p>Both bugs were found in a browser and neither was visible to the build or
+ * to the first round of tests, which asserted the wrong rule and passed. What
+ * is pinned here is the behaviour the editors actually depend on: the query
+ * they construct arrives intact.
  */
 
 vi.mock('@/platform/webUiSession', () => ({ getSessionData: () => null }));
@@ -36,29 +37,38 @@ describe('shell router query policy', () => {
     await router.isReady();
   });
 
-  it('keeps every parameter of the address the page was opened with', async () => {
-    // Freshly imported router: `from` has no matched record, which is how the
-    // initial navigation is told apart from a hop.
+  it('keeps every parameter of the address the page was opened with', () => {
     const fresh = router.resolve('/cortex?project=cloud-delivery&doc=abc123');
     expect(fresh.query).toEqual({ project: 'cloud-delivery', doc: 'abc123' });
   });
 
-  it('drops the previous editor’s parameters on a hop', async () => {
-    await router.push('/chat?sessionId=s-1');
-    await router.push('/cortex?project=p&sessionId=s-1');
+  it('delivers the document the Explorer asks Cortex to open', async () => {
+    // The reported bug, in one line: clicking a file in /documents calls
+    // navigateTo('/cortex?project=…&doc=…'), and `doc` was being dropped.
+    await router.push('/documents?projectId=p');
+    await router.push('/cortex?project=p&doc=abc123');
 
     expect(router.currentRoute.value.path).toBe('/cortex');
-    expect(router.currentRoute.value.query).toEqual({ project: 'p' });
+    expect(router.currentRoute.value.query).toEqual({ project: 'p', doc: 'abc123' });
   });
 
-  it('carries the shared parameters across a hop', async () => {
-    await router.push('/documents?projectId=p&path=documents/');
-    await router.push('/cortex?projectId=p&path=documents/&createDraft=1');
+  it('delivers the create flags the Explorer and Inbox send', async () => {
+    // Same class, two more flows: "new file" from the Explorer and "start a
+    // draft" from the Inbox both travel as a flag the target reads on mount.
+    await router.push('/documents');
+    await router.push('/cortex?project=p&path=documents&create=1');
+    expect(router.currentRoute.value.query).toMatchObject({ create: '1' });
 
-    expect(router.currentRoute.value.query).toEqual({
-      projectId: 'p',
-      path: 'documents/',
-    });
+    await router.push('/inbox');
+    await router.push('/documents?createDraft=1');
+    expect(router.currentRoute.value.query).toMatchObject({ createDraft: '1' });
+  });
+
+  it('delivers the session Chat and Cortex hand each other', async () => {
+    await router.push('/chat?sessionId=s-1');
+    await router.push('/cortex?sessionId=s-1');
+
+    expect(router.currentRoute.value.query).toEqual({ sessionId: 's-1' });
   });
 
   it('leaves a navigation within the same editor untouched', async () => {

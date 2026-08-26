@@ -18,6 +18,7 @@ import ProcessCountsBadge from './ProcessCountsBadge.vue';
 import FookSupportModal from './FookSupportModal.vue';
 import VanceLogo from './VanceLogo.vue';
 import { loadRuntimeConfig, type RuntimeConfig } from '@/platform/runtimeConfig';
+import { navigateTo, staysInShell } from '@/platform/navigate';
 
 /**
  * A breadcrumb segment. Either a plain string label (immutable, no
@@ -130,7 +131,25 @@ async function logout(): Promise<void> {
   if (tenant) {
     await serverLogout(tenant);
   }
-  window.location.href = '/index.html';
+  // Deliberately NOT navigateTo: a route change would leave the shell mounted
+  // with a session that no longer exists, and the landing would render into a
+  // wall of 401s. A real page load is the point of logging out — the boot
+  // guard in index.html sees no cookie and sends the reader to the door.
+  window.location.href = '/';
+}
+
+/**
+ * The logo link. Inside the shell the landing is a route, so route to it;
+ * everywhere else let the anchor do what anchors do. Modified clicks are left
+ * alone throughout — cmd-click means "new tab", and hijacking that is the kind
+ * of thing that makes a web app feel like it is fighting the browser.
+ */
+function onHomeClick(event: MouseEvent): void {
+  if (event.defaultPrevented) return;
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  if (!staysInShell('/')) return;
+  event.preventDefault();
+  navigateTo('/');
 }
 
 // Facelift wrapper bridges — these are no-ops in a plain browser
@@ -177,10 +196,16 @@ function openFook(): void {
     <!-- Logo doubles as a "home" link back to the editor list.
          Mark (mathematical italic v) + wordmark; the mark carries the
          brand on small viewports where horizontal room is tight. -->
+    <!-- Stays a real anchor on purpose: middle-click, cmd-click and "copy
+         link" all keep working, and on the standalone entries (profile,
+         scopes, an addon area) there is no router to route with. Inside the
+         shell the click handler takes over and the landing becomes a route
+         change instead of a page load. -->
     <a
-      href="/index.html"
+      href="/"
       class="flex-none flex items-center gap-1.5 no-underline hover:opacity-80"
       :title="$t('common.backToHome')"
+      @click="onHomeClick"
     >
       <VanceLogo size="sm" class="text-primary" />
       <span class="font-bold text-lg font-mono">vancetope</span>

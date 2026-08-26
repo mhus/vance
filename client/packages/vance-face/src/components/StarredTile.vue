@@ -29,7 +29,7 @@ const href = computed(() => {
     project: props.item.project,
     path: props.item.path,
   });
-  return `/cortex.html?${p}`;
+  return `/cortex?${p}`;
 });
 
 const label = computed(() => props.item.title?.trim() || props.item.path);

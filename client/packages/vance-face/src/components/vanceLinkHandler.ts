@@ -6,7 +6,7 @@
  * <p>Provide a {@link VanceLinkHandler} under {@link VANCE_LINK_HANDLER_KEY}
  * via Vue's {@code provide()} to take ownership of plain-click navigation
  * — return {@code true} to suppress the default jump to
- * {@code documents.html}. Returning {@code false} (or not providing a
+ * {@code /documents}. Returning {@code false} (or not providing a
  * handler) falls back to the default.
  *
  * <p>Cmd/Ctrl/Shift-click is treated as "open in new tab" and bypasses

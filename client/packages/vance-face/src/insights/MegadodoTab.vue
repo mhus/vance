@@ -169,7 +169,7 @@ function linkFor(row: MegadodoEventDto): string | null {
 function logLink(row: MegadodoEventDto): string | null {
   if (!row.logPath) return null;
   const project = row.projectId ?? props.projectId ?? '';
-  return `/cortex.html?project=${encodeURIComponent(project)}&path=${encodeURIComponent(row.logPath)}`;
+  return `/cortex?project=${encodeURIComponent(project)}&path=${encodeURIComponent(row.logPath)}`;
 }
 
 /**

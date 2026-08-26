@@ -94,19 +94,19 @@ const props = defineProps<{
   draftKey?: string | null;
   /** Per-message active-app hint. Cortex sets this when the visible
    *  tab is a `kind: application` document so the brain can render an
-   *  app-context block in the engine prompt. chat.html leaves it
+   *  app-context block in the engine prompt. /chat leaves it
    *  unset. See planning/apps-in-cortex-and-live.md §5. */
   activeApp?: ActiveAppContext | null;
   /** Per-message "bound file" hint. Cortex sets this to the document
    *  currently bound to the chat (the `bind file` affordance) so the
    *  brain inlines it into this turn — the agent sees the file the user
-   *  is working on. Per-turn, not persisted. chat.html leaves it unset. */
+   *  is working on. Per-turn, not persisted. /chat leaves it unset. */
   boundDocumentId?: string | null;
   /** Per-message character range the user has selected inside the
    *  bound document at send time. Only the range travels — the model
    *  reads the selected text on demand via {@code doc_get_selection}.
    *  Cortex sets this when the selection lives inside the bound doc;
-   *  chat.html leaves it unset. */
+   *  /chat leaves it unset. */
   boundDocSelection?: BoundDocSelection | null;
   /**
    * Which inbox thread (and picked contribution) the reader has open beside this

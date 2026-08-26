@@ -6,7 +6,7 @@
  * swaps the panel in place).
  *
  * <p>The "+ New session" button opens a recipe-selection modal inline and
- * bootstraps via WebSocket rather than sending the user to chat.html —
+ * bootstraps via WebSocket rather than sending the user to /chat —
  * whatever the host had on screen survives.
  */
 import { computed, onMounted, ref, watch } from 'vue';
@@ -29,6 +29,7 @@ import { VAlert, VButton, VInput, VModal } from '@/components';
 import { useSessionGroups } from '@/composables/useSessionGroups';
 import { useSessionGroupCollapse } from '@/composables/useSessionGroupCollapse';
 import { markBound, useWsConnection } from '@/ws/wsConnectionStore';
+import { navigateTo } from '@/platform/navigate';
 
 const { t } = useI18n();
 
@@ -50,9 +51,9 @@ const showArchived = ref(false);
 
 // ─── Inline recipe picker + session bootstrap ───
 // Mirrors PickerView.vue's recipe modal so the "+" button stays in
-// cortex.html instead of redirecting to chat.html (which would wipe
+// /cortex instead of redirecting to /chat (which would wipe
 // the user's open tabs). On success we emit `open-session` so
-// EditorApp's enterSession() navigates to cortex.html?sessionId=…
+// EditorApp's enterSession() navigates to /cortex?sessionId=…
 // while carrying the open tabs across.
 const { socket } = useWsConnection();
 
@@ -221,18 +222,18 @@ async function openRecipeModal(): Promise<void> {
 /**
  * Bootstrap a fresh session via the `session-bootstrap` WebSocket call.
  * On success, emit `open-session` with the new sessionId so EditorApp's
- * {@code enterSession()} navigates to `cortex.html?sessionId=…` (carrying
+ * {@code enterSession()} navigates to `/cortex?sessionId=…` (carrying
  * the open tabs). On failure, surface the error inline — only fall back
- * to the chat.html redirect if the socket itself is unavailable.
+ * to the /chat redirect if the socket itself is unavailable.
  */
 async function bootstrapNew(chatRecipe: string | null): Promise<void> {
   const sock = socket.value;
   if (!sock) {
-    // Socket not ready — fall back to the legacy chat.html flow rather
+    // Socket not ready — fall back to the legacy /chat flow rather
     // than silently failing. This is the only redirect path left.
     const params = new URLSearchParams();
     params.set('project', props.projectId);
-    window.location.href = `/chat.html?${params.toString()}`;
+    navigateTo(`/chat?${params.toString()}`);
     return;
   }
   bootstrapping.value = true;

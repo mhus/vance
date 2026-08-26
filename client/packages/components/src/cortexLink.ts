@@ -26,7 +26,7 @@ export interface CortexLinkTarget {
   entry?: string | null;
 }
 
-/** `/cortex.html?project=…&doc=…[&entry=…]` */
+/** `/cortex?project=…&doc=…[&entry=…]` */
 export function cortexDeepLink(target: CortexLinkTarget): string {
   const params = new URLSearchParams();
   params.set('project', target.project);
@@ -34,5 +34,5 @@ export function cortexDeepLink(target: CortexLinkTarget): string {
   if (target.entry) {
     params.set('entry', `${target.documentId}:${encodeURIComponent(target.entry)}`);
   }
-  return `/cortex.html?${params}`;
+  return `/cortex?${params}`;
 }

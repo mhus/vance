@@ -4,6 +4,11 @@
 // übersetzt ist.
 
 export default {
+  newVersion: {
+    message: 'Es gibt eine neuere Version von Vance.',
+    action: 'Neu laden',
+    dismiss: 'Später',
+  },
   common: {
     save: 'Speichern',
     saving: 'Speichern…',

@@ -95,7 +95,7 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
   /**
    * The session ended (archived/deleted) or the user asked for the hub. The
-   * host decides what that means — Cortex leaves for chat.html, the inbox
+   * host decides what that means — Cortex leaves for /chat, the inbox
    * drops back to its session picker.
    */
   (e: 'leave'): void;
@@ -237,7 +237,7 @@ watch(
 // Imperative cross-component routing — ChatComposer pushes optimistic
 // user-message echoes; ChatView appends them to its message list so the
 // user sees their message before the server frame arrives. Same dance
-// chat.html does in its parent ChatApp.
+// /chat does in its parent ChatApp.
 const chatViewRef = ref<InstanceType<typeof ChatView> | null>(null);
 
 async function bindToSession(): Promise<void> {

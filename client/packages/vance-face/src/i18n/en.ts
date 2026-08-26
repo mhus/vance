@@ -10,6 +10,11 @@
 // keys.
 
 export default {
+  newVersion: {
+    message: 'A newer version of Vance is available.',
+    action: 'Reload',
+    dismiss: 'Later',
+  },
   common: {
     save: 'Save',
     saving: 'Saving…',

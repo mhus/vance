@@ -25,9 +25,9 @@ const variables = computed(() => Object.entries(props.detail.variables ?? {}));
 /** Where a link points, per rel. The run view never renders those itself. */
 function href(rel: string, target: string): string {
   const project = encodeURIComponent(props.projectId);
-  if (rel === 'session') return `/chat.html?project=${project}&sessionId=${encodeURIComponent(target)}`;
+  if (rel === 'session') return `/chat?project=${project}&sessionId=${encodeURIComponent(target)}`;
   // definition / document both open in Cortex by path.
-  return `/cortex.html?project=${project}&path=${encodeURIComponent(target)}`;
+  return `/cortex?project=${project}&path=${encodeURIComponent(target)}`;
 }
 
 function stepTone(outcome?: string | null): string {
@@ -81,7 +81,7 @@ function render(value: unknown): string {
          doing anything to the run. -->
     <VAlert v-if="detail.waitingOnInboxItemId" variant="warning" class="waiting">
       {{ t('runs.detail.waitingOnInbox') }}
-      <a :href="`/inbox.html?item=${encodeURIComponent(detail.waitingOnInboxItemId)}`">
+      <a :href="`/inbox?item=${encodeURIComponent(detail.waitingOnInboxItemId)}`">
         {{ t('runs.detail.openInbox') }} ↗
       </a>
     </VAlert>

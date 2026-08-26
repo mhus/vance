@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Unified editor surface for {@code cortex.html}. Two boot modes are
+ * Unified editor surface for the {@code /cortex} route. Two boot modes are
  * driven purely by URL params:
  *
  *  - With {@code ?sessionId=…}: session-bound. Resolves session →
@@ -68,6 +68,7 @@ import CreateDocumentModal, {
   type CreateModalResult,
 } from './components/CreateDocumentModal.vue';
 import NewFolderModal from './components/NewFolderModal.vue';
+import { navigateTo } from '@/platform/navigate';
 
 // How the chat binds to a Cortex document for per-turn LLM context.
 //  - 'auto'   (default): the bound doc follows the active tab, and the
@@ -371,7 +372,7 @@ onMounted(async () => {
     // Open the tabs the URL declares (create/path are dropped in the process).
     await restoreView();
   } else {
-    window.location.replace('/documents.html');
+    navigateTo('/documents', { replace: true });
   }
 });
 
@@ -487,7 +488,7 @@ async function openPathHandoff(pid: string, rawPath: string): Promise<void> {
   const open = view.open.includes(id) ? view.open : [...view.open, id];
   const queries = viewQuery ? { ...view.queries, [id]: viewQuery } : view.queries;
   const qs = writeCortexView(known, { ...view, open, doc: id, queries });
-  window.history.replaceState({ cortex: true }, '', `/cortex.html${qs ? `?${qs}` : ''}`);
+  window.history.replaceState({ cortex: true }, '', `/cortex${qs ? `?${qs}` : ''}`);
 }
 
 /** Snapshot the current view from the store + preference refs. */
@@ -668,16 +669,16 @@ const projectLabel = computed<string | null>(() => {
 
 /**
  * Session mode: jump back to chat picker with project pre-selected.
- * Chatless mode: jump back to documents.html explorer with the same
+ * Chatless mode: jump back to /documents explorer with the same
  * project selected.
  */
 function onProjectCrumbClick(): void {
   const id = projectId.value;
   if (!id) return;
   if (hasSession.value) {
-    window.location.href = `/chat.html?project=${encodeURIComponent(id)}`;
+    navigateTo(`/chat?project=${encodeURIComponent(id)}`);
   } else {
-    window.location.href = `/documents.html?projectId=${encodeURIComponent(id)}`;
+    navigateTo(`/documents?projectId=${encodeURIComponent(id)}`);
   }
 }
 
@@ -1245,15 +1246,15 @@ function backHome(): void {
     const params = new URLSearchParams();
     params.set('sessionId', sessionId.value);
     if (projectId.value) params.set('project', projectId.value);
-    window.location.href = `/chat.html?${params.toString()}`;
+    navigateTo(`/chat?${params.toString()}`);
   } else if (projectId.value) {
     const params = new URLSearchParams();
     params.set('projectId', projectId.value);
     const folder = currentFolderPrefix();
     if (folder) params.set('path', folder);
-    window.location.href = `/documents.html?${params.toString()}`;
+    navigateTo(`/documents?${params.toString()}`);
   } else {
-    window.location.href = '/documents.html';
+    navigateTo('/documents');
   }
 }
 
@@ -1501,7 +1502,7 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
   rightPanelOpen.value = true;
   // Update the URL so a refresh / bookmark lands on the session.
   const qs = writeCortexView(`sessionId=${sid}&project=${projectId.value ?? ''}`, currentView());
-  window.history.pushState({ cortex: true }, '', `/cortex.html?${qs}`);
+  window.history.pushState({ cortex: true }, '', `/cortex?${qs}`);
   await resolveSession(sid);
 }
 </script>

@@ -3,7 +3,7 @@
  * PDF renderer for {@code kind: pdf}. Two modes:
  *
  * - {@code editor} — full doc inline (used by the document editor in
- *   documents.html). The browser's native PDF viewer is embedded via
+ *   /documents). The browser's native PDF viewer is embedded via
  *   {@code <iframe>}; pagination, zoom, search, print all come from
  *   the browser plugin.
  * - {@code embedded} — chat-friendly card body: only a single "Open

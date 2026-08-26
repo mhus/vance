@@ -25,6 +25,7 @@ import { InboxClientToolService } from '@/inbox/inboxClientToolService';
 import { setDocumentDraft } from '@/platform';
 import InboxThreadPanel from '@/inbox/InboxThreadPanel.vue';
 import InboxReactionBar from '@/inbox/InboxReactionBar.vue';
+import { navigateTo } from '@/platform/navigate';
 import {
   AnswerOutcome,
   Criticality,
@@ -404,7 +405,7 @@ async function toDocument(): Promise<void> {
   }
   // Same-tab navigation — the Document editor mounts fresh and
   // consumes the draft on its first onMounted.
-  window.location.href = '/documents.html?createDraft=1';
+  navigateTo('/documents?createDraft=1');
 }
 
 async function dismissItem(): Promise<void> {
@@ -506,7 +507,7 @@ const sharedSnippet = computed<string | null>(() => {
 
 /** Cortex deep-link: a lone {@code doc} id opens as a single tab. */
 function cortexLink(ref: MaximegalonDocumentRef): string {
-  return `/cortex.html?project=${encodeURIComponent(ref.projectId)}`
+  return `/cortex?project=${encodeURIComponent(ref.projectId)}`
     + `&doc=${encodeURIComponent(ref.documentId)}`;
 }
 
@@ -708,7 +709,7 @@ function openChatSession(sid: string): void {
 
 /**
  * Back to the picker — the session ended, or the user asked for the hub.
- * Cortex leaves for chat.html here because it has nothing left to show; the
+ * Cortex leaves for /chat here because it has nothing left to show; the
  * inbox does, so it stays put.
  */
 function leaveChatSession(): void {

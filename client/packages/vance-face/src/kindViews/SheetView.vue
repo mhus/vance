@@ -28,7 +28,7 @@ defineOptions({ name: 'SheetView' });
 const props = defineProps<{
   doc: SheetDocument;
   /** Document identity for server-side recalc (`/sheet/calc`). Passed by
-   *  the Cortex shell; absent in embed/documents.html — recalc is then
+   *  the Cortex shell; absent in embed/documents — recalc is then
    *  disabled and cells render the last persisted `$computed` overlay. */
   projectId?: string;
   docPath?: string;

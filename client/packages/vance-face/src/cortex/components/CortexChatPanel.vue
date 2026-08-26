@@ -10,6 +10,7 @@ import type { ComposerCurrentFileSource } from '@/chat/ChatComposer.vue';
 import { useCortexStore } from '../stores/cortexStore';
 import { useViewEditMode } from '../useViewEditMode';
 import type { CortexClientToolService } from '../clientToolService';
+import { navigateTo } from '@/platform/navigate';
 
 /**
  * Cortex's half of the chat side panel: everything the conversation should
@@ -112,9 +113,9 @@ const activeApp = computed<ActiveAppContext | null>(() => {
 
 function onLeave(): void {
   // ChatView emits 'leave' when the user archives/deletes the session
-  // via SessionHeader. Bounce back to chat.html so they can pick a
+  // via SessionHeader. Bounce back to /chat so they can pick a
   // different session — Cortex without a session has nothing to do.
-  window.location.href = '/chat.html';
+  navigateTo('/chat');
 }
 
 /**

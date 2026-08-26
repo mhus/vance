@@ -129,11 +129,11 @@ function showSystemNotification(n: NotificationDto): void {
       window.focus();
       const sessionId = n.sessionId;
       if (sessionId) {
-        // Same-tab navigation if we're already on chat.html; new tab
+        // Same-tab navigation if we're already on /chat; new tab
         // otherwise so we don't kill the editor the user has open.
-        const onChat = window.location.pathname.endsWith('/chat.html')
+        const onChat = window.location.pathname.endsWith('/chat')
           || window.location.pathname === '/';
-        const url = `/chat.html?sessionId=${encodeURIComponent(sessionId)}`;
+        const url = `/chat?sessionId=${encodeURIComponent(sessionId)}`;
         if (onChat) window.location.href = url;
         else window.open(url, '_blank', 'noopener');
       }

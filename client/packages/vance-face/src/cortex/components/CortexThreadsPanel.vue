@@ -260,7 +260,7 @@ async function onListReact(item: MaximegalonDto, key: string, on: boolean): Prom
  * contributes; to settle it they go where settling belongs.
  */
 function inboxLink(id: string): string {
-  return `/inbox.html?item=${encodeURIComponent(id)}`;
+  return `/inbox?item=${encodeURIComponent(id)}`;
 }
 
 function when(at: Date | string | undefined): string {

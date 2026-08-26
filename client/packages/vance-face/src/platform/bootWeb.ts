@@ -42,7 +42,7 @@ function redirectToLogin(): void {
   const next = encodeURIComponent(
     window.location.pathname + window.location.search + window.location.hash,
   );
-  window.location.href = `/index.html?next=${next}`;
+  window.location.href = `/login.html?next=${next}`;
 }
 
 configurePlatform({

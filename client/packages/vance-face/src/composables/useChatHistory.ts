@@ -4,7 +4,7 @@ import { brainFetch } from '@vance/shared';
 
 /**
  * REST loader for the persisted chat history of a session. Fires on
- * chat-editor mount (chat.html) and once again whenever the user
+ * chat-editor mount (/chat) and once again whenever the user
  * resumes a different session.
  *
  * Renders messages chronologically (oldest first); the live WS stream

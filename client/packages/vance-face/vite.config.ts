@@ -11,22 +11,23 @@ const pkgDir = import.meta.dirname;
 
 // One Rollup input per top-level HTML file. Add new editor HTMLs here as they
 // are implemented — see specification/web-ui.md §3 for the full list.
+//
+// `index` is the workspace SHELL: cortex, chat, inbox, documents and the
+// launcher are routes inside it (src/shell/router.ts), not entries of their
+// own. The rule is that whatever answers `/` is index.html, so making the
+// shell serve `/` decided its file name — and left nginx untouched, since its
+// `index` directive and `try_files` fallback already point there.
 const editorEntries = {
   index: resolve(pkgDir, 'index.html'),
-  documents: resolve(pkgDir, 'documents.html'),
-  inbox: resolve(pkgDir, 'inbox.html'),
-  chat: resolve(pkgDir, 'chat.html'),
+  // The door. Its own entry precisely because it must boot when the shell
+  // bundle cannot — see src/login/LoginApp.vue.
+  login: resolve(pkgDir, 'login.html'),
   scopes: resolve(pkgDir, 'scopes.html'),
   tools: resolve(pkgDir, 'tools.html'),
   insights: resolve(pkgDir, 'insights.html'),
   runs: resolve(pkgDir, 'runs.html'),
   users: resolve(pkgDir, 'users.html'),
   profile: resolve(pkgDir, 'profile.html'),
-  cortex: resolve(pkgDir, 'cortex.html'),
-  // notepad merged into cortex (2026-06); this stub keeps old bookmarks
-  // and inline server redirects (3rd-party tools, history links)
-  // working by forwarding to /cortex.html with all query params intact.
-  notepad: resolve(pkgDir, 'notepad.html'),
   'connected-accounts': resolve(pkgDir, 'connected-accounts.html'),
   'oauth-providers': resolve(pkgDir, 'oauth-providers.html'),
   'tool-templates': resolve(pkgDir, 'tool-templates.html'),
@@ -35,6 +36,17 @@ const editorEntries = {
   // addon's ./area expose (e.g. the Simple-Auth permission-grant UI).
   addon: resolve(pkgDir, 'addon.html'),
 };
+
+// No history-fallback plumbing for the shell's routes (`/cortex`, `/chat`, …),
+// and that is a measured absence rather than an oversight. Production nginx
+// already resolves them: its `index` directive and its `try_files` fallback
+// both name index.html, which IS the shell. And Vite's dev server does the
+// same for free — `appType` defaults to `'spa'`, which serves index.html for
+// any extensionless path that accepts HTML. Verified by requesting `/cortex`
+// from a dev server that had no such middleware and getting the shell entry.
+//
+// If `appType: 'mpa'` is ever set here, that changes and the routes need an
+// explicit rewrite in the middleware below.
 
 // Build-time remotes list is intentionally empty — addons are discovered
 // and registered at RUNTIME via `registerRemotes()` from

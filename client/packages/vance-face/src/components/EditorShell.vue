@@ -11,7 +11,6 @@ import EditorTopbar, { type Crumb } from './EditorTopbar.vue';
 import MarkdownView from './MarkdownView.vue';
 import NotificationToasts from '@/notification/NotificationToasts.vue';
 import {
-  closeConnection as wsCloseConnection,
   ensureConnected as wsEnsureConnected,
   useWsConnection,
 } from '@/ws/wsConnectionStore';
@@ -314,7 +313,7 @@ async function guardAccessCookie(): Promise<void> {
 function redirectToLogin(): void {
   const currentUrl = window.location.pathname + window.location.search + window.location.hash;
   const next = encodeURIComponent(currentUrl);
-  window.location.href = `/index.html?next=${next}`;
+  window.location.href = `/login.html?next=${next}`;
 }
 
 // ──────────────── WebSocket lifecycle ────────────────
@@ -326,7 +325,7 @@ function redirectToLogin(): void {
 //
 // The connection status indicator in the topbar reads from the same
 // store, so every editor inherits the green/grey/red dot — including
-// REST-only editors like {@code documents.html} that just want to show
+// REST-only editors like {@code /documents} that just want to show
 // "live" without binding a session.
 
 const { socket: wsSocket, status: wsStatus } = useWsConnection();
@@ -376,11 +375,17 @@ onBeforeUnmount(() => {
   }
   window.removeEventListener('keydown', onGlobalKeydown);
   window.removeEventListener('pointerdown', onGlobalPointerdown);
-  // The shell unmounts on full-page navigation only (MPA pattern), and
-  // at that point the browser is destroying the Vue app anyway. Close
-  // explicitly so the reconnect loop stops cleanly instead of racing
-  // against the browser killing the socket.
-  wsCloseConnection();
+  // The WebSocket is NOT closed here, and that is the point of the workspace
+  // cluster. This used to read "the shell unmounts on full-page navigation
+  // only (MPA pattern)" — true when every editor was its own page, false the
+  // moment cortex/chat/inbox/documents became routes: an unmount is now a
+  // route change, and closing here tore the socket down on every click.
+  // Measured in the browser before the fix: six sockets for six route
+  // changes, with the presence roster rebuilt each time — visible to *other*
+  // users as this one flickering in and out.
+  //
+  // The socket is a tab singleton, so it ends with the tab. wsConnectionStore
+  // registers a `pagehide` listener for exactly that.
 });
 </script>
 

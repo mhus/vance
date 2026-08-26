@@ -39,6 +39,7 @@ import PickerView from './PickerView.vue';
 import ChatView from './ChatView.vue';
 import ChatComposer from './ChatComposer.vue';
 import ChatRightPanel from './ChatRightPanel.vue';
+import { navigateTo } from '@/platform/navigate';
 import {
   useFollowUpSuggestion,
   type FollowUpConversationContext,
@@ -64,7 +65,7 @@ const {
 
 // When the user dismisses the global "take over?" dialog (bindConflict
 // clears without binding here), don't leave the view stuck on
-// "Connecting…". chat.html has a session picker — fall back to it so the
+// "Connecting…". /chat has a session picker — fall back to it so the
 // user can pick another session or re-attempt. Binding here clears the
 // conflict via activeSessionId instead, so we only redirect the decline.
 watch(bindConflict, (now, prev) => {
@@ -535,8 +536,8 @@ function onAcceptFollowUpFromView(): void {
 
 /**
  * ChatView just persisted the conversation as a Markdown document.
- * chat.html has no in-place editor surface, so we open the document
- * in a new browser tab via documents.html — the user keeps their
+ * /chat has no in-place editor surface, so we open the document
+ * in a new browser tab via /documents — the user keeps their
  * chat session alive in the original tab and can move/rename the
  * export there. Cortex handles its own event by opening the document
  * as a tab inside the same window (see CortexChatPanel).
@@ -544,7 +545,7 @@ function onAcceptFollowUpFromView(): void {
 function onConversationExportedFromView(payload: { documentId: string; document: DocumentDto }): void {
   const projectId = payload.document.projectId ?? chatProjectId.value;
   if (!projectId) return;
-  const url = `/cortex.html?project=${encodeURIComponent(projectId)}`
+  const url = `/cortex?project=${encodeURIComponent(projectId)}`
     + `&doc=${encodeURIComponent(payload.documentId)}`;
   window.open(url, '_blank', 'noopener');
 }
@@ -803,7 +804,7 @@ async function onPopstate(): Promise<void> {
 
 onMounted(async () => {
   // Only URL-hint triggers auto-bind. Stale localStorage sessionId is
-  // intentionally ignored — opening chat.html with no params lands
+  // intentionally ignored — opening /chat with no params lands
   // in the picker so the user explicitly picks a session.
   const hinted = urlSessionId();
   // Project from URL is seeded before mount completes so PickerView
@@ -863,13 +864,13 @@ function onTitleClick(): void {
  * state (open tabs, chat-bound document) from the chat session record.
  *
  * <p>Implemented as a hard navigation rather than an SPA route because
- * the two views live in separate Vite entries (chat.html, cortex.html);
+ * the two views live in separate Vite entries (/chat, /cortex);
  * the user's reverse path is the {@code ← Chat} button in Cortex.
  */
 function openInCortex(): void {
   const id = activeSessionId.value;
   if (!id) return;
-  window.location.href = `/cortex.html?sessionId=${encodeURIComponent(id)}`;
+  navigateTo(`/cortex?sessionId=${encodeURIComponent(id)}`);
 }
 </script>
 

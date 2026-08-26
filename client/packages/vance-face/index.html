@@ -5,9 +5,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Vance</title>
+    <script>
+      // Bounce to the door before anything else is fetched.
+      //
+      // This file is the workspace shell now, so it is also what `/` and every
+      // unresolved path land on — including the ones a signed-out visitor
+      // reaches. `ensureAuthenticated()` inside main.ts would redirect too, but
+      // only after the module graph has loaded: the <link rel="modulepreload">
+      // tags the bundler injects below sit in this same <head>, and by the time
+      // any module runs the browser has already started pulling the whole
+      // workspace to throw it away.
+      //
+      // A blocking inline script in <head> runs before the parser reaches those
+      // tags, so nothing is fetched. It reads `vance_data`, which is the one
+      // session cookie deliberately NOT HttpOnly (WebUiCookieService), and only
+      // ever redirects — the real check stays server-side.
+      //
+      // Same shape as the old notepad.html stub, which is the reason we know it
+      // works.
+      (function () {
+        try {
+          if (/(^|;\s*)vance_data=/.test(document.cookie)) return;
+        } catch (e) {
+          return; // cookies unreadable — let the app decide rather than trap
+        }
+        var here = window.location.pathname + window.location.search + window.location.hash;
+        window.location.replace('/login.html?next=' + encodeURIComponent(here));
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>
-    <script type="module" src="/src/index/main.ts"></script>
+    <script type="module" src="/src/shell/main.ts"></script>
   </body>
 </html>

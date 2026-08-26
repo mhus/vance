@@ -11,7 +11,7 @@ import SheetView from '@/kindViews/SheetView.vue';
 //
 // Mindmap belongs here and sat in the static block above until now: at 602 KB
 // (markmap-lib + markmap-view) it is by a wide margin the heaviest view in the
-// tree, and it was preloaded on every cortex.html open — the four that stayed
+// tree, and it was preloaded on every /cortex open — the four that stayed
 // static are 5–24 KB, where a round trip would cost more than it saves.
 const MindmapView = defineAsyncComponent(
   () => import('@/kindViews/MindmapView.vue'),

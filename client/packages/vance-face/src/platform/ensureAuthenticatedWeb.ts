@@ -21,7 +21,7 @@ import { getSessionData, isAccessAlive, isRefreshAlive } from './webUiSession';
  * 2. If access has expired but refresh is still alive, fire a silent
  *    re-mint. On success the server issues fresh cookies and we
  *    return.
- * 3. Otherwise redirect to `index.html` with the current URL as the
+ * 3. Otherwise redirect to `login.html` with the current URL as the
  *    `next` query parameter, and never resolve — the page is being
  *    replaced.
  */
@@ -41,5 +41,5 @@ export async function ensureAuthenticated(): Promise<void> {
 function redirectToLogin(): void {
   const currentUrl = window.location.pathname + window.location.search + window.location.hash;
   const next = encodeURIComponent(currentUrl);
-  window.location.href = `/index.html?next=${next}`;
+  window.location.href = `/login.html?next=${next}`;
 }

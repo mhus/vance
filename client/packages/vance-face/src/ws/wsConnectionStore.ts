@@ -291,6 +291,17 @@ function wireBrowserResumeListeners(): void {
       manualReconnect();
     }
   });
+  // Der Socket ist ein Tab-Singleton, also endet er mit dem Tab — nicht mit
+  // irgendeiner Komponente. Vorher schloss ihn `EditorShell` im Unmount, was
+  // stimmte, solange jeder Editor eine eigene Seite war; seit dem
+  // Workspace-Cluster ist ein Unmount ein Routenwechsel, und der Socket wurde
+  // bei jedem Klick neu aufgebaut (im Browser gemessen: sechs Sockets bei
+  // sechs Routenwechseln). Gemessen wird die Absicht hier, wo der Besitz
+  // liegt: `pagehide` statt `beforeunload`, weil Safari/iOS `beforeunload`
+  // beim Wegwischen der Seite nicht zuverlässig feuert.
+  window.addEventListener('pagehide', () => {
+    closeConnection();
+  });
 }
 
 function openRaw(opts: { tenant: string; jwt?: string }): Promise<BrainWebSocket> {
@@ -306,7 +317,7 @@ function openRaw(opts: { tenant: string; jwt?: string }): Promise<BrainWebSocket
  * Open the tab-singleton socket, guarded against concurrent callers.
  *
  * <p>Multiple consumers open the connection in parallel on mount — most
- * visibly in cortex.html, where the chat-bind, the {@code documents}
+ * visibly in /cortex, where the chat-bind, the {@code documents}
  * live-watch (subscribe / subscribePrefix), the notification subscription
  * and the tool-service attach all call {@link ensureConnected} in the same
  * tick. Without this guard, each caller that observed a {@code null}
@@ -314,7 +325,7 @@ function openRaw(opts: { tenant: string; jwt?: string }): Promise<BrainWebSocket
  * registry then kicks all but one, the kicked ones auto-reconnect and kick
  * the survivor, and the tab settles into a ~3s connect/kick ping-pong.
  * Every steer that lands in a kicked connection's brief unbound window
- * earns a 403 "process-steer requires a bound session". chat.html happened
+ * earns a 403 "process-steer requires a bound session". /chat happened
  * to dodge it only because its picker→openAndBind flow opens sequentially.
  *
  * <p>Collapses concurrent opens into ONE socket, and centralises
@@ -384,7 +395,7 @@ async function redirectIfSessionDead(): Promise<boolean> {
   // session is provably dead; otherwise let the reconnect loop keep trying.
   if (getSessionData()) {
     // Session data still present → brain was unreachable, not unauthenticated.
-    // Redirecting to login would loop: index.html sees the alive access cookie
+    // Redirecting to login would loop: login.html sees the alive access cookie
     // and bounces back to the editor, which fails to connect again. Instead,
     // let the caller fall through to scheduleReconnect().
     return false;
@@ -1391,7 +1402,7 @@ export function markBound(sessionId: string): void {
 /**
  * Cancel any pending leave-grace timer and release immediately. Used
  * when the user explicitly wants to drop the session (logout,
- * picker-mode in chat.html).
+ * picker-mode in /chat).
  */
 export async function unbindNow(): Promise<void> {
   clearReleaseTimer();

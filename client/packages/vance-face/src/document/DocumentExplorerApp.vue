@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
- * Multi-project document Explorer — the new shape of documents.html.
+ * Multi-project document Explorer — the new shape of /documents.
  * Browses projects, folders and file metadata, but never renders a
  * document body: a click on a file row hands off to
- * {@code /cortex.html?project=X&doc=Y}, which mounts the unified
+ * {@code /cortex?project=X&doc=Y}, which mounts the unified
  * Cortex editor surface (chatless when no sessionId is given).
  *
  * Editing (title, tags, body, versions, archives) lives in Cortex
@@ -35,6 +35,7 @@ import { brainFetch } from '@vance/shared';
 import type { DocumentFoldersResponse, DocumentSummary, MountDto } from '@vance/generated';
 import { MountSearchOutcome } from '@vance/generated';
 import DocumentIcon from './DocumentIcon.vue';
+import { navigateTo } from '@/platform/navigate';
 
 const { t } = useI18n();
 const projectsState = useTenantProjects();
@@ -88,7 +89,7 @@ function forwardDraftToNotepad(projectId: string): void {
   const params = new URLSearchParams();
   params.set('project', projectId);
   params.set('create', '1');
-  window.location.href = `/cortex.html?${params.toString()}`;
+  navigateTo(`/cortex?${params.toString()}`);
 }
 
 onBeforeUnmount(() => {
@@ -185,7 +186,7 @@ function openInNotepad(docId: string): void {
   const params = new URLSearchParams();
   params.set('project', selectedProjectId.value);
   params.set('doc', docId);
-  window.location.href = `/cortex.html?${params.toString()}`;
+  navigateTo(`/cortex?${params.toString()}`);
 }
 
 function openCreateInNotepad(): void {
@@ -194,7 +195,7 @@ function openCreateInNotepad(): void {
   params.set('project', selectedProjectId.value);
   params.set('path', docsState.pathPrefix.value.replace(/\/+$/, ''));
   params.set('create', '1');
-  window.location.href = `/cortex.html?${params.toString()}`;
+  navigateTo(`/cortex?${params.toString()}`);
 }
 
 // Server-side filter through the existing endpoint: re-load on every

@@ -61,7 +61,7 @@ onUnmounted(() => {
 <template>
   <a
     v-if="visible"
-    href="/inbox.html"
+    href="/inbox"
     class="no-underline"
     :title="tooltip"
     :aria-label="tooltip"

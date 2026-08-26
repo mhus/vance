@@ -34,7 +34,7 @@ const loadError = ref<string | null>(null);
 // Same interception protocol as the inline-anchor path in MarkdownView:
 // a host (Cortex) can provide a handler to take ownership of plain
 // "Open" clicks and render the document in-place instead of letting us
-// jump to documents.html.
+// jump to /documents.
 const vanceLinkHandler = inject(VANCE_LINK_HANDLER_KEY, null);
 
 // Embedded content brings its own base for relative references: a link
@@ -161,7 +161,7 @@ async function onOpen(event?: MouseEvent): Promise<void> {
       // Fall through to default navigation rather than swallow.
     }
   }
-  const url = `/cortex.html?project=${encodeURIComponent(projectId)}`
+  const url = `/cortex?project=${encodeURIComponent(projectId)}`
     + `&doc=${encodeURIComponent(documentId)}`;
   if (newTab) {
     window.open(url, '_blank', 'noopener');

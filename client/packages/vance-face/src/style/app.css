@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Print rules for every editor — see `data-print-root` in print.css. */
+@import "./print.css";
 /* Legacy JS config (content globs + theme) — v4 no longer auto-detects it. */
 @config "../../tailwind.config.js";
 /* daisyUI 5 loads as a CSS plugin now, not via tailwind.config's plugins[]. */

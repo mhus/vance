@@ -70,6 +70,61 @@ function ensureAutoListener(): void {
   mediaQueryHandler = handler;
 }
 
+let printHooksAttached = false;
+
+/**
+ * Force the light theme for the duration of a print job, restoring the
+ * user's theme afterwards.
+ *
+ * Without this the dark theme reaches the printer as it is on screen:
+ * light text on a dark fill that the print pipeline drops, i.e. white
+ * on white. Flipping the theme is the only fix that also covers the
+ * kind renderings inside the page — a print stylesheet would have to
+ * re-declare every DaisyUI colour token to get there.
+ *
+ * Two triggers, because the events are not universally implemented:
+ * `beforeprint`/`afterprint` fire in Chrome and Firefox, and the
+ * `print` media query changes in every engine (Safari's path).
+ * Both funnel into the same idempotent enter/leave pair.
+ *
+ * Idempotent — safe to call from any entry's boot.
+ */
+export function ensurePrintLightTheme(): void {
+  if (printHooksAttached) return;
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  printHooksAttached = true;
+
+  const root = document.documentElement;
+  let restore: (() => void) | null = null;
+
+  const enter = (): void => {
+    if (restore !== null) return;
+    const previousTheme = root.dataset.theme;
+    const wasDark = root.classList.contains('dark');
+    restore = (): void => {
+      if (previousTheme === undefined) delete root.dataset.theme;
+      else root.dataset.theme = previousTheme;
+      root.classList.toggle('dark', wasDark);
+    };
+    paintResolved('light');
+  };
+
+  const leave = (): void => {
+    restore?.();
+    restore = null;
+  };
+
+  window.addEventListener('beforeprint', enter);
+  window.addEventListener('afterprint', leave);
+
+  if (window.matchMedia) {
+    window.matchMedia('print').addEventListener('change', (event) => {
+      if (event.matches) enter();
+      else leave();
+    });
+  }
+}
+
 function detachAutoListener(): void {
   if (mediaQueryList === null || mediaQueryHandler === null) return;
   mediaQueryList.removeEventListener('change', mediaQueryHandler);

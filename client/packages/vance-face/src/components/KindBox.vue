@@ -32,7 +32,7 @@ defineProps<Props>();
       <span v-if="icon" class="kind-box-icon">{{ icon }}</span>
       <span class="kind-box-label">{{ label }}</span>
       <span v-if="title" class="kind-box-title">— {{ title }}</span>
-      <div class="kind-box-actions">
+      <div class="kind-box-actions no-print">
         <slot name="actions" />
       </div>
     </div>

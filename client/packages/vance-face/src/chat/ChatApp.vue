@@ -977,6 +977,7 @@ function openInCortex(): void {
           :chat-process-name="chatProcessName"
           :chat-project-id="chatProjectId"
           :follow-up-suggestion="followUpSuggestion"
+          printable
           @leave="leaveLive"
           @hub="backToHub"
           @speak-message="onSpeakMessageFromView"

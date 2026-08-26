@@ -568,6 +568,22 @@ const showRawEditor = computed<boolean>(
   () => isViewMode.value && viewEditMode.value === 'edit',
 );
 
+/**
+ * True when the visible body is a {@link CodeEditor} rather than a
+ * rendering — the three source-editing branches below.
+ *
+ * <p>Printing needs to know, because CodeMirror keeps only the lines
+ * around the viewport in the DOM: printing what is on screen would
+ * silently drop most of a long file, and nothing about the paper would
+ * say so. The print layer therefore takes the full text from the model
+ * instead — see the print-only `<pre>` in the template.
+ */
+const printsSource = computed<boolean>(
+  () => (binding.value.mode === 'code'
+      && !(codePreviewKind.value && viewEditMode.value === 'view'))
+    || (isViewMode.value && (showRawEditor.value || parseResult.value.error != null)),
+);
+
 // ─── Run adapter (orthogonal capability) ─────────────────────────
 //
 // resolveRunAdapter is independent of the doc-type binding — a JS
@@ -989,8 +1005,13 @@ function fmtDuration(ms: number | null): string {
          codePreview Kind (Markdown, TeX) get a rendered Preview/Edit
          toggle on top — the component comes from the Kind Registry,
          not hardcoded here. -->
+    <!-- `data-print-root` on each rendered body: Cmd+P puts the document
+         on paper and leaves the shell, the tree and the chat panel out
+         (see `style/print.css`). Every branch marks itself, so what
+         prints is whatever the reader is looking at. -->
     <div
       v-if="binding.mode === 'code' && codePreviewKind && viewEditMode === 'view'"
+      data-print-root
       class="flex-1 min-h-0 overflow-auto p-4"
     >
       <component
@@ -1018,6 +1039,7 @@ function fmtDuration(ms: number | null): string {
     <!-- Image mode: ImageView, read-only. -->
     <div
       v-else-if="binding.mode === 'image'"
+      data-print-root
       class="flex-1 min-h-0 overflow-auto bg-base-200/40 flex items-start justify-center p-4"
     >
       <ImageView mode="editor" :document="docDtoForView" />
@@ -1088,7 +1110,7 @@ function fmtDuration(ms: number | null): string {
           />
         </div>
       </div>
-      <div v-else class="flex-1 min-h-0 min-w-0 overflow-auto">
+      <div v-else data-print-root class="flex-1 min-h-0 min-w-0 overflow-auto">
         <component
           :is="activeView"
           mode="editor"
@@ -1097,6 +1119,18 @@ function fmtDuration(ms: number | null): string {
         />
       </div>
     </template>
+
+    <!-- The source editor's print body. CodeMirror virtualises its
+         viewport, so the editor on screen is not a printable copy of
+         the file — this renders the full text from the model instead
+         and claims the print root for it. Invisible on screen, and the
+         `v-if` keeps it mutually exclusive with the rendered bodies
+         above: never two print roots on one page. -->
+    <pre
+      v-if="printsSource"
+      data-print-root
+      class="print-only cortex-print-source"
+    >{{ document.inlineText }}</pre>
 
     <!-- Run log panel — collapses the editor area when a run is
          active or just finished. Closes with the ✕ button; future
@@ -1220,5 +1254,18 @@ function fmtDuration(ms: number | null): string {
 .cortex-code-host :deep(.code-editor) {
   flex: 1 1 0;
   min-height: 0;
+}
+
+/* The print-only source body. It carries the print root itself, so the
+ * global `[data-print-root] pre` wrapping rule (a descendant selector)
+ * does not reach it — the wrapping lives here instead. Without it a
+ * long line runs off the sheet instead of breaking. */
+.cortex-print-source {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10pt;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>

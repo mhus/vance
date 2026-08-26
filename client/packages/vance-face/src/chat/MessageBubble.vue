@@ -384,7 +384,7 @@ async function onCopyMarkdown(): Promise<void> {
       <button
         v-if="canCopyContent"
         type="button"
-        class="mb-copy-btn"
+        class="mb-copy-btn no-print"
         :class="copyJustHappened ? 'mb-copy-btn--done' : ''"
         :title="copyJustHappened
           ? (_?.('chat.bubble.copyDone') ?? 'Copied')

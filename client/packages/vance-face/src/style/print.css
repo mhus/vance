@@ -1,0 +1,97 @@
+/*
+ * Print layer — one rule set for the whole web UI.
+ *
+ * An editor marks the subtree it wants on paper with `data-print-root`
+ * and gets Cmd+P for free. Everything else is this file's job:
+ *
+ *   1. Hide every branch that is not on the path to the print root.
+ *   2. Unwind the app-shell layout. `EditorShell` is a fixed-height
+ *      grid (`h-screen overflow-hidden`) with scroll regions inside it;
+ *      a browser prints a scroll container's *visible* part only, so
+ *      without this a chat prints exactly one screenful.
+ *
+ * Pages without a `data-print-root` are untouched — the `:has()`
+ * selectors match nothing and every rule stays inert.
+ *
+ * `.no-print` marks screen-only controls that sit *inside* a print
+ * root (hover buttons, suggestion ghosts, transient feedback).
+ * `.print-only` is the reverse: a body that exists for paper alone.
+ * Cortex needs it because CodeMirror virtualises its viewport — the
+ * editor on screen is not a printable copy of the file, so the source
+ * is re-rendered from the model into a print-only `<pre>`.
+ */
+
+/* Screen side of `.print-only`. Everything else in this file is inside
+   the print media query. */
+.print-only {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 15mm;
+  }
+
+  /* Every ancestor of the print root hides the children that are
+     neither the root itself nor on the path to it. That is the whole
+     "print only this" mechanism — no per-editor bookkeeping. */
+  :has([data-print-root]) > :not([data-print-root]):not(:has([data-print-root])) {
+    display: none !important;
+  }
+
+  /* The path itself: drop the viewport-height boxes, the scroll
+     regions and the grid so the content becomes one continuous flow
+     the printer can paginate. */
+  html,
+  body,
+  :has([data-print-root]) {
+    display: block !important;
+    position: static !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    /* The ancestors carry the shell surfaces (`bg-base-200` and
+       friends). They stay in the tree because the print root hangs in
+       them — their fill has no business on paper, and it would cover
+       whole pages for anyone who ticks "background graphics". */
+    background: none !important;
+  }
+
+  /* Print the colours the reader sees — chat bubbles, charts, diagrams
+     and images all carry meaning in their fills. The light theme is
+     forced for the duration of the print job (see
+     `platform/themeWeb.ts`), so this stays paper-friendly. */
+  [data-print-root] {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  /* Code blocks scroll sideways on screen; on paper that clips. Wrap
+     instead. Deliberately not applied to every descendant: renderers
+     like the VueFlow graph rely on clipping to stay inside their box. */
+  [data-print-root] pre {
+    white-space: pre-wrap !important;
+    overflow: visible !important;
+    word-break: break-word;
+  }
+
+  /* Keep a rendering whole where it fits on one page. `.kind-box` is
+     the root class of `components/KindBox.vue` — the frame around
+     every inline/embedded kind rendering. */
+  [data-print-root] .kind-box,
+  [data-print-root] pre,
+  [data-print-root] table,
+  [data-print-root] img,
+  [data-print-root] svg {
+    break-inside: avoid;
+  }
+}

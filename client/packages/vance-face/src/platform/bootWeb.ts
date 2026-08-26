@@ -1,7 +1,7 @@
 import { configurePlatform, configureVanceWs } from '@vance/shared';
 import { refreshAccessCookie } from './refreshWeb';
 import { hydrateIdentity } from './webUiSession';
-import { applyTheme } from './themeWeb';
+import { applyTheme, ensurePrintLightTheme } from './themeWeb';
 import { storageWeb } from './storageWeb';
 import {
   onDocumentChanged,
@@ -83,3 +83,6 @@ hydrateIdentity();
 // so the first frame matches the user's choice. "auto" attaches a
 // matchMedia listener that keeps tracking the OS preference live.
 applyTheme();
+// Printing pins the light theme for the duration of the job — a dark
+// page reaches the printer as white-on-white.
+ensurePrintLightTheme();

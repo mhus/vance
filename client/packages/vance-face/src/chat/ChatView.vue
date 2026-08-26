@@ -58,6 +58,18 @@ const props = defineProps<{
    *  hides the bubble entirely. Computed by the parent so the
    *  composer (sibling) can use the same value for Space-acceptance. */
   followUpSuggestion?: string | null;
+  /**
+   * Marks the message list as the page's print root — Cmd+P then puts
+   * the whole conversation on paper and nothing else (see
+   * `style/print.css`).
+   *
+   * <p>Opt-in, because this component is also a side panel: in Cortex
+   * and in the inbox the chat sits *next to* the thing the reader came
+   * for, and claiming the print root there would print the panel and
+   * hide the document / the thread list. Only the surface where the
+   * conversation IS the page sets it — {@code ChatApp}.
+   */
+  printable?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -777,9 +789,19 @@ onBeforeUnmount(() => {
     </div>
 
     <div ref="messageContainer" class="flex-1 min-h-0 overflow-y-auto px-6 py-4">
-      <div class="max-w-5xl mx-auto flex flex-col gap-3">
+      <!-- `data-print-root` is what Cmd+P prints: the conversation, all
+           of it, without the shell around it. The print layer unwinds
+           this container's scroll region so the whole history flows
+           onto paper instead of the visible screenful — see
+           `style/print.css`. Only set when this view owns the page
+           (see the {@code printable} prop). -->
+      <div
+        :data-print-root="printable ? '' : null"
+        class="max-w-5xl mx-auto flex flex-col gap-3"
+      >
         <VAlert
           v-if="exportFeedback"
+          class="no-print"
           :variant="exportFeedback.kind"
         >{{ exportFeedback.message }}</VAlert>
         <div v-if="historyLoading" class="text-sm opacity-60">
@@ -832,6 +854,7 @@ onBeforeUnmount(() => {
           />
           <FollowUpGhost
             v-if="idx === followUpAnchorIndex && !visibleDraft"
+            class="no-print"
             :suggestion="followUpSuggestion ?? null"
             @accept="onAcceptFollowUp"
           />

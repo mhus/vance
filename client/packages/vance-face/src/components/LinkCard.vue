@@ -23,6 +23,9 @@ const preview = ref<LinkPreviewDto | null>(null);
 const loading = ref(false);
 const failed = ref(false);
 let observer: IntersectionObserver | null = null;
+/** Handle of the pending print-preload — an idle callback, or a timeout id
+ *  on engines without `requestIdleCallback`. */
+let idleHandle: number | null = null;
 
 /**
  * Resolves the favicon URL for the link's host via Google's s2
@@ -71,8 +74,45 @@ async function loadPreview(): Promise<void> {
   }
 }
 
+/**
+ * A card that will be printed cannot stay lazy.
+ *
+ * Measured against Chrome's print pipeline: what a `beforeprint`
+ * handler changes synchronously (or in a microtask) still reaches the
+ * printed page, but a `setTimeout(…, 0)` already does not. A fetch
+ * started when the print job begins can therefore never arrive in time
+ * for that job — a `beforeprint` hook would only fix the *second*
+ * printout. The decision has to be made before the reader hits Cmd+P.
+ *
+ * <p>The signal for that is already in the DOM: sitting inside a
+ * `[data-print-root]` IS the declaration "this content is meant for
+ * paper" (see `style/print.css`). Such a card resolves once the browser
+ * is idle, whether or not it was ever scrolled into view. Cards outside
+ * a print root — the Cortex and inbox chat panels — keep the lazy
+ * behaviour, because nothing will ever print them.
+ *
+ * <p>The inline link itself was never at stake: {@link MarkdownView}
+ * keeps it in the paragraph text and prints it. What this recovers is
+ * the card's title, description and thumbnail.
+ */
+function schedulePrintPreload(): void {
+  if (!cardRoot.value?.closest('[data-print-root]')) return;
+  const run = (): void => {
+    idleHandle = null;
+    void loadPreview();
+  };
+  // Idle, not immediate: a long history holds many cards, and none of
+  // them may compete with the first paint of the conversation.
+  if (typeof window.requestIdleCallback === 'function') {
+    idleHandle = window.requestIdleCallback(run, { timeout: 5000 });
+  } else {
+    idleHandle = window.setTimeout(run, 1000);
+  }
+}
+
 onMounted(() => {
   if (!cardRoot.value) return;
+  schedulePrintPreload();
   // IntersectionObserver: only fetch when the card scrolls into
   // view. Long chat histories with many links shouldn't trigger
   // dozens of unused fetches.
@@ -95,6 +135,11 @@ onMounted(() => {
 onBeforeUnmount(() => {
   observer?.disconnect();
   observer = null;
+  if (idleHandle !== null) {
+    if (typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(idleHandle);
+    else window.clearTimeout(idleHandle);
+    idleHandle = null;
+  }
 });
 
 function hostnameLabel(): string {

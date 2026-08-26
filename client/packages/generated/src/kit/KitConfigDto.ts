@@ -8,4 +8,5 @@ import { KitPolicyDto } from './KitPolicyDto';
 export interface KitConfigDto {
   sortIndex?: number;
   policy?: KitPolicyDto;
+  overwriteSecrets?: boolean;
 }

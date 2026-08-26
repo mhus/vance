@@ -4,6 +4,8 @@ import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.audit.AuditService;
 import de.mhus.vance.shared.crypto.AesEncryptionService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -884,17 +886,17 @@ public class SettingService {
      * context — demoting it would make an unseen secret agent-readable). See
      * {@code planning/setting-type-hidden.md} §6.2.
      *
-     * <p>Returns {@code true} on success, {@code false} when decryption with
-     * the supplied vault passphrase fails. A failure is logged at warn level
-     * but does not throw — kit imports continue with the next setting.
+     * <p>A decrypt failure is logged at warn level and reported as
+     * {@link SecretImportOutcome#FAILED} rather than thrown — kit imports
+     * continue with the next setting.
      */
-    public boolean encryptFromImport(
+    public SecretImportOutcome encryptFromImport(
             String tenantId, String referenceType, String referenceId,
             String key, String vaultPassword, @Nullable String vaultCiphertext,
             SettingType type) {
         if (vaultCiphertext == null) {
             setEncryptedSecret(tenantId, referenceType, referenceId, key, null, type);
-            return true;
+            return SecretImportOutcome.WRITTEN;
         }
         String plaintext;
         try {
@@ -902,9 +904,53 @@ public class SettingService {
         } catch (AesEncryptionService.EncryptionException e) {
             log.warn("Failed to decrypt vault blob for ref='{}:{}' key='{}': {}",
                     referenceType, referenceId, key, e.getMessage());
-            return false;
+            return SecretImportOutcome.FAILED;
+        }
+        // Asked here rather than by the caller, so the decrypted value never
+        // leaves this class on the vault path.
+        if (encryptedSecretEquals(tenantId, referenceType, referenceId, key, plaintext)) {
+            return SecretImportOutcome.UNCHANGED;
         }
         setEncryptedSecret(tenantId, referenceType, referenceId, key, plaintext, type);
-        return true;
+        return SecretImportOutcome.WRITTEN;
+    }
+
+    /** What {@link #encryptFromImport} did. */
+    public enum SecretImportOutcome {
+        /** The value was stored. */
+        WRITTEN,
+        /** The setting already held exactly this value; nothing was written. */
+        UNCHANGED,
+        /** The vault blob could not be opened with the supplied password. */
+        FAILED
+    }
+
+    /**
+     * Whether the encrypted setting at this exact scope already holds
+     * {@code plaintext}.
+     *
+     * <p>A predicate rather than a getter, so a caller can avoid a pointless
+     * write without ever holding the credential. That matters more than it
+     * looks: an unattended update that rewrites an unchanged secret every few
+     * hours fills the audit log with "credential changed" for a credential
+     * that did not, and an audit trail that cries wolf is worse than none.
+     *
+     * <p>Reads both encrypted types, like {@link #getDecryptedPassword} and
+     * for the same reason — this is compiled server code with the fixed key,
+     * not a reference-resolution path.
+     *
+     * @return {@code false} when the setting is absent, is not an encrypted
+     *         type, or cannot be decrypted; "cannot tell" is reported as
+     *         "not equal", which costs a redundant write rather than a
+     *         skipped rotation
+     */
+    public boolean encryptedSecretEquals(
+            String tenantId, String referenceType, String referenceId, String key,
+            @Nullable String plaintext) {
+        String current = getDecryptedPassword(tenantId, referenceType, referenceId, key);
+        if (current == null || plaintext == null) return false;
+        return MessageDigest.isEqual(
+                current.getBytes(StandardCharsets.UTF_8),
+                plaintext.getBytes(StandardCharsets.UTF_8));
     }
 }

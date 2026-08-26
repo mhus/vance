@@ -417,7 +417,29 @@ public final class KitYamlMapper {
                 // Absent means "no opinion", which is what lets the kit's own
                 // suggestion through — not the same as an explicit `keep`.
                 .policy(map.get("policy") == null ? null : parsePolicy(map.get("policy"), label))
+                .overwriteSecrets(parseOverwriteSecrets(map.get("overwriteSecrets"), label))
                 .build();
+    }
+
+    /**
+     * Read {@code overwriteSecrets:} — strictly, because it decides whether
+     * an unattended update may replace a live credential.
+     *
+     * <p>SnakeYAML resolves {@code yes}/{@code no}/{@code on}/{@code off} to
+     * booleans already, so this only has to catch what it did <em>not</em>
+     * resolve. Anything else is refused rather than read as false: a value
+     * this switch does not understand means the author intended something,
+     * and the safe-looking direction would silently be the one they were
+     * trying to turn off.
+     */
+    private static @Nullable Boolean parseOverwriteSecrets(@Nullable Object raw, String label) {
+        if (raw == null) return null;
+        if (raw instanceof Boolean b) return b;
+        String text = raw.toString().trim().toLowerCase(Locale.ROOT);
+        if (text.equals("true")) return Boolean.TRUE;
+        if (text.equals("false")) return Boolean.FALSE;
+        throw new KitException(label + ": overwriteSecrets must be true or false, got '"
+                + raw + "'");
     }
 
     /**
@@ -489,6 +511,12 @@ public final class KitYamlMapper {
         }
         if (config.getPolicy() != null) {
             root.put("policy", policyMap(config.getPolicy()));
+        }
+        // Written even when false, unlike the other fields: this one is a
+        // deliberate "no", and round-tripping it to absent would lose the
+        // difference between "decided against" and "never considered".
+        if (config.getOverwriteSecrets() != null) {
+            root.put("overwriteSecrets", config.getOverwriteSecrets());
         }
         return dump(root);
     }

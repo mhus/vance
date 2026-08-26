@@ -53,13 +53,45 @@ public final class KitPolicy {
     private final KitPolicyAction settingDefault;
     private final List<KitPolicyRuleDto> rules;
 
+    /**
+     * Whether an existing credential may be replaced at all — the gate
+     * behind {@code overwriteSecrets} in the config document.
+     *
+     * <p>Not a third default action but a switch, because the two states
+     * are not symmetric. Closed, <em>nothing</em> replaces a credential and
+     * the rule list is not consulted: an {@code overwrite} rule someone
+     * wrote for a nearby setting key must not reach a secret by accident.
+     * Open, the rules apply as usual and can only narrow.
+     */
+    private final boolean secretsReplaceable;
+
     private KitPolicy(
             KitPolicyAction documentDefault,
             KitPolicyAction settingDefault,
             List<KitPolicyRuleDto> rules) {
+        this(documentDefault, settingDefault, rules, false);
+    }
+
+    private KitPolicy(
+            KitPolicyAction documentDefault,
+            KitPolicyAction settingDefault,
+            List<KitPolicyRuleDto> rules,
+            boolean secretsReplaceable) {
         this.documentDefault = documentDefault;
         this.settingDefault = settingDefault;
         this.rules = rules;
+        this.secretsReplaceable = secretsReplaceable;
+    }
+
+    /**
+     * The same policy with the credential gate opened.
+     *
+     * <p>Separate from the {@code of(...)} cascade on purpose: the gate has
+     * no counterpart in {@code kit.yaml} and therefore nothing to cascade
+     * with. It comes from the user's config document or not at all.
+     */
+    public KitPolicy withSecretsReplaceable(boolean replaceable) {
+        return new KitPolicy(documentDefault, settingDefault, rules, replaceable);
     }
 
     public static KitPolicy of(@Nullable KitPolicyDto dto) {
@@ -116,8 +148,8 @@ public final class KitPolicy {
      * live run of this feature skipped
      * {@code centauri.endpoint.<id>.baseUrl} for exactly that reason and was
      * right to. Credentials are protected one step further still — see
-     * {@code KitInstaller}, which never replaces an existing one whatever the
-     * policy says.
+     * {@link #forSecret}, which answers {@code keep} for every key until the
+     * config document opens the gate, whatever the rules say.
      */
     public static KitPolicy defaultsFor(@Nullable KitSourceType type) {
         return type == KitSourceType.ODE
@@ -141,6 +173,34 @@ public final class KitPolicy {
     /** Action for a project setting key. Last matching rule wins. */
     public KitPolicyAction forSetting(String key) {
         KitPolicyAction action = settingDefault;
+        for (KitPolicyRuleDto rule : rules) {
+            if (rule.getSetting() == null) continue;
+            if (KitGlob.matchesKey(rule.getSetting(), key)) action = rule.getAction();
+        }
+        return action;
+    }
+
+    /**
+     * Action for a setting key of an <b>encrypted</b> type.
+     *
+     * <p>Its own method rather than a branch inside {@link #forSetting},
+     * because the question is a different one. For an ordinary setting the
+     * policy compares hashes and decides who last wrote the value; for a
+     * credential there is no hash, so the only honest answer is whatever
+     * the operator wrote down in advance.
+     *
+     * <p>With the gate closed this is {@code keep} unconditionally — the
+     * rule list is deliberately not consulted, so the answer cannot be
+     * changed by a glob aimed at something else. With it open the rules
+     * apply as usual and can freeze individual keys again.
+     *
+     * <p>Note what this never returns on its own: {@code overwrite} for a
+     * credential the project does not have yet is not needed — a setting
+     * that does not exist is written regardless of action.
+     */
+    public KitPolicyAction forSecret(String key) {
+        if (!secretsReplaceable) return KitPolicyAction.KEEP;
+        KitPolicyAction action = KitPolicyAction.OVERWRITE;
         for (KitPolicyRuleDto rule : rules) {
             if (rule.getSetting() == null) continue;
             if (KitGlob.matchesKey(rule.getSetting(), key)) action = rule.getAction();

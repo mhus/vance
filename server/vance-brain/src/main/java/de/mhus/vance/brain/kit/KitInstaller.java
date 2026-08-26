@@ -3,6 +3,7 @@ package de.mhus.vance.brain.kit;
 import de.mhus.vance.api.kit.InheritArtefactsDto;
 import de.mhus.vance.api.kit.KitArtefactDto;
 import de.mhus.vance.api.kit.KitArtefactsDto;
+import de.mhus.vance.api.kit.KitConfigDto;
 import de.mhus.vance.api.kit.KitDescriptorDto;
 import de.mhus.vance.api.kit.KitImportMode;
 import de.mhus.vance.api.kit.KitInheritDto;
@@ -147,9 +148,18 @@ public class KitInstaller {
         // is the floor. The suggestion is deliberately not materialised —
         // that way a later kit version can improve its recommendation for as
         // long as the user has not overridden it.
+        KitConfigDto config = tracked
+                ? recordStore.loadConfig(tenantId, projectId, recordId)
+                : null;
         KitPolicy policy = tracked
-                ? KitPolicy.of(recordStore.loadConfig(tenantId, projectId, recordId)
-                        .getPolicy(), top.getPolicy(), resolved.topLayerSourceType())
+                ? KitPolicy.of(config.getPolicy(), top.getPolicy(),
+                                resolved.topLayerSourceType())
+                        // Not part of the cascade above: the credential gate has
+                        // no counterpart in kit.yaml, because a kit declaring
+                        // that it may overwrite credentials would be granting
+                        // itself the permission.
+                        .withSecretsReplaceable(
+                                Boolean.TRUE.equals(config.getOverwriteSecrets()))
                 : KitPolicy.defaultsFor(resolved.topLayerSourceType());
 
         BuildTreeScan scan = scanBuildTree(resolved.buildRoot());
@@ -700,8 +710,20 @@ public class KitInstaller {
             boolean existed = settingService.exists(
                     tenantId, SettingService.SCOPE_PROJECT, projectId, key);
 
+            // Two questions with the same name. For an ordinary setting the
+            // policy compares hashes and works out who last wrote the value;
+            // for a credential there is no hash to compare, so the answer can
+            // only be what the operator decided in advance — see forSecret.
+            KitPolicyAction action = parsed.type().encrypted()
+                    ? policy.forSecret(key) : policy.forSetting(key);
+            // Only a tracked install consults a config document at all, so
+            // only a tracked install can have been given the permission.
+            // `apply` is a splat with no record and no config — it keeps its
+            // hands off a live credential.
+            boolean mayReplaceExistingSecret =
+                    tracked && action == KitPolicyAction.OVERWRITE;
+
             if (tracked) {
-                KitPolicyAction action = policy.forSetting(key);
                 KitArtefactDto record = known.get(key);
                 // getStringValue refuses encrypted types and returns null —
                 // exactly what we want: an encrypted setting has no comparable
@@ -734,18 +756,17 @@ public class KitInstaller {
                     log.debug("Skipping encrypted setting '{}' due to --keep-passwords", key);
                     continue;
                 }
-                if (existed) {
-                    // A credential that is already here is never replaced by an
-                    // install, whatever the policy says. `overwrite` is about
-                    // documents: a run that resets a key somebody rotated is an
-                    // outage, not an update — and the policy cannot tell the two
-                    // apart, because an encrypted value has no comparable hash
-                    // to notice a local change with.
+                if (existed && !mayReplaceExistingSecret) {
+                    // The default, and for a long time the only behaviour: a
+                    // credential that is already here is set once and then left
+                    // alone. A run that resets a key somebody rotated is an
+                    // outage, not an update, and nothing in the tree can tell
+                    // the two apart — an encrypted value has no comparable hash.
                     //
-                    // Set once when nothing is there, then left alone. Forcing a
-                    // new value is deliberately not expressible here; that is
-                    // uninstall, or a hand edit. See
-                    // planning/kit-ode-provisioning.md §1.3 c.
+                    // `overwriteSecrets` in the kit's config document is the
+                    // one way to say otherwise, and it exists for the opposite
+                    // failure: a host that rotates its *own* key has no other
+                    // way to get the new one to the projects that read it.
                     log.debug("KitInstaller: keeping the existing credential in '{}/{}/{}'",
                             tenantId, projectId, key);
                     keepOwnership(known.get(key), artefacts);
@@ -761,6 +782,19 @@ public class KitInstaller {
                     // before this tree was ever merged. No vault password is
                     // involved, so the one reason this path used to fail
                     // silently does not exist here.
+                    //
+                    // Asked as a predicate, so the credential is never read back
+                    // into this method: an unattended update that rewrote an
+                    // unchanged secret every few hours would fill the audit log
+                    // with "credential changed" for one that did not.
+                    if (existed && settingService.encryptedSecretEquals(
+                            tenantId, SettingService.SCOPE_PROJECT, projectId, key,
+                            parsed.value())) {
+                        log.debug("KitInstaller: delivered credential for '{}/{}/{}' is "
+                                + "unchanged", tenantId, projectId, key);
+                        keepOwnership(known.get(key), artefacts);
+                        continue;
+                    }
                     settingService.setEncryptedSecret(
                             tenantId, SettingService.SCOPE_PROJECT, projectId, key,
                             parsed.value(), parsed.type());
@@ -775,11 +809,22 @@ public class KitInstaller {
                         keepOwnership(known.get(key), artefacts);
                         continue;
                     }
-                    boolean ok = settingService.encryptFromImport(
-                            tenantId, SettingService.SCOPE_PROJECT, projectId, key,
-                            vaultPassword, parsed.value(), parsed.type());
-                    if (!ok) {
+                    // Same no-op check, but made inside the service: on this
+                    // path the plaintext only exists between decrypting the
+                    // vault blob and storing it, and pulling it out here to
+                    // compare would mean a method that hands secrets to callers.
+                    SettingService.SecretImportOutcome outcome =
+                            settingService.encryptFromImport(
+                                    tenantId, SettingService.SCOPE_PROJECT, projectId, key,
+                                    vaultPassword, parsed.value(), parsed.type());
+                    if (outcome == SettingService.SecretImportOutcome.FAILED) {
                         skippedPw.add(key);
+                        keepOwnership(known.get(key), artefacts);
+                        continue;
+                    }
+                    if (outcome == SettingService.SecretImportOutcome.UNCHANGED) {
+                        log.debug("KitInstaller: imported credential for '{}/{}/{}' is "
+                                + "unchanged", tenantId, projectId, key);
                         keepOwnership(known.get(key), artefacts);
                         continue;
                     }

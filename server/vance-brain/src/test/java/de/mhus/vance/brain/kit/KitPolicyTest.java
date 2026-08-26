@@ -266,6 +266,62 @@ class KitPolicyTest {
         return KitPolicyRuleDto.builder().setting(glob).action(action).build();
     }
 
+    // ──────────────────── the credential gate ────────────────────
+
+    @Test
+    void forSecret_gateClosed_isKeepEvenWhenTheDefaultSaysOverwrite() {
+        // The whole reason the gate is a separate switch. ODE sources already
+        // default to overwrite for documents, and an operator who writes
+        // `policy: overwrite` means their files — not "reset every credential
+        // on every update".
+        KitPolicy policy = KitPolicy.of(KitPolicyDto.builder()
+                .defaultAction(KitPolicyAction.OVERWRITE).build());
+
+        assertThat(policy.forSecret("hrafnagud.mount.apiKey"))
+                .isEqualTo(KitPolicyAction.KEEP);
+    }
+
+    @Test
+    void forSecret_gateClosed_isKeepEvenWhenARuleMatchesTheKey() {
+        // A rule aimed at a family of settings must not reach a secret in
+        // that family by accident. Closed means closed; the list is not
+        // consulted at all.
+        KitPolicy policy = KitPolicy.of(KitPolicyDto.builder()
+                .rules(List.of(settingRule("hrafnagud.*", KitPolicyAction.OVERWRITE)))
+                .build());
+
+        assertThat(policy.forSecret("hrafnagud.mount.apiKey"))
+                .isEqualTo(KitPolicyAction.KEEP);
+        // Same key, asked as an ordinary setting: there the rule does apply.
+        assertThat(policy.forSetting("hrafnagud.mount.apiKey"))
+                .isEqualTo(KitPolicyAction.OVERWRITE);
+    }
+
+    @Test
+    void forSecret_gateOpen_isOverwriteWithoutAnyRule() {
+        // One knob for the case it exists for: a host rotated its own keys.
+        KitPolicy policy = KitPolicy.of(KitPolicyDto.builder().build())
+                .withSecretsReplaceable(true);
+
+        assertThat(policy.forSecret("hrafnagud.mount.apiKey"))
+                .isEqualTo(KitPolicyAction.OVERWRITE);
+    }
+
+    @Test
+    void forSecret_gateOpen_canBeNarrowedPerKey() {
+        // The gate opens, the rules refine downward — so one credential that
+        // was set by hand can be frozen while the rest follow the host.
+        KitPolicy policy = KitPolicy.of(KitPolicyDto.builder()
+                .rules(List.of(settingRule("kit.token.*", KitPolicyAction.IGNORE)))
+                .build())
+                .withSecretsReplaceable(true);
+
+        assertThat(policy.forSecret("hrafnagud.mount.apiKey"))
+                .isEqualTo(KitPolicyAction.OVERWRITE);
+        assertThat(policy.forSecret("kit.token.hrafnagud"))
+                .isEqualTo(KitPolicyAction.IGNORE);
+    }
+
     // ──────────────────── defaults by fetch mechanism ────────────────────
 
     @Test

@@ -227,6 +227,39 @@ class KitYamlMapperRecordTest {
     }
 
     @Test
+    void config_absentOverwriteSecrets_meansNo() {
+        KitConfigDto config = KitYamlMapper.parseConfig("policy: overwrite\n");
+        assertThat(config.getOverwriteSecrets()).isNull();
+    }
+
+    @Test
+    void config_overwriteSecrets_isParsed() {
+        assertThat(KitYamlMapper.parseConfig("overwriteSecrets: true\n").getOverwriteSecrets())
+                .isTrue();
+        assertThat(KitYamlMapper.parseConfig("overwriteSecrets: false\n").getOverwriteSecrets())
+                .isFalse();
+    }
+
+    @Test
+    void config_overwriteSecretsWithAnUnreadableValue_isRejected() {
+        // Refused rather than read as false: the value the author wrote means
+        // something to them, and the safe-looking direction would silently be
+        // the one they were trying to turn off.
+        assertThatThrownBy(() -> KitYamlMapper.parseConfig("overwriteSecrets: sometimes\n"))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("overwriteSecrets must be true or false");
+    }
+
+    @Test
+    void config_overwriteSecretsFalse_survivesARoundTrip() {
+        // An explicit "no" is a decision. Dropping it on write would lose the
+        // difference between "decided against" and "never considered".
+        String yaml = KitYamlMapper.writeConfig(
+                KitConfigDto.builder().overwriteSecrets(false).build());
+        assertThat(KitYamlMapper.parseConfig(yaml).getOverwriteSecrets()).isFalse();
+    }
+
+    @Test
     void config_ruleWithBothNamespaces_isRejected() {
         assertThatThrownBy(() -> KitYamlMapper.parseConfig("""
                 policy:

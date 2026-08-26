@@ -20,6 +20,9 @@ import de.mhus.vance.api.kit.KitInstalledRecordDto;
 import de.mhus.vance.api.kit.KitMetadataDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.api.kit.KitOriginDto;
+import de.mhus.vance.api.kit.KitPolicyAction;
+import de.mhus.vance.api.kit.KitPolicyDto;
+import de.mhus.vance.api.kit.KitPolicyRuleDto;
 import de.mhus.vance.api.kit.KitSignatureStatus;
 import de.mhus.vance.api.kit.KitSourceType;
 import de.mhus.vance.api.settings.SettingType;
@@ -230,6 +233,75 @@ class KitInstallerTest {
                 any(), any(), any(), any(), any(), any());
     }
 
+    @Test
+    void update_withOverwriteSecrets_replacesAnExistingCredential() {
+        // The other direction, and the reason the switch exists: a host that
+        // rotates its own key has no other way to get the new one to the
+        // projects reading it — the revision moves, the kit updates, and the
+        // project keeps a key that no longer opens anything.
+        writeBuildFile("settings/hrafnagud.mount.apiKey.yaml", """
+                type: PASSWORD
+                encoding: plain
+                value: "sk-live-rotated"
+                """);
+        existingSecret("hrafnagud.mount.apiKey");
+        overwriteSecrets(true);
+
+        install(false);
+
+        verify(settingService).setEncryptedSecret(
+                eq(TENANT), eq(SettingService.SCOPE_PROJECT), eq(PROJECT),
+                eq("hrafnagud.mount.apiKey"), eq("sk-live-rotated"), eq(SettingType.PASSWORD));
+    }
+
+    @Test
+    void update_withOverwriteSecrets_doesNotRewriteAnUnchangedCredential() {
+        // Otherwise every provisioning round writes the same value again and
+        // the audit log fills with "credential changed" for one that did not.
+        writeBuildFile("settings/hrafnagud.mount.apiKey.yaml", """
+                type: PASSWORD
+                encoding: plain
+                value: "sk-live-abc"
+                """);
+        existingSecret("hrafnagud.mount.apiKey");
+        overwriteSecrets(true);
+        when(settingService.encryptedSecretEquals(
+                TENANT, SettingService.SCOPE_PROJECT, PROJECT,
+                "hrafnagud.mount.apiKey", "sk-live-abc"))
+                .thenReturn(true);
+
+        install(false);
+
+        verify(settingService, never()).setEncryptedSecret(
+                any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void update_withOverwriteSecrets_stillHonoursAnIgnoreRuleForOneKey() {
+        // The gate opens, the rule list refines downward: a credential
+        // somebody set by hand stays frozen while the rest follow the host.
+        writeBuildFile("settings/kit.token.hrafnagud.yaml", """
+                type: PASSWORD
+                encoding: plain
+                value: "delivered"
+                """);
+        existingSecret("kit.token.hrafnagud");
+        when(recordStore.loadConfig(any(), any(), any())).thenReturn(KitConfigDto.builder()
+                .overwriteSecrets(true)
+                .policy(KitPolicyDto.builder()
+                        .rules(List.of(KitPolicyRuleDto.builder()
+                                .setting("kit.token.*")
+                                .action(KitPolicyAction.IGNORE)
+                                .build()))
+                        .build())
+                .build());
+
+        install(false);
+
+        verify(settingService, never()).setEncryptedSecret(
+                any(), any(), any(), any(), any(), any());
+    }
+
     // ─── prune ──────────────────────────────────────────────────────────
 
     @Test
@@ -432,6 +504,18 @@ class KitInstallerTest {
 
     private static KitArtefactDto artefact(String path, String hash) {
         return KitArtefactDto.builder().id(path).hash(hash).layer("demo").build();
+    }
+
+    /** The project already holds an encrypted setting under {@code key}. */
+    private void existingSecret(String key) {
+        when(settingService.exists(TENANT, SettingService.SCOPE_PROJECT, PROJECT, key))
+                .thenReturn(true);
+    }
+
+    /** Write the kit's config document with the credential gate set. */
+    private void overwriteSecrets(boolean allowed) {
+        when(recordStore.loadConfig(any(), any(), any())).thenReturn(
+                KitConfigDto.builder().overwriteSecrets(allowed).build());
     }
 
     /** Make {@code path} resolve to a document with {@code id}. */

@@ -1,14 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type Component, type Ref } from 'vue';
-import {
-  brainFetch,
-  brainFetchText,
-  brainSendRaw,
-  documentContentUrl,
-  postComposeRun,
-  pollComposeRun,
-  cancelComposeRun,
-} from '@vance/shared';
+import { brainFetch, brainFetchText, brainSendRaw, cancelComposeRun, documentContentUrl, pollComposeRun, postComposeRun, vanceNavigate } from '@vance/shared';
 import {
   useAppEntry,
   useDocumentPrefixReaction,
@@ -904,7 +896,7 @@ function openVanceLink(href: string, openInNewTab: boolean): boolean {
       }
       const finalUrl = cur.toString();
       if (newTab) newTab.location.href = finalUrl;
-      else window.location.href = finalUrl;
+      else vanceNavigate(finalUrl);
     } catch (e) {
       console.warn('[Workbook] vance: link could not be resolved', path, e);
       if (newTab) newTab.close();

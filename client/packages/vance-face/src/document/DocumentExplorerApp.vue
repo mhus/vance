@@ -35,7 +35,7 @@ import { brainFetch } from '@vance/shared';
 import type { DocumentFoldersResponse, DocumentSummary, MountDto } from '@vance/generated';
 import { MountSearchOutcome } from '@vance/generated';
 import DocumentIcon from './DocumentIcon.vue';
-import { navigateTo } from '@/platform/navigate';
+import { navigateTo, pushUrl } from '@/platform/navigate';
 
 const { t } = useI18n();
 const projectsState = useTenantProjects();
@@ -105,7 +105,7 @@ function syncUrl(): void {
   if (docsState.pathPrefix.value) params.set('path', docsState.pathPrefix.value);
   const next = `${window.location.pathname}?${params.toString()}`;
   if (next !== `${window.location.pathname}${window.location.search}`) {
-    window.history.pushState({}, '', next);
+    pushUrl(next);
   }
 }
 

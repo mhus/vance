@@ -5,7 +5,8 @@ import { ensureAuthenticated } from '@/platform/ensureAuthenticatedWeb';
 import { initAddonRemotes } from '@/platform/addonRegistry';
 import { registerBuiltInKinds } from '@/document/builtInKinds';
 import { router } from './router';
-import { bindRouter } from '@/platform/navigate';
+import { bindRouter, navigateTo } from '@/platform/navigate';
+import { configureVanceNavigate } from '@vance/shared';
 import { startVersionWatch } from './versionWatch';
 import ShellApp from './ShellApp.vue';
 import { i18n } from '@/i18n';
@@ -30,6 +31,11 @@ await initAddonRemotes();
 // each other without a page load. Components that also run on the standalone
 // entries never see this and keep navigating normally there.
 bindRouter(router);
+// Same rendezvous for the federated addons, which cannot import the host's
+// navigate module. Without it a Canvas node, a Wiki link or a Desktop card
+// would still reload the workspace to reach a document. Bound before the
+// remotes register, so nothing navigates through the fallback first.
+configureVanceNavigate(navigateTo);
 startVersionWatch();
 
 createApp({ render: () => h(ShellApp) })

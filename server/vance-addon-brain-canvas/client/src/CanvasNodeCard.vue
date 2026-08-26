@@ -5,7 +5,7 @@ import { Handle, Position } from '@vue-flow/core';
 import { NodeResizer } from '@vue-flow/node-resizer';
 import '@vue-flow/node-resizer/dist/style.css';
 import { NodeToolbar } from '@vue-flow/node-toolbar';
-import { brainFetchText, documentContentUrl, safeUrl } from '@vance/shared';
+import { brainFetchText, documentContentUrl, safeUrl, vanceNavigate } from '@vance/shared';
 import { cortexDeepLink } from '@vance/components';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -265,7 +265,7 @@ function navigate(url: string): void {
     return;
   }
   props.data.onFlush?.();
-  window.location.href = url;
+  vanceNavigate(url);
 }
 
 /** Plain click on an external link: same tab means flushing first. */

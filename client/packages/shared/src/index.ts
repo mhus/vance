@@ -4,6 +4,7 @@ export * from './documentHeaderCodec';
 export * from './kindCodecs/index';
 export * from './facelift/index';
 export * from './localized';
+export * from './nav/index';
 export * from './rest/index';
 export * from './platform/index';
 export * from './projectNames';

@@ -129,7 +129,13 @@ export const router = createRouter({
  * "Cortex · <project>" once a document is open — assigns after this and wins.
  * The order is what makes both work without either knowing about the other.
  */
-router.afterEach((to) => {
+router.afterEach((to, from) => {
+  // Only when the surface actually changes. The editors rewrite their own
+  // query constantly (open tabs, selected session, selected thread) and those
+  // go through the router now — resetting the title on each of them would
+  // stamp "Vance · Cortex" over the "Cortex · <project>" the editor just
+  // computed, on every tab switch.
+  if (to.path === from.path) return;
   const title = to.meta?.title;
   if (typeof title === 'string') document.title = title;
 });

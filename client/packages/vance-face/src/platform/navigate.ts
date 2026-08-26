@@ -61,6 +61,70 @@ export function navigateTo(href: string, options?: { replace?: boolean }): void 
   else window.location.href = href;
 }
 
+/**
+ * Rewrite the current URL from inside an editor — same route, new query.
+ *
+ * <p>Cortex writes its open tabs here, Chat its session, Inbox its selected
+ * thread. All three used raw {@code history.pushState(null, …)}, and that
+ * turned out to be the one thing a router cannot survive: the state object it
+ * keeps on every entry ({@code back}/{@code current}/{@code position}/…) was
+ * being overwritten with `null`. The router then still believed the route was
+ * `/chat` — the address it last set itself — so pressing Back after stepping
+ * into a document restored `/chat` without the session, and the chat came up
+ * empty. Measured: `history.state === null` right after the chat wrote its
+ * URL, `currentRoute.fullPath === '/chat'` while the address bar read
+ * `/chat?project=…&sessionId=…`.
+ *
+ * <p>So the editor still decides *what* the query says — that part of the
+ * contract stands — but the writing goes through the router, which keeps the
+ * address and the router's own bookkeeping in step. Same path means the route
+ * component is not remounted, so this is as cheap as the raw call was.
+ *
+ * <p>Outside the shell it degrades to a raw write that *preserves*
+ * `history.state` instead of nulling it.
+ */
+export function replaceUrl(url: string): void {
+  if (router) {
+    void router.replace(toRouterTarget(url));
+    return;
+  }
+  window.history.replaceState(window.history.state, '', url);
+}
+
+/** {@link replaceUrl}, but leaving a Back step behind. */
+export function pushUrl(url: string): void {
+  if (router) {
+    void router.push(toRouterTarget(url));
+    return;
+  }
+  window.history.pushState(window.history.state, '', url);
+}
+
+/**
+ * Reduce whatever the caller passed to what the router understands.
+ *
+ * <p>The editors build their URLs with `new URL(window.location.href)` and
+ * hand over `url.toString()` — an absolute, same-origin address. That was
+ * fine for `history.pushState`, which takes any same-origin URL, and is not
+ * fine for the router, which expects a path: it read
+ * `http://localhost:9900/chat?…` as a relative location and resolved it to
+ * `/` with the query attached. The chat's own address turned into the
+ * launcher's.
+ *
+ * <p>A cross-origin URL is returned untouched; the router will refuse it and
+ * that refusal is more honest than silently rewriting someone's target.
+ */
+function toRouterTarget(url: string): string {
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) return url;
+  try {
+    const parsed = new URL(url, window.location.origin);
+    if (parsed.origin !== window.location.origin) return url;
+    return parsed.pathname + parsed.search + parsed.hash;
+  } catch {
+    return url;
+  }
+}
+
 /** Whether a click on {@code href} would stay inside the shell. */
 export function staysInShell(href: string): boolean {
   return router !== null && isClusterHref(href);

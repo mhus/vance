@@ -67,7 +67,7 @@ import CreateDocumentModal, {
   type CreateModalResult,
 } from './components/CreateDocumentModal.vue';
 import NewFolderModal from './components/NewFolderModal.vue';
-import { navigateTo } from '@/platform/navigate';
+import { navigateTo, pushUrl, replaceUrl } from '@/platform/navigate';
 
 // How the chat binds to a Cortex document for per-turn LLM context.
 //  - 'auto'   (default): the bound doc follows the active tab, and the
@@ -487,7 +487,7 @@ async function openPathHandoff(pid: string, rawPath: string): Promise<void> {
   const open = view.open.includes(id) ? view.open : [...view.open, id];
   const queries = viewQuery ? { ...view.queries, [id]: viewQuery } : view.queries;
   const qs = writeCortexView(known, { ...view, open, doc: id, queries });
-  window.history.replaceState({ cortex: true }, '', `/cortex${qs ? `?${qs}` : ''}`);
+  replaceUrl(`/cortex${qs ? `?${qs}` : ''}`);
 }
 
 /** Snapshot the current view from the store + preference refs. */
@@ -519,8 +519,8 @@ function syncUrl(mode: 'push' | 'replace'): void {
   const qs = writeCortexView(window.location.search, currentView());
   const next = `${window.location.pathname}${qs ? `?${qs}` : ''}`;
   if (next === `${window.location.pathname}${window.location.search}`) return;
-  if (mode === 'push') window.history.pushState({ cortex: true }, '', next);
-  else window.history.replaceState({ cortex: true }, '', next);
+  if (mode === 'push') pushUrl(next);
+  else replaceUrl(next);
 }
 
 /**
@@ -1515,7 +1515,7 @@ function leaveSessionInPlace(): void {
   // the picker renders in the same slot the chat just vacated.
   rightPanelOpen.value = true;
   const qs = writeCortexView(`project=${projectId.value ?? ''}`, currentView());
-  window.history.pushState({ cortex: true }, '', `/cortex?${qs}`);
+  pushUrl(`/cortex?${qs}`);
 }
 
 async function switchToSessionInPlace(sid: string): Promise<void> {
@@ -1523,7 +1523,7 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
   rightPanelOpen.value = true;
   // Update the URL so a refresh / bookmark lands on the session.
   const qs = writeCortexView(`sessionId=${sid}&project=${projectId.value ?? ''}`, currentView());
-  window.history.pushState({ cortex: true }, '', `/cortex?${qs}`);
+  pushUrl(`/cortex?${qs}`);
   await resolveSession(sid);
 }
 </script>

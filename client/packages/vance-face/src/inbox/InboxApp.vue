@@ -25,7 +25,7 @@ import { InboxClientToolService } from '@/inbox/inboxClientToolService';
 import { setDocumentDraft } from '@/platform';
 import InboxThreadPanel from '@/inbox/InboxThreadPanel.vue';
 import InboxReactionBar from '@/inbox/InboxReactionBar.vue';
-import { navigateTo } from '@/platform/navigate';
+import { navigateTo, pushUrl, replaceUrl } from '@/platform/navigate';
 import {
   AnswerOutcome,
   Criticality,
@@ -121,7 +121,7 @@ function pushItemToUrl(id: string | null): void {
   if (id) url.searchParams.set('item', id);
   else url.searchParams.delete('item');
   if (url.toString() !== window.location.href) {
-    window.history.pushState(null, '', url.toString());
+    pushUrl(url.toString());
   }
 }
 
@@ -691,7 +691,7 @@ function writeChatParam(sid: string | null): void {
   const url = new URL(window.location.href);
   if (sid) url.searchParams.set('chat', sid);
   else url.searchParams.delete('chat');
-  window.history.replaceState(window.history.state, '', url.toString());
+  replaceUrl(url.toString());
 }
 
 /**

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { vanceNavigate } from '@vance/shared';
 import { cortexDeepLink, VAlert, VButton, VCard, VEmptyState } from '@vance/components';
 import { getDesktopStatus } from './api';
 import type { DesktopView } from './generated/common-desktop/DesktopView';
@@ -37,7 +38,7 @@ function cardUrl(card: DesktopCard): string | null {
 /** Open an app in the current window (default action). */
 function openCard(card: DesktopCard): void {
   const url = cardUrl(card);
-  if (url) window.location.href = url;
+  if (url) vanceNavigate(url);
 }
 
 /** Open an app in a fresh Cortex tab (secondary action). */

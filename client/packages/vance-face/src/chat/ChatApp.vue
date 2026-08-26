@@ -39,7 +39,7 @@ import PickerView from './PickerView.vue';
 import ChatView from './ChatView.vue';
 import ChatComposer from './ChatComposer.vue';
 import ChatRightPanel from './ChatRightPanel.vue';
-import { navigateTo } from '@/platform/navigate';
+import { navigateTo, pushUrl, replaceUrl } from '@/platform/navigate';
 import {
   useFollowUpSuggestion,
   type FollowUpConversationContext,
@@ -169,9 +169,9 @@ function pushProjectToUrl(name: string | null, mode: 'push' | 'replace' = 'push'
   else url.searchParams.delete('project');
   if (url.toString() === window.location.href) return;
   if (mode === 'push') {
-    window.history.pushState(null, '', url.toString());
+    pushUrl(url.toString());
   } else {
-    window.history.replaceState(null, '', url.toString());
+    replaceUrl(url.toString());
   }
 }
 
@@ -205,7 +205,7 @@ function goToPickerWithProject(projectName: string): void {
   url.searchParams.delete('sessionId');
   url.searchParams.set('project', projectName);
   if (url.toString() !== window.location.href) {
-    window.history.pushState(null, '', url.toString());
+    pushUrl(url.toString());
   }
   pickerProjectName.value = projectName;
   // Land on the sessions list, not the project list — user just told
@@ -571,7 +571,7 @@ function pushSessionIdToUrl(sessionId: string | null): void {
   // is called via the popstate handler after the browser already
   // navigated).
   if (url.toString() !== window.location.href) {
-    window.history.pushState(null, '', url.toString());
+    pushUrl(url.toString());
   }
 }
 

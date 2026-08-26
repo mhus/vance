@@ -959,4 +959,70 @@ class ModelCatalogTest {
         // filters by path-prefix to assign each doc to the right layer.
         when(documentService.findAllByPathPrefix(any())).thenReturn(overrideDocs);
     }
+
+    // ──── openai-experimental: Responses-API reasoning models ───────
+
+    /**
+     * {@code gpt-5.6-sol} under the {@code openai-experimental} provider
+     * must surface the {@code THINKING} capability — the whole point of
+     * the provider is that reasoning-native models finally reason on
+     * agentic turns. The legacy {@code openai} entry deliberately omits
+     * it (the chat-completions endpoint 400s on the combination), so
+     * the two entries for the same wire-name diverge here by design.
+     */
+    @Test
+    void bundled_openai_experimental_gpt56sol_has_thinking_capability() {
+        ModelInfo info = catalog.lookupOrDefault("openai-experimental", "gpt-5.6-sol");
+
+        assertThat(info.capabilities())
+                .as("openai-experimental/gpt-5.6-sol must surface THINKING")
+                .contains(ModelCapability.THINKING)
+                .contains(ModelCapability.VISION);
+    }
+
+    /**
+     * The {@code gpt-5*} quirk rule strips {@code temperature} and
+     * {@code top_p} (chat-completions rejects them for the gpt-5 family).
+     * The Responses endpoint accepts both, so the {@code openai-experimental}
+     * YAML overrides {@code unsupportedParams} explicitly and keeps only
+     * the knobs the Responses API actually refuses. If the override were
+     * missing or wrong, a recipe with {@code temperature: 0.7} would have
+     * its sampling silently dropped — a loss of control the endpoint
+     * does not require.
+     */
+    @Test
+    void bundled_openai_experimental_gpt56sol_overrides_quirk_unsupported_params() {
+        ModelInfo info = catalog.lookupOrDefault("openai-experimental", "gpt-5.6-sol");
+
+        assertThat(info.unsupportedParams())
+                .as("Responses endpoint supports temperature + top_p; the YAML "
+                        + "must override the gpt-5* quirk rule that would strip them")
+                .containsExactlyInAnyOrder(
+                        SamplingParam.FREQUENCY_PENALTY,
+                        SamplingParam.PRESENCE_PENALTY,
+                        SamplingParam.STOP_SEQUENCES,
+                        SamplingParam.SEED)
+                .doesNotContain(SamplingParam.TEMPERATURE)
+                .doesNotContain(SamplingParam.TOP_P);
+    }
+
+    /**
+     * The {@code gpt-5*} quirk rule supplies {@code reasoningEffortWhenOff: "none"}
+     * so a recipe without a {@code thinking: ...} param still sends an
+     * explicit off-value (a reasoning-native model reasons unless told
+     * off). The YAML omits the field on purpose — the quirk rule is the
+     * single source for the off-value, and {@code "none"} is a valid
+     * value on the Responses endpoint (no 400). If the quirk rule stopped
+     * matching, this would fall back to {@code null} and the model would
+     * default-reason against the user's wish.
+     */
+    @Test
+    void bundled_openai_experimental_gpt56sol_carries_quirk_reasoning_effort_when_off() {
+        ModelInfo info = catalog.lookupOrDefault("openai-experimental", "gpt-5.6-sol");
+
+        assertThat(info.reasoningEffortWhenOff())
+                .as("gpt-5* quirk rule must supply the off-value even under "
+                        + "openai-experimental")
+                .isEqualTo("none");
+    }
 }

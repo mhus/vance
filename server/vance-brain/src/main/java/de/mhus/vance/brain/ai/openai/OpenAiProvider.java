@@ -309,7 +309,7 @@ public class OpenAiProvider extends AbstractChatProvider {
      * than passing the API key directly so the value can appear in
      * logs / traces without leaking the credential.
      */
-    static String deriveCacheKey(AiChatConfig config) {
+    public static String deriveCacheKey(AiChatConfig config) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             md.update(config.modelName().getBytes(StandardCharsets.UTF_8));

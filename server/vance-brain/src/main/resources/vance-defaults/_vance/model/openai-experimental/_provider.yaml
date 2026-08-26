@@ -1,0 +1,19 @@
+displayName: OpenAI Experimental (Responses API)
+wireType: openai
+authType: api-key
+
+# Hard cap on the `tools` array, enforced by request validation before
+# the model sees anything. The Responses endpoint applies the same
+# request-validation limit as chat-completions, so an oversized manifest
+# comes back as HTTP 400 `array_above_max_length` with no tokens spent
+# — identical failure mode and cost as the legacy endpoint. Same cap,
+# same default; a model that needs a different value overrides it in
+# its own YAML.
+#
+# This file is keyed by the *instance* name (the directory it sits in),
+# not by `wireType`. So it applies to an instance literally called
+# `openai-experimental` and to nothing else: a gateway configured as
+# `ai.provider.cortecs.type=openai-experimental` does NOT inherit this
+# cap — it needs its own `_vance/model/cortecs/_provider.yaml` with the
+# limit that gateway actually enforces.
+maxTools: 128

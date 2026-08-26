@@ -1,0 +1,32 @@
+# Balanced sibling of gpt-5.6-sol (text + image in, text out).
+# Runs via the `openai-experimental` provider (OpenAI Responses-API,
+# /v1/responses) — the only OpenAI endpoint that accepts
+# reasoning_effort together with function tools. See
+# ../openai-experimental/gpt-5.6-sol.yaml and
+# readme/openai-experimental-provider.md.
+#
+# Long-context surcharge: prompts >272k input tokens are billed at 2x
+# input / 1.5x output for the whole request — not expressible in the
+# flat Pricing record.
+contextWindowTokens: 1050000
+# Reasoning model — the cap must cover the thinking pass, not just the
+# visible answer (see glm-5.2.yaml for the failure mode).
+defaultMaxOutputTokens: 32768
+size: LARGE
+capabilities:
+- vision
+- thinking
+# See gpt-5.6-sol.yaml for the rationale. The Responses endpoint
+# supports temperature and top_p; the gpt-5* quirk rule would strip
+# them too (it is chat-completions-shaped), so this list overrides it
+# and keeps only the knobs the Responses API actually refuses.
+unsupportedParams:
+- frequency_penalty
+- presence_penalty
+- stop
+- seed
+pricing:
+  currency: USD
+  inputPerMTok: 2.0
+  outputPerMTok: 12.0
+  cacheReadPerMTok: 0.2

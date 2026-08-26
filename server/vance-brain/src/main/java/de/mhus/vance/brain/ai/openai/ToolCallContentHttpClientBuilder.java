@@ -19,7 +19,7 @@ import java.time.Duration;
  * timeouts, so instances must not be shared across concurrently built
  * models.
  */
-final class ToolCallContentHttpClientBuilder implements HttpClientBuilder {
+public final class ToolCallContentHttpClientBuilder implements HttpClientBuilder {
 
     private final HttpClientBuilder delegate;
 
@@ -28,7 +28,7 @@ final class ToolCallContentHttpClientBuilder implements HttpClientBuilder {
     }
 
     /** Wrap the single classpath-default builder (the JDK client in this build). */
-    static ToolCallContentHttpClientBuilder wrappingDefault() {
+    public static ToolCallContentHttpClientBuilder wrappingDefault() {
         return new ToolCallContentHttpClientBuilder(HttpClientBuilderLoader.loadHttpClientBuilder());
     }
 

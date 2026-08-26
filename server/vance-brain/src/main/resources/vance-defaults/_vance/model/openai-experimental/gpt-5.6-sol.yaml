@@ -1,0 +1,38 @@
+# Frontier multimodal reasoning model (text + image in, text out).
+# Runs via the `openai-experimental` provider (OpenAI Responses-API,
+# /v1/responses) — the only OpenAI endpoint that accepts
+# reasoning_effort together with function tools. The legacy `openai`
+# provider (/v1/chat/completions) rejects that combination with HTTP
+# 400, so the same model file there runs with reasoning pinned to
+# "none" (see ../openai/gpt-5.6-sol.yaml). See
+# readme/openai-experimental-provider.md.
+#
+# Long-context surcharge: prompts >272k input tokens are billed at 2x
+# input / 1.5x output for the whole request — not expressible in the
+# flat Pricing record, so cost estimates understate huge prompts.
+contextWindowTokens: 1050000
+# Reasoning model — the cap must cover the thinking pass, not just the
+# visible answer (see glm-5.2.yaml for the failure mode).
+defaultMaxOutputTokens: 32768
+size: LARGE
+capabilities:
+- vision
+- thinking
+# The Responses endpoint supports temperature and top_p (unlike the
+# gpt-5* family on /chat/completions, which rejects them). List only
+# the knobs the Responses API actually refuses: frequency_penalty,
+# presence_penalty and stop throw UnsupportedFeatureException inside
+# OpenAiResponsesChatModel.validate, and the builder has no seed
+# method. Setting this explicitly overrides the gpt-5* quirk rule,
+# which would otherwise strip temperature/top_p as well — a loss of
+# sampling control the Responses endpoint does not require.
+unsupportedParams:
+- frequency_penalty
+- presence_penalty
+- stop
+- seed
+pricing:
+  currency: USD
+  inputPerMTok: 5.0
+  outputPerMTok: 30.0
+  cacheReadPerMTok: 0.5

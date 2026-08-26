@@ -30,6 +30,18 @@ public enum ProviderType {
     /** Local LM Studio server — no auth required by default. */
     LM_STUDIO("lmstudio",      false),
     AZURE_OPENAI("azure-openai", true),
+    /**
+     * OpenAI Responses-API endpoint ({@code /v1/responses}) via
+     * langchain4js {@code OpenAiResponsesChatModel} — experimental,
+     * temporary bridge until {@code OpenAiChatModel} itself speaks
+     * {@code /v1/responses} or the Responses client leaves
+     * {@code @Experimental}. Reasoning-native models (gpt-5.6-sol and
+     * siblings) reject {@code reasoning_effort} together with function
+     * tools on {@code /chat/completions} with HTTP 400, so they are
+     * unusable for agentic turns on the legacy endpoint. See
+     * {@code readme/openai-experimental-provider.md}.
+     */
+    OPENAI_EXPERIMENTAL("openai-experimental", true),
     /** Test-only deterministic stub provider (qa/ai-test). */
     SCRIPTED("scripted",       false);
 

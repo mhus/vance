@@ -38,7 +38,10 @@ import {
   type FollowUpExtensionOptions,
 } from './followUpExtension';
 
-interface Props {
+// Exported so the barrel's lazy `defineAsyncComponent` export can name this
+// type in its emitted declarations (TS4023). Keeps prop type-checking at the
+// call sites, which annotating the export as a bare `Component` would lose.
+export interface Props {
   modelValue: string;
   /**
    * Selects the syntax-highlighting language. See {@link languageFor}

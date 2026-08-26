@@ -3,13 +3,36 @@
 // dialog, ...) directly. Editors and addons compose their views from
 // these components. See specification/web-ui.md §7.3.
 
+import { defineAsyncComponent } from 'vue';
+
 export { accentColorDotClass } from './accentColor';
-export { default as CodeEditor } from './CodeEditor.vue';
-export {
-  dismissFollowUp,
-  followUpExtension,
-  type FollowUpExtensionOptions,
-} from './followUpExtension';
+
+// CodeEditor is exported LAZILY, and that is a bundling decision, not a
+// stylistic one. This is a barrel: an entry that imports `VButton` from it
+// pulls the whole module graph behind every other export into the same chunk.
+// CodeEditor's graph is CodeMirror 6 plus a dozen lezer grammars (SQL, Python,
+// Java, HTML, CSS, YAML, JS, Markdown) — measured at roughly two thirds of the
+// 913 KB shared chunk that every page preloaded, on pages like scopes.html and
+// users.html that contain no editor at all.
+//
+// Behind `defineAsyncComponent` the barrel holds only a thunk, so the grammars
+// move into their own chunk and are fetched by the three surfaces that
+// actually render source (Cortex's code mode, the workspace file viewer,
+// compose output). Consumers keep importing it from here unchanged.
+//
+// Safe because nothing takes a template ref to it or names
+// `InstanceType<typeof CodeEditor>` — it is driven entirely by props and
+// events. Should that change, this export has to go back to being eager, or
+// the ref has to be unwrapped explicitly.
+export const CodeEditor = defineAsyncComponent(() => import('./CodeEditor.vue'));
+// TYPE only, deliberately. `followUpExtension` / `dismissFollowUp` are
+// CodeMirror extensions — re-exporting the *values* here dragged
+// @codemirror/view and @codemirror/state (215 KB) back into the eager barrel
+// chunk that lazifying CodeEditor above had just emptied, and for nobody:
+// their only consumer is CodeEditor.vue, which imports them straight from
+// './followUpExtension'. Outside this package only the type is used
+// (DocumentTabShell builds the options object), and types cost no bytes.
+export type { FollowUpExtensionOptions } from './followUpExtension';
 // Live-WS Vue composables. Vue-bound, so they live here rather than in the
 // platform-neutral @vance/shared (which must stay Vue-free for RN/Electron).
 export * from './cortexLink';

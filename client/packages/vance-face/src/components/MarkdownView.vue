@@ -16,7 +16,7 @@
  *
  * Spec: specification/inline-and-embedded-content.md §11.7.
  */
-import { computed, defineComponent, h, inject, type PropType, type VNode } from 'vue';
+import { computed, defineComponent, h, inject, ref, type PropType, type VNode } from 'vue';
 import { marked, type Tokens } from 'marked';
 import { sanitizeHtml as sanitize } from './sanitizeHtml';
 import InlineKindBox from './InlineKindBox.vue';
@@ -30,8 +30,38 @@ import {
   referrerDirOf,
   type EmbedRef,
 } from '@/kindRenderers/parseVanceUri';
-import katex from 'katex';
-import 'katex/dist/katex.min.css';
+// KaTeX is NOT imported statically. This component sits in the shared
+// `components` barrel, which every entry preloads — a static import put a
+// 252 KB LaTeX engine on pages that can never render a formula (measured on
+// scopes.html). It is fetched the first time a math token is actually seen,
+// and the `katexEpoch` bump below re-renders that same node with the real
+// output once the engine is in. The stylesheet rides along with the chunk.
+type KatexApi = typeof import('katex').default;
+let katex: KatexApi | null = null;
+let katexPending: Promise<unknown> | null = null;
+/** Bumped once — and only once — when the engine becomes available. */
+const katexEpoch = ref(0);
+
+function loadKatex(): void {
+  if (katex || katexPending) return;
+  katexPending = Promise.all([import('katex'), import('katex/dist/katex.min.css')])
+    .then(([mod]) => {
+      katex = mod.default;
+      katexEpoch.value += 1;
+    })
+    .catch(() => {
+      // Engine unreachable — every formula stays as its own source text,
+      // which is readable. Not retried: a second failure renders the same.
+    });
+}
+
+const HTML_ESCAPES: Record<string, string> = {
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+};
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+}
 
 /**
  * Kinds that get an EmbeddedKindBox preview card appended underneath
@@ -219,6 +249,13 @@ interface MathToken extends Tokens.Generic {
 }
 
 function renderKatex(token: MathToken): string {
+  if (!katex) {
+    loadKatex();
+    // First sight of math on this page: show the formula's own source rather
+    // than a spinner or a gap. It is what the author wrote, it is readable,
+    // and it is replaced a tick later when the epoch bump re-renders.
+    return `<span class="katex-pending">${escapeHtml(token.text)}</span>`;
+  }
   try {
     return katex.renderToString(token.text, {
       displayMode: token.displayMode,
@@ -730,6 +767,10 @@ export default defineComponent({
     const referrerDir = computed(() => referrerDirOf(referrerPath.value));
 
     const inlineHtml = computed<string>(() => {
+      // Depend on the KaTeX epoch so the pending-source placeholders emitted
+      // by renderKatex() are replaced once the engine arrives. Bumped at most
+      // once per page, so this costs one extra render and never a loop.
+      void katexEpoch.value;
       const src = props.source ?? '';
       if (!src) return '';
       // Inline mode (chat-bubble one-liners, picker previews) skips the
@@ -742,6 +783,7 @@ export default defineComponent({
     });
 
     const blockNodes = computed<VNode[]>(() => {
+      void katexEpoch.value; // see inlineHtml
       const src = props.source ?? '';
       if (!src) return [];
       const { entries, body } = extractFrontmatter(src);

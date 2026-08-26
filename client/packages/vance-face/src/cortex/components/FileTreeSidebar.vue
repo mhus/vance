@@ -93,6 +93,27 @@ async function revealActiveFile(): Promise<void> {
   el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
+/**
+ * Bring the <b>folder</b> of a document into view: expand the chain down
+ * to it and scroll its row into sight, without touching the open tabs.
+ *
+ * <p>Driven from the breadcrumb — "where does this document live" is a
+ * different question from "show me the document", which is why it does
+ * not select a file.
+ */
+async function revealFolder(documentPath: string): Promise<void> {
+  const idx = documentPath.lastIndexOf('/');
+  if (idx < 0) return; // project root — nothing to expand
+  const folder = documentPath.slice(0, idx);
+  await store.expandTo(documentPath);
+  await nextTick();
+  const safe = window.CSS?.escape ? window.CSS.escape(folder) : folder;
+  const el = sidebarEl.value?.querySelector<HTMLElement>(`[data-folder-path="${safe}"]`);
+  el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+defineExpose({ revealActiveFile, revealFolder });
+
 // Auto-Target: reveal the active file whenever it changes, the mode gets
 // switched on, or the tree (re)loads (root identity changes after a
 // loadList). Manual 🎯 clicks work regardless of the mode.

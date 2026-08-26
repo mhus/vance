@@ -240,10 +240,14 @@ function openFook(): void {
       <span v-if="breadcrumbs.length" class="opacity-50 mx-2 align-middle">·</span>
       <span class="opacity-70 align-middle">
         <template v-for="(crumb, idx) in breadcrumbs" :key="idx">
+          <!-- pointerdown.stop like the title: the shell resets the focus
+               zone on any pointerdown outside the editor grid, which would
+               undo a crumb handler that focuses a zone. -->
           <button
             v-if="crumbOnClick(crumb)"
             type="button"
             class="crumb-link"
+            @pointerdown.stop
             @click="crumbOnClick(crumb)?.()"
           >{{ crumbText(crumb) }}</button>
           <span v-else>{{ crumbText(crumb) }}</span>

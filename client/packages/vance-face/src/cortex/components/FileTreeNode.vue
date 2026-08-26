@@ -136,6 +136,7 @@ function onFolderDrop(ev: DragEvent): void {
       type="button"
       class="w-full text-left px-2 py-1 hover:bg-base-200 rounded flex items-center gap-1"
       :style="indentStyle(0)"
+      :data-folder-path="node.path"
       @click="emit('toggle', node.path)"
     >
       <span class="opacity-50 w-3 inline-block text-xs">{{ isOpen(node.path) ? '▾' : '▸' }}</span>

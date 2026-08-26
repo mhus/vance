@@ -16,7 +16,7 @@
  * The right-panel toggle is always available regardless of mode —
  * a stupid show/hide switch on top of the slot.
  */
-import { computed, onBeforeUnmount, onMounted, provide, ref, watch, type Ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type Ref } from 'vue';
 import {
   type Crumb,
   EditorShell,
@@ -92,6 +92,8 @@ const projectId = ref<string | null>(null);
 const chatBindMode = ref<ChatBindMode>('auto');
 const pinnedDocumentId = ref<string | null>(null);
 const focusZone = ref<FocusZone>('main');
+// The file tree, for the imperative "reveal" calls the breadcrumb makes.
+const treeRef = ref<InstanceType<typeof FileTreeSidebar> | null>(null);
 
 // Auto-Target: when on (default), the document tree auto-reveals the
 // active tab's file — same effect as clicking the 🎯 button in the tree
@@ -652,9 +654,11 @@ watch(autoTarget, (on) => {
   }
 });
 
+// The project is the first breadcrumb — repeating it in the title read
+// as "Cortex · test1 · test1 › …". The title carries what the crumbs
+// cannot: which session this window is bound to.
 const title = computed<string>(() => {
   if (hasSession.value && sessionTitle.value) return `Cortex · ${sessionTitle.value}`;
-  if (projectLabel.value) return `Cortex · ${projectLabel.value}`;
   return 'Cortex';
 });
 
@@ -681,6 +685,21 @@ function onProjectCrumbClick(): void {
   }
 }
 
+/**
+ * Show where the active document lives: expand the tree down to its
+ * folder and scroll it into view. The way back into the file tree from
+ * a document that fills the window — notably an application, whose own
+ * UI has no notion of the folder it sits in.
+ */
+function onPathCrumbClick(): void {
+  const path = store.activeTab?.path;
+  if (!path) return;
+  // In App view-mode the sidebar is suppressed; focusing it is what
+  // brings it back (see the `show-sidebar` binding below).
+  focusZone.value = 'sidebar';
+  void nextTick(() => treeRef.value?.revealFolder(path));
+}
+
 const breadcrumbs = computed<Crumb[]>(() => {
   const crumbs: Crumb[] = [];
   if (projectLabel.value && projectId.value) {
@@ -688,7 +707,10 @@ const breadcrumbs = computed<Crumb[]>(() => {
   } else if (projectLabel.value) {
     crumbs.push(projectLabel.value);
   }
-  if (store.activeTab?.path) crumbs.push(store.activeTab.path);
+  const path = store.activeTab?.path;
+  if (path) {
+    crumbs.push(path.includes('/') ? { text: path, onClick: onPathCrumbClick } : path);
+  }
   return crumbs;
 });
 
@@ -1240,21 +1262,33 @@ function currentFolderPrefix(): string {
   return idx >= 0 ? path.slice(0, idx + 1) : '';
 }
 
-function backHome(): void {
-  if (hasSession.value && sessionId.value) {
-    const params = new URLSearchParams();
-    params.set('sessionId', sessionId.value);
-    if (projectId.value) params.set('project', projectId.value);
-    navigateTo(`/chat?${params.toString()}`);
-  } else if (projectId.value) {
-    const params = new URLSearchParams();
-    params.set('projectId', projectId.value);
-    const folder = currentFolderPrefix();
-    if (folder) params.set('path', folder);
-    navigateTo(`/documents?${params.toString()}`);
-  } else {
+/**
+ * Back to the Documents explorer — always available, with or without a
+ * bound session. Returns the explorer to the folder of the active tab
+ * rather than the project root.
+ */
+function backToDocuments(): void {
+  if (!projectId.value) {
     navigateTo('/documents');
+    return;
   }
+  const params = new URLSearchParams();
+  params.set('projectId', projectId.value);
+  const folder = currentFolderPrefix();
+  if (folder) params.set('path', folder);
+  navigateTo(`/documents?${params.toString()}`);
+}
+
+/**
+ * Back to the chat this Cortex window is bound to. Only meaningful in
+ * session mode — chatless Cortex has no chat to return to.
+ */
+function backToChat(): void {
+  if (!sessionId.value) return;
+  const params = new URLSearchParams();
+  params.set('sessionId', sessionId.value);
+  if (projectId.value) params.set('project', projectId.value);
+  navigateTo(`/chat?${params.toString()}`);
 }
 
 async function onSaveAll(): Promise<void> {
@@ -1401,7 +1435,6 @@ onBeforeUnmount(() => {
   void store.saveAllDirty();
 });
 
-const backLabel = computed(() => (hasSession.value ? '← Chat' : '← Documents'));
 const bootReadyKey = computed(() => !!projectId.value);
 
 /**
@@ -1529,6 +1562,10 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
 </script>
 
 <template>
+  <!-- show-sidebar: App view-mode hides the tree to give the App the
+       width — but "hidden" must not mean "unreachable". Asking for the
+       sidebar (title click, breadcrumb path, reclaim handle) brings it
+       back, and the next click into the App takes it away again. -->
   <EditorShell
     v-if="bootReadyKey"
     v-model:focus-zone="focusZone"
@@ -1536,7 +1573,7 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
     :breadcrumbs="breadcrumbs"
     :full-height="true"
     focus-model="auto"
-    :show-sidebar="!isAppTab"
+    :show-sidebar="!isAppTab || focusZone === 'sidebar'"
     :show-right-panel="rightPanelOpen"
     :help-path="shellHelpPath"
     v-model:help-open="helpOpen"
@@ -1605,7 +1642,30 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
         :path="activeTab.path"
         class="mr-2"
       />
-      <VButton size="sm" variant="ghost" @click="backHome">{{ backLabel }}</VButton>
+      <!-- Two ways out, not one: Documents is always reachable, the chat
+           only exists in session mode. Icon-only with the label in the
+           tooltip — the topbar spends its width on the breadcrumb. -->
+      <VButton
+        size="xs"
+        variant="ghost"
+        class="px-1.5"
+        :title="$t('cortex.backToDocuments')"
+        :aria-label="$t('cortex.backToDocuments')"
+        @click="backToDocuments"
+      >
+        <span aria-hidden="true">📄</span>
+      </VButton>
+      <VButton
+        v-if="hasSession"
+        size="xs"
+        variant="ghost"
+        class="px-1.5"
+        :title="$t('cortex.backToChat')"
+        :aria-label="$t('cortex.backToChat')"
+        @click="backToChat"
+      >
+        <span aria-hidden="true">💬</span>
+      </VButton>
     </template>
 
     <template #sidebar>
@@ -1616,6 +1676,7 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
           </VAlert>
           <FileTreeSidebar
             v-if="projectId"
+            ref="treeRef"
             :root="store.fileTree"
             :active-file-id="store.activeTabId"
             :active-file-path="store.activeTab?.path ?? null"
@@ -1676,8 +1737,13 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
             </li>
             <li><div class="divider my-0" /></li>
             <li>
-              <a @click="closeMenus(); backHome()">
-                <span class="flex-1">{{ hasSession ? 'Back to chat' : 'Back to documents' }}</span>
+              <a @click="closeMenus(); backToDocuments()">
+                <span class="flex-1">{{ $t('cortex.backToDocuments') }}</span>
+              </a>
+            </li>
+            <li v-if="hasSession">
+              <a @click="closeMenus(); backToChat()">
+                <span class="flex-1">{{ $t('cortex.backToChat') }}</span>
               </a>
             </li>
         </VDropdown>

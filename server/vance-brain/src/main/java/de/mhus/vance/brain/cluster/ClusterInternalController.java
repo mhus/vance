@@ -5,6 +5,7 @@ import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.shared.cluster.BrainPodService;
 import de.mhus.vance.shared.cluster.PodSelector;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.shared.project.ProjectService;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +33,41 @@ public class ClusterInternalController {
 
     private final ProjectLifecycleService lifecycleService;
     private final BrainPodService brainPodService;
+
+    /**
+     * Hand a project over: stop it here, snapshot its workspace, drop the
+     * lease. The inverse of {@link #bring} and the second half of a drain.
+     *
+     * <p><b>Two steps, and the order is the contract.</b> After a release this
+     * pod is still eligible and often the least loaded, so it wins the project
+     * back on the next tick. A drain is therefore: make the pod ineligible
+     * (labels / {@code exclusive} via {@code PATCH …/pods/{podId}/placement}),
+     * <em>then</em> release. Reversed, it bounces back. That cannot be enforced
+     * here without a "do not take this one for a while" state — a fourth
+     * lifetime next to intent, ownership and activation — so it is documented
+     * instead ({@code planning/project-placement-labels.md} §8).
+     *
+     * <p>Must reach the holding pod: unlike the placement write below, this one
+     * tears down in-memory state that only exists in that process. {@code 409}
+     * when this pod does not hold the lease.
+     */
+    @PostMapping("/release")
+    public ResponseEntity<?> release(@RequestBody HttpClusterBringClient.BringRequest req) {
+        if (req == null || req.tenantId() == null || req.projectName() == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        try {
+            boolean released = lifecycleService.release(req.tenantId(), req.projectName());
+            if (!released) {
+                log.info("Cluster release refused for '{}/{}': not held by this pod",
+                        req.tenantId(), req.projectName());
+                return ResponseEntity.status(409).build();
+            }
+            return ResponseEntity.ok().build();
+        } catch (ProjectService.SystemProjectProtectedException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
 
     /**
      * Set a pod's placement attributes from outside the process — the write

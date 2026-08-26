@@ -5,9 +5,11 @@ import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.shared.cluster.BrainPodDocument;
 import de.mhus.vance.shared.cluster.PodSelector;
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.project.LifecycleType;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -58,6 +60,7 @@ public class ProjectPlacementService {
 
     private final ClusterService clusterService;
     private final ProjectService projectService;
+    private final MetricService metricService;
     private final ClusterBringClient bringClient;
     /**
      * {@link ObjectProvider} to keep the bean graph acyclic: the lifecycle
@@ -82,6 +85,24 @@ public class ProjectPlacementService {
         if (trigger.prefersLocal()
                 && isEligibleHere(project)
                 && localHeadroom() >= project.getHomeResourceScore()) {
+            return new PlacementDecision.Here();
+        }
+        return record(project, evaluate(project));
+    }
+
+    /**
+     * The same filter-then-fit computation as {@link #decide}, <b>without the
+     * local preference and without side effects</b>: no counter, no
+     * {@code pendingSince} write.
+     *
+     * <p>For readers. {@link PlacementDemandService} derives the demand by
+     * asking this question about every waiting project, and a report endpoint
+     * that a provisioner polls must not write to Mongo once per project per
+     * poll — nor mark a project as "waiting since" at the moment somebody
+     * merely looked.
+     */
+    public PlacementDecision evaluate(ProjectDocument project) {
+        if (livesWhereverAsked(project)) {
             return new PlacementDecision.Here();
         }
         List<BrainPodDocument> pods = clusterService.liveClusterPods();
@@ -114,7 +135,7 @@ public class ProjectPlacementService {
                 decisions.add(new PlacementDecision.Here());
                 continue;
             }
-            PlacementDecision decision = pick(pods, projected, project);
+            PlacementDecision decision = record(project, pick(pods, projected, project));
             if (decision instanceof PlacementDecision.On on) {
                 // Reserve: the pod we just chose counts as that much fuller for
                 // the rest of the round. Index lookup rather than a map because
@@ -219,6 +240,38 @@ public class ProjectPlacementService {
         return clusterService.selfPod()
                 .map(pod -> Math.max(1, pod.getResourcesMaxScore()) - pod.getResourcesCurrentScore())
                 .orElse(Integer.MAX_VALUE);
+    }
+
+    /**
+     * Side-effects of a decision that nobody should have to remember at a call
+     * site: count it, and mark an unplaceable project as waiting.
+     *
+     * <p>The mark is written here rather than by the distributor, and that is
+     * the whole reason a freshly created project shows up in the demand at all:
+     * it is in no orphan query, so if only the distributor stamped it, a person
+     * who just pressed "create" would wait while the report showed nothing
+     * ({@code planning/project-placement-labels.md} §6.2).
+     *
+     * <p>Best-effort: the mark is diagnostic, so a failed write must not turn a
+     * placement decision into an exception.
+     */
+    private PlacementDecision record(ProjectDocument project, PlacementDecision decision) {
+        if (!(decision instanceof PlacementDecision.Unschedulable unschedulable)) {
+            return decision;
+        }
+        metricService.counter("vance.cluster.placement.unschedulable",
+                "gap", unschedulable.gap().name().toLowerCase()).increment();
+        try {
+            if (projectService.markPendingPlacement(
+                    project.getTenantId(), project.getName(), Instant.now())) {
+                log.info("Project '{}/{}' is waiting for a pod ({})",
+                        project.getTenantId(), project.getName(), unschedulable.gap());
+            }
+        } catch (RuntimeException e) {
+            log.warn("Could not mark '{}/{}' as pending placement: {}",
+                    project.getTenantId(), project.getName(), e.toString());
+        }
+        return decision;
     }
 
     private void bringLocally(String tenantId, String name, String where) {

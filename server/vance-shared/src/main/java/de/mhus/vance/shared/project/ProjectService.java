@@ -61,6 +61,7 @@ public class ProjectService {
     private static final String F_OWNER_REQUIRED = "ownerRequired";
     private static final String F_HOME_RESOURCE_SCORE = "homeResourceScore";
     private static final String F_PLACEMENT_SELECTOR = "placementSelector";
+    private static final String F_PENDING_SINCE = "pendingSince";
 
     /**
      * The statuses that express the intent "should be live somewhere" — the
@@ -261,7 +262,11 @@ public class ProjectService {
         Update update = new Update()
                 .set(F_HOME_POD, selfPodId)
                 .set(F_HOME_NODE, selfNodeName)
-                .set(F_CLAIMED_AT, now);
+                .set(F_CLAIMED_AT, now)
+                // The claim is the moment a project stops waiting for a pod, so
+                // it is the one place that can clear the mark without a second
+                // write path deciding when "placed" happened.
+                .unset(F_PENDING_SINCE);
         ProjectDocument updated = mongoTemplate.findAndModify(
                 query, update,
                 FindAndModifyOptions.options().returnNew(true),
@@ -677,6 +682,94 @@ public class ProjectService {
         log.info("Project '{}/{}' lifecycleType {} → {}",
                 tenantId, name, current.getLifecycleType(), value);
         return updated;
+    }
+
+    /**
+     * Drops the lease on <em>one</em> project, guarded on this pod still being
+     * the holder. The single-project counterpart to {@link #releaseLeases} —
+     * that one is the shutdown sweep, this one is the deliberate hand-over of a
+     * project a pod keeps running for.
+     *
+     * <p>The guard is the whole point: releasing a lease we no longer hold would
+     * strip the new owner's claim, and the loser of that race is a project
+     * running on a pod that does not own it.
+     *
+     * <p>{@code pendingSince} is <b>not</b> set here. Whether the project now
+     * counts as waiting for a pod is a question for the placement layer, which
+     * asks it from the live pod list; writing it here would claim we know the
+     * answer before anyone looked.
+     *
+     * @return {@code true} when the lease was ours and is now gone
+     */
+    public boolean releaseLease(
+            String tenantId, String name,
+            String selfPodId, String selfNodeName, String selfAddress) {
+        if (selfPodId == null || selfPodId.isBlank()) return false;
+        Query query = new Query(Criteria.where(F_TENANT).is(tenantId)
+                .and(F_NAME).is(name)
+                .and(F_HOME_POD).is(selfPodId));
+        Update update = new Update()
+                .unset(F_HOME_POD)
+                .unset(F_HOME_NODE)
+                .unset(F_CLAIMED_AT);
+        boolean released = mongoTemplate.updateFirst(query, update, ProjectDocument.class)
+                .getModifiedCount() > 0;
+        if (released) {
+            log.info("Project '{}/{}' lease released by pod '{}'", tenantId, name, selfNodeName);
+            megadodoService.projectHomeReleased(
+                    tenantId, name, selfNodeName, selfPodId, selfAddress);
+        }
+        return released;
+    }
+
+    /**
+     * Marks a project as waiting for a pod, keeping the <em>first</em>
+     * timestamp: the guard is what makes {@code oldestSince} in the placement
+     * demand mean "waiting since", not "last asked about".
+     *
+     * <p>A diagnostic field, not a state — no decision reads it. It exists for
+     * two things the placement demand cannot derive otherwise: hysteresis (do
+     * not provision a pod for a five-second blip) and the projects that are not
+     * in the orphan query at all, because nothing about them says they need an
+     * owner except that someone just tried to place one
+     * ({@code planning/project-placement-labels.md} §6.2).
+     *
+     * @return {@code true} when this call was the one that set it
+     */
+    public boolean markPendingPlacement(String tenantId, String name, Instant now) {
+        Query query = new Query(Criteria.where(F_TENANT).is(tenantId)
+                .and(F_NAME).is(name)
+                .and(F_PENDING_SINCE).is(null));
+        Update update = new Update().set(F_PENDING_SINCE, now);
+        return mongoTemplate.updateFirst(query, update, ProjectDocument.class)
+                .getModifiedCount() > 0;
+    }
+
+    /**
+     * Projects that were last seen unplaceable and are still worth reporting.
+     *
+     * <p>Two filters beyond "has a {@code pendingSince}":
+     * <ul>
+     *   <li><b>Age.</b> Past {@code pendingTtl} the mark is ignored rather than
+     *       swept. An on-demand project nobody asks for again would otherwise
+     *       produce demand forever; "nobody came back" is not demand. No
+     *       cleanup tick behind it — the read decides, and the next attempt
+     *       rewrites the stamp if the need is still real.</li>
+     *   <li><b>Still homeless and still wanting to run.</b> A project that got
+     *       placed in the meantime has its mark cleared by the claim, but a
+     *       suspend does not clear it, so the status filter has to be here.</li>
+     * </ul>
+     */
+    public List<ProjectDocument> findPendingPlacement(Duration leaseTtl, Duration pendingTtl) {
+        Instant now = Instant.now();
+        Criteria stranded = new Criteria().orOperator(
+                Criteria.where(F_HOME_POD).is(null),
+                expiredLease(now, leaseTtl));
+        Query query = new Query(new Criteria().andOperator(
+                Criteria.where(F_PENDING_SINCE).ne(null).gt(now.minus(pendingTtl)),
+                Criteria.where(F_STATUS).in(WANTS_TO_RUN),
+                stranded));
+        return mongoTemplate.find(query, ProjectDocument.class);
     }
 
     /**

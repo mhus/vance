@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.cluster;
 
 import de.mhus.vance.brain.cluster.placement.PlacementDecision;
+import de.mhus.vance.brain.cluster.placement.PlacementDemandNotifier;
 import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.megadodo.MegadodoService;
@@ -40,6 +41,7 @@ public class ClusterDistributorTick {
     private final ClusterProperties properties;
     private final ProjectService projectService;
     private final ProjectPlacementService placementService;
+    private final PlacementDemandNotifier demandNotifier;
     private final MegadodoService megadodoService;
 
     @Scheduled(fixedDelayString = "${vance.cluster.master.distributorInterval:PT60S}",
@@ -53,6 +55,10 @@ public class ClusterDistributorTick {
         } catch (RuntimeException e) {
             log.warn("ClusterDistributorTick: round failed: {}", e.toString());
         }
+        // After distributing, not before: what could be placed has been placed,
+        // so what remains is genuine demand. Reporting first would announce a
+        // need this very round was about to satisfy.
+        demandNotifier.notifyRound();
     }
 
     void distribute() {

@@ -184,6 +184,35 @@ public class ProjectDocument {
     @Builder.Default
     private @Nullable Map<String, String> placementSelector = new HashMap<>();
 
+    /**
+     * When placement last found nowhere to put this project — the only part of
+     * the placement demand that cannot be re-derived at read time.
+     *
+     * <p>A <b>diagnostic</b> field, not a state: no decision reads it, and it
+     * may be stale or wrong without anything breaking. Which is why the gap and
+     * the selector are <em>not</em> stored beside it — those are computed from
+     * the live pod list when the demand is read, so they cannot go out of date.
+     *
+     * <p>It carries two things that are otherwise unobtainable
+     * ({@code planning/project-placement-labels.md} §6.2):
+     * <ul>
+     *   <li><b>How long.</b> Whoever provisions pods needs hysteresis, and a
+     *       never-claimed project has no {@code claimedAt} to measure from.</li>
+     *   <li><b>That it is waiting at all.</b> The orphan query selects on
+     *       {@code ownerRequired || PERMANENT}; a freshly created project with a
+     *       selector nothing satisfies is in neither set. Without this mark, a
+     *       user who just pressed "create" would be waiting while the demand
+     *       report showed nothing.</li>
+     * </ul>
+     *
+     * <p>Set on the first failed attempt and kept (not refreshed) so it means
+     * "waiting since". Cleared by a successful claim, which is the one moment
+     * that knows the waiting ended. Ignored by readers once older than
+     * {@code vance.cluster.placement.pending-ttl} — "nobody came back" is not
+     * demand — so nothing sweeps it.
+     */
+    private @Nullable Instant pendingSince;
+
     @CreatedDate
     private @Nullable Instant createdAt;
 }

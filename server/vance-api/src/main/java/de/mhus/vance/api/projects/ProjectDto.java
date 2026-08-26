@@ -65,5 +65,17 @@ public class ProjectDto {
      */
     private boolean ownerRequired;
 
+    /**
+     * Set when placement last found nowhere to put this project — the client's
+     * signal for "accepted, waiting for a matching pod".
+     *
+     * <p>Present is not an error and not a failure state: creation succeeded,
+     * and a pod that satisfies the project's {@code placementSelector} is
+     * expected to appear. Surfaces should say so and keep the project visible
+     * rather than reporting a broken create
+     * ({@code planning/project-placement-labels.md} §7).
+     */
+    private @Nullable Instant placementPendingSince;
+
     private @Nullable Instant createdAt;
 }

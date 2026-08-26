@@ -281,6 +281,7 @@ public class ProjectAdminController {
                 .lifecycleType(doc.getLifecycleType() == null
                         ? null : doc.getLifecycleType().name())
                 .ownerRequired(doc.isOwnerRequired())
+                .placementPendingSince(doc.getPendingSince())
                 .createdAt(doc.getCreatedAt())
                 .build();
     }

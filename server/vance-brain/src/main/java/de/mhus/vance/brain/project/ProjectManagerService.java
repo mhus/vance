@@ -104,6 +104,35 @@ public class ProjectManagerService {
         return doc;
     }
 
+    /** Whether this pod currently holds a valid lease on the project. */
+    public boolean isOwnedByLocalPod(String tenantId, String projectName) {
+        if (ProjectService.isPodless(projectName)) {
+            return false;
+        }
+        return projectService.findByTenantAndName(tenantId, projectName)
+                .map(project -> ProjectOwnership.isOwnedBy(
+                        project, clusterService.selfPodId(),
+                        Instant.now(), clusterService.leaseTtl()))
+                .orElse(false);
+    }
+
+    /**
+     * Gives up the lease on one project — the inverse of
+     * {@link #claimForLocalPod}. Guarded on this pod still being the holder, so
+     * a release that arrives late cannot strip whoever took over.
+     *
+     * <p>Ownership only. The teardown that has to accompany it — stopping
+     * engines, snapshotting the workspace — belongs to
+     * {@link ProjectLifecycleService#release}, and calling this directly leaves
+     * a project running on a pod that no longer owns it.
+     */
+    public boolean releaseLocalLease(String tenantId, String projectName) {
+        return projectService.releaseLease(
+                tenantId, projectName,
+                clusterService.selfPodId(), clusterService.selfNodeName(),
+                clusterService.selfEndpoint());
+    }
+
     /** All RUNNING projects this pod currently holds a lease on. */
     public List<ProjectDocument> projectsOwnedByLocalPod() {
         return projectService.findRunningByHomePodId(clusterService.selfPodId());

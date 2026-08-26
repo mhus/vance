@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.project;
 
+import de.mhus.vance.brain.cluster.placement.ClusterFullException;
 import de.mhus.vance.brain.cluster.placement.PlacementTrigger;
 import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
@@ -127,7 +128,19 @@ public class ProjectLifecycleService {
         // Where it runs is the placement service's call — local-first when this
         // pod has room, otherwise the least-loaded pod that does. HOMELESS and
         // podless projects short-circuit to a local bring inside it.
-        placementService.place(created, PlacementTrigger.CREATE);
+        try {
+            placementService.place(created, PlacementTrigger.CREATE);
+        } catch (ClusterFullException e) {
+            // "Accepted, waiting for a pod" is a legitimate outcome once
+            // selectors exist, and provisioning one takes minutes — so nobody
+            // can wait for it here. The project stays created and marked as
+            // pending (the placement decision did that); the caller reports the
+            // state instead of an error, or a correctly refused selector reads
+            // as a broken create
+            // (planning/project-placement-labels.md §7).
+            log.info("Project '{}/{}' created but not placed ({}) — waiting for a matching pod",
+                    tenantId, name, e.getGap());
+        }
         // Re-read: the bring behind place() moved the lease and the status.
         ProjectDocument saved = projectService.findByTenantAndName(tenantId, name)
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
@@ -324,6 +337,66 @@ public class ProjectLifecycleService {
         log.debug("Podless project '{}/{}' brought up locally (no lease, status unchanged)",
                 tenantId, projectName);
         return doc;
+    }
+
+    /**
+     * Hand the project over: stop running it here and drop the lease, leaving
+     * the <em>intent</em> untouched so the next placement picks it up
+     * elsewhere. The drain half of {@code planning/project-placement-labels.md}
+     * §8.
+     *
+     * <p><b>Not {@link #suspend}, and not the involuntary drift path either.</b>
+     * Three teardowns exist, and each writes a different amount:
+     * <ul>
+     *   <li>{@code suspend} changes the intent — the project runs nowhere
+     *       afterwards, and {@code findProjectsNeedingOwner} stops selecting
+     *       it. Using it to move a project would be an outage, not a move.</li>
+     *   <li>{@code ProjectLeaseService}'s drift deactivation writes
+     *       <em>nothing</em>: the lease is already gone, so the new owner has
+     *       initialised from Mongo and our folder is a stale copy that would
+     *       overwrite their state.</li>
+     *   <li>This one still holds the lease while it runs, so the workspace
+     *       <em>does</em> travel: snapshot first, release after. Skipping the
+     *       snapshot would hand the next owner whatever the last snapshot
+     *       happened to be, silently losing work in progress — the whole point
+     *       of a drain is that the project continues elsewhere.</li>
+     * </ul>
+     *
+     * <p>Order is load-bearing: deactivate, stop engines, snapshot, <em>then</em>
+     * release. Releasing first would let another pod claim and initialise from
+     * the old snapshot while this one is still writing the new one.
+     *
+     * <p>Podless projects hold no lease and are refused — there is nothing to
+     * hand over, and their lifecycle follows the WS connection.
+     *
+     * @return {@code false} when this pod does not hold the lease, so a caller
+     *     can answer 409 rather than pretend something happened
+     */
+    public boolean release(String tenantId, String projectName) {
+        if (ProjectService.isPodless(projectName)) {
+            throw new ProjectService.SystemProjectProtectedException(
+                    "Project '" + projectName + "' is podless — it holds no lease to release");
+        }
+        if (!activationRegistry.isActive(tenantId, projectName)
+                && !projectManager.isOwnedByLocalPod(tenantId, projectName)) {
+            log.debug("Project '{}/{}' release: not held here", tenantId, projectName);
+            return false;
+        }
+        eventPublisher.publishEvent(new ProjectEnginesStopRequested(tenantId, projectName));
+        activationRegistry.deactivate(tenantId, projectName);
+        try {
+            workspaceService.suspendAll(tenantId, projectName);
+        } catch (RuntimeException e) {
+            // Keep the lease: a project whose workspace we could not snapshot
+            // must not be handed to a pod that would then restore an older one.
+            log.error("Project '{}/{}' release aborted — workspace snapshot failed, "
+                    + "keeping the lease: {}", tenantId, projectName, e.toString());
+            throw e;
+        }
+        boolean released = projectManager.releaseLocalLease(tenantId, projectName);
+        log.info("Project '{}/{}' released by this pod (status unchanged, released={})",
+                tenantId, projectName, released);
+        return released;
     }
 
     /**

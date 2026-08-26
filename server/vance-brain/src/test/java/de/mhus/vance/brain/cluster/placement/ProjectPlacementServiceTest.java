@@ -15,6 +15,7 @@ import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.shared.cluster.BrainPodDocument;
 import de.mhus.vance.shared.project.LifecycleType;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.project.ProjectService;
 import java.util.HashMap;
 import java.util.List;
@@ -53,7 +54,9 @@ class ProjectPlacementServiceTest {
         lenient().when(clusterService.selfPod()).thenReturn(Optional.empty());
         lenient().when(clusterService.liveClusterPods()).thenReturn(List.of());
         placement = new ProjectPlacementService(
-                clusterService, projectService, bringClient, lifecycleProvider);
+                clusterService, projectService,
+                new MetricService(new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
+                bringClient, lifecycleProvider);
     }
 
     private static ProjectDocument project(String name, int score) {

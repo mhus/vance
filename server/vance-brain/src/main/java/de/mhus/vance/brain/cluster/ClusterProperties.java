@@ -98,6 +98,66 @@ public class ClusterProperties {
     private Cleanup cleanup = new Cleanup();
     private Lease lease = new Lease();
     private SelfPull selfPull = new SelfPull();
+    private Placement placement = new Placement();
+
+    /**
+     * {@code vance.cluster.placement.*} — how unmet placement demand is
+     * reported. See {@code planning/project-placement-labels.md} §6.
+     */
+    @Data
+    public static class Placement {
+
+        /**
+         * How long a {@code pendingSince} mark stays meaningful. Past this the
+         * <em>read</em> ignores it; nothing sweeps it, and the next failed
+         * attempt writes it again.
+         *
+         * <p>Without the cut-off, an on-demand project nobody asks for a second
+         * time would produce demand forever — and "nobody came back" is not
+         * demand.
+         */
+        private Duration pendingTtl = Duration.ofHours(1);
+
+        /**
+         * Where to push the demand document. <b>Empty (the default) means no
+         * push at all</b> — log and Megadodo only, which is the state of every
+         * single-pod installation.
+         *
+         * <p>Deployment config, not a Setting: the target belongs to the
+         * infrastructure like the Mongo URI does, not to a tenant. Hence no
+         * {@code SecretResolver} involvement for the token below either.
+         *
+         * <p>{@code {tenant}} and {@code {cluster}} are substituted.
+         * <b>{@code {tenant}} has a consequence:</b> it forces one POST per
+         * tenant, each carrying only that tenant's groups. Without it, one POST
+         * carries all of them. Same body type either way.
+         *
+         * <p>Env: {@code VANCE_CLUSTER_PLACEMENT_WEBHOOK_URL}.
+         */
+        private String webhookUrl = "";
+
+        /**
+         * Optional bearer token for {@link #webhookUrl}. Env:
+         * {@code VANCE_CLUSTER_PLACEMENT_WEBHOOK_TOKEN}.
+         */
+        private String webhookToken = "";
+
+        /**
+         * Heartbeat for an unchanged demand. Demand is a <em>level</em>, and a
+         * push needs a trigger — so the notifier sends on a change of the
+         * aggregate and otherwise at most once per this interval.
+         *
+         * <p>The "unchanged" state is tracked in memory on the master, which is
+         * correct rather than convenient: the master role is itself an in-memory
+         * cache, a role hand-over <em>should</em> re-send, and an idempotent
+         * full-state body makes a duplicate delivery a no-op. A persisted
+         * "already sent" would be the fourth lifetime §6.2 avoids.
+         */
+        private Duration webhookResendInterval = Duration.ofMinutes(15);
+
+        /** Connect + read timeout for the outbound webhook call. */
+        private Duration webhookTimeout = Duration.ofSeconds(10);
+    }
 
     /**
      * {@code vance.cluster.self-pull.*} — <b>when</b> this pod goes looking for

@@ -14,5 +14,6 @@ export interface ProjectDto {
   claimedAt?: Date;
   lifecycleType?: string;
   ownerRequired: boolean;
+  placementPendingSince?: Date;
   createdAt?: Date;
 }

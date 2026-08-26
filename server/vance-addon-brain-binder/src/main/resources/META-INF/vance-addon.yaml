@@ -1,2 +1,10 @@
 id: binder
-version: @project.version@
+version: "@project.version@"
+
+# Document-kind ids this addon's ./register expose contributes. The Web-UI
+# reads these to decide WHICH remote to fetch when a document of that kind
+# is opened -- a load trigger, not a copy of the matching rule (matches()
+# still decides once loaded). Quoted because a bare application:<x> is one
+# space away from being read as a mapping.
+kinds:
+  - "application:binder"

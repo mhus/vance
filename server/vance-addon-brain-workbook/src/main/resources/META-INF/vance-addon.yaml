@@ -1,2 +1,22 @@
 id: workbook
-version: @project.version@
+version: "@project.version@"
+
+# Document-kind ids this addon's ./register expose contributes. The Web-UI
+# reads these to decide WHICH remote to fetch when a document of that kind
+# is opened -- a load trigger, not a copy of the matching rule (matches()
+# still decides once loaded). Quoted because a bare application:<x> is one
+# space away from being read as a mapping.
+kinds:
+  - "workpage"
+  - "application:workbook"
+
+# Loaded at boot rather than when one of the kinds above is opened -- the one
+# addon that needs it. register() also calls registerBlock() for the
+# vance-workbook-index fence, and the block editor reads its block list when
+# the Tiptap editor is CONSTRUCTED, so a later registration is ignored. That
+# editor is shared by six addons (wiki, kanban, gtd, issues, journal and this
+# one), and no document kind implies "a page here might carry a workbook
+# block" -- so there is nothing to trigger on. Costs one remote fetch per page
+# load; without it the block silently degrades to the unknown-fence fallback
+# and drops out of the slash menu everywhere but workbook itself.
+eager: true

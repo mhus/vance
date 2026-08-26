@@ -438,7 +438,9 @@ const editor = useEditor({
       openWikiLink: (t: string) => props.openWikiLink?.(t),
     }),
     // Addon-contributed block nodes (block-extension-registry). Populated
-    // before mount by loadAddonRegistrations(); empty when no addon
+    // before mount by the addon registry (see vance-face addonRegistry.ts,
+    // and AddonDto.eager for why a block contributor loads at boot); empty
+    // when no addon
     // contributes a block.
     ...registeredBlocks().map((b) => b.node),
     VanceEmbed.configure({

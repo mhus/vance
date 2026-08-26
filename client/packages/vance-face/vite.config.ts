@@ -38,11 +38,12 @@ const editorEntries = {
 
 // Build-time remotes list is intentionally empty — addons are discovered
 // and registered at RUNTIME via `registerRemotes()` from
-// `@module-federation/runtime` (see loadAddonRegistrations.ts). The host
-// fetches `/face/addons` at boot, gets a list of installed addon ids,
-// and registers each remote dynamically before calling its `register()`
-// expose. No more rebuild-on-new-addon, no more dual-mapping
-// (vite.config + loadAddonRegistrations). New addons just need their
+// `@module-federation/runtime` (see platform/addonRegistry.ts). The host
+// fetches `/face/addons` at boot, gets a list of installed addon ids, and
+// registers each remote dynamically; the `register()` expose is then pulled
+// when a document of a kind that addon declares is opened. No more
+// rebuild-on-new-addon, no more dual-mapping
+// (vite.config + addonRegistry). New addons just need their
 // `client/dist/remoteEntry.js` reachable under `/addons/<id>/` — the
 // dev-server middleware below already path-scans for that, the
 // production Docker entrypoint symlinks `/shared/addons/<id>/<ver>/face`.
@@ -91,12 +92,12 @@ function vanceAddonDevServe(): Plugin {
         // (deployment/docker/face/docker-entrypoint.sh). Each addon
         // with a built dist/ shows up as `bundled:<id>` so the loader's
         // path-scheme dispatch matches the prod shape. Without this
-        // the dev server returns 404, loadAddonRegistrations() bails,
+        // the dev server returns 404, addonRegistry discovery bails,
         // and runtime Kind contributions never reach the registry.
         if (pathname === '/face/addons') {
           const addonsRoot = resolve(workspaceRoot, 'server');
           let entries: {
-            name: string; path: string; tile?: unknown; profile?: unknown;
+            name: string; path: string; tile?: unknown; profile?: unknown; kinds?: unknown; eager?: unknown;
           }[] = [];
           try {
             entries = readdirSync(addonsRoot, { withFileTypes: true })
@@ -107,7 +108,7 @@ function vanceAddonDevServe(): Plugin {
               )
               .map((id) => {
                 const entry: {
-                  name: string; path: string; tile?: unknown; profile?: unknown;
+                  name: string; path: string; tile?: unknown; profile?: unknown; kinds?: unknown; eager?: unknown;
                 } = {
                   name: id,
                   path: `bundled:${id}`,
@@ -130,12 +131,21 @@ function vanceAddonDevServe(): Plugin {
                       ),
                       'utf8',
                     ),
-                  ) as { tile?: unknown; profile?: unknown } | null;
+                  ) as { tile?: unknown; profile?: unknown; kinds?: unknown; eager?: unknown } | null;
                   if (manifest?.tile) entry.tile = manifest.tile;
                   // The profile tab an addon contributes — same single
                   // source as the landing tile, so the profile screen can
                   // build its strip without loading a remote first.
                   if (manifest?.profile) entry.profile = manifest.profile;
+                  // The document kinds an addon contributes. Same single
+                  // source again, and the reason the host no longer loads
+                  // every remote at boot: it can defer the fetch until a
+                  // document of that kind is opened. See
+                  // platform/addonRegistry.ts.
+                  if (Array.isArray(manifest?.kinds)) entry.kinds = manifest.kinds;
+                  // Opt out of the lazy path — for contributions no kind can
+                  // trigger (a block-editor block; see AddonDto.eager).
+                  if (manifest?.eager === true) entry.eager = true;
                 } catch {
                   // no manifest — addon contributes neither tile nor tab
                 }

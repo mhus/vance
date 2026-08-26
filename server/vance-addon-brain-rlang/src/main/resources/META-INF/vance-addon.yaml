@@ -1,2 +1,7 @@
 id: rlang
-version: @project.version@
+version: "@project.version@"
+
+# Contributes no document kinds -- this addon ships no ./register
+# expose. Declared explicitly (empty, not absent) so the Web-UI skips
+# it at boot instead of falling back to an eager load.
+kinds: []

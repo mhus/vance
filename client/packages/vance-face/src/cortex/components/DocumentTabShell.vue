@@ -30,6 +30,7 @@ import type { DocumentDto, FollowUpRequestDto, FollowUpResponseDto } from '@vanc
 import { WriterRole } from '@vance/generated';
 import type { FollowUpExtensionOptions } from '@/components';
 import { resolveKindFor } from '@vance/kind-registry';
+import { ensureKindsForDocument } from '@/platform/addonRegistry';
 import ImageView from '@/kindViews/ImageView.vue';
 import DocumentPreview from '@/kindViews/DocumentPreview.vue';
 import type { CortexDocument } from '../types';
@@ -60,7 +61,29 @@ const emit = defineEmits<{
 }>();
 
 const store = useCortexStore();
-const binding = computed(() => resolveBinding(props.document));
+
+// Safety net for the lazy addon load. cortexStore.openFile awaits the owning
+// addon before the tab reaches us, so the common path resolves correctly on the
+// first evaluation. This covers the rest: a document that gains its kind from an
+// edit, a tab restored by a path that skips the store's loader, an addon whose
+// manifest under-declares. Without it the binding would stay on the catch-all
+// CodeEditor showing raw YAML, with no event to recompute it — the registry is
+// a plain Map and nothing in it is reactive.
+//
+// `addonEpoch` is that missing event: bumped only when a load actually
+// registered something new, so a miss costs one lookup and no re-render.
+const addonEpoch = ref(0);
+watch(
+  () => [props.document.kind, props.document.headers?.app] as const,
+  async ([kind, app]) => {
+    if (await ensureKindsForDocument(kind ?? null, app ?? null)) addonEpoch.value += 1;
+  },
+  { immediate: true },
+);
+const binding = computed(() => {
+  void addonEpoch.value;
+  return resolveBinding(props.document);
+});
 
 // A tab is one document, which makes it the right place to declare the
 // base for relative `vance:` references rendered inside it — a link

@@ -40,6 +40,25 @@ export interface AddonManifestEntry {
   path: string;
   tile?: AddonTile;
   profile?: AddonProfile;
+  /**
+   * Document-kind ids this addon's `./register` expose contributes, from
+   * `vance-addon.yaml` `kinds:`. Absent for addons that contribute none.
+   *
+   * This is what lets the host skip loading remotes at boot: knowing which
+   * addon owns `calendar` is enough to defer the fetch until a document of
+   * that kind is opened. It is a load trigger, not a matching rule — the
+   * addon's own `matches()` still decides once loaded.
+   */
+  kinds?: string[];
+  /**
+   * Load this addon at boot instead of when one of its kinds is opened.
+   *
+   * The escape hatch for contributions the host cannot trigger from a kind id
+   * — a block-editor block is the known case, because the block list is read
+   * when the Tiptap editor is *constructed* and the editor is shared across
+   * six addons. Absent is the normal case.
+   */
+  eager?: boolean;
 }
 
 /** Module Federation remote name for an addon id. */

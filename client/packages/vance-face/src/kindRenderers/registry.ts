@@ -35,9 +35,15 @@ const MapView     = defineAsyncComponent(() => import('@/kindViews/MapView.vue')
 // Calendar's view moved to the calendar addon (Etappe 2.x). The
 // chat-stream still references it for inline-fence rendering;
 // federation gives us the same component at runtime via the dynamic
-// runtime API (no static remote map entry needed — the remote is
-// registered at boot by loadAddonRegistrations).
+// runtime API (no static remote map entry needed).
+//
+// `ensureAddonRemotesRegistered()` first, because these renderers run on
+// pages that never boot the addon registry themselves — an inline calendar
+// fence in the chat stream is exactly that case. It is idempotent and
+// memoised, so on Cortex it resolves to the manifest already fetched at boot.
 const CalendarView = defineAsyncComponent(async () => {
+  const { ensureAddonRemotesRegistered } = await import('@/platform/addonRegistry');
+  await ensureAddonRemotesRegistered();
   const { loadRemote } = await import('@module-federation/runtime');
   const mod = await loadRemote<{ default?: unknown } | unknown>(
     'vance_addon_calendar/CalendarView',
@@ -50,6 +56,8 @@ const CalendarView = defineAsyncComponent(async () => {
 // Timeline ships in the same addon as the calendar (different data
 // model, shared codec conventions) and reaches us the same way.
 const TimelineView = defineAsyncComponent(async () => {
+  const { ensureAddonRemotesRegistered } = await import('@/platform/addonRegistry');
+  await ensureAddonRemotesRegistered();
   const { loadRemote } = await import('@module-federation/runtime');
   const mod = await loadRemote<{ default?: unknown } | unknown>(
     'vance_addon_calendar/TimelineView',
@@ -58,9 +66,11 @@ const TimelineView = defineAsyncComponent(async () => {
   return (m?.default ?? mod) as ReturnType<typeof defineAsyncComponent>;
 });
 // Finance-tree summary lives in the finance addon (embedded channel only).
-// Same dynamic-federation pattern as CalendarView — the remote is registered
-// at boot by loadAddonRegistrations; full editing happens in its own dialog.
+// Same dynamic-federation pattern as CalendarView; full editing happens in
+// its own dialog.
 const FinanceView = defineAsyncComponent(async () => {
+  const { ensureAddonRemotesRegistered } = await import('@/platform/addonRegistry');
+  await ensureAddonRemotesRegistered();
   const { loadRemote } = await import('@module-federation/runtime');
   const mod = await loadRemote<{ default?: unknown } | unknown>(
     'vance_addon_finance/FinanceSummaryView',

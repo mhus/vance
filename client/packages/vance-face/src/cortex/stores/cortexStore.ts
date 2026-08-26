@@ -6,7 +6,8 @@ import {
   parentFolderOf,
   type FolderState,
 } from '../folderTree';
-import { brainFetch, brainFetchText, brainSendRaw } from '@vance/shared';
+import { brainFetch, brainFetchText, brainSendRaw, readKindFromBody } from '@vance/shared';
+import { ensureKindsForDocument } from '@/platform/addonRegistry';
 import type {
   AccentColor,
   DocumentDto,
@@ -505,8 +506,31 @@ export const useCortexStore = defineStore('cortex', () => {
       // reaction can compute "dirty" correctly from the first edit.
       file.baselineInlineText = file.inlineText;
     }
+    await ensureKindAddonLoaded(file);
     openTabs.value = [...openTabs.value, file];
     activeTabId.value = id;
+  }
+
+  /**
+   * Pull in the addon that owns this document's kind, before the tab is handed
+   * to the shell.
+   *
+   * <p>Addon kinds are no longer registered at boot (see
+   * platform/addonRegistry.ts) — the fetch happens here, on a path that is
+   * already async because it just loaded the body. Doing it here rather than in
+   * the shell is what keeps `resolveBinding` synchronous *and* keeps the reader
+   * from seeing the catch-all CodeEditor render the raw YAML for a frame before
+   * the real view swaps in.
+   *
+   * <p>The kind is read the same way `docTypeRegistry.effectiveKind` reads it:
+   * a mounted document's row carries no kind until something reads its body, so
+   * the body we just loaded is the better source. That logic is duplicated
+   * rather than imported because docTypeRegistry imports `isBinaryDoc` from
+   * this module — importing it back would close a cycle.
+   */
+  async function ensureKindAddonLoaded(file: CortexDocument): Promise<void> {
+    const kind = file.kind ?? readKindFromBody(file.inlineText, file.mimeType) ?? null;
+    await ensureKindsForDocument(kind, file.headers?.app ?? null);
   }
 
   function setActiveTab(id: string): void {
@@ -598,6 +622,9 @@ export const useCortexStore = defineStore('cortex', () => {
       fresh.inlineText = text ?? '';
       fresh.baselineInlineText = fresh.inlineText;
     }
+    // A reload can change the kind — a `$meta.kind:` edit, or a parameterised
+    // view that renders as something else — so the addon lookup runs again.
+    await ensureKindAddonLoaded(fresh);
     openTabs.value = [
       ...openTabs.value.slice(0, idx),
       fresh,

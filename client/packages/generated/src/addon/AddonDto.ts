@@ -12,4 +12,6 @@ export interface AddonDto {
   checksum?: string;
   tile?: AddonTileDto;
   profile?: AddonProfileTabDto;
+  kinds?: string[];
+  eager?: boolean;
 }

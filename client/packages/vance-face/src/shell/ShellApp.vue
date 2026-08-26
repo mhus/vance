@@ -14,7 +14,6 @@
  * pages, every navigation picked up a new release for free.
  */
 import { ref, onMounted, onBeforeUnmount } from 'vue';
-import { VButton } from '@/components';
 import { VERSION_DRIFT_EVENT } from './versionWatch';
 
 const newVersion = ref(false);
@@ -43,9 +42,19 @@ onBeforeUnmount(() => window.removeEventListener(VERSION_DRIFT_EVENT, onDrift));
     role="status"
   >
     <span>{{ $t('newVersion.message') }}</span>
-    <VButton size="sm" @click="reload">
-      {{ $t('newVersion.action') }}
-    </VButton>
+    <!-- Plain buttons, not VButton, and that is a bundling decision: this
+         component is the shell's EAGER entry, so a single import from
+         `@/components` drags the whole barrel — measured at +215 KB on
+         index.html — into the boot for a notice most sessions never see.
+         Every route chunk imports the barrel anyway, so nothing is duplicated
+         by keeping it out of here. Tailwind only, no DaisyUI class: the
+         style-guide rule about those holds outside src/components/. -->
+    <button
+      type="button"
+      class="rounded border border-primary-content/40 px-2 py-0.5 text-xs font-semibold
+             hover:bg-primary-content/10"
+      @click="reload"
+    >{{ $t('newVersion.action') }}</button>
     <button
       type="button"
       class="text-xs underline underline-offset-2 opacity-80 hover:opacity-100"

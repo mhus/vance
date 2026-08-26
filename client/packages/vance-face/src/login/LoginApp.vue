@@ -34,7 +34,13 @@ import {
 } from '@/platform';
 import { loadRuntimeConfig, type RuntimeConfig } from '@/platform/runtimeConfig';
 import { setUiLocale } from '@/i18n';
-import { VAlert, VanceLogo, VButton, VCard, VCheckbox, VInput } from '@/components';
+// Primitives straight from the package, and VanceLogo from its file. Going
+// through vance-face's own `@/components` barrel would pull MarkdownView
+// (70 KB) into the door, which renders no markdown — the barrel re-exports it,
+// and vance-face cannot declare itself side-effect-free (`@/platform/bootWeb`
+// is imported precisely FOR its side effect), so the import dodges it here.
+import { VAlert, VButton, VCard, VCheckbox, VInput } from '@vance/components';
+import VanceLogo from '@/components/VanceLogo.vue';
 import PanicEasterEgg from './PanicEasterEgg.vue';
 
 const { t } = useI18n();

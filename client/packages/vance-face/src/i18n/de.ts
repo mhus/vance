@@ -118,6 +118,11 @@ export default {
     openSession: 'Session öffnen',
   },
 
+  cortex: {
+    backToDocuments: 'Zurück zu den Dokumenten',
+    backToChat: 'Zurück zum Chat',
+  },
+
   cortexThreads: {
     tab: 'Diskussion',
     heading: 'Diskussionen zu',
@@ -321,6 +326,8 @@ export default {
       talkModeIdleOff: 'Talk-Modus wegen Inaktivität beendet.',
       talkModePaused: 'Talk-Modus pausiert — sag „Computer weiter", um fortzusetzen.',
       talkModePausedHint: 'Talk-Modus pausiert (antippen beendet; „Computer weiter" setzt fort)',
+      talkModeListening: 'Gesendet — die Antwort wird vorgelesen. Sag „Computer weiter", um weiterzudiktieren.',
+      talkModeListeningHint: 'Talk-Modus hört zu (Diktat aus, Antwort wird vorgelesen; „Computer weiter" setzt fort)',
     },
     bubble: {
       copy: 'Als Markdown kopieren',
@@ -2120,6 +2127,9 @@ export default {
       talkRequireName: 'Auslöse-Name erforderlich',
       talkRequireNameHelp:
         'Wenn aktiv, wirkt ein Befehl nur mit vorangestelltem Namen („Computer pause") — schützt vor versehentlichem Auslösen.',
+      talkAutoPause: 'Nach dem Senden pausieren',
+      talkAutoPauseHelp:
+        'Wenn aktiv, hört der Talk-Modus nach „senden" nur noch zu: Gesprochenes wird nicht mehr diktiert, die Antwort aber vorgelesen. „Weiter" nimmt das Diktat wieder auf.',
       talkAction: {
         send: 'Senden',
         clear: 'Korrektur (leeren)',

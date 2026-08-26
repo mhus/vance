@@ -176,6 +176,7 @@ const TALK_ACTION_ORDER: readonly TalkCommandAction[] = [
 ];
 const talkTriggerNamesDraft = ref<string>('');
 const talkRequireNameDraft = ref<boolean>(true);
+const talkAutoPauseDraft = ref<boolean>(false);
 const talkWordsDraft = ref<Record<TalkCommandAction, string>>({
   send: '', clear: '', pause: '', resume: '', end: '',
 });
@@ -189,6 +190,7 @@ function splitWords(csv: string): string[] {
 function fillTalkDrafts(cfg: TalkCommandConfig): void {
   talkTriggerNamesDraft.value = cfg.triggerNames.join(', ');
   talkRequireNameDraft.value = cfg.requireTriggerName;
+  talkAutoPauseDraft.value = cfg.autoPause;
   for (const action of TALK_ACTION_ORDER) {
     talkWordsDraft.value[action] = (cfg.commands[action] ?? []).join(', ');
   }
@@ -206,6 +208,7 @@ function buildTalkConfig(): TalkCommandConfig {
   return {
     triggerNames: triggerNames.length > 0 ? triggerNames : fallback.triggerNames,
     requireTriggerName: talkRequireNameDraft.value,
+    autoPause: talkAutoPauseDraft.value,
     commands,
   };
 }
@@ -903,6 +906,12 @@ async function onResetTalkCommands(): Promise<void> {
                 v-model="talkRequireNameDraft"
                 :label="$t('profile.speech.talkRequireName')"
                 :help="$t('profile.speech.talkRequireNameHelp')"
+                :disabled="loading"
+              />
+              <VCheckbox
+                v-model="talkAutoPauseDraft"
+                :label="$t('profile.speech.talkAutoPause')"
+                :help="$t('profile.speech.talkAutoPauseHelp')"
                 :disabled="loading"
               />
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -124,6 +124,11 @@ export default {
     openSession: 'Open session',
   },
 
+  cortex: {
+    backToDocuments: 'Back to documents',
+    backToChat: 'Back to chat',
+  },
+
   cortexThreads: {
     tab: 'Discussion',
     heading: 'Discussions on',
@@ -326,6 +331,8 @@ export default {
       talkModeIdleOff: 'Talk mode stopped due to inactivity.',
       talkModePaused: 'Talk mode paused — say "Computer resume" to continue.',
       talkModePausedHint: 'Talk mode paused (tap to stop; say "Computer resume" to continue)',
+      talkModeListening: 'Sent — the reply is being read aloud. Say "Computer resume" to dictate again.',
+      talkModeListeningHint: 'Talk mode listening (dictation off, reply read aloud; say "Computer resume" to continue)',
     },
     bubble: {
       copy: 'Copy as Markdown',
@@ -2109,6 +2116,9 @@ export default {
       talkRequireName: 'Require trigger name',
       talkRequireNameHelp:
         'When on, a command only fires with a leading name ("Computer pause") — guards against accidental triggers.',
+      talkAutoPause: 'Pause after sending',
+      talkAutoPauseHelp:
+        'When on, talk mode only listens after "send": speech is no longer dictated, but the reply is still read aloud. "Resume" picks dictation back up.',
       talkAction: {
         send: 'Send',
         clear: 'Correction (clear)',

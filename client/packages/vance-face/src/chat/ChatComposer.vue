@@ -580,9 +580,19 @@ function onVolumeInput(value: number): void {
 //
 // Status model:
 //   • ACTIVE — accumulate speech; send/clear/pause/end honored.
+//   • LISTENING — dictation discarded, but the assistant still reads its
+//     reply aloud. Entered by "send" when the auto-pause preference is
+//     on: the user hands over deliberately and listens, instead of
+//     dictating into the next message while the answer arrives.
 //   • PAUSED — keep listening but discard dictation; only resume/clear/
 //     end honored, and the assistant stays silent. Lets the user talk
 //     to someone in the room without polluting the message.
+//
+// LISTENING and PAUSED are separate on purpose: both stop dictation, but
+// only PAUSED silences the speaker. Folding them into one status would
+// force "hand over and listen" and "I'm talking to someone else" to
+// share an answer to the question "should the reply be read out loud",
+// and they have opposite ones.
 //
 // Other rules (unchanged from the original talk mode):
 //   • while the speaker is reading the reply, the mic is paused.
@@ -591,7 +601,7 @@ function onVolumeInput(value: number): void {
 //   • manually clicking 🎤 or 🔊 while talk mode is on also hard-
 //     disables — the user taking back control.
 
-type TalkStatus = 'OFF' | 'ACTIVE' | 'PAUSED';
+type TalkStatus = 'OFF' | 'ACTIVE' | 'LISTENING' | 'PAUSED';
 
 const TALK_MODE_STORAGE_KEY = 'vance.chat.talkMode';
 const TALK_MODE_IDLE_MS = 120_000;
@@ -600,6 +610,9 @@ const TALK_MODE_IDLE_MS = 120_000;
 const TALK_ALLOWED: Readonly<Record<TalkStatus, readonly TalkCommandAction[]>> = {
   OFF: [],
   ACTIVE: ['send', 'clear', 'pause', 'end'],
+  // LISTENING also honors "pause" — that is how the user cuts a reply
+  // short and goes fully quiet without leaving talk mode.
+  LISTENING: ['resume', 'clear', 'pause', 'end'],
   PAUSED: ['resume', 'clear', 'end'],
 };
 
@@ -654,6 +667,11 @@ function runTalkAction(action: TalkCommandAction): void {
     case 'send':
       if (composerText.value.trim() && !sending.value && !uploading.value) {
         void send();
+        // Auto-pause: hand over and listen. The mic keeps running so
+        // "<name> weiter" resumes, but nothing said in the meantime
+        // lands in the next message. The reply is still read aloud —
+        // that is what separates LISTENING from PAUSED.
+        if (talkCommands.value.autoPause) listenTalkMode();
       }
       break;
     case 'clear':
@@ -717,8 +735,23 @@ function enableTalkMode(): void {
   noteTalkActivity();
 }
 
-function pauseTalkMode(): void {
+/**
+ * Hand over and listen: stop dictating, keep the speaker on. Entered by
+ * the "send" command when auto-pause is configured — never silences a
+ * reply in flight, which is the whole point of the status.
+ */
+function listenTalkMode(): void {
   if (talkStatus.value !== 'ACTIVE') return;
+  talkStatus.value = 'LISTENING';
+  speechError.value = t('chat.speech.talkModeListening');
+  // Mic untouched: it is either running (and its phrases get discarded
+  // until "resume") or stopped because the speaker has the floor, in
+  // which case the utterance's onend restarts it.
+  noteTalkActivity();
+}
+
+function pauseTalkMode(): void {
+  if (talkStatus.value !== 'ACTIVE' && talkStatus.value !== 'LISTENING') return;
   talkStatus.value = 'PAUSED';
   speechError.value = t('chat.speech.talkModePaused');
   // Silence the assistant; keep the mic running so "resume" is heard.
@@ -731,7 +764,7 @@ function pauseTalkMode(): void {
 }
 
 function resumeTalkMode(): void {
-  if (talkStatus.value !== 'PAUSED') return;
+  if (talkStatus.value !== 'PAUSED' && talkStatus.value !== 'LISTENING') return;
   talkStatus.value = 'ACTIVE';
   speechError.value = null;
   if (!speechRecording.value && !speakerSpeaking.value) startMic();
@@ -1290,13 +1323,15 @@ onBeforeUnmount(() => {
             variant="ghost"
             size="sm"
             :class="talkStatus === 'ACTIVE' ? 'text-success animate-pulse'
+              : talkStatus === 'LISTENING' ? 'text-info'
               : talkStatus === 'PAUSED' ? 'text-warning' : ''"
             :title="talkStatus === 'PAUSED' ? $t('chat.speech.talkModePausedHint')
+              : talkStatus === 'LISTENING' ? $t('chat.speech.talkModeListeningHint')
               : talkStatus === 'ACTIVE' ? $t('chat.speech.talkModeStop')
               : $t('chat.speech.talkModeStart')"
             @click="toggleTalkMode"
           >
-            {{ talkStatus === 'PAUSED' ? '⏸️' : '📞' }}
+            {{ talkStatus === 'PAUSED' ? '⏸️' : talkStatus === 'LISTENING' ? '👂' : '📞' }}
           </VButton>
           <VButton
             v-if="speechSupported"

@@ -53,6 +53,14 @@ export interface TalkCommandConfig {
   triggerNames: string[];
   /** When true a bare command word (no trigger name) is ignored. */
   requireTriggerName: boolean;
+  /**
+   * When true the "send" command hands over instead of staying ACTIVE:
+   * the mic keeps listening for "resume" but nothing said after the send
+   * lands in the next message. The reply is still read aloud — unlike an
+   * explicit "pause", which also silences the speaker. For users who
+   * want to hand over deliberately rather than dictate continuously.
+   */
+  autoPause: boolean;
   /** Phrase synonyms per action (lower-cased on match). */
   commands: Record<TalkCommandAction, string[]>;
 }
@@ -61,6 +69,7 @@ function baseTalkCommands(): TalkCommandConfig {
   return {
     triggerNames: ['Computer', 'Vance'],
     requireTriggerName: true,
+    autoPause: false,
     commands: {
       send: ['senden', 'abschicken', 'send'],
       clear: ['korrektur', 'verwerfen', 'correction', 'clear'],
@@ -128,6 +137,9 @@ export function parseTalkCommands(raw: string | null | undefined): TalkCommandCo
   }
   if (typeof parsed.requireTriggerName === 'boolean') {
     merged.requireTriggerName = parsed.requireTriggerName;
+  }
+  if (typeof parsed.autoPause === 'boolean') {
+    merged.autoPause = parsed.autoPause;
   }
   if (parsed.commands && typeof parsed.commands === 'object') {
     for (const action of Object.keys(merged.commands) as TalkCommandAction[]) {

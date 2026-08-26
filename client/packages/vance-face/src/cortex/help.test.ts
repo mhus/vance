@@ -16,12 +16,16 @@ import type { CortexDocument } from './types';
 
 const CMP = {} as Component;
 
-function doc(p: { kind?: string | null; mimeType?: string | null }): CortexDocument {
+function doc(p: {
+  kind?: string | null;
+  mimeType?: string | null;
+  headers?: Record<string, string>;
+}): CortexDocument {
   return {
     kind: p.kind ?? null,
     mimeType: p.mimeType ?? null,
     path: 'doc.yaml',
-    headers: {},
+    headers: p.headers ?? {},
   } as unknown as CortexDocument;
 }
 
@@ -44,6 +48,22 @@ describe('resolveHelpPath', () => {
     });
     expect(resolveHelpPath(doc({ kind: 'vance-workflow', mimeType: 'application/yaml' })))
       .toBe('doc-kind-vance-workflow.md');
+  });
+
+  it('folds a colon in an application kind id into the file name', () => {
+    // The brain's help endpoint rejects a colon with 400 — an app tab
+    // must ask for a path it can answer, even when the file is missing.
+    registerKind({
+      id: 'application:feeds',
+      matches: () => false, // reached via resolveKind on the app discriminator
+      view: CMP,
+      serialize: () => '',
+    });
+    expect(resolveHelpPath(doc({
+      kind: 'application',
+      mimeType: 'application/yaml',
+      headers: { app: 'feeds' },
+    }))).toBe('doc-kind-application-feeds.md');
   });
 
   it('falls back to the generic Cortex help for an unmapped document', () => {

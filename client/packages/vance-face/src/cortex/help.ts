@@ -52,6 +52,18 @@ const BINDING_HELP: Record<string, string> = {
  * The returned path is just the {@code path} segment of
  * {@code help/{lang}/{path}} — the brain prepends the language.
  */
+/**
+ * Kind id → file-name segment. A kind id is not a file name: the
+ * `application:<type>` ids carry a colon, which the brain's help
+ * endpoint rejects outright (400, not 404) — so an app tab used to ask
+ * for `doc-kind-application:feeds.md` and get a console error instead of
+ * the "no help yet" hint. Anything outside the endpoint's alphabet
+ * becomes a hyphen, making `application:feeds` → `application-feeds`.
+ */
+function helpFileSegment(kindId: string): string {
+  return kindId.replace(/[^A-Za-z0-9._-]+/g, '-');
+}
+
 export function resolveHelpPath(doc: CortexDocument | null): string {
   if (!doc) return DEFAULT_HELP_PATH;
 
@@ -60,7 +72,7 @@ export function resolveHelpPath(doc: CortexDocument | null): string {
 
   const binding = resolveBinding(doc);
   if (binding.mode === 'kind-registry' && binding.kindEntry) {
-    return `doc-kind-${binding.kindEntry.id}.md`;
+    return `doc-kind-${helpFileSegment(binding.kindEntry.id)}.md`;
   }
   const mapped = BINDING_HELP[binding.id];
   if (mapped) return mapped;

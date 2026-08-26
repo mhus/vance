@@ -41,9 +41,12 @@ import org.jspecify.annotations.Nullable;
  * <p>An app key is {@code <project>/<path-prefix>}. Matching is by
  * <b>prefix, longest wins</b> — the same rule {@code kit-sources.yaml} uses for
  * URLs — so a whole subtree is expressible and an exact path is simply the
- * longest possible prefix. The price is worth naming: renaming a folder
- * silently changes which rule applies. That is inherent to identifying an app
- * by where it lives.
+ * longest possible prefix. Unlike a URL prefix, a path prefix has to land on a
+ * <b>segment boundary</b>: {@code apps/invoices} covers {@code apps/invoices}
+ * and everything under it, and deliberately not the sibling {@code
+ * apps/invoices-scratch}. The price is worth naming: renaming a folder silently
+ * changes which rule applies. That is inherent to identifying an app by where
+ * it lives.
  */
 public record ApplicationsConfig(
         AppPolicy globalDefault,
@@ -118,18 +121,34 @@ public record ApplicationsConfig(
         return projectId + "/" + trimSlashes(appFolder);
     }
 
+    /**
+     * Longest prefix, counted in <b>path segments</b> rather than characters.
+     *
+     * <p>A bare {@code startsWith} matches mid-segment, and this is the one
+     * place in the file where that direction is expensive: {@code
+     * apps/invoices: allowed} would also cover a later {@code
+     * apps/invoices-scratch}, so a member could open a surface by choosing a
+     * folder name the admin never wrote down. A prefix therefore has to end
+     * where the key ends or at a {@code /}.
+     */
     private @Nullable AppPolicy longestPrefixMatch(String key) {
         AppPolicy best = null;
         int bestLength = -1;
         for (Map.Entry<String, AppPolicy> e : byAppPrefix.entrySet()) {
             String prefix = e.getKey();
-            if (!key.startsWith(prefix)) continue;
+            if (!isSegmentPrefix(key, prefix)) continue;
             if (prefix.length() > bestLength) {
                 best = e.getValue();
                 bestLength = prefix.length();
             }
         }
         return best;
+    }
+
+    /** Whether {@code prefix} covers {@code key} on a segment boundary. */
+    private static boolean isSegmentPrefix(String key, String prefix) {
+        if (!key.startsWith(prefix)) return false;
+        return key.length() == prefix.length() || key.charAt(prefix.length()) == '/';
     }
 
     // ── parsing ────────────────────────────────────────────────────────
@@ -215,9 +234,17 @@ public record ApplicationsConfig(
      * <p>`restricted` with no list is **no REST at all**. Inventing a set would
      * be guessing at what the admin meant, and guessing wide is the expensive
      * direction. Any other mode carries no list.
+     *
+     * <p>`forbidden` goes through {@link AppPolicy#forbidden()} rather than
+     * being assembled here, so that the two ways of spelling the most closed
+     * mode produce the same value. Derived from {@code !restricted} it came out
+     * as {@code surface=true, documentsWritable=true} — the open answer for the
+     * closed mode, and the exact reading that {@code forbidden()}'s own comment
+     * warns a caller who forgets the mode check would get.
      */
     private static AppPolicy of(AppMode mode, @Nullable List<String> rest,
                                 @Nullable Boolean surface, @Nullable Boolean writable) {
+        if (mode == AppMode.FORBIDDEN) return AppPolicy.forbidden();
         boolean restricted = mode == AppMode.RESTRICTED;
         return new AppPolicy(
                 mode,

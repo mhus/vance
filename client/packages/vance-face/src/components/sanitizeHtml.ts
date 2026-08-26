@@ -42,9 +42,18 @@ export const ALLOWED_URI_REGEXP =
  *
  * <p>Both the tag and the attributes, so that a future DOMPurify default which
  * re-allows `form` cannot quietly re-open the exit.
+ *
+ * <p>`target` is deliberately **not** here. It was, and it took the renderer's
+ * own external links with it: `MarkdownView` emits
+ * `target="_blank" rel="noopener noreferrer"` on every http(s) link so that
+ * following one does not navigate the whole workspace away — tearing down the
+ * WS singleton, the open Cortex tabs and any unsaved edit with it. Forbidding
+ * `form` already removes the submit vector, and `action`/`formaction` cover
+ * what a re-allowed `form` could do; `target` on an `<a>` is not an
+ * exfiltration path, it is the thing keeping the workspace alive.
  */
 const FORBID_TAGS = ['form'];
-const FORBID_ATTR = ['action', 'formaction', 'target'];
+const FORBID_ATTR = ['action', 'formaction'];
 
 export const SANITIZE_CONFIG = {
   USE_PROFILES: { html: true, mathMl: true },

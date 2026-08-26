@@ -15,16 +15,26 @@ import { ALLOWED_URI_REGEXP, SANITIZE_CONFIG } from './sanitizeHtml';
  */
 describe('SANITIZE_CONFIG', () => {
 
-  it('forbids form and every submit target', () => {
+  it('forbids form and the submit-action attributes', () => {
     // The one exfiltration path a sanitised fragment had: DOMPurify's html
     // profile keeps <form> WITH its action, so a fake password prompt could
     // post to another host on a single click — no script involved. Measured in
     // the browser, then closed here. Pinned as config rather than behaviour
     // because DOMPurify.sanitize needs a DOM this runner does not have.
     expect(SANITIZE_CONFIG.FORBID_TAGS).toContain('form');
-    for (const attr of ['action', 'formaction', 'target']) {
+    for (const attr of ['action', 'formaction']) {
       expect(SANITIZE_CONFIG.FORBID_ATTR).toContain(attr);
     }
+  });
+
+  it('does not forbid target, which keeps the workspace alive', () => {
+    // `target` was in the list with the two action attributes, and it took the
+    // renderer's own external links with it: MarkdownView emits
+    // target="_blank" on every http(s) link precisely so that following one
+    // does not navigate the workspace away — killing the WS singleton, the open
+    // Cortex tabs and any unsaved edit. Forbidding `form` closes the submit
+    // vector; `target` on an <a> was never part of it.
+    expect(SANITIZE_CONFIG.FORBID_ATTR).not.toContain('target');
   });
 
   it('does not forbid input or button', () => {

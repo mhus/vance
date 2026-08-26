@@ -131,6 +131,32 @@ describe('addonRegistry', () => {
     expect(register).toHaveBeenCalledTimes(1);
   });
 
+  it('awaits an in-flight load instead of reporting nothing to do', async () => {
+    // The case that broke a real tab: two DocumentTabShells for the same
+    // addon-owned kind mount in one Vue pass, so the second call arrives while
+    // the first load is still open. Returning early there let it resolve its
+    // binding against a registry the load had not written to yet — and
+    // `addonEpoch` is a per-component ref, so the first tab's bump never
+    // reached it. It sat on the catch-all CodeEditor showing raw YAML.
+    const register = vi.fn();
+    let releaseLoad: (mod: unknown) => void = () => {};
+    loadRemote.mockReturnValue(new Promise((resolve) => { releaseLoad = resolve; }));
+    manifest([{ name: 'calendar', path: 'bundled:calendar', kinds: ['calendar', 'timeline'] }]);
+    const { initAddonRemotes, ensureKindLoaded } = await freshModule();
+    await initAddonRemotes();
+
+    const first = ensureKindLoaded('calendar');
+    const second = ensureKindLoaded('timeline');
+    releaseLoad({ register });
+
+    // Both callers see a registered addon, and both are told the registry
+    // gained entries during their call — one recompute each, never raw YAML.
+    expect(await first).toBe(true);
+    expect(await second).toBe(true);
+    expect(register).toHaveBeenCalledTimes(1);
+    expect(loadRemote).toHaveBeenCalledTimes(1);
+  });
+
   it('leaves an unknown kind alone rather than guessing an addon', async () => {
     manifest([{ name: 'calendar', path: 'bundled:calendar', kinds: ['calendar'] }]);
     const { initAddonRemotes, ensureKindLoaded } = await freshModule();

@@ -65,6 +65,17 @@ public class ApplicationsPolicyService {
         return config.projectOrGlobal(projectId);
     }
 
+    /**
+     * The project or global rule, for a view that belongs to no app folder.
+     *
+     * <p>No app key, so neither the per-app rule nor a grant can apply — both are
+     * keyed on one. A lone {@code app-view} document still runs a program, so it
+     * answers to the project's rule rather than to none at all.
+     */
+    public AppPolicy resolveProjectDefault(String tenantId, String projectId) {
+        return config(tenantId).projectOrGlobal(projectId);
+    }
+
     /** The hand-written configuration, for the request path. */
     public ApplicationsConfig configuration(String tenantId) {
         return config(tenantId);

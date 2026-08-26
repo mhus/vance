@@ -48,6 +48,15 @@ type KindIndex = Map<string, string>;
 let discovery: Promise<KindIndex> | null = null;
 /** addon id → the in-flight or settled load of its `./register` expose. */
 const loading = new Map<string, Promise<void>>();
+/**
+ * addon ids whose load has *finished* — the distinction `loading` cannot make.
+ *
+ * <p>`loading.has(name)` is true from the moment a load starts, so it cannot
+ * tell "already registered, nothing to wait for" from "registering right now".
+ * `ensureKindLoaded` needs both answers and they are opposites: the first is a
+ * no-op, the second must be awaited.
+ */
+const loaded = new Set<string>();
 
 /**
  * Register every installed addon as a federation remote and index the kinds
@@ -145,6 +154,8 @@ function loadAddon(name: string): Promise<void> {
     } catch {
       // `./register` absent or threw — same as before: the addon simply
       // contributes nothing, and the host carries on with built-in kinds.
+    } finally {
+      loaded.add(name);
     }
   })();
   loading.set(name, started);
@@ -154,15 +165,26 @@ function loadAddon(name: string): Promise<void> {
 /**
  * Make sure the addon owning {@code kindId} has registered, if any does.
  *
- * @returns whether an addon was loaded as a result of this call — the caller
- *   can use it to re-evaluate a binding it resolved before.
+ * <p>An in-flight load is awaited, not skipped. Returning early on
+ * `loading.has(owner)` broke the one promise the function makes: two
+ * `DocumentTabShell`s for the same addon-owned kind mount in a single Vue pass,
+ * so the second one arrived while the first one's load was still open, got
+ * "nothing to do", and rendered its binding against a registry the load had not
+ * written to yet. `addonEpoch` is a per-component ref, so the first tab's bump
+ * did not reach the second — it sat on the catch-all CodeEditor showing raw
+ * YAML with nothing left to recompute it.
+ *
+ * @returns whether the registry gained entries during this call — the caller
+ *   can use it to re-evaluate a binding it resolved before. `false` once the
+ *   addon has settled: a caller mounting after that resolves correctly on its
+ *   first evaluation and needs no re-render.
  */
 export async function ensureKindLoaded(kindId: string | null | undefined): Promise<boolean> {
   const id = (kindId ?? '').trim().toLowerCase();
   if (!id) return false;
   const index = await ensureAddonRemotesRegistered();
   const owner = index.get(id);
-  if (!owner || loading.has(owner)) return false;
+  if (!owner || loaded.has(owner)) return false;
   await loadAddon(owner);
   return true;
 }

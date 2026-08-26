@@ -939,6 +939,14 @@ public class SettingService {
      * for the same reason — this is compiled server code with the fixed key,
      * not a reference-resolution path.
      *
+     * <p>Decrypts <b>without</b> writing a read to the audit trail, which is
+     * the point of the whole method. Routed through
+     * {@link #getDecryptedPassword} it swapped one row for another: the
+     * unattended round stopped logging "credential changed" and started
+     * logging "password read", at the same cadence, and the noise this exists
+     * to end was merely renamed. Nothing to record either: the plaintext never
+     * leaves this frame, only a boolean does.
+     *
      * @return {@code false} when the setting is absent, is not an encrypted
      *         type, or cannot be decrypted; "cannot tell" is reported as
      *         "not equal", which costs a redundant write rather than a
@@ -947,8 +955,19 @@ public class SettingService {
     public boolean encryptedSecretEquals(
             String tenantId, String referenceType, String referenceId, String key,
             @Nullable String plaintext) {
-        String current = getDecryptedPassword(tenantId, referenceType, referenceId, key);
-        if (current == null || plaintext == null) return false;
+        if (plaintext == null) return false;
+        Optional<SettingDocument> opt = find(tenantId, referenceType, referenceId, key);
+        if (opt.isEmpty()) return false;
+        SettingDocument doc = opt.get();
+        if (!doc.getType().encrypted()) return false;
+        String current;
+        try {
+            current = encryption.decrypt(doc.getValue());
+        } catch (AesEncryptionService.EncryptionException e) {
+            log.warn("Failed to decrypt secret for comparison: tenant='{}' ref='{}:{}' key='{}': {}",
+                    tenantId, referenceType, referenceId, key, e.getMessage());
+            return false;
+        }
         return MessageDigest.isEqual(
                 current.getBytes(StandardCharsets.UTF_8),
                 plaintext.getBytes(StandardCharsets.UTF_8));

@@ -299,8 +299,31 @@ function wireBrowserResumeListeners(): void {
   // sechs Routenwechseln). Gemessen wird die Absicht hier, wo der Besitz
   // liegt: `pagehide` statt `beforeunload`, weil Safari/iOS `beforeunload`
   // beim Wegwischen der Seite nicht zuverlässig feuert.
-  window.addEventListener('pagehide', () => {
+  window.addEventListener('pagehide', (event) => {
+    // `persisted` separates the two things `pagehide` reports. `false` is the
+    // page going away for good — close, which is what this listener is for.
+    // `true` is the page entering the back/forward cache: it can come back,
+    // and it comes back *without remounting anything* — no `EditorShell`, no
+    // `ensureConnected()`, no re-bind. Closing there is what made a Back out
+    // of `/profile.html` leave the workspace silently dead: `closeConnection`
+    // sets `status` to `idle` and drops `desiredSessionId`, and both resume
+    // hooks above only fire on `down`/`reconnecting`, so nothing came back.
+    //
+    // A frozen page therefore keeps its intent and lets the browser drop the
+    // socket underneath it. That is indistinguishable from a network loss —
+    // the case the reconnect loop already restores, subscriptions and bound
+    // session included.
+    if (event.persisted) return;
     closeConnection();
+  });
+  window.addEventListener('pageshow', (event) => {
+    // Restored from the back/forward cache. The socket did not survive the
+    // freeze even where `socket.value` still looks live, and the reconnect
+    // timer was frozen with the page rather than fired — so ask here instead
+    // of waiting for a `visibilitychange` that may already have passed.
+    if (!event.persisted) return;
+    if (socket.value && !socket.value.closed()) return;
+    manualReconnect();
   });
 }
 

@@ -80,10 +80,26 @@ public class KitPlaintextSecretGate {
                 // Parsing rather than grepping for the word: `plain` inside a
                 // description would match, and a file this gate misread in
                 // either direction is worse than one it cannot read at all.
-                // A malformed file throws here, which is where a malformed
-                // file should stop anyway.
-                if (KitYamlMapper.parseSetting(yaml, filename).encoding()
-                        != KitSecretEncoding.VAULT) {
+                KitSecretEncoding encoding;
+                try {
+                    encoding = KitYamlMapper.parseSetting(yaml, filename).encoding();
+                } catch (KitException e) {
+                    // A malformed setting file is not this gate's call to make,
+                    // and making it here refused installs that used to work:
+                    // the gate runs per layer, but `KitResolver.mergeLayer`
+                    // copies with REPLACE_EXISTING, so a stale file in a base
+                    // kit that the top layer overrides never reaches anything
+                    // that applies it. `KitInstaller` parses the *merged* tree
+                    // with the same parser, so a malformed file that does get
+                    // applied still stops the install — one layer later, and
+                    // only when it matters. Nothing is smuggled past us either:
+                    // a file we cannot read is a file the installer cannot read.
+                    log.debug("KitPlaintextSecretGate: {} does not parse — leaving it to the"
+                            + " installer, which sees the merged tree ({})", filename,
+                            e.getMessage());
+                    continue;
+                }
+                if (encoding != KitSecretEncoding.VAULT) {
                     offending.add(filename);
                 }
             }

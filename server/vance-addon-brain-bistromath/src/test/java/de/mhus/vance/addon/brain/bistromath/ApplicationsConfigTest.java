@@ -246,4 +246,39 @@ class ApplicationsConfigTest {
         assertThat(p.surface()).isFalse();
         assertThat(p.documentsWritable()).isFalse();
     }
+
+    @Test
+    void forbidden_writtenOut_reportsTheSameClosedLevers() {
+        // The same value spelled two ways has to *be* the same value. Derived
+        // from `!restricted`, a written-out `forbidden` came out with
+        // surface=true and documentsWritable=true — the open answer for the
+        // most closed mode, which is exactly the misreading the flags are
+        // supposed to protect a mode-blind caller from.
+        for (String yaml : new String[] {
+                "default: forbidden\n",
+                "default:\n  mode: forbidden\n"}) {
+            AppPolicy p = parse(yaml).resolve("p", "apps/x");
+
+            assertThat(p.mode()).isEqualTo(AppMode.FORBIDDEN);
+            assertThat(p.surface()).as(yaml).isFalse();
+            assertThat(p.documentsWritable()).as(yaml).isFalse();
+        }
+    }
+
+    @Test
+    void appPrefixStopsAtASegmentBoundary() {
+        // A character prefix would have let a project member open a surface by
+        // naming a folder the admin never wrote down: `apps/invoices` also
+        // covering `apps/invoices-scratch`. The subtree still matches, which is
+        // the point of a prefix.
+        ApplicationsConfig c = parse("""
+                default: forbidden
+                apps:
+                  p/apps/invoices: allowed
+                """);
+
+        assertThat(c.resolve("p", "apps/invoices").mode()).isEqualTo(AppMode.ALLOWED);
+        assertThat(c.resolve("p", "apps/invoices/reports").mode()).isEqualTo(AppMode.ALLOWED);
+        assertThat(c.resolve("p", "apps/invoices-scratch").mode()).isEqualTo(AppMode.FORBIDDEN);
+    }
 }

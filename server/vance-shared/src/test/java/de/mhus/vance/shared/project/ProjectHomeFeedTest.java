@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.project;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -123,11 +124,7 @@ class ProjectHomeFeedTest {
         // after the unset, which projects were held is unknowable.
         when(mongoTemplate.find(any(Query.class), eq(ProjectDocument.class)))
                 .thenReturn(List.of(existing(SELF_POD, SELF_NODE), other("billing")));
-        UpdateResult result = mock(UpdateResult.class);
-        when(result.getModifiedCount()).thenReturn(2L);
-        when(mongoTemplate.updateMulti(
-                any(Query.class), any(Update.class), eq(ProjectDocument.class)))
-                .thenReturn(result);
+        givenReleaseModifies(1L);
 
         service.releaseLeases(SELF_POD, SELF_NODE, SELF_ADDRESS);
 
@@ -138,12 +135,37 @@ class ProjectHomeFeedTest {
     }
 
     @Test
+    void releaseLeases_projectClaimedByAnotherPodMeanwhile_writesNoRow() {
+        // The lease had already expired and another pod took the project
+        // between the read and the write. Announcing a release would tell an
+        // operator this project has no home, when it is healthy elsewhere —
+        // which is why the guarded write, not the batch, decides who gets a row.
+        when(mongoTemplate.find(any(Query.class), eq(ProjectDocument.class)))
+                .thenReturn(List.of(existing(SELF_POD, SELF_NODE)));
+        givenReleaseModifies(0L);
+
+        long released = service.releaseLeases(SELF_POD, SELF_NODE, SELF_ADDRESS);
+
+        assertThat(released).isZero();
+        verify(megadodo, never()).projectHomeReleased(any(), any(), any(), any(), any());
+    }
+
+    @Test
     void releaseLeases_withoutAPodId_doesNothing() {
         service.releaseLeases("", SELF_NODE, SELF_ADDRESS);
 
-        verify(mongoTemplate, never()).updateMulti(
+        verify(mongoTemplate, never()).updateFirst(
                 any(Query.class), any(Update.class), eq(ProjectDocument.class));
         verify(megadodo, never()).projectHomeReleased(any(), any(), any(), any(), any());
+    }
+
+    /** Every guarded release reports {@code modified} rows changed. */
+    private void givenReleaseModifies(long modified) {
+        UpdateResult result = mock(UpdateResult.class);
+        when(result.getModifiedCount()).thenReturn(modified);
+        when(mongoTemplate.updateFirst(
+                any(Query.class), any(Update.class), eq(ProjectDocument.class)))
+                .thenReturn(result);
     }
 
     /** Repository returns {@code current}; the CAS then succeeds. */

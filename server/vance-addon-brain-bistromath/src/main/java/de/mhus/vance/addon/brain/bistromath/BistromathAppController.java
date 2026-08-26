@@ -77,13 +77,17 @@ public class BistromathAppController {
      * Pretending it is absent would send them looking for a document.
      */
     private static AppScan refuseIfForbidden(AppScan scan) {
-        if (scan.policy().forbids()) {
+        refuseIfForbidden(scan.policy());
+        return scan;
+    }
+
+    private static void refuseIfForbidden(AppPolicy policy) {
+        if (policy.forbids()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Custom applications are not permitted here."
                             + " A tenant admin decides this in _vance/config/applications.yaml"
                             + " (in the _tenant project).");
         }
-        return scan;
     }
 
     /**
@@ -102,10 +106,13 @@ public class BistromathAppController {
                              HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         if (path != null && !path.isBlank()) {
-            // A view opened by its own path in the Cortex — the folder is the
-            // document's parent, and the same policy has to apply. Otherwise
-            // `forbidden` would be a rule about how an app is *entered*.
-            refuseIfForbidden(viewService.scan(tenant, projectId, folderOf(path.trim())));
+            // A view opened by its own path in the Cortex — the same policy has
+            // to apply, otherwise `forbidden` would be a rule about how an app is
+            // *entered*. Resolved from the policy alone rather than from a scan:
+            // scanning loads the app, and the app is not the document's parent —
+            // views nest, and a lone view has no app at all, so both refused with
+            // "no app manifest" where they should have rendered.
+            refuseIfForbidden(viewService.policyForPath(tenant, projectId, path.trim()));
             return viewService.viewByPath(tenant, projectId, path.trim());
         }
         if (folder == null || folder.isBlank()) {
@@ -114,12 +121,6 @@ public class BistromathAppController {
         }
         refuseIfForbidden(viewService.scan(tenant, projectId, folder));
         return viewService.view(tenant, projectId, folder, handle);
-    }
-
-    /** The folder a document path lives in. */
-    private static String folderOf(String documentPath) {
-        int slash = documentPath.lastIndexOf('/');
-        return slash < 0 ? "" : documentPath.substring(0, slash);
     }
 
     /**

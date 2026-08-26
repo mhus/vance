@@ -336,19 +336,37 @@ public class ProjectService {
         // query on a shutdown path, and the only chance to record a departure
         // at all: an expiring lease has nobody left to write a row.
         List<ProjectDocument> held = findByHomePodId(selfPodId);
-        Query query = new Query(Criteria.where(F_HOME_POD).is(selfPodId));
-        Update update = new Update()
-                .unset(F_HOME_POD)
-                .unset(F_HOME_NODE)
-                .unset(F_CLAIMED_AT);
-        long modified = mongoTemplate.updateMulti(query, update, ProjectDocument.class)
-                .getModifiedCount();
+        long released = 0;
         for (ProjectDocument project : held) {
+            // One guarded write per project rather than a single updateMulti.
+            // The batch was cheaper but could not say *which* projects it
+            // freed, so the feed announced a release for everything in the
+            // pre-read list — including a project another pod had claimed in
+            // the meantime, because this pod's lease had already expired. To an
+            // operator that row reads as "no home" for a project that is in
+            // fact healthy elsewhere, which is the opposite of what the feed is
+            // for. The batching is what changes, not the cost that matters:
+            // this runs once per shutdown and already wrote a feed row per
+            // project.
+            Query query = new Query(Criteria.where(F_TENANT).is(project.getTenantId())
+                    .and(F_NAME).is(project.getName())
+                    .and(F_HOME_POD).is(selfPodId));
+            Update update = new Update()
+                    .unset(F_HOME_POD)
+                    .unset(F_HOME_NODE)
+                    .unset(F_CLAIMED_AT);
+            if (mongoTemplate.updateFirst(query, update, ProjectDocument.class)
+                    .getModifiedCount() == 0) {
+                // Taken over between the read and here — not ours to release,
+                // and not ours to report.
+                continue;
+            }
+            released++;
             megadodoService.projectHomeReleased(
                     project.getTenantId(), project.getName(),
                     selfNodeName, selfPodId, selfAddress);
         }
-        return modified;
+        return released;
     }
 
     /**

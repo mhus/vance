@@ -179,6 +179,32 @@ public class BistromathStore {
         return documentService.findByPath(tenantId, projectId, path).isPresent();
     }
 
+    /**
+     * The app folder a document belongs to — the nearest ancestor holding an
+     * {@code _app.yaml} — or {@code null} when it belongs to no app.
+     *
+     * <p>Walked rather than taken as the parent, because the app folder has no
+     * prescribed layout: {@link #discoverViews} lists a whole subtree, so a view
+     * may sit in {@code views/} or be grouped by feature, and its parent is then
+     * not the app. Reading only the parent made every nested view look like an
+     * app of its own that happens to have no manifest.
+     *
+     * <p>{@code null} is a real answer, not a failure — a lone {@code app-view}
+     * document opened in the Cortex is exactly the case
+     * {@link BistromathViewService#viewByPath} exists for.
+     */
+    public @Nullable String owningAppFolder(String tenantId, String projectId,
+                                            String documentPath) {
+        String folder = documentPath;
+        while (true) {
+            int slash = folder.lastIndexOf('/');
+            // `slash == 0` would leave the project root, which cannot be an app.
+            if (slash <= 0) return null;
+            folder = folder.substring(0, slash);
+            if (manifestExists(tenantId, projectId, folder)) return folder;
+        }
+    }
+
     /** Write a fresh manifest (create or replace). */
     public DocumentDocument writeManifest(String tenantId, String projectId, String folder,
                                           @Nullable String title,

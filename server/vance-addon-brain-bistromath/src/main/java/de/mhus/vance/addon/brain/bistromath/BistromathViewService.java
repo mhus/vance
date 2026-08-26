@@ -129,6 +129,26 @@ public class BistromathViewService {
         return new RenderedView(ref.handle(), root.label(), root, List.of());
     }
 
+    /**
+     * The policy governing a view addressed by its own path.
+     *
+     * <p>Resolved against the app that <em>owns</em> the document rather than
+     * against its parent folder: a view may be nested inside the app, and
+     * loading the app to find its policy would refuse every nested and every
+     * standalone view with "no app manifest" — a rule about how an app is
+     * entered, which is exactly what the policy must not become.
+     *
+     * <p>With no owning app the project-or-global rule still applies. The file
+     * has an answer for a project either way, and skipping the check here would
+     * make "put the view one folder up" a way around it.
+     */
+    public AppPolicy policyForPath(String tenantId, String projectId, String path) {
+        String owner = store.owningAppFolder(tenantId, projectId, path);
+        return owner != null
+                ? policyService.resolve(tenantId, projectId, owner)
+                : policyService.resolveProjectDefault(tenantId, projectId);
+    }
+
     /** File name without its extension — the same handle rule the scan uses. */
     private static String handleOf(String path) {
         String leaf = leaf(path);

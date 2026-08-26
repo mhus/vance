@@ -72,7 +72,7 @@ const runtimeCfg = ref<RuntimeConfig | null>(null);
 const serverTitle = computed<string>(() => runtimeCfg.value?.title?.trim() ?? '');
 const serverBacklink = computed<string>(() => runtimeCfg.value?.backlink?.trim() ?? '');
 
-const tenant = ref('default');
+const tenant = ref('');
 const username = ref('');
 const password = ref('');
 const submitting = ref(false);

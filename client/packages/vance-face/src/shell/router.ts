@@ -118,6 +118,12 @@ export const router = createRouter({
  * navigation is untouched and this cannot loop.
  */
 router.beforeEach((to, from) => {
+  // The very first navigation of the page is not a hop between editors — it
+  // IS the address the reader opened, and every parameter in it was put there
+  // on purpose. Stripping here broke deep links: `/cortex?project=x&doc=y`
+  // arrived as `/cortex?project=x` and opened no document. `matched.length`
+  // is empty only for that initial route.
+  if (from.matched.length === 0) return true;
   if (to.path === from.path) return true;
   const keys = Object.keys(to.query);
   if (keys.length === 0) return true;

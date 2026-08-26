@@ -78,6 +78,54 @@ describe('MarkdownView math rendering', () => {
     expect(wrapper.html()).toContain('&lt;img');
   });
 
+  it('renders inline math in the middle of a sentence', async () => {
+    // The case that was broken until the `start()` hooks landed: without one,
+    // marked's default text tokenizer swallows the rest of the run and the
+    // extension is only ever offered position 0. `$E = mc^2$` rendered at the
+    // start of a paragraph and stayed literal anywhere a formula actually
+    // appears.
+    const wrapper = render('Inline: $E = mc^2$ mitten im Satz.');
+
+    await vi.waitFor(async () => {
+      await wrapper.vm.$nextTick();
+      expect(wrapper.html()).toContain('katex');
+    });
+    expect(wrapper.text()).not.toContain('$E = mc^2$');
+  });
+
+  it('renders display math that does not start its own block', async () => {
+    const wrapper = render('Vorher.\n\n$$\\frac{1}{2}$$\n\nNachher.');
+
+    await vi.waitFor(async () => {
+      await wrapper.vm.$nextTick();
+      expect(wrapper.html()).toContain('katex');
+    });
+    expect(wrapper.text()).toContain('Vorher.');
+    expect(wrapper.text()).toContain('Nachher.');
+  });
+
+  it('does not eat a price range as a formula', async () => {
+    // The regression the `start()` hook opens up and the reason for the
+    // digit guard: "$5-$10" matches the inline pattern with the content "5-".
+    // Nobody writes a formula glued to a following digit, so refusing that
+    // closing `$` costs nothing and keeps prices as prices.
+    const wrapper = render('Das kostet $5-$10 pro Stück.');
+
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('$5-$10');
+    expect(wrapper.html()).not.toContain('katex');
+  });
+
+  it('still refuses a lone dollar sign followed by a space', async () => {
+    // The older guard, unchanged: "$ 5 off" is a price, not a formula.
+    const wrapper = render('Nimm $ 5 off und $ 3 dazu.');
+
+    await flushPromises();
+
+    expect(wrapper.html()).not.toContain('katex');
+  });
+
   it('leaves a document without math alone', async () => {
     // The common case, and the one that must not pay for any of the above.
     const wrapper = render('# Title\n\nJust prose.\n');

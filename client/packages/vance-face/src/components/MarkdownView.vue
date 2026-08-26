@@ -272,6 +272,12 @@ marked.use({
     {
       name: 'mathBlock',
       level: 'block',
+      // Without a `start`, marked only offers this tokenizer the beginning of
+      // a block and lets the paragraph tokenizer swallow everything else — so
+      // display math that does not begin its own block was never recognised.
+      start(src: string): number | undefined {
+        return src.match(/\$\$|\\\[/)?.index;
+      },
       tokenizer(src: string): MathToken | undefined {
         // $$...$$ (display)
         const m = src.match(/^\$\$([\s\S]+?)\$\$(?:\n|$)/);
@@ -288,12 +294,33 @@ marked.use({
     {
       name: 'mathInline',
       level: 'inline',
+      /**
+       * Where the next inline formula could begin.
+       *
+       * <p>An inline extension without this is only ever tried at the start of
+       * an inline run, because marked's default text tokenizer consumes
+       * everything up to the next construct it knows about. The effect was
+       * that `$E = mc^2$` rendered at the start of a paragraph and stayed
+       * literal in the middle of a sentence — which is where formulas
+       * actually appear.
+       */
+      start(src: string): number | undefined {
+        return src.match(/\$|\\\(/)?.index;
+      },
       tokenizer(src: string): MathToken | undefined {
         // $...$ (inline) — reject if the content starts or ends with
         // whitespace to avoid false positives like "$ 5 off".
         const m = src.match(/^\$([^\$\n]+?)\$/);
         if (m && !m[1].startsWith(' ') && !m[1].endsWith(' ')) {
-          return { type: 'mathInline', raw: m[0], text: m[1].trim(), displayMode: false };
+          // Second guard, and it only became necessary with `start` above:
+          // now that the tokenizer is offered every `$` in a paragraph, a
+          // price range like "$5-$10" matches with the content "5-". Refusing
+          // a closing `$` that is glued to a digit rules that out, and costs
+          // nothing real — a formula immediately followed by a digit with no
+          // space is not something anyone writes.
+          if (!/^\d/.test(src.slice(m[0].length))) {
+            return { type: 'mathInline', raw: m[0], text: m[1].trim(), displayMode: false };
+          }
         }
         // \(...\) (inline)
         const m2 = src.match(/^\\\(([\s\S]+?)\\\)/);
@@ -935,6 +962,18 @@ export default defineComponent({
   font-size: 0.95rem;
   line-height: 1.55;
   word-break: break-word;
+}
+
+/* A formula in the moment before the KaTeX chunk arrives. Monospace and
+   slightly dimmed, so it reads as "this is source, and it is not finished"
+   rather than as prose the author wrote badly. Deliberately not a spinner or
+   a skeleton: the text IS the content, just unrendered, and it is usually
+   replaced within a frame or two — a placeholder that flashes would be more
+   noticeable than the thing it hides. */
+.markdown-view :deep(.katex-pending) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  opacity: 0.65;
 }
 
 .markdown-view :deep(h1),

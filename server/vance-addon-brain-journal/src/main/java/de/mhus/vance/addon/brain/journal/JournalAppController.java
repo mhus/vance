@@ -7,7 +7,6 @@ import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
-import de.mhus.vance.toolpack.ToolException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -16,6 +15,7 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * REST endpoints for the interactive Journal editor in the Web-UI. Thin
@@ -95,7 +96,12 @@ public class JournalAppController {
         String normalised = JournalFolderReader.normaliseFolder(folder);
         JournalConfig config = configOf(tenant, projectId, normalised);
         DocumentDocument doc = journalService.findEntry(tenant, projectId, normalised, config, date)
-                .orElseThrow(() -> new ToolException("No entry for '" + date + "'"));
+                // A day nobody has written yet is the normal case the
+                // editor opens on — 404, not a server fault. The client
+                // reads it as "fresh page"; a ToolException would surface
+                // as a 500 in the console on every empty day.
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "No entry for '" + date + "'"));
         return toContentView(doc);
     }
 

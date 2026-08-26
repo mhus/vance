@@ -979,9 +979,22 @@ function onDocKeydown(e: KeyboardEvent) {
   if (blockMenu.value && e.key === 'Escape') closeBlockMenu();
 }
 
+/**
+ * The ProseMirror content DOM, captured at mount.
+ *
+ * <p>Teardown must not re-read {@code editor.view}: {@code useEditor}
+ * registers its own {@code onBeforeUnmount} at call time — above this
+ * component's hook — so by the time we run, the editor is destroyed and
+ * the {@code view} getter returns a proxy that throws on {@code .dom}.
+ * That throw aborted the rest of this hook, leaking every document- and
+ * window-level listener below for the lifetime of the page.
+ */
+let contentDom: HTMLElement | null = null;
+
 onMounted(() => {
-  const dom = editor.value?.view.dom;
+  const dom = editor.value?.view.dom as HTMLElement | undefined;
   if (!dom) return;
+  contentDom = dom;
   dom.addEventListener('dragover', onCaptureDragOver, { capture: true });
   dom.addEventListener('drop', onCaptureDrop, { capture: true });
   dom.addEventListener('click', onLinkClickCapture, { capture: true });
@@ -1000,7 +1013,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (autoSaveTimer != null) save();
   cancelAutoSave();
-  const dom = editor.value?.view.dom;
+  const dom = contentDom;
   if (dom) {
     dom.removeEventListener('dragover', onCaptureDragOver, { capture: true });
     dom.removeEventListener('drop', onCaptureDrop, { capture: true });
@@ -1009,6 +1022,7 @@ onBeforeUnmount(() => {
     dom.removeEventListener('vance:open-embed-picker', onEmbedPickerEvent);
     dom.removeEventListener('vance:open-form-picker', onFormPickerEvent);
     dom.removeEventListener('vance:open-input-picker', onOpenInputPicker);
+    contentDom = null;
   }
   document.removeEventListener('dragstart', onGlobalDragStart, true);
   document.removeEventListener('dragend', onGlobalDragEnd, true);

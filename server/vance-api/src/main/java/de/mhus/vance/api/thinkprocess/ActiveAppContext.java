@@ -60,4 +60,21 @@ public class ActiveAppContext {
      */
     @Nullable
     private String selection;
+
+    /**
+     * The same selection as a <b>durable reference</b> — label plus the
+     * address(es) it can be followed by. Where {@link #selection} is a
+     * phrase for this turn's prompt and is then forgotten, this is what
+     * gets persisted on the user's chat message, so a later turn can still
+     * tell what "the selected entry" was after the reader scrolled away.
+     *
+     * <p>Declared by the app's own UI, because the app is the only place
+     * that knows what a click on one of its cards means. {@code null} when
+     * nothing is selected or the app has not opted in — persisting nothing
+     * is the old behaviour, not an error.
+     *
+     * <p>See {@code specification/public/selection-reference.md}.
+     */
+    @Nullable
+    private SelectionReference selectionRef;
 }

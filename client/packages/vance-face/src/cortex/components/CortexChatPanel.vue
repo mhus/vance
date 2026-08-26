@@ -5,6 +5,7 @@ import type {
   BoundDocSelection,
   DocumentDto,
 } from '@vance/generated';
+import type { AppSelectionReport } from '../types';
 import ChatSidePanel from '@/chat/ChatSidePanel.vue';
 import type { ComposerCurrentFileSource } from '@/chat/ChatComposer.vue';
 import { useCortexStore } from '../stores/cortexStore';
@@ -41,7 +42,7 @@ interface Props {
    * node ids). Folded into the `activeApp` context when it belongs to the
    * active app tab — the char-range `boundDocSelection` can't express it.
    */
-  appSelection?: { appDocId: string; selection: string } | null;
+  appSelection?: AppSelectionReport | null;
 }
 
 const props = defineProps<Props>();
@@ -105,10 +106,17 @@ const activeApp = computed<ActiveAppContext | null>(() => {
   if (!folder) return null;
   // An app-owned selection (e.g. canvas node ids) rides along when it belongs
   // to this app tab — carried on activeApp.selection (not boundDocSelection).
-  const selection = props.appSelection && props.appSelection.appDocId === tab.id
-    ? props.appSelection.selection
-    : undefined;
-  return { folder, app, selection };
+  const mine = props.appSelection && props.appSelection.appDocId === tab.id
+    ? props.appSelection
+    : null;
+  // `selection` phrases this turn; `selectionRef` is the durable half that
+  // gets persisted on the message — see AppSelectionReport.
+  return {
+    folder,
+    app,
+    selection: mine?.selection,
+    selectionRef: mine?.ref ?? undefined,
+  };
 });
 
 function onLeave(): void {

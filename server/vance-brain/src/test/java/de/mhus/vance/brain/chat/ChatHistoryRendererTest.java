@@ -195,6 +195,83 @@ class ChatHistoryRendererTest {
                 .isEqualTo("hi");
     }
 
+    // ──────── selection-reference replay (META_SELECTION_REFERENCE) ────────
+
+    @Test
+    void userTurn_withSelectionReference_replaysItBehindTheContent() {
+        ChatMessageDocument doc = userDoc("was steht da drin?", "alice", null);
+        doc.getMeta().put(ChatMessageDocument.META_SELECTION_REFERENCE, java.util.Map.of(
+                "label", "Von der Bettenerweiterung bis zur Stärkung",
+                "vanceUri", "vance:/apps/newsfeed/_app.yaml?entry=hrafnagud%2F6928769",
+                "url", "https://mehrnews.com/news/6928769"));
+
+        UserMessage msg = (UserMessage) ChatHistoryRenderer.toLangchain(doc, false);
+
+        assertThat(msg.singleText())
+                .startsWith("was steht da drin?")
+                .contains(ChatHistoryRenderer.REFERENCE_HEADER)
+                .contains("\"Von der Bettenerweiterung bis zur Stärkung\"")
+                .contains("vance:/apps/newsfeed/_app.yaml?entry=hrafnagud%2F6928769")
+                .contains("https://mehrnews.com/news/6928769");
+    }
+
+    @Test
+    void userTurn_referenceWithOnlyAUrl_stillReplays() {
+        ChatMessageDocument doc = userDoc("fasse das zusammen", "alice", null);
+        doc.getMeta().put(ChatMessageDocument.META_SELECTION_REFERENCE, java.util.Map.of(
+                "label", "A search hit", "url", "https://example.com/a"));
+
+        UserMessage msg = (UserMessage) ChatHistoryRenderer.toLangchain(doc, false);
+
+        assertThat(msg.singleText()).contains("\"A search hit\" — https://example.com/a");
+    }
+
+    // A label is the *name* of the thing, not the thing: with no address
+    // behind it the line would tell the model there was something without
+    // any way to follow it.
+    @Test
+    void userTurn_referenceWithoutAnyAddress_isIgnored() {
+        ChatMessageDocument doc = userDoc("hi", "alice", null);
+        doc.getMeta().put(ChatMessageDocument.META_SELECTION_REFERENCE,
+                java.util.Map.of("label", "just a name"));
+
+        UserMessage msg = (UserMessage) ChatHistoryRenderer.toLangchain(doc, false);
+
+        assertThat(msg.singleText()).isEqualTo("hi");
+    }
+
+    @Test
+    void userTurn_malformedReferenceMeta_isIgnored() {
+        ChatMessageDocument doc = userDoc("hi", "alice", null);
+        doc.getMeta().put(ChatMessageDocument.META_SELECTION_REFERENCE, "not-a-map");
+
+        UserMessage msg = (UserMessage) ChatHistoryRenderer.toLangchain(doc, false);
+
+        assertThat(msg.singleText()).isEqualTo("hi");
+    }
+
+    @Test
+    void userTurn_referenceAndDisplayNamePrefix_coexist() {
+        ChatMessageDocument doc = userDoc("und das hier?", "alice", "Alice Smith");
+        doc.getMeta().put(ChatMessageDocument.META_SELECTION_REFERENCE,
+                java.util.Map.of("label", "Ein Eintrag", "url", "https://example.com/x"));
+
+        UserMessage msg = (UserMessage) ChatHistoryRenderer.toLangchain(doc, true);
+
+        assertThat(msg.singleText())
+                .startsWith("Alice Smith: und das hier?")
+                .contains(ChatHistoryRenderer.REFERENCE_HEADER);
+    }
+
+    @Test
+    void userTurn_withoutReference_rendersByteForByteAsBefore() {
+        ChatMessageDocument doc = userDoc("plain", "alice", null);
+
+        UserMessage msg = (UserMessage) ChatHistoryRenderer.toLangchain(doc, false);
+
+        assertThat(msg.singleText()).isEqualTo("plain");
+    }
+
     private static ChatMessageDocument userDoc(String content, String userId, String displayName) {
         ChatMessageDocument doc = new ChatMessageDocument();
         doc.setRole(ChatRole.USER);

@@ -54,6 +54,7 @@ import {
   writeCortexView,
   type CortexView,
 } from './cortexUrl';
+import type { AppSelectionReport } from './types';
 import { resolveDocumentIdByPath } from './resolveDocumentPath';
 import { useViewEditMode } from './useViewEditMode';
 import { resolveHelpPath } from './help';
@@ -296,9 +297,9 @@ provide('vance:report-active-selection',
 // A structured selection an app owns that isn't a char range (phase 4b):
 // a freeform hint (e.g. a canvas board's selected node ids). Scoped by
 // appDocId; forwarded into the chat's activeApp context by CortexChatPanel.
-const activeAppSelection = ref<{ appDocId: string; selection: string } | null>(null);
+const activeAppSelection = ref<AppSelectionReport | null>(null);
 provide('vance:report-app-selection',
-  (sel: { appDocId: string; selection: string } | null) => {
+  (sel: AppSelectionReport | null) => {
     activeAppSelection.value = sel;
   });
 

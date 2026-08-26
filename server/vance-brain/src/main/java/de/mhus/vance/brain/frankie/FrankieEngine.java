@@ -775,6 +775,11 @@ public class FrankieEngine implements ThinkEngine {
                         .thinkProcessId(process.getId())
                         .role(ChatRole.USER)
                         .content(uci.content())
+                        // What this message pointed at, if anything — see
+                        // SelectionReferenceIngest. Frankie fields turns from
+                        // the same composer when it runs as a session primary.
+                        .meta(de.mhus.vance.brain.applications.SelectionReferenceIngest
+                                .metaFor(uci.activeApp()))
                         .build());
             } else if (!(m instanceof SteerMessage.UserChatInput)) {
                 extras.add(m);

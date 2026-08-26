@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.chat;
 
 import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.api.thinkprocess.SelectionReference;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -152,6 +153,21 @@ public class ChatMessageDocument {
      */
     public static final String META_TOOL_FAILURES = "toolFailures";
 
+    /**
+     * {@link #meta} key, {@code Map<String, Object>}. What this USER
+     * message pointed at when it was sent — {@code label} plus at least
+     * one of {@code vanceUri} / {@code url}. See
+     * {@link de.mhus.vance.api.thinkprocess.SelectionReference}.
+     *
+     * <p>Written only when the turn carried an app selection <em>and</em>
+     * the user actually sent a message: the reference documents an
+     * utterance, not a moment of looking. Replayed into the prompt by
+     * {@code ChatHistoryRenderer} the same way {@link #META_TOOL_FAILURES}
+     * is — from metadata at replay time, never by editing the content the
+     * user sees.
+     */
+    public static final String META_SELECTION_REFERENCE = "selectionReference";
+
     /** {@link #META_KIND} value for intermediate working-log messages — see {@link #META_KIND}. */
     public static final String KIND_INTERIM = "interim";
 
@@ -200,6 +216,33 @@ public class ChatMessageDocument {
             if (o instanceof String s && !s.isBlank()) out.add(s);
         }
         return java.util.List.copyOf(out);
+    }
+
+    /**
+     * What this message pointed at (see {@link #META_SELECTION_REFERENCE}),
+     * or {@code null} when it pointed at nothing.
+     *
+     * <p>Loosely typed on the way in like every other meta entry: a row
+     * without a usable {@code label}, or with no address at all, reads as
+     * absent rather than throwing — a malformed reference must not break
+     * history replay for the whole session.
+     */
+    public @Nullable SelectionReference selectionReference() {
+        if (!(meta.get(META_SELECTION_REFERENCE) instanceof Map<?, ?> m)) return null;
+        String label = asText(m.get("label"));
+        if (label == null) return null;
+        String vanceUri = asText(m.get("vanceUri"));
+        String url = asText(m.get("url"));
+        if (vanceUri == null && url == null) return null;
+        return SelectionReference.builder()
+                .label(label)
+                .vanceUri(vanceUri)
+                .url(url)
+                .build();
+    }
+
+    private static @Nullable String asText(@Nullable Object o) {
+        return (o instanceof String s && !s.isBlank()) ? s : null;
     }
 
     @Id
@@ -267,6 +310,10 @@ public class ChatMessageDocument {
      *       with at least {@code label}, optionally {@code description}
      *       per entry. Set by ASK_USER action handlers that received a
      *       non-empty {@code options} param.</li>
+     *   <li>{@code selectionReference} — {@code Map<String,Object>} with
+     *       {@code label} plus at least one of {@code vanceUri} /
+     *       {@code url}: what a USER message pointed at. See
+     *       {@link #META_SELECTION_REFERENCE}.</li>
      * </ul>
      */
     @Builder.Default

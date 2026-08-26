@@ -3,8 +3,11 @@
  Source: de.mhus.vance.api.thinkprocess.ActiveAppContext
 */
 
+import { SelectionReference } from './SelectionReference';
+
 export interface ActiveAppContext {
   folder: string;
   app: string;
   selection?: string;
+  selectionRef?: SelectionReference;
 }

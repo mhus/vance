@@ -767,6 +767,13 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                             .content(uci.content())
                             .senderUserId(uci.fromUser())
                             .senderDisplayName(uci.fromUserDisplayName())
+                            // What this message pointed at, if anything. Per
+                            // message rather than per turn: a batch can hold
+                            // two inputs sent from two different app tabs, and
+                            // the reference belongs to the sentence that made
+                            // it, not to the drain that delivered it.
+                            .meta(de.mhus.vance.brain.applications.SelectionReferenceIngest
+                                    .metaFor(uci.activeApp()))
                             .build());
                     if (uci.content() != null && !uci.content().isBlank()) {
                         if (userTextForTriggers.length() > 0) userTextForTriggers.append('\n');

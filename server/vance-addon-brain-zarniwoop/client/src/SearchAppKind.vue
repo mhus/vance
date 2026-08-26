@@ -398,7 +398,11 @@ function toggleOpen(hit: SearchHitView, index: number): void {
  * `web_fetch` for those.
  */
 const reportAppSelection = inject<
-  ((sel: { appDocId: string; selection: string } | null) => void) | null
+  ((sel: {
+    appDocId: string;
+    selection: string;
+    ref?: { label: string; vanceUri?: string; url?: string } | null;
+  } | null) => void) | null
 >('vance:report-app-selection', null);
 
 watch(selected, (hit) => {
@@ -408,7 +412,15 @@ watch(selected, (hit) => {
     reportAppSelection(null);
     return;
   }
-  reportAppSelection({ appDocId: appId, selection: `${hit.title} — ${hit.url}` });
+  reportAppSelection({
+    appDocId: appId,
+    selection: `${hit.title} — ${hit.url}`,
+    // The durable half, persisted on the message the reader sends. No
+    // `vanceUri`: for the same reason the prompt line above carries the URL,
+    // a hit has no handle on this side — there is no place to come back to,
+    // only the address it always was.
+    ref: { label: hit.title, url: hit.url },
+  });
 });
 
 onBeforeUnmount(() => reportAppSelection?.(null));

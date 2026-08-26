@@ -133,3 +133,29 @@ export interface FolderNode {
    */
   moreFiles: number;
 }
+
+/**
+ * What an app remote reports as its own selection — a card, a hit, a row,
+ * anything that is not a character range in a document.
+ *
+ * <p>Two halves with different lifetimes, and that is the point. {@code
+ * selection} is a phrase for the current turn's prompt and is dropped with
+ * it, because carrying it forward would claim the reader is still looking
+ * at something they left. {@code ref} is what gets persisted on the message
+ * the reader sends, so the sentence "tell me more about the selected entry"
+ * still has a referent once the entry has scrolled away.
+ *
+ * <p>{@code appDocId} scopes both to the app tab that reported them.
+ */
+export interface AppSelectionReport {
+  appDocId: string;
+  selection: string;
+  /**
+   * Label plus at least one address — {@code vanceUri} points back into
+   * this installation ({@code vance:/…?entry=…}), {@code url} at the thing's
+   * origin. Apps that have neither leave it out and nothing is persisted.
+   * Shape mirrors {@code SelectionReference} in {@code @vance/generated};
+   * declared structurally here so app remotes need no generated import.
+   */
+  ref?: { label: string; vanceUri?: string; url?: string } | null;
+}

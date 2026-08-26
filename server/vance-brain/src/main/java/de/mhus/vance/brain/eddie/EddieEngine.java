@@ -888,6 +888,10 @@ public class EddieEngine extends StructuredActionEngine {
                             .content(uci.content())
                             .senderUserId(uci.fromUser())
                             .senderDisplayName(uci.fromUserDisplayName())
+                            // What this message pointed at, if anything —
+                            // see SelectionReferenceIngest.
+                            .meta(de.mhus.vance.brain.applications.SelectionReferenceIngest
+                                    .metaFor(uci.activeApp()))
                             .build());
                 }
             }

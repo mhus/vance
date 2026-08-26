@@ -40,6 +40,14 @@ public final class ChatHistoryRenderer {
             "[vance] Tool calls that FAILED in this turn (they had no effect; "
                     + "do not assume the work described above actually happened):";
 
+    /**
+     * Opens the replayed reference line. Phrased as a fact about the past
+     * turn for the same reason the failure block is: it describes what the
+     * message pointed at, and must not read as a new instruction to go and
+     * fetch it.
+     */
+    static final String REFERENCE_HEADER = "[vance] This message pointed at:";
+
     private ChatHistoryRenderer() {}
 
     /**
@@ -55,10 +63,42 @@ public final class ChatHistoryRenderer {
      */
     public static ChatMessage toLangchain(ChatMessageDocument msg, boolean collabActive) {
         return switch (msg.getRole()) {
-            case USER -> UserMessage.from(applySenderPrefix(msg, msg.getContent(), collabActive));
+            case USER -> UserMessage.from(
+                    renderUser(msg, applySenderPrefix(msg, msg.getContent(), collabActive)));
             case ASSISTANT -> AiMessage.from(renderAssistant(msg));
             case SYSTEM -> SystemMessage.from(msg.getContent());
         };
+    }
+
+    /**
+     * Renders a USER turn for LLM replay: its content, plus the reference
+     * line when the message pointed at something (see
+     * {@link ChatMessageDocument#META_SELECTION_REFERENCE}).
+     *
+     * <p>Why this is needed at all: the app selection that produced the
+     * reference travels as a <em>per-turn</em> hint and is deliberately
+     * dropped afterwards — carrying it forward would claim the reader is
+     * still looking at something they left. But the sentence stays in the
+     * history, and without its antecedent "tell me more about the selected
+     * case" replays as a pronoun pointing at nothing. Appending the line at
+     * replay time keeps the record honest without editing what the user
+     * wrote, exactly like the failure block on the assistant side.
+     *
+     * <p>Addresses are listed, not explained: {@code vance:} is followed
+     * with the owning app's own read-tool (the handle after {@code ?entry=}
+     * is what that tool takes), {@code http(s)} with {@code web_fetch}. A
+     * per-message instruction to that effect would repeat itself once per
+     * referring turn for no gain.
+     */
+    public static String renderUser(ChatMessageDocument msg, String body) {
+        var ref = msg.selectionReference();
+        if (ref == null) return body;
+        StringBuilder sb = new StringBuilder(body);
+        if (!body.isEmpty()) sb.append("\n\n");
+        sb.append(REFERENCE_HEADER).append(" \"").append(ref.getLabel()).append('"');
+        if (ref.getVanceUri() != null) sb.append(" — ").append(ref.getVanceUri());
+        if (ref.getUrl() != null) sb.append(" — ").append(ref.getUrl());
+        return sb.toString();
     }
 
     /**

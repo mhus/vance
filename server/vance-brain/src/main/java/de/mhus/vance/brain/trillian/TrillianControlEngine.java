@@ -472,6 +472,11 @@ public class TrillianControlEngine implements ThinkEngine {
                             .thinkProcessId(process.getId())
                             .role(ChatRole.USER)
                             .content(uci.content())
+                            // What this message pointed at, if anything — the
+                            // control session is a human one. See
+                            // SelectionReferenceIngest.
+                            .meta(de.mhus.vance.brain.applications.SelectionReferenceIngest
+                                    .metaFor(uci.activeApp()))
                             .build());
                 }
                 continue;

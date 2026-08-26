@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { MarkdownView } from '@components/index';
+import { safeUrl } from '@vance/shared';
 import { uiTheme, paletteStyle } from '@composables/useUiTheme';
 import { useI18n } from 'vue-i18n';
 import QuestionCanvas, { type QuestionOption } from './QuestionCanvas.vue';
@@ -109,6 +110,50 @@ const askUserOptions = computed<AskUserOption[]>(() => {
     });
   }
   return out;
+});
+
+/**
+ * What this message pointed at, from {@code meta.selectionReference} —
+ * the app entry that was selected when it was sent (see
+ * {@code specification/public/selection-reference.md}).
+ *
+ * <p>Shown to the reader for the same reason it is replayed to the model:
+ * without it, a past "tell me more about the selected entry" is a sentence
+ * whose subject nobody can recover. Parsed defensively like every other
+ * meta key; a row without a usable label or without any address reads as
+ * absent.
+ */
+const selectionReference = computed<
+  { label: string; vanceUri?: string; url?: string } | null
+>(() => {
+  const raw = props.meta?.['selectionReference'];
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const label = typeof obj['label'] === 'string' ? obj['label'].trim() : '';
+  if (!label) return null;
+  const vanceUri = typeof obj['vanceUri'] === 'string' ? obj['vanceUri'].trim() : '';
+  const url = typeof obj['url'] === 'string' ? obj['url'].trim() : '';
+  if (!vanceUri && !url) return null;
+  return {
+    label,
+    vanceUri: vanceUri || undefined,
+    url: safeUrl(url) ?? undefined,
+  };
+});
+
+/**
+ * The reference as one Markdown line: the label links back into the app
+ * when there is a handle, and the origin is offered next to it. Rendered
+ * through {@link MarkdownView} so the {@code vance:} link goes through the
+ * host's own link handler instead of the browser's.
+ */
+const selectionReferenceMarkdown = computed<string>(() => {
+  const ref = selectionReference.value;
+  if (!ref) return '';
+  const label = ref.label.replace(/([[\]])/g, '\\$1');
+  const head = ref.vanceUri ? `[${label}](${ref.vanceUri})` : label;
+  const tail = ref.url ? ` · [↗](${ref.url})` : '';
+  return `${head}${tail}`;
 });
 
 /**
@@ -396,11 +441,29 @@ async function onCopyMarkdown(): Promise<void> {
       </div>
       <!-- ANSWER / RELAY / untagged: default Markdown rendering. -->
       <MarkdownView v-else :source="displayContent" />
+      <!-- What this message pointed at. Under the text, not inside it:
+           the reference is a fact about the message, and the message is
+           what the user actually wrote. -->
+      <div
+        v-if="selectionReferenceMarkdown"
+        class="mb-reference mt-1.5 pt-1.5 text-xs flex items-baseline gap-1"
+      >
+        <span class="opacity-70 shrink-0" aria-hidden="true">↳</span>
+        <MarkdownView :source="selectionReferenceMarkdown" class="min-w-0" />
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* The reference sits under the message, separated by a hairline that
+   inherits the bubble's own colour — a fixed grey would be invisible on
+   the primary-coloured "my message" bubble and harsh on the light one. */
+.mb-reference {
+  border-top: 1px solid color-mix(in oklab, currentColor 20%, transparent);
+  opacity: 0.9;
+}
+
 .mb-copy-btn {
   position: absolute;
   top: 0.25rem;

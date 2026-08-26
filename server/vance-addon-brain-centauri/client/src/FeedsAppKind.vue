@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   VAlert, VButton, VCard, VCheckbox, VEmptyState, VInput, VModal, VSelect, VShareButton,
-  VTextarea, VToggle,
+  VTextarea, VToggle, useAppEntry, vanceRef,
 } from '@vance/components';
 import { RestError, safeUrl } from '@vance/shared';
 import {
@@ -61,6 +61,20 @@ function entryKey(item: FeedItemView): string {
 }
 
 /**
+ * The address of one entry as it travels outside this component: in a
+ * `vance:…?entry=` link, in the persisted selection reference, and as the
+ * `data-entry` attribute a jump scrolls to.
+ *
+ * <p>Deliberately not {@link entryKey}: that one joins with a NUL byte,
+ * which is fine for a Map key and impossible in a URL or a CSS selector.
+ * The slash form is also exactly what `feed_item(sourceId, itemId)` takes,
+ * so the address a reader clicks and the one the model reads are one string.
+ */
+function handleOf(item: FeedItemView): string {
+  return `${item.sourceId}/${item.id}`;
+}
+
+/**
  * The marked entry, or none.
  *
  * <p>One at a time: the mark is „what I am looking at", and a set of them
@@ -83,9 +97,21 @@ const marked = ref<string | null>(null);
  * <p>What travels is the identity, not the entry: source and id, so the model
  * can name what the reader is looking at and fetch the rest with `feed_item`
  * when it actually needs the text.
+ *
+ * <p>`ref` is the durable half of the same thing. `selection` is a phrase for
+ * this turn and is forgotten with it; `ref` is persisted on the message the
+ * reader sends, so "the entry I marked" still has a referent tomorrow, when
+ * the entry itself has long scrolled out of the stream. Both addresses go
+ * along because they die differently: the `vance:` one stops resolving when
+ * the source can no longer serve the item, the article URL when the publisher
+ * moves it — and the label outlives both.
  */
 const reportAppSelection = inject<
-  ((sel: { appDocId: string; selection: string } | null) => void) | null
+  ((sel: {
+    appDocId: string;
+    selection: string;
+    ref?: { label: string; vanceUri?: string; url?: string } | null;
+  } | null) => void) | null
 >('vance:report-app-selection', null);
 
 watch(marked, (key) => {
@@ -105,10 +131,53 @@ watch(marked, (key) => {
   reportAppSelection({
     appDocId: appId,
     selection: `${item.sourceId}/${item.id} — ${item.title}`,
+    ref: {
+      label: item.title,
+      // The handle is `<sourceId>/<itemId>` — the same pair `feed_item` takes,
+      // so the address the reader can click and the address the model reads
+      // are one string, not two conventions.
+      vanceUri: vanceRef({ path: `${folder.value}/_app.yaml`, entry: handleOf(item) }),
+      url: safeUrl(item.url) ?? undefined,
+    },
   });
 });
 
 onBeforeUnmount(() => reportAppSelection?.(null));
+
+/**
+ * The place open inside this app tab — the other half of the reference the
+ * chat persists. A link that carries `?entry=<sourceId>/<itemId>` marks that
+ * entry and scrolls to it; marking one by hand writes it back, so the address
+ * bar keeps the position across F5 and a shared link reproduces it.
+ *
+ * <p><b>Late binding.</b> The entry a link names may not be on this page:
+ * the stream has moved on, or the source no longer serves it. Then the app
+ * opens and stays where it is — never an error, never an empty screen. That
+ * is what makes it safe to hand such a link out at all.
+ */
+const appEntry = useAppEntry(() => props.document.id);
+
+watch([() => appEntry.entry.value, items], () => {
+  const want = appEntry.entry.value;
+  if (!want) return;
+  const item = items.value.find((i) => handleOf(i) === want);
+  if (!item || marked.value === entryKey(item)) return;
+  void toggleMark(item);
+  void nextTick(() => {
+    const sel = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(want) : want;
+    document
+      .querySelector(`[data-entry="${sel}"]`)
+      ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  });
+}, { immediate: true });
+
+// The mark IS this app's sub-position, so it is what the host records.
+// `replace`: marking is a gesture, and one history entry per click would
+// turn the back button into an undo-my-reading-log.
+watch(marked, (key) => {
+  const item = key ? items.value.find((i) => entryKey(i) === key) : null;
+  appEntry.report(item ? handleOf(item) : null, 'replace');
+});
 
 /**
  * The full entry per card, once fetched.
@@ -999,6 +1068,7 @@ function slug(title: string): string {
         <VCard
           v-for="item in items"
           :key="entryKey(item)"
+          :data-entry="handleOf(item)"
           :class="[
             'cursor-pointer transition-all',
             isMarked(item) ? 'ring-2 ring-primary shadow-lg' : 'hover:ring-1 hover:ring-base-300',

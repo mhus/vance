@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { VAlert, VButton, VCard, VEmptyState, VInput, VShareButton } from '@vance/components';
+import {
+  VAlert, VButton, VCard, VEmptyState, VInput, VShareButton, vanceRef,
+} from '@vance/components';
 import { safeUrl } from '@vance/shared';
 import LinkPicture from './LinkPicture.vue';
 import LinkEditDialog from './LinkEditDialog.vue';
@@ -66,7 +68,11 @@ type Section = { group: string; items: LinkEntryView[] };
  * second copy that is right until somebody edits the first.
  */
 const reportAppSelection = inject<
-  ((sel: { appDocId: string; selection: string } | null) => void) | null
+  ((sel: {
+    appDocId: string;
+    selection: string;
+    ref?: { label: string; vanceUri?: string; url?: string } | null;
+  } | null) => void) | null
 >('vance:report-app-selection', null);
 
 const selectedEntry = computed<LinkEntryView | null>(
@@ -76,7 +82,23 @@ const selectedEntry = computed<LinkEntryView | null>(
 watch(selectedEntry, (entry) => {
   if (!reportAppSelection) return;
   const appId = props.document.id;
-  reportAppSelection(appId && entry ? { appDocId: appId, selection: entry.url } : null);
+  if (!appId || !entry) {
+    reportAppSelection(null);
+    return;
+  }
+  reportAppSelection({
+    appDocId: appId,
+    selection: entry.url,
+    // The durable half. Here the label is not a second copy of anything the
+    // server would otherwise read — it is a snapshot for the day this row is
+    // gone from the manifest, which is exactly when the reference has to
+    // still say what it meant.
+    ref: {
+      label: entry.title?.trim() || entry.url,
+      vanceUri: vanceRef({ path: `${folder.value}/_app.yaml`, entry: entry.url }),
+      url: entry.url,
+    },
+  });
 }, { immediate: true });
 
 // Leaving the tab must retract the selection — a stale one would answer

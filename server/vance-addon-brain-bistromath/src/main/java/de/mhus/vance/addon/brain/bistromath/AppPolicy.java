@@ -55,7 +55,40 @@ public record AppPolicy(
          * which is what makes {@code restricted} usable rather than a synonym
          * for {@code forbidden}.
          */
-        @Nullable List<String> restFamilies) {
+        @Nullable List<String> restFamilies,
+        /**
+         * Whether the app may have a **visible drawing surface** (`region:`).
+         *
+         * <p>Not about raw DOM — the guest has its own document either way,
+         * `region:` only makes it visible and gives it a height. The risk is
+         * what it can paint: arbitrary pixels that look like Vance. A convincing
+         * "your session expired, enter your password" inside the page is the
+         * sharpest reader-facing thing in this runtime, and switching that off
+         * is exactly what a policy about protecting the reader from the app is
+         * for.
+         *
+         * <p>Default under {@code restricted} is **false**: an admin who wants
+         * an app to paint its own pixels can say so, and the restrictive reading
+         * is the right one for the single lever with a phishing shape.
+         */
+        boolean surface,
+        /**
+         * Whether the app may **write** documents ({@code vance.documents.write}
+         * / {@code create} / {@code delete}).
+         *
+         * <p>The lever that was missing from the plan: {@code restricted}
+         * narrows REST, but documents are a separate host surface, so a
+         * restricted app could still delete its own folder. "May show, may not
+         * change" is the distinction an admin expects — and it is the borrowed
+         * click again: the reader could delete it themselves, but did not want
+         * to; the app did it in their name.
+         *
+         * <p>Default under {@code restricted} is **true**, unlike
+         * {@link #surface}. Taking an app's own data away by default would make
+         * a bare {@code restricted} mean "broken" for every register-shaped app,
+         * and the admin would have no idea why.
+         */
+        boolean documentsWritable) {
 
 
     public AppPolicy {
@@ -63,11 +96,14 @@ public record AppPolicy(
     }
 
     public static AppPolicy allowed() {
-        return new AppPolicy(AppMode.ALLOWED, null);
+        return new AppPolicy(AppMode.ALLOWED, null, true, true);
     }
 
     public static AppPolicy forbidden() {
-        return new AppPolicy(AppMode.FORBIDDEN, null);
+        // Nothing runs, so the capability flags are moot — false rather than
+        // true, so a caller reading them without checking the mode first errs
+        // on the closed side.
+        return new AppPolicy(AppMode.FORBIDDEN, null, false, false);
     }
 
     public boolean forbids() {

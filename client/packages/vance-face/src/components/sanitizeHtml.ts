@@ -25,9 +25,32 @@ import DOMPurify from 'dompurify';
 export const ALLOWED_URI_REGEXP =
   /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|vance):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;
 
+/**
+ * `<form>` and the submit-target attributes, removed.
+ *
+ * <p>Measured, not assumed: DOMPurify's html profile keeps `<form>` **with its
+ * `action`**, so a sanitised fragment could render
+ * `<form action="https://elsewhere/"><input type="password">` and post it on a
+ * single click. No script needed, no handler, nothing the rest of the allow-list
+ * would catch — and this renderer draws chat messages, documents and pages from
+ * every source there is.
+ *
+ * <p>A form in a document has no legitimate function anyway: nothing submits it
+ * usefully, and Vance's own forms are widgets, not markup. An `<input>` on its
+ * own stays allowed — without a form it is inert decoration, and Enter does
+ * nothing.
+ *
+ * <p>Both the tag and the attributes, so that a future DOMPurify default which
+ * re-allows `form` cannot quietly re-open the exit.
+ */
+const FORBID_TAGS = ['form'];
+const FORBID_ATTR = ['action', 'formaction', 'target'];
+
 export const SANITIZE_CONFIG = {
   USE_PROFILES: { html: true, mathMl: true },
   ALLOWED_URI_REGEXP,
+  FORBID_TAGS,
+  FORBID_ATTR,
 } as const;
 
 /** Sanitise a fragment of untrusted HTML for insertion into the page. */

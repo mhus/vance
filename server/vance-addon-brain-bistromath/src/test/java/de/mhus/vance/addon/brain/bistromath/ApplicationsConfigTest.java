@@ -179,4 +179,71 @@ class ApplicationsConfigTest {
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("is not a list");
     }
+
+    // ── the two capability levers ─────────────────────────────────────
+
+    @Test
+    void restricted_withholdsASurfaceByDefault() {
+        // The one lever with a phishing shape: an app that may paint arbitrary
+        // pixels can paint something that looks like Vance asking for a
+        // password. The restrictive reading is right, and an admin who wants it
+        // says so.
+        assertThat(parse("default: restricted\n").resolve("p", "apps/x").surface()).isFalse();
+    }
+
+    @Test
+    void restricted_keepsDocumentWritesByDefault() {
+        // The opposite default, on purpose: taking an app's own data away would
+        // make a bare `restricted` mean "broken" for every register-shaped app,
+        // and the admin would have no idea why.
+        assertThat(parse("default: restricted\n").resolve("p", "apps/x").documentsWritable())
+                .isTrue();
+    }
+
+    @Test
+    void allowed_hasBoth() {
+        AppPolicy p = parse("default: allowed\n").resolve("p", "apps/x");
+
+        assertThat(p.surface()).isTrue();
+        assertThat(p.documentsWritable()).isTrue();
+    }
+
+    @Test
+    void bothLeversCanBeSetExplicitly() {
+        AppPolicy p = parse("""
+                default:
+                  mode: restricted
+                  surface: true
+                  documents: read
+                """).resolve("p", "apps/x");
+
+        assertThat(p.surface()).isTrue();
+        assertThat(p.documentsWritable()).isFalse();
+    }
+
+    @Test
+    void documentsTakesAWordNotABoolean() {
+        // `documents: false` would read as "no documents at all", which is not
+        // what it means — reading stays open either way.
+        assertThatThrownBy(() -> parse("default:\n  mode: restricted\n  documents: false\n"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("expected `read` or `write`");
+    }
+
+    @Test
+    void surfaceTakesABoolean() {
+        assertThatThrownBy(() -> parse("default:\n  mode: restricted\n  surface: maybe\n"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("is true or false");
+    }
+
+    @Test
+    void forbidden_reportsBothLeversClosed() {
+        // Moot, since nothing runs — but a caller that reads a flag without
+        // checking the mode first should land on the closed side.
+        AppPolicy p = ApplicationsConfig.missing().resolve("x", "y");
+
+        assertThat(p.surface()).isFalse();
+        assertThat(p.documentsWritable()).isFalse();
+    }
 }

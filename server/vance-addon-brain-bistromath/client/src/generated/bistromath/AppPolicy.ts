@@ -8,4 +8,6 @@ import { AppMode } from './AppMode';
 export interface AppPolicy {
   mode: AppMode;
   restFamilies?: string[];
+  surface: boolean;
+  documentsWritable: boolean;
 }

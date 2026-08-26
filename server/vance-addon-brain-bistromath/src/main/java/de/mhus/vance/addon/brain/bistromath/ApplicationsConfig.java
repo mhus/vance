@@ -145,7 +145,7 @@ public record ApplicationsConfig(
             // `restricted` said `null` families here and an empty list there,
             // so the identical policy meant "unrestricted REST" or "no REST"
             // depending on how it was typed. Found by the test below.
-            return of(mode(s, where), null);
+            return of(mode(s, where), null, null, null);
         }
         if (raw instanceof Map<?, ?> map) {
             Object modeValue = map.get("mode");
@@ -155,6 +155,8 @@ public record ApplicationsConfig(
             }
             AppMode mode = mode(String.valueOf(modeValue), where + ".mode");
             List<String> rest = families(map.get("rest"), where + ".rest");
+            Boolean surface = bool(map.get("surface"), where + ".surface");
+            Boolean writable = documentsMode(map.get("documents"), where + ".documents");
             if (mode != AppMode.RESTRICTED && rest != null) {
                 // Not ignored: a `rest:` list under `allowed` reads as a
                 // restriction that is silently not applied, which is the worst
@@ -163,7 +165,7 @@ public record ApplicationsConfig(
                         + mode.name().toLowerCase(Locale.ROOT)
                         + " — a route list only applies to `restricted`.");
             }
-            return of(mode, rest);
+            return of(mode, rest, surface, writable);
         }
         throw new ToolException(PATH + ": `" + where + "` is neither a mode nor a mapping.");
     }
@@ -175,9 +177,34 @@ public record ApplicationsConfig(
      * be guessing at what the admin meant, and guessing wide is the expensive
      * direction. Any other mode carries no list.
      */
-    private static AppPolicy of(AppMode mode, @Nullable List<String> rest) {
-        return new AppPolicy(mode,
-                mode == AppMode.RESTRICTED && rest == null ? List.of() : rest);
+    private static AppPolicy of(AppMode mode, @Nullable List<String> rest,
+                                @Nullable Boolean surface, @Nullable Boolean writable) {
+        boolean restricted = mode == AppMode.RESTRICTED;
+        return new AppPolicy(
+                mode,
+                restricted && rest == null ? List.of() : rest,
+                // The two defaults differ on purpose, and the asymmetry is the
+                // point: a surface is a capability an app has to ask for, its own
+                // data is one it would be crippled without.
+                surface != null ? surface : !restricted,
+                writable != null ? writable : true);
+    }
+
+    private static @Nullable Boolean bool(@Nullable Object raw, String where) {
+        if (raw == null) return null;
+        if (raw instanceof Boolean b) return b;
+        throw new ToolException(PATH + ": `" + where + "` is true or false, not `" + raw + "`.");
+    }
+
+    /** {@code documents: read} or {@code write} — a word, because a bare
+     *  boolean here would read as "documents: false = no documents at all". */
+    private static @Nullable Boolean documentsMode(@Nullable Object raw, String where) {
+        if (raw == null) return null;
+        String s = String.valueOf(raw).trim().toLowerCase(Locale.ROOT);
+        if (s.equals("read")) return false;
+        if (s.equals("write")) return true;
+        throw new ToolException(PATH + ": `" + where + "` is `" + raw
+                + "` — expected `read` or `write`.");
     }
 
     private static AppMode mode(String raw, String where) {

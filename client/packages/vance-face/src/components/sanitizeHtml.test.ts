@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ALLOWED_URI_REGEXP } from './sanitizeHtml';
+import { ALLOWED_URI_REGEXP, SANITIZE_CONFIG } from './sanitizeHtml';
 
 /**
  * The **URI allow-list**, which is the part of the sanitiser configuration that
@@ -13,6 +13,28 @@ import { ALLOWED_URI_REGEXP } from './sanitizeHtml';
  * sanitiser removes is verified in the browser instead — see the manual section
  * in `content.md`, whose table is a measurement.
  */
+describe('SANITIZE_CONFIG', () => {
+
+  it('forbids form and every submit target', () => {
+    // The one exfiltration path a sanitised fragment had: DOMPurify's html
+    // profile keeps <form> WITH its action, so a fake password prompt could
+    // post to another host on a single click — no script involved. Measured in
+    // the browser, then closed here. Pinned as config rather than behaviour
+    // because DOMPurify.sanitize needs a DOM this runner does not have.
+    expect(SANITIZE_CONFIG.FORBID_TAGS).toContain('form');
+    for (const attr of ['action', 'formaction', 'target']) {
+      expect(SANITIZE_CONFIG.FORBID_ATTR).toContain(attr);
+    }
+  });
+
+  it('does not forbid input or button', () => {
+    // Without a form they are inert decoration — Enter submits nothing — and a
+    // document may legitimately show what a field looks like.
+    expect(SANITIZE_CONFIG.FORBID_TAGS).not.toContain('input');
+    expect(SANITIZE_CONFIG.FORBID_TAGS).not.toContain('button');
+  });
+});
+
 describe('ALLOWED_URI_REGEXP', () => {
 
   it('admits the schemes a document legitimately links to', () => {

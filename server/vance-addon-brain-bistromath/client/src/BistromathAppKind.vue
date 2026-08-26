@@ -102,7 +102,26 @@ const guestSlot = ref<HTMLElement | null>(null);
  * <p>A view without `region:` leaves the div at zero height, so an app that
  * only uses widgets is unchanged — the guest is there, just not seen.
  */
-const region = computed<string | null>(() => view.value?.root.region ?? null);
+const region = computed<string | null>(() => {
+  const asked = view.value?.root.region ?? null;
+  if (asked === null) return null;
+  // The tenant may withhold a drawing surface. Not about raw DOM — the guest
+  // has its own document anyway — but about what it can *paint*: pixels that
+  // look like Vance. A withheld surface is reported rather than silently
+  // dropped, because an author staring at a blank area would otherwise look
+  // for the bug in their own code.
+  if (scan.value && scan.value.policy.mode !== 'ALLOWED' && !scan.value.policy.surface) {
+    return null;
+  }
+  return asked;
+});
+
+/** Whether the open view asked for a surface the tenant withholds. */
+const surfaceWithheld = computed(() =>
+  Boolean(view.value?.root.region)
+  && Boolean(scan.value)
+  && scan.value!.policy.mode !== 'ALLOWED'
+  && !scan.value!.policy.surface);
 
 let sandbox: Sandbox | null = null;
 
@@ -163,6 +182,26 @@ const appContext = computed<Record<string, unknown>>(() => ({
   docId: props.document.id ?? null,
 }));
 
+/**
+ * Refuse a document write the tenant does not permit.
+ *
+ * <p>Documents are a **separate host surface** from `vance.rest`, so the
+ * policy's route list never touched them — a restricted app could still delete
+ * its own folder. Reading stays open: "may show, may not change" is the
+ * distinction, not "may not see".
+ *
+ * <p>Thrown, not returned as a null: a write that quietly does nothing is the
+ * failure that looks like success, and the program would report a saved record.
+ */
+function requireWritable(what: string): void {
+  const policy = scan.value?.policy;
+  if (!policy || policy.mode === 'ALLOWED' || policy.documentsWritable) return;
+  throw new Error(
+    `This tenant allows the app to read documents but not to ${what} them.`
+      + ' A tenant admin decides that in _vance/config/applications.yaml.',
+  );
+}
+
 // ── the host API the program is allowed to reach ───────────────────
 
 const host: SandboxHost = {
@@ -182,14 +221,17 @@ const host: SandboxHost = {
     return docs.read(resolve(path)).catch(rethrow(path));
   },
   documentsWrite(path, content, opts) {
+    requireWritable('write');
     return docs
       .write(resolve(path), content, (opts ?? {}) as { force?: boolean })
       .catch(rethrow(path));
   },
   documentsCreate(path, content) {
+    requireWritable('create');
     return docs.create(resolve(path), content).catch(rethrow(path));
   },
   documentsDelete(path) {
+    requireWritable('delete');
     return docs.delete(resolve(path)).catch(rethrow(path));
   },
   restCall(method, path, body) {
@@ -741,6 +783,14 @@ function message(e: unknown): string {
       }}</p>
     </div>
     <VAlert v-if="notice" variant="warning" class="whitespace-pre-line">{{ notice }}</VAlert>
+
+    <!-- Said rather than silently dropped: an author staring at a missing area
+         would otherwise look for the bug in their own view. -->
+    <VAlert v-if="surfaceWithheld" variant="info">
+      This view asks for a drawing surface (<code>region:</code>), which this
+      tenant does not permit for this app. A tenant admin decides that in
+      <code>_vance/config/applications.yaml</code>.
+    </VAlert>
 
     <!-- What the scan had to refuse: an unusable file name, a colliding handle,
          a `landing` that names nothing. Beside the page, never instead of it. -->

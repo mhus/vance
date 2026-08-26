@@ -69,9 +69,16 @@ It is then **sanitised**, and the same list is what does not arrive:
 | `on*` attributes | `onclick`, `onerror` — stripped from every element |
 | `href="javascript:…"` | the link stays, its `href` does not |
 | `<iframe>`, `<svg>` | not in the allow-list |
+| `<form>`, `action`, `formaction`, `target` | nothing you write can submit anywhere |
+
+`<input>` and `<button>` do survive — without a form they are inert, and Enter
+submits nothing. That is the line: markup may **look** like a control, it can
+never **send** anything.
 
 So HTML is for **formatting**, not for behaviour: a button you write as HTML is a
-button nothing is wired to. Behaviour is a widget with `on:`
+button nothing is wired to, and a field is a field nothing reads — the program
+cannot see what a reader typed into raw markup, because the widget lives in the
+host's page and not in the program's frame. Behaviour is a widget with `on:`
 (`manual_read('views')`).
 
 Two consequences worth keeping in mind. Anything you interpolate is rendered as

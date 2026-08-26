@@ -42,10 +42,32 @@ import org.yaml.snakeyaml.Yaml;
 public class ApplicationsPolicyService {
 
     private final DocumentService documentService;
+    private final AppGrantStore grants;
 
-    /** The effective policy for one app folder. */
+    /**
+     * The effective policy for one app folder, across both documents.
+     *
+     * <p>Order: what the hand-written file says **about this app**, then a
+     * granted release, then the project or global default. The admin's own file
+     * wins wherever it names the app — so revoking is naming it, not hunting
+     * through the machine-written grants.
+     */
     public AppPolicy resolve(String tenantId, String projectId, String appFolder) {
-        return config(tenantId).resolve(projectId, appFolder);
+        ApplicationsConfig config = config(tenantId);
+        AppPolicy explicit = config.explicitAppRule(projectId, appFolder);
+        if (explicit != null) return explicit;
+
+        AppGrantRecord record = grants.find(
+                tenantId, ApplicationsConfig.appKey(projectId, appFolder));
+        AppPolicy granted = record == null ? null : record.grantedPolicy();
+        if (granted != null) return granted;
+
+        return config.projectOrGlobal(projectId);
+    }
+
+    /** The hand-written configuration, for the request path. */
+    public ApplicationsConfig configuration(String tenantId) {
+        return config(tenantId);
     }
 
     private ApplicationsConfig config(String tenantId) {

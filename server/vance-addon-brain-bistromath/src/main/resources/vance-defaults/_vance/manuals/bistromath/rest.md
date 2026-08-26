@@ -182,11 +182,16 @@ vance.rest cannot call 'inbox/count': this tenant allows the app only
 _vance/config/applications.yaml.
 ```
 
-Three lists in **escalating order of who can change them**: the floor is code
-and nobody widens it, the policy is an admin's, the declaration is yours. When a
-call is refused, the message says which one spoke — do not try to route around
-it, and do not tell the reader the app is broken. Tell them which line, and
-whose it is.
+Three lists in **escalating order of who can change them**: the floor is code,
+the policy an admin's, the declaration yours. The refusal says which one spoke —
+tell the reader which line and whose it is, rather than that the app is broken.
+
+When an app is refused, the reader may be offered **Request release** — the
+tenant's admin gets an inbox item showing exactly what the app declared, and
+approving records it. So "forbidden" is a question, not a wall. Two cases where
+the button is absent and the message says which: the tenant configured no
+recipient, or an admin already named this app in their own file (asking again
+would not change it).
 
 `restricted` with no route list means **no REST at all** — and an app can still
 be perfectly useful there, because `vance.documents.*` is a different surface and

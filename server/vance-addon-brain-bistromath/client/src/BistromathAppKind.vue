@@ -22,7 +22,17 @@ import WidgetNode from './WidgetNode.vue';
 import { Sandbox, type SandboxHost } from './sandbox';
 import { PATCHES, applyPatch, patchHides, type PatchMap, type WidgetPatch } from './patches';
 import { getTenantId, getUsername } from '@vance/shared';
-import { DocumentAccess, callRest, loadScript, loadView, rebuildApp, scanApp } from './api';
+import {
+  DocumentAccess,
+  callRest,
+  loadScript,
+  loadView,
+  rebuildApp,
+  releaseStatus,
+  requestRelease,
+  scanApp,
+  type ReleaseStatus,
+} from './api';
 import {
   ActionNotAllowedError,
   actionAllowed,
@@ -486,6 +496,40 @@ watch(handle, (next, previous) => {
   void openView(next);
 });
 
+/** The tenant's answer about this app, when opening it was refused. */
+const release = ref<ReleaseStatus | null>(null);
+const releaseBusy = ref(false);
+const releaseSent = ref<string | null>(null);
+
+function statusOf(e: unknown): number | null {
+  return e && typeof (e as { status?: unknown }).status === 'number'
+    ? (e as { status: number }).status : null;
+}
+
+async function loadReleaseStatus(): Promise<void> {
+  try {
+    release.value = await releaseStatus(props.document.projectId, folder.value);
+  } catch {
+    // Best effort: without it the reader still sees why the app did not open,
+    // just without the offer. A second error on top of the first would only
+    // bury the first.
+    release.value = null;
+  }
+}
+
+async function askForRelease(): Promise<void> {
+  releaseBusy.value = true;
+  try {
+    const receipt = await requestRelease(props.document.projectId, folder.value);
+    releaseSent.value = receipt.message;
+    await loadReleaseStatus();
+  } catch (e) {
+    releaseSent.value = message(e);
+  } finally {
+    releaseBusy.value = false;
+  }
+}
+
 async function load(): Promise<void> {
   busy.value = true;
   error.value = null;
@@ -507,6 +551,11 @@ async function load(): Promise<void> {
     await boot(s);
   } catch (e) {
     error.value = message(e);
+    // A policy refusal is not an error the reader can fix by trying again, so
+    // it gets a different shape: what the tenant decided, and — if the tenant
+    // set up a path — a way to ask. The status comes from its own route rather
+    // than from reading this message.
+    if (statusOf(e) === 403) await loadReleaseStatus();
   } finally {
     busy.value = false;
   }
@@ -695,6 +744,11 @@ async function onRebuild(): Promise<void> {
     await boot(s);
   } catch (e) {
     error.value = message(e);
+    // A policy refusal is not an error the reader can fix by trying again, so
+    // it gets a different shape: what the tenant decided, and — if the tenant
+    // set up a path — a way to ask. The status comes from its own route rather
+    // than from reading this message.
+    if (statusOf(e) === 403) await loadReleaseStatus();
   } finally {
     busy.value = false;
   }
@@ -761,6 +815,21 @@ function message(e: unknown): string {
     </div>
 
     <VAlert v-if="error" variant="error" class="whitespace-pre-line">{{ error }}</VAlert>
+
+    <!-- A refusal by policy, with the way out when the tenant offers one. Not
+         merged into the error above: "this did not work" and "here is who
+         decides" are different sentences, and the second one is actionable. -->
+    <VAlert v-if="release && release.mode !== 'ALLOWED'" variant="info">
+      <div class="flex flex-col gap-2">
+        <div>{{ release.reason ?? 'A tenant admin decides which applications may run here.' }}</div>
+        <div v-if="releaseSent" class="opacity-80">{{ releaseSent }}</div>
+        <div v-if="release.canRequest && !releaseSent">
+          <VButton size="sm" :disabled="releaseBusy" @click="askForRelease">
+            {{ releaseBusy ? 'Sending…' : 'Request release' }}
+          </VButton>
+        </div>
+      </div>
+    </VAlert>
 
     <!-- Order matters and is invisible in the documents, so it is numbered. -->
     <div

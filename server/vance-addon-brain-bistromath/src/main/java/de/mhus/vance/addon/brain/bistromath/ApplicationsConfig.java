@@ -48,7 +48,19 @@ import org.jspecify.annotations.Nullable;
 public record ApplicationsConfig(
         AppPolicy globalDefault,
         Map<String, AppPolicy> byProject,
-        Map<String, AppPolicy> byAppPrefix) {
+        Map<String, AppPolicy> byAppPrefix,
+        /**
+         * Who decides a release request — a user id, or {@code null}.
+         *
+         * <p>Configured rather than derived: "the admin" is not an address, and
+         * asking the permission provider for its ADMINs would bind this addon to
+         * one provider's storage (Simple-Auth is one, the EE governor another).
+         *
+         * <p>{@code null} means the request path is **not offered**. A button
+         * that sends into the void is worse than no button, and the refusal can
+         * say so.
+         */
+        @Nullable String requestsTo) {
 
     /** The document path, in the tenant project. */
     public static final String PATH = "_vance/config/applications.yaml";
@@ -61,7 +73,7 @@ public record ApplicationsConfig(
      * not a quiet yes.
      */
     public static ApplicationsConfig missing() {
-        return new ApplicationsConfig(AppPolicy.forbidden(), Map.of(), Map.of());
+        return new ApplicationsConfig(AppPolicy.forbidden(), Map.of(), Map.of(), null);
     }
 
     public ApplicationsConfig {
@@ -77,12 +89,33 @@ public record ApplicationsConfig(
      * allowed" has no meaning that an admin could predict from reading the file.
      */
     public AppPolicy resolve(String projectId, String appFolder) {
-        String key = projectId + "/" + trimSlashes(appFolder);
-        AppPolicy byApp = longestPrefixMatch(key);
-        if (byApp != null) return byApp;
+        AppPolicy explicit = explicitAppRule(projectId, appFolder);
+        return explicit != null ? explicit : projectOrGlobal(projectId);
+    }
+
+    /**
+     * The rule this file states **for this app**, or {@code null} when it says
+     * nothing about it.
+     *
+     * <p>Separate from {@link #resolve} because a granted release fills exactly
+     * this gap: the hand-written file wins wherever it names the app, and a
+     * grant only applies where it does not. That is what keeps revocation
+     * obvious — an admin names the app {@code forbidden} here instead of hunting
+     * for the entry that was once approved.
+     */
+    public @Nullable AppPolicy explicitAppRule(String projectId, String appFolder) {
+        return longestPrefixMatch(projectId + "/" + trimSlashes(appFolder));
+    }
+
+    /** The rule for the project, or the global one. */
+    public AppPolicy projectOrGlobal(String projectId) {
         AppPolicy project = byProject.get(projectId);
-        if (project != null) return project;
-        return globalDefault;
+        return project != null ? project : globalDefault;
+    }
+
+    /** The app key this file and the grant store agree on. */
+    public static String appKey(String projectId, String appFolder) {
+        return projectId + "/" + trimSlashes(appFolder);
     }
 
     private @Nullable AppPolicy longestPrefixMatch(String key) {
@@ -121,7 +154,13 @@ public record ApplicationsConfig(
             // in the lookup key cannot disagree about whether they match.
             apps.put(trimSlashes(e.getKey()), policy(e.getValue(), "apps." + e.getKey()));
         }
-        return new ApplicationsConfig(global, projects, apps);
+        String requestsTo = null;
+        if (map.get("requests") instanceof Map<?, ?> requests) {
+            requestsTo = str(requests.get("to"));
+        } else if (map.get("requests") != null) {
+            throw new ToolException(PATH + ": `requests` is not a mapping.");
+        }
+        return new ApplicationsConfig(global, projects, apps, requestsTo);
     }
 
     @SuppressWarnings("unchecked")
@@ -227,6 +266,12 @@ public record ApplicationsConfig(
             if (!s.isEmpty()) out.add(s.toLowerCase(Locale.ROOT));
         }
         return List.copyOf(out);
+    }
+
+    private static @Nullable String str(@Nullable Object o) {
+        if (o == null) return null;
+        String s = String.valueOf(o).trim();
+        return s.isEmpty() ? null : s;
     }
 
     private static String trimSlashes(String s) {

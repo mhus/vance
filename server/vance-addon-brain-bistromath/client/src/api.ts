@@ -77,6 +77,40 @@ export async function loadScript(projectId: string, path: string): Promise<strin
   return text ?? '';
 }
 
+/**
+ * Whether this app may be opened, and whether asking is possible.
+ *
+ * <p>Its own route, called after a refusal. The alternative was a flag inside the
+ * 403's prose, which would mean deciding whether to show a button by matching on
+ * a message — and that breaks the day the wording improves.
+ */
+export interface ReleaseStatus {
+  mode: string;
+  canRequest: boolean;
+  pending: boolean;
+  inboxItemId?: string | null;
+  reason?: string | null;
+}
+
+export async function releaseStatus(projectId: string, folder: string): Promise<ReleaseStatus> {
+  return brainFetch<ReleaseStatus>(
+    'GET', `addon/bistromath/release-status?${qs({ projectId, folder })}`);
+}
+
+export interface ReleaseReceipt {
+  status: string;
+  inboxItemId?: string | null;
+  message: string;
+}
+
+export async function requestRelease(
+  projectId: string, folder: string, reason?: string,
+): Promise<ReleaseReceipt> {
+  const params: Record<string, string> = { projectId, folder };
+  if (reason) params.reason = reason;
+  return brainFetch<ReleaseReceipt>('POST', `addon/bistromath/release-request?${qs(params)}`);
+}
+
 export async function rebuildApp(projectId: string, folder: string): Promise<AppScan> {
   return brainFetch<AppScan>('POST', `addon/bistromath/rebuild?${qs({ projectId, folder })}`);
 }

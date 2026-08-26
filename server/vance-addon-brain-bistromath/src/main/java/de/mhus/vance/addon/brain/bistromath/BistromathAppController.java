@@ -50,6 +50,7 @@ public class BistromathAppController {
     private final BistromathViewService viewService;
     private final RequireResolver requireResolver;
     private final BistromathApplication application;
+    private final AppReleaseRequestService releaseRequests;
     private final RequestAuthority authority;
 
     @GetMapping("/brain/{tenant}/addon/bistromath/scan")
@@ -119,6 +120,58 @@ public class BistromathAppController {
     private static String folderOf(String documentPath) {
         int slash = documentPath.lastIndexOf('/');
         return slash < 0 ? "" : documentPath.substring(0, slash);
+    }
+
+    /**
+     * Whether this app may be opened, and whether asking is possible.
+     *
+     * <p>Called by the client after a refusal, to decide whether to offer a
+     * button. Its own route so that the decision does not depend on reading the
+     * refusal's wording.
+     */
+    @GetMapping("/brain/{tenant}/addon/bistromath/release-status")
+    public AppReleaseRequestService.Status releaseStatus(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
+        return releaseRequests.status(tenant, projectId, folder);
+    }
+
+    /**
+     * Ask an admin to release this app.
+     *
+     * <p>The way out of the dead end that {@code forbidden} would otherwise be.
+     * {@code Project READ} — asking is not a change, and the reader who can see
+     * the folder is the one who wants to open it. The decision is somebody
+     * else's, and refusing this route to them would only mean they ask in a
+     * chat instead.
+     */
+    @PostMapping("/brain/{tenant}/addon/bistromath/release-request")
+    public AppReleaseRequestService.Receipt requestRelease(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            @RequestParam(required = false) @Nullable String reason,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
+        String user = currentUser(request);
+        if (user == null || user.isBlank()) {
+            // A request has to have an asker: the item is assigned to a decider
+            // and shows who wants it, and "somebody" is not an answer they can
+            // act on.
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only a signed-in user can request a release.");
+        }
+        try {
+            return releaseRequests.request(tenant, projectId, folder, user, reason);
+        } catch (ToolException e) {
+            // A refusal, not a fault: the tenant has no release path, an admin
+            // already decided explicitly, or the app was refused before. 500
+            // would send the reader looking for a broken server.
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
+        }
     }
 
     /**

@@ -23,5 +23,8 @@ public enum MegadodoRefType {
     SCHEDULER,
     HOOK,
     EVENT,
-    DOCUMENT
+    DOCUMENT,
+
+    /** An installed kit; {@code refId} is the kit's path at its source. */
+    KIT
 }

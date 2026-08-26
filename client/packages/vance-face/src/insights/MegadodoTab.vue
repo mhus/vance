@@ -157,6 +157,10 @@ function linkFor(row: MegadodoEventDto): string | null {
       return `/insights.html?project=${encodeURIComponent(project)}&tab=health`;
     case MegadodoRefType.USER:
       return `/users.html`;
+    case MegadodoRefType.KIT:
+      // The kit card sits on the project card in scopes; it takes no
+      // query of its own, same as users.html above.
+      return `/scopes.html`;
     default:
       return null;
   }

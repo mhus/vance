@@ -256,6 +256,16 @@ public class ClusterService {
     public String selfClusterId() { return properties.getId(); }
 
     /**
+     * This pod's {@code ip:port} — the address it advertises to the cluster.
+     *
+     * <p>Straight from {@link de.mhus.vance.shared.location.LocationService}
+     * rather than from this pod's registry row, so it answers before
+     * registration has happened and cannot be stale. Same source the
+     * registration itself uses.
+     */
+    public String selfEndpoint() { return locationService.getPodAddress(); }
+
+    /**
      * How long a project ownership lease stays valid without renewal — the
      * single place brain code reads this from, so the claim path, the renewal
      * tick and every {@code ProjectOwnership} caller cannot drift apart.

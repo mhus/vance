@@ -99,7 +99,7 @@ public class ProjectManagerService {
         ProjectDocument doc = projectService.claim(
                         tenantId, projectName,
                         clusterService.selfPodId(), clusterService.selfNodeName(),
-                        clusterService.leaseTtl())
+                        clusterService.selfEndpoint(), clusterService.leaseTtl())
                 .orElseThrow(() -> {
                     String holder = projectService.findByTenantAndName(tenantId, projectName)
                             .map(ProjectDocument::getHomeNode)
@@ -285,7 +285,7 @@ public class ProjectManagerService {
         Optional<ProjectDocument> claimed = projectService.claim(
                 tenantId, projectName,
                 clusterService.selfPodId(), clusterService.selfNodeName(),
-                clusterService.leaseTtl());
+                clusterService.selfEndpoint(), clusterService.leaseTtl());
         if (claimed.isPresent()) {
             return new ClaimResult.Local(claimed.get());
         }

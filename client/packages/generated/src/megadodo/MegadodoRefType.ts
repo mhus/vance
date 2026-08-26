@@ -12,5 +12,6 @@ export enum MegadodoRefType {
   SCHEDULER = 'SCHEDULER',
   HOOK = 'HOOK',
   EVENT = 'EVENT',
-  DOCUMENT = 'DOCUMENT'
+  DOCUMENT = 'DOCUMENT',
+  KIT = 'KIT'
 }

@@ -187,7 +187,7 @@ public class KitAdminController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
         try {
-            return kitService.uninstall(tenant, projectId, kitId, prune);
+            return kitService.uninstall(tenant, projectId, kitId, prune, actor(request));
         } catch (KitException e) {
             throw kitError(e);
         }

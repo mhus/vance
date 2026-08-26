@@ -2,6 +2,7 @@ package de.mhus.vance.brain.cluster;
 
 import de.mhus.vance.shared.cluster.BrainPodDocument;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.shared.megadodo.MegadodoService;
 import de.mhus.vance.shared.project.ProjectService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +39,7 @@ public class ClusterDistributorTick {
     private final ClusterProperties properties;
     private final ProjectService projectService;
     private final ClusterPlacementService placementService;
+    private final MegadodoService megadodoService;
 
     @Scheduled(fixedDelayString = "${vance.cluster.master.distributorInterval:PT60S}",
             initialDelayString = "${vance.cluster.master.distributorInitialDelay:PT45S}")
@@ -66,6 +68,9 @@ public class ClusterDistributorTick {
         List<BrainPodDocument> pods = clusterService.liveClusterPods();
         if (pods.isEmpty()) {
             log.warn("ClusterDistributorTick: no live pods to place {} orphan(s) on", orphans.size());
+            for (ProjectDocument p : orphans) {
+                homeless(p, "no live pods in the cluster");
+            }
             return;
         }
         int[] projectedScores = pods.stream()
@@ -79,6 +84,7 @@ public class ClusterDistributorTick {
             if (idx < 0) {
                 log.warn("CLUSTER-FULL: project '{}/{}' (score={}) cannot be placed — all pods at capacity",
                         p.getTenantId(), p.getName(), p.getHomeResourceScore());
+                homeless(p, "all pods at capacity");
                 rejected++;
                 continue;
             }
@@ -90,11 +96,29 @@ public class ClusterDistributorTick {
             } catch (RuntimeException e) {
                 log.warn("ClusterDistributorTick: bring failed for '{}/{}' on '{}': {}",
                         p.getTenantId(), p.getName(), target.getNodeName(), e.toString());
+                homeless(p, "bring to " + target.getNodeName() + " failed: " + e);
                 rejected++;
             }
         }
         log.info("ClusterDistributorTick: orphans={} placed={} rejected={}",
                 orphans.size(), placed, rejected);
+    }
+
+    /**
+     * Record that a project wants to run and has nowhere to do it.
+     *
+     * <p>Only for the ones that could <em>not</em> be placed. A successfully
+     * placed orphan needs no row here — the claim on the target pod writes
+     * one, and it says where the project came from too.
+     *
+     * <p>Repeats every round for as long as it lasts, unlike the transition
+     * rows around it. That is deliberate: this is not a state change that
+     * happened once, it is an ongoing incident, and every round is another
+     * round in which a project that wants to run did not.
+     */
+    private void homeless(ProjectDocument p, String reason) {
+        megadodoService.projectHomeless(
+                p.getTenantId(), p.getName(), p.getHomeNode(), p.getClaimedAt(), reason);
     }
 
     private int pickIndex(List<BrainPodDocument> pods, int[] projectedScores, int score) {

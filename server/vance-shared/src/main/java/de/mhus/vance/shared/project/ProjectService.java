@@ -233,6 +233,7 @@ public class ProjectService {
             String name,
             String selfPodId,
             String selfNodeName,
+            String selfAddress,
             Duration leaseTtl) {
         if (isPodless(name)) {
             throw new IllegalArgumentException(
@@ -273,6 +274,12 @@ public class ProjectService {
         if (!Objects.equals(current.getHomePodId(), selfPodId)) {
             log.info("Project '{}' leased by pod '{}' (was '{}', status={})",
                     name, selfNodeName, current.getHomeNode(), current.getStatus());
+            // Only on the transition. Claiming is idempotent and doubles as a
+            // lease refresh, so a row per call would be a row every time
+            // anybody touched the project.
+            megadodoService.projectHomeClaimed(
+                    tenantId, name, selfNodeName, selfPodId, selfAddress,
+                    current.getHomeNode(), current.getClaimedAt());
         }
         return Optional.of(updated);
     }
@@ -323,15 +330,25 @@ public class ProjectService {
      * previous model, where a missed cleanup left a claim that blocked
      * takeover until some pod happened to boot.
      */
-    public long releaseLeases(String selfPodId) {
+    public long releaseLeases(String selfPodId, String selfNodeName, String selfAddress) {
         if (selfPodId == null || selfPodId.isBlank()) return 0;
+        // Read before the write, so the feed can name the projects. One extra
+        // query on a shutdown path, and the only chance to record a departure
+        // at all: an expiring lease has nobody left to write a row.
+        List<ProjectDocument> held = findByHomePodId(selfPodId);
         Query query = new Query(Criteria.where(F_HOME_POD).is(selfPodId));
         Update update = new Update()
                 .unset(F_HOME_POD)
                 .unset(F_HOME_NODE)
                 .unset(F_CLAIMED_AT);
-        return mongoTemplate.updateMulti(query, update, ProjectDocument.class)
+        long modified = mongoTemplate.updateMulti(query, update, ProjectDocument.class)
                 .getModifiedCount();
+        for (ProjectDocument project : held) {
+            megadodoService.projectHomeReleased(
+                    project.getTenantId(), project.getName(),
+                    selfNodeName, selfPodId, selfAddress);
+        }
+        return modified;
     }
 
     /**

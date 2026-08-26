@@ -7,10 +7,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.shared.megadodo.MegadodoService;
 import de.mhus.vance.shared.project.ProjectService;
 import java.time.Instant;
 import java.util.List;
@@ -32,6 +34,7 @@ class ProjectLeaseServiceTest {
     private ClusterService clusterService;
     private ProjectActivationRegistry registry;
     private ApplicationEventPublisher eventPublisher;
+    private MegadodoService megadodo;
     private ProjectLeaseService service;
 
     @BeforeEach
@@ -40,9 +43,10 @@ class ProjectLeaseServiceTest {
         clusterService = mock(ClusterService.class);
         registry = new ProjectActivationRegistry();
         eventPublisher = mock(ApplicationEventPublisher.class);
+        megadodo = mock(MegadodoService.class);
         when(clusterService.selfPodId()).thenReturn(SELF_POD);
         service = new ProjectLeaseService(
-                projectService, clusterService, registry, eventPublisher);
+                projectService, clusterService, registry, eventPublisher, megadodo);
     }
 
     private static ProjectDocument project(String name) {
@@ -76,6 +80,36 @@ class ProjectLeaseServiceTest {
         assertThat(registry.isActive("acme", "test2")).isFalse();
         verify(eventPublisher, times(1))
                 .publishEvent(new ProjectEnginesStopRequested("acme", "test2"));
+    }
+
+    @Test
+    void lostLease_isRecordedInTheFeed() {
+        // The one involuntary departure that has a witness. Without this row
+        // a project that was taken away from a still-running pod would look
+        // in the feed exactly like one that was never here — the next claim
+        // elsewhere says where it went, but nothing says it left.
+        registry.activate("acme", "test1");
+        when(clusterService.selfNodeName()).thenReturn("node-a");
+        when(clusterService.selfEndpoint()).thenReturn("10.42.0.5:9990");
+        when(projectService.renewLeases(eq(SELF_POD), any(Instant.class))).thenReturn(0L);
+        when(projectService.findByHomePodId(SELF_POD)).thenReturn(List.of());
+
+        service.renewAndReconcile();
+
+        verify(megadodo).projectHomeLost(
+                "acme", "test1", "node-a", SELF_POD, "10.42.0.5:9990");
+    }
+
+    @Test
+    void healthyRound_writesNoFeedRow() {
+        // The renewal beat runs every minute on every pod. A row per beat
+        // would drown everything else in the feed.
+        registry.activate("acme", "test1");
+        when(projectService.renewLeases(eq(SELF_POD), any(Instant.class))).thenReturn(1L);
+
+        service.renewAndReconcile();
+
+        verifyNoInteractions(megadodo);
     }
 
     @Test
@@ -125,16 +159,16 @@ class ProjectLeaseServiceTest {
 
     @Test
     void shutdown_releasesLeases() {
-        when(projectService.releaseLeases(SELF_POD)).thenReturn(3L);
+        when(projectService.releaseLeases(eq(SELF_POD), any(), any())).thenReturn(3L);
 
         service.releaseOnShutdown();
 
-        verify(projectService, times(1)).releaseLeases(SELF_POD);
+        verify(projectService, times(1)).releaseLeases(eq(SELF_POD), any(), any());
     }
 
     @Test
     void shutdown_swallowsFailureBecauseLeasesExpireAnyway() {
-        when(projectService.releaseLeases(SELF_POD))
+        when(projectService.releaseLeases(eq(SELF_POD), any(), any()))
                 .thenThrow(new IllegalStateException("mongo gone"));
 
         service.releaseOnShutdown();

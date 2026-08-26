@@ -4,11 +4,13 @@ import de.mhus.vance.api.kit.KitImportRequestDto;
 import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.KitInstalledRecordDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
+import de.mhus.vance.shared.megadodo.MegadodoService;
 import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import de.mhus.vance.brain.kit.KitRecordStore;
 import de.mhus.vance.brain.kit.KitService;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.RequiredArgsConstructor;
@@ -53,6 +55,12 @@ public class KitProvisioningService {
     public static final String ACTOR = "_provisioning";
 
     /**
+     * What a feed row points at when the failure happened before any kit
+     * was named — a malformed or unreadable provisioning document.
+     */
+    private static final String PROVISIONING_DOCUMENT = "_vance/kits/provisioning.yaml";
+
+    /**
      * Projects with a run in flight; the flag says whether another was
      * asked for while it ran.
      *
@@ -70,6 +78,13 @@ public class KitProvisioningService {
     private final KitProvisioningHandlers handlers;
     private final KitRecordStore recordStore;
     private final KitService kitService;
+    /**
+     * The activity feed. Provisioning is the one path that installs into a
+     * project with nobody watching, so its outcome has to land somewhere a
+     * project owner looks — a line in the log of whichever pod happened to
+     * own the project is not that place.
+     */
+    private final MegadodoService megadodo;
 
     /**
      * Outcome of one run — for the log, and for a caller that wants to
@@ -151,6 +166,11 @@ public class KitProvisioningService {
         List<String> withheld = new ArrayList<>();
         List<String> failures = new ArrayList<>();
 
+        // Only for the rows this class writes itself — the failures that
+        // happen before any kit has a name. A kit operation carries its own
+        // trace, minted by KitService where the operation lives.
+        String runId = UUID.randomUUID().toString();
+
         List<KitProvisioningEntry> entries;
         try {
             entries = loader.load(tenantId, projectId);
@@ -158,6 +178,8 @@ public class KitProvisioningService {
             // A malformed document is the writer's mistake and has to be
             // visible, but it must not take a project start with it.
             log.warn("Provisioning of {}/{} skipped — {}", tenantId, projectId, e.toString());
+            megadodo.kitProvisioningFailed(
+                    tenantId, projectId, PROVISIONING_DOCUMENT, e.toString(), runId);
             return new Outcome(
                     List.of(), List.of(), List.of(), List.of(), List.of(e.toString()));
         }
@@ -175,6 +197,8 @@ public class KitProvisioningService {
                 log.warn("Provisioning of {}/{}: entry {} could not be asked — {}",
                         tenantId, projectId, entry, e.toString());
                 failures.add(entry.type() + " " + entry.url() + ": " + e);
+                megadodo.kitProvisioningFailed(
+                        tenantId, projectId, entry.url(), e.toString(), runId);
                 continue;
             }
             for (DesiredKit kit : desired) {
@@ -185,6 +209,8 @@ public class KitProvisioningService {
                     log.warn("Provisioning of {}/{}: kit '{}' from {} failed — {}",
                             tenantId, projectId, kit.path(), kit.sourceUrl(), e.toString());
                     failures.add(kit.path() + ": " + e);
+                    // No feed row here — KitService already wrote one for the
+                    // operation that threw, and for every other caller too.
                 }
             }
         }
@@ -243,18 +269,19 @@ public class KitProvisioningService {
     }
 
     /**
-     * Say what the install held back.
+     * Log what the install held back.
      *
      * <p>Every other caller of {@code install} hands the result to somebody —
-     * a REST response, a tool result, a line in the CLI. This path had
-     * nowhere to hand it and therefore dropped it, which made a partial
-     * install indistinguishable from a complete one: a credential the kit
-     * could not deliver left the setting simply absent, and the first symptom
-     * was an opaque 401 from whatever the kit configured, days later.
+     * a REST response, a tool result, a line in the CLI. This path has
+     * nowhere to hand it and used to drop it, which made a partial install
+     * indistinguishable from a complete one.
      *
-     * <p>Only the held-back parts. What was written is already in the run's
-     * summary line, and a provisioning tick that logged every document of
-     * every kit on every project would not be read.
+     * <p>The <b>feed</b> row for that now comes from {@code KitService},
+     * where the operation happens and where every caller gets it. What is
+     * left here is the pod log: the same lines with the tenant, the project
+     * and the kit spelled out, which is what somebody reading a pod's log
+     * during an incident needs and what a feed row deliberately does not
+     * carry.
      */
     private static void report(
             String tenantId, String projectId, DesiredKit kit, KitOperationResultDto result) {

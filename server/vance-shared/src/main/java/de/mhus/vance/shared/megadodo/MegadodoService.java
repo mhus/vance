@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.megadodo;
 
+import de.mhus.vance.api.kit.KitImportMode;
 import de.mhus.vance.api.megadodo.MegadodoPhase;
 import de.mhus.vance.api.megadodo.MegadodoRefType;
 import de.mhus.vance.api.megadodo.MegadodoSeverity;
@@ -104,6 +105,168 @@ public class MegadodoService {
                 .refType(MegadodoRefType.PROJECT)
                 .refId(projectName)
                 .message("Project '" + projectName + "' closed"));
+    }
+
+    // ─── Project home ──────────────────────────────────────────
+    //
+    // Where a project *lives*. A project is owned by exactly one pod at a
+    // time and moves when a pod dies, restarts, or the master rebalances —
+    // and "which pod was it on when that happened" was not answerable
+    // afterwards, because the only record was the current value of
+    // homePodId and a log line on a pod that may be gone.
+    //
+    // Four rows, one per thing that can actually be observed, and the split
+    // is the whole design:
+    //
+    //   claimed   arrival — carries where it came from AND when that lease
+    //             was last renewed, so the gap is a readable duration
+    //             instead of an inference from two adjacent rows
+    //   released  the holder let go on purpose (clean shutdown)
+    //   lost      the holder was still running and the lease went away
+    //             anyway — GC pause, Mongo hiccup, master rebalance
+    //   homeless  nobody holds it and the master could not place it
+    //
+    // Together they close the hole a single arrival row leaves: "arrived on
+    // B" tells you A is done, but not that A left cleanly, not that A is
+    // still running without it, and above all not when a project has *no*
+    // home at all — which produces no arrival row precisely because nothing
+    // took it over.
+    //
+    // What still cannot be observed from the losing side: a pod killed
+    // outright. It runs no shutdown hook and no reconcile tick. That gap is
+    // what `fromLastSeen` on the arrival row is for.
+    //
+    // traceId = the project name, like the other project rows: the point
+    // here is that a project's residencies read as one history.
+
+    /**
+     * A project is now owned by this pod.
+     *
+     * <p>Emitted on the <b>transition</b> only. Claiming is idempotent and
+     * doubles as a lease refresh, so a row per call would be a row every
+     * time anybody touched the project.
+     *
+     * @param address      {@code ip:port} of the pod taking it over — the
+     *                     operator's question is "which machine", and a pod
+     *                     id does not answer it once the pod is gone
+     * @param fromNode     the node that held it before, or {@code null} when
+     *                     nobody did — this is what closes the previous
+     *                     residency in the history
+     * @param fromLastSeen when that previous lease was last renewed. Two
+     *                     claims in a row otherwise only say "something
+     *                     happened in between"; with this they say how long
+     *                     the project was adrift and therefore whether the
+     *                     handover was orderly or a failure
+     */
+    public void projectHomeClaimed(
+            String tenantId,
+            String projectName,
+            String node,
+            String podId,
+            String address,
+            @Nullable String fromNode,
+            @Nullable Instant fromLastSeen) {
+        record(builder(tenantId, /*projectId*/ null, "project.home", projectName)
+                .phase(MegadodoPhase.SINGLE)
+                .outcome("success")
+                .refType(MegadodoRefType.PROJECT)
+                .refId(projectName)
+                // All of it in the message, like every other emitter here.
+                // The document has a `details` map, but nothing reads it —
+                // the first structured use of a field no view renders would
+                // be a channel that looks like it works.
+                .message("Project '" + projectName + "' now runs on " + node
+                        + " (" + address + ", pod " + podId + ")"
+                        + (fromNode == null
+                                ? ", previously unowned"
+                                : ", taken over from " + fromNode
+                                        + (fromLastSeen == null
+                                                ? " (never renewed)"
+                                                : " (last renewed " + fromLastSeen + ")"))));
+    }
+
+    /**
+     * A project's pod gave the lease up on purpose — clean shutdown.
+     *
+     * <p>The project has no home from here until something claims it, and
+     * saying so is the point: an arrival row alone cannot express "left,
+     * and nobody took over".
+     */
+    public void projectHomeReleased(
+            String tenantId,
+            String projectName,
+            String node,
+            String podId,
+            String address) {
+        record(builder(tenantId, /*projectId*/ null, "project.home", projectName)
+                .phase(MegadodoPhase.SINGLE)
+                .severity(MegadodoSeverity.WARN)
+                .outcome("success")
+                .refType(MegadodoRefType.PROJECT)
+                .refId(projectName)
+                .message("Project '" + projectName + "' released by " + node
+                        + " (" + address + ", pod " + podId + ") on shutdown"
+                        + " — no home until something claims it"));
+    }
+
+    /**
+     * The lease went away while the holder was still running.
+     *
+     * <p>A different event from {@link #projectHomeReleased}, and the
+     * difference is the diagnosis: releasing is orderly, losing means this
+     * pod stopped renewing for long enough that the lease expired — a GC
+     * pause, a Mongo outage, a paused JVM — or the master moved the project
+     * elsewhere. The pod noticed by reconciling its own renewal count, so
+     * this is the one involuntary departure that has a witness.
+     */
+    public void projectHomeLost(
+            String tenantId,
+            String projectName,
+            String node,
+            String podId,
+            String address) {
+        record(builder(tenantId, /*projectId*/ null, "project.home", projectName)
+                .phase(MegadodoPhase.SINGLE)
+                .severity(MegadodoSeverity.ERROR)
+                .outcome("failure")
+                .refType(MegadodoRefType.PROJECT)
+                .refId(projectName)
+                .message("Project '" + projectName + "' lost its lease while running on "
+                        + node + " (" + address + ", pod " + podId + ")"
+                        + " — local state unloaded"));
+    }
+
+    /**
+     * Nobody owns this project and the master could not give it a home.
+     *
+     * <p>The state an arrival row can never describe, because there is no
+     * arrival. Repeats once per distributor round for as long as it lasts,
+     * and that is deliberate: unlike a tool going down, which is a
+     * transition, this is an ongoing incident — every round is another
+     * round in which a project that wants to run did not.
+     *
+     * @param lastNode  where it ran before, or {@code null} if it never did
+     * @param lastSeen  when that lease was last renewed
+     * @param reason    why placement failed — capacity, or the bring itself
+     */
+    public void projectHomeless(
+            String tenantId,
+            String projectName,
+            @Nullable String lastNode,
+            @Nullable Instant lastSeen,
+            String reason) {
+        record(builder(tenantId, /*projectId*/ null, "project.home", projectName)
+                .phase(MegadodoPhase.SINGLE)
+                .severity(MegadodoSeverity.ERROR)
+                .outcome("failure")
+                .refType(MegadodoRefType.PROJECT)
+                .refId(projectName)
+                .message("Project '" + projectName + "' has no home and could not be placed"
+                        + (lastNode == null
+                                ? ""
+                                : " — last ran on " + lastNode
+                                        + (lastSeen == null ? "" : " until " + lastSeen))
+                        + suffix(reason)));
     }
 
     // ─── Session ───────────────────────────────────────────────
@@ -377,6 +540,157 @@ public class MegadodoService {
                 .refId(loopProcessId)
                 .message("Trillian self-check woke up on " + reasons.size() + " finding(s)"
                         + suffix(String.join("; ", reasons))));
+    }
+
+    // ─── Kit lifecycle ─────────────────────────────────────────
+    //
+    // A kit is the one thing that installs *software* into a project:
+    // documents, recipes, tool definitions, credentials. Whether that
+    // happened, and whether all of it happened, is what the owner of the
+    // project needs to be able to look up afterwards — and over the
+    // provisioning path it happens with nobody watching at all.
+    //
+    // Emitted from KitService rather than from any one caller, so the
+    // admin REST surface, the LLM tools, project-create and provisioning
+    // all produce the same rows. Until they existed, the only trace of a
+    // provisioning round was a line in the log of whichever pod happened
+    // to own the project.
+    //
+    // traceId = one operation. The UI folds rows by it, so an id that
+    // outlived the operation would collapse a kit's whole history into
+    // a single entry.
+
+    /**
+     * A kit was installed, updated, or applied.
+     *
+     * @param mode     the import mode, which supplies the verb in the message
+     * @param heldBack one line per thing the operation did <b>not</b> write;
+     *                 empty for a clean run
+     */
+    public void kitImported(
+            String tenantId,
+            String projectId,
+            KitImportMode mode,
+            String kitName,
+            @Nullable String sourceUrl,
+            @Nullable String actor,
+            List<String> heldBack,
+            String traceId) {
+        boolean incomplete = heldBack != null && !heldBack.isEmpty();
+        // Incomplete is a different row rather than a detail on a success
+        // one, because it reads differently: an operation that reports
+        // success while a credential it was supposed to deliver is missing
+        // looks exactly like a complete one, and the first symptom is
+        // whatever the kit configured failing at its first call, days later.
+        record(builder(tenantId, projectId, "kit.lifecycle", traceId)
+                .phase(MegadodoPhase.SINGLE)
+                .severity(incomplete ? MegadodoSeverity.WARN : MegadodoSeverity.INFO)
+                .outcome(incomplete ? "incomplete" : "success")
+                .actor(actor)
+                .refType(MegadodoRefType.KIT)
+                .refId(kitName)
+                .message("Kit '" + kitName + "' " + verbFor(mode)
+                        + (sourceUrl == null || sourceUrl.isBlank() ? "" : " from " + sourceUrl)
+                        + (incomplete
+                                ? " — incompletely" + suffix(String.join("; ", heldBack))
+                                : "")));
+    }
+
+    /** A kit was installed, updated or applied — and did not work out. */
+    public void kitImportFailed(
+            String tenantId,
+            String projectId,
+            KitImportMode mode,
+            String subject,
+            @Nullable String reason,
+            @Nullable String actor,
+            String traceId) {
+        record(builder(tenantId, projectId, "kit.lifecycle", traceId)
+                .phase(MegadodoPhase.SINGLE)
+                .severity(MegadodoSeverity.ERROR)
+                .outcome("failure")
+                .actor(actor)
+                .refType(MegadodoRefType.KIT)
+                .refId(subject)
+                .message("Kit '" + subject + "' could not be " + verbFor(mode)
+                        + suffix(reason)));
+    }
+
+    /**
+     * A kit's install record was removed.
+     *
+     * @param prune whether its artefacts went with it — the difference
+     *              between forgetting a kit and deleting what it wrote
+     */
+    public void kitUninstalled(
+            String tenantId,
+            String projectId,
+            String kitId,
+            boolean prune,
+            @Nullable String actor,
+            String traceId) {
+        record(builder(tenantId, projectId, "kit.lifecycle", traceId)
+                .phase(MegadodoPhase.SINGLE)
+                // Not an error, but it removes things — WARN so it stands out
+                // in a feed somebody is scanning for what changed.
+                .severity(MegadodoSeverity.WARN)
+                .outcome("success")
+                .actor(actor)
+                .refType(MegadodoRefType.KIT)
+                .refId(kitId)
+                .message("Kit '" + kitId + "' uninstalled"
+                        + (prune ? " and its artefacts deleted" : " (artefacts kept)")));
+    }
+
+    /** Removing a kit did not work out. */
+    public void kitUninstallFailed(
+            String tenantId,
+            String projectId,
+            String kitId,
+            @Nullable String reason,
+            @Nullable String actor,
+            String traceId) {
+        record(builder(tenantId, projectId, "kit.lifecycle", traceId)
+                .phase(MegadodoPhase.SINGLE)
+                .severity(MegadodoSeverity.ERROR)
+                .outcome("failure")
+                .actor(actor)
+                .refType(MegadodoRefType.KIT)
+                .refId(kitId)
+                .message("Kit '" + kitId + "' could not be uninstalled" + suffix(reason)));
+    }
+
+    /**
+     * A provisioning entry could not be asked at all.
+     *
+     * <p>Its own action, separate from {@code kit.lifecycle}: this fires
+     * <em>before</em> any kit has a name — an unreachable host, an
+     * unreadable provisioning document — so there is no kit operation to
+     * attach it to. The failures of the operations it does start are
+     * reported by {@link #kitImportFailed} like anyone else's.
+     */
+    public void kitProvisioningFailed(
+            String tenantId,
+            String projectId,
+            String subject,
+            @Nullable String reason,
+            String traceId) {
+        record(builder(tenantId, projectId, "kit.provisioning", traceId)
+                .phase(MegadodoPhase.SINGLE)
+                .severity(MegadodoSeverity.ERROR)
+                .outcome("failure")
+                .refType(MegadodoRefType.KIT)
+                .refId(subject)
+                .message("Provisioning of '" + subject + "' failed" + suffix(reason)));
+    }
+
+    /** Past tense of what a mode does, for the message. */
+    private static String verbFor(KitImportMode mode) {
+        return switch (mode) {
+            case INSTALL -> "installed";
+            case UPDATE -> "updated";
+            case APPLY -> "applied";
+        };
     }
 
     // ═════════════════════════ Reading ═════════════════════════

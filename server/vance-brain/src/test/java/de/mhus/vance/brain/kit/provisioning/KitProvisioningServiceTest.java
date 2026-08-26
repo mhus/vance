@@ -6,17 +6,22 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.kit.KitImportRequestDto;
 import de.mhus.vance.api.kit.KitInstalledRecordDto;
+import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.api.kit.KitOriginDto;
 import de.mhus.vance.api.kit.KitProvisioningAuthority;
 import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import de.mhus.vance.brain.kit.KitRecordStore;
+import de.mhus.vance.shared.megadodo.MegadodoService;
 import de.mhus.vance.brain.kit.KitService;
 import de.mhus.vance.shared.kit.KitException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,6 +39,7 @@ class KitProvisioningServiceTest {
     private KitProvisioningHandlers handlers;
     private KitRecordStore recordStore;
     private KitService kitService;
+    private MegadodoService megadodo;
     private KitProvisioningService service;
 
     @BeforeEach
@@ -42,7 +48,9 @@ class KitProvisioningServiceTest {
         handlers = mock(KitProvisioningHandlers.class);
         recordStore = mock(KitRecordStore.class);
         kitService = mock(KitService.class);
-        service = new KitProvisioningService(loader, handlers, recordStore, kitService);
+        megadodo = mock(MegadodoService.class);
+        service = new KitProvisioningService(
+                loader, handlers, recordStore, kitService, megadodo);
     }
 
     private static KitProvisioningEntry entry(KitProvisioningAuthority authority) {
@@ -275,6 +283,52 @@ class KitProvisioningServiceTest {
         assertThat(calls.get()).isEqualTo(2);
     }
 
+    // ─── what lands in the activity feed ────────────────────────────────
+    //
+    // Only what this class writes itself: the failures that happen before
+    // any kit has a name. The rows for the kit operations it starts come
+    // from KitService, where they are written for every caller — see
+    // KitServiceTest.
+
+    @Test
+    void provision_unreachableHost_isRecordedInTheFeed() {
+        KitProvisioningEntry entry = entry(KitProvisioningAuthority.MANAGE);
+        when(loader.load(TENANT, PROJECT)).thenReturn(List.of(entry));
+        when(handlers.discover(TENANT, PROJECT, entry))
+                .thenThrow(new IllegalStateException("connection refused"));
+
+        assertThat(service.provision(TENANT, PROJECT).failures()).hasSize(1);
+
+        verify(megadodo).kitProvisioningFailed(
+                eq(TENANT), eq(PROJECT), eq(URL), contains("connection refused"), any());
+    }
+
+    @Test
+    void provision_malformedDocument_isRecordedInTheFeed() {
+        // Before any kit has a name, so the row points at the document that
+        // could not be read.
+        when(loader.load(TENANT, PROJECT)).thenThrow(new IllegalStateException("bad yaml"));
+
+        service.provision(TENANT, PROJECT);
+
+        verify(megadodo).kitProvisioningFailed(
+                eq(TENANT), eq(PROJECT), contains("provisioning.yaml"),
+                contains("bad yaml"), any());
+    }
+
+    @Test
+    void provision_nothingToDo_writesNoFeedRows() {
+        // The tick runs every four hours for every project this pod owns.
+        // A feed that said "checked, nothing to do" would be unreadable.
+        declare(KitProvisioningAuthority.MANAGE, desired(KitProvisioningAuthority.MANAGE));
+        when(recordStore.findByOrigin(TENANT, PROJECT, URL, "acme-crm"))
+                .thenReturn(recordStamped("abc123"));
+
+        service.provision(TENANT, PROJECT);
+
+        verifyNoInteractions(megadodo);
+    }
+
     @Test
     void provision_neverUninstalls() {
         // Additive only: a line removed from the document leaves what it
@@ -283,6 +337,6 @@ class KitProvisioningServiceTest {
 
         service.provision(TENANT, PROJECT);
 
-        verify(kitService, never()).uninstall(any(), any(), any(), anyBoolean());
+        verify(kitService, never()).uninstall(any(), any(), any(), anyBoolean(), any());
     }
 }

@@ -11,9 +11,11 @@ import de.mhus.vance.api.kit.KitManifestDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.project.ProjectService;
+import de.mhus.vance.shared.megadodo.MegadodoService;
 import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -48,6 +50,13 @@ public class KitService {
     private final ProjectService projectService;
     private final TemplateApplier templateApplier;
     private final KitStoreCredentials storeCredentials;
+    /**
+     * The activity feed. Here rather than at any one caller, so the admin
+     * REST surface, the LLM tools, project-create and provisioning all
+     * produce the same rows — and so the one path that runs unattended is
+     * not the one path that stays silent.
+     */
+    private final MegadodoService megadodo;
 
     /**
      * Install / update / apply a kit. The {@code mode} on the request
@@ -87,6 +96,17 @@ public class KitService {
                 .withInstallId(previousInstallId(tenantId, request))
                 .withProvisioningStamp(request.getProvisioningStamp());
 
+        // One trace per operation. The feed UI folds rows by it, so an id
+        // that outlived the operation would collapse a kit's whole history
+        // into a single entry.
+        String traceId = UUID.randomUUID().toString();
+        // The best name available before the descriptor is read — and the
+        // only one there will be if the resolve is what fails.
+        String subject = request.getSource().getPath() == null
+                        || request.getSource().getPath().isBlank()
+                ? request.getSource().getUrl()
+                : request.getSource().getPath();
+
         KitResolver.ResolvedKit resolved = null;
         try {
             resolved = resolver.resolve(access, request.getSource());
@@ -110,7 +130,7 @@ public class KitService {
                         + "') — use update");
             }
 
-            return installer.apply(
+            KitOperationResultDto result = installer.apply(
                     access,
                     request.getProjectId(),
                     request.getSource(),
@@ -122,9 +142,48 @@ public class KitService {
                     request.isWriteManifest(),
                     origin,
                     actor);
+            megadodo.kitImported(
+                    tenantId, request.getProjectId(), request.getMode(),
+                    result.getKitName() == null ? subject : result.getKitName(),
+                    request.getSource().getUrl(), actor, heldBackOf(result), traceId);
+            return result;
+        } catch (RuntimeException e) {
+            // Emitted here rather than at any one caller, so the admin REST
+            // surface, the LLM tools, project-create and provisioning all
+            // produce the same row. Deliberately *inside* the try that wraps
+            // the resolve and the write, not around the argument checks above:
+            // "you passed apply and writeManifest together" is a mistake the
+            // caller sees immediately and does not belong in a feed somebody
+            // scans for what went wrong unattended.
+            megadodo.kitImportFailed(
+                    tenantId, request.getProjectId(), request.getMode(),
+                    subject, e.toString(), actor, traceId);
+            throw e;
         } finally {
             if (resolved != null) resolved.cleanup(workspace);
         }
+    }
+
+    /**
+     * What an operation did not write — the lines that turn a success row
+     * into an incomplete one.
+     *
+     * <p>Documents skipped because they are <b>locked</b> are deliberately
+     * absent: that is the lock doing its job, not a shortfall. A credential
+     * that could not be delivered is the opposite — nobody asked for it to
+     * be missing, and without saying so the operation reports success while
+     * whatever needs the setting fails at its first call.
+     */
+    private static List<String> heldBackOf(KitOperationResultDto result) {
+        List<String> out = new ArrayList<>();
+        if (result.getSkippedPasswords() != null && !result.getSkippedPasswords().isEmpty()) {
+            out.add("credential(s) not delivered: "
+                    + String.join(", ", result.getSkippedPasswords()));
+        }
+        if (result.getWarnings() != null) {
+            out.addAll(result.getWarnings());
+        }
+        return out;
     }
 
     /**
@@ -364,12 +423,25 @@ public class KitService {
      * the record — the artefacts stay, because the user may well have
      * built on them. With {@code prune} the artefacts go too, except
      * those another installed kit also owns.
+     *
+     * @param actor who asked, for the feed row; {@code null} means the
+     *              server itself rather than an unknown person
      */
     public KitOperationResultDto uninstall(
-            String tenantId, String projectId, String kitId, boolean prune) {
+            String tenantId, String projectId, String kitId, boolean prune,
+            @Nullable String actor) {
         requireProject(tenantId, projectId);
-        return installer.uninstall(
-                tenantId, projectId, requireInstalled(tenantId, projectId, kitId), prune);
+        String traceId = UUID.randomUUID().toString();
+        try {
+            KitOperationResultDto result = installer.uninstall(
+                    tenantId, projectId, requireInstalled(tenantId, projectId, kitId), prune);
+            megadodo.kitUninstalled(tenantId, projectId, kitId, prune, actor, traceId);
+            return result;
+        } catch (RuntimeException e) {
+            megadodo.kitUninstallFailed(
+                    tenantId, projectId, kitId, e.toString(), actor, traceId);
+            throw e;
+        }
     }
 
     /**

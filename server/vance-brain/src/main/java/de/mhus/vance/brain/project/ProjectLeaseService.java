@@ -2,6 +2,7 @@ package de.mhus.vance.brain.project;
 
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.shared.megadodo.MegadodoService;
 import de.mhus.vance.shared.project.ProjectService;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
@@ -55,6 +56,7 @@ public class ProjectLeaseService {
     private final ClusterService clusterService;
     private final ProjectActivationRegistry activationRegistry;
     private final ApplicationEventPublisher eventPublisher;
+    private final MegadodoService megadodoService;
 
     @Scheduled(fixedDelayString = "${vance.cluster.lease.renew-interval:PT1M}",
             initialDelayString = "${vance.cluster.lease.renew-interval:PT1M}")
@@ -113,6 +115,13 @@ public class ProjectLeaseService {
                 log.warn("Project '{}/{}' lease lost while active here — unloading local state "
                         + "(no workspace snapshot: the new owner is authoritative)",
                         tenantId, projectName);
+                // The one involuntary departure that has a witness. A pod
+                // killed outright never gets here — but a pod that is merely
+                // *late* does, and without this row its projects would appear
+                // to have left cleanly or not at all.
+                megadodoService.projectHomeLost(
+                        tenantId, projectName, clusterService.selfNodeName(), selfPodId,
+                        clusterService.selfEndpoint());
                 eventPublisher.publishEvent(
                         new ProjectEnginesStopRequested(tenantId, projectName));
             }
@@ -130,7 +139,9 @@ public class ProjectLeaseService {
     @PreDestroy
     void releaseOnShutdown() {
         try {
-            long released = projectService.releaseLeases(clusterService.selfPodId());
+            long released = projectService.releaseLeases(
+                    clusterService.selfPodId(), clusterService.selfNodeName(),
+                    clusterService.selfEndpoint());
             if (released > 0) {
                 log.info("ProjectLeaseService: released {} project lease(s) on shutdown",
                         released);

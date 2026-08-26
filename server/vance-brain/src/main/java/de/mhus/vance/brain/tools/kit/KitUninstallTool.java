@@ -95,7 +95,8 @@ public class KitUninstallTool implements Tool {
         String kitRef = KitToolSupport.requireString(params, "kit");
         boolean prune = KitToolSupport.optionalBoolean(params, "prune");
         return KitToolSupport.resultToMap(kitService.uninstall(
-                ctx.tenantId(), projectId, resolveKitId(ctx.tenantId(), projectId, kitRef), prune));
+                ctx.tenantId(), projectId, resolveKitId(ctx.tenantId(), projectId, kitRef), prune,
+                ctx.userId()));
     }
 
     /** Accept the record id or the display name — {@code kit_status} shows both. */

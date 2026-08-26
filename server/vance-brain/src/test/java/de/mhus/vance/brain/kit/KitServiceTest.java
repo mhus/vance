@@ -9,6 +9,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -24,6 +26,7 @@ import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.api.kit.KitOriginDto;
 import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.shared.megadodo.MegadodoService;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import java.nio.file.Path;
@@ -34,6 +37,7 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 /**
  * Visibility-flag enforcement and the multi-kit preconditions in
@@ -57,6 +61,7 @@ class KitServiceTest {
     private KitRecordStore recordStore;
     private ProjectService projectService;
     private KitStoreCredentials storeCredentials;
+    private MegadodoService megadodo;
     private KitService service;
 
     @BeforeEach
@@ -87,9 +92,10 @@ class KitServiceTest {
         when(storeCredentials.resolve(any(), any(), any(), any(), any()))
                 .thenReturn(KitAccess.of(TENANT));
 
+        megadodo = mock(MegadodoService.class);
         service = new KitService(resolver, installer, exporter, workspace, recordStore,
                 mock(KitLegacyMigrator.class), projectService, mock(TemplateApplier.class),
-                storeCredentials);
+                storeCredentials, megadodo);
     }
 
     // ── installable=false ─────────────────────────────────────────────
@@ -303,7 +309,7 @@ class KitServiceTest {
 
     @Test
     void uninstall_unknownKit_fails() {
-        assertThatThrownBy(() -> service.uninstall(TENANT, PROJECT, "ghost-000000", false))
+        assertThatThrownBy(() -> service.uninstall(TENANT, PROJECT, "ghost-000000", false, null))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("ghost-000000");
     }
@@ -381,6 +387,127 @@ class KitServiceTest {
 
         verify(installer).apply(any(), any(), any(), any(), eq(KitImportMode.INSTALL),
                 anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any());
+    }
+
+    // ── what lands in the activity feed ──────────────────────────────
+    //
+    // Emitted here rather than at any one caller, so the admin REST
+    // surface, the LLM tools, project-create and provisioning all produce
+    // the same rows. Provisioning is the reason it matters: it installs
+    // into a project with nobody watching, and its failures used to leave
+    // no trace but a line in the log of whichever pod owned the project.
+
+    @Test
+    void importKit_success_isRecordedInTheFeed() {
+        stubResolved(descriptor("base-kit").build());
+        when(installer.apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(),
+                any(), anyBoolean(), any(), any()))
+                .thenReturn(KitOperationResultDto.builder().kitName("base-kit").build());
+
+        service.importKit(TENANT, importRequest(KitImportMode.INSTALL), "alice",
+                SettingWriteOrigin.USER);
+
+        verify(megadodo).kitImported(
+                eq(TENANT), eq(PROJECT), eq(KitImportMode.INSTALL), eq("base-kit"),
+                eq(SOURCE_URL), eq("alice"), eq(List.of()), any());
+    }
+
+    @Test
+    void importKit_thatHeldACredentialBack_isRecordedAsIncomplete() {
+        // The failure the row exists for: the operation reports success, the
+        // setting is simply absent, and the first symptom is an opaque 401
+        // from whatever the kit configured, days later.
+        stubResolved(descriptor("base-kit").build());
+        when(installer.apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(),
+                any(), anyBoolean(), any(), any()))
+                .thenReturn(KitOperationResultDto.builder()
+                        .kitName("base-kit")
+                        .skippedPasswords(new ArrayList<>(List.of("acme.apiKey")))
+                        .build());
+
+        service.importKit(TENANT, importRequest(KitImportMode.INSTALL), null,
+                SettingWriteOrigin.USER);
+
+        ArgumentCaptor<List<String>> heldBack = ArgumentCaptor.captor();
+        verify(megadodo).kitImported(
+                eq(TENANT), eq(PROJECT), eq(KitImportMode.INSTALL), eq("base-kit"),
+                any(), any(), heldBack.capture(), any());
+        assertThat(heldBack.getValue()).singleElement().asString().contains("acme.apiKey");
+    }
+
+    @Test
+    void importKit_lockedDocuments_doNotMakeItIncomplete() {
+        // That is the lock doing its job, not a shortfall.
+        stubResolved(descriptor("base-kit").build());
+        when(installer.apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(),
+                any(), anyBoolean(), any(), any()))
+                .thenReturn(KitOperationResultDto.builder()
+                        .kitName("base-kit")
+                        .documentsSkipped(new ArrayList<>(List.of("notes.md")))
+                        .build());
+
+        service.importKit(TENANT, importRequest(KitImportMode.INSTALL), null,
+                SettingWriteOrigin.USER);
+
+        verify(megadodo).kitImported(
+                any(), any(), any(), any(), any(), any(), eq(List.of()), any());
+    }
+
+    @Test
+    void importKit_thatThrows_isRecordedAsFailure() {
+        when(resolver.resolve(any(), any()))
+                .thenThrow(new KitException("host unreachable"));
+
+        assertThatThrownBy(() -> service.importKit(
+                TENANT, importRequest(KitImportMode.UPDATE), "alice", SettingWriteOrigin.USER))
+                .isInstanceOf(KitException.class);
+
+        verify(megadodo).kitImportFailed(
+                eq(TENANT), eq(PROJECT), eq(KitImportMode.UPDATE), any(),
+                contains("host unreachable"), eq("alice"), any());
+    }
+
+    @Test
+    void importKit_argumentMistake_writesNoFeedRow() {
+        // apply + writeManifest is refused before anything is attempted. The
+        // caller sees it immediately; a feed somebody scans for what went
+        // wrong unattended is the wrong place for it.
+        assertThatThrownBy(() -> service.importKit(
+                TENANT,
+                KitImportRequestDto.builder()
+                        .projectId(PROJECT)
+                        .source(KitInheritDto.builder().url(SOURCE_URL).build())
+                        .mode(KitImportMode.APPLY)
+                        .writeManifest(true)
+                        .build(),
+                null, SettingWriteOrigin.USER))
+                .isInstanceOf(KitException.class);
+
+        verifyNoInteractions(megadodo);
+    }
+
+    @Test
+    void uninstall_isRecordedInTheFeed() {
+        when(recordStore.find(TENANT, PROJECT, "base-kit-abc123"))
+                .thenReturn(record("base-kit", "base-kit-abc123"));
+        when(installer.uninstall(any(), any(), any(), anyBoolean()))
+                .thenReturn(KitOperationResultDto.builder().build());
+
+        service.uninstall(TENANT, PROJECT, "base-kit-abc123", /*prune*/ true, "alice");
+
+        verify(megadodo).kitUninstalled(
+                eq(TENANT), eq(PROJECT), eq("base-kit-abc123"), eq(true), eq("alice"), any());
+    }
+
+    @Test
+    void uninstall_ofSomethingNotInstalled_isRecordedAsFailure() {
+        when(recordStore.find(TENANT, PROJECT, "ghost")).thenReturn(null);
+
+        assertThatThrownBy(() -> service.uninstall(TENANT, PROJECT, "ghost", false, null))
+                .isInstanceOf(KitException.class);
+
+        verify(megadodo).kitUninstallFailed(
+                eq(TENANT), eq(PROJECT), eq("ghost"), any(), any(), any());
     }
 
     // ── helpers ──────────────────────────────────────────────────────

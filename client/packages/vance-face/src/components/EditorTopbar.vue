@@ -18,7 +18,7 @@ import ProcessCountsBadge from './ProcessCountsBadge.vue';
 import FookSupportModal from './FookSupportModal.vue';
 import VanceLogo from './VanceLogo.vue';
 import { loadRuntimeConfig, type RuntimeConfig } from '@/platform/runtimeConfig';
-import { navigateTo, staysInShell } from '@/platform/navigate';
+import { handleShellLinkClick } from '@/platform/navigate';
 
 /**
  * A breadcrumb segment. Either a plain string label (immutable, no
@@ -138,18 +138,9 @@ async function logout(): Promise<void> {
   window.location.href = '/';
 }
 
-/**
- * The logo link. Inside the shell the landing is a route, so route to it;
- * everywhere else let the anchor do what anchors do. Modified clicks are left
- * alone throughout — cmd-click means "new tab", and hijacking that is the kind
- * of thing that makes a web app feel like it is fighting the browser.
- */
+/** The logo link — a route inside the shell, a page load everywhere else. */
 function onHomeClick(event: MouseEvent): void {
-  if (event.defaultPrevented) return;
-  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-  if (!staysInShell('/')) return;
-  event.preventDefault();
-  navigateTo('/');
+  handleShellLinkClick(event, '/');
 }
 
 // Facelift wrapper bridges — these are no-ops in a plain browser

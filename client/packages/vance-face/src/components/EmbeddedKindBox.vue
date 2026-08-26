@@ -13,6 +13,7 @@
  * Document's metadata).
  */
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { navigateTo } from '@/platform/navigate';
 import KindBox from './KindBox.vue';
 import MarkdownView from './MarkdownView.vue';
 import { kindIcon, kindLabel, resolveRenderer } from '@/kindRenderers/registry';
@@ -166,7 +167,7 @@ async function onOpen(event?: MouseEvent): Promise<void> {
   if (newTab) {
     window.open(url, '_blank', 'noopener');
   } else {
-    window.location.href = url;
+    navigateTo(url);
   }
 }
 

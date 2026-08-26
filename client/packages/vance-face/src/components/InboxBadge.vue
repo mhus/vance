@@ -9,6 +9,7 @@ import {
   inboxPending,
   refreshInboxCount,
 } from '@/inbox/inboxCountStore';
+import { handleShellLinkClick } from '@/platform/navigate';
 
 /**
  * Topbar badge with the number of pending inbox items, and the link into
@@ -59,12 +60,18 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <!-- A real anchor, with the plain left click taken over inside the shell:
+       the inbox is a route there, and reloading the page to reach it would
+       throw away the editor the reader is standing in. Outside the shell
+       (profile, scopes, an addon area) the handler declines and the anchor
+       behaves normally. -->
   <a
     v-if="visible"
     href="/inbox"
     class="no-underline"
     :title="tooltip"
     :aria-label="tooltip"
+    @click="(e: MouseEvent) => handleShellLinkClick(e, '/inbox')"
   >
     <VBadge :variant="attention ? 'warning' : 'neutral'" size="sm" :outline="!attention">
       <span class="mr-1" aria-hidden="true">✉</span>

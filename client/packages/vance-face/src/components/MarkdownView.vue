@@ -19,6 +19,7 @@
 import { computed, defineComponent, h, inject, ref, type PropType, type VNode } from 'vue';
 import { marked, type Tokens } from 'marked';
 import { sanitizeHtml as sanitize } from './sanitizeHtml';
+import { navigateTo } from '@/platform/navigate';
 import InlineKindBox from './InlineKindBox.vue';
 import EmbeddedKindBox from './EmbeddedKindBox.vue';
 import LinkCard from './LinkCard.vue';
@@ -935,7 +936,11 @@ export default defineComponent({
       if (newTab || preferNewTab) {
         window.open(url, '_blank', 'noopener');
       } else {
-        window.location.href = url;
+        // navigateTo, not location.href: a `vance:` link that resolves into
+        // Cortex is a route inside the shell. For anything else — an external
+        // URL, a standalone page — it falls back to a real navigation on its
+        // own, so this stays one call.
+        navigateTo(url);
       }
     }
 

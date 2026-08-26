@@ -65,3 +65,29 @@ export function navigateTo(href: string, options?: { replace?: boolean }): void 
 export function staysInShell(href: string): boolean {
   return router !== null && isClusterHref(href);
 }
+
+/**
+ * Turn a click on a real `<a href>` into a route change when the target is a
+ * shell route, and leave it alone otherwise.
+ *
+ * <p>The links stay anchors on purpose — middle-click, cmd-click, "copy link
+ * address" and the status-bar preview all keep working, and on the standalone
+ * entries there is no router to route with. This only takes over the plain
+ * left click, and only inside the shell.
+ *
+ * <p>Modified clicks are never touched: cmd-click means "new tab", and
+ * hijacking that is the kind of thing that makes a web app feel like it is
+ * fighting the browser.
+ *
+ * @example
+ *   <a href="/inbox" @click="(e) => handleShellLinkClick(e, '/inbox')">
+ */
+export function handleShellLinkClick(event: MouseEvent, href: string): void {
+  if (event.defaultPrevented) return;
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+    return;
+  }
+  if (!staysInShell(href)) return;
+  event.preventDefault();
+  navigateTo(href);
+}

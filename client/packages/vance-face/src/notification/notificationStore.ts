@@ -1,4 +1,5 @@
 import { ref, type Ref } from 'vue';
+import { navigateTo } from '@/platform/navigate';
 import type { NotificationDto, NotificationSeverity } from '@vance/generated';
 
 /**
@@ -134,7 +135,7 @@ function showSystemNotification(n: NotificationDto): void {
         const onChat = window.location.pathname.endsWith('/chat')
           || window.location.pathname === '/';
         const url = `/chat?sessionId=${encodeURIComponent(sessionId)}`;
-        if (onChat) window.location.href = url;
+        if (onChat) navigateTo(url);
         else window.open(url, '_blank', 'noopener');
       }
       sys.close();

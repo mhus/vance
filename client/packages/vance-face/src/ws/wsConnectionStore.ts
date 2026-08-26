@@ -1474,3 +1474,42 @@ export function useWsConnection(): {
     documentViewers,
   };
 }
+
+/**
+ * How many registrations the singleton is currently holding, per registry.
+ *
+ * <p>Exported for one reason: since the workspace cluster
+ * (planning/web-ui-reorg.md §4.7) leaving an editor is a route change rather
+ * than a page load, so nothing sweeps up after a component that forgets to
+ * unsubscribe. In the MPA that class of bug was invisible — the browser threw
+ * the whole JS realm away every time. Now a session lasts a working day and a
+ * forgotten handler lasts with it.
+ *
+ * <p>Deliberately a plain count and not the handlers themselves: a test wants
+ * "back where it started", and handing out the sets would invite code that
+ * reaches into them.
+ */
+export function subscriptionCounts(): Record<string, number> {
+  const sum = (m: Map<string, Set<unknown>>): number => {
+    let n = 0;
+    for (const set of m.values()) n += set.size;
+    return n;
+  };
+  return {
+    desiredSubscriptions: desiredSubscriptions.size,
+    desiredPrefixSubscriptions: desiredPrefixSubscriptions.size,
+    desiredPointerSubscriptions: desiredPointerSubscriptions.size,
+    desiredSignalSubscriptions: desiredSignalSubscriptions.size,
+    documentChangedListeners: sum(documentChangedListeners),
+    documentChangedPrefixListeners: sum(documentChangedPrefixListeners),
+    documentPrefixReconnectListeners: sum(documentPrefixReconnectListeners),
+    documentNoteChangedListeners: sum(documentNoteChangedListeners),
+    pointerListeners: sum(pointerListeners),
+    pointerLeaveListeners: sum(pointerLeaveListeners),
+    signalListeners: sum(signalListeners),
+    clientRosterListeners: clientRosterListeners.size,
+    clientOutputListeners: sum(clientOutputListeners),
+    clientStateListeners: sum(clientStateListeners),
+    clientPromptListeners: sum(clientPromptListeners),
+  };
+}

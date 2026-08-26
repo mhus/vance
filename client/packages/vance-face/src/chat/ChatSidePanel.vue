@@ -239,6 +239,7 @@ watch(
 // user sees their message before the server frame arrives. Same dance
 // /chat does in its parent ChatApp.
 const chatViewRef = ref<InstanceType<typeof ChatView> | null>(null);
+const composerRef = ref<InstanceType<typeof ChatComposer> | null>(null);
 
 async function bindToSession(): Promise<void> {
   bindError.value = null;
@@ -310,12 +311,20 @@ onBeforeUnmount(() => {
 // ─── Cross-component routing (subset of ChatApp.vue) ───
 //
 // The side panel skips: follow-up ghost suggestions, wizard deep-links,
-// TTS / speak gates, ask-user pick (rare), talk-mode. Those add a lot
-// of surface area and the chat is functional without them — they can
-// be ported piecemeal.
+// TTS / speak gates, talk-mode. Those add a lot of surface area and the
+// chat is functional without them — they can be ported piecemeal.
+//
+// The ASK_USER pick is NOT among them: an unrouted option button looks
+// like a working control and swallows the click, leaving the process
+// waiting on an answer the user believes they gave.
 
 function onLocalEcho(msg: ChatMessageDto): void {
   chatViewRef.value?.appendLocalEcho(msg);
+}
+
+/** ASK_USER option clicked — the composer owns the send pipeline. */
+function onAskUserPick(label: string): void {
+  void composerRef.value?.setTextAndSend(label);
 }
 
 function onRollbackEcho(messageId: string): void {
@@ -380,6 +389,7 @@ function onRollbackEcho(messageId: string): void {
           :chat-project-id="projectId"
           @leave="emit('leave')"
           @hub="emit('leave')"
+          @ask-user-pick="onAskUserPick"
           @conversation-exported="(p: { documentId: string; document: DocumentDto }) =>
             emit('conversation-exported', p)"
         />
@@ -387,6 +397,7 @@ function onRollbackEcho(messageId: string): void {
       <div class="shrink-0 border-t border-base-300">
         <ChatComposer
           v-if="socket"
+          ref="composerRef"
           :socket="socket"
           :chat-process-name="CHAT_PROCESS_NAME"
           :chat-project-id="projectId"

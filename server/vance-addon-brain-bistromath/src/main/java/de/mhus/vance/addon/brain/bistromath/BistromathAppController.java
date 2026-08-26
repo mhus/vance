@@ -14,7 +14,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * REST surface of the Bistromath runtime, under
@@ -56,7 +58,31 @@ public class BistromathAppController {
                         @RequestParam String folder,
                         HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
-        return viewService.scan(tenant, projectId, folder);
+        return refuseIfForbidden(viewService.scan(tenant, projectId, folder));
+    }
+
+    /**
+     * Turn a {@code forbidden} policy into a refusal rather than an app.
+     *
+     * <p>The client would decline to mount either way — the enforcement is
+     * complete there, because a guest cannot make an authenticated call and so
+     * every call goes through the host. Refusing here as well means there is
+     * *nothing to mount*: no view tree, no program, no load list on the wire.
+     * A client that decides not to render is one bug away from rendering; a
+     * client that received nothing is not.
+     *
+     * <p>403 rather than 404: the app exists, and saying so is not a leak —
+     * whoever asks already has {@code Project READ} and can see the folder.
+     * Pretending it is absent would send them looking for a document.
+     */
+    private static AppScan refuseIfForbidden(AppScan scan) {
+        if (scan.policy().forbids()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Custom applications are not permitted here."
+                            + " A tenant admin decides this in _vance/config/applications.yaml"
+                            + " (in the _tenant project).");
+        }
+        return scan;
     }
 
     /**
@@ -75,13 +101,24 @@ public class BistromathAppController {
                              HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         if (path != null && !path.isBlank()) {
+            // A view opened by its own path in the Cortex — the folder is the
+            // document's parent, and the same policy has to apply. Otherwise
+            // `forbidden` would be a rule about how an app is *entered*.
+            refuseIfForbidden(viewService.scan(tenant, projectId, folderOf(path.trim())));
             return viewService.viewByPath(tenant, projectId, path.trim());
         }
         if (folder == null || folder.isBlank()) {
             throw new ToolException("Name the view: either `folder` (and optionally `handle`)"
                     + " or `path`.");
         }
+        refuseIfForbidden(viewService.scan(tenant, projectId, folder));
         return viewService.view(tenant, projectId, folder, handle);
+    }
+
+    /** The folder a document path lives in. */
+    private static String folderOf(String documentPath) {
+        int slash = documentPath.lastIndexOf('/');
+        return slash < 0 ? "" : documentPath.substring(0, slash);
     }
 
     /**
@@ -119,6 +156,9 @@ public class BistromathAppController {
                            @RequestParam String folder,
                            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
+        // The policy is checked *before* the rebuild: a forbidden app should
+        // not have its index rewritten as a side effect of asking about it.
+        refuseIfForbidden(viewService.scan(tenant, projectId, folder));
         application.refresh(new RefreshContext(tenant, projectId, folder,
                 currentUser(request), null));
         return viewService.scan(tenant, projectId, folder);

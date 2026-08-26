@@ -54,7 +54,12 @@ public record AppScan(
          * Seconds between {@code onAppRefresh()} calls, or {@code null} for no
          * polling. Validated in the manifest — the client only obeys.
          */
-        @Nullable Integer refreshSeconds) {
+        @Nullable Integer refreshSeconds,
+        /**
+         * What this tenant permits for this app — already resolved, one answer
+         * about this app and nothing about anybody else.
+         */
+        AppPolicy policy) {
 
     public AppScan {
         if (views == null) views = List.of();

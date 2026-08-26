@@ -200,7 +200,11 @@ const host: SandboxHost = {
     // The declaration comes from the scan, so an edited manifest takes effect on
     // the next open rather than needing a rebuild — same as every other
     // manifest key.
-    return callRest(method, path, body, scan.value?.rest ?? null);
+    // Policy before declaration is the order inside `vetRestPath`; here both
+    // simply travel. `restFamilies` is null unless the tenant restricted this
+    // app, so an unrestricted tenant costs nothing.
+    return callRest(method, path, body, scan.value?.rest ?? null,
+      scan.value?.policy?.restFamilies ?? null);
   },
   appCurrent() {
     // What a constant cannot carry: the reader has moved since the program

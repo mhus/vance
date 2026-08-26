@@ -5,6 +5,7 @@
 
 import { ViewRef } from './ViewRef';
 import { RequireReport } from './RequireReport';
+import { AppPolicy } from './AppPolicy';
 
 export interface AppScan {
   folder: string;
@@ -17,4 +18,5 @@ export interface AppScan {
   requires: RequireReport;
   rest?: string[];
   refreshSeconds?: number;
+  policy: AppPolicy;
 }

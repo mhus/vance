@@ -107,9 +107,10 @@ export class RestCallError extends Error {
  * lifetime. The app gets the reach; the credential stays where it was.
  *
  * <p>Reach is the reader's own — the session is theirs, so the permission system
- * answers every question about what may be seen or written. Two things are
- * subtracted: the floor, which no app can re-open, and the app's own
- * declaration in its manifest, when it made one.
+ * answers every question about what may be seen or written. Three things are
+ * subtracted, in escalating order of who can change them: the floor (code), the
+ * tenant's policy for this app (an admin), and the app's own declaration in its
+ * manifest (its author).
  *
  * <p>A failure carries its status as a **number on the error**, not only in the
  * text: a program's recovery differs by status — 404 is often an answer, 409
@@ -121,9 +122,10 @@ export async function callRest(
   rawPath: unknown,
   body?: unknown,
   declared?: readonly string[] | null,
+  policyAllowed?: readonly string[] | null,
 ): Promise<unknown> {
   const method = vetRestMethod(rawMethod);
-  const path = vetRestPath(rawPath, declared);
+  const path = vetRestPath(rawPath, declared, policyAllowed);
   try {
     return await brainFetch<unknown>(method, path, body === undefined ? {} : { body });
   } catch (e) {

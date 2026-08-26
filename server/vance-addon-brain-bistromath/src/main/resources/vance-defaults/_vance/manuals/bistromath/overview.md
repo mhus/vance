@@ -34,7 +34,7 @@ There is no table declaration, no `source:` on a widget, and no data endpoint.
 | Changing the view from JS, and your own drawing surface | `manual_read('shaping')` |
 | Which functions does the runtime call? What can the program do? | `manual_read('program')` |
 | How do I read documents, folders, mounted files? | `manual_read('data')` |
-| Calling a Brain route — **asking a model**, watching a run (`vance.rest`) | `manual_read('rest')` |
+| Calling a Brain route — **asking a model**, watching a run, what the tenant permits | `manual_read('rest')` |
 | Letting the chat beside the app drive it (`app_*`, `agent:`) | `manual_read('agent')` |
 | An error message I do not recognise | `manual_read('troubleshooting')` |
 

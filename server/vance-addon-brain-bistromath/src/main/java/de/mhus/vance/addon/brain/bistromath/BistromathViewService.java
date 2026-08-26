@@ -21,10 +21,13 @@ public class BistromathViewService {
 
     private final BistromathStore store;
     private final RequireResolver requireResolver;
+    private final ApplicationsPolicyService policyService;
 
-    public BistromathViewService(BistromathStore store, RequireResolver requireResolver) {
+    public BistromathViewService(BistromathStore store, RequireResolver requireResolver,
+                                 ApplicationsPolicyService policyService) {
         this.store = store;
         this.requireResolver = requireResolver;
+        this.policyService = policyService;
     }
 
     public AppScan scan(String tenantId, String projectId, String folder) {
@@ -56,7 +59,8 @@ public class BistromathViewService {
 
         return new AppScan(loaded.folder(), title, loaded.manifestDoc().description(),
                 found.views(), landing == null ? null : landing.handle(),
-                programPath, List.copyOf(problems), requires, config.rest(), config.refresh());
+                programPath, List.copyOf(problems), requires, config.rest(), config.refresh(),
+                policyService.resolve(tenantId, projectId, loaded.folder()));
     }
 
     /**

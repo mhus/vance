@@ -95,8 +95,38 @@ not a spawnable worker) and **`web: true`** (released for web callers). Without
 the second one the call comes back `403` naming the missing line, and that is
 the answer to "why can't I call `fook`": nothing is released by default.
 
-So a model call needs a recipe document. Ask the reader to add one, or write it
-yourself if you may — it is `_vance/recipes/<name>.yaml` in the project.
+A model call therefore needs a recipe document — `_vance/recipes/<name>.yaml` in
+the project.
+
+## Reading settings
+
+```yaml
+custom:
+  rest: [settings]
+```
+
+```js
+const cfg = await vance.rest('GET',
+  'settings/' + vance.app.project + '?prefix=myapp.');
+// { "myapp.pageSize": "20", … } — strings, cascade-resolved
+```
+
+Either `?prefix=` for a family or `?keys=a,b` for named ones — exactly one of
+the two, because "neither" would be a scan of the whole collection. Values come
+through the ordinary cascade (project → tenant default), so an app sees the
+configuration the server sees for its project.
+
+**A secret is never readable here**, and not because this route checks: the
+settings service itself refuses `PASSWORD` and `HIDDEN` values on every generic
+read. An encrypted setting is reported exactly like one nobody ever set — that
+is deliberate, because answering "that key exists but you may not have it"
+confirms a piece of the tenant's configuration.
+
+**Read only.** Writing a setting goes through a **setting form**
+(`_vance/setting_forms/<name>.yaml`), which declares which keys it binds and
+enforces admin rights per scope. An app that wants to remember something of its
+own is usually better off writing a **document** in its own folder — that it can
+do already, and it needs nobody's permission.
 
 ## Starting and watching a run
 
@@ -133,13 +163,35 @@ Each run says in `allowedActions` what it currently offers (`PAUSE`, `RESUME`,
 accepts nothing, and an action it does not offer is a silent no-op rather than
 an error.
 
-**Read the state back rather than trusting the reply.** The action's response is
-the run as it was a moment later, but a stop on a busy lane is *staged* — the
-status may still say `RUNNING` in that answer and be `STOPPED` a second later.
-Measured, not assumed.
+**Read the state back rather than trusting the reply.** A stop on a busy lane is
+*staged* — the answer may still say `RUNNING` and be `STOPPED` a second later.
+Measured, not assumed. `compose` stays closed: it runs code on the server.
 
-`compose` stays closed even now: it runs code on the server, and that is a
-different question from starting a worker.
+## The tenant may narrow all of this
+
+Above the floor and above your manifest sits a third list: the tenant's policy
+for **this app**, decided by an admin in `_vance/config/applications.yaml` (in
+the `_tenant` project). Three modes — `forbidden`, `restricted`, `allowed` —
+global, per project, or per app path.
+
+You will meet it as a refusal that says so:
+
+```
+vance.rest cannot call 'inbox/count': this tenant allows the app only
+[documents], which does not include 'inbox'. A tenant admin decides that in
+_vance/config/applications.yaml.
+```
+
+Three lists in **escalating order of who can change them**: the floor is code
+and nobody widens it, the policy is an admin's, the declaration is yours. When a
+call is refused, the message says which one spoke — do not try to route around
+it, and do not tell the reader the app is broken. Tell them which line, and
+whose it is.
+
+`restricted` with no route list means **no REST at all** — and an app can still
+be perfectly useful there, because `vance.documents.*` is a different surface and
+stays available. A `forbidden` app does not open in the first place: the server
+declines to describe it, so there is nothing to mount.
 
 ## What it does not do
 

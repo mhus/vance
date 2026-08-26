@@ -148,13 +148,52 @@ export function checkRestDeclared(
   );
 }
 
-/** The steps in order. Returns what to hand to `brainFetch`. */
-export function vetRestPath(raw: unknown, declared?: readonly string[] | null): string {
+/**
+ * Throw unless the **tenant policy** allows this route family.
+ *
+ * <p>`undefined`/`null` means unrestricted — `allowed`, or no policy at all. A
+ * list narrows to what it names, and an **empty list** is the meaning of
+ * `restricted` with no `rest:` in the config: no REST. That is not the same as
+ * useless — `vance.documents.*` is a separate host surface and stays available,
+ * so a restricted app can still show and edit its own documents.
+ *
+ * <p>Decided by a tenant admin in `_vance/config/applications.yaml`, resolved
+ * server-side, and arriving here as one answer about this app. The message says
+ * who can change it, because the reader of the message usually cannot.
+ */
+export function checkRestPolicy(
+  canonicalPath: string,
+  allowed: readonly string[] | null | undefined,
+): void {
+  if (allowed == null) return;
+  const first = canonicalPath.split('/')[0].toLowerCase();
+  if (allowed.some((d) => String(d).trim().toLowerCase() === first)) return;
+  throw new RestDeniedError(
+    canonicalPath,
+    allowed.length === 0
+      ? 'this tenant restricts the app to no REST routes at all. A tenant admin '
+        + 'decides that in _vance/config/applications.yaml.'
+      : `this tenant allows the app only [${allowed.join(', ')}], which does not include `
+        + `'${first}'. A tenant admin decides that in _vance/config/applications.yaml.`,
+  );
+}
+
+/**
+ * The steps in order. Returns what to hand to `brainFetch`.
+ *
+ * <p>Three lists, and the order is **escalating fixability**: the floor is code
+ * and nobody can widen it, the policy is a tenant admin's, the declaration is
+ * the app author's own. Checking them the other way round would hand a reader
+ * the message they can act on least.
+ */
+export function vetRestPath(
+  raw: unknown,
+  declared?: readonly string[] | null,
+  policyAllowed?: readonly string[] | null,
+): string {
   const { path, query } = canonicalRestPath(raw);
-  // Floor first: a declaration can never re-open what the floor closed, and
-  // checking it second would let the message blame the manifest for something
-  // adding a line there cannot fix.
   checkRestAllowed(path);
+  checkRestPolicy(path, policyAllowed);
   checkRestDeclared(path, declared);
   return query ? `${path}?${query}` : path;
 }

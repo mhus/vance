@@ -1,6 +1,8 @@
 package de.mhus.vance.brain.cluster;
 
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import lombok.Data;
 import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -58,11 +60,107 @@ public class ClusterProperties {
      */
     private int registrationMaxRetries = 5;
 
+    /**
+     * What this pod is, as flat key/value pairs a project's
+     * {@code placementSelector} can require — {@code vance.cluster.labels.gpu=true}.
+     *
+     * <p>Seed only: these values are written when the pod's registry row is
+     * created and the heartbeat never republishes them, so a runtime write
+     * through {@code PATCH /internal/cluster/pods/{podId}/placement} survives.
+     * A restart returns to the seed, because the row is per JVM.
+     *
+     * <p>Keys must match {@code [A-Za-z0-9_-]{1,64}} — a dot is a Mongo path
+     * separator, so {@code vance.cluster.labels.eu.region} is rejected at boot
+     * rather than silently stored under a key no selector can name.
+     */
+    private Map<String, String> labels = new LinkedHashMap<>();
+
+    /**
+     * {@code true} makes this pod refuse projects that have no selector,
+     * inverting the "an empty selector matches every pod" default here only.
+     *
+     * <p>Two boot patterns follow from this, and the choice is a deployment
+     * question: <b>open</b> (default, {@code false}, no labels — takes
+     * anything: homogeneous cluster, single-pod install, dev) and
+     * <b>controlled</b> ({@code true}, no labels — takes nothing until an
+     * external controller labels it).
+     *
+     * <p>The open default is forced rather than preferred: with {@code true}
+     * cluster-wide, an unconfigured cluster would place nothing at all and
+     * every project would sit unschedulable waiting for a controller that does
+     * not exist.
+     */
+    private boolean exclusive = false;
+
     private Resources resources = new Resources();
     private Master master = new Master();
     private Locator locator = new Locator();
     private Cleanup cleanup = new Cleanup();
     private Lease lease = new Lease();
+    private SelfPull selfPull = new SelfPull();
+
+    /**
+     * {@code vance.cluster.self-pull.*} — <b>when</b> this pod goes looking for
+     * projects that need an owner, as opposed to waiting to be assigned one.
+     *
+     * <p><b>How much</b> it takes per pass stays
+     * {@link Resources#getStartupScore()}; that value is also published in the
+     * pod's registry row, so splitting it in two would create a second truth.
+     * The two knobs answer different questions, and both are worth having:
+     * {@code startupScore: 0} says "I have no budget", the switches here say
+     * "do not look".
+     *
+     * <p>Env forms (Spring relaxed binding turns {@code .} and {@code -} into
+     * {@code _}): {@code VANCE_CLUSTER_SELF_PULL_BOOT},
+     * {@code VANCE_CLUSTER_SELF_PULL_SCHEDULED},
+     * {@code VANCE_CLUSTER_SELF_PULL_INTERVAL}.
+     */
+    @Data
+    public static class SelfPull {
+
+        /**
+         * Pull once when this pod comes up. <b>Default on</b>, and that is not a
+         * preference: a single-pod restart and a k8s rolling restart are the
+         * same event — a pod comes up while projects have just lost their holder
+         * — and without this pass they stay dark until the next distributor
+         * tick, or forever when the master role is off.
+         *
+         * <p>{@code false} is the "wait to be assigned" pod: it comes up empty
+         * and takes nothing on its own initiative. The counterpart to
+         * {@link ClusterProperties#exclusive}, which says "do not send me
+         * projects I am not labelled for" — this one says "do not take any
+         * yourself".
+         */
+        private boolean boot = true;
+
+        /**
+         * Additionally pull on {@link #interval}. <b>Default off</b>, and this
+         * one <em>is</em> a judgement: a self-pull can only ask "may I, and do I
+         * have room", never "who should get this" — it knows nothing about the
+         * other pods. Run continuously on every pod it converges to "the
+         * emptiest pod takes everything up to its cap" and makes the
+         * distributor's load balancing decorative, i.e. it is a second
+         * continuously running placement authority whose rule contradicts the
+         * first one.
+         *
+         * <p>What it buys, precisely: recovery of projects whose only reason to
+         * run is waiting background work (schedulers, hooks — the derived
+         * {@code ownerRequired}) after a peer pod died, in a cluster where the
+         * master role is off. Everything else has somebody asking for it.
+         */
+        private boolean scheduled = false;
+
+        /**
+         * Cadence of the periodic pull. Also the initial delay, so a fresh pod
+         * does not run boot and periodic back to back.
+         *
+         * <p>Read by {@code @Scheduled} at context startup, so it takes effect
+         * on restart only — and it is read even when {@link #scheduled} is off,
+         * which is why it must stay a valid positive duration rather than
+         * doubling as the off switch (Spring rejects a zero {@code fixedDelay}).
+         */
+        private Duration interval = Duration.ofMinutes(5);
+    }
 
     @Data
     public static class Lease {

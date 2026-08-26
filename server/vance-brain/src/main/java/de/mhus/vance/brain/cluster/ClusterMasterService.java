@@ -189,17 +189,4 @@ public class ClusterMasterService {
         return store.find(clusterService.selfClusterId());
     }
 
-    /** Thrown by {@link #placeProject} when the local pod is not the master. */
-    public static class NotMasterException extends RuntimeException {
-        public NotMasterException(String message) {
-            super(message);
-        }
-    }
-
-    /** Thrown by {@link #placeProject} when no live pod has room. */
-    public static class ClusterFullException extends RuntimeException {
-        public ClusterFullException(String message) {
-            super(message);
-        }
-    }
 }

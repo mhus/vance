@@ -1,13 +1,9 @@
 package de.mhus.vance.brain.bootstrap;
 
 import de.mhus.vance.brain.cluster.ClusterProperties;
-import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
-import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.project.ProjectOwnerRequirementService;
-import de.mhus.vance.shared.project.ProjectDocument;
-import de.mhus.vance.shared.project.ProjectService;
-import java.util.List;
+import de.mhus.vance.brain.project.ProjectSelfPullService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -17,9 +13,16 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Service;
 
 /**
- * Boot-Self-Pull: greedily brings projects that need an owner pod and whose
- * lease nobody holds onto this pod, up to the configured
- * {@code resourcesStartupScore}.
+ * The boot half of the project self-pull: re-derive which projects still need
+ * an owner, then ask {@link ProjectSelfPullService} for one pass.
+ *
+ * <p>The pass itself lives in that service because the periodic variant asks
+ * the same question later, and a class called "StartupReclaimer" cannot carry a
+ * recurring tick. What is left here is the boot-specific part: the
+ * {@code ownerRequired} re-derivation, and the
+ * {@code vance.cluster.self-pull.boot} switch that lets a pod come up
+ * <em>without</em> taking anything, waiting to be assigned instead
+ * ({@code planning/project-placement-labels.md} §4a).
  *
  * <p><b>No stale-claim wipe any more.</b> This used to start by nulling
  * {@code homeNode} on every project whose owning node had dropped out of the
@@ -44,10 +47,15 @@ import org.springframework.stereotype.Service;
  *       projects no pod currently owns ({@code _user_*}, archived).</li>
  * </ul>
  *
- * <p>Listens on {@link ApplicationReadyEvent} with low precedence so it runs
- * <em>after</em> {@code ClusterService} has registered this pod's row in
- * {@code brain_pods} — the projects we pull here are immediately reported as
- * ours in the next heartbeat.
+ * <p>Listens on {@link ApplicationReadyEvent}. It used to claim that its
+ * {@code LOWEST_PRECEDENCE} made it run after {@code ClusterService} had
+ * registered this pod — with the reason that the pulled projects would then be
+ * reported in the next heartbeat. Both halves were wrong: an
+ * {@code @EventListener} without an {@code @Order} gets {@code LOWEST_PRECEDENCE}
+ * as well, so the order fell back to bean discovery; and the heartbeat
+ * recomputes {@code activeProjects} from Mongo on every beat, so it never
+ * mattered anyway. The precondition that does matter is now stated and enforced
+ * in {@link ProjectSelfPullService#readyToPull()}.
  *
  * <p>Project status is left alone. It expresses intent ("should be live"), not
  * placement, and the lease answers placement.
@@ -57,17 +65,23 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class ProjectStartupReclaimer {
 
-    private final ProjectService projectService;
-    private final ProjectLifecycleService lifecycleService;
     private final ProjectOwnerRequirementService ownerRequirementService;
-    private final ClusterService clusterService;
     private final ClusterProperties clusterProperties;
+    private final ProjectSelfPullService selfPullService;
 
     @EventListener(ApplicationReadyEvent.class)
     @Order(Ordered.LOWEST_PRECEDENCE)
     void reclaim() {
         releaseStalePins();
-        selfPullProjectsNeedingOwner();
+        if (!clusterProperties.getSelfPull().isBoot()) {
+            log.info("ProjectStartupReclaimer: boot self-pull disabled "
+                    + "(vance.cluster.self-pull.boot=false) — this pod waits to be assigned");
+            return;
+        }
+        if (!selfPullService.readyToPull()) {
+            return;
+        }
+        selfPullService.pullOnce("boot");
     }
 
     /**
@@ -93,71 +107,4 @@ public class ProjectStartupReclaimer {
         }
     }
 
-    /**
-     * Boot-Self-Pull (see {@code specification/cluster-project-management.md}
-     * §5.1). Greedily brings projects that need an owner but hold no live lease
-     * onto this pod until the configured {@code resourcesStartupScore} is
-     * exhausted. EPHEMERAL and HOMELESS projects are skipped — those wait for an
-     * explicit locate or live without pod-affinity.
-     *
-     * <p>A buffer (50% of the startup budget) lets the last candidate
-     * tip slightly over the line so projects with above-average score
-     * don't get stuck waiting for the distributor. The Master-Distributor
-     * picks up everything we don't claim here.
-     *
-     * <p>The candidate set is "needs an owner and holds no live lease" — the
-     * derived {@code ownerRequired} for the default {@code AUTO} projects, plus
-     * anything an operator pinned to {@code PERMANENT}, and only for the
-     * statuses that express the intent to run. A {@code SUSPENDED} project is
-     * <em>not</em> pulled: {@code bring} would take it straight back to
-     * RUNNING, so a suspend would expire together with the holder's lease on
-     * the next restart, restarting the very scheduler it was meant to stop
-     * ({@code ProjectService.findProjectsNeedingOwner}). Its predecessor
-     * selected on {@code PERMANENT} alone and therefore matched nothing at all,
-     * which is why this used to log {@code brought=0 skipped=0} on every boot
-     * ({@code planning/project-ownership-lease-design.md} §1.1).
-     */
-    private void selfPullProjectsNeedingOwner() {
-        int budget = clusterProperties.getResources().getStartupScore();
-        if (budget <= 0) {
-            log.info("ProjectStartupReclaimer: self-pull disabled (startupScore={})", budget);
-            return;
-        }
-        int buffer = budget / 2;
-
-        int pulled = 0;
-        int brought = 0;
-        int skipped = 0;
-        // batchSize matches the distributor's appetite — small enough to
-        // re-query between batches without much waste.
-        final int batchSize = 20;
-        while (pulled < budget) {
-            List<ProjectDocument> candidates = projectService.findProjectsNeedingOwner(
-                    clusterService.leaseTtl(), batchSize);
-            if (candidates.isEmpty()) break;
-            boolean anyBrought = false;
-            for (ProjectDocument p : candidates) {
-                if (pulled + p.getHomeResourceScore() > budget + buffer) {
-                    skipped++;
-                    continue;
-                }
-                try {
-                    lifecycleService.bring(p.getTenantId(), p.getName());
-                    pulled += p.getHomeResourceScore();
-                    brought++;
-                    anyBrought = true;
-                } catch (ProjectManagerService.ClaimRejectedException e) {
-                    // Another pod beat us to it during boot — fine.
-                    skipped++;
-                } catch (RuntimeException e) {
-                    log.warn("ProjectStartupReclaimer: self-pull bring failed for '{}/{}': {}",
-                            p.getTenantId(), p.getName(), e.toString());
-                    skipped++;
-                }
-            }
-            if (!anyBrought) break; // every candidate skipped — would loop forever
-        }
-        log.info("ProjectStartupReclaimer: self-pull brought={} skipped={} score={}/{} (buffer={})",
-                brought, skipped, pulled, budget, buffer);
-    }
 }

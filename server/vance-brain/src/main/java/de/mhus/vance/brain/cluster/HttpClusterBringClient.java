@@ -81,43 +81,6 @@ public class HttpClusterBringClient implements ClusterBringClient {
         return resp.homeNode;
     }
 
-    @Override
-    public SpawnResult requestSpawn(String masterEndpoint, String tenantId, String projectName) {
-        String url = baseUrl(masterEndpoint) + "/internal/cluster/master/spawn";
-        SpawnResponse resp;
-        try {
-            resp = restClientBuilder.build()
-                    .post()
-                    .uri(url)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(new SpawnRequest(tenantId, projectName))
-                    .retrieve()
-                    .onStatus(HttpStatusCode::isError, (req, response) -> {
-                        HttpStatusCode sc = response.getStatusCode();
-                        String reason = "status=" + sc;
-                        if (sc.value() == HttpStatus.SERVICE_UNAVAILABLE.value()) {
-                            reason = "cluster full";
-                        } else if (sc.value() == HttpStatus.MISDIRECTED_REQUEST.value()) {
-                            reason = "not master (try resolving master endpoint again)";
-                        }
-                        throw new ClusterBringException(
-                                "Remote spawn rejected by master '" + masterEndpoint + "' for '"
-                                        + tenantId + "/" + projectName + "': " + reason);
-                    })
-                    .body(SpawnResponse.class);
-        } catch (RestClientException e) {
-            throw new ClusterBringException(
-                    "Remote spawn via master '" + masterEndpoint + "' for '"
-                            + tenantId + "/" + projectName + "' failed: " + e.getMessage(), e);
-        }
-        if (resp == null || resp.nodeName == null || resp.endpoint == null) {
-            throw new ClusterBringException(
-                    "Remote spawn via master '" + masterEndpoint
-                            + "' returned incomplete result");
-        }
-        return new SpawnResult(resp.nodeName, resp.endpoint);
-    }
-
     private static String baseUrl(String endpoint) {
         if (endpoint == null || endpoint.isBlank()) {
             throw new ClusterBringException("Empty endpoint");
@@ -134,6 +97,13 @@ public class HttpClusterBringClient implements ClusterBringClient {
 
     public record BringResponse(@JsonProperty("homeNode") String homeNode) {}
 
+    /**
+     * Wire DTOs of {@code POST /internal/cluster/master/spawn}. No client
+     * method sends them any more (see {@link ClusterBringClient}), but the
+     * endpoint still answers them for older pods during a rolling upgrade —
+     * so the shapes live here next to the bring DTOs rather than moving into
+     * the controller.
+     */
     public record SpawnRequest(@JsonProperty("tenantId") String tenantId,
                                @JsonProperty("projectName") String projectName) {}
 

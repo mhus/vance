@@ -25,7 +25,9 @@ class BrainPodServiceTest {
     @BeforeEach
     void setUp() {
         repository = mock(BrainPodRepository.class);
-        service = new BrainPodService(repository);
+        service = new BrainPodService(
+                repository,
+                mock(org.springframework.data.mongodb.core.MongoTemplate.class));
     }
 
     // ─── staleness ──────────────────────────────────────────────────

@@ -3,12 +3,18 @@ package de.mhus.vance.shared.cluster;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.mongodb.core.FindAndModifyOptions;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 /**
@@ -23,6 +29,11 @@ import org.springframework.stereotype.Service;
 public class BrainPodService {
 
     private final BrainPodRepository repository;
+    /**
+     * For the writes that must not be read-modify-write: the heartbeat and the
+     * placement update touch the same row from different directions.
+     */
+    private final MongoTemplate mongoTemplate;
 
     /**
      * Insert a new pod row. Throws on duplicate {@code (clusterId, nodeName)}
@@ -54,6 +65,15 @@ public class BrainPodService {
      * process whose host address changed underneath it (laptop sleep/resume,
      * DHCP lease change) must re-advertise its current {@code host:port} so
      * peers — and its own workspace self-proxy — stop dialling a dead address.
+     *
+     * <p><b>A targeted update, not a read-modify-write.</b> It used to load the
+     * row, set seven fields and save the whole document back — which silently
+     * made the beat authoritative over <em>every</em> field, including ones the
+     * pod does not own. {@link BrainPodDocument#getLabels()} is written from
+     * outside the process, so a concurrent label write landing between that
+     * read and that save was lost, and the loss window was the whole heartbeat
+     * interval. Writing only the fields this beat actually knows about is both
+     * the fix and one round trip cheaper on the registry's hottest path.
      */
     public BrainPodDocument heartbeat(
             String podId,
@@ -64,17 +84,58 @@ public class BrainPodService {
             int currentScore,
             int startupScore,
             int maxScore) {
-        BrainPodDocument doc = repository.findByPodId(podId)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Brain pod row missing for podId='" + podId + "' — was it purged?"));
-        doc.setLastHeartbeatAt(now);
-        doc.setStatus(status);
-        doc.setEndpoint(endpoint);
-        doc.setActiveProjects(List.copyOf(activeProjects));
-        doc.setResourcesCurrentScore(currentScore);
-        doc.setResourcesStartupScore(startupScore);
-        doc.setResourcesMaxScore(maxScore);
-        return repository.save(doc);
+        Update update = new Update()
+                .set("lastHeartbeatAt", now)
+                .set("status", status)
+                .set("endpoint", endpoint)
+                .set("activeProjects", List.copyOf(activeProjects))
+                .set("resourcesCurrentScore", currentScore)
+                .set("resourcesStartupScore", startupScore)
+                .set("resourcesMaxScore", maxScore);
+        BrainPodDocument updated = mongoTemplate.findAndModify(
+                new Query(Criteria.where("podId").is(podId)), update,
+                FindAndModifyOptions.options().returnNew(true),
+                BrainPodDocument.class);
+        if (updated == null) {
+            throw new IllegalStateException(
+                    "Brain pod row missing for podId='" + podId + "' — was it purged?");
+        }
+        return updated;
+    }
+
+    /**
+     * Replaces this pod's placement attributes. Both arguments are optional:
+     * {@code null} means "leave unchanged", so a caller can set labels without
+     * taking a position on {@code exclusive} and the other way round.
+     *
+     * <p>{@code labels} is replaced wholesale rather than merged. A control
+     * loop that reconciles a desired state needs to be able to <em>remove</em>
+     * a label, and with merge semantics the only way to do that would be a
+     * second verb.
+     *
+     * @throws PodSelector.InvalidLabelException on a key or value outside the
+     *     grammar — checked here so nothing unmatchable reaches persistence
+     * @return the updated row, or empty when no pod carries {@code podId}
+     */
+    public Optional<BrainPodDocument> updatePlacement(
+            String podId,
+            @Nullable Map<String, String> labels,
+            @Nullable Boolean exclusive) {
+        PodSelector.validate(labels);
+        Update update = new Update();
+        if (labels != null) {
+            update.set("labels", Map.copyOf(labels));
+        }
+        if (exclusive != null) {
+            update.set("exclusive", exclusive);
+        }
+        if (update.getUpdateObject().isEmpty()) {
+            return findByPodId(podId);
+        }
+        return Optional.ofNullable(mongoTemplate.findAndModify(
+                new Query(Criteria.where("podId").is(podId)), update,
+                FindAndModifyOptions.options().returnNew(true),
+                BrainPodDocument.class));
     }
 
     /** Set status + lastHeartbeatAt without touching active-projects. Used on shutdown. */

@@ -1,10 +1,12 @@
 package de.mhus.vance.shared.project;
 
 import de.mhus.vance.shared.audit.AuditService;
+import de.mhus.vance.shared.cluster.PodSelector;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -58,6 +60,7 @@ public class ProjectService {
     private static final String F_LIFECYCLE_TYPE = "lifecycleType";
     private static final String F_OWNER_REQUIRED = "ownerRequired";
     private static final String F_HOME_RESOURCE_SCORE = "homeResourceScore";
+    private static final String F_PLACEMENT_SELECTOR = "placementSelector";
 
     /**
      * The statuses that express the intent "should be live somewhere" — the
@@ -556,6 +559,28 @@ public class ProjectService {
      * §1.1).
      */
     public List<ProjectDocument> findProjectsNeedingOwner(Duration leaseTtl, int limit) {
+        return findProjectsNeedingOwner(leaseTtl, limit, 0);
+    }
+
+    /**
+     * Paged variant. {@code skip} exists because a caller may reject candidates
+     * for reasons this query cannot express — the Boot-Self-Pull filters on
+     * whether the local pod is <em>eligible</em> for the project, and eligibility
+     * is a map comparison with unknown keys, not a Mongo predicate.
+     *
+     * <p>That turns {@code limit} from a bound on work into a page size: a page
+     * of candidates this pod cannot take must not be read as "nothing left to
+     * do", or eligible projects sitting behind it are never pulled and wait for
+     * the distributor — which does not exist when the master role is disabled.
+     *
+     * <p>{@code skip} over a shrinking set is imprecise on purpose: a project
+     * placed during the walk leaves the result set and shifts the rest forward,
+     * so a page boundary can step over one. Bounded and self-correcting — the
+     * next round or the distributor picks it up — and much cheaper than a
+     * stable cursor over a set that is defined by "nobody owns this right now".
+     */
+    public List<ProjectDocument> findProjectsNeedingOwner(
+            Duration leaseTtl, int limit, int skip) {
         Criteria needsOwner = new Criteria().orOperator(
                 Criteria.where(F_LIFECYCLE_TYPE).is(LifecycleType.PERMANENT),
                 Criteria.where(F_LIFECYCLE_TYPE).is(LifecycleType.AUTO)
@@ -567,7 +592,8 @@ public class ProjectService {
                         Criteria.where(F_STATUS).in(WANTS_TO_RUN),
                         needsOwner,
                         stranded))
-                .limit(Math.max(1, limit));
+                .limit(Math.max(1, limit))
+                .skip(Math.max(0, skip));
         return mongoTemplate.find(query, ProjectDocument.class);
     }
 
@@ -650,6 +676,60 @@ public class ProjectService {
         }
         log.info("Project '{}/{}' lifecycleType {} → {}",
                 tenantId, name, current.getLifecycleType(), value);
+        return updated;
+    }
+
+    /**
+     * Sets what a project requires of a pod. Both arguments are optional:
+     * {@code null} leaves that half unchanged, so an external instance can
+     * revise the selector without restating the score.
+     *
+     * <p>{@code placementSelector} is replaced wholesale, not merged — a
+     * control loop reconciling a desired state has to be able to remove a
+     * requirement, and merge semantics would need a second verb for that.
+     *
+     * <p>Takes effect at the next placement. A project already running
+     * somewhere stays there; see {@code planning/project-placement-labels.md}
+     * §2.4 for why that is the rule and not a gap.
+     *
+     * @throws PodSelector.InvalidLabelException on a key or value outside the
+     *     grammar, so nothing unmatchable reaches persistence
+     */
+    public ProjectDocument setPlacement(
+            String tenantId,
+            String name,
+            @Nullable Map<String, String> placementSelector,
+            @Nullable Integer homeResourceScore) {
+        PodSelector.validate(placementSelector);
+        if (homeResourceScore != null && homeResourceScore < 0) {
+            throw new IllegalArgumentException(
+                    "homeResourceScore must not be negative (was " + homeResourceScore + ")");
+        }
+        ProjectDocument current = repository.findByTenantIdAndName(tenantId, name)
+                .orElseThrow(() -> new ProjectNotFoundException(
+                        "Project '" + name + "' not found in tenant '" + tenantId + "'"));
+        Update update = new Update();
+        if (placementSelector != null) {
+            update.set(F_PLACEMENT_SELECTOR, Map.copyOf(placementSelector));
+        }
+        if (homeResourceScore != null) {
+            update.set(F_HOME_RESOURCE_SCORE, homeResourceScore);
+        }
+        if (update.getUpdateObject().isEmpty()) {
+            return current;
+        }
+        Query query = new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
+        ProjectDocument updated = mongoTemplate.findAndModify(
+                query, update,
+                FindAndModifyOptions.options().returnNew(true),
+                ProjectDocument.class);
+        if (updated == null) {
+            throw new ProjectNotFoundException(
+                    "Project '" + name + "' disappeared during setPlacement");
+        }
+        log.info("Project '{}/{}' placement: selector {} → {}, score {} → {}",
+                tenantId, name, current.getPlacementSelector(), updated.getPlacementSelector(),
+                current.getHomeResourceScore(), updated.getHomeResourceScore());
         return updated;
     }
 

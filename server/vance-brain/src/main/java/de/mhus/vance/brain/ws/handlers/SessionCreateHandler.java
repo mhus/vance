@@ -9,6 +9,7 @@ import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.progress.ProcessCountsPusher;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.project.ProjectManagerService.ClaimResult;
@@ -50,6 +51,7 @@ public class SessionCreateHandler implements WsHandler {
     private final SessionService sessionService;
     private final ProjectService projectService;
     private final ProjectManagerService projectManager;
+    private final ProjectPlacementService placementService;
     private final ProjectLifecycleService lifecycleService;
     private final SessionConnectionRegistry connectionRegistry;
     private final de.mhus.vance.brain.events.SessionRosterBroadcaster rosterBroadcaster;
@@ -97,6 +99,21 @@ public class SessionCreateHandler implements WsHandler {
         if (project.isEmpty()) {
             sender.sendError(wsSession, envelope, 404,
                     "Project '" + request.getProjectId() + "' not found");
+            return;
+        }
+        // Eligibility before claiming — a claim we would then refuse would leave
+        // a lease behind that nothing uses. Capacity is deliberately not asked:
+        // there is a user waiting, and the score cap is soft
+        // (planning/project-placement-labels.md §5).
+        if (!placementService.isEligibleHere(project.get())) {
+            Optional<String> owner = projectManager.findProjectEndpoint(
+                    ctx.getTenantId(), project.get().getName());
+            sender.sendError(wsSession, envelope, 409, owner
+                    .map(endpoint -> "Project '" + project.get().getName()
+                            + "' is owned by another brain process (" + endpoint + ")")
+                    .orElse("Project '" + project.get().getName()
+                            + "' cannot run on this brain process and is waiting for a "
+                            + "matching one (placement_pending)"));
             return;
         }
         ClaimResult claim = projectManager.claimForLocalPodOrRedirect(

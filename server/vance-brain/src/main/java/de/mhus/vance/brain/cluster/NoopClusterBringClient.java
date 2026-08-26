@@ -30,13 +30,6 @@ public class NoopClusterBringClient {
                         "No HTTP cluster-bring client configured — remote bring to '"
                                 + endpoint + "' for '" + tenantId + "/" + projectName + "' refused");
             }
-
-            @Override
-            public SpawnResult requestSpawn(String masterEndpoint, String tenantId, String projectName) {
-                throw new ClusterBringException(
-                        "No HTTP cluster-bring client configured — remote spawn via '"
-                                + masterEndpoint + "' for '" + tenantId + "/" + projectName + "' refused");
-            }
         };
     }
 }

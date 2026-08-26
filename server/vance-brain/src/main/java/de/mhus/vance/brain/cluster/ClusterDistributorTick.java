@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.cluster;
 
-import de.mhus.vance.shared.cluster.BrainPodDocument;
+import de.mhus.vance.brain.cluster.placement.PlacementDecision;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.megadodo.MegadodoService;
 import de.mhus.vance.shared.project.ProjectService;
@@ -18,10 +19,10 @@ import org.springframework.stereotype.Component;
  * Cluster-Master lease — see
  * {@code specification/cluster-project-management.md} §5.2.
  *
- * <p>Per tick: read orphans + live pods, then ask
- * {@link ClusterPlacementService} to pick + dispatch each one. The
- * service uses the same greedy strategy as the direct-spawn endpoint
- * so both spawn paths agree on "who has room".
+ * <p>Per tick: read the orphans, hand the whole list to
+ * {@link ProjectPlacementService#decideBatch} — one decision per orphan with a
+ * reservation buffer carried across the round — and dispatch them one by one so
+ * a single failure costs one project, not the round.
  *
  * <p>Race-freeness against parallel ticks comes from the CAS in
  * {@code ProjectService.claim}: even if two pods pick the same orphan,
@@ -38,7 +39,7 @@ public class ClusterDistributorTick {
     private final ClusterService clusterService;
     private final ClusterProperties properties;
     private final ProjectService projectService;
-    private final ClusterPlacementService placementService;
+    private final ProjectPlacementService placementService;
     private final MegadodoService megadodoService;
 
     @Scheduled(fixedDelayString = "${vance.cluster.master.distributorInterval:PT60S}",
@@ -62,41 +63,35 @@ public class ClusterDistributorTick {
             return;
         }
 
-        // We pick targets ourselves (rather than calling placementService.placeProject
-        // per orphan) so we can carry a projected-scores buffer across orphans within
-        // the same round — otherwise we'd over-book the cheapest pod every tick.
-        List<BrainPodDocument> pods = clusterService.liveClusterPods();
-        if (pods.isEmpty()) {
-            log.warn("ClusterDistributorTick: no live pods to place {} orphan(s) on", orphans.size());
-            for (ProjectDocument p : orphans) {
-                homeless(p, "no live pods in the cluster");
-            }
-            return;
-        }
-        int[] projectedScores = pods.stream()
-                .mapToInt(BrainPodDocument::getResourcesCurrentScore)
-                .toArray();
+        // One batch decision for the whole round: the reservation buffer inside
+        // decideBatch is what stops every orphan from landing on the cheapest
+        // pod. It used to live here as a private copy of the pick loop, which is
+        // how the two copies drifted apart (planning/project-placement-labels.md §1.3).
+        List<PlacementDecision> decisions = placementService.decideBatch(orphans);
 
         int placed = 0;
         int rejected = 0;
-        for (ProjectDocument p : orphans) {
-            int idx = pickIndex(pods, projectedScores, p.getHomeResourceScore());
-            if (idx < 0) {
-                log.warn("CLUSTER-FULL: project '{}/{}' (score={}) cannot be placed — all pods at capacity",
-                        p.getTenantId(), p.getName(), p.getHomeResourceScore());
-                homeless(p, "all pods at capacity");
+        for (int i = 0; i < orphans.size(); i++) {
+            ProjectDocument p = orphans.get(i);
+            PlacementDecision decision = decisions.get(i);
+            if (decision instanceof PlacementDecision.Unschedulable unschedulable) {
+                log.warn("UNSCHEDULABLE: project '{}/{}' (score={}) — {}",
+                        p.getTenantId(), p.getName(), p.getHomeResourceScore(),
+                        unschedulable.gap());
+                homeless(p, unschedulable.gap().name());
                 rejected++;
                 continue;
             }
-            BrainPodDocument target = pods.get(idx);
             try {
-                placementService.dispatchBring(target, p);
-                projectedScores[idx] += p.getHomeResourceScore();
+                placementService.dispatch(decision, p);
                 placed++;
             } catch (RuntimeException e) {
-                log.warn("ClusterDistributorTick: bring failed for '{}/{}' on '{}': {}",
-                        p.getTenantId(), p.getName(), target.getNodeName(), e.toString());
-                homeless(p, "bring to " + target.getNodeName() + " failed: " + e);
+                // The decision was sound and the execution was not — an incident,
+                // not unmet demand. A new pod would not fix it, so it stays in the
+                // journal and never becomes a PlacementGap (see PlacementGap).
+                log.warn("ClusterDistributorTick: bring failed for '{}/{}': {}",
+                        p.getTenantId(), p.getName(), e.toString());
+                homeless(p, "dispatch failed: " + e);
                 rejected++;
             }
         }
@@ -121,13 +116,4 @@ public class ClusterDistributorTick {
                 p.getTenantId(), p.getName(), p.getHomeNode(), p.getClaimedAt(), reason);
     }
 
-    private int pickIndex(List<BrainPodDocument> pods, int[] projectedScores, int score) {
-        for (int i = 0; i < pods.size(); i++) {
-            int max = pods.get(i).getResourcesMaxScore();
-            if (projectedScores[i] + score <= max) {
-                return i;
-            }
-        }
-        return -1;
-    }
 }

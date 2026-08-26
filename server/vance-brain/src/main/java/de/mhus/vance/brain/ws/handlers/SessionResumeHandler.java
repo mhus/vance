@@ -10,6 +10,7 @@ import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.progress.ProcessCountsPusher;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.project.ProjectManagerService.ClaimResult;
@@ -47,6 +48,7 @@ public class SessionResumeHandler implements WsHandler {
     private final WebSocketSender sender;
     private final SessionService sessionService;
     private final ProjectManagerService projectManager;
+    private final ProjectPlacementService placementService;
     private final ProjectLifecycleService lifecycleService;
     private final SessionConnectionRegistry connectionRegistry;
     private final de.mhus.vance.brain.events.SessionRosterBroadcaster rosterBroadcaster;
@@ -109,6 +111,22 @@ public class SessionResumeHandler implements WsHandler {
         authority.enforce(ctx,
                 new Resource.Session(doc.getTenantId(), doc.getProjectId(), doc.getSessionId()),
                 Action.START);
+        // Eligibility before claiming — see SessionCreateHandler. Capacity is
+        // not asked here either: a resume that fails over a soft score cap is
+        // worse than a slightly overbooked pod.
+        if (!placementService.isEligibleHere(doc.getTenantId(), doc.getProjectId())) {
+            Optional<String> owner = projectManager.findProjectEndpoint(
+                    doc.getTenantId(), doc.getProjectId());
+            sender.sendError(wsSession, envelope, 409, owner
+                    .map(endpoint -> "Session '" + doc.getSessionId() + "' belongs to project '"
+                            + doc.getProjectId() + "' on another brain process ("
+                            + endpoint + ")")
+                    .orElse("Session '" + doc.getSessionId() + "' belongs to project '"
+                            + doc.getProjectId() + "', which cannot run on this brain "
+                            + "process and is waiting for a matching one "
+                            + "(placement_pending)"));
+            return;
+        }
         ClaimResult claim = projectManager.claimForLocalPodOrRedirect(
                 doc.getTenantId(), doc.getProjectId());
         if (claim instanceof ClaimResult.Redirect redirect) {

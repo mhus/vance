@@ -31,8 +31,8 @@ class ProjectManagerServiceTest {
 
     private final ProjectService projectService = mock(ProjectService.class);
     private final ClusterService clusterService = mock(ClusterService.class);
-    private final ProjectManagerService manager = new ProjectManagerService(
-            projectService, clusterService, null, null, null);
+    private final ProjectManagerService manager =
+            new ProjectManagerService(projectService, clusterService);
 
     @BeforeEach
     void stubCluster() {

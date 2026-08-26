@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.project;
 
+import de.mhus.vance.brain.cluster.placement.PlacementTrigger;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.rag.ProjectRagService;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
@@ -52,6 +54,7 @@ public class ProjectLifecycleService {
 
     private final ProjectService projectService;
     private final ProjectManagerService projectManager;
+    private final ProjectPlacementService placementService;
     private final WorkspaceService workspaceService;
     private final SessionService sessionService;
     private final ApplicationEventPublisher eventPublisher;
@@ -119,11 +122,13 @@ public class ProjectLifecycleService {
             @Nullable List<String> teamIds,
             ProjectKind kind,
             @Nullable String createdBy) {
-        projectService.create(tenantId, name, title, projectGroupId, teamIds, kind);
-        // Direct-spawn — picks local-first or master-routed depending on
-        // capacity, see specification/cluster-project-management.md §5.3.
-        // HOMELESS short-circuits to the existing podless bring.
-        projectManager.spawnNew(tenantId, name);
+        ProjectDocument created =
+                projectService.create(tenantId, name, title, projectGroupId, teamIds, kind);
+        // Where it runs is the placement service's call — local-first when this
+        // pod has room, otherwise the least-loaded pod that does. HOMELESS and
+        // podless projects short-circuit to a local bring inside it.
+        placementService.place(created, PlacementTrigger.CREATE);
+        // Re-read: the bring behind place() moved the lease and the status.
         ProjectDocument saved = projectService.findByTenantAndName(tenantId, name)
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
                         "Project '" + name + "' vanished during create"));

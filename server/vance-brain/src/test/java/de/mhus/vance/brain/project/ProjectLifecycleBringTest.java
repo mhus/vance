@@ -64,7 +64,9 @@ class ProjectLifecycleBringTest {
         ObjectProvider<PermissionBootstrap> perms = mock(ObjectProvider.class);
 
         service = new ProjectLifecycleService(
-                projectService, projectManager, workspaceService, sessionService,
+                projectService, projectManager,
+                mock(de.mhus.vance.brain.cluster.placement.ProjectPlacementService.class),
+                workspaceService, sessionService,
                 eventPublisher, registry, rag, chat, router, perms);
     }
 

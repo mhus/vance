@@ -3,6 +3,7 @@ package de.mhus.vance.brain.projects;
 import de.mhus.vance.api.projects.ProjectCreateRequest;
 import de.mhus.vance.api.projects.ProjectDto;
 import de.mhus.vance.api.projects.ProjectLifecycleTypeRequest;
+import de.mhus.vance.api.projects.ProjectPlacementRequest;
 import de.mhus.vance.api.projects.ProjectUpdateRequest;
 import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.brain.kit.catalog.ProjectKitInstaller;
@@ -190,6 +191,39 @@ public class ProjectAdminController {
         } catch (ProjectService.SystemProjectProtectedException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+
+    /**
+     * Sets what the project requires of a pod: the {@code placementSelector}
+     * matched against pod labels, and the {@code homeResourceScore} it costs.
+     *
+     * <p>Both optional — {@code null} leaves that half alone, so an external
+     * instance can revise the selector without restating the score. The
+     * selector replaces the stored map wholesale; a control loop has to be able
+     * to remove a requirement.
+     *
+     * <p><b>Takes effect at the next placement.</b> A project already running
+     * somewhere stays there — moving it is a deliberate drain, not a side
+     * effect of a write that looks like an annotation
+     * ({@code planning/project-placement-labels.md} §2.4).
+     */
+    @PostMapping("/{name}/placement")
+    public ProjectDto setPlacement(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("name") String name,
+            @RequestBody ProjectPlacementRequest request,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, name), Action.ADMIN);
+        try {
+            return toDto(projectService.setPlacement(
+                    tenant, name, request.getPlacementSelector(), request.getHomeResourceScore()));
+        } catch (ProjectService.ProjectNotFoundException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+        } catch (IllegalArgumentException e) {
+            // Covers PodSelector.InvalidLabelException — a malformed label is a
+            // bad request, not a server fault.
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }

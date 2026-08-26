@@ -2,7 +2,9 @@ package de.mhus.vance.brain.workspace.access;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -10,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.projects.WorkspaceTreeNodeDto;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.shared.location.LocationService;
 import de.mhus.vance.shared.project.ProjectDocument;
@@ -60,6 +63,7 @@ class WorkspaceControllerAdoptTest {
     @Mock private LocationService locationService;
     @Mock private ProjectLifecycleService lifecycleService;
     @Mock private ProjectService projectService;
+    @Mock private ProjectPlacementService placementService;
     @Mock private RequestAuthority authority;
 
     private WorkspaceController controller;
@@ -72,12 +76,15 @@ class WorkspaceControllerAdoptTest {
         when(properties.getConnectTimeout()).thenReturn(java.time.Duration.ofSeconds(2));
         controller = new WorkspaceController(
                 workspaceService, routingCache, properties, locationService,
-                lifecycleService, projectService, JsonMapper.builder().build(),
-                authority, "tok");
+                lifecycleService, projectService, placementService,
+                JsonMapper.builder().build(), authority, "tok");
         request = mock(HttpServletRequest.class);
 
         // Force the adopt branch: not bypassed, not self-owned, nobody live owns it.
         when(properties.isBypassProxy()).thenReturn(false);
+        // Eligible by default; the label gate has its own test below.
+        lenient().when(placementService.isEligibleHere(any(ProjectDocument.class)))
+                .thenReturn(true);
         when(routingCache.isSelfOwned(new ProjectPodKey(TENANT, PROJECT))).thenReturn(false);
         when(routingCache.lookup(new ProjectPodKey(TENANT, PROJECT)))
                 .thenReturn(Optional.empty());
@@ -97,6 +104,22 @@ class WorkspaceControllerAdoptTest {
         assertThat(result)
                 .as("after a successful adopt the tree is served locally")
                 .isSameAs(served);
+    }
+
+    @Test
+    void ineligiblePod_doesNotAdopt() {
+        // Right status, but this pod does not satisfy the project's placement
+        // selector — serving its workspace here would run it exactly where the
+        // selector excludes it.
+        givenStatus(ProjectStatus.RUNNING);
+        when(placementService.isEligibleHere(any(ProjectDocument.class))).thenReturn(false);
+
+        WorkspaceTreeNodeDto result = controller.tree(TENANT, PROJECT, null, 1, request);
+
+        verify(lifecycleService, never()).bring(anyString(), anyString());
+        assertThat(result.getChildren())
+                .as("documented degradation for a read path is an empty tree, not a 500")
+                .isEmpty();
     }
 
     @Test

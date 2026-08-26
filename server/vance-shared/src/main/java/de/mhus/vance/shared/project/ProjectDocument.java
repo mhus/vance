@@ -2,7 +2,9 @@ package de.mhus.vance.shared.project;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -150,12 +152,37 @@ public class ProjectDocument {
 
     /**
      * Score the project contributes to a pod's {@code resourcesCurrentScore}
-     * when claimed there. Default {@code 1}. Used by the Cluster-Master
-     * Distributor to decide which pod has room for an orphaned project
-     * and by the Boot-Self-Pull cap. V1 is immutable after create.
+     * when claimed there. Default {@code 1}. Used by the placement fit stage to
+     * decide which pod has room and by the Boot-Self-Pull cap.
+     *
+     * <p>Settable after create through {@code ProjectService.setPlacement}.
+     * That is not the adaptive, measured score the spec defers to v2 — it is
+     * the same act as setting the selector: something outside the brain
+     * describing what this project needs. Without it, an external instance
+     * could say <em>where</em> a project belongs but not <em>how much</em> it
+     * costs, and half of the resource model would stay frozen at create time.
      */
     @Builder.Default
     private int homeResourceScore = 1;
+
+    /**
+     * What this project <b>requires</b> of a pod, as flat key/value pairs
+     * matched against {@code BrainPodDocument.labels}. Read only through
+     * {@code PodSelector}.
+     *
+     * <p>Empty — the default and the state of every project that predates the
+     * field — matches every pod, so placement behaves exactly as it did before
+     * labels existed. {@code null} on documents written earlier is the same
+     * state, which is why this needs no migration.
+     *
+     * <p>Declarative: a change takes effect at the <em>next</em> placement and
+     * never moves a running project. Moving one is a deliberate drain
+     * ({@code planning/project-placement-labels.md} §8), because a move costs
+     * engine teardown and a workspace rebuild and must not be a side effect of
+     * a write that looks like an annotation.
+     */
+    @Builder.Default
+    private @Nullable Map<String, String> placementSelector = new HashMap<>();
 
     @CreatedDate
     private @Nullable Instant createdAt;

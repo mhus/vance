@@ -6,8 +6,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.brain.cluster.ClusterBringClient;
-import de.mhus.vance.brain.cluster.ClusterMasterService;
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
@@ -15,7 +13,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.ObjectProvider;
 
 /**
  * Defensive guard around leftover ownership values on legacy podless project
@@ -49,15 +46,8 @@ class ProjectManagerServicePodlessTest {
         lenient().when(projectService.findByTenantAndName("acme", "_user_wile.coyote"))
                 .thenReturn(Optional.of(legacy));
 
-        @SuppressWarnings("unchecked")
-        ObjectProvider<ClusterMasterService> masterProvider = mock(ObjectProvider.class);
-        @SuppressWarnings("unchecked")
-        ObjectProvider<ProjectLifecycleService> lifecycleProvider = mock(ObjectProvider.class);
-        ProjectManagerService manager = new ProjectManagerService(
-                projectService, clusterService,
-                lifecycleProvider,
-                mock(ClusterBringClient.class),
-                masterProvider);
+        ProjectManagerService manager =
+                new ProjectManagerService(projectService, clusterService);
 
         Optional<String> endpoint = manager.findProjectEndpoint("acme", "_user_wile.coyote");
 
@@ -90,15 +80,8 @@ class ProjectManagerServicePodlessTest {
         when(clusterService.resolveEndpointByPodId("pod-maya"))
                 .thenReturn(Optional.of("10.0.0.5:9990"));
 
-        @SuppressWarnings("unchecked")
-        ObjectProvider<ClusterMasterService> masterProvider = mock(ObjectProvider.class);
-        @SuppressWarnings("unchecked")
-        ObjectProvider<ProjectLifecycleService> lifecycleProvider = mock(ObjectProvider.class);
-        ProjectManagerService manager = new ProjectManagerService(
-                projectService, clusterService,
-                lifecycleProvider,
-                mock(ClusterBringClient.class),
-                masterProvider);
+        ProjectManagerService manager =
+                new ProjectManagerService(projectService, clusterService);
 
         Optional<String> endpoint = manager.findProjectEndpoint("acme", "ferienhaus-versicherung");
 

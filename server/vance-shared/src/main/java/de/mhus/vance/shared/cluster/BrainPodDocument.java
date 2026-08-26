@@ -2,7 +2,9 @@ package de.mhus.vance.shared.cluster;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -115,4 +117,44 @@ public class BrainPodDocument {
      */
     @Builder.Default
     private int resourcesCurrentScore = 0;
+
+    /**
+     * What this pod <em>is</em>, as flat key/value pairs a project's
+     * {@code placementSelector} can require. Read only through
+     * {@link PodSelector}.
+     *
+     * <p>Seeded from {@code vance.cluster.labels.*} when the row is created and
+     * then <b>never touched by the heartbeat</b> — that asymmetry against the
+     * {@code resources*} fields above is deliberate. Republishing them every
+     * beat is right for values only the pod knows; here it would delete every
+     * runtime write within a minute, and runtime writes are the point
+     * ({@code planning/project-placement-labels.md} §4).
+     *
+     * <p>The row is per JVM ({@code podId} is a fresh UUID per process), so
+     * labels are too: a restart returns to the configured seed. Values that
+     * must survive a restart belong in the config; whoever labels warm pods
+     * runs a control loop that reconciles after one.
+     *
+     * <p>{@code null} on rows written before this field existed — the same
+     * state as empty, which is why no migration stands behind it.
+     */
+    @Builder.Default
+    private @Nullable Map<String, String> labels = new HashMap<>();
+
+    /**
+     * Inverts the "an empty selector matches every pod" default for this pod:
+     * a project without a selector is <em>not</em> eligible here.
+     *
+     * <p>The reason a special-purpose pod does not get filled by ordinary work
+     * while it waits for the project it was provisioned for. Deliberately one
+     * bit rather than a taint grammar — and combined with empty
+     * {@link #labels} it also expresses a full cordon, so there is no separate
+     * {@code cordoned} field.
+     *
+     * <p>Default {@code false}, and that is forced rather than chosen: with
+     * {@code true} as the cluster-wide default an unconfigured installation
+     * would place nothing at all and every project would sit unschedulable.
+     */
+    @Builder.Default
+    private boolean exclusive = false;
 }

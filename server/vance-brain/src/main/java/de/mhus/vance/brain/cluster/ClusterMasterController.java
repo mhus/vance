@@ -1,8 +1,13 @@
 package de.mhus.vance.brain.cluster;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import de.mhus.vance.shared.cluster.BrainPodDocument;
+import de.mhus.vance.brain.cluster.placement.ClusterFullException;
+import de.mhus.vance.brain.cluster.placement.PlacementDecision;
+import de.mhus.vance.brain.cluster.placement.PlacementTrigger;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.shared.cluster.ClusterMasterDocument;
+import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.shared.project.ProjectService;
 import java.time.Instant;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -34,12 +39,21 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClusterMasterController {
 
     private final ClusterMasterService masterService;
-    private final ClusterPlacementService placementService;
+    private final ClusterService clusterService;
+    private final ProjectService projectService;
+    private final ProjectPlacementService placementService;
 
     /**
      * Pick a target pod and dispatch {@code bring} to it. Returns the
      * chosen pod's node-name + endpoint so the caller knows where the
      * project now lives.
+     *
+     * <p><b>No in-tree caller since the placement facade landed.</b> Every pod
+     * can now compute the same decision from the same pod list, so asking the
+     * master over HTTP buys nothing — and the fallback chain around that call
+     * ("no master endpoint reachable → bring locally anyway") was overriding
+     * the capacity decision it had just made. The endpoint stays because it is
+     * a wire surface: during a rolling upgrade an older pod still calls it.
      */
     @PostMapping("/spawn")
     public ResponseEntity<?> spawn(@RequestBody HttpClusterBringClient.SpawnRequest req) {
@@ -49,13 +63,30 @@ public class ClusterMasterController {
         if (!masterService.isLocalPodMaster()) {
             return notMasterRedirect();
         }
+        ProjectDocument project;
         try {
-            BrainPodDocument target = placementService.placeProject(req.tenantId(), req.projectName());
-            return ResponseEntity.ok(
-                    new HttpClusterBringClient.SpawnResponse(target.getNodeName(), target.getEndpoint()));
-        } catch (ClusterMasterService.ClusterFullException e) {
-            log.warn("Master spawn rejected (cluster full) for '{}/{}': {}",
-                    req.tenantId(), req.projectName(), e.getMessage());
+            project = projectService.findByTenantAndName(req.tenantId(), req.projectName())
+                    .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
+                            "Project '" + req.projectName() + "' not found in tenant '"
+                                    + req.tenantId() + "'"));
+        } catch (ProjectService.ProjectNotFoundException e) {
+            return ResponseEntity.status(404).body(new MessageResponse(e.getMessage()));
+        }
+        try {
+            PlacementDecision decision =
+                    placementService.place(project, PlacementTrigger.REMOTE_REQUEST);
+            return ResponseEntity.ok(switch (decision) {
+                case PlacementDecision.On on -> new HttpClusterBringClient.SpawnResponse(
+                        on.pod().getNodeName(), on.pod().getEndpoint());
+                // Podless / HOMELESS: there is no pod row to name, and the
+                // project now runs here. Answer with our own identity rather
+                // than inventing a document.
+                default -> new HttpClusterBringClient.SpawnResponse(
+                        clusterService.selfNodeName(), clusterService.selfEndpoint());
+            });
+        } catch (ClusterFullException e) {
+            log.warn("Master spawn rejected ({}) for '{}/{}': {}",
+                    e.getGap(), req.tenantId(), req.projectName(), e.getMessage());
             return ResponseEntity.status(503).body(new MessageResponse(e.getMessage()));
         }
     }

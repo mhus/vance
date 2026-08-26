@@ -2,6 +2,7 @@ package de.mhus.vance.brain.cluster;
 
 import de.mhus.vance.shared.cluster.BrainPodDocument;
 import de.mhus.vance.shared.cluster.BrainPodService;
+import de.mhus.vance.shared.cluster.PodSelector;
 import de.mhus.vance.shared.cluster.PodStatus;
 import de.mhus.vance.shared.location.LocationService;
 import de.mhus.vance.shared.project.ProjectDocument;
@@ -19,6 +20,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -79,11 +82,33 @@ public class ClusterService {
      * listening — the right moment to declare ourselves alive. A
      * registration failure here logs but does not crash the boot;
      * the next heartbeat tick will retry.
+     *
+     * <p>{@link Ordered#HIGHEST_PRECEDENCE} so this pod's registry row normally
+     * exists before other boot listeners look for it. <b>Nothing depends on
+     * that ordering</b>, and deliberately so: a dependency between two
+     * {@code ApplicationReadyEvent} listeners expressed as a global sort is
+     * broken by the next listener somebody adds, silently. Callers with a real
+     * precondition state it themselves — see {@link #ensureRegistered()} and
+     * {@code ProjectStartupReclaimer}.
      */
     @EventListener(ApplicationReadyEvent.class)
+    @Order(Ordered.HIGHEST_PRECEDENCE)
     public void onApplicationReady() {
+        ensureRegistered();
+    }
+
+    /**
+     * Registers this pod if it is not registered yet. Idempotent and safe to
+     * call from any boot listener that needs the row to exist — that is the
+     * mechanism the ordering above is <em>not</em>.
+     */
+    public void ensureRegistered() {
         if (registered) return;
         Instant now = Instant.now();
+        // Fail the boot on a malformed label rather than register a pod whose
+        // labels no selector can name. The seed is the one moment where this is
+        // catchable — the heartbeat never touches these fields again.
+        PodSelector.validate(properties.getLabels());
         BrainPodDocument doc = BrainPodDocument.builder()
                 .clusterId(properties.getId())
                 .podId(podId)
@@ -96,6 +121,11 @@ public class ClusterService {
                 .resourcesStartupScore(properties.getResources().getStartupScore())
                 .resourcesMaxScore(properties.getResources().getMaxScore())
                 .resourcesCurrentScore(snapshotCurrentScore())
+                // Seed only — see BrainPodDocument.labels. Every later change
+                // arrives from outside the process and must not be undone by
+                // the next beat.
+                .labels(new java.util.LinkedHashMap<>(properties.getLabels()))
+                .exclusive(properties.isExclusive())
                 .version(buildVersion)
                 .build();
         try {
@@ -138,7 +168,7 @@ public class ClusterService {
             // Row vanished — admin purged us. Re-create.
             log.warn("ClusterService heartbeat: pod row missing, re-registering");
             registered = false;
-            onApplicationReady();
+            ensureRegistered();
         } catch (RuntimeException e) {
             log.warn("ClusterService heartbeat failed: {}", e.toString());
         }
@@ -245,6 +275,17 @@ public class ClusterService {
     }
 
     public String selfPodId() { return podId; }
+
+    /**
+     * Whether this pod's row exists in {@code brain_pods} yet.
+     *
+     * <p>For boot-time callers whose limits are read from that row and default
+     * to permissive when it is absent — {@code selfPod()} answering empty is
+     * "I cannot see myself", which several paths deliberately read as "not
+     * blocked". Opportunistic work has to be able to tell that apart from
+     * "checked, and allowed".
+     */
+    public boolean isRegistered() { return registered; }
 
     /**
      * This pod's node name. Resolved on first use rather than returned raw so

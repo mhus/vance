@@ -6,6 +6,7 @@ import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.location.LocationService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.shared.project.ProjectDocument;
@@ -75,6 +76,7 @@ public class WorkspaceController {
     private final LocationService locationService;
     private final ProjectLifecycleService lifecycleService;
     private final ProjectService projectService;
+    private final ProjectPlacementService placementService;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final RequestAuthority authority;
@@ -86,6 +88,7 @@ public class WorkspaceController {
                                LocationService locationService,
                                ProjectLifecycleService lifecycleService,
                                ProjectService projectService,
+                               ProjectPlacementService placementService,
                                ObjectMapper objectMapper,
                                RequestAuthority authority,
                                @Value("${vance.internal.token:}") String internalToken) {
@@ -95,6 +98,7 @@ public class WorkspaceController {
         this.locationService = locationService;
         this.lifecycleService = lifecycleService;
         this.projectService = projectService;
+        this.placementService = placementService;
         this.objectMapper = objectMapper;
         this.authority = authority;
         this.internalToken = internalToken == null ? "" : internalToken;
@@ -212,12 +216,21 @@ public class WorkspaceController {
      * propagated to the browser.
      */
     private boolean tryAdoptLocally(String tenant, String project) {
-        ProjectStatus status = projectService.findByTenantAndName(tenant, project)
-                .map(ProjectDocument::getStatus)
-                .orElse(null);
+        ProjectDocument doc = projectService.findByTenantAndName(tenant, project).orElse(null);
+        ProjectStatus status = doc == null ? null : doc.getStatus();
         if (!ProjectService.wantsToRun(status)) {
             log.debug("Workspace adopt skipped for {}/{}: status={} does not want to run",
                     tenant, project, status);
+            return false;
+        }
+        // Eligibility, not capacity: this pod may be the wrong *kind* of pod for
+        // the project, in which case serving its workspace here would run it
+        // somewhere its selector excludes. Capacity is deliberately not asked —
+        // adopting is a read path with a user waiting, and overrun is cheaper
+        // than a 404 (planning/project-placement-labels.md §5).
+        if (!placementService.isEligibleHere(doc)) {
+            log.debug("Workspace adopt refused for {}/{}: this pod does not satisfy the "
+                    + "project's placement selector", tenant, project);
             return false;
         }
         try {

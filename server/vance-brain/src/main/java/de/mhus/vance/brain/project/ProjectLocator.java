@@ -1,10 +1,8 @@
 package de.mhus.vance.brain.project;
 
-import de.mhus.vance.brain.cluster.ClusterBringClient;
-import de.mhus.vance.brain.cluster.ClusterMasterService;
-import de.mhus.vance.brain.cluster.ClusterPlacementService;
 import de.mhus.vance.brain.cluster.ClusterService;
-import de.mhus.vance.shared.cluster.BrainPodDocument;
+import de.mhus.vance.brain.cluster.placement.PlacementTrigger;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.shared.project.LifecycleType;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectOwnership;
@@ -15,7 +13,6 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
@@ -31,8 +28,9 @@ import org.springframework.stereotype.Service;
  *       podless paths).</li>
  *   <li>Valid lease — resolves and returns the holder's endpoint.</li>
  *   <li>Expired or absent lease — depending on
- *       {@code autoStart}: blocking bring (master if available, else
- *       local-direct) or just-tell-me ({@code endpoint=empty}).</li>
+ *       {@code autoStart}: a blocking placement through
+ *       {@code ProjectPlacementService} or just-tell-me
+ *       ({@code endpoint=empty}).</li>
  * </ul>
  */
 @Service
@@ -50,17 +48,12 @@ public class ProjectLocator {
 
     private final ProjectService projectService;
     private final ClusterService clusterService;
-    private final ProjectLifecycleService lifecycleService;
-    private final ClusterPlacementService placementService;
-    private final ClusterBringClient bringClient;
     /**
-     * Optional — only present when {@code vance.cluster.master.enabled=true}.
-     * Used to short-circuit "I'm the master, I'll place this locally"
-     * vs. "ask the master via REST". The {@code vance.cluster.locator.autoStartTimeout}
-     * is enforced by the HTTP read-timeout of {@code HttpClusterBringClient}
+     * The {@code vance.cluster.locator.autoStartTimeout} is enforced by the
+     * HTTP read-timeout of {@code HttpClusterBringClient} inside the dispatch
      * — v1 has no extra wrapper around it.
      */
-    private final ObjectProvider<ClusterMasterService> masterServiceProvider;
+    private final ProjectPlacementService placementService;
 
     /**
      * Resolves the project's current owning endpoint. With
@@ -70,7 +63,10 @@ public class ProjectLocator {
      * offline.
      *
      * @throws ProjectService.ProjectNotFoundException unknown project
-     * @throws ClusterBringClient.ClusterBringException bring/spawn failed
+     * @throws de.mhus.vance.brain.cluster.placement.ClusterFullException
+     *     no pod can take the project
+     * @throws de.mhus.vance.brain.cluster.ClusterBringClient.ClusterBringException
+     *     the bring itself failed
      */
     public Location locate(String tenantId, String projectName, boolean autoStart) {
         ProjectDocument project = projectService.findByTenantAndName(tenantId, projectName)
@@ -94,8 +90,8 @@ public class ProjectLocator {
                     project.getLifecycleType(), project.getStatus(), project.getHomeNode());
         }
 
-        // autoStart=true — trigger a bring (local or via master).
-        triggerBring(project);
+        // autoStart=true — place it and wait for the bring to finish.
+        placementService.place(project, PlacementTrigger.LOCATE);
         ProjectDocument fresh = projectService.findByTenantAndName(tenantId, projectName)
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
                         "Project '" + projectName + "' vanished during autoStart"));
@@ -104,58 +100,9 @@ public class ProjectLocator {
                 fresh.getLifecycleType(), fresh.getStatus(), fresh.getHomeNode());
     }
 
-    /**
-     * Decide between local-direct bring and master-routed spawn. Local
-     * when (a) the master role is disabled, (b) this pod is the master,
-     * or (c) this pod has room itself — saves a network hop for the
-     * common single-pod-cluster case.
-     */
-    private void triggerBring(ProjectDocument project) {
-        ClusterMasterService masterService = masterServiceProvider.getIfAvailable();
-        boolean masterDisabled = masterService == null;
-        boolean iAmMaster = masterService != null && masterService.isLocalPodMaster();
-
-        if (masterDisabled || iAmMaster || haveLocalRoom(project)) {
-            log.debug("ProjectLocator: autoStart bringing '{}/{}' locally (masterDisabled={}, iAmMaster={})",
-                    project.getTenantId(), project.getName(), masterDisabled, iAmMaster);
-            // placementService.placeProject handles "pick pod + dispatch"; when
-            // I'm the master that's me. When master is disabled, the
-            // ClusterFullException fallback below tries a pure local bring.
-            if (iAmMaster) {
-                placementService.placeProject(project);
-                return;
-            }
-            if (masterDisabled) {
-                lifecycleService.bring(project.getTenantId(), project.getName());
-                return;
-            }
-            // I have room locally — direct local bring.
-            lifecycleService.bring(project.getTenantId(), project.getName());
-            return;
-        }
-
-        // Not master, no room locally — go through the master.
-        Optional<String> masterEndpoint = masterService.resolveMasterEndpoint();
-        if (masterEndpoint.isEmpty()) {
-            log.warn("ProjectLocator: no master endpoint for '{}/{}', bringing locally as fallback",
-                    project.getTenantId(), project.getName());
-            lifecycleService.bring(project.getTenantId(), project.getName());
-            return;
-        }
-        bringClient.requestSpawn(masterEndpoint.get(),
-                project.getTenantId(), project.getName());
-    }
-
     private Optional<String> liveEndpointOf(ProjectDocument project) {
         return ProjectOwnership
                 .liveOwnerPodId(project, Instant.now(), clusterService.leaseTtl())
                 .flatMap(clusterService::resolveEndpointByPodId);
-    }
-
-    private boolean haveLocalRoom(ProjectDocument project) {
-        return clusterService.selfPod()
-                .map(pod -> pod.getResourcesCurrentScore() + project.getHomeResourceScore()
-                        <= pod.getResourcesMaxScore())
-                .orElse(true);
     }
 }

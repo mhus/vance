@@ -2,6 +2,7 @@ package de.mhus.vance.api.projects;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import de.mhus.vance.api.kit.KitInheritDto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import java.util.ArrayList;
@@ -60,4 +61,21 @@ public class ProjectCreateRequest {
      * also what the two dropdowns in the UI say.
      */
     private @Nullable String kitProject;
+
+    /**
+     * Optional — a kit source given by hand: url, and optionally sub-path and
+     * branch. For a kit that is neither in the catalog nor authored in this
+     * install. Mutually exclusive with {@link #kitName} and
+     * {@link #kitProject}.
+     *
+     * <p>Coordinates only — no token, no vault passphrase. A private
+     * repository or a kit shipping credentials needs those, and they belong in
+     * the install dialog on the project card, which already has the full form.
+     * The create call surfaces such a failure through the
+     * {@code X-Vance-Kit-Install-Error} header, so the project exists and the
+     * install can be repeated there with what it needs; putting a credential
+     * field into project-create to save that one step is not worth a
+     * secret-carrying field on this DTO.
+     */
+    private @Nullable KitInheritDto kitSource;
 }

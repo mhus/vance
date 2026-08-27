@@ -23,6 +23,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -83,13 +84,21 @@ public class ProjectAdminController {
         // Before anything is created, and not inside the kit-install block
         // below: that block deliberately answers 201 with a header, because by
         // then the project exists and the kit is the only thing that failed.
-        // Two mutually exclusive fields are a malformed request — decidable
-        // without touching anything, so it is a 400 and nothing is left behind.
-        // (Installing both would also give the second kit last-writer-wins over
-        // the first without anyone having asked for a layering.)
-        if (isSet(request.getKitName()) && isSet(request.getKitProject())) {
+        // Mutually exclusive fields are a malformed request — decidable without
+        // touching anything, so it is a 400 and nothing is left behind.
+        // (Installing two would also give the second kit last-writer-wins over
+        // the first without anyone having asked for a layering.) The dialog
+        // makes the choice a tab, so more than one arriving means a caller that
+        // is not the dialog.
+        long kitSources = Stream.of(
+                        isSet(request.getKitName()),
+                        isSet(request.getKitProject()),
+                        request.getKitSource() != null
+                                && isSet(request.getKitSource().getUrl()))
+                .filter(Boolean::booleanValue).count();
+        if (kitSources > 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "kitName and kitProject are mutually exclusive"
+                    "kitName, kitProject and kitSource are mutually exclusive"
                             + " — a new project starts from one kit");
         }
         try {
@@ -105,11 +114,13 @@ public class ProjectAdminController {
                     ProjectKind.NORMAL,
                     /*createdBy*/ actor(httpRequest));
             try {
-                // At most one of the two is set — checked before the create.
+                // At most one of the three is set — checked before the create.
                 projectKitInstaller.installFromCatalog(
                         tenant, saved.getName(), request.getKitName(), actor(httpRequest));
                 projectKitInstaller.installFromProject(
                         tenant, saved.getName(), request.getKitProject(), actor(httpRequest));
+                projectKitInstaller.installFromSource(
+                        tenant, saved.getName(), request.getKitSource(), actor(httpRequest));
             } catch (KitException e) {
                 // Project is already saved + RUNNING. Surface the kit
                 // problem to the operator without rolling back — the
@@ -118,8 +129,9 @@ public class ProjectAdminController {
                 // {@code X-Vance-Kit-Install-Error} header so the 2xx
                 // body can still carry the new ProjectDto.
                 log.warn("Kit install failed after project create tenant='{}' project='{}'"
-                                + " kit='{}' kitProject='{}': {}",
+                                + " kit='{}' kitProject='{}' kitSource='{}': {}",
                         tenant, saved.getName(), request.getKitName(), request.getKitProject(),
+                        request.getKitSource() == null ? null : request.getKitSource().getUrl(),
                         e.getMessage());
                 return ResponseEntity.status(HttpStatus.CREATED)
                         .header("X-Vance-Kit-Install-Error", e.getMessage())

@@ -45,10 +45,29 @@ export default {
         kit: 'Kit',
         kitNone: 'Kein Kit',
         kitHelp: 'Vorkonfigurierte Projekt-Vorlage — installiert Dokumente, Settings und Tools direkt nach dem Anlegen.',
+        kitCatalog: 'Kit aus dem Katalog',
+        kitCatalogEmpty:
+          'Für diesen Mandanten ist kein Kit-Katalog hinterlegt. Nutze einen der '
+          + 'anderen Reiter oder lass einen Admin den Katalog pflegen.',
+        tabCatalog: 'Katalog',
+        tabProject: 'Aus Projekt',
+        tabManual: 'Manuell',
         kitProject: 'Kit aus einem Projekt',
         kitProjectHelp:
           'Projekte dieses Mandanten, die selbst eine Kit-Quelle sind — für ein Kit, '
           + 'das hier gerade entsteht und noch nicht im Katalog steht.',
+        kitProjectLoading: 'Projekte werden geladen…',
+        kitProjectEmpty:
+          'In diesem Mandanten ist derzeit kein Projekt eine Kit-Quelle. Ein Projekt '
+          + 'wird dazu über „Dieses Kit weiterentwickeln" auf seiner Projekt-Karte.',
+        kitUrl: 'Kit-URL',
+        kitUrlHelp: 'https://… oder file:///… — auch project:<name>.',
+        kitPath: 'Unterpfad',
+        kitPathHelp: 'Optional. Standard ist die Wurzel des Repos.',
+        kitBranch: 'Branch',
+        kitBranchHelp:
+          'Optional, Standard main. Token und Vault-Passwort gibt es hier nicht — '
+          + 'ein privates Repo installierst du danach über die Projekt-Karte.',
         submit: 'Anlegen',
       },
       error: {

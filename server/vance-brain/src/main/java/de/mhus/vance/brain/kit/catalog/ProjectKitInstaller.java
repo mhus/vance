@@ -109,15 +109,37 @@ public class ProjectKitInstaller {
         if (StringUtils.isBlank(sourceProjectId)) {
             return null;
         }
-        KitImportRequestDto request = KitImportRequestDto.builder()
-                .projectId(projectId)
-                .source(KitInheritDto.builder()
-                        .url(KitSourceType.PROJECT_SCHEME + sourceProjectId.trim())
-                        .build())
-                .mode(KitImportMode.INSTALL)
-                .build();
         log.info("Installing kit from project '{}' into tenantId='{}' projectId='{}'",
                 sourceProjectId, tenantId, projectId);
+        return installFromSource(tenantId, projectId, KitInheritDto.builder()
+                .url(KitSourceType.PROJECT_SCHEME + sourceProjectId.trim())
+                .build(), actor);
+    }
+
+    /**
+     * Install from coordinates the caller typed: url, and optionally sub-path
+     * and branch.
+     *
+     * <p>The primitive the other two entry points end at — the catalog
+     * resolves a key to a source, a project name becomes a {@code project:}
+     * url, and both arrive here. No token and no vault passphrase: the create
+     * surface does not carry credentials, see {@code
+     * ProjectCreateRequest.kitSource}.
+     *
+     * <p>A null source, or one without a url, is the caller's "no kit
+     * requested" path, as above.
+     */
+    public @Nullable KitOperationResultDto installFromSource(
+            String tenantId, String projectId, @Nullable KitInheritDto source,
+            @Nullable String actor) {
+        if (source == null || StringUtils.isBlank(source.getUrl())) {
+            return null;
+        }
+        KitImportRequestDto request = KitImportRequestDto.builder()
+                .projectId(projectId)
+                .source(source)
+                .mode(KitImportMode.INSTALL)
+                .build();
         return kitService.importKit(tenantId, request, actor, SettingWriteOrigin.USER);
     }
 

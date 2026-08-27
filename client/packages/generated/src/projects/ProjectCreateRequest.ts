@@ -3,6 +3,8 @@
  Source: de.mhus.vance.api.projects.ProjectCreateRequest
 */
 
+import { KitInheritDto } from '../kit/KitInheritDto';
+
 export interface ProjectCreateRequest {
   name: string;
   title?: string;
@@ -10,4 +12,5 @@ export interface ProjectCreateRequest {
   teamIds: string[];
   kitName?: string;
   kitProject?: string;
+  kitSource?: KitInheritDto;
 }

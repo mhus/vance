@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { VAlert, VButton, VEmptyState, VInput, VModal, VSelect } from '@vance/components';
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type {
   ProjectGroupSummary,
@@ -322,12 +322,6 @@ onMounted(async () => {
   if (!props.hideKitField && props.kitOptions.length === 0) {
     void internalKitsCatalog.load();
   }
-  // Same trip, same rule: loaded here rather than when the dialog opens, so
-  // the field is either there from the first frame or not at all. A dropdown
-  // that appears half a second in is worse than one that never does.
-  if (!props.hideKitField) {
-    void kitSourceProjects.load();
-  }
 });
 
 onBeforeUnmount(() => {
@@ -368,6 +362,16 @@ const newProjectTitle = ref('');
 const newProjectGroupId = ref<string | null>(null);
 const newProjectKitName = ref<string>('');
 const newProjectKitProject = ref<string>('');
+const newProjectKitUrl = ref<string>('');
+const newProjectKitPath = ref<string>('');
+const newProjectKitBranch = ref<string>('');
+/**
+ * Which way of naming a kit is open. Tabs rather than three fields side by
+ * side because they are alternatives: only the open tab's value is sent, so
+ * "at most one" is a property of the form instead of something cross-clearing
+ * watchers have to keep true.
+ */
+const kitTab = ref<'catalog' | 'project' | 'manual'>('catalog');
 const creating = ref(false);
 const creationError = ref<string | null>(null);
 
@@ -388,12 +392,33 @@ const internalKitsCatalog = useProjectKitsCatalog();
  * <p>Deliberately not folded into {@link effectiveKitOptions}: the catalog is
  * the tenant's curated list of blessed starting points, maintained by an admin
  * in a `_tenant` document, while this is whatever happens to be authored here
- * right now. Merging them would hollow out the curation; two controls keep the
- * distinction visible. A kit under development has no business in the catalog,
- * and needing an admin to edit YAML before you can test your own kit would be
- * absurd.
+ * right now. Merging them would hollow out the curation; separate tabs keep
+ * the distinction visible. A kit under development has no business in the
+ * catalog, and needing an admin to edit YAML before you can test your own kit
+ * would be absurd.
+ *
+ * <p><b>Loaded when its tab is first opened</b>, not at mount. The catalog is
+ * eager because its tab is the one already showing; this one costs a request
+ * that most dialogs never need, and behind a tab there is no half-second
+ * flicker to avoid — the tab is the affordance, its contents arrive after the
+ * click like everywhere else.
  */
 const kitSourceProjects = useKitSourceProjects();
+let kitProjectsRequested = false;
+
+const kitTabs = computed(() => [
+  { id: 'catalog' as const, label: t('common.projectPicker.createProject.tabCatalog') },
+  { id: 'project' as const, label: t('common.projectPicker.createProject.tabProject') },
+  { id: 'manual' as const, label: t('common.projectPicker.createProject.tabManual') },
+]);
+
+function openKitTab(tab: 'catalog' | 'project' | 'manual'): void {
+  kitTab.value = tab;
+  if (tab === 'project' && !kitProjectsRequested) {
+    kitProjectsRequested = true;
+    void kitSourceProjects.load();
+  }
+}
 
 const effectiveKitOptions = computed<{ value: string; label: string }[]>(() => {
   if (props.hideKitField) return [];
@@ -409,42 +434,17 @@ const effectiveKitOptions = computed<{ value: string; label: string }[]>(() => {
   ];
 });
 
-const showKitField = computed<boolean>(() => effectiveKitOptions.value.length > 0);
-
-const kitProjectOptions = computed<{ value: string; label: string }[]>(() => {
-  if (props.hideKitField) return [];
-  const found = kitSourceProjects.projects.value;
-  if (found.length === 0) return [];
-  return [
-    { value: '', label: t('common.projectPicker.createProject.kitNone') },
-    ...found.map((entry) => ({
-      value: entry.projectId,
-      // The kit is what is being picked; the project is where it lives, and
-      // the two names differ often enough to need both.
-      label: entry.kitName === entry.projectId
-        ? entry.kitName
-        : `${entry.kitName} (${entry.projectTitle || entry.projectId})`,
-    })),
-  ];
-});
-
-/**
- * Same rule the catalog field already follows: no entries, no field. Most
- * tenants have no authoring projects, and this dialog lives in five hosts —
- * a permanently empty dropdown in all of them would be noise for everyone to
- * serve a few.
- */
-const showKitProjectField = computed<boolean>(() => kitProjectOptions.value.length > 1);
-
-// The two are alternatives, not a combination: installing both would give the
-// second last-writer-wins over the first without anyone asking for a layering,
-// and the server refuses the pair outright.
-watch(newProjectKitName, (value) => {
-  if (value) newProjectKitProject.value = '';
-});
-watch(newProjectKitProject, (value) => {
-  if (value) newProjectKitName.value = '';
-});
+const kitProjectOptions = computed<{ value: string; label: string }[]>(() => [
+  { value: '', label: t('common.projectPicker.createProject.kitNone') },
+  ...kitSourceProjects.projects.value.map((entry) => ({
+    value: entry.projectId,
+    // The kit is what is being picked; the project is where it lives, and
+    // the two names differ often enough to need both.
+    label: entry.kitName === entry.projectId
+      ? entry.kitName
+      : `${entry.kitName} (${entry.projectTitle || entry.projectId})`,
+  })),
+]);
 
 function openCreateGroup(): void {
   newGroupName.value = '';
@@ -470,6 +470,10 @@ function openCreateProject(groupId: string | null = null): void {
   newProjectGroupId.value = groupId;
   newProjectKitName.value = '';
   newProjectKitProject.value = '';
+  newProjectKitUrl.value = '';
+  newProjectKitPath.value = '';
+  newProjectKitBranch.value = '';
+  kitTab.value = 'catalog';
   creationError.value = null;
   showCreateProject.value = true;
 }
@@ -527,14 +531,10 @@ async function submitCreateProject(): Promise<void> {
         title,
         projectGroupId: newProjectGroupId.value || undefined,
         teamIds: [],
-        // Only included when the host opted in via {@link Props.kitOptions}.
-        // Blank string maps to "no kit" — server treats null/blank the same.
-        kitName: showKitField.value
-          ? (newProjectKitName.value.trim() || undefined)
-          : undefined,
-        kitProject: showKitProjectField.value
-          ? (newProjectKitProject.value.trim() || undefined)
-          : undefined,
+        // Only the open tab contributes, which is what makes the three
+        // mutually exclusive without any cross-clearing. Blank maps to
+        // "no kit" — the server treats null/blank the same.
+        ...(props.hideKitField ? {} : kitChoice()),
       },
     });
     showCreateProject.value = false;
@@ -544,6 +544,28 @@ async function submitCreateProject(): Promise<void> {
   } finally {
     creating.value = false;
   }
+}
+
+/**
+ * The kit part of the create body: whichever of the three the open tab names,
+ * or nothing.
+ */
+function kitChoice(): Record<string, unknown> {
+  if (kitTab.value === 'catalog') {
+    return { kitName: newProjectKitName.value.trim() || undefined };
+  }
+  if (kitTab.value === 'project') {
+    return { kitProject: newProjectKitProject.value.trim() || undefined };
+  }
+  const url = newProjectKitUrl.value.trim();
+  if (!url) return {};
+  return {
+    kitSource: {
+      url,
+      path: newProjectKitPath.value.trim() || undefined,
+      branch: newProjectKitBranch.value.trim() || undefined,
+    },
+  };
 }
 
 function describeError(e: unknown): string {
@@ -1018,22 +1040,81 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
           :options="groupSelectOptions"
           :disabled="creating"
         />
-        <VSelect
-          v-if="showKitField"
-          v-model="newProjectKitName"
-          :label="t('common.projectPicker.createProject.kit')"
-          :help="t('common.projectPicker.createProject.kitHelp')"
-          :options="effectiveKitOptions"
-          :disabled="creating"
-        />
-        <VSelect
-          v-if="showKitProjectField"
-          v-model="newProjectKitProject"
-          :label="t('common.projectPicker.createProject.kitProject')"
-          :help="t('common.projectPicker.createProject.kitProjectHelp')"
-          :options="kitProjectOptions"
-          :disabled="creating"
-        />
+        <!-- Three ways to name a kit, one at a time. The tab strip is
+             always there (Manual works without any configuration); what is
+             empty is said inside the tab it belongs to. -->
+        <div v-if="!hideKitField" class="flex flex-col gap-2">
+          <span class="text-sm font-semibold">
+            {{ t('common.projectPicker.createProject.kit') }}
+          </span>
+          <div role="tablist" class="flex gap-1 border-b border-base-300">
+            <button
+              v-for="tab in kitTabs"
+              :key="tab.id"
+              type="button"
+              role="tab"
+              :aria-selected="kitTab === tab.id"
+              class="px-3 py-1.5 text-sm font-semibold border-b-2 transition-colors"
+              :class="kitTab === tab.id
+                ? 'border-primary text-primary'
+                : 'border-transparent opacity-60 hover:opacity-100'"
+              :disabled="creating"
+              @click="openKitTab(tab.id)"
+            >{{ tab.label }}</button>
+          </div>
+
+          <template v-if="kitTab === 'catalog'">
+            <VSelect
+              v-if="effectiveKitOptions.length > 1"
+              v-model="newProjectKitName"
+              :label="t('common.projectPicker.createProject.kitCatalog')"
+              :help="t('common.projectPicker.createProject.kitHelp')"
+              :options="effectiveKitOptions"
+              :disabled="creating"
+            />
+            <p v-else class="text-xs opacity-70">
+              {{ t('common.projectPicker.createProject.kitCatalogEmpty') }}
+            </p>
+          </template>
+
+          <template v-else-if="kitTab === 'project'">
+            <p v-if="kitSourceProjects.loading.value" class="text-xs opacity-70">
+              {{ t('common.projectPicker.createProject.kitProjectLoading') }}
+            </p>
+            <VSelect
+              v-else-if="kitProjectOptions.length > 1"
+              v-model="newProjectKitProject"
+              :label="t('common.projectPicker.createProject.kitProject')"
+              :help="t('common.projectPicker.createProject.kitProjectHelp')"
+              :options="kitProjectOptions"
+              :disabled="creating"
+            />
+            <p v-else class="text-xs opacity-70">
+              {{ t('common.projectPicker.createProject.kitProjectEmpty') }}
+            </p>
+          </template>
+
+          <template v-else>
+            <VInput
+              v-model="newProjectKitUrl"
+              :label="t('common.projectPicker.createProject.kitUrl')"
+              :help="t('common.projectPicker.createProject.kitUrlHelp')"
+              :disabled="creating"
+            />
+            <VInput
+              v-model="newProjectKitPath"
+              :label="t('common.projectPicker.createProject.kitPath')"
+              :help="t('common.projectPicker.createProject.kitPathHelp')"
+              :disabled="creating"
+            />
+            <VInput
+              v-model="newProjectKitBranch"
+              :label="t('common.projectPicker.createProject.kitBranch')"
+              :help="t('common.projectPicker.createProject.kitBranchHelp')"
+              :disabled="creating"
+            />
+          </template>
+        </div>
       </form>
       <template #actions>
         <VButton

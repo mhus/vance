@@ -51,10 +51,29 @@ export default {
         kit: 'Kit',
         kitNone: 'No kit',
         kitHelp: 'Pre-configured project starter — installs documents, settings and tools right after create.',
+        kitCatalog: 'Kit from the catalog',
+        kitCatalogEmpty:
+          'This tenant has no kit catalog configured. Use one of the other tabs, or '
+          + 'ask an admin to fill the catalog.',
+        tabCatalog: 'Catalog',
+        tabProject: 'From project',
+        tabManual: 'Manual',
         kitProject: 'Kit from a project',
         kitProjectHelp:
           'Projects of this tenant that are kit sources themselves — for a kit being '
           + 'authored here that is not in the catalog yet.',
+        kitProjectLoading: 'Loading projects…',
+        kitProjectEmpty:
+          'No project of this tenant is a kit source right now. A project becomes one '
+          + 'via "Develop this kit" on its project card.',
+        kitUrl: 'Kit URL',
+        kitUrlHelp: 'https://… or file:///… — project:<name> works too.',
+        kitPath: 'Sub-path',
+        kitPathHelp: 'Optional. Defaults to the repo root.',
+        kitBranch: 'Branch',
+        kitBranchHelp:
+          'Optional, defaults to main. No token or vault password here — install a '
+          + 'private repo afterwards from the project card.',
         submit: 'Create',
       },
       error: {

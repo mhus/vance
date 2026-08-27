@@ -1058,6 +1058,9 @@ public class InsightsAdminController {
                 .exclusive(doc.isExclusive())
                 .resourcesCurrentScore(doc.getResourcesCurrentScore())
                 .resourcesMaxScore(doc.getResourcesMaxScore())
+                .resourcesMaxScoreOverride(doc.getResourcesMaxScoreOverride())
+                .effectiveMaxScore(
+                        de.mhus.vance.shared.cluster.BrainPodCapacity.effectiveMaxScore(doc))
                 .tenantProjects(tenantProjects)
                 .build();
     }

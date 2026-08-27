@@ -27,6 +27,30 @@ public class AnusBrainProperties {
     private Duration httpConnectTimeout = Duration.ofSeconds(5);
     private Duration httpRequestTimeout = Duration.ofSeconds(30);
 
+    /**
+     * Shared secret for the {@code /internal/**} routes, same value as the
+     * brain's {@code vance.internal.token}.
+     *
+     * <p>A second credential next to the minted admin JWT, because those two
+     * surfaces are different systems and not two roles in one: on
+     * {@code /internal/**} the brain does not look at a JWT at all
+     * ({@code BrainAccessFilter} skips the path), it compares this header in
+     * constant time. That is what makes those endpoints unreachable for a
+     * browser holding a user token — a property no role check can give.
+     *
+     * <p>Empty (the default) means the {@code /internal/}-based commands fail
+     * with a stated reason rather than a 401 nobody can interpret.
+     */
+    private String internalToken = "";
+
+    public String getInternalToken() {
+        return internalToken;
+    }
+
+    public void setInternalToken(String internalToken) {
+        this.internalToken = internalToken;
+    }
+
     public String getHttpBase() {
         return httpBase;
     }

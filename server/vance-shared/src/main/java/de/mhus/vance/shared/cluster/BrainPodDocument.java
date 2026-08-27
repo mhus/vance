@@ -157,4 +157,24 @@ public class BrainPodDocument {
      */
     @Builder.Default
     private boolean exclusive = false;
+
+    /**
+     * Runtime correction of {@link #resourcesMaxScore} — set when the
+     * configured cap turns out to be wrong and the pod should be recalibrated
+     * without a restart. {@code null} means "no override, use the configured
+     * value". Read only through {@link BrainPodCapacity}.
+     *
+     * <p><b>Never touched by the heartbeat</b>, unlike the configured value
+     * beside it. That asymmetry is the whole point: the beat keeps the
+     * configured number self-healing against a hand-edited row, and would
+     * delete a runtime write within a minute if it applied here too.
+     *
+     * <p>A second field rather than an overwritten one, because one field
+     * cannot say that it was overridden — and this value <em>does</em> quietly
+     * disappear on the next re-registration (the row is per JVM). Distinguishing
+     * "configured small" from "throttled at runtime" is what makes that
+     * disappearance explainable instead of mysterious; see
+     * {@link BrainPodCapacity} for the full reasoning.
+     */
+    private @Nullable Integer resourcesMaxScoreOverride;
 }

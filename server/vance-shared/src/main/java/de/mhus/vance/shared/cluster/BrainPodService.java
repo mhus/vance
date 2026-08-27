@@ -55,11 +55,21 @@ public class BrainPodService {
      * document; throws when the row has been removed externally (e.g.
      * by an admin purge).
      *
-     * <p>The three score fields are written on every beat so a
-     * configuration change on the pod ({@code resourcesStartupScore},
-     * {@code resourcesMaxScore}) reaches the registry without needing a
-     * separate update path, and the derived {@code resourcesCurrentScore}
-     * reflects the pod's current owned-projects load.
+     * <p>The three score fields are written on every beat. Only one of them
+     * <em>needs</em> to be: {@code resourcesCurrentScore} is derived per beat
+     * and is the pod's own measurement of its load. The other two re-assert the
+     * pod's configuration, and the original justification for that — "so a
+     * configuration change reaches the registry without a separate update path"
+     * — does not hold: {@code ClusterProperties} is bound once at context
+     * startup (no {@code @RefreshScope} anywhere), so a changed value needs a
+     * restart, and a restart registers a <em>new</em> row that carries it
+     * anyway. They are kept because re-asserting them costs nothing in the same
+     * update and makes a hand-edited row self-healing.
+     *
+     * <p><b>{@code resourcesMaxScoreOverride} is deliberately not in this
+     * list.</b> That is the runtime correction, and re-asserting it here would
+     * delete it within a minute — the same trap the labels below are exempt
+     * from. See {@link BrainPodCapacity}.
      *
      * <p>The {@code endpoint} is re-written on every beat too: a running
      * process whose host address changed underneath it (laptop sleep/resume,
@@ -113,21 +123,45 @@ public class BrainPodService {
      * a label, and with merge semantics the only way to do that would be a
      * second verb.
      *
+     * <p>{@code resourcesMaxScoreOverride} is the runtime correction of the
+     * configured cap and needs an extra parameter to clear it: {@code null}
+     * already means "leave alone" for every field here, so "back to the
+     * configured value" would otherwise be indistinguishable from saying
+     * nothing. See {@link BrainPodCapacity} for why it is a second field rather
+     * than an overwrite of the configured one.
+     *
      * @throws PodSelector.InvalidLabelException on a key or value outside the
      *     grammar — checked here so nothing unmatchable reaches persistence
+     * @throws IllegalArgumentException on an override below 1
      * @return the updated row, or empty when no pod carries {@code podId}
      */
     public Optional<BrainPodDocument> updatePlacement(
             String podId,
             @Nullable Map<String, String> labels,
-            @Nullable Boolean exclusive) {
+            @Nullable Boolean exclusive,
+            @Nullable Integer maxScoreOverride,
+            boolean clearMaxScoreOverride) {
         PodSelector.validate(labels);
+        if (maxScoreOverride != null && maxScoreOverride < 1) {
+            throw new IllegalArgumentException(
+                    "resourcesMaxScoreOverride must be at least 1 (was " + maxScoreOverride
+                            + ") — a cap of zero would read as a permanently full pod");
+        }
         Update update = new Update();
         if (labels != null) {
             update.set("labels", Map.copyOf(labels));
         }
         if (exclusive != null) {
             update.set("exclusive", exclusive);
+        }
+        // Clearing needs its own flag, because null already means "leave alone"
+        // for every other field here and the caller must be able to say "back to
+        // the configured value" without that being indistinguishable from
+        // saying nothing.
+        if (clearMaxScoreOverride) {
+            update.unset("resourcesMaxScoreOverride");
+        } else if (maxScoreOverride != null) {
+            update.set("resourcesMaxScoreOverride", maxScoreOverride);
         }
         if (update.getUpdateObject().isEmpty()) {
             return findByPodId(podId);

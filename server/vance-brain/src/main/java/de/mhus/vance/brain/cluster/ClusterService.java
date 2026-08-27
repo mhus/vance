@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.cluster;
 
+import de.mhus.vance.shared.cluster.BrainPodCapacity;
 import de.mhus.vance.shared.cluster.BrainPodDocument;
 import de.mhus.vance.shared.cluster.BrainPodService;
 import de.mhus.vance.shared.cluster.PodSelector;
@@ -256,18 +257,12 @@ public class ClusterService {
         Set<String> liveNames = liveClusterNodeNames();
         return brainPodService.listCluster(properties.getId()).stream()
                 .filter(p -> p.getNodeName() != null && liveNames.contains(p.getNodeName()))
-                .sorted((a, b) -> {
-                    double aLoad = loadFraction(a);
-                    double bLoad = loadFraction(b);
-                    return Double.compare(aLoad, bLoad);
-                })
+                .sorted((a, b) -> Double.compare(
+                        BrainPodCapacity.loadFraction(a), BrainPodCapacity.loadFraction(b)))
                 .toList();
     }
 
-    private static double loadFraction(BrainPodDocument pod) {
-        int max = Math.max(1, pod.getResourcesMaxScore());
-        return ((double) pod.getResourcesCurrentScore()) / max;
-    }
+
 
     /** This pod's own row, or empty if registration hasn't happened yet. */
     public Optional<BrainPodDocument> selfPod() {

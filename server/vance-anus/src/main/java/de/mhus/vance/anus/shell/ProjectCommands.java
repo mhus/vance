@@ -11,8 +11,12 @@ import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceReport;
 import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceReport.EntityResult;
 import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceReport.UnaccountedCollection;
 import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceService;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.function.Function;
 import org.apache.commons.lang3.StringUtils;
 import org.jline.reader.LineReader;
@@ -21,6 +25,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.shell.core.command.annotation.Command;
 import org.springframework.shell.core.command.annotation.Option;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * CRUD over {@link ProjectDocument}, plus the two service tasks that touch
@@ -42,6 +48,11 @@ public class ProjectCommands {
     private final ProjectMaintenanceService maintenanceService;
     // Lazy LineReader to avoid the Spring-Shell bean cycle — see AccessCommands.
     private final ObjectProvider<LineReader> lineReader;
+    /**
+     * Own instance — anus runs without web auto-configuration, so there is no
+     * Jackson 3 mapper bean to inject. Same as {@code ProjectKitsCommands}.
+     */
+    private final ObjectMapper objectMapper = JsonMapper.builder().build();
 
     public ProjectCommands(
             ProjectService projectService,
@@ -341,7 +352,278 @@ public class ProjectCommands {
         return op + " FAILED — HTTP " + response.statusCode() + "\n" + response.body();
     }
 
+    // ─── Placement lifecycle: where / claim / drain ─────────────────
+
+    @Command(name = {"project", "where"},
+            description = "Which pod currently holds the project, if any.")
+    public String where(
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name) {
+        Response response = brainClient.internal(homePath(tenant, name), "GET", null);
+        if (response.statusCode() == 404) {
+            return "not placed — " + response.body();
+        }
+        if (!response.isSuccess()) {
+            return "(HTTP " + response.statusCode() + " " + response.body() + ")";
+        }
+        return response.body();
+    }
+
+    @Command(name = {"project", "claim"},
+            description = "Place the project on a suitable pod — full placement with pod "
+                    + "search, NOT a local claim. Reports why if it cannot be placed.")
+    public String claim(
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name) {
+        // Deliberately not `project resume`: that one calls bring() on whichever
+        // pod answers the REST call, so it means "start it here". This asks the
+        // placement service, so the labels and the load decide.
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("tenantId", tenant);
+        payload.put("projectName", name);
+        Response response = brainClient.internal(
+                "/internal/cluster/place", "POST", objectMapper.writeValueAsString(payload));
+        return switch (response.statusCode()) {
+            case 200 -> "placed: " + response.body();
+            // Each of these is a different situation and a different next step,
+            // which is the whole reason the endpoint distinguishes them.
+            case 409 -> "already running: " + response.body();
+            case 503 -> "cannot be placed: " + response.body()
+                    + "\n(NO_ELIGIBLE_POD → provide a pod with matching labels; "
+                    + "NO_CAPACITY → the matching pods are full)";
+            case 502 -> "a pod was chosen but the bring failed: " + response.body();
+            case 404 -> "no such project";
+            default -> "(HTTP " + response.statusCode() + " " + response.body() + ")";
+        };
+    }
+
+    @Command(name = {"project", "drain"},
+            description = "Hand the project off its current pod: stop engines, snapshot the "
+                    + "workspace, drop the lease. Status stays RUNNING.")
+    public String drain(
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name,
+            @Option(longName = "place",
+                    description = "After draining, immediately place it again. Only useful "
+                            + "once this pod has been made ineligible — see the note below.",
+                    defaultValue = "false")
+            boolean place) {
+        // Two steps, and the first one is not ours: the release has to reach the
+        // holding pod, because it tears down in-memory state that exists only
+        // there. Asking the brain where that is beats teaching this CLI the
+        // lease TTL it cannot see.
+        Response home = brainClient.internal(homePath(tenant, name), "GET", null);
+        if (home.statusCode() == 404) {
+            return "nothing to drain — " + home.body();
+        }
+        if (!home.isSuccess()) {
+            return "(cannot resolve the home pod: HTTP " + home.statusCode()
+                    + " " + home.body() + ")";
+        }
+        String endpoint;
+        String nodeName;
+        try {
+            var parsed = objectMapper.readTree(home.body());
+            endpoint = parsed.get("endpoint").asString();
+            nodeName = parsed.has("nodeName") ? parsed.get("nodeName").asString() : endpoint;
+        } catch (RuntimeException e) {
+            return "(unreadable home-pod response: " + home.body() + ")";
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("tenantId", tenant);
+        payload.put("projectName", name);
+        String body = objectMapper.writeValueAsString(payload);
+        Response released = brainClient.internalAt(
+                normaliseBase(endpoint), "/internal/cluster/release", "POST", body);
+        if (released.statusCode() == 409) {
+            return "pod '" + nodeName + "' does not hold it (any more) — nothing drained";
+        }
+        if (!released.isSuccess()) {
+            return "(drain failed on '" + nodeName + "': HTTP " + released.statusCode()
+                    + " " + released.body() + ")";
+        }
+        String out = "drained from '" + nodeName + "' — status unchanged, nobody owns it now";
+        if (!place) {
+            // Said every time, because it is the part that surprises: this pod is
+            // still eligible and often the least loaded, so the next placement
+            // may well hand the project straight back.
+            return out + "\n(this pod is still eligible — make it ineligible first "
+                    + "(cluster pod exclusive / label-set) or it may take the project back)";
+        }
+        return out + "\n" + claim(tenant, name);
+    }
+
+    private static String homePath(String tenant, String name) {
+        return "/internal/cluster/projects/home?tenantId=" + tenant + "&projectName=" + name;
+    }
+
+    /** {@code host:port} from a pod row to an absolute URL. */
+    private static String normaliseBase(String endpoint) {
+        return endpoint.startsWith("http://") || endpoint.startsWith("https://")
+                ? endpoint : "http://" + endpoint;
+    }
+
+    // ─── Placement selector ─────────────────────────────────────────
+    //
+    // Over REST like lifecycle-type, not straight to ProjectService: the brain
+    // owns the write, and PodSelector.validate sits on that path. A selector
+    // written past it is one no pod label can ever match.
+    //
+    // Via /internal/**, not the tenant admin route, although both exist and do
+    // the same thing. The admin route belongs to a tenant administrator and is
+    // reachable from the Web-UI with a user token; this one belongs to the
+    // infrastructure actor that also labels the pods, which holds one
+    // credential for the whole cluster rather than one per tenant. anus is that
+    // actor.
+
+    @Command(name = {"project", "placement"},
+            description = "Show or set what a project requires of a pod: its placement "
+                    + "selector (matched against pod labels) and its resource score.")
+    public String placement(
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name,
+            @Option(longName = "selector", shortName = 's',
+                    description = "Comma-separated k=v pairs. REPLACES the whole selector; "
+                            + "use --add / --rm to change single entries. Omit to show.")
+            @Nullable String selector,
+            @Option(longName = "add",
+                    description = "Comma-separated k=v pairs to set, keeping the rest.")
+            @Nullable String add,
+            @Option(longName = "rm",
+                    description = "Comma-separated keys to remove, keeping the rest.")
+            @Nullable String rm,
+            @Option(longName = "clear",
+                    description = "Remove the whole selector — the project fits any pod again.",
+                    defaultValue = "false")
+            boolean clear,
+            @Option(longName = "score",
+                    description = "New homeResourceScore, at least 0.")
+            @Nullable String score) {
+        ProjectDocument current = projectService.findByTenantAndName(tenant, name)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "No project '" + name + "' in tenant '" + tenant + "'"));
+
+        int mutators = (selector != null ? 1 : 0) + (add != null ? 1 : 0)
+                + (rm != null ? 1 : 0) + (clear ? 1 : 0);
+        if (mutators > 1) {
+            return "(--selector, --add, --rm and --clear are mutually exclusive)";
+        }
+        if (mutators == 0 && StringUtils.isBlank(score)) {
+            return renderPlacement(current);
+        }
+
+        Integer parsedScore = null;
+        if (!StringUtils.isBlank(score)) {
+            // Parsed here for the same reason lifecycle-type parses its value:
+            // a bad argument must come back naming the option, not as an
+            // unexplained 400 from the far end.
+            try {
+                parsedScore = Integer.valueOf(score.trim());
+            } catch (NumberFormatException e) {
+                return "(--score must be an integer, got '" + score + "')";
+            }
+            if (parsedScore < 0) {
+                return "(--score must not be negative)";
+            }
+        }
+
+        Map<String, String> target = null;
+        List<String> missing = List.of();
+        if (clear) {
+            target = new TreeMap<>();
+        } else if (selector != null) {
+            target = parsePairs(selector);
+        } else if (add != null) {
+            // Read-modify-write against an endpoint that replaces the whole map:
+            // a concurrent write between read and send is lost. Fine for an
+            // interactive shell, and the reason --selector exists for anything
+            // that reconciles a desired state.
+            target = new TreeMap<>(currentSelector(current));
+            target.putAll(parsePairs(add));
+        } else if (rm != null) {
+            target = new TreeMap<>(currentSelector(current));
+            List<String> notFound = new ArrayList<>();
+            for (String key : splitCsv(rm)) {
+                if (target.remove(key) == null) notFound.add(key);
+            }
+            missing = notFound;
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("tenantId", tenant);
+        payload.put("projectName", name);
+        if (target != null) payload.put("placementSelector", target);
+        if (parsedScore != null) payload.put("homeResourceScore", parsedScore);
+
+        Response response = brainClient.internal(
+                "/internal/cluster/projects/placement", "POST",
+                objectMapper.writeValueAsString(payload));
+        if (!response.isSuccess()) {
+            return "(failed: HTTP " + response.statusCode() + " " + response.body() + ")";
+        }
+        String out = response.body();
+        // Reported, not an error: removing a key that is not there reaches the
+        // desired state, and failing would make the command non-idempotent.
+        return missing.isEmpty() ? out
+                : out + "\n(no such selector key, nothing removed: "
+                        + String.join(", ", missing) + ")";
+    }
+
+    private static Map<String, String> currentSelector(ProjectDocument project) {
+        Map<String, String> selector = project.getPlacementSelector();
+        return selector == null ? Map.of() : selector;
+    }
+
+    /**
+     * The read half. Names {@code pendingSince} explicitly rather than leaving
+     * it out: a project with a selector nothing satisfies looks identical to a
+     * correctly placed one in every other field.
+     */
+    private static String renderPlacement(ProjectDocument project) {
+        Map<String, String> selector = new TreeMap<>(currentSelector(project));
+        StringBuilder out = new StringBuilder();
+        out.append("project    ").append(project.getTenantId()).append('/')
+                .append(project.getName()).append('\n');
+        out.append("selector   ").append(selector.isEmpty()
+                ? "(none — fits any pod that is not exclusive)"
+                : selector.entrySet().stream()
+                        .map(e -> e.getKey() + "=" + e.getValue())
+                        .collect(java.util.stream.Collectors.joining(","))).append('\n');
+        out.append("score      ").append(project.getHomeResourceScore()).append('\n');
+        out.append("status     ").append(project.getStatus()).append('\n');
+        out.append("homeNode   ").append(project.getHomeNode() == null
+                ? "— (nobody owns it)" : project.getHomeNode()).append('\n');
+        if (project.getPendingSince() != null) {
+            out.append("WAITING    since ").append(project.getPendingSince())
+                    .append(" — no pod matched at the last attempt\n");
+        }
+        return out.toString();
+    }
+
+    /** Comma-separated {@code k=v} pairs to a map. */
+    private static Map<String, String> parsePairs(@Nullable String csv) {
+        Map<String, String> out = new TreeMap<>();
+        for (String pair : splitCsv(csv)) {
+            int eq = pair.indexOf('=');
+            if (eq <= 0 || eq == pair.length() - 1) {
+                throw new IllegalArgumentException("Expected k=v, got '" + pair + "'");
+            }
+            out.put(pair.substring(0, eq), pair.substring(eq + 1));
+        }
+        return out;
+    }
+
+    private static List<String> splitCsv(@Nullable String csv) {
+        if (StringUtils.isBlank(csv)) return List.of();
+        return Arrays.stream(csv.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
+    }
+
     private static @Nullable List<String> parseList(@Nullable String csv) {
+
         if (StringUtils.isBlank(csv)) {
             return null;
         }

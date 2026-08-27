@@ -102,6 +102,22 @@ public class BrainPodInsightsDto {
     private int resourcesMaxScore;
 
     /**
+     * Runtime correction of {@link #resourcesMaxScore}, or {@code null} when
+     * none is set. Carried separately rather than folded into the value above
+     * so the dashboard can say <em>that</em> the cap was overridden — it
+     * disappears on the next pod re-registration, and a number that silently
+     * changes back needs to have announced itself as temporary.
+     */
+    private @Nullable Integer resourcesMaxScoreOverride;
+
+    /**
+     * The cap placement actually compares against — {@code override ?? max},
+     * clamped to at least 1. Sent computed so no client re-implements the
+     * precedence rule and gets it subtly wrong.
+     */
+    private int effectiveMaxScore;
+
+    /**
      * Projects this pod currently owns <em>that belong to the
      * requesting tenant</em>. Other tenants' projects are filtered out
      * server-side and never appear here. Each entry carries the

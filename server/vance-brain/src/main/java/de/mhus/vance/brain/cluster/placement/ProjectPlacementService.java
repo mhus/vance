@@ -3,6 +3,7 @@ package de.mhus.vance.brain.cluster.placement;
 import de.mhus.vance.brain.cluster.ClusterBringClient;
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
+import de.mhus.vance.shared.cluster.BrainPodCapacity;
 import de.mhus.vance.shared.cluster.BrainPodDocument;
 import de.mhus.vance.shared.cluster.PodSelector;
 import de.mhus.vance.shared.metric.MetricService;
@@ -238,7 +239,7 @@ public class ProjectPlacementService {
 
     public int localHeadroom() {
         return clusterService.selfPod()
-                .map(pod -> Math.max(1, pod.getResourcesMaxScore()) - pod.getResourcesCurrentScore())
+                .map(BrainPodCapacity::headroom)
                 .orElse(Integer.MAX_VALUE);
     }
 
@@ -330,8 +331,7 @@ public class ProjectPlacementService {
                 continue;
             }
             anyEligible = true;
-            int max = Math.max(1, pod.getResourcesMaxScore());
-            if (projected[i] + score <= max) {
+            if (projected[i] + score <= BrainPodCapacity.effectiveMaxScore(pod)) {
                 return new PlacementDecision.On(pod);
             }
         }

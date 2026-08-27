@@ -452,6 +452,53 @@ class ProjectPlacementServiceTest {
         assertThat(placement.isEligibleHere("acme", "trainer")).isFalse();
     }
 
+    // ─── capacity override ──────────────────────────────────────────
+
+    private static BrainPodDocument capped(
+            String node, int current, int max, Integer override) {
+        return BrainPodDocument.builder()
+                .nodeName(node).endpoint(node + ":9990")
+                .resourcesCurrentScore(current).resourcesMaxScore(max)
+                .resourcesMaxScoreOverride(override)
+                .build();
+    }
+
+    @Test
+    void decide_respectsARuntimeCapOverride() {
+        // The configured cap would fit the project; the override does not. If any
+        // of the three readers had kept reading the raw field, the pod would
+        // still look available and the override would be decoration.
+        givenSelfPod(100, 100);
+        when(clusterService.liveClusterPods())
+                .thenReturn(List.of(capped("throttled", 90, 10000, 95)));
+
+        assertThat(placement.decide(project("p1", 10), PlacementTrigger.DISTRIBUTOR))
+                .isEqualTo(new PlacementDecision.Unschedulable(PlacementGap.NO_CAPACITY));
+    }
+
+    @Test
+    void localHeadroom_followsTheOverride() {
+        when(clusterService.selfPod())
+                .thenReturn(Optional.of(capped(SELF_NODE, 90, 10000, 95)));
+
+        assertThat(placement.localHeadroom()).isEqualTo(5);
+    }
+
+    @Test
+    void decide_anOverrideThatRaisesTheCapMakesRoom() {
+        // Recalibration upwards is the case the field exists for: the configured
+        // value was wrong, not the pod.
+        givenSelfPod(100, 100);
+        when(clusterService.liveClusterPods())
+                .thenReturn(List.of(capped("recalibrated", 90, 100, 5000)));
+
+        PlacementDecision decision = placement.decide(project("p1", 500),
+                PlacementTrigger.DISTRIBUTOR);
+
+        assertThat(((PlacementDecision.On) decision).pod().getNodeName())
+                .isEqualTo("recalibrated");
+    }
+
     // ─── headroom ───────────────────────────────────────────────────
 
     @Test

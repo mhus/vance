@@ -21,5 +21,7 @@ export interface BrainPodInsightsDto {
   exclusive: boolean;
   resourcesCurrentScore: number;
   resourcesMaxScore: number;
+  resourcesMaxScoreOverride?: number;
+  effectiveMaxScore: number;
   tenantProjects: BrainPodProjectInsightsDto[];
 }

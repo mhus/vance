@@ -95,7 +95,12 @@ public class OneShotCommandRunner implements ApplicationRunner {
             }
             return 0;
         } catch (Exception e) {
-            log.error("--sudo command failed: {}", e.toString());
+            // With the stack trace, not just the message. Spring Shell wraps
+            // whatever a command threw in a CommandExecutionException whose own
+            // message is only "Unable to execute command <name>" — without the
+            // cause a headless failure is undiagnosable, which is the same gap
+            // the commands themselves close by returning their errors as text.
+            log.error("--sudo command failed: {}", e.toString(), e);
             return 1;
         } finally {
             accessService.logout();

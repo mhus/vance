@@ -1,6 +1,7 @@
 package de.mhus.vance.anus.cluster;
 
 import de.mhus.vance.anus.brain.AnusBrainClient;
+import de.mhus.vance.anus.brain.AnusBrainClient.BrainCallException;
 import de.mhus.vance.anus.brain.AnusBrainClient.Response;
 import de.mhus.vance.shared.project.ProjectDocument;
 import java.util.LinkedHashMap;
@@ -99,7 +100,16 @@ public class ProjectClusterService {
      * configuration.
      */
     public HomeLookup home(String tenant, String name) {
-        Response response = brainClient.internal(homePath(tenant, name), "GET", null);
+        Response response;
+        try {
+            response = brainClient.internal(homePath(tenant, name), "GET", null);
+        } catch (BrainCallException e) {
+            // A brain that does not answer is the same answer as one that
+            // answers an error: we do not know who holds the project. Left
+            // uncaught this used to abort the command with a stack trace.
+            return new HomeLookup(Holder.UNREACHABLE, null, null,
+                    String.valueOf(e.getMessage()));
+        }
         if (response.statusCode() == 404) {
             return new HomeLookup(Holder.NONE, null, null, response.body());
         }
@@ -211,9 +221,21 @@ public class ProjectClusterService {
                     "(unreadable home-pod response: " + home.detail() + ")");
         }
         String nodeName = home.nodeName() == null ? String.valueOf(home.endpoint()) : home.nodeName();
-        Response released = brainClient.internalAt(
-                normaliseBase(String.valueOf(home.endpoint())),
-                "/internal/cluster/release", "POST", json(tenant, name));
+        Response released;
+        try {
+            released = brainClient.internalAt(
+                    normaliseBase(String.valueOf(home.endpoint())),
+                    "/internal/cluster/release", "POST", json(tenant, name));
+        } catch (BrainCallException e) {
+            // The holder is unreachable — which is exactly the situation the
+            // whole "refuse unless --force" policy exists for, and it used to
+            // throw straight past it: a hard-killed pod leaves a live lease, so
+            // this is the common case, not an exotic one. Reported as PLACED
+            // and not released, so drainBefore blocks and the operator gets the
+            // sentence naming --force.
+            return new DrainOutcome(Placement.PLACED, false,
+                    "(drain failed on '" + nodeName + "': " + e.getMessage() + ")");
+        }
         if (released.statusCode() == 409) {
             // The lease moved or expired between the lookup and here. Not a
             // clean hand-off and not a safe "nobody owns it": another pod may

@@ -53,6 +53,39 @@ class ProjectCommandsConfirmationTest {
     }
 
     @Test
+    void delete_refuses_whenTheReaderHitsEndOfInput() {
+        // The realistic --sudo case, and the one the null check above does NOT
+        // cover: the LineReader bean exists there, it just has no stdin behind
+        // it. Until this was handled the command died with a stack trace and
+        // the operator never saw the sentence naming --confirm — measured
+        // against a live pair of brains.
+        LineReader reader = mock(LineReader.class);
+        when(lineReader.getIfAvailable()).thenReturn(reader);
+        when(reader.readLine(org.mockito.ArgumentMatchers.anyString()))
+                .thenThrow(new org.jline.reader.EndOfFileException());
+
+        String out = commands.delete("acme", "p1", null, false, NO_DRAIN);
+
+        assertThat(out).contains("--confirm p1");
+        verify(maintenanceService, never()).delete("acme", "p1", false);
+    }
+
+    @Test
+    void delete_refuses_whenTheOperatorInterruptsThePrompt() {
+        // Ctrl-C at the prompt is a person declining — same answer, reached
+        // deliberately rather than by running out of input.
+        LineReader reader = mock(LineReader.class);
+        when(lineReader.getIfAvailable()).thenReturn(reader);
+        when(reader.readLine(org.mockito.ArgumentMatchers.anyString()))
+                .thenThrow(new org.jline.reader.UserInterruptException(""));
+
+        String out = commands.delete("acme", "p1", null, false, NO_DRAIN);
+
+        assertThat(out).contains("--confirm p1");
+        verify(maintenanceService, never()).delete("acme", "p1", false);
+    }
+
+    @Test
     void delete_refuses_whenTheTypedNameDoesNotMatch() {
         String out = commands.delete("acme", "p1", "p2", false, NO_DRAIN);
 

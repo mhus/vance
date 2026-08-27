@@ -8,6 +8,7 @@ import de.mhus.vance.shared.cluster.BrainPodCapacity;
 import de.mhus.vance.shared.cluster.BrainPodDocument;
 import de.mhus.vance.shared.tenant.TenantService;
 import java.time.Duration;
+import org.springframework.boot.convert.DurationStyle;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -341,9 +342,9 @@ public class ClusterCommands {
             @Nullable String cluster,
             @Option(longName = "stale-after",
                     description = "Heartbeat threshold. Pods whose lastHeartbeatAt is older "
-                            + "than now - this duration are pruned.",
+                            + "than now - this duration are pruned. '2m' or 'PT2M'.",
                     defaultValue = "2m")
-            Duration staleAfter,
+            String staleAfter,
             @Option(longName = "probe",
                     description = "Additionally prune pods whose endpoint responds with a "
                             + "different podId (live identity mismatch). Requires the "
@@ -358,12 +359,24 @@ public class ClusterCommands {
                     description = "Actually delete the rows. Default is dry-run.",
                     defaultValue = "false")
             boolean apply) {
+        // Parsed here, not bound. This @Option used to declare Duration
+        // directly, and Spring Shell has no String→Duration converter — the
+        // command failed with a ConverterNotFoundException wrapped in "Unable to
+        // execute command cluster prune" for every invocation, including the
+        // default. DurationStyle takes both the short form and ISO-8601.
+        Duration threshold;
+        try {
+            threshold = DurationStyle.detectAndParse(staleAfter);
+        } catch (IllegalArgumentException e) {
+            return "(--stale-after must be a duration like '2m' or 'PT2M', got '"
+                    + staleAfter + "')";
+        }
         List<BrainPodDocument> pods = podService.pods(cluster);
         if (pods.isEmpty()) {
             return cluster == null ? "(no pods registered)"
                     : "(no pods registered in cluster '" + cluster + "')";
         }
-        var candidates = podService.pruneCandidates(pods, staleAfter, probe, tenant);
+        var candidates = podService.pruneCandidates(pods, threshold, probe, tenant);
         if (candidates.isEmpty()) {
             return "Nothing to prune (scanned " + pods.size() + " pod"
                     + (pods.size() == 1 ? "" : "s") + ").";

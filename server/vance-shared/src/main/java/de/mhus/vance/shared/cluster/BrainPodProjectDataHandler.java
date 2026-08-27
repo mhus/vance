@@ -64,13 +64,28 @@ public class BrainPodProjectDataHandler implements ProjectDataHandler {
     @Override
     public long rename(String tenantId, String projectId, String newProjectId) {
         // $set on the positional operator would need the matched index; pulling
-        // and adding is two writes on a list of a few dozen strings, and it is
-        // idempotent, which a positional update is not.
+        // and adding is idempotent, which a positional update is not.
+        //
+        // Two round trips, and that is not a choice: Mongo rejects a single
+        // update that touches one path twice ("Updating the path
+        // 'activeProjects' would create a conflict"), so the previous one-call
+        // version threw for every rename. The comment above already said "two
+        // writes" — the code did not. Found by running project rename against a
+        // live pair of brains.
+        //
+        // Add first, then remove: the window in between has the project under
+        // both names, which is a cosmetic duplicate in a display list. The other
+        // order has a window with neither, and a heartbeat landing there would
+        // publish a pod that looks idle.
         long changed = mongoTemplate.updateMulti(
                         scope(projectId),
-                        new Update().pull(F_ACTIVE, projectId).addToSet(F_ACTIVE, newProjectId),
+                        new Update().addToSet(F_ACTIVE, newProjectId),
                         BrainPodDocument.class)
                 .getModifiedCount();
+        mongoTemplate.updateMulti(
+                scope(projectId),
+                new Update().pull(F_ACTIVE, projectId),
+                BrainPodDocument.class);
         return changed;
     }
 

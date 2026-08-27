@@ -7,9 +7,11 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static java.util.Objects.requireNonNull;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.anus.brain.AnusBrainClient;
+import de.mhus.vance.anus.brain.AnusBrainClient.BrainCallException;
 import de.mhus.vance.anus.brain.AnusBrainClient.Response;
 import de.mhus.vance.anus.cluster.ProjectClusterService.DrainVerdict;
 import de.mhus.vance.anus.cluster.ProjectClusterService.Holder;
@@ -264,6 +266,49 @@ class ProjectClusterServiceTest {
         ProjectDocument project = ProjectDocument.builder().tenantId("acme").name("p1").build();
 
         assertThat(ProjectClusterService.selectorOf(project)).isEmpty();
+    }
+
+    // ─── transport failures ─────────────────────────────────────────────────
+
+    @Test
+    void home_aBrainThatDoesNotAnswerIsUnreachable_notAnException() {
+        // Left uncaught this aborted the whole command with a stack trace.
+        when(client.internal(contains(HOME), eq("GET"), any()))
+                .thenThrow(new BrainCallException("connect timed out", null));
+
+        var home = service.home("acme", "p1");
+
+        assertThat(home.holder()).isEqualTo(Holder.UNREACHABLE);
+    }
+
+    @Test
+    void drain_anUnreachableHolderBlocks_insteadOfThrowing() {
+        // The case the refuse-unless-force policy exists for, and the common
+        // one: a hard-killed pod leaves a live lease, so the lookup succeeds
+        // and the release cannot connect. Until this was caught, the exception
+        // flew straight past the policy.
+        givenHeld();
+        when(client.internalAt(any(), any(), any(), any()))
+                .thenThrow(new BrainCallException("connection refused", null));
+
+        var decision = service.drainBefore("acme", "p1", false, /* force */ false);
+
+        assertThat(decision.verdict()).isEqualTo(DrainVerdict.BLOCKED);
+        assertThat(decision.abort()).isTrue();
+        assertThat(requireNonNull(decision.outcome()).message())
+                .contains("drain failed on 'pod-a'");
+    }
+
+    @Test
+    void drain_anUnreachableHolderWithForce_proceeds() {
+        givenHeld();
+        when(client.internalAt(any(), any(), any(), any()))
+                .thenThrow(new BrainCallException("connection refused", null));
+
+        var decision = service.drainBefore("acme", "p1", false, /* force */ true);
+
+        assertThat(decision.verdict()).isEqualTo(DrainVerdict.FORCED);
+        assertThat(decision.abort()).isFalse();
     }
 
     private void givenHeld() {

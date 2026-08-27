@@ -3,6 +3,8 @@ package de.mhus.vance.shared.ursascheduler;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -10,6 +12,7 @@ import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.MongoTemplate;
 
 /**
@@ -38,6 +41,37 @@ class OneShotFireProjectDataHandlerTest {
     void idPrefix_isTheMarkerIdWithoutTheSchedulerName() {
         assertThat(OneShotFireDocument.markerId("acme", "p1", "nightly"))
                 .startsWith(OneShotFireDocument.idPrefix("acme", "p1"));
+    }
+
+    @Test
+    void scope_isBsonEncodable_becauseTheIdSeparatorIsANul() {
+        // The bug this test exists for: the predicate used to be a regex on the
+        // _id prefix, and a BSON regular expression travels as a cstring, which
+        // cannot contain a NUL. markerId separates its parts with '\0', so
+        // every call built a valid java.util.regex pattern and then died in the
+        // driver with BsonSerializationException — count, delete and rename
+        // alike, for every project. The old tests mocked the template away and
+        // never encoded anything, which is why they all passed.
+        //
+        // So this encodes the query the handler hands over. It does not inspect
+        // the shape: any predicate that survives the wire is fine, and pinning
+        // $gte/$lt would forbid a future improvement for no gain.
+        handler.count("acme", "some-project");
+
+        ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).count(query.capture(), eq(OneShotFireDocument.class));
+        assertThatCode(() -> encode(query.getValue().getQueryObject()))
+                .as("the predicate has to survive BSON encoding")
+                .doesNotThrowAnyException();
+    }
+
+    /** Encodes a query document the way the driver does before sending it. */
+    private static void encode(org.bson.Document document) {
+        org.bson.io.BasicOutputBuffer buffer = new org.bson.io.BasicOutputBuffer();
+        try (org.bson.BsonBinaryWriter writer = new org.bson.BsonBinaryWriter(buffer)) {
+            new org.bson.codecs.DocumentCodec().encode(
+                    writer, document, org.bson.codecs.EncoderContext.builder().build());
+        }
     }
 
     @Test

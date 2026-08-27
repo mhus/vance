@@ -3,7 +3,6 @@ package de.mhus.vance.shared.ursascheduler;
 import de.mhus.vance.shared.project.maintenance.ProjectDataHandler;
 import java.util.List;
 import java.util.Set;
-import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -101,16 +100,38 @@ public class OneShotFireProjectDataHandler implements ProjectDataHandler {
     }
 
     /**
-     * Markers of one project, matched on the {@code _id} prefix in both
-     * shapes. {@link Pattern#quote} because a project name is not a regular
-     * expression — an unescaped {@code .} would match a neighbour.
+     * Markers of one project, matched on the {@code _id} prefix in both shapes.
+     *
+     * <p><b>A range, not a regex.</b> The current id shape separates its parts
+     * with {@code \0} ({@code OneShotFireDocument.SEPARATOR}), and a BSON
+     * regular expression is transported as a cstring — which cannot contain a
+     * NUL. Every call built the pattern successfully in Java and then failed at
+     * serialisation with {@code BsonSerializationException}, so {@code count},
+     * {@code delete} and {@code rename} all threw for every project. Found by
+     * running {@code project inspect} against a live pair of brains.
+     *
+     * <p>A {@code >= prefix < prefix⁺} range says the same thing, uses the
+     * {@code _id} index the same way, and carries the NUL as ordinary string
+     * content. It compares bytes rather than characters, which is exact here
+     * because tenant and project names are restricted to the {@code name}
+     * grammar — no multi-byte code point can reorder against the boundary.
      */
     private Query scope(String tenantId, String projectId) {
-        String current = "^" + Pattern.quote(OneShotFireDocument.idPrefix(tenantId, projectId));
-        String legacy =
-                "^" + Pattern.quote(OneShotFireDocument.legacyIdPrefix(tenantId, projectId));
         return new Query(new Criteria().orOperator(
-                Criteria.where("_id").regex(current),
-                Criteria.where("_id").regex(legacy)));
+                prefixRange(OneShotFireDocument.idPrefix(tenantId, projectId)),
+                prefixRange(OneShotFireDocument.legacyIdPrefix(tenantId, projectId))));
+    }
+
+    /**
+     * {@code _id} beginning with {@code prefix}, as a half-open range.
+     *
+     * <p>The upper bound raises the prefix's last character by one: every
+     * string that starts with the prefix sorts before that, and nothing else
+     * does.
+     */
+    private static Criteria prefixRange(String prefix) {
+        String upper = prefix.substring(0, prefix.length() - 1)
+                + (char) (prefix.charAt(prefix.length() - 1) + 1);
+        return Criteria.where("_id").gte(prefix).lt(upper);
     }
 }

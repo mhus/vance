@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.kit;
 
 import de.mhus.vance.api.kit.KitConfigDto;
+import de.mhus.vance.api.kit.KitDescriptorDto;
 import de.mhus.vance.api.kit.KitInstalledRecordDto;
 import de.mhus.vance.api.kit.KitManifestDto;
 import de.mhus.vance.api.kit.KitOriginDto;
@@ -35,6 +36,9 @@ import org.springframework.stereotype.Service;
  *       for the UI's policy editor, never for the install path.</li>
  *   <li>{@code _vance/kits/manifest.yaml} — at most one, says "this
  *       project is a kit source". Only written on explicit request.</li>
+ *   <li>{@code _vance/kits/kit.yaml} — the authored descriptor beside that
+ *       manifest, holding the fields the manifest cannot derive. Written and
+ *       removed together with it; see {@link #DESCRIPTOR_PATH}.</li>
  * </ul>
  *
  * <p>Spec: {@code planning/kit-installed-multi.md} §2, §D10.
@@ -52,6 +56,27 @@ public class KitRecordStore {
     public static final String CONFIG_PREFIX = KITS_PREFIX + "config/";
 
     public static final String MANIFEST_PATH = KITS_PREFIX + "manifest.yaml";
+
+    /**
+     * The authored kit descriptor, kept beside the manifest.
+     *
+     * <p>Exists because the manifest cannot hold it. A manifest states name,
+     * description, version, inherits and the encrypted-secrets flag — the five
+     * things it can derive from what was installed. Everything else an author
+     * writes into a {@code kit.yaml} ({@code sealed}, {@code installable},
+     * {@code artifact}, {@code policy}, {@code vendor}, {@code license},
+     * {@code homepage}, {@code render}) lived <em>only</em> in the git
+     * repository, which had two consequences: an export into a fresh
+     * repository silently dropped every one of them, and a project could not
+     * serve as a kit source at all without losing the flags that say how the
+     * kit may be used.
+     *
+     * <p>So the project keeps its own copy. Written wherever
+     * {@link #saveManifest} is — being a kit source is one state, described by
+     * two documents — and read by the exporter as the base it lays the
+     * manifest's five fields on top of.
+     */
+    public static final String DESCRIPTOR_PATH = KITS_PREFIX + "kit.yaml";
 
     private static final String YAML_SUFFIX = ".yaml";
 
@@ -252,6 +277,36 @@ public class KitRecordStore {
 
     public void removeManifest(String tenantId, String projectId) {
         deleteDocument(tenantId, projectId, MANIFEST_PATH);
+        deleteDocument(tenantId, projectId, DESCRIPTOR_PATH);
+    }
+
+    /**
+     * The authored descriptor of the kit this project is the source of, or
+     * {@code null} when there is none.
+     *
+     * <p>Malformed is treated as absent, same as {@link #loadManifest}: the
+     * caller's fallback (the clone's file, then the generated form) is a
+     * better outcome than a failed export.
+     */
+    public @Nullable KitDescriptorDto loadDescriptor(String tenantId, String projectId) {
+        Optional<DocumentDocument> doc =
+                documentService.findByPath(tenantId, projectId, DESCRIPTOR_PATH);
+        if (doc.isEmpty()) return null;
+        String content = readText(doc.get(), DESCRIPTOR_PATH);
+        if (content == null) return null;
+        try {
+            return KitYamlMapper.parseDescriptor(content);
+        } catch (KitException e) {
+            log.warn("KitRecordStore: descriptor at {} is malformed: {} — treating as absent",
+                    DESCRIPTOR_PATH, e.getMessage());
+            return null;
+        }
+    }
+
+    public void saveDescriptor(String tenantId, String projectId, KitDescriptorDto descriptor,
+            @Nullable String actor) {
+        writeDocument(tenantId, projectId, DESCRIPTOR_PATH,
+                KitYamlMapper.writeDescriptor(descriptor), "Kit Descriptor", actor);
     }
 
     // ──────────────────── guard ────────────────────

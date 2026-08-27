@@ -56,7 +56,8 @@ public class KitStoreCredentials {
             @Nullable String explicitToken) {
 
         if (url == null || url.isBlank()) {
-            return new KitAccess(tenantId, projectId, explicitToken, null, java.util.Map.of(), null, null);
+            return new KitAccess(tenantId, projectId, explicitToken, null, java.util.Map.of(),
+                    null, null, userId, true);
         }
         KitSourceDto source;
         try {
@@ -67,7 +68,8 @@ public class KitStoreCredentials {
             // logic and failing the whole install over a missing credential
             // lookup would be the wrong trade.
             log.debug("KitStoreCredentials: no source for {} — proceeding without settings", url);
-            return new KitAccess(tenantId, projectId, explicitToken, null, java.util.Map.of(), null, null);
+            return new KitAccess(tenantId, projectId, explicitToken, null, java.util.Map.of(),
+                    null, null, userId, true);
         }
 
         String account = settings.getStringValueUserProjectCascade(
@@ -78,6 +80,11 @@ public class KitStoreCredentials {
             token = settings.getDecryptedPasswordUserProjectCascade(
                     tenantId, userId, projectId, null, TOKEN_KEY_PREFIX + source.getId());
         }
-        return new KitAccess(tenantId, projectId, token, account, java.util.Map.of(), null, null);
+        // The actor rides along on every path, including the two early
+        // returns: a PROJECT source is authorized against the person, and an
+        // access object that quietly lost the name would be authorized as
+        // SYSTEM instead — allow-by-omission in the one place it must not be.
+        return new KitAccess(tenantId, projectId, token, account, java.util.Map.of(),
+                null, null, userId, true);
     }
 }

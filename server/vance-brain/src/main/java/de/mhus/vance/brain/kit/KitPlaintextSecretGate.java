@@ -66,6 +66,7 @@ public class KitPlaintextSecretGate {
         if (!Files.isDirectory(settingsRoot)) return;
 
         List<String> offending = new ArrayList<>();
+        List<String> serverEncrypted = new ArrayList<>();
         try (Stream<Path> files = Files.list(settingsRoot)) {
             for (Path file : files.sorted().toList()) {
                 String filename = file.getFileName().toString();
@@ -99,13 +100,32 @@ public class KitPlaintextSecretGate {
                             e.getMessage());
                     continue;
                 }
-                if (encoding != KitSecretEncoding.VAULT) {
+                if (encoding == KitSecretEncoding.PLAIN) {
                     offending.add(filename);
+                } else if (encoding == KitSecretEncoding.SERVER) {
+                    serverEncrypted.add(filename);
                 }
             }
         } catch (IOException e) {
             throw new KitException("failed to list " + settingsRoot, e);
         }
+        // Checked separately from PLAIN, because the two are not the same
+        // claim and are permitted from different sources. A SERVER blob is not
+        // in the clear — it is encrypted with *this deployment's* key, which
+        // makes it readable here and nowhere else. So the refusal is not about
+        // exposure but about a kit that would be undecryptable the moment it
+        // travelled: committed to git, it installs everywhere as a credential
+        // nothing can open. Better refused where it is written.
+        if (!serverEncrypted.isEmpty() && config.getType() != KitSourceType.PROJECT) {
+            throw new KitException("kit source '" + config.getId() + "' is of type "
+                    + config.getType() + " and may not deliver a credential encrypted with"
+                    + " this server's key: " + serverEncrypted + " declare"
+                    + " `encoding: server`. Only a PROJECT source may, because both ends of"
+                    + " that transfer are this same installation — anywhere else the value"
+                    + " could never be opened again. Re-encrypt with a vault password and"
+                    + " declare `encoding: vault` instead.");
+        }
+
         if (offending.isEmpty()) return;
 
         if (config.getType() == KitSourceType.ODE) {

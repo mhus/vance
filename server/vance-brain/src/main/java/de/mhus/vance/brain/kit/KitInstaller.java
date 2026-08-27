@@ -209,6 +209,14 @@ public class KitInstaller {
         if (writeManifest || isAuthoringSourceOf(tenantId, projectId, recordId, top)) {
             recordStore.saveManifest(tenantId, projectId,
                     buildManifest(top, source, resolved, scan, actor), actor);
+            // Beside it, verbatim: the top layer's own kit.yaml. The manifest
+            // can only state five of its fields, and the rest — sealed,
+            // installable, artifact, policy, vendor, license, homepage,
+            // render — used to exist nowhere but the remote repository. A
+            // project that is the source of a kit now holds the whole
+            // descriptor, so an export into a fresh repository keeps it and a
+            // project serving as a kit source can hand it on.
+            recordStore.saveDescriptor(tenantId, projectId, top, actor);
         }
         return result.build();
     }
@@ -798,6 +806,33 @@ public class KitInstaller {
                     settingService.setEncryptedSecret(
                             tenantId, SettingService.SCOPE_PROJECT, projectId, key,
                             parsed.value(), parsed.type());
+                } else if (parsed.encoding() == KitSecretEncoding.SERVER) {
+                    // Already a server-key blob, so it is stored as it stands —
+                    // only a PROJECT source may say this, and the gate refused
+                    // every other kind before the tree was merged. No vault
+                    // password, and no plaintext at any point: the value came
+                    // out of a row of this same deployment and goes into
+                    // another one.
+                    //
+                    // Asked as an outcome rather than a predicate here because
+                    // the comparison needs the blob opened, and that has to
+                    // happen inside the service — same rule as the vault path
+                    // below.
+                    SettingService.SecretImportOutcome outcome =
+                            settingService.storeServerEncrypted(
+                                    tenantId, SettingService.SCOPE_PROJECT, projectId, key,
+                                    parsed.value(), parsed.type());
+                    if (outcome == SettingService.SecretImportOutcome.FAILED) {
+                        skippedPw.add(key);
+                        keepOwnership(known.get(key), artefacts);
+                        continue;
+                    }
+                    if (outcome == SettingService.SecretImportOutcome.UNCHANGED) {
+                        log.debug("KitInstaller: carried credential for '{}/{}/{}' is "
+                                + "unchanged", tenantId, projectId, key);
+                        keepOwnership(known.get(key), artefacts);
+                        continue;
+                    }
                 } else {
                     if (vaultPassword == null || vaultPassword.isBlank()) {
                         if (!haveWarnedAboutMissingVault && kitDeclaresEncrypted) {

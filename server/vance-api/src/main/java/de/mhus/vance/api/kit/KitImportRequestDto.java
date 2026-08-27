@@ -61,6 +61,37 @@ public class KitImportRequestDto {
     private boolean keepPasswords = false;
 
     /**
+     * {@link KitSourceType#PROJECT} only: whether the source project hands
+     * over the credentials its manifest declares. Ignored by every other
+     * source type — there the question is answered by the vault passphrase.
+     *
+     * <p><b>Default on.</b> The manifest's {@code settings:} list is an
+     * author's statement that a key belongs to the kit, so a kit declaring
+     * its SMTP password means to ship it; suppressing that quietly leaves an
+     * installation that does not work and nobody able to say why. Turned off
+     * when the copy should carry the shape of the kit but not its secrets —
+     * the report then names the keys that were left out.
+     *
+     * <p>Not to be confused with {@link #keepPasswords}, which is the
+     * mirror-image question on the <em>target</em> side: whether credentials
+     * already in the destination project survive the write.
+     *
+     * <p><b>{@code Boolean}, not {@code boolean}, and no {@code @Builder.Default}</b>
+     * — the one place in this class where that matters. Lombok moves a
+     * {@code @Builder.Default} initialiser onto the builder and drops it from
+     * the field (see the note in {@code KitExporter.writeDescriptor}, which hit
+     * the same thing), so a request deserialised by Jackson without this field
+     * would arrive as {@code false}: the opposite of the intended default,
+     * silently, on every REST call that does not mention it. The other flags
+     * here default to {@code false} and hide the problem behind the zero value.
+     *
+     * <p>So {@code null} is a state with a meaning: "not stated", which the
+     * server reads as on. The client only sends the field when a person
+     * changed it.
+     */
+    private @Nullable Boolean copySecrets;
+
+    /**
      * Install/update only: additionally mark this project as a kit
      * <i>source</i> by writing {@code _vance/kits/manifest.yaml}, which
      * is what {@code export} works from.

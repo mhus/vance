@@ -8,6 +8,7 @@ import de.mhus.vance.api.kit.KitInstalledRecordDto;
 import de.mhus.vance.api.kit.KitLibraryEntryDto;
 import de.mhus.vance.api.kit.KitManifestDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
+import de.mhus.vance.api.kit.KitSourceProjectDto;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.kit.KitException;
@@ -51,6 +52,7 @@ public class KitAdminController {
 
     private final KitService kitService;
     private final KitLibraryService libraryService;
+    private final KitSourceProjectService sourceProjectService;
     private final RequestAuthority authority;
 
     /** The kits installed in this project, in layer order. */
@@ -191,6 +193,29 @@ public class KitAdminController {
         } catch (KitException e) {
             throw kitError(e);
         }
+    }
+
+    /**
+     * The projects of this tenant that are themselves kit sources.
+     *
+     * <p>No {@code projectId} in the path, because the question is not about
+     * one project — it is "what is on offer", asked before a destination has
+     * necessarily been chosen. Gated on {@code Tenant READ}, i.e. any member
+     * of the tenant, with the real filter applied <b>per entry</b> inside the
+     * service: an endpoint-level gate strong enough to be the only check would
+     * either lock out the people who need the list or, if it listed
+     * everything, disclose which projects exist.
+     *
+     * <p>Two callers, deliberately the same list: the second dropdown in the
+     * create-project dialog and the picker in the install dialog. A kit that
+     * can be started from is a kit that can be installed.
+     */
+    @GetMapping("/source-projects")
+    public List<KitSourceProjectDto> sourceProjects(
+            @PathVariable("tenant") String tenant,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Tenant(tenant), Action.READ);
+        return sourceProjectService.list(tenant, authority.contextOf(request));
     }
 
     /**

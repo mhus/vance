@@ -82,6 +82,55 @@ class KitPlaintextSecretGateTest {
     }
 
     @Test
+    void serverEncryptedCredentialFromAProjectSource_passes(@TempDir Path kit) throws IOException {
+        // Both ends of a project-to-project transfer read the same server key,
+        // so the blob is the better wire form than plaintext — nothing is
+        // decrypted on the way, not even into the temporary build directory.
+        writeSetting(kit, "smtp.pass", """
+                type: PASSWORD
+                encoding: server
+                value: "<server blob>"
+                """);
+
+        assertThatCode(() -> gate.enforce(kit, source(KitSourceType.PROJECT)))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void serverEncryptedCredentialFromGit_isRefused(@TempDir Path kit) throws IOException {
+        // Not because it would be exposed — it is encrypted — but because it
+        // would be unopenable anywhere else. Committed to a repository, this
+        // kit installs everywhere as a credential nothing can read, and the
+        // first symptom is an opaque failure from whatever consumes it.
+        writeSetting(kit, "smtp.pass", """
+                type: PASSWORD
+                encoding: server
+                value: "<server blob>"
+                """);
+
+        assertThatThrownBy(() -> gate.enforce(kit, source(KitSourceType.GIT)))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("smtp.pass.yaml")
+                .hasMessageContaining("encoding: server")
+                .hasMessageContaining("PROJECT");
+    }
+
+    @Test
+    void plaintextCredentialFromAProjectSource_isRefused(@TempDir Path kit) throws IOException {
+        // The two permissions do not overlap: a project source has no reason
+        // to ship anything in the clear, since it can always ship the blob.
+        writeSetting(kit, "some.apiKey", """
+                type: PASSWORD
+                encoding: plain
+                value: "sk-live-abc"
+                """);
+
+        assertThatThrownBy(() -> gate.enforce(kit, source(KitSourceType.PROJECT)))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("ODE");
+    }
+
+    @Test
     void kitWithoutSettings_passes(@TempDir Path kit) {
         // The common shape; the gate must not require the directory to exist.
         assertThatCode(() -> gate.enforce(kit, source(KitSourceType.GIT)))

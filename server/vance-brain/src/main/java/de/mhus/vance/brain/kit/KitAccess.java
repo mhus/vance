@@ -44,11 +44,38 @@ import org.jspecify.annotations.Nullable;
  *        of the last one" is the honest field. Its absence therefore
  *        means „never installed here", which is what a host wants to
  *        know.
+ * @param actor username on whose behalf this fetch happens, or null for
+ *        internal work with no person behind it (bootstrap, a scheduled
+ *        reapply). Needed because one source type is <em>inside</em> this
+ *        deployment: a {@link de.mhus.vance.api.kit.KitSourceType#PROJECT}
+ *        source hands over another project's documents and settings, and
+ *        whether that is allowed is a question about a person, not about a
+ *        credential. Every other type answers it with a token.
+ *
+ *        <p>A null actor resolves to {@link
+ *        de.mhus.vance.shared.permission.SecurityContext#SYSTEM} via
+ *        {@code SecurityContextFactory.forToolSubject} — the established
+ *        convention for exactly this case, and worth stating plainly: an
+ *        internal path is trusted, so it may read any project. Nothing on a
+ *        user-facing surface reaches the loader without an actor.
  * @param provisioningStamp opaque token describing what the source said
  *        it would hand over, folded together with the params it was asked
  *        for — stored on the record so a later check can ask „different
  *        now?" without downloading. Null on paths that have nothing to
  *        compare, which is most of them.
+ * @param copySecrets whether the source may hand over the credentials its
+ *        manifest declares. Only a {@link
+ *        de.mhus.vance.api.kit.KitSourceType#PROJECT} source consults it —
+ *        for every other type the answer is the vault passphrase, and there
+ *        is nothing left to decide here.
+ *
+ *        <p><b>Default on</b>, which is the opposite of the project-copy
+ *        default and deliberately so: a copy sweeps whatever a project
+ *        happens to hold, while a kit manifest's {@code settings:} list is an
+ *        author's explicit statement that this key is part of the kit. A kit
+ *        that declares its SMTP password means to ship it, and dropping it
+ *        silently leaves an installation that does not work with nobody able
+ *        to say why.
  */
 public record KitAccess(
         String tenantId,
@@ -57,7 +84,9 @@ public record KitAccess(
         @Nullable String storeAccount,
         Map<String, Object> params,
         @Nullable String installId,
-        @Nullable String provisioningStamp) {
+        @Nullable String provisioningStamp,
+        @Nullable String actor,
+        boolean copySecrets) {
 
     public KitAccess {
         params = params == null ? Map.of() : Map.copyOf(params);
@@ -77,41 +106,55 @@ public record KitAccess(
      * Add what is needed with the {@code with…} methods.
      */
     public static KitAccess of(String tenantId, @Nullable String projectId) {
-        return new KitAccess(tenantId, projectId, null, null, Map.of(), null, null);
+        return new KitAccess(tenantId, projectId, null, null, Map.of(), null, null, null, true);
     }
 
     /** Same access, different credential — used where a caller supplies its own token. */
     public KitAccess withToken(@Nullable String other) {
-        return new KitAccess(
-                tenantId, projectId, other, storeAccount, params, installId, provisioningStamp);
+        return new KitAccess(tenantId, projectId, other, storeAccount, params, installId,
+                provisioningStamp, actor, copySecrets);
     }
 
     /** Same access, aimed at a project — for callers that learn it separately. */
     public KitAccess forProject(@Nullable String other) {
-        return new KitAccess(
-                tenantId, other, token, storeAccount, params, installId, provisioningStamp);
+        return new KitAccess(tenantId, other, token, storeAccount, params, installId,
+                provisioningStamp, actor, copySecrets);
     }
 
     /** Same access, carrying what a provisioning entry asked for. */
     public KitAccess withParams(@Nullable Map<String, Object> other) {
         return new KitAccess(tenantId, projectId, token, storeAccount,
-                other == null ? Map.of() : other, installId, provisioningStamp);
+                other == null ? Map.of() : other, installId, provisioningStamp, actor,
+                copySecrets);
     }
 
     /** Same access, told which existing installation it refreshes. */
     public KitAccess withInstallId(@Nullable String other) {
-        return new KitAccess(
-                tenantId, projectId, token, storeAccount, params, other, provisioningStamp);
+        return new KitAccess(tenantId, projectId, token, storeAccount, params, other,
+                provisioningStamp, actor, copySecrets);
     }
 
     /** Same access, signed in to a store account. */
     public KitAccess withStoreAccount(@Nullable String other) {
         return new KitAccess(tenantId, projectId, token, other, params, installId,
-                provisioningStamp);
+                provisioningStamp, actor, copySecrets);
     }
 
     /** Same access, carrying what the record should remember for the next check. */
     public KitAccess withProvisioningStamp(@Nullable String other) {
-        return new KitAccess(tenantId, projectId, token, storeAccount, params, installId, other);
+        return new KitAccess(tenantId, projectId, token, storeAccount, params, installId, other,
+                actor, copySecrets);
+    }
+
+    /** Same access, naming the person on whose behalf it happens. */
+    public KitAccess withActor(@Nullable String other) {
+        return new KitAccess(tenantId, projectId, token, storeAccount, params, installId,
+                provisioningStamp, other, copySecrets);
+    }
+
+    /** Same access, told whether the source may hand over its credentials. */
+    public KitAccess withCopySecrets(boolean other) {
+        return new KitAccess(tenantId, projectId, token, storeAccount, params, installId,
+                provisioningStamp, actor, other);
     }
 }

@@ -49,7 +49,36 @@ public enum KitSecretEncoding {
      * the ciphertext protects nothing, and dressing plaintext up as
      * encryption is worse than admitting what it is.
      */
-    PLAIN;
+    PLAIN,
+
+    /**
+     * {@code value} is already encrypted with <b>this deployment's</b> server
+     * key, and the install stores it verbatim. No vault password, and no
+     * plaintext at any point.
+     *
+     * <p>Permitted only from {@link KitSourceType#PROJECT}, and for the same
+     * kind of reason {@link #PLAIN} is restricted to {@link KitSourceType#ODE}:
+     * a tree built out of one project of this deployment for another never
+     * comes to rest anywhere a vault password would protect it. The difference
+     * is that here it does not have to be in the clear either — both ends read
+     * the same key, so the ciphertext is simply the better wire form. The
+     * bundle is still unpacked into a temporary directory during the install,
+     * which is the one exposure {@code PLAIN} cannot avoid and this can.
+     *
+     * <p>Meaningless anywhere else <em>by construction</em>: a tree carrying
+     * these blobs is undecryptable outside the deployment that wrote them. So
+     * committing such a tree to git would produce a kit that fails on install
+     * elsewhere, and the gate refuses it up front rather than letting it look
+     * fine until someone tries.
+     *
+     * <p>Indistinguishable from {@link #VAULT} by shape —
+     * {@code AesEncryptionService.encryptWith} uses the same wire format as
+     * {@code encrypt}, only the passphrase differs. That is precisely why this
+     * has to be declared rather than detected, and why an unknown
+     * {@code encoding:} is refused at parse time instead of surfacing as a
+     * decryption failure three frames down.
+     */
+    SERVER;
 
     // The next value, named here so it arrives as an addition rather than a
     // redesign: `SEALED` — the host encrypts to the reader's public key

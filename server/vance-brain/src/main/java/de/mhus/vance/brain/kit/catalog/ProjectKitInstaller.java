@@ -2,7 +2,9 @@ package de.mhus.vance.brain.kit.catalog;
 
 import de.mhus.vance.api.kit.KitImportMode;
 import de.mhus.vance.api.kit.KitImportRequestDto;
+import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
+import de.mhus.vance.api.kit.KitSourceType;
 import de.mhus.vance.api.kit.ProjectKitEntry;
 import de.mhus.vance.api.kit.ProjectKitsCatalogDto;
 import de.mhus.vance.brain.kit.KitService;
@@ -85,6 +87,37 @@ public class ProjectKitInstaller {
                 .build();
         log.info("Installing catalog kit '{}' into tenantId='{}' projectId='{}' (wish='{}')",
                 entry.getName(), tenantId, projectId, kitNameOrWish);
+        return kitService.importKit(tenantId, request, actor, SettingWriteOrigin.USER);
+    }
+
+    /**
+     * Install the kit that {@code sourceProjectId} is the source of into
+     * {@code projectId}.
+     *
+     * <p>Beside {@link #installFromCatalog} rather than inside it: that method
+     * resolves a <em>catalog key</em> and falls through to an LLM when the key
+     * misses, which is exactly the wrong behaviour for a project name — a typo
+     * would install the closest-looking catalog kit instead of failing. Here
+     * the name is passed straight through as a {@code project:} url and the
+     * loader decides, including whether the caller may read that project.
+     *
+     * <p>Null/blank is the caller's "no kit requested" path, as above.
+     */
+    public @Nullable KitOperationResultDto installFromProject(
+            String tenantId, String projectId, @Nullable String sourceProjectId,
+            @Nullable String actor) {
+        if (StringUtils.isBlank(sourceProjectId)) {
+            return null;
+        }
+        KitImportRequestDto request = KitImportRequestDto.builder()
+                .projectId(projectId)
+                .source(KitInheritDto.builder()
+                        .url(KitSourceType.PROJECT_SCHEME + sourceProjectId.trim())
+                        .build())
+                .mode(KitImportMode.INSTALL)
+                .build();
+        log.info("Installing kit from project '{}' into tenantId='{}' projectId='{}'",
+                sourceProjectId, tenantId, projectId);
         return kitService.importKit(tenantId, request, actor, SettingWriteOrigin.USER);
     }
 

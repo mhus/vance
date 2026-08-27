@@ -14,6 +14,7 @@ export interface KitImportRequestDto {
   mode: KitImportMode;
   prune: boolean;
   keepPasswords: boolean;
+  copySecrets?: boolean;
   writeManifest: boolean;
   params: Record<string, any>;
   provisioningStamp?: string;

@@ -22,6 +22,7 @@ import { useAdminTenant } from '@/composables/useAdminTenant';
 import { useAdminProjectGroups } from '@/composables/useAdminProjectGroups';
 import { useAdminProjects } from '@/composables/useAdminProjects';
 import { useProjectKitsCatalog } from '@/composables/useProjectKitsCatalog';
+import { useKitSourceProjects } from '@/composables/useKitSourceProjects';
 import { useScopeSettings } from '@/composables/useScopeSettings';
 import { useKitAdmin } from '@/composables/useKitAdmin';
 import { useSessionGroups } from '@/composables/useSessionGroups';
@@ -35,6 +36,7 @@ import {
   type KitInstalledRecordDto,
   type KitLibraryEntryDto,
   type KitOriginDto,
+  type KitSourceProjectDto,
   type ProjectCopyReportDto,
   type ProjectDto,
   type ProjectGroupSummary,
@@ -659,7 +661,10 @@ function openKitDialog(mode: KitDialogMode, origin?: KitOriginDto): void {
   // Only for install: update and export already know their source. The
   // library answers straight away now — the credential is a server-side
   // setting, so there is nothing to wait for the user to type.
-  if (mode === 'install') void loadLibrary();
+  if (mode === 'install') {
+    void loadLibrary();
+    void kitSourceProjects.load();
+  }
 }
 
 /**
@@ -700,6 +705,38 @@ async function loadLibrary(): Promise<void> {
 }
 
 /** Fill the source fields from a library row, so nothing has to be typed. */
+// ── project picker ──────────────────────────────────────────────────
+//
+// Same shape as the library picker and shown by the same rule: only when
+// something answered. The two lists are separate because they answer
+// different questions — a library serves released kits this tenant is
+// entitled to, this one lists kits being authored in this very install.
+const kitSourceProjects = useKitSourceProjects();
+
+/**
+ * The offer, minus the project being installed into.
+ *
+ * <p>The endpoint is tenant-wide and has no destination to compare against —
+ * it serves the create dialog too, where no destination exists yet. Only here
+ * is the target known, and a project cannot install its own kit into itself:
+ * the loader refuses it, so listing it would be offering an option that has to
+ * fail. Same rule that keeps `installable: false` kits out of the list.
+ */
+const kitProjectOffers = computed(() => {
+  const target = selection.value.kind === 'project' ? selection.value.name : null;
+  return kitSourceProjects.projects.value.filter(entry => entry.projectId !== target);
+});
+
+/** Fill the source field from a project row. */
+function pickFromProject(entry: KitSourceProjectDto): void {
+  // sourceUrl comes from the server so the `project:` scheme is spelled in
+  // exactly one place.
+  kitForm.url = entry.sourceUrl;
+  kitForm.path = '';
+  kitForm.branch = '';
+  kitForm.commit = '';
+}
+
 function pickFromLibrary(entry: KitLibraryEntryDto): void {
   kitForm.url = entry.sourceUrl;
   // The entry's path already addresses the kit inside its library —
@@ -2042,6 +2079,37 @@ const combinedError = computed<string | null>(() =>
         <VAlert v-if="kitState.error.value" variant="error">
           <span>{{ kitState.error.value }}</span>
         </VAlert>
+        <!-- Project picker: kits authored in this install. Same
+             only-when-non-empty rule as the library block below. -->
+        <div
+          v-if="kitDialogMode === 'install' && kitProjectOffers.length > 0"
+          class="flex flex-col gap-2 border border-base-300 rounded p-3"
+        >
+          <div class="text-sm font-semibold">{{ $t('scopes.kit.projects.title') }}</div>
+          <p class="text-xs opacity-70">{{ $t('scopes.kit.projects.description') }}</p>
+          <div
+            v-for="entry in kitProjectOffers"
+            :key="entry.projectId"
+            class="flex items-center gap-2 text-sm"
+          >
+            <div class="flex-1 min-w-0">
+              <div class="flex items-baseline gap-2">
+                <span class="font-medium truncate">{{ entry.kitName }}</span>
+                <span v-if="entry.version" class="text-xs opacity-60">
+                  {{ $t('scopes.kit.versionPrefix', { version: entry.version }) }}
+                </span>
+              </div>
+              <div class="text-xs opacity-60 truncate">
+                {{ entry.projectTitle
+                  ? `${entry.projectTitle} (${entry.projectId})` : entry.projectId }}
+              </div>
+            </div>
+            <VButton variant="ghost" size="sm" @click="pickFromProject(entry)">
+              {{ $t('scopes.kit.projects.choose') }}
+            </VButton>
+          </div>
+        </div>
+
         <!-- Library picker: only rendered when a library answered. With
              none configured there is nothing to show and nothing to
              explain. -->

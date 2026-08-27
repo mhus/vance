@@ -45,6 +45,10 @@ export default {
         kit: 'Kit',
         kitNone: 'Kein Kit',
         kitHelp: 'Vorkonfigurierte Projekt-Vorlage — installiert Dokumente, Settings und Tools direkt nach dem Anlegen.',
+        kitProject: 'Kit aus einem Projekt',
+        kitProjectHelp:
+          'Projekte dieses Mandanten, die selbst eine Kit-Quelle sind — für ein Kit, '
+          + 'das hier gerade entsteht und noch nicht im Katalog steht.',
         submit: 'Anlegen',
       },
       error: {
@@ -1877,6 +1881,13 @@ export default {
         choose: 'Übernehmen',
         alreadyInstalled: '(installiert)',
         notDeliverable: 'Deine Lizenz berechtigt derzeit zu keiner veröffentlichten Version.',
+      },
+      projects: {
+        title: 'Aus einem Projekt',
+        description:
+          'Projekte dieses Mandanten, die selbst eine Kit-Quelle sind. Übernimmt den '
+          + 'aktuellen Stand — für ein Kit, das noch nicht gepusht ist.',
+        choose: 'Übernehmen',
       },
       confirmUninstall:
         'Kit „{name}“ deinstallieren? Der Eintrag wird entfernt; die Dateien bleiben zunächst erhalten.',

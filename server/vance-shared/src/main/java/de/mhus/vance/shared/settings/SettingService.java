@@ -915,6 +915,64 @@ public class SettingService {
         return SecretImportOutcome.WRITTEN;
     }
 
+    /**
+     * Persists a blob that is <b>already</b> encrypted with this server's key,
+     * verbatim — no decrypt, no re-encrypt.
+     *
+     * <p>For content that never left the deployment: a kit built out of one
+     * project of this installation for another. The value in the source row and
+     * the value in the target row are read with the same key, so producing the
+     * plaintext in between would buy nothing and cost the one exposure that
+     * matters here — the kit tree is assembled in a temporary directory on
+     * disk, and a credential that is never decrypted cannot be written into
+     * it.
+     *
+     * <p>Verified before it is stored, and that check is the reason this is a
+     * method rather than a call to {@code setAs}: a blob that does not open
+     * with the server key would otherwise be persisted as an encrypted setting
+     * that nothing can ever read, and the first symptom would be an opaque
+     * failure from whatever consumes it. {@link SecretImportOutcome#FAILED}
+     * says so at install time instead.
+     *
+     * <p>The no-op comparison happens inside this class for the same reason as
+     * on the vault path: an unattended update that rewrites an unchanged secret
+     * fills the audit trail with "credential changed" for one that did not, and
+     * asking the question from outside would mean a method that hands
+     * credentials to callers.
+     *
+     * @param ciphertext a blob produced by this deployment's server key
+     * @param type the kit's own declaration, preserved — never promoted to
+     *     PASSWORD nor demoted to HIDDEN, see {@link #encryptFromImport}
+     */
+    public SecretImportOutcome storeServerEncrypted(
+            String tenantId, String referenceType, String referenceId,
+            String key, @Nullable String ciphertext, SettingType type) {
+        if (!type.encrypted()) {
+            throw new IllegalArgumentException(
+                    "storeServerEncrypted() requires an encrypted type, got " + type);
+        }
+        if (ciphertext == null) {
+            setEncryptedSecret(tenantId, referenceType, referenceId, key, null, type);
+            return SecretImportOutcome.WRITTEN;
+        }
+        String plaintext;
+        try {
+            plaintext = encryption.decrypt(ciphertext);
+        } catch (AesEncryptionService.EncryptionException e) {
+            log.warn("Server-encrypted blob for ref='{}:{}' key='{}' does not open with this"
+                            + " server's key: {}",
+                    referenceType, referenceId, key, e.getMessage());
+            return SecretImportOutcome.FAILED;
+        }
+        if (encryptedSecretEquals(tenantId, referenceType, referenceId, key, plaintext)) {
+            return SecretImportOutcome.UNCHANGED;
+        }
+        // The blob itself, not a re-encryption of what it held: the two are
+        // equivalent, and this way the plaintext above is only ever compared.
+        setInternal(tenantId, referenceType, referenceId, key, ciphertext, type, null, null);
+        return SecretImportOutcome.WRITTEN;
+    }
+
     /** What {@link #encryptFromImport} did. */
     public enum SecretImportOutcome {
         /** The value was stored. */

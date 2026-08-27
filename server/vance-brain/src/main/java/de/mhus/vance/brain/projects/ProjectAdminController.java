@@ -80,6 +80,18 @@ public class ProjectAdminController {
             @Valid @RequestBody ProjectCreateRequest request,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        // Before anything is created, and not inside the kit-install block
+        // below: that block deliberately answers 201 with a header, because by
+        // then the project exists and the kit is the only thing that failed.
+        // Two mutually exclusive fields are a malformed request — decidable
+        // without touching anything, so it is a 400 and nothing is left behind.
+        // (Installing both would also give the second kit last-writer-wins over
+        // the first without anyone having asked for a layering.)
+        if (isSet(request.getKitName()) && isSet(request.getKitProject())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "kitName and kitProject are mutually exclusive"
+                            + " — a new project starts from one kit");
+        }
         try {
             // Goes through ProjectLifecycleService.create() so the project is
             // claimed for this pod, its workspace initialised, and its status
@@ -93,8 +105,11 @@ public class ProjectAdminController {
                     ProjectKind.NORMAL,
                     /*createdBy*/ actor(httpRequest));
             try {
+                // At most one of the two is set — checked before the create.
                 projectKitInstaller.installFromCatalog(
                         tenant, saved.getName(), request.getKitName(), actor(httpRequest));
+                projectKitInstaller.installFromProject(
+                        tenant, saved.getName(), request.getKitProject(), actor(httpRequest));
             } catch (KitException e) {
                 // Project is already saved + RUNNING. Surface the kit
                 // problem to the operator without rolling back — the
@@ -102,8 +117,10 @@ public class ProjectAdminController {
                 // toast, foot prints both lines. Web-UI relies on the
                 // {@code X-Vance-Kit-Install-Error} header so the 2xx
                 // body can still carry the new ProjectDto.
-                log.warn("Kit install failed after project create tenant='{}' project='{}' kit='{}': {}",
-                        tenant, saved.getName(), request.getKitName(), e.getMessage());
+                log.warn("Kit install failed after project create tenant='{}' project='{}'"
+                                + " kit='{}' kitProject='{}': {}",
+                        tenant, saved.getName(), request.getKitName(), request.getKitProject(),
+                        e.getMessage());
                 return ResponseEntity.status(HttpStatus.CREATED)
                         .header("X-Vance-Kit-Install-Error", e.getMessage())
                         .body(toDto(saved));
@@ -112,6 +129,10 @@ public class ProjectAdminController {
         } catch (ProjectService.ProjectAlreadyExistsException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         }
+    }
+
+    private static boolean isSet(@org.jspecify.annotations.Nullable String value) {
+        return value != null && !value.isBlank();
     }
 
     private static @org.jspecify.annotations.Nullable String actor(HttpServletRequest request) {

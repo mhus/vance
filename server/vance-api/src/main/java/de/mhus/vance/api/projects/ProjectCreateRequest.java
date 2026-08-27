@@ -45,4 +45,19 @@ public class ProjectCreateRequest {
      * half-finished project. {@code null} or blank → no kit install.
      */
     private @Nullable String kitName;
+
+    /**
+     * Optional — name of a project of this tenant that is itself a kit source
+     * ({@code _vance/kits/manifest.yaml}); its kit is installed into the new
+     * project. Mutually exclusive with {@link #kitName}.
+     *
+     * <p><b>A separate field on purpose, not a {@code project:} url squeezed
+     * into {@code kitName}.</b> That field is a <em>catalog key</em>, and a
+     * miss on it falls through to an LLM resolver that picks the closest
+     * catalog entry — so a mistyped project name would not fail, it would
+     * silently install some other kit. Two fields keep "look this up in the
+     * curated list" and "install from that project over there" apart, which is
+     * also what the two dropdowns in the UI say.
+     */
+    private @Nullable String kitProject;
 }

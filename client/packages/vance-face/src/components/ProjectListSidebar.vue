@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { VAlert, VButton, VEmptyState, VInput, VModal, VSelect } from '@vance/components';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type {
   ProjectGroupSummary,
@@ -9,6 +9,7 @@ import type {
 } from '@vance/generated';
 import { brainFetch, RestError } from '@vance/shared';
 import { useProjectKitsCatalog } from '@/composables/useProjectKitsCatalog';
+import { useKitSourceProjects } from '@/composables/useKitSourceProjects';
 
 /**
  * Reusable project picker for editor sidebars. Renders the tenant's
@@ -321,6 +322,12 @@ onMounted(async () => {
   if (!props.hideKitField && props.kitOptions.length === 0) {
     void internalKitsCatalog.load();
   }
+  // Same trip, same rule: loaded here rather than when the dialog opens, so
+  // the field is either there from the first frame or not at all. A dropdown
+  // that appears half a second in is worse than one that never does.
+  if (!props.hideKitField) {
+    void kitSourceProjects.load();
+  }
 });
 
 onBeforeUnmount(() => {
@@ -360,6 +367,7 @@ const newProjectName = ref('');
 const newProjectTitle = ref('');
 const newProjectGroupId = ref<string | null>(null);
 const newProjectKitName = ref<string>('');
+const newProjectKitProject = ref<string>('');
 const creating = ref(false);
 const creationError = ref<string | null>(null);
 
@@ -372,6 +380,20 @@ const creationError = ref<string | null>(null);
  * stays idle.
  */
 const internalKitsCatalog = useProjectKitsCatalog();
+
+/**
+ * Projects of this tenant that are themselves kit sources — the second,
+ * independent way to answer "start from which kit".
+ *
+ * <p>Deliberately not folded into {@link effectiveKitOptions}: the catalog is
+ * the tenant's curated list of blessed starting points, maintained by an admin
+ * in a `_tenant` document, while this is whatever happens to be authored here
+ * right now. Merging them would hollow out the curation; two controls keep the
+ * distinction visible. A kit under development has no business in the catalog,
+ * and needing an admin to edit YAML before you can test your own kit would be
+ * absurd.
+ */
+const kitSourceProjects = useKitSourceProjects();
 
 const effectiveKitOptions = computed<{ value: string; label: string }[]>(() => {
   if (props.hideKitField) return [];
@@ -388,6 +410,41 @@ const effectiveKitOptions = computed<{ value: string; label: string }[]>(() => {
 });
 
 const showKitField = computed<boolean>(() => effectiveKitOptions.value.length > 0);
+
+const kitProjectOptions = computed<{ value: string; label: string }[]>(() => {
+  if (props.hideKitField) return [];
+  const found = kitSourceProjects.projects.value;
+  if (found.length === 0) return [];
+  return [
+    { value: '', label: t('common.projectPicker.createProject.kitNone') },
+    ...found.map((entry) => ({
+      value: entry.projectId,
+      // The kit is what is being picked; the project is where it lives, and
+      // the two names differ often enough to need both.
+      label: entry.kitName === entry.projectId
+        ? entry.kitName
+        : `${entry.kitName} (${entry.projectTitle || entry.projectId})`,
+    })),
+  ];
+});
+
+/**
+ * Same rule the catalog field already follows: no entries, no field. Most
+ * tenants have no authoring projects, and this dialog lives in five hosts —
+ * a permanently empty dropdown in all of them would be noise for everyone to
+ * serve a few.
+ */
+const showKitProjectField = computed<boolean>(() => kitProjectOptions.value.length > 1);
+
+// The two are alternatives, not a combination: installing both would give the
+// second last-writer-wins over the first without anyone asking for a layering,
+// and the server refuses the pair outright.
+watch(newProjectKitName, (value) => {
+  if (value) newProjectKitProject.value = '';
+});
+watch(newProjectKitProject, (value) => {
+  if (value) newProjectKitName.value = '';
+});
 
 function openCreateGroup(): void {
   newGroupName.value = '';
@@ -412,6 +469,7 @@ function openCreateProject(groupId: string | null = null): void {
   newProjectTitle.value = '';
   newProjectGroupId.value = groupId;
   newProjectKitName.value = '';
+  newProjectKitProject.value = '';
   creationError.value = null;
   showCreateProject.value = true;
 }
@@ -473,6 +531,9 @@ async function submitCreateProject(): Promise<void> {
         // Blank string maps to "no kit" — server treats null/blank the same.
         kitName: showKitField.value
           ? (newProjectKitName.value.trim() || undefined)
+          : undefined,
+        kitProject: showKitProjectField.value
+          ? (newProjectKitProject.value.trim() || undefined)
           : undefined,
       },
     });
@@ -963,6 +1024,14 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
           :label="t('common.projectPicker.createProject.kit')"
           :help="t('common.projectPicker.createProject.kitHelp')"
           :options="effectiveKitOptions"
+          :disabled="creating"
+        />
+        <VSelect
+          v-if="showKitProjectField"
+          v-model="newProjectKitProject"
+          :label="t('common.projectPicker.createProject.kitProject')"
+          :help="t('common.projectPicker.createProject.kitProjectHelp')"
+          :options="kitProjectOptions"
           :disabled="creating"
         />
       </form>

@@ -75,6 +75,28 @@ public class KitRepoLoader {
         }
 
         Path root = subPath(repoRoot, source.getPath());
+        LoadedKit loaded = readTree(root, repoRoot, commit, fromFolder);
+        log.info("Loaded kit '{}' from {} (commit {})",
+                loaded.descriptor().getName(), source.getUrl(), commit);
+        return loaded;
+    }
+
+    /**
+     * Read an already-materialised kit tree — its {@code kit.yaml} — into a
+     * {@link LoadedKit}.
+     *
+     * <p>Split out so a loader that produces the tree itself rather than
+     * fetching it ({@link ProjectKitSourceLoader}) describes it the same way.
+     * The descriptor is read back from the file instead of being handed over
+     * in memory, so what the pipeline sees is what the install will consume.
+     *
+     * @param commit whatever identifies this version for the source at hand —
+     *     a SHA, {@code folder:…}, or a content hash
+     * @param fromFolder true when the tree is a local copy rather than a
+     *     clone; callers use it to decide whether git operations apply
+     */
+    public static LoadedKit readTree(
+            Path root, Path repoRoot, String commit, boolean fromFolder) {
         Path descriptorFile = root.resolve("kit.yaml");
         if (!Files.isRegularFile(descriptorFile)) {
             throw new KitException("missing kit.yaml at " + descriptorFile);
@@ -85,7 +107,6 @@ public class KitRepoLoader {
         } catch (IOException e) {
             throw new KitException("failed to read " + descriptorFile, e);
         }
-        log.info("Loaded kit '{}' from {} (commit {})", descriptor.getName(), source.getUrl(), commit);
         return new LoadedKit(root, repoRoot, commit, descriptor, fromFolder);
     }
 

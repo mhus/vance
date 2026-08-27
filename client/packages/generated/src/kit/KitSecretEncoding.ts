@@ -5,5 +5,6 @@
 
 export enum KitSecretEncoding {
   VAULT = 'VAULT',
-  PLAIN = 'PLAIN'
+  PLAIN = 'PLAIN',
+  SERVER = 'SERVER'
 }

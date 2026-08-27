@@ -1450,6 +1450,29 @@ public class DocumentService {
     }
 
     /**
+     * Every project of one tenant that holds a document at exactly
+     * {@code path} — "which projects have this file".
+     *
+     * <p>The inverse of the usual lookup: normally a caller knows the project
+     * and asks for a path. Here the presence of a well-known file <em>is</em>
+     * the answer being sought (which projects are kit sources, i.e. carry
+     * {@code _vance/kits/manifest.yaml}), and the alternative is a
+     * {@code findByPath} per project — one query per project on every page
+     * that shows a create dialog.
+     *
+     * <p>Exact match rather than a prefix, so it stays a point lookup on the
+     * {@code (tenantId, path)} index. Says nothing about who may see the
+     * results: the caller filters, because only the caller knows which action
+     * it is authorizing.
+     */
+    public List<DocumentDocument> findByPathAcrossProjects(String tenantId, String path) {
+        Query query = new Query(Criteria.where("tenantId").is(tenantId)
+                .and("status").is(DocumentStatus.ACTIVE)
+                .and("path").is(normalizePath(path)));
+        return mongoTemplate.find(query, DocumentDocument.class);
+    }
+
+    /**
      * Streams {@code content} into {@link StorageService}, applying the same
      * compression strategy Nimbus runs in production:
      *

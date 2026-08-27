@@ -148,6 +148,7 @@ export * from './kit/KitSignatureDto';
 export * from './kit/KitSignaturePolicy';
 export * from './kit/KitSignatureStatus';
 export * from './kit/KitSourceDto';
+export * from './kit/KitSourceProjectDto';
 export * from './kit/KitSourceType';
 export * from './kit/KitSourcesDto';
 export * from './kit/ProjectKitEntry';

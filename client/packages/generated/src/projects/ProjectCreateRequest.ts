@@ -9,4 +9,5 @@ export interface ProjectCreateRequest {
   projectGroupId?: string;
   teamIds: string[];
   kitName?: string;
+  kitProject?: string;
 }

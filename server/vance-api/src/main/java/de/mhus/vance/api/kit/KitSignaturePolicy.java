@@ -13,7 +13,13 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
 @GenerateTypeScript("kit")
 public enum KitSignaturePolicy {
 
-    /** No signature expected. Default for git and folder sources. */
+    /**
+     * No signature expected. The default for everything but a library — git
+     * and folder because requiring it would break every existing install, and
+     * {@link KitSourceType#PROJECT} because there is nothing to authenticate:
+     * the tree is written out of our own database, so a signature would verify
+     * us against ourselves.
+     */
     OFF,
 
     /** Verify when present, log when absent or bad. For migrating a source. */

@@ -51,6 +51,10 @@ export default {
         kit: 'Kit',
         kitNone: 'No kit',
         kitHelp: 'Pre-configured project starter — installs documents, settings and tools right after create.',
+        kitProject: 'Kit from a project',
+        kitProjectHelp:
+          'Projects of this tenant that are kit sources themselves — for a kit being '
+          + 'authored here that is not in the catalog yet.',
         submit: 'Create',
       },
       error: {
@@ -1865,6 +1869,13 @@ export default {
         choose: 'Use this',
         alreadyInstalled: '(installed)',
         notDeliverable: 'Your licence does not currently entitle any published version.',
+      },
+      projects: {
+        title: 'From a project',
+        description:
+          'Projects of this tenant that are kit sources themselves. Takes their current '
+          + 'state — for a kit that has not been pushed yet.',
+        choose: 'Use this',
       },
       confirmUninstall:
         'Uninstall kit "{name}"? The record goes; the files stay for now.',

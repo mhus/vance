@@ -94,7 +94,11 @@ public class KitService {
                 request.getToken())
                 .withParams(request.getParams())
                 .withInstallId(previousInstallId(tenantId, request))
-                .withProvisioningStamp(request.getProvisioningStamp());
+                .withProvisioningStamp(request.getProvisioningStamp())
+                // Absent means on — see the field's own note for why it is a
+                // Boolean rather than a boolean with a default.
+                .withCopySecrets(request.getCopySecrets() == null
+                        || request.getCopySecrets());
 
         // One trace per operation. The feed UI folds rows by it, so an id
         // that outlived the operation would collapse a kit's whole history
@@ -531,6 +535,12 @@ public class KitService {
         }
         KitManifestDto manifest = installer.manifestFromRecord(record);
         recordStore.saveManifest(tenantId, projectId, manifest, actor);
+        // The record kept the descriptor from install time, so promoting needs
+        // no re-clone here either — and without it the project would be a kit
+        // source whose authored flags live only in the remote repository.
+        if (descriptor != null) {
+            recordStore.saveDescriptor(tenantId, projectId, descriptor, actor);
+        }
         return manifest;
     }
 

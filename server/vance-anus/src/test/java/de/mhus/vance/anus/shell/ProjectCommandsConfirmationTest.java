@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.anus.brain.AnusBrainClient;
+import de.mhus.vance.anus.project.ProjectClusterService;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.anus.maintenance.MaintenanceReport;
 import de.mhus.vance.anus.maintenance.ProjectMaintenanceService;
@@ -38,7 +39,8 @@ class ProjectCommandsConfirmationTest {
     private static final boolean NO_DRAIN = true;
 
     private final ProjectCommands commands = new ProjectCommands(
-            projectService, mock(AnusBrainClient.class), maintenanceService, lineReader);
+            projectService, new ProjectClusterService(mock(AnusBrainClient.class)),
+            maintenanceService, lineReader);
 
     @Test
     void delete_refuses_whenThereIsNoTerminalAndNoConfirmFlag() {

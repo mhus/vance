@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.anus.brain.AnusBrainClient;
+import de.mhus.vance.anus.project.ProjectClusterService;
 import de.mhus.vance.anus.brain.AnusBrainClient.Response;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.anus.maintenance.MaintenanceReport;
@@ -43,8 +44,15 @@ class ProjectCommandsDrainTest {
     @SuppressWarnings("unchecked")
     private final ObjectProvider<LineReader> lineReader = mock(ObjectProvider.class);
 
+    /**
+     * A real {@link ProjectClusterService} over the mocked client, not a mock of
+     * the service: these tests are about what an operator sees, and the
+     * translation from HTTP status to situation is part of that. Mocking the
+     * service would leave that translation untested and turn the assertions into
+     * a check of this test's own stubbing.
+     */
     private final ProjectCommands commands = new ProjectCommands(
-            projectService, brainClient, maintenanceService, lineReader);
+            projectService, new ProjectClusterService(brainClient), maintenanceService, lineReader);
 
     @Test
     void delete_drainsFirst_whenAPodHoldsTheProject() {

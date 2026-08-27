@@ -446,6 +446,91 @@ public class ProjectService {
     }
 
     /**
+     * Renames a project — {@code name} is the business key, so this moves the
+     * identity every other entity points at.
+     *
+     * <p><b>Only ever call this through {@code ProjectMaintenanceService}.</b>
+     * On its own it does exactly half the job: the document says the new name
+     * and every session, document, setting and grant still says the old one.
+     * The service that owns the whole move calls this last, after the handlers
+     * have carried their references over.
+     *
+     * <p>Refuses {@link ProjectKind#SYSTEM} projects: {@code _vance} and the
+     * per-user hubs are addressed by name from code and from settings, and a
+     * renamed hub is a hub nobody finds.
+     *
+     * @throws ProjectNotFoundException if the project does not exist
+     * @throws SystemProjectProtectedException if the project is SYSTEM
+     * @throws ReservedProjectNameException if {@code newName} takes the
+     *     reserved prefix
+     * @throws ProjectAlreadyExistsException if {@code newName} is taken
+     */
+    public ProjectDocument rename(String tenantId, String name, String newName) {
+        ProjectDocument current = repository.findByTenantIdAndName(tenantId, name)
+                .orElseThrow(() -> new ProjectNotFoundException(
+                        "Project '" + name + "' not found in tenant '" + tenantId + "'"));
+        if (current.getKind() == ProjectKind.SYSTEM) {
+            throw new SystemProjectProtectedException(
+                    "Project '" + name + "' is SYSTEM — cannot rename");
+        }
+        if (newName.startsWith(SYSTEM_NAME_PREFIX)) {
+            throw new ReservedProjectNameException(
+                    "Project name '" + newName + "' starts with the reserved '"
+                            + SYSTEM_NAME_PREFIX + "' prefix");
+        }
+        requirePathSafeName(newName);
+        if (repository.existsByTenantIdAndName(tenantId, newName)) {
+            throw new ProjectAlreadyExistsException(
+                    "Project '" + newName + "' already exists in tenant '" + tenantId + "'");
+        }
+        Query query = new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
+        Update update = new Update().set(F_NAME, newName);
+        ProjectDocument updated = mongoTemplate.findAndModify(
+                query, update,
+                FindAndModifyOptions.options().returnNew(true),
+                ProjectDocument.class);
+        if (updated == null) {
+            throw new ProjectNotFoundException(
+                    "Project '" + name + "' disappeared during rename");
+        }
+        log.info("Renamed project tenantId='{}' '{}' → '{}'", tenantId, name, newName);
+        auditService.projectRename(tenantId, name, newName);
+        megadodoService.projectRenamed(tenantId, name, newName, /*actor*/ null);
+        return updated;
+    }
+
+    /**
+     * Removes the project document itself. The counterpart to {@link #create},
+     * and the last step of a hard delete — <b>not</b> a lifecycle transition:
+     * {@link #close} is what ends a project's life, this is what ends its
+     * existence.
+     *
+     * <p><b>Only ever call this through {@code ProjectMaintenanceService}.</b>
+     * The document is the index back to everything the project owns; removing
+     * it while that data is still there strands the data with no way left to
+     * address it.
+     *
+     * <p>Idempotent — a project that is already gone returns {@code false}.
+     *
+     * @throws SystemProjectProtectedException if the project is SYSTEM
+     */
+    public boolean delete(String tenantId, String name) {
+        Optional<ProjectDocument> found = repository.findByTenantIdAndName(tenantId, name);
+        if (found.isEmpty()) {
+            return false;
+        }
+        if (found.get().getKind() == ProjectKind.SYSTEM) {
+            throw new SystemProjectProtectedException(
+                    "Project '" + name + "' is SYSTEM — cannot delete");
+        }
+        repository.delete(found.get());
+        log.info("Deleted project tenantId='{}' name='{}'", tenantId, name);
+        auditService.projectDelete(tenantId, name);
+        megadodoService.projectDeleted(tenantId, name, /*actor*/ null);
+        return true;
+    }
+
+    /**
      * Closes a project: status to {@link ProjectStatus#CLOSED} and
      * {@code projectGroupId} replaced by {@code closedGroupId}. Idempotent.
      *
@@ -824,6 +909,31 @@ public class ProjectService {
                 tenantId, name, current.getPlacementSelector(), updated.getPlacementSelector(),
                 current.getHomeResourceScore(), updated.getHomeResourceScore());
         return updated;
+    }
+
+    /**
+     * Names that are safe to be a path segment, because a project name becomes
+     * one: the workspace folder is {@code <root>/<tenant>/<project>}.
+     *
+     * <p>Checked on {@link #rename} and <b>not</b> on {@link #create} — not an
+     * oversight. Rename is where an operator types a free string for an
+     * existing project, so a {@code ../} there walks the workspace out of its
+     * root. Create has the same exposure in principle, but retrofitting the
+     * rule would reject names that installations already carry, and breaking
+     * existing projects to close a hole nobody has walked through is the worse
+     * trade. Tightening create belongs with a migration that can look at what
+     * is out there.
+     */
+    private static final java.util.regex.Pattern PATH_SAFE_NAME =
+            java.util.regex.Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
+
+    private static void requirePathSafeName(String name) {
+        if (!PATH_SAFE_NAME.matcher(name).matches() || name.contains("..")) {
+            throw new ReservedProjectNameException(
+                    "Project name '" + name + "' is not usable as a path segment — letters,"
+                            + " digits, '.', '_' and '-' only, starting with a letter or digit,"
+                            + " and no '..'. The name becomes a workspace directory.");
+        }
     }
 
     public static class ProjectAlreadyExistsException extends RuntimeException {

@@ -313,6 +313,36 @@ public class AuditService {
                 .build());
     }
 
+    public void projectRename(String tenantId, String projectName, String newProjectName) {
+        // CRITICAL for the same reason as close: the name is the business key
+        // every other entity points at, so this rewrites references across the
+        // whole tenant. Both names are in the row — after the fact, "what was
+        // this called" has no other answer.
+        record(AuditEventDto.builder()
+                .action("project.rename")
+                .severity(AuditSeverity.CRITICAL)
+                .outcome("success")
+                .tenantId(tenantId)
+                .projectId(newProjectName)
+                .target("project:" + projectName)
+                .details(orderedMap("newName", newProjectName))
+                .build());
+    }
+
+    public void projectDelete(String tenantId, String projectName) {
+        // The only irreversible operation on a project. Recorded on the way
+        // out, after the data is gone: an audit row that promised a delete
+        // which then failed would be worse than none.
+        record(AuditEventDto.builder()
+                .action("project.delete")
+                .severity(AuditSeverity.CRITICAL)
+                .outcome("success")
+                .tenantId(tenantId)
+                .projectId(projectName)
+                .target("project:" + projectName)
+                .build());
+    }
+
     // === LLM ===
 
     /**

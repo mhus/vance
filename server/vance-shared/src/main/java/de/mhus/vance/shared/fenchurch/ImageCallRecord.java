@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.fenchurch;
+package de.mhus.vance.shared.fenchurch;
 
 import java.time.Instant;
 import lombok.AllArgsConstructor;

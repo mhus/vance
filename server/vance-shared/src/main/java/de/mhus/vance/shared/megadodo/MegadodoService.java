@@ -107,6 +107,37 @@ public class MegadodoService {
                 .message("Project '" + projectName + "' closed"));
     }
 
+    public void projectRenamed(
+            String tenantId, String projectName, String newProjectName, @Nullable String actor) {
+        // projectId stays null like the other lifecycle rows — and here that is
+        // load-bearing rather than convention: rows tagged with the project are
+        // rewritten by the rename, so a row tagged with the *old* name would
+        // either move with it or be orphaned. The event is about the project,
+        // not inside it.
+        record(builder(tenantId, /*projectId*/ null, "project.lifecycle", newProjectName)
+                .phase(MegadodoPhase.SINGLE)
+                .severity(MegadodoSeverity.WARN)
+                .outcome("success")
+                .actor(actor)
+                .refType(MegadodoRefType.PROJECT)
+                .refId(newProjectName)
+                .message("Project '" + projectName + "' renamed to '" + newProjectName + "'"));
+    }
+
+    public void projectDeleted(String tenantId, String projectName, @Nullable String actor) {
+        // Survives the delete it reports on for the same reason: the project's
+        // own feed rows go with the project, this one is filed against the
+        // tenant.
+        record(builder(tenantId, /*projectId*/ null, "project.lifecycle", projectName)
+                .phase(MegadodoPhase.SINGLE)
+                .severity(MegadodoSeverity.WARN)
+                .outcome("success")
+                .actor(actor)
+                .refType(MegadodoRefType.PROJECT)
+                .refId(projectName)
+                .message("Project '" + projectName + "' deleted"));
+    }
+
     // ─── Project home ──────────────────────────────────────────
     //
     // Where a project *lives*. A project is owned by exactly one pod at a

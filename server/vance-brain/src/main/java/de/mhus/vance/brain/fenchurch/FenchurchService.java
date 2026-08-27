@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.fenchurch;
 
+import de.mhus.vance.shared.fenchurch.ImageCallRecord;
+
 import de.mhus.vance.api.progress.StatusTag;
 import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.ChatBehaviorBuilder;

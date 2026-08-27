@@ -17,6 +17,7 @@ import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.shared.trillian.TrillianProcessKeys;
 import de.mhus.vance.shared.user.UserDocument;
 import de.mhus.vance.shared.user.UserService;
 import java.security.SecureRandom;
@@ -76,8 +77,12 @@ public class TrillianSessionBootstrapper {
      * of Nature. Detect on this rather than recipe name so the
      * {@code trillian} default-alias recipe + future Nature recipes
      * ({@code trillian-alpha} etc.) all trigger the same bootstrap.
+     *
+     * <p>Value owned by {@link TrillianProcessKeys}: it is persisted on the
+     * process row and read by the project-maintenance handler, which runs in a
+     * process without the brain on its classpath.
      */
-    public static final String CONTROL_ENGINE_NAME = "trillian-control";
+    public static final String CONTROL_ENGINE_NAME = TrillianProcessKeys.CONTROL_ENGINE_NAME;
 
     /**
      * Recipe-name prefix for the User-Loop recipe family. The
@@ -121,7 +126,9 @@ public class TrillianSessionBootstrapper {
 
     public static final String PARAM_PEER_PROCESS_ID = "peerProcessId";
     public static final String PARAM_PEER_SESSION_ID = "peerSessionId";
-    public static final String PARAM_TRILLIAN_USER_NAME = "trillianUserName";
+    /** See {@link TrillianProcessKeys#PARAM_TRILLIAN_USER_NAME} — one authority. */
+    public static final String PARAM_TRILLIAN_USER_NAME =
+            TrillianProcessKeys.PARAM_TRILLIAN_USER_NAME;
 
     /**
      * engineParams key on a control process that parks the outgoing

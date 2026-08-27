@@ -75,6 +75,7 @@ public class SessionService {
     /** Field names — kept in one place so the conditional queries don't drift. */
     private static final String F_SESSION_ID = "sessionId";
     private static final String F_PROJECT_ID = "projectId";
+    private static final String F_TENANT_ID = "tenantId";
     private static final String F_STATUS = "status";
     private static final String F_BOUND_CONNECTION = "boundConnectionId";
     private static final String F_LAST_ACTIVITY = "lastActivityAt";
@@ -260,6 +261,25 @@ public class SessionService {
     /** Admin-style cross-user listing scoped to a project. */
     public List<SessionDocument> listForProject(String tenantId, String projectId) {
         return repository.findByTenantIdAndProjectId(tenantId, projectId);
+    }
+
+    /**
+     * The {@code sessionId}s of a project — the business keys, not the Mongo
+     * ids, because that is what everything hanging off a session stores.
+     *
+     * <p>A projection rather than {@link #listForProject}: the callers are the
+     * project-maintenance cascades, which need nothing but the keys and would
+     * otherwise pull every session document of a busy project into memory to
+     * throw all of it away.
+     */
+    public List<String> findSessionIdsForProject(String tenantId, String projectId) {
+        Query query = new Query(Criteria.where(F_TENANT_ID).is(tenantId)
+                .and(F_PROJECT_ID).is(projectId));
+        query.fields().include(F_SESSION_ID);
+        return mongoTemplate.find(query, SessionDocument.class).stream()
+                .map(SessionDocument::getSessionId)
+                .filter(id -> !id.isBlank())
+                .toList();
     }
 
     /**

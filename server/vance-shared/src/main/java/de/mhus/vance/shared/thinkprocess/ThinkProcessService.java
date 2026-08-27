@@ -345,6 +345,45 @@ public class ThinkProcessService {
     }
 
     /**
+     * Every process in the project running {@code thinkEngine} — no limit, any
+     * status.
+     *
+     * <p>Deliberately not {@link #findByProjectAndEngines}: that one is the run
+     * view's "newest first, at most N". The caller here is project maintenance,
+     * which needs <em>all</em> generations including the closed ones — a
+     * Trillian's service-account name sits on control processes that an
+     * archive/reactivate cycle left behind, and a page of the newest would miss
+     * exactly the accounts nobody looks for again.
+     */
+    public List<ThinkProcessDocument> findAllByProjectAndEngine(
+            String tenantId, String projectId, String thinkEngine) {
+        Query query = new Query(Criteria.where("tenantId").is(tenantId)
+                .and("projectId").is(projectId)
+                .and("thinkEngine").is(thinkEngine));
+        return mongoTemplate.find(query, ThinkProcessDocument.class);
+    }
+
+    /**
+     * The Mongo ids of every process in the project — ids only, no limit.
+     *
+     * <p>Deliberately not {@link #findByProject}: that one is the run view's
+     * "newest first, at most N" and both of those are wrong here. The callers
+     * are the project-maintenance cascades (engine messages, Marvin nodes,
+     * process-scoped settings), which need the complete set and nothing but the
+     * keys — a truncated list would leave exactly the rows nobody looks for
+     * again.
+     */
+    public List<String> findIdsByProject(String tenantId, String projectId) {
+        Query query = new Query(Criteria.where("tenantId").is(tenantId)
+                .and("projectId").is(projectId));
+        query.fields().include("_id");
+        return mongoTemplate.find(query, ThinkProcessDocument.class).stream()
+                .map(ThinkProcessDocument::getId)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
+    /**
      * Same, but only processes running one of {@code thinkEngines}.
      *
      * <p>For callers that want a small subset of a busy project — the run

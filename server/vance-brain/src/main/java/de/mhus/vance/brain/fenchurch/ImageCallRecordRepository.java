@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.fenchurch;
 
+import de.mhus.vance.shared.fenchurch.ImageCallRecord;
+
 import java.time.Instant;
 import org.springframework.data.mongodb.repository.MongoRepository;
 

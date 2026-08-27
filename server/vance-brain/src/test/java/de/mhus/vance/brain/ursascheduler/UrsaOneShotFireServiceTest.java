@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.ursascheduler;
 
+import de.mhus.vance.shared.ursascheduler.OneShotFireDocument;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;

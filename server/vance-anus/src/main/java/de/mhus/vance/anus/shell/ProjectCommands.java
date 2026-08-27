@@ -6,28 +6,53 @@ import de.mhus.vance.anus.brain.AnusBrainClient.Response;
 import de.mhus.vance.shared.project.LifecycleType;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
+import de.mhus.vance.shared.project.maintenance.ProjectDataHandler;
+import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceReport;
+import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceReport.EntityResult;
+import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceReport.UnaccountedCollection;
+import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceService;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
-import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
+import org.jline.reader.LineReader;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.shell.core.command.annotation.Command;
 import org.springframework.shell.core.command.annotation.Option;
 import org.springframework.stereotype.Component;
 
 /**
- * CRUD over {@link ProjectDocument}. Hard delete is intentionally unsupported
- * — the lifecycle ends at {@link de.mhus.vance.shared.project.ProjectStatus#CLOSED}
- * via {@code project close}; that's how Brain expects it.
+ * CRUD over {@link ProjectDocument}, plus the two service tasks that touch
+ * everything a project owns: {@code project delete} and {@code project rename}.
+ *
+ * <p><b>Delete is not the end of the lifecycle, it is the end of the project.</b>
+ * {@code project close} remains what a running system does — status
+ * {@code CLOSED}, workspace disposed, the project still there to be looked at.
+ * Delete removes it and its data across every collection, which is why it is
+ * gated twice (live lease, typed confirmation) and why {@code project inspect}
+ * exists to show what would go before anything does.
  */
 @Component
 @RequiresAuth
-@RequiredArgsConstructor
 public class ProjectCommands {
 
     private final ProjectService projectService;
     private final AnusBrainClient brainClient;
+    private final ProjectMaintenanceService maintenanceService;
+    // Lazy LineReader to avoid the Spring-Shell bean cycle — see AccessCommands.
+    private final ObjectProvider<LineReader> lineReader;
+
+    public ProjectCommands(
+            ProjectService projectService,
+            AnusBrainClient brainClient,
+            ProjectMaintenanceService maintenanceService,
+            ObjectProvider<LineReader> lineReader) {
+        this.projectService = projectService;
+        this.brainClient = brainClient;
+        this.maintenanceService = maintenanceService;
+        this.lineReader = lineReader;
+    }
 
     @Command(name = {"project", "list"}, description = "List projects in a tenant.")
     public String list(@Option(longName = "tenant", shortName = 'T', required = true) String tenant) {
@@ -104,6 +129,155 @@ public class ProjectCommands {
         // reachable. This local path is the operator's last resort.
         ProjectDocument project = projectService.close(tenant, name, closedGroup);
         return "Closed:\n" + renderOne(project);
+    }
+
+    // ─── Service tasks across every entity ─────────────────────────────────
+    //
+    // All three go through ProjectMaintenanceService, which asks one
+    // ProjectDataHandler per entity. Adding a project-scoped collection to the
+    // system means adding a handler; nothing here has to change, and a
+    // collection without one shows up in the "unaccounted" section rather than
+    // being silently left behind.
+
+    @Command(name = {"project", "inspect"},
+            description = "Count everything a project owns, per entity. Writes nothing.")
+    public String inspect(
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name) {
+        if (projectService.findByTenantAndName(tenant, name).isEmpty()) {
+            return "Project '" + name + "' not found in tenant '" + tenant + "'.";
+        }
+        return render(maintenanceService.inspect(tenant, name));
+    }
+
+    @Command(name = {"project", "handlers"},
+            description = "List the entities this process can delete or rename.")
+    public String handlers() {
+        // The honest answer to "will a delete here be complete?". A handler is
+        // a bean, so the list depends on what this process has loaded — an
+        // addon that is not installed contributes nothing, and its data would
+        // stay behind.
+        return Tables.render(
+                List.of("ORDER", "ENTITY", "COLLECTIONS"),
+                List.<Function<ProjectDataHandler, @Nullable Object>>of(
+                        ProjectDataHandler::order,
+                        ProjectDataHandler::id,
+                        h -> String.join(",", h.collections())),
+                maintenanceService.handlers());
+    }
+
+    @Command(name = {"project", "delete"},
+            description = "Hard-delete a project and all its data. Irreversible.")
+    public String delete(
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name,
+            @Option(longName = "confirm",
+                    description = "Type the project name here to confirm. Required when there"
+                            + " is no terminal to ask on (--sudo).")
+            @Nullable String confirm,
+            @Option(longName = "force",
+                    description = "Proceed even though a pod still holds the project's lease."
+                            + " Only when the holder is known to be gone.",
+                    defaultValue = "false")
+            boolean force) {
+        String problem = confirmed(name, confirm, "delete");
+        if (problem != null) {
+            return problem;
+        }
+        try {
+            return render(maintenanceService.delete(tenant, name, force));
+        } catch (RuntimeException e) {
+            return "Delete FAILED — " + e.getMessage();
+        }
+    }
+
+    @Command(name = {"project", "rename"},
+            description = "Rename a project, carrying every structured reference with it.")
+    public String rename(
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name,
+            @Option(longName = "to", required = true,
+                    description = "The new project name.") String to,
+            @Option(longName = "confirm",
+                    description = "Type the current project name here to confirm. Required when"
+                            + " there is no terminal to ask on (--sudo).")
+            @Nullable String confirm,
+            @Option(longName = "force",
+                    description = "Proceed even though a pod still holds the project's lease.",
+                    defaultValue = "false")
+            boolean force) {
+        String problem = confirmed(name, confirm, "rename");
+        if (problem != null) {
+            return problem;
+        }
+        try {
+            return render(maintenanceService.rename(tenant, name, to, force))
+                    + "\n\nReferences inside document content (vance: URIs, recipes, prompts)"
+                    + "\nare NOT rewritten — search for '" + name + "' if the project was linked to.";
+        } catch (ProjectMaintenanceService.RenameBlockedException e) {
+            return "Rename FAILED — nothing was written:\n  "
+                    + String.join("\n  ", e.blockers());
+        } catch (RuntimeException e) {
+            return "Rename FAILED — " + e.getMessage();
+        }
+    }
+
+    /**
+     * The typed confirmation, or the reason it did not happen.
+     *
+     * <p>Two shapes because there are two callers. At a terminal the operator
+     * is asked and types the name — the point being to make the hand pause on
+     * the <em>right</em> project, which a {@code yes/no} prompt does not do.
+     * Under {@code --sudo} there is nobody to ask, so the same string has to
+     * arrive as {@code --confirm}; refusing rather than assuming keeps a
+     * scripted delete from being one typo away from the wrong project.
+     */
+    private @Nullable String confirmed(String name, @Nullable String confirm, String operation) {
+        String answer = confirm;
+        if (StringUtils.isBlank(answer)) {
+            LineReader reader = lineReader.getIfAvailable();
+            if (reader == null) {
+                return "Refusing to " + operation + " without confirmation — pass --confirm "
+                        + name;
+            }
+            answer = reader.readLine(
+                    "Type the project name '" + name + "' to confirm the " + operation + ": ");
+        }
+        if (!name.equals(answer == null ? null : answer.trim())) {
+            return "Confirmation did not match '" + name + "' — nothing was done.";
+        }
+        return null;
+    }
+
+    private static String render(ProjectMaintenanceReport report) {
+        String header = switch (report.operation()) {
+            case INSPECT -> "Contents of project '" + report.projectId() + "' in tenant '"
+                    + report.tenantId() + "':";
+            case DELETE -> "Deleted project '" + report.projectId() + "' in tenant '"
+                    + report.tenantId() + "':";
+            case RENAME -> "Renamed project '" + report.projectId() + "' in tenant '"
+                    + report.tenantId() + "':";
+        };
+        String table = Tables.render(
+                List.of("ENTITY", "ROWS", "COLLECTIONS", "NOTE"),
+                List.<Function<EntityResult, @Nullable Object>>of(
+                        EntityResult::handlerId,
+                        EntityResult::affected,
+                        e -> String.join(",", e.collections()),
+                        EntityResult::note),
+                report.entities());
+        StringBuilder out = new StringBuilder(header)
+                .append('\n').append(table)
+                .append("\n  total: ").append(report.total());
+        if (report.hasUnaccounted()) {
+            out.append("\n\nWARNING — collections holding rows for this project that no handler"
+                    + "\nclaims. They were NOT touched; add a ProjectDataHandler for each:");
+            for (UnaccountedCollection unaccounted : report.unaccounted()) {
+                out.append("\n  ").append(unaccounted.collection())
+                        .append(": ").append(unaccounted.count()).append(" row(s)");
+            }
+        }
+        return out.toString();
     }
 
     // ─── Brain-orchestrated lifecycle ──────────────────────────────────────

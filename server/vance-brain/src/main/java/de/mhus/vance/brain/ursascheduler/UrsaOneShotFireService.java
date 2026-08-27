@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.ursascheduler;
 
+import de.mhus.vance.shared.ursascheduler.OneShotFireDocument;
+
 import java.time.Instant;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -88,23 +90,17 @@ public class UrsaOneShotFireService {
         return Optional.ofNullable(hit);
     }
 
-    /** The {@code /}-joined id used until 2026-08-24. Read-only — see {@link #find}. */
+    /**
+     * The {@code /}-joined id used until 2026-08-24. Read-only — see
+     * {@link #find}. Grammar owned by {@link OneShotFireDocument}, which is
+     * also where the project-maintenance handler reads it from.
+     */
     static String legacyMarkerId(String tenantId, String projectId, String scheduler) {
-        return tenantId + '/' + projectId + '/' + scheduler;
+        return OneShotFireDocument.legacyMarkerId(tenantId, projectId, scheduler);
     }
 
-    /**
-     * The marker's {@code _id}: the three names with a {@code U+0000}
-     * separator.
-     *
-     * <p>NUL rather than {@code /}, because a separator that can occur inside
-     * a part is not one: {@code ("a", "b/c", "d")} and {@code ("a", "b",
-     * "c/d")} would collide, and a collision here means a one-shot that
-     * silently never fires. The same reasoning and the same separator as
-     * {@code LlmUsageDailyDocument.bucketId}. Project and scheduler names are
-     * constrained today; the id outlives the constraint.
-     */
+    /** See {@link OneShotFireDocument#markerId}. */
     static String markerId(String tenantId, String projectId, String scheduler) {
-        return tenantId + '\0' + projectId + '\0' + scheduler;
+        return OneShotFireDocument.markerId(tenantId, projectId, scheduler);
     }
 }

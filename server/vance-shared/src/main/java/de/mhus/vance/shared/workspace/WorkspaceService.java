@@ -213,6 +213,146 @@ public class WorkspaceService {
     }
 
     // ---------------------------------------------------------------------
+    // Project maintenance — delete / rename
+    //
+    // Separate from dispose() on purpose. dispose() is the lifecycle verb: it
+    // ends a workspace so the project can start a fresh one. These two end or
+    // move the *project*, and they are tenant-scoped where dispose() is not.
+    // ---------------------------------------------------------------------
+
+    /** Whether this machine holds a workspace folder for the project. */
+    public boolean existsForProject(String tenantId, String projectId) {
+        requireTenant(tenantId);
+        requireProject(projectId);
+        return Files.exists(projectFolder(tenantId, projectId));
+    }
+
+    /** Suspended-workspace snapshots belonging to the project, tenant-scoped. */
+    public List<WorkspaceSnapshotDocument> snapshotsForProject(String tenantId, String projectId) {
+        requireTenant(tenantId);
+        requireProject(projectId);
+        return snapshotRepository.findByTenantAndProjectId(tenantId, projectId);
+    }
+
+    /**
+     * Removes the project's workspace for good: the folder on this machine and
+     * its snapshots.
+     *
+     * <p><b>Local folder only.</b> A workspace lives on the disk of whichever
+     * pod ran the project, so an admin shell on another machine finds nothing
+     * to delete and says so rather than pretending. The snapshots do go — they
+     * are in Mongo, and they are what a folder would be recovered from.
+     *
+     * @return how many snapshot rows were removed
+     */
+    public long deleteForProject(String tenantId, String projectId) {
+        requireTenant(tenantId);
+        requireProject(projectId);
+        Path root = projectFolder(tenantId, projectId);
+        if (Files.exists(root)) {
+            for (RootDirHandle h : listRootDirs(tenantId, projectId)) {
+                try {
+                    disposeRootDir(tenantId, projectId, h.getDirName());
+                } catch (RuntimeException e) {
+                    log.warn("Failed to dispose RootDir {}/{}/{}: {}",
+                            tenantId, projectId, h.getDirName(), e.toString());
+                }
+            }
+            String prefix = creatorCachePrefix(tenantId, projectId);
+            tempDirCache.keySet().removeIf(k -> k.startsWith(prefix));
+            workingDirByCreator.keySet().removeIf(k -> k.startsWith(prefix));
+            deleteRecursively(root);
+        }
+        long snapshots = snapshotRepository.deleteByTenantAndProjectId(tenantId, projectId);
+        log.info("Workspace removed for project {}/{}: folder={} snapshots={}",
+                tenantId, projectId, root, snapshots);
+        return snapshots;
+    }
+
+    /**
+     * Moves the project's workspace to a new project name: the folder, the
+     * {@code workspace.json}, every RootDir descriptor and the snapshot rows.
+     *
+     * <p>The folder path is {@code <root>/<tenant>/<project>}, so the project
+     * name is part of it — leaving it behind would strand a directory that
+     * nothing addresses any more, and the renamed project would silently start
+     * with an empty workspace.
+     *
+     * <p><b>What this cannot fix:</b> absolute paths <em>inside</em> the moved
+     * files. A Python virtualenv records its own location in its scripts and
+     * stops working after the move; {@link #rebuildPythonVenv} is the repair.
+     * Rewriting arbitrary file content to chase a rename is not something this
+     * method will attempt.
+     *
+     * @return how many rows and files were rewritten (descriptors + snapshots)
+     * @throws WorkspaceException if a folder already sits under the new name —
+     *     merging two workspaces is not a rename
+     */
+    public long renameProject(String tenantId, String projectId, String newProjectId) {
+        requireTenant(tenantId);
+        requireProject(projectId);
+        requireProject(newProjectId);
+        Path from = projectFolder(tenantId, projectId);
+        Path to = projectFolder(tenantId, newProjectId);
+        long rewritten = 0;
+        if (Files.exists(from)) {
+            if (Files.exists(to)) {
+                throw new WorkspaceException(
+                        "Workspace folder for '" + newProjectId + "' already exists: " + to);
+            }
+            try {
+                Files.createDirectories(to.getParent());
+                Files.move(from, to);
+            } catch (IOException e) {
+                throw new WorkspaceException(
+                        "Cannot move workspace " + from + " → " + to + ": " + e.getMessage(), e);
+            }
+            rewritten += rewriteWorkspaceMetadata(tenantId, newProjectId, to);
+            String prefix = creatorCachePrefix(tenantId, projectId);
+            tempDirCache.keySet().removeIf(k -> k.startsWith(prefix));
+            workingDirByCreator.keySet().removeIf(k -> k.startsWith(prefix));
+        }
+        for (WorkspaceSnapshotDocument snapshot :
+                snapshotRepository.findByTenantAndProjectId(tenantId, projectId)) {
+            snapshot.setProjectId(newProjectId);
+            WorkspaceDescriptor descriptor = snapshot.getDescriptor();
+            if (descriptor != null) {
+                descriptor.setProjectId(newProjectId);
+            }
+            snapshotRepository.save(snapshot);
+            rewritten++;
+        }
+        log.info("Workspace moved for project {}: '{}' → '{}' ({} metadata rewrites)",
+                tenantId, projectId, newProjectId, rewritten);
+        return rewritten;
+    }
+
+    /** Rewrites {@code workspace.json} and every descriptor to the new name. */
+    private long rewriteWorkspaceMetadata(String tenantId, String newProjectId, Path root) {
+        long rewritten = 0;
+        Path metaFile = root.resolve(WORKSPACE_FILE);
+        if (Files.exists(metaFile)) {
+            Workspace ws = readWorkspaceMeta(metaFile);
+            ws.setProjectId(newProjectId);
+            ws.setRoot(root);
+            try {
+                Files.deleteIfExists(metaFile);
+                writeWorkspaceMeta(metaFile, ws);
+                rewritten++;
+            } catch (IOException e) {
+                log.warn("Failed to rewrite {}: {}", metaFile, e.toString());
+            }
+        }
+        for (RootDirHandle handle : listRootDirs(tenantId, newProjectId)) {
+            WorkspaceDescriptor descriptor = handle.getDescriptor();
+            descriptor.setProjectId(newProjectId);
+            rewriteDescriptor(root.resolve(handle.getDirName() + DESCRIPTOR_SUFFIX), descriptor);
+            rewritten++;
+        }
+        return rewritten;
+    }
+
+    // ---------------------------------------------------------------------
     // Suspend / Recover
     // ---------------------------------------------------------------------
 

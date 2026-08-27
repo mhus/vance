@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.fenchurch;
 
+import de.mhus.vance.shared.fenchurch.ImageCallRecord;
+
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.settings.SettingService;

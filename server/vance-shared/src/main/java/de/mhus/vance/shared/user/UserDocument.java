@@ -21,7 +21,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
  * display name; {@code passwordHash} is produced by the caller and stored
  * verbatim.
  */
-@Document(collection = "users")
+@Document(collection = UserDocument.COLLECTION)
 @CompoundIndexes({
         @CompoundIndex(name = "tenant_name_idx", def = "{ 'tenantId': 1, 'name': 1 }", unique = true)
 })
@@ -30,6 +30,13 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserDocument {
+
+    /**
+     * Collection name, so callers that need it as a string — the
+     * project-maintenance handler declaring what it writes to — do not restate
+     * it next to the annotation that decides it.
+     */
+    public static final String COLLECTION = "users";
 
     @Id
     private @Nullable String id;

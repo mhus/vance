@@ -165,7 +165,10 @@ public class ClusterCommands {
             @Option(longName = "pod", shortName = 'p', required = true,
                     description = "podId, or a nodeName that is unique across clusters.")
             String pod) {
-        BrainPodDocument doc = resolvePod(pod);
+        return withPod(pod, this::renderPod);
+    }
+
+    private String renderPod(BrainPodDocument doc) {
         Map<String, String> labels = doc.getLabels() == null
                 ? Map.of() : new TreeMap<>(doc.getLabels());
         StringBuilder out = new StringBuilder();
@@ -215,8 +218,7 @@ public class ClusterCommands {
                     description = "Comma-separated k=v pairs. Omit entirely to remove "
                             + "every label.")
             @Nullable String labels) {
-        BrainPodDocument doc = resolvePod(pod);
-        return patchPod(doc, parsePairs(labels), null, null, false);
+        return withPod(pod, doc -> patchPod(doc, parsePairs(labels), null, null, false));
     }
 
     @Command(name = {"cluster", "pod", "label-add"},
@@ -226,15 +228,16 @@ public class ClusterCommands {
             @Option(longName = "labels", shortName = 'l', required = true,
                     description = "Comma-separated k=v pairs to set.")
             String labels) {
-        BrainPodDocument doc = resolvePod(pod);
-        // Read-modify-write, and the endpoint replaces the whole map — so a
-        // concurrent write from another actor between these two steps is lost.
-        // Acceptable for an interactive shell and stated rather than hidden;
-        // a control loop reconciling a desired state should use label-set.
-        Map<String, String> merged = new TreeMap<>(
-                doc.getLabels() == null ? Map.of() : doc.getLabels());
-        merged.putAll(parsePairs(labels));
-        return patchPod(doc, merged, null, null, false);
+        return withPod(pod, doc -> {
+            // Read-modify-write, and the endpoint replaces the whole map — so a
+            // concurrent write from another actor between these two steps is
+            // lost. Acceptable for an interactive shell and stated rather than
+            // hidden; a control loop reconciling a desired state uses label-set.
+            Map<String, String> merged = new TreeMap<>(
+                    doc.getLabels() == null ? Map.of() : doc.getLabels());
+            merged.putAll(parsePairs(labels));
+            return patchPod(doc, merged, null, null, false);
+        });
     }
 
     @Command(name = {"cluster", "pod", "label-rm"},
@@ -244,19 +247,21 @@ public class ClusterCommands {
             @Option(longName = "keys", shortName = 'k', required = true,
                     description = "Comma-separated label keys to remove.")
             String keys) {
-        BrainPodDocument doc = resolvePod(pod);
-        Map<String, String> remaining = new TreeMap<>(
-                doc.getLabels() == null ? Map.of() : doc.getLabels());
-        List<String> missing = new ArrayList<>();
-        for (String k : splitCsv(keys)) {
-            if (remaining.remove(k) == null) missing.add(k);
-        }
-        String result = patchPod(doc, remaining, null, null, false);
-        // Reported, not treated as an error: removing a label that is not there
-        // reaches the desired state, and failing would make the command
-        // non-idempotent for no gain.
-        return missing.isEmpty() ? result
-                : result + "\n(no such label, nothing removed: " + String.join(", ", missing) + ")";
+        return withPod(pod, doc -> {
+            Map<String, String> remaining = new TreeMap<>(
+                    doc.getLabels() == null ? Map.of() : doc.getLabels());
+            List<String> missing = new ArrayList<>();
+            for (String k : splitCsv(keys)) {
+                if (remaining.remove(k) == null) missing.add(k);
+            }
+            String result = patchPod(doc, remaining, null, null, false);
+            // Reported, not treated as an error: removing a label that is not
+            // there reaches the desired state, and failing would make the
+            // command non-idempotent for no gain.
+            return missing.isEmpty() ? result
+                    : result + "\n(no such label, nothing removed: "
+                            + String.join(", ", missing) + ")";
+        });
     }
 
     @Command(name = {"cluster", "pod", "exclusive"},
@@ -267,8 +272,7 @@ public class ClusterCommands {
             @Option(longName = "value", shortName = 'v', required = true,
                     description = "true | false")
             boolean value) {
-        BrainPodDocument doc = resolvePod(pod);
-        return patchPod(doc, null, value, null, false);
+        return withPod(pod, doc -> patchPod(doc, null, value, null, false));
     }
 
     @Command(name = {"cluster", "pod", "max-score"},
@@ -298,8 +302,8 @@ public class ClusterCommands {
                 return "(--value must be an integer, got '" + value + "')";
             }
         }
-        BrainPodDocument doc = resolvePod(pod);
-        return patchPod(doc, null, null, parsed, clear);
+        Integer effective = parsed;
+        return withPod(pod, doc -> patchPod(doc, null, null, effective, clear));
     }
 
     /**
@@ -329,6 +333,26 @@ public class ClusterCommands {
             return "(failed: HTTP " + response.statusCode() + " " + response.body() + ")";
         }
         return "pod '" + doc.getNodeName() + "' → " + response.body();
+    }
+
+    /**
+     * Resolves the pod and runs {@code action}, turning every argument problem
+     * into a returned message.
+     *
+     * <p>Necessary, not cosmetic: Spring Shell wraps a thrown exception in a
+     * {@code CommandExecutionException}, and in {@code --sudo} that surfaces as
+     * "Unable to execute command cluster pod show" with the actual reason
+     * nowhere to be seen. Measured against a running brain. Every other command
+     * in this shell returns its errors as text, so this follows suit.
+     */
+    private String withPod(String podOrNode, Function<BrainPodDocument, String> action) {
+        try {
+            return action.apply(resolvePod(podOrNode));
+        } catch (IllegalArgumentException e) {
+            // Covers the pod lookup and the k=v grammar inside the action —
+            // both are the caller mistyping an argument.
+            return "(" + e.getMessage() + ")";
+        }
     }
 
     /**

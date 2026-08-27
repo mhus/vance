@@ -553,9 +553,13 @@ public class ProjectCommands {
             @Option(longName = "score",
                     description = "New homeResourceScore, at least 0.")
             @Nullable String score) {
-        ProjectDocument current = projectService.findByTenantAndName(tenant, name)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "No project '" + name + "' in tenant '" + tenant + "'"));
+        // Returned, not thrown: Spring Shell wraps a thrown exception into a
+        // CommandExecutionException whose --sudo output is "Unable to execute
+        // command project placement" with the reason nowhere to be seen.
+        ProjectDocument current = projectService.findByTenantAndName(tenant, name).orElse(null);
+        if (current == null) {
+            return "(no project '" + name + "' in tenant '" + tenant + "')";
+        }
 
         int mutators = (selector != null ? 1 : 0) + (add != null ? 1 : 0)
                 + (rm != null ? 1 : 0) + (clear ? 1 : 0);
@@ -583,6 +587,7 @@ public class ProjectCommands {
 
         Map<String, String> target = null;
         List<String> missing = List.of();
+        try {
         if (clear) {
             target = new TreeMap<>();
         } else if (selector != null) {
@@ -601,6 +606,9 @@ public class ProjectCommands {
                 if (target.remove(key) == null) notFound.add(key);
             }
             missing = notFound;
+        }
+        } catch (IllegalArgumentException e) {
+            return "(" + e.getMessage() + ")";
         }
 
         Map<String, Object> payload = new LinkedHashMap<>();

@@ -17,5 +17,9 @@ export interface BrainPodInsightsDto {
   bootedAt?: Date;
   lastHeartbeatAt?: Date;
   version?: string;
+  labels?: Record<string, string>;
+  exclusive: boolean;
+  resourcesCurrentScore: number;
+  resourcesMaxScore: number;
   tenantProjects: BrainPodProjectInsightsDto[];
 }

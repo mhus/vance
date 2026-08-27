@@ -1054,6 +1054,10 @@ public class InsightsAdminController {
                 .bootedAt(doc.getBootedAt())
                 .lastHeartbeatAt(doc.getLastHeartbeatAt())
                 .version(doc.getVersion())
+                .labels(doc.getLabels())
+                .exclusive(doc.isExclusive())
+                .resourcesCurrentScore(doc.getResourcesCurrentScore())
+                .resourcesMaxScore(doc.getResourcesMaxScore())
                 .tenantProjects(tenantProjects)
                 .build();
     }

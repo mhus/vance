@@ -91,6 +91,44 @@ function projectChipClass(p: BrainPodProjectInsightsDto): string {
   }
 }
 
+/**
+ * Label pairs as {@code key=value} chips. Sorted so two pods carrying the same
+ * labels look the same — map iteration order is not a property of the pod.
+ */
+function labelPairs(pod: BrainPodInsightsDto): string[] {
+  const labels = pod.labels;
+  if (labels == null) return [];
+  return Object.entries(labels)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`);
+}
+
+/**
+ * A pod that is {@code exclusive} with no labels matches nothing at all — an
+ * empty selector is refused by exclusive, a non-empty one finds no labels. That
+ * is the cordon shape, and it is worth naming rather than leaving the reader to
+ * combine an amber badge with an empty label list.
+ */
+function isCordoned(pod: BrainPodInsightsDto): boolean {
+  return pod.exclusive && labelPairs(pod).length === 0;
+}
+
+/** Load as a percentage of the cap, or {@code null} when no cap is published. */
+function loadPercent(pod: BrainPodInsightsDto): number | null {
+  const max = pod.resourcesMaxScore;
+  if (max == null || max <= 0) return null;
+  return Math.round(((pod.resourcesCurrentScore ?? 0) / max) * 100);
+}
+
+function loadTitle(pod: BrainPodInsightsDto): string {
+  const pct = loadPercent(pod);
+  return [
+    `score ${pod.resourcesCurrentScore ?? 0} / ${pod.resourcesMaxScore ?? 0}`,
+    pct == null ? 'no cap published' : `${pct}% of cap`,
+    'Sum over all tenants — the number placement actually compares against.',
+  ].join(' · ');
+}
+
 function projectChipTitle(p: BrainPodProjectInsightsDto): string {
   const parts = [
     `status: ${p.status ?? '—'}`,
@@ -247,6 +285,9 @@ const sortedPods = computed<BrainPodInsightsDto[]>(() => {
           <th class="w-24 th-sort" @click="toggleSort('version')">
             Version <span class="th-sort__arrow">{{ sortIndicator('version') }}</span>
           </th>
+          <th class="w-48" title="What a project's placementSelector is matched against">
+            Placement
+          </th>
           <th class="th-sort" @click="toggleSort('projects')">
             Projects (this tenant)
             <span class="th-sort__arrow">{{ sortIndicator('projects') }}</span>
@@ -284,6 +325,35 @@ const sortedPods = computed<BrainPodInsightsDto[]>(() => {
           </td>
           <td class="text-xs opacity-70">{{ fmtTime(pod.bootedAt) }}</td>
           <td class="text-xs opacity-70">{{ pod.version ?? '—' }}</td>
+          <td class="text-xs">
+            <div class="flex flex-wrap items-center gap-1">
+              <span
+                v-if="isCordoned(pod)"
+                class="label-chip label-chip--cordoned"
+                title="Exclusive with no labels — nothing matches this pod at all."
+              >cordoned</span>
+              <span
+                v-else-if="pod.exclusive"
+                class="label-chip label-chip--exclusive"
+                title="A project without a placement selector is not eligible here."
+              >exclusive</span>
+              <span
+                v-for="pair in labelPairs(pod)"
+                :key="pair"
+                class="label-chip font-mono"
+              >{{ pair }}</span>
+              <span
+                v-if="!pod.exclusive && labelPairs(pod).length === 0"
+                class="opacity-50"
+                title="No labels and not exclusive — accepts any project."
+              >any</span>
+            </div>
+            <div class="mt-0.5 opacity-70 font-mono text-[10px]" :title="loadTitle(pod)">
+              {{ pod.resourcesCurrentScore ?? 0 }}/{{ pod.resourcesMaxScore ?? 0 }}<template
+                v-if="loadPercent(pod) !== null"
+              > · {{ loadPercent(pod) }}%</template>
+            </div>
+          </td>
           <td class="text-xs">
             <div v-if="pod.tenantProjects.length === 0" class="opacity-50">—</div>
             <div v-else class="flex flex-wrap gap-1">
@@ -380,6 +450,19 @@ const sortedPods = computed<BrainPodInsightsDto[]>(() => {
 .master-banner__endpoint{ opacity: 0.75; }
 .master-banner__lease   { opacity: 0.7; }
 .master-banner__none    { opacity: 0.6; font-style: italic; }
+
+.label-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.35rem;
+  border-radius: 0.25rem;
+  font-size: 10px;
+  line-height: 1.5;
+  background: rgba(127, 127, 127, 0.16);
+}
+.label-chip--exclusive { background: rgba(245, 158, 11, 0.20); color: #b45309; }
+.label-chip--cordoned  { background: rgba(239, 68, 68, 0.18);  color: #b91c1c; }
 
 .project-chip {
   display: inline-flex;

@@ -5,6 +5,7 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -64,6 +65,41 @@ public class BrainPodInsightsDto {
 
     /** Optional build version. */
     private @Nullable String version;
+
+    /**
+     * What this pod <em>is</em> — the filter half of a placement decision.
+     * A project is eligible here when every entry of its
+     * {@code placementSelector} appears in this map with the same value.
+     *
+     * <p>{@code null} on rows written before the field existed, which is the
+     * same state as empty.
+     */
+    private @Nullable Map<String, String> labels;
+
+    /**
+     * {@code true} when a project <em>without</em> a selector is not eligible
+     * here — the pod refusing ordinary work so it stays available for what it
+     * was provisioned for. Together with empty {@link #labels} it is a full
+     * cordon.
+     */
+    private boolean exclusive;
+
+    /**
+     * Sum of {@code homeResourceScore} over the projects this pod owns, across
+     * <em>all</em> tenants. Deliberately unfiltered while
+     * {@link #tenantProjects} is filtered: the number that decides placement is
+     * the pod's real load, and showing a per-tenant subtotal here would explain
+     * the wrong decision.
+     */
+    private int resourcesCurrentScore;
+
+    /**
+     * The pod's capacity cap. Present because the per-project scores in
+     * {@link #tenantProjects} have no scale without it — the fit stage compares
+     * against this, and a reader who cannot see it cannot tell a busy pod from
+     * an idle one.
+     */
+    private int resourcesMaxScore;
 
     /**
      * Projects this pod currently owns <em>that belong to the

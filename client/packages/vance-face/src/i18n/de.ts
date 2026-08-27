@@ -1716,6 +1716,7 @@ export default {
       enabled: 'Aktiviert',
       save: 'Speichern',
       cancel: 'Abbrechen',
+      close: 'Schließen',
       create: 'Anlegen',
       empty: '(leer)',
       none: '—',
@@ -1784,6 +1785,35 @@ export default {
       contentLanguageLabel: 'Inhaltssprache (Dokumente, Insights, Memory)',
       contentLanguageHelp:
         'Sprache der vom Assistenten geschriebenen Inhalte. Bewusst ohne User-Ebene — Inhalte gehören dem Projekt.',
+      copy: {
+        action: 'Kopieren…',
+        title: 'Projekt „{name}" kopieren',
+        description:
+          'Legt ein neues Projekt an und übernimmt die Dokumente und Einstellungen. '
+          + 'Papierkorb, Logs und gemountete Dokumente unter _ext/ bleiben draußen.',
+        nameLabel: 'Name des neuen Projekts',
+        nameHelp: 'Wird automatisch in Kleinbuchstaben normalisiert. Nicht änderbar.',
+        includeSecrets: 'Verschlüsselte Einstellungen mitkopieren',
+        includeSecretsHelp:
+          'Aus gutem Grund standardmäßig aus: eine Kopie wird meist von mehr Leuten '
+          + 'gelesen als das Original. Bleibt sie aus, listet der Bericht die Schlüssel auf, '
+          + 'die von Hand nachzutragen sind.',
+        notCopiedHint:
+          'Berechtigungen werden nicht mitkopiert — der Kopie muss der Zugriff neu erteilt '
+          + 'werden. Sessions, Chatverlauf, Inbox-Threads und der Workspace bleiben ebenfalls draußen.',
+        submit: 'Kopieren',
+        done: 'Projekt „{name}" angelegt.',
+        documentsCopied: 'Dokumente kopiert',
+        documentsExcluded: 'Dokumente ausgelassen',
+        documentsFailed: 'Dokumente fehlgeschlagen',
+        settingsCopied: 'Einstellungen kopiert',
+        secretsCopied: 'Secrets kopiert',
+        secretsSkipped: 'Nicht übernommene Secrets',
+        secretsSkippedHelp: 'Diese Schlüssel müssen im neuen Projekt von Hand gesetzt werden.',
+        failures: 'Fehlgeschlagen',
+        notCopied: 'Nicht mitkopiert',
+        open: 'Kopie öffnen',
+      },
     },
     sessionGroups: {
       cardTitle: 'Session-Gruppen',

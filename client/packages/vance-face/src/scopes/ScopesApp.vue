@@ -35,6 +35,7 @@ import {
   type KitInstalledRecordDto,
   type KitLibraryEntryDto,
   type KitOriginDto,
+  type ProjectCopyReportDto,
   type ProjectDto,
   type ProjectGroupSummary,
   type SessionGroupDto,
@@ -418,6 +419,55 @@ async function archiveProject(): Promise<void> {
   } catch {
     /* state.error */
   }
+}
+
+// ─── Project copy ───
+
+const showCopyDialog = ref(false);
+const copyReport = ref<ProjectCopyReportDto | null>(null);
+const copyForm = reactive({
+  name: '',
+  title: '',
+  projectGroupId: '' as string,
+  includeSecrets: false,
+});
+
+function openCopyDialog(): void {
+  if (selection.value.kind !== 'project') return;
+  const source = selectedProject.value;
+  copyReport.value = null;
+  projectsState.error.value = null;
+  copyForm.name = `${selection.value.name}-copy`;
+  copyForm.title = source?.title ? `${source.title} (Copy)` : '';
+  copyForm.projectGroupId = source?.projectGroupId ?? '';
+  copyForm.includeSecrets = false;
+  showCopyDialog.value = true;
+}
+
+async function submitCopy(): Promise<void> {
+  if (selection.value.kind !== 'project') return;
+  const name = slugifyGroupName(copyForm.name);
+  if (!name) return;
+  try {
+    copyReport.value = await projectsState.copy(selection.value.name, {
+      name,
+      title: copyForm.title.trim() === '' ? undefined : copyForm.title.trim(),
+      projectGroupId: copyForm.projectGroupId === '' ? undefined : copyForm.projectGroupId,
+      includeSecrets: copyForm.includeSecrets,
+    });
+    // The dialog stays open on purpose: the report is the point of the
+    // operation, and closing on success would hide what was left behind.
+  } catch {
+    /* projectsState.error */
+  }
+}
+
+/** Leaves the report behind and jumps to the project it describes. */
+function openCopiedProject(): void {
+  const name = copyReport.value?.project?.name;
+  showCopyDialog.value = false;
+  copyReport.value = null;
+  if (name) selection.value = { kind: 'project', name };
 }
 
 // ─── Session-group actions ───
@@ -1209,9 +1259,16 @@ const combinedError = computed<string | null>(() =>
               :loading="projectsState.busy.value"
               @click="archiveProject"
             >{{ $t('scopes.project.archive') }}</VButton>
-            <VButton variant="primary" :loading="projectsState.busy.value" @click="saveProject">
-              {{ $t('scopes.common.save') }}
-            </VButton>
+            <div class="flex gap-2">
+              <VButton
+                variant="ghost"
+                :loading="projectsState.busy.value"
+                @click="openCopyDialog"
+              >{{ $t('scopes.project.copy.action') }}</VButton>
+              <VButton variant="primary" :loading="projectsState.busy.value" @click="saveProject">
+                {{ $t('scopes.common.save') }}
+              </VButton>
+            </div>
           </div>
         </div>
       </VCard>
@@ -1764,6 +1821,115 @@ const combinedError = computed<string | null>(() =>
          shared {@link ProjectListSidebar} component — see template. -->
 
     <!-- ─── Kit modal (install / update / apply / export) ─── -->
+    <VModal
+      v-model="showCopyDialog"
+      :title="$t('scopes.project.copy.title', {
+        name: selection.kind === 'project' ? selection.name : '' })"
+      :close-on-backdrop="false"
+    >
+      <div class="flex flex-col gap-3">
+        <VAlert v-if="projectsState.error.value" variant="error">
+          <span>{{ projectsState.error.value }}</span>
+        </VAlert>
+
+        <!-- Form until the copy ran; report afterwards. Both in one dialog so
+             what was left behind is read in the same place it was decided. -->
+        <template v-if="!copyReport">
+          <p class="text-sm opacity-80">{{ $t('scopes.project.copy.description') }}</p>
+          <VInput
+            v-model="copyForm.name"
+            :label="$t('scopes.project.copy.nameLabel')"
+            :help="$t('scopes.project.copy.nameHelp')"
+          />
+          <VInput v-model="copyForm.title" :label="$t('scopes.common.title')" />
+          <VSelect
+            v-model="copyForm.projectGroupId"
+            :label="$t('scopes.project.groupLabel')"
+            :options="groupSelectOptions"
+          />
+          <VCheckbox
+            v-model="copyForm.includeSecrets"
+            :label="$t('scopes.project.copy.includeSecrets')"
+          />
+          <p class="text-xs opacity-70">{{ $t('scopes.project.copy.includeSecretsHelp') }}</p>
+          <VAlert variant="info">
+            <span>{{ $t('scopes.project.copy.notCopiedHint') }}</span>
+          </VAlert>
+          <div class="flex justify-end gap-2 pt-2">
+            <VButton variant="ghost" @click="showCopyDialog = false">
+              {{ $t('scopes.common.cancel') }}
+            </VButton>
+            <VButton
+              variant="primary"
+              :disabled="copyForm.name.trim() === ''"
+              :loading="projectsState.busy.value"
+              @click="submitCopy"
+            >{{ $t('scopes.project.copy.submit') }}</VButton>
+          </div>
+        </template>
+
+        <template v-else>
+          <VAlert :variant="copyReport.documentsFailed > 0 ? 'warning' : 'success'">
+            <span>{{ $t('scopes.project.copy.done', {
+              name: copyReport.project?.name ?? copyForm.name }) }}</span>
+          </VAlert>
+          <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+            <dt class="opacity-60">{{ $t('scopes.project.copy.documentsCopied') }}</dt>
+            <dd>{{ copyReport.documentsCopied }}</dd>
+            <dt class="opacity-60">{{ $t('scopes.project.copy.documentsExcluded') }}</dt>
+            <dd>{{ copyReport.documentsExcluded }}</dd>
+            <template v-if="copyReport.documentsFailed > 0">
+              <dt class="opacity-60">{{ $t('scopes.project.copy.documentsFailed') }}</dt>
+              <dd class="text-error">{{ copyReport.documentsFailed }}</dd>
+            </template>
+            <dt class="opacity-60">{{ $t('scopes.project.copy.settingsCopied') }}</dt>
+            <dd>{{ copyReport.settingsCopied }}</dd>
+            <dt class="opacity-60">{{ $t('scopes.project.copy.secretsCopied') }}</dt>
+            <dd>{{ copyReport.secretsCopied }}</dd>
+          </dl>
+
+          <VAlert v-if="copyReport.statusNote" variant="info">
+            <span>{{ copyReport.statusNote }}</span>
+          </VAlert>
+
+          <div v-if="copyReport.secretsSkipped.length > 0" class="flex flex-col gap-1">
+            <span class="text-sm font-semibold">
+              {{ $t('scopes.project.copy.secretsSkipped') }}
+            </span>
+            <p class="text-xs opacity-70">{{ $t('scopes.project.copy.secretsSkippedHelp') }}</p>
+            <ul class="list-disc pl-5 text-xs font-mono">
+              <li v-for="key in copyReport.secretsSkipped" :key="key">{{ key }}</li>
+            </ul>
+          </div>
+
+          <div v-if="copyReport.failures.length > 0" class="flex flex-col gap-1">
+            <span class="text-sm font-semibold text-error">
+              {{ $t('scopes.project.copy.failures') }}
+            </span>
+            <ul class="list-disc pl-5 text-xs">
+              <li v-for="(line, index) in copyReport.failures" :key="index">{{ line }}</li>
+            </ul>
+          </div>
+
+          <div class="flex flex-col gap-1">
+            <span class="text-sm font-semibold">{{ $t('scopes.project.copy.notCopied') }}</span>
+            <ul class="list-disc pl-5 text-xs opacity-70">
+              <li v-for="(line, index) in copyReport.notCopied" :key="index">{{ line }}</li>
+            </ul>
+          </div>
+
+          <div class="flex justify-end gap-2 pt-2">
+            <VButton variant="ghost" @click="showCopyDialog = false">
+              {{ $t('scopes.common.close') }}
+            </VButton>
+            <VButton variant="primary" @click="openCopiedProject">
+              {{ $t('scopes.project.copy.open') }}
+            </VButton>
+          </div>
+        </template>
+      </div>
+    </VModal>
+
     <VModal
       v-model="showKitConfigDialog"
       :title="$t('scopes.kit.config.title', { name: kitConfigRecord?.kit.name ?? '' })"

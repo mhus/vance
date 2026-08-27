@@ -229,6 +229,8 @@ export * from './progress/UsageDelta';
 export * from './llmtrace/LlmTraceDto';
 export * from './llmtrace/LlmTraceListResponse';
 
+export * from './projects/ProjectCopyReportDto';
+export * from './projects/ProjectCopyRequest';
 export * from './projects/ProjectCreateRequest';
 export * from './projects/ProjectDto';
 export * from './projects/ProjectGroupCreateRequest';

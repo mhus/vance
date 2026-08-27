@@ -1706,6 +1706,7 @@ export default {
       enabled: 'Enabled',
       save: 'Save',
       cancel: 'Cancel',
+      close: 'Close',
       create: 'Create',
       empty: '(empty)',
       none: '—',
@@ -1774,6 +1775,34 @@ export default {
       contentLanguageLabel: 'Content language (documents, insights, memory)',
       contentLanguageHelp:
         'Language the assistant writes content in. No user layer by design — content belongs to the project.',
+      copy: {
+        action: 'Copy…',
+        title: 'Copy project "{name}"',
+        description:
+          'Creates a new project holding this one\'s documents and settings. Trash, logs '
+          + 'and mounted documents under _ext/ are left out.',
+        nameLabel: 'Name of the new project',
+        nameHelp: 'Automatically normalised to lower-case. Immutable.',
+        includeSecrets: 'Copy encrypted settings',
+        includeSecretsHelp:
+          'Off by default, and deliberately so: a copy is usually read by more people '
+          + 'than the original. Left off, the report lists the keys that have to be set by hand.',
+        notCopiedHint:
+          'Permissions are not copied — access to the copy has to be granted again. '
+          + 'Sessions, chat history, inbox threads and the workspace stay behind as well.',
+        submit: 'Copy',
+        done: 'Project "{name}" created.',
+        documentsCopied: 'Documents copied',
+        documentsExcluded: 'Documents excluded',
+        documentsFailed: 'Documents failed',
+        settingsCopied: 'Settings copied',
+        secretsCopied: 'Secrets copied',
+        secretsSkipped: 'Secrets left behind',
+        secretsSkippedHelp: 'These keys have to be set by hand in the new project.',
+        failures: 'Failed',
+        notCopied: 'Not copied',
+        open: 'Open the copy',
+      },
     },
     sessionGroups: {
       cardTitle: 'Session Groups',

@@ -1,5 +1,7 @@
 import { ref, type Ref } from 'vue';
 import type {
+  ProjectCopyReportDto,
+  ProjectCopyRequest,
   ProjectCreateRequest,
   ProjectDto,
   ProjectUpdateRequest,
@@ -30,6 +32,7 @@ export function useAdminProjects(): {
   create: (req: ProjectCreateRequest) => Promise<ProjectCreateResult>;
   update: (name: string, req: ProjectUpdateRequest) => Promise<ProjectDto>;
   archive: (name: string) => Promise<ProjectDto>;
+  copy: (source: string, req: ProjectCopyRequest) => Promise<ProjectCopyReportDto>;
 } {
   const projects = ref<ProjectDto[]>([]);
   const loading = ref(false);
@@ -97,5 +100,29 @@ export function useAdminProjects(): {
     }
   }
 
-  return { projects, loading, busy, error, reload, create, update, archive };
+  /**
+   * Creates a new project holding {@code source}'s documents and settings.
+   *
+   * <p>Resolves with the report even when individual documents failed — the
+   * project exists at that point, so the caller shows what went wrong rather
+   * than reporting the whole copy as an error.
+   */
+  async function copy(
+    source: string, req: ProjectCopyRequest): Promise<ProjectCopyReportDto> {
+    busy.value = true;
+    error.value = null;
+    try {
+      const report = await brainFetch<ProjectCopyReportDto>(
+        'POST', `admin/projects/${encodeURIComponent(source)}/copy`, { body: req });
+      await reload();
+      return report;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to copy project.';
+      throw e;
+    } finally {
+      busy.value = false;
+    }
+  }
+
+  return { projects, loading, busy, error, reload, create, update, archive, copy };
 }

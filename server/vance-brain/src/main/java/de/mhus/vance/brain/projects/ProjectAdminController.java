@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.projects;
 
+import de.mhus.vance.api.projects.ProjectCopyReportDto;
+import de.mhus.vance.api.projects.ProjectCopyRequest;
 import de.mhus.vance.api.projects.ProjectCreateRequest;
 import de.mhus.vance.api.projects.ProjectDto;
 import de.mhus.vance.api.projects.ProjectLifecycleTypeRequest;
@@ -8,6 +10,7 @@ import de.mhus.vance.api.projects.ProjectUpdateRequest;
 import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.brain.kit.catalog.ProjectKitInstaller;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.project.ProjectCopyService;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.permission.Action;
@@ -57,6 +60,7 @@ public class ProjectAdminController {
     private final ProjectGroupService projectGroupService;
     private final ProjectLifecycleService lifecycleService;
     private final ProjectKitInstaller projectKitInstaller;
+    private final ProjectCopyService copyService;
     private final RequestAuthority authority;
 
     @GetMapping
@@ -115,6 +119,48 @@ public class ProjectAdminController {
     private static @org.jspecify.annotations.Nullable String actor(HttpServletRequest request) {
         Object u = request.getAttribute(AccessFilterBase.ATTR_USERNAME);
         return u == null ? null : u.toString();
+    }
+
+    /**
+     * Creates a new project holding the source's documents and settings.
+     *
+     * <p>ADMIN on the tenant, like {@code create} — the copy is a new project,
+     * and ADMIN on the source alone would not authorize making one. Encrypted
+     * settings only travel when the request asks for it; what stayed behind is
+     * named in the report rather than counted.
+     *
+     * <p>Answers {@code 201} with a report even when individual documents
+     * failed: the project exists at that point, and the failures are lines in
+     * the report. Same call {@code create} makes for a failed kit install.
+     */
+    @PostMapping("/{name}/copy")
+    public ResponseEntity<ProjectCopyReportDto> copy(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("name") String name,
+            @Valid @RequestBody ProjectCopyRequest request,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        try {
+            ProjectCopyReportDto report = copyService.copy(
+                    tenant,
+                    name,
+                    request.getName(),
+                    request.getTitle(),
+                    request.getProjectGroupId(),
+                    request.isIncludeSecrets(),
+                    authority.contextOf(httpRequest));
+            projectService.findByTenantAndName(tenant, request.getName())
+                    .ifPresent(saved -> report.setProject(toDto(saved)));
+            return ResponseEntity.status(HttpStatus.CREATED).body(report);
+        } catch (ProjectService.ProjectNotFoundException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+        } catch (ProjectService.ProjectAlreadyExistsException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+        } catch (ProjectService.SystemProjectProtectedException
+                | ProjectService.ReservedProjectNameException
+                | IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
     }
 
     /**

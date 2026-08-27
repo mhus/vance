@@ -38,8 +38,8 @@ public class SessionStaleBindSweepTick {
     private final ClusterMasterService masterService;
     private final SessionService sessionService;
 
-    @Scheduled(fixedDelayString = "${vance.session.staleBindSweep.interval:PT60S}",
-            initialDelayString = "${vance.session.staleBindSweep.initialDelay:PT2M}")
+    @Scheduled(fixedDelayString = "${vance.session.stale-bind-sweep.interval:PT60S}",
+            initialDelayString = "${vance.session.stale-bind-sweep.initial-delay:PT2M}")
     public void tick() {
         if (!masterService.isLocalPodMaster()) {
             return;

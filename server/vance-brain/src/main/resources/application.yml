@@ -153,7 +153,7 @@ vance:
   storage:
     chunk-size: 524288            # 512 KB
     cleanup-interval-ms: 900000   # 15 min
-    orphanSweep:
+    orphan-sweep:
       # Cluster-master-only periodic orphan-cleanup. Two phases:
       #   1) Archive entries whose lineage has no live document left
       #      (leaked by a crashed DocumentService.delete).
@@ -163,9 +163,9 @@ vance:
       # See StorageOrphanCleanupService for the write-order / race
       # analysis behind the grace value.
       interval: PT1H
-      initialDelay: PT5M
-      gracePeriod: PT1H
-      batchSize: 500
+      initial-delay: PT5M
+      grace-period: PT1H
+      batch-size: 500
   services:
     storage-cleanup: true         # this brain instance runs the cleanup
     magrathea: true                  # workflow subsystem (planning/workflow-service.md)
@@ -363,13 +363,13 @@ vance:
     # stale-takeover. Default = 4× WS ping (30s), tolerant of one
     # missed ping + jitter.
     bindStaleAfter: PT2M
-    staleBindSweep:
+    stale-bind-sweep:
       # Cluster-master-only periodic sweep that releases boundConnectionId
       # on every session whose lastActivityAt is older than bindStaleAfter.
       # Runs as a server-side updateMulti backed by the bound_activity_idx
       # partial index — cost is independent of total session count.
       interval: PT60S
-      initialDelay: PT2M
+      initial-delay: PT2M
   prak:
     # Side-channel an: Compaction → Prak-Analyzer → Sanitizer → Strength → Promotion → Audit
     sideChannelEnabled: true

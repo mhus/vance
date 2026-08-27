@@ -282,16 +282,25 @@ public class ClusterProperties {
         /** How long a lease is valid once granted. */
         private Duration leaseDuration = Duration.ofMinutes(5);
 
-        /** Spacing of the election/renew tick on every pod. */
-        private Duration electionInterval = Duration.ofSeconds(30);
-
-        /** Spacing of the distributor tick on the master pod only. */
-        private Duration distributorInterval = Duration.ofSeconds(60);
+        // The two tick cadences that used to sit here — electionInterval and
+        // distributorInterval — are gone. Neither had a reader: the ticks take
+        // their spacing from the @Scheduled placeholders
+        // (vance.cluster.master.election-interval and .distributor-interval),
+        // and these fields only restated the same defaults a second time, with
+        // a Javadoc on ClusterMasterService claiming the field was the source.
+        // Nothing in the brain computes with a cadence — ClusterTimeWindows
+        // deliberately covers the five windows that say how long knowledge
+        // stays true, not how often we look — so the placeholder is the whole
+        // truth. Stated cost of the removal: the two keys no longer appear in
+        // spring-configuration-metadata.json, so IDE completion does not offer
+        // them. That is now uniform with the six other tick knobs in this
+        // package, which never had a field either; the documentation is
+        // specification/cluster-project-management.md §8.
 
         /**
          * Renew the lease this far before its expiry — gives some
          * headroom for GC pauses or short Mongo hiccups. Should be
-         * {@code >= electionInterval} so a single missed tick still
+         * {@code >=} the election interval so a single missed tick still
          * leaves time to renew.
          */
         private Duration renewSafetyMargin = Duration.ofMinutes(2);
@@ -303,8 +312,8 @@ public class ClusterProperties {
          * Floor between two rounds triggered by {@link PlacementInputChangedEvent}
          * — see {@code PlacementAccelerator}. Guards the externally reachable
          * {@code PATCH .../pods/{podId}/placement} against a caller writing
-         * labels in a loop; it does not throttle {@link #distributorInterval},
-         * which is the floor underneath.
+         * labels in a loop; it does not throttle the distributor tick, which
+         * is the floor underneath.
          *
          * <p>{@link Duration#ZERO} runs a round for every event.
          */

@@ -17,8 +17,8 @@ import org.springframework.stereotype.Service;
  * to other brain services. See {@code specification/cluster-project-management.md}
  * §4.
  *
- * <p>One election tick per {@link ClusterProperties.Master#getElectionInterval()}
- * on every pod:
+ * <p>One election tick per {@code vance.cluster.master.election-interval}
+ * (default 30 s) on every pod:
  * <ul>
  *   <li>If I'm master and the lease is about to expire (within {@code renewSafetyMargin}):
  *       renew via {@link ClusterMasterStore#renew}. A failed renew means
@@ -53,8 +53,8 @@ public class ClusterMasterService {
     private volatile boolean localIsMaster = false;
     private volatile @org.jspecify.annotations.Nullable Instant localLeaseUntil = null;
 
-    @Scheduled(fixedDelayString = "${vance.cluster.master.electionInterval:PT30S}",
-            initialDelayString = "${vance.cluster.master.electionInitialDelay:PT5S}")
+    @Scheduled(fixedDelayString = "${vance.cluster.master.election-interval:PT30S}",
+            initialDelayString = "${vance.cluster.master.election-initial-delay:PT5S}")
     public void electionTick() {
         try {
             tick(Instant.now());

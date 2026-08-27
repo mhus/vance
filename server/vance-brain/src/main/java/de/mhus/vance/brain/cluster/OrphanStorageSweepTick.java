@@ -36,14 +36,14 @@ public class OrphanStorageSweepTick {
     private final StorageOrphanCleanupService cleanupService;
     private final OrphanArchiveCleanupService archiveCleanupService;
 
-    @Value("${vance.storage.orphanSweep.gracePeriod:PT1H}")
+    @Value("${vance.storage.orphan-sweep.grace-period:PT1H}")
     private Duration gracePeriod = Duration.ofHours(1);
 
-    @Value("${vance.storage.orphanSweep.batchSize:500}")
+    @Value("${vance.storage.orphan-sweep.batch-size:500}")
     private int batchSize = 500;
 
-    @Scheduled(fixedDelayString = "${vance.storage.orphanSweep.interval:PT1H}",
-            initialDelayString = "${vance.storage.orphanSweep.initialDelay:PT5M}")
+    @Scheduled(fixedDelayString = "${vance.storage.orphan-sweep.interval:PT1H}",
+            initialDelayString = "${vance.storage.orphan-sweep.initial-delay:PT5M}")
     public void tick() {
         if (!masterService.isLocalPodMaster()) {
             return;

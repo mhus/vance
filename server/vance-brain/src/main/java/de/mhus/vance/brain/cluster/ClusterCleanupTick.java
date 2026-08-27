@@ -41,7 +41,7 @@ public class ClusterCleanupTick {
     private final BrainPodService brainPodService;
 
     @Scheduled(fixedDelayString = "${vance.cluster.cleanup.interval:PT10M}",
-            initialDelayString = "${vance.cluster.cleanup.initialDelay:PT2M}")
+            initialDelayString = "${vance.cluster.cleanup.initial-delay:PT2M}")
     public void tick() {
         if (!masterService.isLocalPodMaster()) {
             return;

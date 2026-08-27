@@ -44,8 +44,8 @@ public class ClusterDistributorTick {
     private final PlacementDemandNotifier demandNotifier;
     private final MegadodoService megadodoService;
 
-    @Scheduled(fixedDelayString = "${vance.cluster.master.distributorInterval:PT60S}",
-            initialDelayString = "${vance.cluster.master.distributorInitialDelay:PT45S}")
+    @Scheduled(fixedDelayString = "${vance.cluster.master.distributor-interval:PT60S}",
+            initialDelayString = "${vance.cluster.master.distributor-initial-delay:PT45S}")
     public void tick() {
         if (!masterService.isLocalPodMaster()) {
             return;

@@ -130,6 +130,6 @@ class ProjectCommandsConfirmationTest {
 
     private static MaintenanceReport report(String project) {
         return new MaintenanceReport("acme", project,
-                MaintenanceReport.Operation.DELETE, List.of(), List.of());
+                MaintenanceReport.Operation.DELETE, List.of(), List.of(), true);
     }
 }

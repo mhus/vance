@@ -184,6 +184,6 @@ class ProjectCommandsDrainTest {
 
     private static MaintenanceReport report(
             String project, MaintenanceReport.Operation operation) {
-        return new MaintenanceReport("acme", project, operation, List.of(), List.of());
+        return new MaintenanceReport("acme", project, operation, List.of(), List.of(), true);
     }
 }

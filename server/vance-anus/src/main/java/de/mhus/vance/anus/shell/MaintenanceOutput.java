@@ -26,11 +26,15 @@ final class MaintenanceOutput {
     static String render(MaintenanceReport report, String subjectNoun) {
         String what = " " + subjectNoun + " '" + report.subject() + "' in tenant '"
                 + report.tenantId() + "':";
-        String header = switch (report.operation()) {
-            case INSPECT -> "Contents of" + what;
-            case DELETE -> "Deleted" + what;
-            case RENAME -> "Renamed" + what;
+        // A run that did not finish must not be headed "Deleted": the table
+        // below carries the reason per entity, but the first line is what an
+        // operator reads before deciding they are done.
+        String verb = switch (report.operation()) {
+            case INSPECT -> report.complete() ? "Contents of" : "Contents (incomplete) of";
+            case DELETE -> report.complete() ? "Deleted" : "PARTIALLY deleted";
+            case RENAME -> report.complete() ? "Renamed" : "PARTIALLY renamed";
         };
+        String header = verb + what;
         String table = Tables.render(
                 List.of("ENTITY", "ROWS", "COLLECTIONS", "NOTE"),
                 List.<Function<EntityResult, @Nullable Object>>of(

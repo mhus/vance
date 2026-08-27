@@ -121,7 +121,7 @@ public class ProjectMaintenanceService {
         for (ProjectDataHandler handler : handlers) {
             entities.add(run(handler, () -> handler.count(tenantId, projectId)));
         }
-        return new MaintenanceReport(tenantId, projectId, Operation.INSPECT,
+        return MaintenanceReport.of(tenantId, projectId, Operation.INSPECT,
                 entities, unaccountedCollections(tenantId, projectId));
     }
 
@@ -203,7 +203,7 @@ public class ProjectMaintenanceService {
                     tenantId, projectId);
         }
         return new MaintenanceReport(tenantId, projectId, Operation.DELETE,
-                entities, unaccounted);
+                entities, unaccounted, allSucceeded);
     }
 
     private static void requireUserHub(String name, String operation) {
@@ -300,7 +300,7 @@ public class ProjectMaintenanceService {
         }
         entities.add(EntityResult.of("project", Set.of("projects"), 1));
 
-        return new MaintenanceReport(tenantId, projectId, Operation.RENAME,
+        return MaintenanceReport.of(tenantId, projectId, Operation.RENAME,
                 entities, unaccountedCollections(tenantId, newProjectId));
     }
 

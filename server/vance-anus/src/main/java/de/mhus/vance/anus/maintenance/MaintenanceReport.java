@@ -21,13 +21,37 @@ import org.jspecify.annotations.Nullable;
  * @param unaccounted collections holding rows for this subject that no handler
  *     claims. Always reported, never acted on: the whole reason to name them is
  *     that nobody knows what they mean.
+ * @param complete whether every handler succeeded. Has to be carried rather
+ *     than derived: a note on an {@link EntityResult} means either "this handler
+ *     threw" or "this handler left something behind on purpose", and from the
+ *     outside those two look identical. A nested run — the user sweep delegating
+ *     its hub to the project machinery — needs to tell them apart, because
+ *     mistaking the first for the second removes the account while its data is
+ *     still there.
  */
 public record MaintenanceReport(
         String tenantId,
         String subject,
         Operation operation,
         List<EntityResult> entities,
-        List<UnaccountedCollection> unaccounted) {
+        List<UnaccountedCollection> unaccounted,
+        boolean complete) {
+
+    /**
+     * For runs in which the only note a handler can carry is a failure —
+     * {@link Operation#INSPECT} and {@link Operation#RENAME}, neither of which
+     * overlays a deliberate note. {@link Operation#DELETE} does, so it states
+     * {@code complete} itself.
+     */
+    public static MaintenanceReport of(
+            String tenantId,
+            String subject,
+            Operation operation,
+            List<EntityResult> entities,
+            List<UnaccountedCollection> unaccounted) {
+        return new MaintenanceReport(tenantId, subject, operation, entities, unaccounted,
+                entities.stream().allMatch(e -> e.note() == null));
+    }
 
     public enum Operation {
         /** Counted only — nothing was written. */

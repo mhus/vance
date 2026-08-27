@@ -106,11 +106,13 @@ public class ClusterCommands {
             @Option(longName = "tenant", shortName = 'T',
                     description = "Narrow to one tenant. Omit for the whole cluster.")
             @Nullable String tenant) {
-        var report = podService.demand(tenant);
-        if (!report.success()) {
-            return "(failed: HTTP " + report.statusCode() + " " + report.body() + ")";
-        }
-        return report.body();
+        return BrainCalls.text(() -> {
+            var report = podService.demand(tenant);
+            if (!report.success()) {
+                return "(failed: HTTP " + report.statusCode() + " " + report.body() + ")";
+            }
+            return report.body();
+        });
     }
 
     // ─── Pod placement ──────────────────────────────────────────────
@@ -293,13 +295,20 @@ public class ClusterCommands {
      * in this shell returns its errors as text, so this follows suit.
      */
     private String withPod(String podOrNode, Function<BrainPodDocument, String> action) {
-        try {
-            return action.apply(podService.resolve(podOrNode));
-        } catch (IllegalArgumentException e) {
-            // Covers the pod lookup and the k=v grammar inside the action —
-            // both are the caller mistyping an argument.
-            return "(" + e.getMessage() + ")";
-        }
+        // BrainCalls covers the other way this fails: the label writes inside
+        // the action go over /internal/, which refuses outright when the shared
+        // secret is unset — the shipped default. Catching only the argument
+        // mistake left that one to Spring Shell, which is the exact outcome the
+        // javadoc above says this method exists to prevent.
+        return BrainCalls.text(() -> {
+            try {
+                return action.apply(podService.resolve(podOrNode));
+            } catch (IllegalArgumentException e) {
+                // Covers the pod lookup and the k=v grammar inside the action —
+                // both are the caller mistyping an argument.
+                return "(" + e.getMessage() + ")";
+            }
+        });
     }
 
     /**

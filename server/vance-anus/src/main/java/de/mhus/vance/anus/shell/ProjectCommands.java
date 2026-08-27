@@ -373,19 +373,21 @@ public class ProjectCommands {
     public String claim(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "name", shortName = 'n', required = true) String name) {
-        var attempt = clusterService.place(tenant, name);
-        // Each outcome is a different situation and a different next step, which
-        // is the whole reason the service distinguishes them.
-        return switch (attempt.outcome()) {
-            case PLACED -> "placed: " + attempt.detail();
-            case ALREADY_RUNNING -> "already running: " + attempt.detail();
-            case UNSCHEDULABLE -> "cannot be placed: " + attempt.detail()
-                    + "\n(NO_ELIGIBLE_POD → provide a pod with matching labels; "
-                    + "NO_CAPACITY → the matching pods are full)";
-            case BRING_FAILED -> "a pod was chosen but the bring failed: " + attempt.detail();
-            case NOT_FOUND -> "no such project";
-            case ERROR -> "(HTTP " + attempt.statusCode() + " " + attempt.detail() + ")";
-        };
+        return BrainCalls.text(() -> {
+            var attempt = clusterService.place(tenant, name);
+            // Each outcome is a different situation and a different next step,
+            // which is the whole reason the service distinguishes them.
+            return switch (attempt.outcome()) {
+                case PLACED -> "placed: " + attempt.detail();
+                case ALREADY_RUNNING -> "already running: " + attempt.detail();
+                case UNSCHEDULABLE -> "cannot be placed: " + attempt.detail()
+                        + "\n(NO_ELIGIBLE_POD → provide a pod with matching labels; "
+                        + "NO_CAPACITY → the matching pods are full)";
+                case BRING_FAILED -> "a pod was chosen but the bring failed: " + attempt.detail();
+                case NOT_FOUND -> "no such project";
+                case ERROR -> "(HTTP " + attempt.statusCode() + " " + attempt.detail() + ")";
+            };
+        });
     }
 
     @Command(name = {"project", "drain"},
@@ -432,14 +434,16 @@ public class ProjectCommands {
         if (StringUtils.isBlank(value)) {
             return "(--value is required: AUTO, EPHEMERAL or PERMANENT)";
         }
-        var written = clusterService.writeLifecycleType(tenant, name, value);
-        if (!written.success()) {
-            return "(failed: HTTP " + written.statusCode() + " " + written.detail() + ")";
-        }
-        // The brain echoes ownerRequired alongside the override, which is the
-        // value AUTO defers to — printing it verbatim is how an operator sees
-        // that setting AUTO just switched a project off.
-        return written.detail();
+        return BrainCalls.text(() -> {
+            var written = clusterService.writeLifecycleType(tenant, name, value);
+            if (!written.success()) {
+                return "(failed: HTTP " + written.statusCode() + " " + written.detail() + ")";
+            }
+            // The brain echoes ownerRequired alongside the override, which is
+            // the value AUTO defers to — printing it verbatim is how an operator
+            // sees that setting AUTO just switched a project off.
+            return written.detail();
+        });
     }
 
     // ─── Placement selector ─────────────────────────────────────────
@@ -533,16 +537,22 @@ public class ProjectCommands {
             return "(" + e.getMessage() + ")";
         }
 
-        var written = clusterService.writePlacement(tenant, name, target, parsedScore);
-        if (!written.success()) {
-            return "(failed: HTTP " + written.statusCode() + " " + written.detail() + ")";
-        }
-        String out = written.detail();
-        // Reported, not an error: removing a key that is not there reaches the
-        // desired state, and failing would make the command non-idempotent.
-        return missing.isEmpty() ? out
-                : out + "\n(no such selector key, nothing removed: "
-                        + String.join(", ", missing) + ")";
+        Map<String, String> body = target;
+        Integer scoreToWrite = parsedScore;
+        List<String> notFound = missing;
+        return BrainCalls.text(() -> {
+            var written = clusterService.writePlacement(tenant, name, body, scoreToWrite);
+            if (!written.success()) {
+                return "(failed: HTTP " + written.statusCode() + " " + written.detail() + ")";
+            }
+            String out = written.detail();
+            // Reported, not an error: removing a key that is not there reaches
+            // the desired state, and failing would make the command
+            // non-idempotent.
+            return notFound.isEmpty() ? out
+                    : out + "\n(no such selector key, nothing removed: "
+                            + String.join(", ", notFound) + ")";
+        });
     }
 
     /**

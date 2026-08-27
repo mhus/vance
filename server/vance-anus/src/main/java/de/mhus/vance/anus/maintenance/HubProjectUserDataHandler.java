@@ -83,6 +83,20 @@ public class HubProjectUserDataHandler implements UserDataHandler {
         return hubExists(tenantId, userName) ? 1 : 0;
     }
 
+    /**
+     * Runs the project sweep on the hub — and fails loudly when that sweep did
+     * not finish.
+     *
+     * <p>The nested run does not throw on a failed handler: it keeps the project
+     * document and says so in the report, because re-running is the repair path.
+     * Reporting that back as a plain success would let {@code UserMaintenanceService}
+     * conclude the whole account is clear and delete the {@code users} row — and
+     * then the login is free again while {@code _user_<login>} and its rows are
+     * still there, so the next holder of that name inherits them. That is the
+     * exact hazard the tombstone exists to prevent, arrived at from the other
+     * side. Throwing keeps the account document in place, which keeps the name
+     * taken until somebody finishes the job.
+     */
     @Override
     public long delete(String tenantId, String userName) {
         String hub = HomeBootstrapService.hubProjectName(userName);
@@ -90,6 +104,12 @@ public class HubProjectUserDataHandler implements UserDataHandler {
             return 0;
         }
         MaintenanceReport report = projectMaintenanceService.deleteUserHub(tenantId, hub);
+        if (!report.complete()) {
+            throw new IllegalStateException(
+                    "hub project '" + hub + "' was not fully deleted — its project document was"
+                            + " kept because an entity failed; run 'project inspect --name " + hub
+                            + "' to see what is left, then re-run this delete");
+        }
         log.info("User '{}': deleted hub project '{}' ({} row(s))",
                 userName, hub, report.total());
         return 1;

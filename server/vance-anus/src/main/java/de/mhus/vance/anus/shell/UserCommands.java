@@ -12,7 +12,9 @@ import de.mhus.vance.shared.user.UserStatus;
 import java.util.List;
 import java.util.function.Function;
 import org.apache.commons.lang3.StringUtils;
+import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
+import org.jline.reader.UserInterruptException;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.shell.core.command.annotation.Command;
@@ -253,16 +255,32 @@ public class UserCommands {
         if (StringUtils.isBlank(answer)) {
             LineReader reader = lineReader.getIfAvailable();
             if (reader == null) {
-                return "Refusing to " + operation + " without confirmation — pass --confirm "
-                        + name;
+                return refuseWithoutConfirmation(operation, name);
             }
-            answer = reader.readLine(
-                    "Type the user name '" + name + "' to confirm the " + operation + ": ");
+            try {
+                answer = reader.readLine(
+                        "Type the user name '" + name + "' to confirm the " + operation + ": ");
+            } catch (EndOfFileException | UserInterruptException e) {
+                // The null check above does not cover --sudo: the LineReader
+                // bean exists there, it just has no stdin behind it, so readLine
+                // throws EndOfFileException instead. Without this the command
+                // died with a stack trace and the operator never saw the one
+                // sentence that says what to pass. Same finding as on the
+                // project side, which had the guard and this copy did not.
+                //
+                // UserInterruptException is Ctrl-C at the prompt, which is a
+                // person declining — the same answer, reached deliberately.
+                return refuseWithoutConfirmation(operation, name);
+            }
         }
         if (!name.equals(answer == null ? null : answer.trim())) {
             return "Confirmation did not match '" + name + "' — nothing was done.";
         }
         return null;
+    }
+
+    private static String refuseWithoutConfirmation(String operation, String name) {
+        return "Refusing to " + operation + " without confirmation — pass --confirm " + name;
     }
 
     private static String renderOne(UserDocument u) {

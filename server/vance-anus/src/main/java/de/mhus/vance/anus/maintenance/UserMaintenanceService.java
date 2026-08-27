@@ -90,7 +90,7 @@ public class UserMaintenanceService {
         for (UserDataHandler handler : handlers) {
             entities.add(run(handler, () -> handler.count(tenantId, userName)));
         }
-        return new MaintenanceReport(tenantId, userName, Operation.INSPECT,
+        return MaintenanceReport.of(tenantId, userName, Operation.INSPECT,
                 entities, unaccountedCollections(tenantId, userName));
     }
 
@@ -139,7 +139,7 @@ public class UserMaintenanceService {
                     tenantId, userName);
         }
         return new MaintenanceReport(tenantId, userName, Operation.DELETE,
-                entities, unaccounted);
+                entities, unaccounted, allSucceeded);
     }
 
     // ─── Rename ────────────────────────────────────────────────────────────
@@ -196,7 +196,7 @@ public class UserMaintenanceService {
         userService.rename(tenantId, userName, newUserName);
         entities.add(EntityResult.of("user", Set.of("users"), 1));
 
-        return new MaintenanceReport(tenantId, userName, Operation.RENAME,
+        return MaintenanceReport.of(tenantId, userName, Operation.RENAME,
                 entities, unaccountedCollections(tenantId, newUserName));
     }
 

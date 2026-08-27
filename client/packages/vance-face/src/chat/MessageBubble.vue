@@ -151,10 +151,28 @@ const selectionReferenceMarkdown = computed<string>(() => {
   const ref = selectionReference.value;
   if (!ref) return '';
   const label = ref.label.replace(/([[\]])/g, '\\$1');
-  const head = ref.vanceUri ? `[${label}](${ref.vanceUri})` : label;
-  const tail = ref.url ? ` · [↗](${ref.url})` : '';
+  const head = ref.vanceUri ? `[${label}](${mdTarget(ref.vanceUri)})` : label;
+  const tail = ref.url ? ` · [↗](${mdTarget(ref.url)})` : '';
   return `${head}${tail}`;
 });
+
+/**
+ * A URL made safe to sit inside a Markdown link destination.
+ *
+ * <p>The label was already escaped; the destination was not, and that is the
+ * half that carries foreign text — the address of a feed entry or a search
+ * hit. A bare {@code )} in it closes the link early and everything after is
+ * parsed as Markdown, so {@code https://x/)![](https://evil/px.png} renders a
+ * remote image inside the bubble that no sender put there. DOMPurify does not
+ * catch it: by then it is a legitimate {@code <img>}.
+ *
+ * <p>{@code safeUrl} still decides whether the scheme is allowed at all; this
+ * only stops the destination from escaping its own syntax. Applies to
+ * {@code vance:} URIs too — a handle rides in their query string.
+ */
+function mdTarget(url: string): string {
+  return url.replace(/[()]/g, (c) => (c === '(' ? '%28' : '%29'));
+}
 
 /**
  * Engine-action type from {@code meta.actionType}. Drives the

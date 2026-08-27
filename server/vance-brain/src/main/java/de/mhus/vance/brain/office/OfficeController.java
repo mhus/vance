@@ -68,7 +68,7 @@ public class OfficeController {
     private final DocumentService documentService;
     private final de.mhus.vance.brain.permission.RequestAuthority authority;
 
-    @Value("${vance.web.publicBaseUrl}")
+    @Value("${vance.web.public-base-url}")
     private String publicBaseUrl;
 
     private final HttpClient httpClient = HttpClient.newBuilder()
@@ -309,7 +309,7 @@ public class OfficeController {
      * Pick the base URL the document server uses to reach the
      * Vance brain. Per-tenant {@code office.callbackBaseUrl}
      * override wins when set, otherwise the global
-     * {@code vance.web.publicBaseUrl}. Trailing slash stripped so
+     * {@code vance.web.public-base-url}. Trailing slash stripped so
      * URL-joins don't double-slash.
      */
     String effectiveCallbackBaseUrl(OfficeSettings.Snapshot office) {

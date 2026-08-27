@@ -46,9 +46,9 @@ import org.springframework.stereotype.Component;
  * <p>Configurable via:
  * <ul>
  *   <li>{@code vance.thinkengine.deadlockWatchdog.enabled} (default {@code true})</li>
- *   <li>{@code vance.thinkengine.deadlockWatchdog.interval} (default {@code PT60S})</li>
- *   <li>{@code vance.thinkengine.deadlockWatchdog.initialDelay} (default {@code PT2M})</li>
- *   <li>{@code vance.thinkengine.deadlockWatchdog.staleAfter} (default {@code PT10M})</li>
+ *   <li>{@code vance.thinkengine.deadlock-watchdog.interval} (default {@code PT60S})</li>
+ *   <li>{@code vance.thinkengine.deadlock-watchdog.initial-delay} (default {@code PT2M})</li>
+ *   <li>{@code vance.thinkengine.deadlock-watchdog.stale-after} (default {@code PT10M})</li>
  * </ul>
  */
 @Component
@@ -70,15 +70,15 @@ public class DelegationDeadlockWatchdog {
     public DelegationDeadlockWatchdog(
             ObjectProvider<ClusterMasterService> masterServiceProvider,
             ThinkProcessService thinkProcessService,
-            @Value("${vance.thinkengine.deadlockWatchdog.staleAfter:PT10M}") Duration staleAfter) {
+            @Value("${vance.thinkengine.deadlock-watchdog.stale-after:PT10M}") Duration staleAfter) {
         this.masterServiceProvider = masterServiceProvider;
         this.thinkProcessService = thinkProcessService;
         this.staleAfter = staleAfter;
     }
 
     @Scheduled(
-            fixedDelayString = "${vance.thinkengine.deadlockWatchdog.interval:PT60S}",
-            initialDelayString = "${vance.thinkengine.deadlockWatchdog.initialDelay:PT2M}")
+            fixedDelayString = "${vance.thinkengine.deadlock-watchdog.interval:PT60S}",
+            initialDelayString = "${vance.thinkengine.deadlock-watchdog.initial-delay:PT2M}")
     public void tick() {
         if (!isResponsiblePod()) {
             return;

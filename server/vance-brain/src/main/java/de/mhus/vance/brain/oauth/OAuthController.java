@@ -82,7 +82,7 @@ public class OAuthController {
             SettingService settingService,
             RequestAuthority authority,
             ApplicationEventPublisher events,
-            @Value("${vance.web.publicBaseUrl:http://localhost:18080}") String publicBaseUrl) {
+            @Value("${vance.web.public-base-url:http://localhost:18080}") String publicBaseUrl) {
         this.configRegistry = configRegistry;
         this.stateService = stateService;
         this.settingService = settingService;

@@ -144,10 +144,10 @@ public class ModelCatalog {
 
     /**
      * Scheduled refresh. Default 30 minutes; tunable via
-     * {@code vance.modelCatalog.refresh.interval}. Misfires are
+     * {@code vance.model-catalog.refresh.interval}. Misfires are
      * harmless — the next refresh will pick up the latest state.
      */
-    @Scheduled(fixedDelayString = "${vance.modelCatalog.refresh.interval:PT30M}",
+    @Scheduled(fixedDelayString = "${vance.model-catalog.refresh.interval:PT30M}",
             initialDelayString = "PT30M")
     public void scheduledRefresh() {
         try {

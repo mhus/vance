@@ -120,7 +120,7 @@ public class SessionService {
      * fresh connection. Default {@code PT2M} = 4× the default WS
      * ping interval (30s), tolerant of one missed ping plus jitter.
      */
-    @org.springframework.beans.factory.annotation.Value("${vance.session.bindStaleAfter:PT2M}")
+    @org.springframework.beans.factory.annotation.Value("${vance.session.bind-stale-after:PT2M}")
     private Duration bindStaleAfter = Duration.ofMinutes(2);
 
     /** Exposes {@link #bindStaleAfter} so sweep ticks share one threshold. */

@@ -47,14 +47,14 @@ public class DocumentSummaryScheduler {
     private final DocumentService documentService;
     private final DocumentSummaryDriver driver;
 
-    @Value("${vance.autoSummary.batchSize:10}")
+    @Value("${vance.auto-summary.batch-size:10}")
     private int batchSize;
 
-    @Value("${vance.autoSummary.claimTtlMinutes:10}")
+    @Value("${vance.auto-summary.claim-ttl-minutes:10}")
     private int claimTtlMinutes;
 
-    @Scheduled(fixedDelayString = "${vance.autoSummary.intervalMs:300000}",
-            initialDelayString = "${vance.autoSummary.initialDelayMs:60000}")
+    @Scheduled(fixedDelayString = "${vance.auto-summary.interval-ms:300000}",
+            initialDelayString = "${vance.auto-summary.initial-delay-ms:60000}")
     public void tick() {
         String podId = locationService.getPodAddress();
         // RUNNING projects this pod holds a lease on, plus podless projects

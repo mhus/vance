@@ -45,14 +45,14 @@ public class ProjectRagIndexScheduler {
     private final ProjectRagIndexer indexer;
     private final MeterRegistry meterRegistry;
 
-    @Value("${vance.rag.indexer.batchSize:10}")
+    @Value("${vance.rag.indexer.batch-size:10}")
     private int batchSize;
 
-    @Value("${vance.rag.indexer.claimTtlMinutes:10}")
+    @Value("${vance.rag.indexer.claim-ttl-minutes:10}")
     private int claimTtlMinutes;
 
-    @Scheduled(fixedDelayString = "${vance.rag.indexer.intervalMs:30000}",
-            initialDelayString = "${vance.rag.indexer.initialDelayMs:60000}")
+    @Scheduled(fixedDelayString = "${vance.rag.indexer.interval-ms:30000}",
+            initialDelayString = "${vance.rag.indexer.initial-delay-ms:60000}")
     public void tick() {
         String podId = locationService.getPodAddress();
         List<ProjectDocument> projects = new ArrayList<>(

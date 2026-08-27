@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
  * guard itself is a static utility (reached from many call sites without DI),
  * so this boot-time component pushes the operator-configured flag into it.
  *
- * <p>{@code vance.net.ssrf.allowPrivate} defaults to {@code false} — production
+ * <p>{@code vance.net.ssrf.allow-private} defaults to {@code false} — production
  * must keep it that way. Set it to {@code true} ONLY in a local/test profile to
  * let {@code web_fetch}/{@code doc_import_url} reach {@code localhost} or a LAN
  * service; it re-opens SSRF and is logged loudly on startup. It is deliberately
@@ -25,7 +25,7 @@ public class SsrfGuardConfigurer {
     private final boolean allowPrivate;
 
     public SsrfGuardConfigurer(
-            @Value("${vance.net.ssrf.allowPrivate:false}") boolean allowPrivate) {
+            @Value("${vance.net.ssrf.allow-private:false}") boolean allowPrivate) {
         this.allowPrivate = allowPrivate;
     }
 
@@ -33,7 +33,7 @@ public class SsrfGuardConfigurer {
     void apply() {
         SsrfGuard.setAllowPrivate(allowPrivate);
         if (allowPrivate) {
-            log.warn("SSRF egress guard: vance.net.ssrf.allowPrivate=true — "
+            log.warn("SSRF egress guard: vance.net.ssrf.allow-private=true — "
                     + "loopback/private/link-local targets are ALLOWED. This is a "
                     + "development/testing setting and re-opens SSRF; never enable it "
                     + "in production.");

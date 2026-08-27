@@ -34,7 +34,7 @@ import org.springframework.stereotype.Component;
  * <p>So the knob is the operator's: shorten the list in
  * {@code application.yml} for a deployment where kits are trusted to
  * configure providers. Same character as
- * {@code vance.settings.agentWriteDenyKeys} — operator config, never a
+ * {@code vance.settings.agent-write-deny-keys} — operator config, never a
  * setting, because a setting an agent can write would let it widen its own
  * reach.
  */
@@ -49,7 +49,7 @@ public class KitSettingKeyPolicy {
             // deployment that does not ship our config must not end up with a
             // weaker list than one that does — that asymmetry is exactly how
             // kit.* went missing (code review 4, B5).
-            @Value("${vance.kits.settingDenyKeys:"
+            @Value("${vance.kits.setting-deny-keys:"
                     + "ai.provider.*,vault.*,store.*,kit.*,jaglan.mount.*}") String raw) {
         this.denyPatterns = SettingKeyPatterns.parse(raw);
         log.debug("KitSettingKeyPolicy: {} deny pattern(s): {}",

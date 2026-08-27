@@ -25,8 +25,8 @@ public class ExecOrphanSweepTick {
 
     private final ExecManager execManager;
 
-    @Scheduled(fixedDelayString = "${vance.exec.orphanSweep.interval:PT60S}",
-            initialDelayString = "${vance.exec.orphanSweep.initialDelay:PT2M}")
+    @Scheduled(fixedDelayString = "${vance.exec.orphan-sweep.interval:PT60S}",
+            initialDelayString = "${vance.exec.orphan-sweep.initial-delay:PT2M}")
     public void tick() {
         try {
             int reconciled = execManager.reconcileOrphanedJobs(Instant.now());

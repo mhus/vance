@@ -47,13 +47,13 @@ public final class SsrfGuard {
      * addresses so a dev can point {@code web_fetch}/{@code doc_import_url} at
      * {@code localhost} / a LAN service. Default {@code false} — production must
      * never enable it (it re-opens SSRF). Wired from
-     * {@code vance.net.ssrf.allowPrivate} by {@code SsrfGuardConfigurer} and set
+     * {@code vance.net.ssrf.allow-private} by {@code SsrfGuardConfigurer} and set
      * only in a non-default profile. It is an operator config, never an
      * LLM-controllable per-call flag, so untrusted input can't reach it.
      */
     private static volatile boolean allowPrivate = false;
 
-    /** Set by {@code SsrfGuardConfigurer} at boot from {@code vance.net.ssrf.allowPrivate}. */
+    /** Set by {@code SsrfGuardConfigurer} at boot from {@code vance.net.ssrf.allow-private}. */
     public static void setAllowPrivate(boolean allow) {
         allowPrivate = allow;
     }
@@ -114,7 +114,7 @@ public final class SsrfGuard {
     /** {@code true} for any address a server must not be steered at. */
     static boolean isBlocked(InetAddress addr) {
         // Dev/test escape hatch — operator opted into reaching local/private
-        // targets (vance.net.ssrf.allowPrivate). Never true in production.
+        // targets (vance.net.ssrf.allow-private). Never true in production.
         if (allowPrivate) {
             return false;
         }

@@ -42,7 +42,7 @@ public class SecretReferenceKeyPolicy {
     private final List<String> denyPatterns;
 
     public SecretReferenceKeyPolicy(
-            @Value("${vance.settings.secretReferenceDenyKeys:ai.provider.*,vault.*}") String raw) {
+            @Value("${vance.settings.secret-reference-deny-keys:ai.provider.*,vault.*}") String raw) {
         this.denyPatterns = SettingKeyPatterns.parse(raw);
         log.debug("SecretReferenceKeyPolicy: {} deny pattern(s): {}",
                 denyPatterns.size(), denyPatterns);
@@ -63,7 +63,7 @@ public class SecretReferenceKeyPolicy {
     public void requireReferenceReadable(String key) {
         if (isDenied(key)) {
             log.warn("Refusing to resolve reserved setting key '{}' through a secret reference "
-                    + "(vance.settings.secretReferenceDenyKeys)", key);
+                    + "(vance.settings.secret-reference-deny-keys)", key);
             throw new SecretAccessDeniedException(key,
                     "setting '" + key + "' is server-internal configuration and cannot be read "
                             + "through a {{secret:…}} reference — connectors that need a "

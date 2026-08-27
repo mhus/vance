@@ -349,7 +349,7 @@ public class DocumentService {
      * in {@code application.yml}, overridable per project via the
      * {@value #SETTING_ARCHIVE_MIN_INTERVAL_SECONDS} cascade setting.
      */
-    @Value("${vance.documents.archive.minVersionIntervalSeconds:600}")
+    @Value("${vance.documents.archive.min-version-interval-seconds:600}")
     private long archiveMinIntervalSecondsDefault;
 
     /** Per-project cascade setting: opt-out for the archive feature. */

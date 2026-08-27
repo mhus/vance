@@ -96,9 +96,9 @@ public class FookUpstreamService {
     /**
      * Walks pending tickets and pushes them upstream. Default
      * 5-minute cadence; override with
-     * {@code vance.fook.upstream.sendTick}.
+     * {@code vance.fook.upstream.send-tick}.
      */
-    @Scheduled(fixedDelayString = "${vance.fook.upstream.sendTick:PT5M}")
+    @Scheduled(fixedDelayString = "${vance.fook.upstream.send-tick:PT5M}")
     public void sendTick() {
         if (!enabled) return;
         // Multi-pod safety: only the cluster-master pod sends. Other
@@ -233,9 +233,9 @@ public class FookUpstreamService {
     /**
      * Mirrors upstream state and new comments back to the local
      * ticket store + reporter inboxes. Default hourly; override
-     * with {@code vance.fook.upstream.pollTick}.
+     * with {@code vance.fook.upstream.poll-tick}.
      */
-    @Scheduled(fixedDelayString = "${vance.fook.upstream.pollTick:PT1H}")
+    @Scheduled(fixedDelayString = "${vance.fook.upstream.poll-tick:PT1H}")
     public void pollTick() {
         if (!enabled) return;
         // Same multi-pod guard as sendTick — keeps the GH API rate-limit

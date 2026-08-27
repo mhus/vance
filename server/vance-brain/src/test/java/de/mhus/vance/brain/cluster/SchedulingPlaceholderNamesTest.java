@@ -17,24 +17,17 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.util.ClassUtils;
 
 /**
- * Every {@code ${...}} placeholder in this package must be spelled in a form
- * Spring Boot's relaxed binding can recognise — lower-case with dashes.
+ * The eleven tick cadences of this package, pinned by name.
  *
- * <p>This is not style. A placeholder is resolved by
- * {@code Environment.resolvePlaceholders}, which is <em>not</em> the binder:
- * Boot's relaxed lookup goes through {@code ConfigurationPropertyName.of},
- * and a name containing an upper-case letter is not a valid configuration
- * property name, so that source declines and resolution falls back to literal
- * matching against the raw sources. Consequence, measured before this test was
- * written: {@code ${vance.cluster.master.distributorInterval}} saw only a
- * literally camel-cased YAML key — an operator setting
- * {@code VANCE_CLUSTER_MASTER_DISTRIBUTOR_INTERVAL} got no error and no
- * effect, and the tick kept its default. The dashed spelling sees all three
- * (env, dashed YAML, camel-cased YAML), so it is strictly better.
- *
- * <p>Scoped to this package because that is where the finding was. The same
- * defect exists elsewhere in the tree and is listed in
- * {@code planning/project-placement-labels.md} §4e.
+ * <p>The general rule — no upper-case letter in any placeholder anywhere — is
+ * enforced tree-wide by {@code ConfigPlaceholderNamingTest} in
+ * {@code vance-shared}, which reads the sources and therefore also covers the
+ * addons. This test is the narrower anchor underneath it: it names the keys
+ * that the placement accelerator's debugging session turned up
+ * ({@code planning/project-placement-labels.md} §4f), so a rename of one of
+ * them is a deliberate act with a failing test attached rather than a quiet
+ * edit. A generic rule cannot do that — it accepts any lower-case spelling,
+ * including a renamed one.
  */
 class SchedulingPlaceholderNamesTest {
 
@@ -50,44 +43,31 @@ class SchedulingPlaceholderNamesTest {
     private static final Pattern PLACEHOLDER = Pattern.compile("\\$\\{([^:}]+)");
 
     @Test
-    void everyPlaceholderInThisPackage_isRelaxedBindingSafe() {
+    void theTickCadencesKeepTheirNames() {
         List<Class<?>> beans = scanBeans();
+        // Extraction has to keep working for this to mean anything: a scanner
+        // that finds no beans would report perfect coverage.
         assertThat(beans)
                 .as("the scan itself has to work — an empty result is not coverage")
                 .hasSizeGreaterThanOrEqualTo(MINIMUM_EXPECTED_BEANS);
 
-        List<String> offenders = new ArrayList<>();
-        for (Class<?> bean : beans) {
-            for (String key : placeholderKeys(bean)) {
-                if (!key.equals(key.toLowerCase())) {
-                    offenders.add(bean.getSimpleName() + ": ${" + key + "}");
-                }
-            }
-        }
-
-        assertThat(offenders)
-                .as("an upper-case letter makes the key invisible to env vars and to "
-                        + "dashed YAML — spell it lower-case with dashes")
-                .isEmpty();
-    }
-
-    @Test
-    void theTickCadencesAreActuallyCovered() {
-        // Without this, the test above would still pass if placeholderKeys()
-        // silently stopped finding anything — the four cadences from
-        // planning/project-placement-labels.md §4e are the reason it exists.
         List<String> keys = new ArrayList<>();
-        for (Class<?> bean : scanBeans()) {
+        for (Class<?> bean : beans) {
             keys.addAll(placeholderKeys(bean));
         }
 
         assertThat(keys).contains(
+                "vance.cluster.heartbeat-interval",
                 "vance.cluster.master.distributor-interval",
                 "vance.cluster.master.distributor-initial-delay",
                 "vance.cluster.master.election-interval",
                 "vance.cluster.master.election-initial-delay",
                 "vance.cluster.cleanup.interval",
-                "vance.cluster.cleanup.initial-delay");
+                "vance.cluster.cleanup.initial-delay",
+                "vance.storage.orphan-sweep.interval",
+                "vance.storage.orphan-sweep.initial-delay",
+                "vance.session.stale-bind-sweep.interval",
+                "vance.session.stale-bind-sweep.initial-delay");
     }
 
     private static Set<String> placeholderKeys(Class<?> bean) {

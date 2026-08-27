@@ -31,7 +31,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>Public Vance base-URL (for the callback URLs the document
  * server fetches) is read from the standard
- * {@code vance.web.publicBaseUrl} Spring property, not from the
+ * {@code vance.web.public-base-url} Spring property, not from the
  * setting cascade — it's deployment-shape, not per-tenant.
  */
 @Component
@@ -108,7 +108,7 @@ public class OfficeSettings {
      * <p>{@code callbackBaseUrl} is the URL the document server uses
      * to reach the Vance brain for download + save callbacks. Empty
      * string means "fall back to the global
-     * {@code vance.web.publicBaseUrl}" — useful per-tenant when
+     * {@code vance.web.public-base-url}" — useful per-tenant when
      * brain and office server live on different networks (e.g.
      * brain on macOS host, office in a docker container that
      * reaches the host via {@code host.docker.internal}).

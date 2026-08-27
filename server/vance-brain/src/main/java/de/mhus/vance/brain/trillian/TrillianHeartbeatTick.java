@@ -61,8 +61,8 @@ public class TrillianHeartbeatTick {
     private final de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry natureRegistry;
     private final MegadodoService megadodoService;
 
-    @Scheduled(fixedDelayString = "${vance.trillian.heartbeat.intervalMs:60000}",
-            initialDelayString = "${vance.trillian.heartbeat.intervalMs:60000}")
+    @Scheduled(fixedDelayString = "${vance.trillian.heartbeat.interval-ms:60000}",
+            initialDelayString = "${vance.trillian.heartbeat.interval-ms:60000}")
     public void tick() {
         Instant now = Instant.now();
         ZoneId zone = ZoneId.systemDefault();

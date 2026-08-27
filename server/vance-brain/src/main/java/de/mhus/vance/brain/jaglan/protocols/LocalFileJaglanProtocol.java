@@ -49,7 +49,7 @@ import org.springframework.stereotype.Component;
  * <p>So the set of permissible roots is a <b>property</b>, not a setting:
  * {@code vance.jaglan.local.allowed-roots}, comma-separated absolute paths.
  * Same character as {@code vance.exec.isolation} and
- * {@code vance.settings.agentWriteDenyKeys} — operator territory, never
+ * {@code vance.settings.agent-write-deny-keys} — operator territory, never
  * writable by anything running inside the product. <b>Empty is the default and
  * means the protocol is off</b>: a capability this wide is not something one
  * should get by omission.

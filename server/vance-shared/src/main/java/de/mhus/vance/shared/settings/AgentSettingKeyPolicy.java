@@ -25,7 +25,7 @@ import org.springframework.stereotype.Component;
  * <p>Operator config only, from {@code application.yml} — never an
  * LLM-controllable flag, and deliberately not a setting (an agent with settings
  * write access could otherwise widen its own permissions). Same character as
- * {@code vance.net.ssrf.allowPrivate}.
+ * {@code vance.net.ssrf.allow-private}.
  *
  * <p>{@code kit.*} is in the default for the same reason as {@code store.*}:
  * {@code kit.token.<sourceId>} is the credential a project's kit provisioning
@@ -46,7 +46,7 @@ public class AgentSettingKeyPolicy {
     private final List<String> denyPatterns;
 
     public AgentSettingKeyPolicy(
-            @Value("${vance.settings.agentWriteDenyKeys:ai.provider.*,vault.*,store.*,kit.*}")
+            @Value("${vance.settings.agent-write-deny-keys:ai.provider.*,vault.*,store.*,kit.*}")
             String raw) {
         this.denyPatterns = SettingKeyPatterns.parse(raw);
         log.debug("AgentSettingKeyPolicy: {} deny pattern(s): {}", denyPatterns.size(), denyPatterns);
@@ -64,7 +64,7 @@ public class AgentSettingKeyPolicy {
     public void requireAgentWritable(String key) {
         if (isDenied(key)) {
             log.warn("Refusing agent-originated write to reserved setting key '{}' "
-                    + "(vance.settings.agentWriteDenyKeys)", key);
+                    + "(vance.settings.agent-write-deny-keys)", key);
             throw new SecretAccessDeniedException(
                     "setting '" + key + "' is reserved for operator configuration and cannot be "
                             + "written by an agent — a human has to set it through the settings "

@@ -33,7 +33,7 @@ class SsrfGuardTest {
 
     @Test
     void allowPrivate_escapeHatch_permitsLoopbackAndPrivate_thenResets() {
-        // Operator opt-in (vance.net.ssrf.allowPrivate) for local testing: the
+        // Operator opt-in (vance.net.ssrf.allow-private) for local testing: the
         // guard stops blocking loopback / LAN targets so a dev can reach them.
         SsrfGuard.setAllowPrivate(true);
         assertThatCode(() -> SsrfGuard.assertAllowed("http://localhost:9090/actuator"))

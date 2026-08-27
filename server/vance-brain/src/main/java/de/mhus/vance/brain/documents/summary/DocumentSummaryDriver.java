@@ -63,7 +63,7 @@ public class DocumentSummaryDriver {
     private final LightLlmService lightLlm;
     private final DocumentService documentService;
 
-    @Value("${vance.autoSummary.maxContentBytes:200000}")
+    @Value("${vance.auto-summary.max-content-bytes:200000}")
     private int maxContentBytes;
 
     /**

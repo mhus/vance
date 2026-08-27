@@ -33,8 +33,8 @@ import org.springframework.stereotype.Service;
  * <p>Bounds come from configuration (defaults match Claude Code's
  * {@code fileStateCache.ts:18}):
  * <ul>
- *   <li>{@code vance.context.readState.maxEntries} — default 100</li>
- *   <li>{@code vance.context.shownOnce.maxEntries} — default 500
+ *   <li>{@code vance.context.read-state.max-entries} — default 100</li>
+ *   <li>{@code vance.context.shown-once.max-entries} — default 500
  *       (only checked as a soft cap on read; the underlying Mongo
  *       update keeps adding regardless — runaway producers must be
  *       fixed at the source, not silently dropped)</li>
@@ -58,10 +58,10 @@ public class ReadStateService {
 
     private final ThinkProcessService thinkProcessService;
 
-    @Value("${vance.context.readState.maxEntries:" + DEFAULT_READ_STATE_MAX_ENTRIES + "}")
+    @Value("${vance.context.read-state.max-entries:" + DEFAULT_READ_STATE_MAX_ENTRIES + "}")
     private int readStateMaxEntries = DEFAULT_READ_STATE_MAX_ENTRIES;
 
-    @Value("${vance.context.shownOnce.maxEntries:" + DEFAULT_SHOWN_ONCE_MAX_ENTRIES + "}")
+    @Value("${vance.context.shown-once.max-entries:" + DEFAULT_SHOWN_ONCE_MAX_ENTRIES + "}")
     private int shownOnceMaxEntries = DEFAULT_SHOWN_ONCE_MAX_ENTRIES;
 
     /**

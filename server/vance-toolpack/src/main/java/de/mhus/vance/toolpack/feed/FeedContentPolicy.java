@@ -175,7 +175,7 @@ public record FeedContentPolicy(
      *
      * <p>Comma-separated text rather than a YAML list, for two reasons. It is
      * how deny-lists are written in this tree already
-     * ({@code vance.settings.secretReferenceDenyKeys} and its sibling), and a
+     * ({@code vance.settings.secret-reference-deny-keys} and its sibling), and a
      * YAML list has a one-element trap: {@code blockedHosts: example.xxx}
      * without a dash is legal YAML, yields a string rather than a list, and is
      * the obvious way to write it — with a list expected that is a cast error

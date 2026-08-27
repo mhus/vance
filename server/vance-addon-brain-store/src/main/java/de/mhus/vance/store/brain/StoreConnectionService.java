@@ -70,9 +70,9 @@ public class StoreConnectionService {
      * agent from <em>reading</em> the value, but a connector may resolve a
      * {@code PASSWORD} through {@code {{secret:…}}} by design — so
      * {@code store.*} has to be in <b>both</b> operator deny lists:
-     * {@code vance.settings.agentWriteDenyKeys} (an agent must not rewrite
+     * {@code vance.settings.agent-write-deny-keys} (an agent must not rewrite
      * whose account this brain buys on) and
-     * {@code vance.settings.secretReferenceDenyKeys} (a tool document must
+     * {@code vance.settings.secret-reference-deny-keys} (a tool document must
      * not be able to put the link token in a header pointing anywhere).
      * Both live in {@code application.yml}; see
      * {@code SecretReferenceKeyPolicy} for why the type is not the guard.

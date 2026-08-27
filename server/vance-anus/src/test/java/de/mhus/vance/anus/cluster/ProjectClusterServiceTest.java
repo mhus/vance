@@ -1,4 +1,4 @@
-package de.mhus.vance.anus.project;
+package de.mhus.vance.anus.cluster;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -11,10 +11,10 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.anus.brain.AnusBrainClient;
 import de.mhus.vance.anus.brain.AnusBrainClient.Response;
-import de.mhus.vance.anus.project.ProjectClusterService.DrainVerdict;
-import de.mhus.vance.anus.project.ProjectClusterService.Holder;
-import de.mhus.vance.anus.project.ProjectClusterService.Placement;
-import de.mhus.vance.anus.project.ProjectClusterService.PlacementOutcome;
+import de.mhus.vance.anus.cluster.ProjectClusterService.DrainVerdict;
+import de.mhus.vance.anus.cluster.ProjectClusterService.Holder;
+import de.mhus.vance.anus.cluster.ProjectClusterService.Placement;
+import de.mhus.vance.anus.cluster.ProjectClusterService.PlacementOutcome;
 import de.mhus.vance.shared.project.ProjectDocument;
 import java.util.List;
 import java.util.Map;

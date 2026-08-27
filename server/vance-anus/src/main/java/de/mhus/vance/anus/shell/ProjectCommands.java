@@ -1,10 +1,10 @@
 package de.mhus.vance.anus.shell;
 
 import de.mhus.vance.anus.access.RequiresAuth;
-import de.mhus.vance.anus.project.ProjectClusterService;
-import de.mhus.vance.anus.project.ProjectClusterService.DrainDecision;
-import de.mhus.vance.anus.project.ProjectClusterService.Holder;
-import de.mhus.vance.anus.project.ProjectClusterService.HomeLookup;
+import de.mhus.vance.anus.cluster.ProjectClusterService;
+import de.mhus.vance.anus.cluster.ProjectClusterService.DrainDecision;
+import de.mhus.vance.anus.cluster.ProjectClusterService.Holder;
+import de.mhus.vance.anus.cluster.ProjectClusterService.HomeLookup;
 import de.mhus.vance.shared.project.LifecycleType;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;

@@ -1,26 +1,20 @@
 package de.mhus.vance.anus.shell;
 
 import de.mhus.vance.anus.access.RequiresAuth;
-import de.mhus.vance.anus.brain.AnusBrainClient;
-import de.mhus.vance.anus.brain.AnusBrainClient.BrainCallException;
-import de.mhus.vance.anus.brain.AnusBrainClient.Response;
+import de.mhus.vance.anus.cluster.PodClusterService;
+import de.mhus.vance.anus.cluster.PodClusterService.PodPing;
+import de.mhus.vance.anus.cluster.PodClusterService.PruneCandidate;
 import de.mhus.vance.shared.cluster.BrainPodCapacity;
 import de.mhus.vance.shared.cluster.BrainPodDocument;
-import de.mhus.vance.shared.cluster.BrainPodService;
-import de.mhus.vance.shared.cluster.ClusterMasterStore;
 import de.mhus.vance.shared.tenant.TenantService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.json.JsonMapper;
 import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
 import org.springframework.shell.core.command.annotation.Command;
@@ -38,15 +32,12 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ClusterCommands {
 
-    private final BrainPodService brainPodService;
+    private final PodClusterService podService;
     /**
      * Own instance — anus runs without Spring Boot's web auto-configuration, so
      * there is no auto-registered Jackson 3 mapper bean to inject. Same reason
      * and same shape as {@code ProjectKitsCommands}.
      */
-    private final ObjectMapper objectMapper = JsonMapper.builder().build();
-    private final ClusterMasterStore clusterMasterStore;
-    private final AnusBrainClient brainClient;
 
     @Command(name = {"cluster", "list"},
             description = "List registered brain pods. Filter by --cluster (default: all clusters). "
@@ -56,12 +47,12 @@ public class ClusterCommands {
             @Option(longName = "cluster", shortName = 'c',
                     description = "Cluster id to filter by. Omit to list every pod regardless of cluster.")
             @Nullable String cluster) {
-        List<BrainPodDocument> pods = loadPods(cluster);
+        List<BrainPodDocument> pods = podService.pods(cluster);
         if (pods.isEmpty()) {
             return cluster == null ? "(no pods registered)"
                     : "(no pods registered in cluster '" + cluster + "')";
         }
-        Map<String, String> liveMasterPodIdByCluster = liveMasterPodIdByCluster(pods);
+        Map<String, String> liveMasterPodIdByCluster = podService.liveMasterPodIds(pods);
         return Tables.render(
                 List.of("CLUSTER", "NODE", "MASTER", "PODID", "ENDPOINT", "STATUS",
                         "LABELS", "EXCL", "SCORE", "VERSION", "LASTBEAT"),
@@ -79,33 +70,6 @@ public class ClusterCommands {
                         BrainPodDocument::getVersion,
                         BrainPodDocument::getLastHeartbeatAt),
                 pods);
-    }
-
-    /**
-     * Reads the {@code cluster_master} lease for every distinct cluster
-     * in {@code pods} and returns the live master {@code podId} per
-     * cluster id. A lease whose {@code leaseUntil} has elapsed is
-     * ignored — staleness is observer-derived, the same way the brain
-     * dashboard treats it.
-     */
-    private Map<String, String> liveMasterPodIdByCluster(List<BrainPodDocument> pods) {
-        Instant now = Instant.now();
-        Map<String, String> out = new HashMap<>();
-        for (BrainPodDocument pod : pods) {
-            String clusterId = pod.getClusterId();
-            if (StringUtils.isBlank(clusterId) || out.containsKey(clusterId)) continue;
-            clusterMasterStore.find(clusterId).ifPresent(lease -> {
-                String podId = lease.getCurrentPodId();
-                Instant leaseUntil = lease.getLeaseUntil();
-                if (podId != null && !podId.isBlank()
-                        && leaseUntil != null && leaseUntil.isAfter(now)) {
-                    out.put(clusterId, podId);
-                }
-            });
-            // Cache "no live master" too so we don't re-query the same cluster.
-            out.putIfAbsent(clusterId, "");
-        }
-        return out;
     }
 
     /**
@@ -141,13 +105,11 @@ public class ClusterCommands {
             @Option(longName = "tenant", shortName = 'T',
                     description = "Narrow to one tenant. Omit for the whole cluster.")
             @Nullable String tenant) {
-        String path = "/internal/cluster/placement/demand"
-                + (StringUtils.isBlank(tenant) ? "" : "?tenant=" + tenant);
-        Response response = brainClient.internal(path, "GET", null);
-        if (!response.isSuccess()) {
-            return "(failed: HTTP " + response.statusCode() + " " + response.body() + ")";
+        var report = podService.demand(tenant);
+        if (!report.success()) {
+            return "(failed: HTTP " + report.statusCode() + " " + report.body() + ")";
         }
-        return response.body();
+        return report.body();
     }
 
     // ─── Pod placement ──────────────────────────────────────────────
@@ -233,10 +195,8 @@ public class ClusterCommands {
             // concurrent write from another actor between these two steps is
             // lost. Acceptable for an interactive shell and stated rather than
             // hidden; a control loop reconciling a desired state uses label-set.
-            Map<String, String> merged = new TreeMap<>(
-                    doc.getLabels() == null ? Map.of() : doc.getLabels());
-            merged.putAll(parsePairs(labels));
-            return patchPod(doc, merged, null, null, false);
+            return patchPod(doc, PodClusterService.labelsWith(doc, parsePairs(labels)),
+                    null, null, false);
         });
     }
 
@@ -248,13 +208,9 @@ public class ClusterCommands {
                     description = "Comma-separated label keys to remove.")
             String keys) {
         return withPod(pod, doc -> {
-            Map<String, String> remaining = new TreeMap<>(
-                    doc.getLabels() == null ? Map.of() : doc.getLabels());
-            List<String> missing = new ArrayList<>();
-            for (String k : splitCsv(keys)) {
-                if (remaining.remove(k) == null) missing.add(k);
-            }
-            String result = patchPod(doc, remaining, null, null, false);
+            var removal = PodClusterService.labelsWithout(doc, splitCsv(keys));
+            List<String> missing = removal.keysNotFound();
+            String result = patchPod(doc, removal.labels(), null, null, false);
             // Reported, not treated as an error: removing a label that is not
             // there reaches the desired state, and failing would make the
             // command non-idempotent for no gain.
@@ -307,8 +263,9 @@ public class ClusterCommands {
     }
 
     /**
-     * One PATCH for every pod-placement command, so the wire shape and the
-     * "what did it become" echo exist once.
+     * The echo an operator sees after a placement change. The wire shape lives
+     * in {@link PodClusterService#patch}; what is left here is the wording and
+     * the pod's display name, which the service does not deal in.
      */
     private String patchPod(
             BrainPodDocument doc,
@@ -316,23 +273,12 @@ public class ClusterCommands {
             @Nullable Boolean exclusive,
             @Nullable Integer maxScoreOverride,
             boolean clearOverride) {
-        // Serialised, not concatenated: label values are free-form user input,
-        // and a quote or a backslash in one would otherwise travel as malformed
-        // JSON and come back as an unexplained 400. Only the fields the caller
-        // actually addressed go in — a null in this map would read as "leave
-        // alone" on the far end anyway, but omitting them keeps the wire honest.
-        Map<String, Object> payload = new java.util.LinkedHashMap<>();
-        if (labels != null) payload.put("labels", labels);
-        if (exclusive != null) payload.put("exclusive", exclusive);
-        if (maxScoreOverride != null) payload.put("maxScoreOverride", maxScoreOverride);
-        if (clearOverride) payload.put("clearMaxScoreOverride", Boolean.TRUE);
-        String body = objectMapper.writeValueAsString(payload);
-        Response response = brainClient.internal(
-                "/internal/cluster/pods/" + doc.getPodId() + "/placement", "PATCH", body);
-        if (!response.isSuccess()) {
-            return "(failed: HTTP " + response.statusCode() + " " + response.body() + ")";
+        var patched = podService.patch(
+                doc.getPodId(), labels, exclusive, maxScoreOverride, clearOverride);
+        if (!patched.success()) {
+            return "(failed: HTTP " + patched.statusCode() + " " + patched.detail() + ")";
         }
-        return "pod '" + doc.getNodeName() + "' → " + response.body();
+        return "pod '" + doc.getNodeName() + "' → " + patched.detail();
     }
 
     /**
@@ -347,34 +293,12 @@ public class ClusterCommands {
      */
     private String withPod(String podOrNode, Function<BrainPodDocument, String> action) {
         try {
-            return action.apply(resolvePod(podOrNode));
+            return action.apply(podService.resolve(podOrNode));
         } catch (IllegalArgumentException e) {
             // Covers the pod lookup and the k=v grammar inside the action —
             // both are the caller mistyping an argument.
             return "(" + e.getMessage() + ")";
         }
-    }
-
-    /**
-     * Accepts a podId or a nodeName. A nodeName that is ambiguous across
-     * clusters is rejected rather than resolved to the first hit — picking one
-     * silently would write to a pod the caller did not name.
-     */
-    private BrainPodDocument resolvePod(String podOrNode) {
-        return brainPodService.findByPodId(podOrNode).orElseGet(() -> {
-            List<BrainPodDocument> byName = loadPods(null).stream()
-                    .filter(p -> podOrNode.equals(p.getNodeName()))
-                    .toList();
-            if (byName.isEmpty()) {
-                throw new IllegalArgumentException("No pod with podId or nodeName '"
-                        + podOrNode + "'");
-            }
-            if (byName.size() > 1) {
-                throw new IllegalArgumentException("nodeName '" + podOrNode
-                        + "' exists in " + byName.size() + " clusters — use the podId");
-            }
-            return byName.get(0);
-        });
     }
 
     /**
@@ -434,84 +358,61 @@ public class ClusterCommands {
                     description = "Actually delete the rows. Default is dry-run.",
                     defaultValue = "false")
             boolean apply) {
-        List<BrainPodDocument> pods = loadPods(cluster);
+        List<BrainPodDocument> pods = podService.pods(cluster);
         if (pods.isEmpty()) {
             return cluster == null ? "(no pods registered)"
                     : "(no pods registered in cluster '" + cluster + "')";
         }
-        Instant now = Instant.now();
-        List<PruneRow> rows = new ArrayList<>();
-        for (BrainPodDocument pod : pods) {
-            @Nullable String reason = pruneReason(pod, now, staleAfter, probe, tenant);
-            if (reason != null) {
-                rows.add(new PruneRow(pod, reason));
-            }
-        }
-        if (rows.isEmpty()) {
+        var candidates = podService.pruneCandidates(pods, staleAfter, probe, tenant);
+        if (candidates.isEmpty()) {
             return "Nothing to prune (scanned " + pods.size() + " pod"
                     + (pods.size() == 1 ? "" : "s") + ").";
         }
         StringBuilder sb = new StringBuilder();
         sb.append(Tables.render(
                 List.of("CLUSTER", "NODE", "PODID", "ENDPOINT", "REASON"),
-                List.<Function<PruneRow, @Nullable Object>>of(
-                        r -> r.pod.getClusterId(),
-                        r -> r.pod.getNodeName(),
-                        r -> truncate(r.pod.getPodId(), 12),
-                        r -> r.pod.getEndpoint(),
-                        r -> r.reason),
-                rows));
+                List.<Function<PruneCandidate, @Nullable Object>>of(
+                        c -> c.pod().getClusterId(),
+                        c -> c.pod().getNodeName(),
+                        c -> truncate(c.pod().getPodId(), 12),
+                        c -> c.pod().getEndpoint(),
+                        ClusterCommands::pruneReasonText),
+                candidates));
+        // The dry-run stays here: the service finds candidates and deletes them,
+        // and whether to delete is this command's decision, not its own.
         if (!apply) {
             sb.append("\nDRY-RUN — re-run with --apply to actually delete ")
-                    .append(rows.size()).append(" row").append(rows.size() == 1 ? "" : "s")
+                    .append(candidates.size()).append(" row")
+                    .append(candidates.size() == 1 ? "" : "s")
                     .append('.');
             return sb.toString();
         }
-        long deleted = 0;
-        for (PruneRow row : rows) {
-            deleted += brainPodService.deleteByPodId(row.pod.getPodId());
-        }
+        long deleted = podService.prune(candidates);
         sb.append("\nDeleted ").append(deleted).append(" row")
                 .append(deleted == 1 ? "" : "s").append('.');
         return sb.toString();
     }
 
     /**
-     * Returns a non-null prune reason if the pod should be removed,
-     * {@code null} otherwise. Stale heartbeat is checked first (cheap);
-     * the optional live probe runs only for pods that pass the staleness
-     * check, so an offline-friendly prune doesn't make any HTTP calls.
+     * The REASON cell. The two probe reasons reuse {@link #pingDetailText} — a
+     * mismatch is the same fact here as in the ping table, and formatting it
+     * twice is how the two would drift apart.
      */
-    private @Nullable String pruneReason(
-            BrainPodDocument pod, Instant now, Duration staleAfter,
-            boolean probe, String tenant) {
-        Instant beat = pod.getLastHeartbeatAt();
-        if (beat == null) {
-            // No heartbeat ever recorded. Could mean "fresh registration,
-            // hasn't ticked yet" — staleAfter gives us a grace window
-            // anchored on bootedAt instead.
-            Instant booted = pod.getBootedAt();
-            if (booted != null && booted.isBefore(now.minus(staleAfter))) {
-                return "no heartbeat (booted " + booted + ")";
-            }
-            return null;
-        }
-        if (beat.isBefore(now.minus(staleAfter))) {
-            return "stale heartbeat (" + beat + ")";
-        }
-        if (probe) {
-            PingRow ping = pingOne(pod, tenant);
-            if ("STALE".equals(ping.result)) {
-                return "live mismatch (" + ping.detail + ")";
-            }
-            if ("ERROR".equals(ping.result)) {
-                return "unreachable (" + ping.detail + ")";
-            }
-        }
-        return null;
+    static String pruneReasonText(PruneCandidate candidate) {
+        return switch (candidate.reason()) {
+            case NO_HEARTBEAT -> "no heartbeat (booted " + candidate.detail() + ")";
+            case STALE_HEARTBEAT -> "stale heartbeat (" + candidate.detail() + ")";
+            case LIVE_MISMATCH -> "live mismatch ("
+                    + pingDetailText(requireProbe(candidate)) + ")";
+            case UNREACHABLE -> "unreachable ("
+                    + pingDetailText(requireProbe(candidate)) + ")";
+        };
     }
 
-    private record PruneRow(BrainPodDocument pod, String reason) {
+    /** A probe reason without its probe is a broken invariant, not a case. */
+    private static PodPing requireProbe(PruneCandidate candidate) {
+        return java.util.Objects.requireNonNull(
+                candidate.ping(), "a probe-derived prune reason carries its ping");
     }
 
     @Command(name = {"cluster", "ping"},
@@ -528,96 +429,51 @@ public class ClusterCommands {
                     description = "Tenant whose JWT key signs the ping token. Defaults to '" + TenantService.SYSTEM_TENANT + "'.",
                     defaultValue = TenantService.SYSTEM_TENANT)
             String tenant) {
-        List<BrainPodDocument> pods = loadPods(cluster);
+        List<BrainPodDocument> pods = podService.pods(cluster);
         if (pods.isEmpty()) {
             return cluster == null ? "(no pods registered — nothing to ping)"
                     : "(no pods registered in cluster '" + cluster + "')";
         }
-        List<PingRow> rows = new ArrayList<>(pods.size());
-        for (BrainPodDocument pod : pods) {
-            rows.add(pingOne(pod, tenant));
-        }
         return Tables.render(
                 List.of("CLUSTER", "NODE", "ENDPOINT", "RESULT", "LATENCY", "DETAIL"),
-                List.<Function<PingRow, @Nullable Object>>of(
-                        r -> r.pod.getClusterId(),
-                        r -> r.pod.getNodeName(),
-                        r -> r.pod.getEndpoint(),
-                        r -> r.result,
-                        r -> r.latency == null ? "" : r.latency.toMillis() + "ms",
-                        r -> r.detail),
-                rows);
+                List.<Function<PodPing, @Nullable Object>>of(
+                        r -> r.pod().getClusterId(),
+                        r -> r.pod().getNodeName(),
+                        r -> r.pod().getEndpoint(),
+                        ClusterCommands::pingResultText,
+                        r -> r.latency() == null ? "" : r.latency().toMillis() + "ms",
+                        ClusterCommands::pingDetailText),
+                podService.ping(pods, tenant));
     }
 
-    private PingRow pingOne(BrainPodDocument pod, String tenant) {
-        String endpoint = pod.getEndpoint();
-        if (StringUtils.isBlank(endpoint)) {
-            return new PingRow(pod, "SKIP", null, "no endpoint advertised");
-        }
-        String baseUrl = endpoint.startsWith("http://") || endpoint.startsWith("https://")
-                ? endpoint
-                : "http://" + endpoint;
-        String path = "/brain/" + tenant + "/admin/ping";
-        Instant start = Instant.now();
-        try {
-            Response response = brainClient.getAt(baseUrl, tenant, path);
-            Duration latency = Duration.between(start, Instant.now());
-            if (!response.isSuccess()) {
-                return new PingRow(pod, "HTTP " + response.statusCode(), latency,
-                        truncate(response.body(), 80));
-            }
-            // Identity check: an HTTP 200 only proves "something is on this
-            // address". Compare the responding podId with the DB row to
-            // catch the common case of a fresh boot reusing the host:port
-            // from an old, never-cleaned brain_pods row.
-            String respondingPodId = extractValue(response.body(), "podId");
-            String respondingNodeName = extractValue(response.body(), "nodeName");
-            if (!pod.getPodId().equals(respondingPodId)) {
-                return new PingRow(pod, "STALE", latency,
-                        "answered by '" + respondingNodeName
-                                + "' (podId=" + truncate(respondingPodId, 8) + "…)");
-            }
-            return new PingRow(pod, "OK", latency, "served by " + respondingNodeName);
-        } catch (BrainCallException e) {
-            return new PingRow(pod, "ERROR", Duration.between(start, Instant.now()),
-                    truncate(e.getMessage(), 80));
-        }
+    /**
+     * The RESULT cell. {@code HTTP_ERROR} carries its status because "HTTP" on
+     * its own says nothing an operator can act on — which is why the service
+     * hands the code over separately instead of baking it into a label.
+     */
+    static String pingResultText(PodPing ping) {
+        return switch (ping.result()) {
+            case OK -> "OK";
+            case STALE -> "STALE";
+            case UNREACHABLE -> "ERROR";
+            case SKIPPED -> "SKIP";
+            case HTTP_ERROR -> "HTTP " + ping.statusCode();
+        };
     }
 
-    private List<BrainPodDocument> loadPods(@Nullable String cluster) {
-        List<BrainPodDocument> pods = (cluster != null && !cluster.isBlank())
-                ? brainPodService.listCluster(cluster)
-                : brainPodService.listAll();
-        return sort(pods);
-    }
-
-    private static List<BrainPodDocument> sort(List<BrainPodDocument> pods) {
-        return pods.stream()
-                .sorted(Comparator.comparing(BrainPodDocument::getClusterId)
-                        .thenComparing(BrainPodDocument::getNodeName))
-                .toList();
-    }
-
-    private static String extractValue(String body, String key) {
-        int idx = body.indexOf("\"" + key + "\"");
-        if (idx < 0) return "?";
-        int colon = body.indexOf(':', idx);
-        if (colon < 0) return "?";
-        int firstQuote = body.indexOf('"', colon);
-        int secondQuote = body.indexOf('"', firstQuote + 1);
-        if (firstQuote < 0 || secondQuote < 0) return "?";
-        return body.substring(firstQuote + 1, secondQuote);
+    /** The DETAIL cell. */
+    static String pingDetailText(PodPing ping) {
+        return switch (ping.result()) {
+            case OK -> "served by " + ping.respondingNodeName();
+            case STALE -> "answered by '" + ping.respondingNodeName()
+                    + "' (podId=" + truncate(ping.detail(), 8) + "…)";
+            case UNREACHABLE, HTTP_ERROR -> truncate(ping.detail(), 80);
+            case SKIPPED -> ping.detail();
+        };
     }
 
     private static String truncate(String s, int max) {
         if (s == null) return "";
         return s.length() <= max ? s : s.substring(0, max - 1) + "…";
-    }
-
-    private record PingRow(
-            BrainPodDocument pod,
-            String result,
-            @Nullable Duration latency,
-            String detail) {
     }
 }

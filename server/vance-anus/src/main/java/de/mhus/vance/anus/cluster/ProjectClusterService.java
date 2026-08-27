@@ -1,4 +1,4 @@
-package de.mhus.vance.anus.project;
+package de.mhus.vance.anus.cluster;
 
 import de.mhus.vance.anus.brain.AnusBrainClient;
 import de.mhus.vance.anus.brain.AnusBrainClient.Response;

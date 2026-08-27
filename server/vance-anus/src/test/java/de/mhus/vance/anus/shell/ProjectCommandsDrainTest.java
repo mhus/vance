@@ -12,7 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.anus.brain.AnusBrainClient;
-import de.mhus.vance.anus.project.ProjectClusterService;
+import de.mhus.vance.anus.cluster.ProjectClusterService;
 import de.mhus.vance.anus.brain.AnusBrainClient.Response;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.anus.maintenance.MaintenanceReport;

@@ -14,6 +14,7 @@ import jakarta.annotation.PostConstruct;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -318,42 +319,71 @@ public class BootstrapBrainService {
                 "wile.coyote");
     }
 
-    private void ensureUser(String tenantId, String name, String title, @Nullable String email, String plainPassword) {
-        if (userService.existsByTenantAndName(tenantId, name)) {
+    /**
+     * Runs a seed step that is only needed once, tolerating a lost race
+     * against a second pod booting against the same fresh database.
+     *
+     * <p>Every collection seeded here carries a unique index on its business
+     * key, so a collision surfaces as an exception rather than a duplicate
+     * row — and this method runs from {@link #init()}, a
+     * {@code @PostConstruct}, where an exception does not fail a request but
+     * the whole process. Re-asking {@code exists} is what makes the recovery
+     * exact: present now means the other pod seeded it and the step is done;
+     * absent means the create failed for its own reasons and keeps its
+     * exception.
+     *
+     * <p>Note this only matters on the <em>first</em> boot against a fresh
+     * database. On every later start the leading {@code exists} check
+     * short-circuits and there is no window at all.
+     */
+    private void ensureOnce(String what, BooleanSupplier exists, Runnable create) {
+        if (exists.getAsBoolean()) {
             return;
         }
-        String hash = passwordService.hash(plainPassword);
-        if (name.startsWith(UserService.SERVICE_ACCOUNT_PREFIX)) {
-            // Service accounts have loginEnabled=false hardcoded by
-            // createServiceAccount — tokens for them have to be minted
-            // out-of-band (Anus admin shell). The password hash is
-            // stored anyway so a future "promote to login-able" flow
-            // can flip the flag without password reset.
-            userService.createServiceAccount(tenantId, name, hash, title, email);
-        } else {
-            userService.create(tenantId, name, hash, title, email);
+        try {
+            create.run();
+        } catch (RuntimeException e) {
+            if (!exists.getAsBoolean()) {
+                throw e;
+            }
+            log.info("Bootstrap {} was seeded concurrently by another pod", what);
         }
+    }
+
+    private void ensureUser(String tenantId, String name, String title, @Nullable String email, String plainPassword) {
+        ensureOnce("user '" + name + "'",
+                () -> userService.existsByTenantAndName(tenantId, name),
+                () -> {
+                    String hash = passwordService.hash(plainPassword);
+                    if (name.startsWith(UserService.SERVICE_ACCOUNT_PREFIX)) {
+                        // Service accounts have loginEnabled=false hardcoded by
+                        // createServiceAccount — tokens for them have to be minted
+                        // out-of-band (Anus admin shell). The password hash is
+                        // stored anyway so a future "promote to login-able" flow
+                        // can flip the flag without password reset.
+                        userService.createServiceAccount(tenantId, name, hash, title, email);
+                    } else {
+                        userService.create(tenantId, name, hash, title, email);
+                    }
+                });
     }
 
     private void ensureProjectGroup(String tenantId, String name, String title) {
-        if (projectGroupService.existsByTenantAndName(tenantId, name)) {
-            return;
-        }
-        projectGroupService.create(tenantId, name, title);
+        ensureOnce("project group '" + name + "'",
+                () -> projectGroupService.existsByTenantAndName(tenantId, name),
+                () -> projectGroupService.create(tenantId, name, title));
     }
 
     private void ensureProject(String tenantId, String name, String title, @Nullable String projectGroupId) {
-        if (projectService.existsByTenantAndName(tenantId, name)) {
-            return;
-        }
-        projectService.create(tenantId, name, title, projectGroupId, null);
+        ensureOnce("project '" + name + "'",
+                () -> projectService.existsByTenantAndName(tenantId, name),
+                () -> projectService.create(tenantId, name, title, projectGroupId, null));
     }
 
     private void ensureTeam(String tenantId, String name, String title, List<String> members) {
-        if (teamService.existsByTenantAndName(tenantId, name)) {
-            return;
-        }
-        teamService.create(tenantId, name, title, members);
+        ensureOnce("team '" + name + "'",
+                () -> teamService.existsByTenantAndName(tenantId, name),
+                () -> teamService.create(tenantId, name, title, members));
     }
 
     private void ensureDocument(
@@ -365,19 +395,20 @@ public class BootstrapBrainService {
             List<String> tags,
             String body,
             String createdBy) {
-        if (documentService.findByPath(tenantId, projectId, path).isPresent()) {
-            return;
-        }
-        byte[] bytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        documentService.create(
-                tenantId,
-                projectId,
-                path,
-                title,
-                tags,
-                mimeType,
-                new java.io.ByteArrayInputStream(bytes),
-                createdBy,
-                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+        ensureOnce("document '" + path + "'",
+                () -> documentService.findByPath(tenantId, projectId, path).isPresent(),
+                () -> {
+                    byte[] bytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    documentService.create(
+                            tenantId,
+                            projectId,
+                            path,
+                            title,
+                            tags,
+                            mimeType,
+                            new java.io.ByteArrayInputStream(bytes),
+                            createdBy,
+                            de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+                });
     }
 }

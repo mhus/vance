@@ -1,6 +1,7 @@
 package de.mhus.vance.simpleauth;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -11,6 +12,7 @@ import static org.mockito.Mockito.when;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DuplicateKeyException;
 
 /**
  * CRUD, upsert idempotency and cache invalidation for
@@ -81,6 +83,43 @@ class PermissionGrantServiceTest {
 
         assertThat(removed).isFalse();
         verify(repo, times(0)).delete(any());
+    }
+
+    @Test
+    void set_losingTheInsertRace_retriesOntoTheOtherWritersRow() {
+        // Two pods booting against the same fresh database both seed the admin
+        // grant: our read finds nothing, the other writer inserts, and
+        // grant_key_idx rejects our save. The retry has to find their row.
+        PermissionGrantDocument concurrent = grant("alice", GrantRole.READER);
+        concurrent.setId("existing-id");
+        when(repo.findByTenantIdAndScopeTypeAndScopeIdAndSubjectTypeAndSubjectId(
+                any(), any(), any(), any(), any()))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(concurrent));
+        when(repo.save(any()))
+                .thenThrow(new DuplicateKeyException("grant_key_idx"))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        PermissionGrantDocument result = service.set("acme", GrantScopeType.PROJECT, "proj",
+                GrantSubjectType.USER, "alice", GrantRole.ADMIN, "bootstrap");
+
+        assertThat(result.getId())
+                .as("the retry must update the row that won, not insert a second one")
+                .isEqualTo("existing-id");
+        assertThat(result.getRole())
+                .as("last writer wins — same outcome as two sequential calls")
+                .isEqualTo(GrantRole.ADMIN);
+    }
+
+    @Test
+    void set_failingTwice_isNotARaceAndPropagates() {
+        when(repo.findByTenantIdAndScopeTypeAndScopeIdAndSubjectTypeAndSubjectId(
+                any(), any(), any(), any(), any())).thenReturn(Optional.empty());
+        when(repo.save(any())).thenThrow(new DuplicateKeyException("grant_key_idx"));
+
+        assertThatThrownBy(() -> service.set("acme", GrantScopeType.PROJECT, "proj",
+                GrantSubjectType.USER, "alice", GrantRole.ADMIN, "bootstrap"))
+                .isInstanceOf(DuplicateKeyException.class);
     }
 
     private static PermissionGrantDocument grant(String user, GrantRole role) {

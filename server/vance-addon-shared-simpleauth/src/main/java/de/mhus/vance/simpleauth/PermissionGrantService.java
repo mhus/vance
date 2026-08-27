@@ -6,6 +6,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 /**
@@ -59,6 +60,24 @@ public class PermissionGrantService {
      * a re-run just overwrites the role. Returns the persisted document.
      */
     public PermissionGrantDocument set(String tenantId, GrantScopeType scopeType, String scopeId,
+            GrantSubjectType subjectType, String subjectId, GrantRole role, String createdBy) {
+        try {
+            return upsert(tenantId, scopeType, scopeId, subjectType, subjectId, role, createdBy);
+        } catch (DuplicateKeyException e) {
+            // Lost race for the same (scope, subject): our read found nothing,
+            // then another writer inserted before our save and grant_key_idx
+            // rejected it. This is the normal case on a fresh database with two
+            // pods booting at once — the admin seed runs on both. Retrying now
+            // finds their row and applies our role to it, which is exactly what
+            // two sequential calls would have done. A second failure is not a
+            // race and keeps its exception.
+            log.info("permission-grant set raced for scope={}:{} subject={}:{} — retrying",
+                    scopeType, scopeId, subjectType, subjectId);
+            return upsert(tenantId, scopeType, scopeId, subjectType, subjectId, role, createdBy);
+        }
+    }
+
+    private PermissionGrantDocument upsert(String tenantId, GrantScopeType scopeType, String scopeId,
             GrantSubjectType subjectType, String subjectId, GrantRole role, String createdBy) {
         PermissionGrantDocument doc = repository
                 .findByTenantIdAndScopeTypeAndScopeIdAndSubjectTypeAndSubjectId(

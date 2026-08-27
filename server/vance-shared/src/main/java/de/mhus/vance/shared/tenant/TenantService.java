@@ -78,19 +78,42 @@ public class TenantService {
      * Returns the persisted tenant.
      */
     public TenantDocument ensure(String name, @Nullable String title) {
-        TenantDocument tenant = repository.findByName(name).orElseGet(() -> {
-            TenantDocument created = TenantDocument.builder()
-                    .name(name)
-                    .title(title)
-                    .enabled(true)
-                    .build();
-            TenantDocument saved = repository.save(created);
-            log.info("Created tenant name='{}' id='{}'", saved.getName(), saved.getId());
-            return saved;
-        });
+        TenantDocument tenant = repository.findByName(name).orElseGet(() -> create(name, title));
 
         ensureJwtKey(tenant);
         return tenant;
+    }
+
+    /**
+     * Inserts the tenant, tolerating a lost race against another pod that
+     * booted against the same fresh database and inserted the same row
+     * between our read and this write.
+     *
+     * <p>Two pods starting simultaneously is the normal case in Kubernetes,
+     * and this method is on the unconditional boot path — it runs from
+     * {@link #bootstrapSystemTenant()} in a {@code @PostConstruct}, so an
+     * exception here does not fail a request, it fails the process. The
+     * unique index on {@code name} is what turns the collision into an
+     * exception rather than a duplicate row, which also makes the recovery
+     * exact: if the row is there now, it is the other pod's and "ensure" is
+     * satisfied. Anything else is a real failure and keeps its original
+     * exception.
+     */
+    private TenantDocument create(String name, @Nullable String title) {
+        TenantDocument created = TenantDocument.builder()
+                .name(name)
+                .title(title)
+                .enabled(true)
+                .build();
+        try {
+            TenantDocument saved = repository.save(created);
+            log.info("Created tenant name='{}' id='{}'", saved.getName(), saved.getId());
+            return saved;
+        } catch (RuntimeException e) {
+            TenantDocument concurrent = repository.findByName(name).orElseThrow(() -> e);
+            log.info("Tenant name='{}' was created concurrently by another pod", name);
+            return concurrent;
+        }
     }
 
     /** Returns the {@value #SYSTEM_TENANT} tenant, creating it on first call. */
@@ -98,6 +121,16 @@ public class TenantService {
         return ensure(SYSTEM_TENANT, "Vance internal");
     }
 
+    /**
+     * Creates the tenant's JWT signing key if it has none.
+     *
+     * <p>Unlike {@link #create(String, String)} this needs no collision
+     * handling: two pods racing here end up with two key pairs, and
+     * {@code JwtService.validateToken} verifies against <em>every</em>
+     * enabled public key of the tenant, so tokens minted by either pod are
+     * accepted by both. The duplicate is untidy, not harmful — and there is
+     * no unique index to lean on, so guarding it would mean a lease.
+     */
     private void ensureJwtKey(TenantDocument tenant) {
         if (keyService.hasSigningKey(tenant.getName(), KeyPurpose.JWT_SIGNING)) {
             return;

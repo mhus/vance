@@ -178,10 +178,27 @@ public class UserService {
                     "Vance-internal service account name '" + name
                             + "' must start with '" + RESERVED_VANCE_PREFIX + "'");
         }
-        return repository.findByTenantIdAndName(tenantId, name)
-                .orElseGet(() -> doCreate(tenantId, name, passwordHash, title, email,
-                        /* loginEnabled */ false,
-                        /* serviceAccount */ true));
+        Optional<UserDocument> existing = repository.findByTenantIdAndName(tenantId, name);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+        try {
+            return doCreate(tenantId, name, passwordHash, title, email,
+                    /* loginEnabled */ false,
+                    /* serviceAccount */ true);
+        } catch (RuntimeException e) {
+            // Another pod booting against the same fresh database created the
+            // account between our read and the write. Two windows lead here:
+            // doCreate's own existence check (which throws
+            // UserAlreadyExistsException) and the unique index on
+            // (tenantId, name) behind it. Either way an account that is there
+            // now satisfies "ensure" — anything else keeps its exception.
+            UserDocument concurrent = repository.findByTenantIdAndName(tenantId, name)
+                    .orElseThrow(() -> e);
+            log.info("Service account '{}' in tenant '{}' was created concurrently "
+                    + "by another pod", name, tenantId);
+            return concurrent;
+        }
     }
 
     private UserDocument doCreate(

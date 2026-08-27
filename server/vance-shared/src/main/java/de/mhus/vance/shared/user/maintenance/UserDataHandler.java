@@ -10,7 +10,9 @@ import org.jspecify.annotations.Nullable;
  * shape — one mental model, one report, one drift test. It talks to Mongo
  * directly and is the same bounded exception to the data-sovereignty rule: it
  * lives in the package of the entity it speaks for, and it answers only the
- * maintenance questions ({@code CLAUDE.md} → Datenhoheit).
+ * maintenance questions ({@code CLAUDE.md} → Datenhoheit). The single
+ * exception is the hub-project handler, which lives with the collector it
+ * needs and says so.
  *
  * <h2>A user reference is not one kind of thing</h2>
  *

@@ -7,7 +7,7 @@ import de.mhus.vance.shared.project.LifecycleType;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.project.maintenance.ProjectDataHandler;
-import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceService;
+import de.mhus.vance.anus.maintenance.ProjectMaintenanceService;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;

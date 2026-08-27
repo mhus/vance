@@ -26,7 +26,7 @@ import org.jspecify.annotations.Nullable;
  * that {@link de.mhus.vance.shared.storage.StorageReferenceSource} guards
  * against from the other direction: a missing handler does not announce itself,
  * it just leaves rows behind that outlive the project and are inherited by the
- * next one created under the same name. {@link ProjectMaintenanceService}
+ * next one created under the same name. {@code ProjectMaintenanceService}
  * therefore probes the database for collections no handler claims and reports
  * them; {@link #collections()} is what makes that probe possible.
  *
@@ -81,7 +81,7 @@ public interface ProjectDataHandler {
      * being a cascade — is exactly the one where the accident is invisible.
      *
      * <p>The project document itself is not a handler and carries no index:
-     * {@link ProjectMaintenanceService} removes it last, and only once every
+     * {@code ProjectMaintenanceService} removes it last, and only once every
      * handler has succeeded.
      */
     int order();

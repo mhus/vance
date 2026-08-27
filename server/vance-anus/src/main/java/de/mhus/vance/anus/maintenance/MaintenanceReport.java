@@ -1,4 +1,4 @@
-package de.mhus.vance.shared.maintenance;
+package de.mhus.vance.anus.maintenance;
 
 import java.util.List;
 import java.util.Set;

@@ -1,8 +1,8 @@
 package de.mhus.vance.anus.shell;
 
-import de.mhus.vance.shared.maintenance.MaintenanceReport;
-import de.mhus.vance.shared.maintenance.MaintenanceReport.EntityResult;
-import de.mhus.vance.shared.maintenance.MaintenanceReport.UnaccountedCollection;
+import de.mhus.vance.anus.maintenance.MaintenanceReport;
+import de.mhus.vance.anus.maintenance.MaintenanceReport.EntityResult;
+import de.mhus.vance.anus.maintenance.MaintenanceReport.UnaccountedCollection;
 import java.util.List;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;

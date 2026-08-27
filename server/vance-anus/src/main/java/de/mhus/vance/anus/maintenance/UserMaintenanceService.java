@@ -1,10 +1,11 @@
-package de.mhus.vance.shared.user.maintenance;
+package de.mhus.vance.anus.maintenance;
 
-import de.mhus.vance.shared.maintenance.MaintenanceReport;
-import de.mhus.vance.shared.maintenance.MaintenanceReport.EntityResult;
-import de.mhus.vance.shared.maintenance.MaintenanceReport.Operation;
-import de.mhus.vance.shared.maintenance.MaintenanceReport.UnaccountedCollection;
+import de.mhus.vance.anus.maintenance.MaintenanceReport.EntityResult;
+import de.mhus.vance.anus.maintenance.MaintenanceReport.Operation;
+import de.mhus.vance.anus.maintenance.MaintenanceReport.UnaccountedCollection;
 import de.mhus.vance.shared.user.UserService;
+import de.mhus.vance.shared.user.maintenance.UserDataHandler;
+import de.mhus.vance.shared.user.maintenance.UserTombstone;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;

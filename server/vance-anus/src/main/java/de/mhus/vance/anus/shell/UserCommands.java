@@ -6,7 +6,7 @@ import de.mhus.vance.shared.password.PasswordPolicyService;
 import de.mhus.vance.shared.password.PasswordService;
 import de.mhus.vance.shared.user.UserDocument;
 import de.mhus.vance.shared.user.maintenance.UserDataHandler;
-import de.mhus.vance.shared.user.maintenance.UserMaintenanceService;
+import de.mhus.vance.anus.maintenance.UserMaintenanceService;
 import de.mhus.vance.shared.user.UserService;
 import de.mhus.vance.shared.user.UserStatus;
 import java.util.List;

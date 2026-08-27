@@ -1,8 +1,7 @@
-package de.mhus.vance.shared.home;
+package de.mhus.vance.anus.maintenance;
 
-import de.mhus.vance.shared.maintenance.MaintenanceReport;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.project.ProjectService;
-import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceService;
 import de.mhus.vance.shared.user.maintenance.UserDataHandler;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +19,14 @@ import org.springframework.stereotype.Component;
  * documents, memories and possibly Trillian service accounts of its own, and
  * re-deriving any of that here would be a second, worse copy of a sweep that
  * already exists and is drift-tested.
+ *
+ * <p><b>Also the one handler that does not live next to its entity.</b> Every
+ * other one sits in the package of the document it speaks for, which is what
+ * keeps the data-sovereignty exception narrow. This one cannot: it depends on
+ * {@link ProjectMaintenanceService}, and that lives here in the shell. The
+ * dependency is real rather than incidental — running the project sweep is the
+ * entire body of this handler — so the two move together or not at all. Named
+ * rather than hidden, because it is the one place where the rule bends.
  *
  * <h2>Why it runs first</h2>
  *

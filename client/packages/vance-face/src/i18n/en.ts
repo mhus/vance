@@ -1751,8 +1751,16 @@ export default {
       podLabel: 'Pod',
       claimedLabel: 'Claimed',
       createdLabel: 'Created',
+      placementPendingLabel: 'Waiting since',
+      placementPendingBadge: 'waiting for a pod',
+      placementPendingNote:
+        'This project has been created but no brain process matches it yet — its placement '
+        + 'selector requires a pod that is not available, or every matching pod is full. '
+        + 'It stays here and starts as soon as one appears; nothing is lost.',
       saved: 'Project saved.',
       created: 'Project "{name}" created.',
+      createdPendingPlacement:
+        'Project "{name}" created — waiting for a matching pod before it can start.',
       createdWithKitError: 'Project "{name}" created, but kit "{kit}" install failed: {error}',
       archived: 'Project archived.',
       confirmArchive: 'Archive project "{name}"? It will be moved to the "archived" group.',

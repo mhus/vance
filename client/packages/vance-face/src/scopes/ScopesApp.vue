@@ -536,7 +536,14 @@ async function onPickerDataChanged(
   } else {
     await projectsState.reload();
     selection.value = { kind: 'project', name: payload.name };
-    banner.value = t('scopes.project.created', { name: payload.name });
+    // Creation can legitimately end in "accepted, not placed" — a selector no
+    // live pod satisfies, or every matching pod full. Saying only "created"
+    // there would leave the user waiting for a start that needs a new pod
+    // first (planning/project-placement-labels.md §7).
+    const created = projectsState.projects.value.find(p => p.name === payload.name);
+    banner.value = created?.placementPendingSince
+      ? t('scopes.project.createdPendingPlacement', { name: payload.name })
+      : t('scopes.project.created', { name: payload.name });
   }
 }
 
@@ -1071,6 +1078,13 @@ const combinedError = computed<string | null>(() =>
               v-else-if="kind === 'project' && (item as ProjectDto).status === 'ARCHIVED'"
               class="opacity-60 text-xs"
             >{{ $t('scopes.common.archived') }}</span>
+            <!-- Waiting for a pod. Below ARCHIVED on purpose: an archived
+                 project is not waiting for anything, so that label wins. -->
+            <span
+              v-else-if="kind === 'project' && (item as ProjectDto).placementPendingSince"
+              class="text-xs text-warning"
+              :title="$t('scopes.project.placementPendingNote')"
+            >⏳ {{ $t('scopes.project.placementPendingBadge') }}</span>
           </template>
         </ProjectListSidebar>
       </div>
@@ -1163,6 +1177,11 @@ const combinedError = computed<string | null>(() =>
             @update:model-value="() => {}"
           />
           <VInput v-model="form.title" :label="$t('scopes.common.title')" />
+          <!-- The one place where this state looked like a broken create: the
+               project exists, is correct, and simply has nowhere to run yet. -->
+          <VAlert v-if="selectedProject.placementPendingSince" variant="warning">
+            <span>{{ $t('scopes.project.placementPendingNote') }}</span>
+          </VAlert>
           <VSelect
             v-model="form.projectGroupId"
             :label="$t('scopes.project.groupLabel')"
@@ -1176,6 +1195,10 @@ const combinedError = computed<string | null>(() =>
             <dd>{{ selectedProject.homeNode ?? $t('scopes.common.none') }}</dd>
             <dt class="opacity-60">{{ $t('scopes.project.claimedLabel') }}</dt>
             <dd>{{ selectedProject.claimedAt ?? $t('scopes.common.none') }}</dd>
+            <template v-if="selectedProject.placementPendingSince">
+              <dt class="opacity-60">{{ $t('scopes.project.placementPendingLabel') }}</dt>
+              <dd class="text-warning">{{ selectedProject.placementPendingSince }}</dd>
+            </template>
             <dt class="opacity-60">{{ $t('scopes.project.createdLabel') }}</dt>
             <dd>{{ selectedProject.createdAt ?? $t('scopes.common.none') }}</dd>
           </dl>

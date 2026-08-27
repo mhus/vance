@@ -1761,8 +1761,16 @@ export default {
       podLabel: 'Pod',
       claimedLabel: 'Beansprucht',
       createdLabel: 'Erstellt',
+      placementPendingLabel: 'Wartet seit',
+      placementPendingBadge: 'wartet auf einen Pod',
+      placementPendingNote:
+        'Dieses Projekt ist angelegt, aber noch passt kein Brain-Prozess dazu — sein '
+        + 'Placement-Selektor verlangt einen Pod, den es nicht gibt, oder alle passenden '
+        + 'sind voll. Es bleibt bestehen und startet, sobald einer auftaucht; nichts ist verloren.',
       saved: 'Projekt gespeichert.',
       created: 'Projekt „{name}" angelegt.',
+      createdPendingPlacement:
+        'Projekt „{name}" angelegt — wartet auf einen passenden Pod, bevor es starten kann.',
       createdWithKitError: 'Projekt „{name}" angelegt, aber Kit „{kit}" konnte nicht installiert werden: {error}',
       archived: 'Projekt archiviert.',
       confirmArchive: 'Projekt „{name}" archivieren? Es wird in die Gruppe „archived" verschoben.',

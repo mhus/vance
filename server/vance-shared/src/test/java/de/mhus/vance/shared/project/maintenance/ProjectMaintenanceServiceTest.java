@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.shared.maintenance.MaintenanceReport;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
@@ -47,7 +48,7 @@ class ProjectMaintenanceServiceTest {
         ProjectMaintenanceService service =
                 service(List.of(new FakeHandler("docs", 500, 4)), running("p1"));
 
-        ProjectMaintenanceReport report = service.delete("acme", "p1", false);
+        MaintenanceReport report = service.delete("acme", "p1", false);
 
         verify(projectService).delete("acme", "p1");
         assertThat(report.total()).isEqualTo(5); // 4 rows + the project document
@@ -59,7 +60,7 @@ class ProjectMaintenanceServiceTest {
         broken.failure = new IllegalStateException("mongo down");
         ProjectMaintenanceService service = service(List.of(broken), running("p1"));
 
-        ProjectMaintenanceReport report = service.delete("acme", "p1", false);
+        MaintenanceReport report = service.delete("acme", "p1", false);
 
         // The document is the only way left to address what was not deleted.
         verify(projectService, never()).delete("acme", "p1");
@@ -123,7 +124,7 @@ class ProjectMaintenanceServiceTest {
         refs.deleteNote = "4 threads keep their reference";
         ProjectMaintenanceService service = service(List.of(refs), running("p1"));
 
-        ProjectMaintenanceReport report = service.delete("acme", "p1", false);
+        MaintenanceReport report = service.delete("acme", "p1", false);
 
         assertThat(report.entities())
                 .anySatisfy(e -> assertThat(e.note()).isEqualTo("4 threads keep their reference"));
@@ -171,7 +172,7 @@ class ProjectMaintenanceServiceTest {
         FakeHandler docs = new FakeHandler("docs", 500, 9);
         ProjectMaintenanceService service = service(List.of(docs), running("p1"));
 
-        ProjectMaintenanceReport report = service.inspect("acme", "p1");
+        MaintenanceReport report = service.inspect("acme", "p1");
 
         assertThat(report.total()).isEqualTo(9);
         assertThat(docs.deleted).isFalse();

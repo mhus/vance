@@ -1,5 +1,11 @@
 package de.mhus.vance.brain.eddie.activity;
 
+import de.mhus.vance.shared.activity.EntityRef;
+
+import de.mhus.vance.shared.activity.EddieActivityKind;
+
+import de.mhus.vance.shared.activity.EddieActivityEntry;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;

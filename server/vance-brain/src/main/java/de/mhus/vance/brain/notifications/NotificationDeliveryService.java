@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.notifications;
 
+import de.mhus.vance.shared.notifications.NotificationDeliveryDocument;
+
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

@@ -14,7 +14,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.anus.brain.AnusBrainClient;
 import de.mhus.vance.anus.brain.AnusBrainClient.Response;
 import de.mhus.vance.shared.project.ProjectService;
-import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceReport;
+import de.mhus.vance.shared.maintenance.MaintenanceReport;
 import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceService;
 import java.util.List;
 import org.jline.reader.LineReader;
@@ -114,7 +114,7 @@ class ProjectCommandsDrainTest {
         givenPlacedOn();
         givenReleaseSucceeds();
         when(maintenanceService.rename("acme", "p1", "p2", false))
-                .thenReturn(report("p1", ProjectMaintenanceReport.Operation.RENAME));
+                .thenReturn(report("p1", MaintenanceReport.Operation.RENAME));
         when(brainClient.internal(contains("/internal/cluster/place"), eq("POST"), any()))
                 .thenReturn(new Response(200, "{\"node\":\"pod-b\"}"));
 
@@ -132,7 +132,7 @@ class ProjectCommandsDrainTest {
         when(brainClient.internal(contains(HOME), eq("GET"), any()))
                 .thenReturn(new Response(404, "no home pod"));
         when(maintenanceService.rename("acme", "p1", "p2", false))
-                .thenReturn(report("p1", ProjectMaintenanceReport.Operation.RENAME));
+                .thenReturn(report("p1", MaintenanceReport.Operation.RENAME));
 
         String out = commands.rename("acme", "p1", "p2", "p1", false, false);
 
@@ -170,12 +170,12 @@ class ProjectCommandsDrainTest {
                 .thenReturn(new Response(200, "released"));
     }
 
-    private static ProjectMaintenanceReport report(String project) {
-        return report(project, ProjectMaintenanceReport.Operation.DELETE);
+    private static MaintenanceReport report(String project) {
+        return report(project, MaintenanceReport.Operation.DELETE);
     }
 
-    private static ProjectMaintenanceReport report(
-            String project, ProjectMaintenanceReport.Operation operation) {
-        return new ProjectMaintenanceReport("acme", project, operation, List.of(), List.of());
+    private static MaintenanceReport report(
+            String project, MaintenanceReport.Operation operation) {
+        return new MaintenanceReport("acme", project, operation, List.of(), List.of());
     }
 }

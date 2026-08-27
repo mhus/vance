@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.eddie.activity;
+package de.mhus.vance.shared.activity;
 
 import java.time.Instant;
 import java.util.ArrayList;

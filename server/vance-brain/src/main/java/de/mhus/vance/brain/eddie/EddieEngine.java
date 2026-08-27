@@ -11,7 +11,7 @@ import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ModelSize;
 import de.mhus.vance.brain.ai.VanceSystemMessage;
-import de.mhus.vance.brain.eddie.activity.EddieActivityEntry;
+import de.mhus.vance.shared.activity.EddieActivityEntry;
 import de.mhus.vance.brain.eddie.activity.EddieActivityService;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.events.StreamingProperties;

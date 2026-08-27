@@ -1,11 +1,12 @@
 package de.mhus.vance.shared.project.maintenance;
 
+import de.mhus.vance.shared.maintenance.MaintenanceReport;
+import de.mhus.vance.shared.maintenance.MaintenanceReport.EntityResult;
+import de.mhus.vance.shared.maintenance.MaintenanceReport.Operation;
+import de.mhus.vance.shared.maintenance.MaintenanceReport.UnaccountedCollection;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectOwnership;
 import de.mhus.vance.shared.project.ProjectService;
-import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceReport.EntityResult;
-import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceReport.Operation;
-import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceReport.UnaccountedCollection;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -115,12 +116,12 @@ public class ProjectMaintenanceService {
      * destructive operations, and on its own the answer to "what is actually in
      * there".
      */
-    public ProjectMaintenanceReport inspect(String tenantId, String projectId) {
+    public MaintenanceReport inspect(String tenantId, String projectId) {
         List<EntityResult> entities = new ArrayList<>();
         for (ProjectDataHandler handler : handlers) {
             entities.add(run(handler, () -> handler.count(tenantId, projectId)));
         }
-        return new ProjectMaintenanceReport(tenantId, projectId, Operation.INSPECT,
+        return new MaintenanceReport(tenantId, projectId, Operation.INSPECT,
                 entities, unaccountedCollections(tenantId, projectId));
     }
 
@@ -136,11 +137,43 @@ public class ProjectMaintenanceService {
      * @throws ProjectService.ProjectNotFoundException if the project is gone
      * @throws ProjectService.SystemProjectProtectedException if it is SYSTEM
      */
-    public ProjectMaintenanceReport delete(String tenantId, String projectId, boolean force) {
+    public MaintenanceReport delete(String tenantId, String projectId, boolean force) {
         ProjectDocument project = require(tenantId, projectId);
         requireNotSystem(project, "delete");
         requireNoLiveLease(project, force, "delete");
 
+        return sweepAndDelete(tenantId, projectId, /*hub*/ false);
+    }
+
+    /**
+     * Removes a per-user hub project — the one SYSTEM project that
+     * legitimately ends, because its name encodes a login that is going away.
+     *
+     * <p><b>Only ever call this while deleting the account it belongs to.</b>
+     * It exists because {@link #delete} refuses SYSTEM projects and must keep
+     * refusing them; a flag on that method would reach {@code _vance} just as
+     * easily. Both this and {@link ProjectService#deleteUserHub} verify the
+     * {@code _user_<login>} shape independently.
+     *
+     * @throws IllegalArgumentException if {@code hubProjectName} is not a hub
+     */
+    public MaintenanceReport deleteUserHub(String tenantId, String hubProjectName) {
+        requireUserHub(hubProjectName, "delete");
+        require(tenantId, hubProjectName);
+        return sweepAndDelete(tenantId, hubProjectName, /*hub*/ true);
+    }
+
+    /**
+     * Runs every handler, then removes the project document — but only if all
+     * of them succeeded.
+     *
+     * <p>The invariant that makes an interrupted delete recoverable: the
+     * document is the index back to the project's data, so dropping it while
+     * data is left strands that data with no way to address it. Re-running the
+     * same command finishes the job, which is why every handler must be
+     * idempotent.
+     */
+    private MaintenanceReport sweepAndDelete(String tenantId, String projectId, boolean hub) {
         List<UnaccountedCollection> unaccounted = unaccountedCollections(tenantId, projectId);
         List<EntityResult> entities = new ArrayList<>();
         boolean allSucceeded = true;
@@ -157,19 +190,29 @@ public class ProjectMaintenanceService {
                     : result);
         }
         if (allSucceeded) {
-            projectService.delete(tenantId, projectId);
+            if (hub) {
+                projectService.deleteUserHub(tenantId, projectId);
+            } else {
+                projectService.delete(tenantId, projectId);
+            }
             entities.add(EntityResult.of("project", Set.of("projects"), 1));
         } else {
-            // Deliberately kept: the document is the only remaining way to
-            // address what was left behind. Re-running the command finishes
-            // the job — every handler is idempotent.
             entities.add(new EntityResult("project", Set.of("projects"), 0,
                     "kept — an entity failed, re-run the delete to finish"));
             log.warn("Project '{}/{}' delete incomplete — project document kept",
                     tenantId, projectId);
         }
-        return new ProjectMaintenanceReport(tenantId, projectId, Operation.DELETE,
+        return new MaintenanceReport(tenantId, projectId, Operation.DELETE,
                 entities, unaccounted);
+    }
+
+    private static void requireUserHub(String name, String operation) {
+        if (!ProjectService.isUserHub(name)) {
+            throw new IllegalArgumentException(
+                    "Refusing to " + operation + " '" + name + "' as a user hub — only projects"
+                            + " named '" + ProjectService.HUB_PROJECT_NAME_PREFIX
+                            + "<login>' qualify");
+        }
     }
 
     // ─── Rename ────────────────────────────────────────────────────────────
@@ -191,7 +234,7 @@ public class ProjectMaintenanceService {
      * @throws RenameBlockedException if any handler cannot carry the rename —
      *     checked for all handlers before the first one writes
      */
-    public ProjectMaintenanceReport rename(
+    public MaintenanceReport rename(
             String tenantId, String projectId, String newProjectId, boolean force) {
         ProjectDocument project = require(tenantId, projectId);
         requireNotSystem(project, "rename");
@@ -205,6 +248,27 @@ public class ProjectMaintenanceService {
                     "Project '" + newProjectId + "' already exists in tenant '" + tenantId + "'");
         }
 
+        return sweepAndRename(tenantId, projectId, newProjectId, /*hub*/ false);
+    }
+
+    /**
+     * Carries a per-user hub project to the login its owner now has. Same
+     * narrow door as {@link #deleteUserHub}, and for the same reason: the hub's
+     * name <em>is</em> the login, so a renamed account whose hub kept the old
+     * name has a hub nobody looks for.
+     *
+     * @throws IllegalArgumentException if either name is not a hub
+     */
+    public MaintenanceReport renameUserHub(
+            String tenantId, String hubProjectName, String newHubProjectName) {
+        requireUserHub(hubProjectName, "rename");
+        requireUserHub(newHubProjectName, "rename to");
+        require(tenantId, hubProjectName);
+        return sweepAndRename(tenantId, hubProjectName, newHubProjectName, /*hub*/ true);
+    }
+
+    private MaintenanceReport sweepAndRename(
+            String tenantId, String projectId, String newProjectId, boolean hub) {
         // Ask everybody first. A rename that stops halfway leaves the tenant
         // split between two names, which is worse than one that never started.
         List<String> blockers = new ArrayList<>();
@@ -229,10 +293,14 @@ public class ProjectMaintenanceService {
         }
         // Last: while the document still says the old name, a half-finished
         // rename is at least addressable under it.
-        projectService.rename(tenantId, projectId, newProjectId);
+        if (hub) {
+            projectService.renameUserHub(tenantId, projectId, newProjectId);
+        } else {
+            projectService.rename(tenantId, projectId, newProjectId);
+        }
         entities.add(EntityResult.of("project", Set.of("projects"), 1));
 
-        return new ProjectMaintenanceReport(tenantId, projectId, Operation.RENAME,
+        return new MaintenanceReport(tenantId, projectId, Operation.RENAME,
                 entities, unaccountedCollections(tenantId, newProjectId));
     }
 

@@ -364,6 +364,27 @@ public class ThinkProcessService {
     }
 
     /**
+     * The Mongo ids of every process in the given sessions — ids only, no
+     * limit.
+     *
+     * <p>For user maintenance, which reaches processes through the account's
+     * sessions rather than through a project: a user owns sessions in several
+     * projects, and their processes have to go with them.
+     */
+    public List<String> findIdsBySessions(String tenantId, Collection<String> sessionIds) {
+        if (sessionIds.isEmpty()) {
+            return List.of();
+        }
+        Query query = new Query(Criteria.where("tenantId").is(tenantId)
+                .and("sessionId").in(sessionIds));
+        query.fields().include("_id");
+        return mongoTemplate.find(query, ThinkProcessDocument.class).stream()
+                .map(ThinkProcessDocument::getId)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
+    /**
      * The Mongo ids of every process in the project — ids only, no limit.
      *
      * <p>Deliberately not {@link #findByProject}: that one is the run view's

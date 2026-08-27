@@ -530,6 +530,95 @@ public class ProjectService {
         return true;
     }
 
+    // ─── Per-user hub projects ─────────────────────────────────────────────
+    //
+    // The one kind of SYSTEM project that legitimately ends: `_user_<login>`
+    // belongs to an account, and when the account goes or is renamed, so is
+    // the hub — its name encodes the login, so leaving it behind produces a
+    // project nobody can address again.
+    //
+    // Two separate methods rather than an `allowSystem` flag on the ordinary
+    // ones. A flag is a trapdoor that reaches `_vance` as easily as a hub; a
+    // method that refuses anything not named `_user_<something>` cannot.
+
+    /**
+     * Whether {@code name} is a per-user hub — {@code _user_} plus at least one
+     * character. The guard on both hub methods, and the reason neither can
+     * touch {@code _vance}.
+     */
+    public static boolean isUserHub(String name) {
+        return name.startsWith(HUB_PROJECT_NAME_PREFIX)
+                && name.length() > HUB_PROJECT_NAME_PREFIX.length();
+    }
+
+    /**
+     * Name prefix of the per-user hub projects. Mirrors
+     * {@code HomeBootstrapService.HUB_PROJECT_NAME_PREFIX} — a compile-time
+     * constant, so this does not make the project package depend on the home
+     * package. Two literals of one string is a risk; both are covered by
+     * {@code HomeBootstrapServiceTest} and the hub handler's test.
+     */
+    public static final String HUB_PROJECT_NAME_PREFIX = "_user_";
+
+    /**
+     * Removes a per-user hub project document.
+     *
+     * <p>Only ever call this through {@code ProjectMaintenanceService}, and
+     * only as part of deleting the account it belongs to.
+     *
+     * @throws IllegalArgumentException if {@code name} is not a hub
+     */
+    public boolean deleteUserHub(String tenantId, String name) {
+        requireUserHub(name, "delete");
+        Optional<ProjectDocument> found = repository.findByTenantIdAndName(tenantId, name);
+        if (found.isEmpty()) {
+            return false;
+        }
+        repository.delete(found.get());
+        log.info("Deleted user-hub project tenantId='{}' name='{}'", tenantId, name);
+        auditService.projectDelete(tenantId, name);
+        megadodoService.projectDeleted(tenantId, name, /*actor*/ null);
+        return true;
+    }
+
+    /**
+     * Renames a per-user hub project — both names must be hubs, because the
+     * hub of a renamed account is still a hub.
+     *
+     * @throws IllegalArgumentException if either name is not a hub
+     * @throws ProjectAlreadyExistsException if the target name is taken
+     */
+    public ProjectDocument renameUserHub(String tenantId, String name, String newName) {
+        requireUserHub(name, "rename");
+        requireUserHub(newName, "rename to");
+        if (repository.existsByTenantIdAndName(tenantId, newName)) {
+            throw new ProjectAlreadyExistsException(
+                    "Project '" + newName + "' already exists in tenant '" + tenantId + "'");
+        }
+        Query query = new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
+        Update update = new Update().set(F_NAME, newName);
+        ProjectDocument updated = mongoTemplate.findAndModify(
+                query, update,
+                FindAndModifyOptions.options().returnNew(true),
+                ProjectDocument.class);
+        if (updated == null) {
+            throw new ProjectNotFoundException(
+                    "Hub project '" + name + "' not found in tenant '" + tenantId + "'");
+        }
+        log.info("Renamed user-hub project tenantId='{}' '{}' → '{}'", tenantId, name, newName);
+        auditService.projectRename(tenantId, name, newName);
+        megadodoService.projectRenamed(tenantId, name, newName, /*actor*/ null);
+        return updated;
+    }
+
+    private static void requireUserHub(String name, String operation) {
+        if (!isUserHub(name)) {
+            throw new IllegalArgumentException(
+                    "Refusing to " + operation + " '" + name + "' as a user hub — only projects"
+                            + " named '" + HUB_PROJECT_NAME_PREFIX + "<login>' qualify");
+        }
+    }
+
     /**
      * Closes a project: status to {@link ProjectStatus#CLOSED} and
      * {@code projectGroupId} replaced by {@code closedGroupId}. Idempotent.

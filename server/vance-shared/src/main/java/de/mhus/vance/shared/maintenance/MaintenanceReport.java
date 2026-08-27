@@ -1,4 +1,4 @@
-package de.mhus.vance.shared.project.maintenance;
+package de.mhus.vance.shared.maintenance;
 
 import java.util.List;
 import java.util.Set;
@@ -8,18 +8,23 @@ import org.jspecify.annotations.Nullable;
  * What a maintenance run touched, per entity, plus what it could not account
  * for.
  *
- * <p>One shape for all three operations rather than three near-identical
- * records: the interesting part is always the same table — which handler, how
- * many rows — and a caller that renders "inspect" can render "delete" without
- * knowing there was a difference.
+ * <p>One shape for all operations rather than one per verb: the interesting
+ * part is always the same table — which handler, how many rows — and a caller
+ * that renders "inspect" can render "delete" without knowing there was a
+ * difference. The same holds across <em>subjects</em>, which is why this lives
+ * outside {@code project.maintenance}: deleting a project and deleting a user
+ * are the same run over a different set of handlers, and one report type means
+ * one renderer in the shell.
  *
- * @param unaccounted collections holding rows for this project that no handler
+ * @param subject what the run was about — a project name or a user name. The
+ *     handler set decides which; the report does not have to know.
+ * @param unaccounted collections holding rows for this subject that no handler
  *     claims. Always reported, never acted on: the whole reason to name them is
  *     that nobody knows what they mean.
  */
-public record ProjectMaintenanceReport(
+public record MaintenanceReport(
         String tenantId,
-        String projectId,
+        String subject,
         Operation operation,
         List<EntityResult> entities,
         List<UnaccountedCollection> unaccounted) {
@@ -29,7 +34,7 @@ public record ProjectMaintenanceReport(
         INSPECT,
         /** Rows removed. */
         DELETE,
-        /** Project references rewritten. */
+        /** References rewritten to a new name. */
         RENAME
     }
 
@@ -53,7 +58,7 @@ public record ProjectMaintenanceReport(
         }
     }
 
-    /** A collection with rows for this project and no handler behind it. */
+    /** A collection with rows for this subject and no handler behind it. */
     public record UnaccountedCollection(String collection, long count) {}
 
     /** Total across all handlers. */
@@ -61,7 +66,7 @@ public record ProjectMaintenanceReport(
         return entities.stream().mapToLong(EntityResult::affected).sum();
     }
 
-    /** True when at least one collection holds project rows nobody claims. */
+    /** True when at least one collection holds rows nobody claims. */
     public boolean hasUnaccounted() {
         return !unaccounted.isEmpty();
     }

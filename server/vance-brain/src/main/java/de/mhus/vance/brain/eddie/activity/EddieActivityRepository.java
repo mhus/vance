@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.eddie.activity;
 
+import de.mhus.vance.shared.activity.EddieActivityEntry;
+
 import java.time.Instant;
 import java.util.List;
 import org.springframework.data.domain.Pageable;

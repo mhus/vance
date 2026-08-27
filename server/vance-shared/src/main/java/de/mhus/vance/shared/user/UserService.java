@@ -388,6 +388,56 @@ public class UserService {
         log.info("Deleted user tenantId='{}' name='{}'", tenantId, name);
     }
 
+    /**
+     * Renames an account — the login is the business key, so this moves the
+     * identity every other entity points at.
+     *
+     * <p><b>Only ever call this through {@code UserMaintenanceService}.</b> On
+     * its own it does half the job: the document says the new name and every
+     * session, setting, grant and authored message still says the old one.
+     *
+     * <p><b>A rename may not change what kind of account this is.</b> A human
+     * login stays without the {@code _} prefix and a service account keeps it,
+     * because {@code serviceAccount} is a field and the prefix is the
+     * convention that describes it — letting the two drift apart produces a
+     * human whose name claims otherwise. {@link #RESERVED_VANCE_PREFIX} stays
+     * closed either way.
+     *
+     * <p>No lifecycle listener fires. {@link UserLifecycleListener} exists for
+     * an identity coming into existence or going away, and neither happens
+     * here: the subject is the same person, so a grant follows the name rather
+     * than being revoked. That is the handler's job, not this method's.
+     *
+     * @throws UserNotFoundException if the account does not exist
+     * @throws UserAlreadyExistsException if {@code newName} is taken
+     * @throws ReservedNameException if the rename would change the account kind
+     *     or reach into the Vance-internal namespace
+     */
+    public UserDocument rename(String tenantId, String name, String newName) {
+        UserDocument user = repository.findByTenantIdAndName(tenantId, name)
+                .orElseThrow(() -> new UserNotFoundException(
+                        "User '" + name + "' not found in tenant '" + tenantId + "'"));
+        if (repository.existsByTenantIdAndName(tenantId, newName)) {
+            throw new UserAlreadyExistsException(
+                    "User '" + newName + "' already exists in tenant '" + tenantId + "'");
+        }
+        if (newName.startsWith(RESERVED_VANCE_PREFIX)) {
+            throw new ReservedNameException(
+                    "User name '" + newName + "' starts with the reserved '"
+                            + RESERVED_VANCE_PREFIX + "' prefix");
+        }
+        if (name.startsWith(SERVICE_ACCOUNT_PREFIX) != newName.startsWith(SERVICE_ACCOUNT_PREFIX)) {
+            throw new ReservedNameException(
+                    "Cannot rename '" + name + "' to '" + newName + "' — the '"
+                            + SERVICE_ACCOUNT_PREFIX + "' prefix says whether an account is a"
+                            + " service account, and a rename does not change that");
+        }
+        user.setName(newName);
+        UserDocument saved = repository.save(user);
+        log.info("Renamed user tenantId='{}' '{}' → '{}'", tenantId, name, newName);
+        return saved;
+    }
+
     /** Thrown by {@link #create(String, String, String, String, String)} on a duplicate. */
     public static class UserAlreadyExistsException extends RuntimeException {
         public UserAlreadyExistsException(String message) {

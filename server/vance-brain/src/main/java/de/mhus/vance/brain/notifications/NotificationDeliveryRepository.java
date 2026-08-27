@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.notifications;
 
+import de.mhus.vance.shared.notifications.NotificationDeliveryDocument;
+
 import org.springframework.data.mongodb.repository.MongoRepository;
 
 /**

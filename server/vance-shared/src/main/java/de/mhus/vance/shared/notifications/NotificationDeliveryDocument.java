@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.notifications;
+package de.mhus.vance.shared.notifications;
 
 import java.time.Instant;
 import lombok.AllArgsConstructor;

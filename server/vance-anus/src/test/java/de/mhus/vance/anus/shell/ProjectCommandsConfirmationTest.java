@@ -8,7 +8,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.anus.brain.AnusBrainClient;
 import de.mhus.vance.shared.project.ProjectService;
-import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceReport;
+import de.mhus.vance.shared.maintenance.MaintenanceReport;
 import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceService;
 import java.util.List;
 import org.jline.reader.LineReader;
@@ -93,8 +93,8 @@ class ProjectCommandsConfirmationTest {
                 .contains("folder already exists");
     }
 
-    private static ProjectMaintenanceReport report(String project) {
-        return new ProjectMaintenanceReport("acme", project,
-                ProjectMaintenanceReport.Operation.DELETE, List.of(), List.of());
+    private static MaintenanceReport report(String project) {
+        return new MaintenanceReport("acme", project,
+                MaintenanceReport.Operation.DELETE, List.of(), List.of());
     }
 }

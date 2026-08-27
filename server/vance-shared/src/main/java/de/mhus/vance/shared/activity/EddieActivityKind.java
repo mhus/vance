@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.eddie.activity;
+package de.mhus.vance.shared.activity;
 
 /**
  * Coarse classification of Activity-Log entries. Used both for

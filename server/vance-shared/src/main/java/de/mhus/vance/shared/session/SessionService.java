@@ -76,6 +76,7 @@ public class SessionService {
     private static final String F_SESSION_ID = "sessionId";
     private static final String F_PROJECT_ID = "projectId";
     private static final String F_TENANT_ID = "tenantId";
+    private static final String F_USER_ID = "userId";
     private static final String F_STATUS = "status";
     private static final String F_BOUND_CONNECTION = "boundConnectionId";
     private static final String F_LAST_ACTIVITY = "lastActivityAt";
@@ -261,6 +262,25 @@ public class SessionService {
     /** Admin-style cross-user listing scoped to a project. */
     public List<SessionDocument> listForProject(String tenantId, String projectId) {
         return repository.findByTenantIdAndProjectId(tenantId, projectId);
+    }
+
+    /**
+     * The {@code sessionId}s an account owns, across every project.
+     *
+     * <p>The user-maintenance counterpart of
+     * {@link #findSessionIdsForProject}: everything hanging off a session —
+     * chat messages, think processes — is reached through these keys, and a
+     * delete that lost them would leave that data unreachable rather than
+     * merely orphaned.
+     */
+    public List<String> findSessionIdsForUser(String tenantId, String userId) {
+        Query query = new Query(Criteria.where(F_TENANT_ID).is(tenantId)
+                .and(F_USER_ID).is(userId));
+        query.fields().include(F_SESSION_ID);
+        return mongoTemplate.find(query, SessionDocument.class).stream()
+                .map(SessionDocument::getSessionId)
+                .filter(id -> !id.isBlank())
+                .toList();
     }
 
     /**

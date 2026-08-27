@@ -1,15 +1,12 @@
 package de.mhus.vance.anus.shell;
 
 import de.mhus.vance.anus.access.RequiresAuth;
-import de.mhus.vance.anus.brain.AnusBrainClient;
 import de.mhus.vance.anus.brain.AnusBrainClient.Response;
+import de.mhus.vance.anus.brain.AnusBrainClient;
 import de.mhus.vance.shared.project.LifecycleType;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.project.maintenance.ProjectDataHandler;
-import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceReport;
-import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceReport.EntityResult;
-import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceReport.UnaccountedCollection;
 import de.mhus.vance.shared.project.maintenance.ProjectMaintenanceService;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -158,7 +155,7 @@ public class ProjectCommands {
         if (projectService.findByTenantAndName(tenant, name).isEmpty()) {
             return "Project '" + name + "' not found in tenant '" + tenant + "'.";
         }
-        return render(maintenanceService.inspect(tenant, name));
+        return MaintenanceOutput.render(maintenanceService.inspect(tenant, name), "project");
     }
 
     @Command(name = {"project", "handlers"},
@@ -208,7 +205,9 @@ public class ProjectCommands {
             return drained.log();
         }
         try {
-            return drained.log() + render(maintenanceService.delete(tenant, name, force));
+            return drained.log()
+                    + MaintenanceOutput.render(
+                            maintenanceService.delete(tenant, name, force), "project");
         } catch (RuntimeException e) {
             return drained.log() + "Delete FAILED — " + e.getMessage();
         }
@@ -245,7 +244,7 @@ public class ProjectCommands {
         }
         String result;
         try {
-            result = render(maintenanceService.rename(tenant, name, to, force));
+            result = MaintenanceOutput.render(maintenanceService.rename(tenant, name, to, force), "project");
         } catch (ProjectMaintenanceService.RenameBlockedException e) {
             return drained.log() + "Rename FAILED — nothing was written:\n  "
                     + String.join("\n  ", e.blockers())
@@ -358,98 +357,6 @@ public class ProjectCommands {
             return "Confirmation did not match '" + name + "' — nothing was done.";
         }
         return null;
-    }
-
-    private static String render(ProjectMaintenanceReport report) {
-        String header = switch (report.operation()) {
-            case INSPECT -> "Contents of project '" + report.projectId() + "' in tenant '"
-                    + report.tenantId() + "':";
-            case DELETE -> "Deleted project '" + report.projectId() + "' in tenant '"
-                    + report.tenantId() + "':";
-            case RENAME -> "Renamed project '" + report.projectId() + "' in tenant '"
-                    + report.tenantId() + "':";
-        };
-        String table = Tables.render(
-                List.of("ENTITY", "ROWS", "COLLECTIONS", "NOTE"),
-                List.<Function<EntityResult, @Nullable Object>>of(
-                        EntityResult::handlerId,
-                        EntityResult::affected,
-                        e -> String.join(",", e.collections()),
-                        EntityResult::note),
-                report.entities());
-        StringBuilder out = new StringBuilder(header)
-                .append('\n').append(table)
-                .append("\n  total: ").append(report.total());
-        if (report.hasUnaccounted()) {
-            out.append("\n\nWARNING — collections holding rows for this project that no handler"
-                    + "\nclaims. They were NOT touched; add a ProjectDataHandler for each:");
-            for (UnaccountedCollection unaccounted : report.unaccounted()) {
-                out.append("\n  ").append(unaccounted.collection())
-                        .append(": ").append(unaccounted.count()).append(" row(s)");
-            }
-        }
-        return out.toString();
-    }
-
-    // ─── Brain-orchestrated lifecycle ──────────────────────────────────────
-    //
-    // These commands go through Brain REST instead of the local repository
-    // because the lifecycle owns more than the document — workspace folders,
-    // engine processes, pod claims. Touching the document directly here
-    // would diverge from the Brain's view and is unsupported.
-
-    @Command(name = {"project", "suspend"},
-            description = "Stop engines + snapshot workspace + mark SUSPENDED. Brain-orchestrated.")
-    public String suspend(
-            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
-            @Option(longName = "name", shortName = 'n', required = true) String name) {
-        Response response = brainClient.post(
-                tenant, "/brain/" + tenant + "/admin/projects/" + name + "/suspend", "{}");
-        return formatResponse("Suspend", tenant, name, response);
-    }
-
-    @Command(name = {"project", "resume"},
-            description = "Claim project for a pod, recover workspace, start engines, mark RUNNING.")
-    public String resume(
-            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
-            @Option(longName = "name", shortName = 'n', required = true) String name) {
-        Response response = brainClient.post(
-                tenant, "/brain/" + tenant + "/admin/projects/" + name + "/resume", "{}");
-        return formatResponse("Resume", tenant, name, response);
-    }
-
-    @Command(name = {"project", "lifecycle-type"},
-            description = "Set AUTO (derived) | EPHEMERAL (never auto-start) | PERMANENT (always placed).")
-    public String lifecycleType(
-            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
-            @Option(longName = "name", shortName = 'n', required = true) String name,
-            @Option(longName = "value", shortName = 'v', required = true) String value) {
-        // Parsed here rather than concatenated into the body: an unknown or
-        // quote-carrying value would otherwise travel as malformed JSON and
-        // come back as an unexplained 400 instead of a CLI message naming
-        // the choices.
-        LifecycleType parsed;
-        try {
-            parsed = LifecycleType.valueOf(value.trim().toUpperCase(java.util.Locale.ROOT));
-        } catch (IllegalArgumentException e) {
-            return "Set lifecycle-type FAILED — unknown value '" + value.trim()
-                    + "'. Expected one of: " + Arrays.toString(LifecycleType.values());
-        }
-        // Brain-orchestrated like suspend/resume: the value decides whether the
-        // cluster keeps the project placed, so the Brain has to see the change
-        // rather than find it later in the document.
-        Response response = brainClient.post(
-                tenant, "/brain/" + tenant + "/admin/projects/" + name + "/lifecycle-type",
-                "{\"lifecycleType\":\"" + parsed.name() + "\"}");
-        return formatResponse("Set lifecycle-type", tenant, name, response);
-    }
-
-    private static String formatResponse(String op, String tenant, String name, Response response) {
-        if (response.isSuccess()) {
-            return op + " OK — tenant='" + tenant + "' project='" + name + "'\n"
-                    + response.body();
-        }
-        return op + " FAILED — HTTP " + response.statusCode() + "\n" + response.body();
     }
 
     // ─── Placement lifecycle: where / claim / drain ─────────────────

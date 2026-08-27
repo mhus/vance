@@ -15,8 +15,9 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
- * No {@code ${...}} placeholder anywhere in the Java tree may contain an
- * upper-case letter.
+ * No property name written in the Java tree may contain an upper-case letter —
+ * neither in a {@code ${...}} placeholder nor in a
+ * {@code @ConditionalOnProperty} name.
  *
  * <h2>Why this is correctness and not style</h2>
  *
@@ -59,6 +60,28 @@ class ConfigPlaceholderNamingTest {
             "\\$\\{((?:vance|spring|server|management)\\.[A-Za-z0-9_.\\-]+)");
 
     /**
+     * {@code @ConditionalOnProperty} names, which are not placeholders but go
+     * through the same {@code Environment.getProperty} and therefore share the
+     * defect. Found the hard way: {@code DelegationDeadlockWatchdog} carried a
+     * camel-cased key with {@code matchIfMissing = true}, so the watchdog was
+     * on by default and could not be switched off from a deployment — the
+     * worse half of the same bug, because "cannot be turned off" beats
+     * "interval stays at its default".
+     *
+     * <p>Matched over a window after the annotation rather than by parsing:
+     * the attributes span several lines, and the only thing that matters here
+     * is whether a property name in that region carries an upper-case letter.
+     */
+    private static final Pattern CONDITIONAL_BLOCK =
+            Pattern.compile("@ConditionalOnProperty\\s*\\(", Pattern.DOTALL);
+
+    private static final Pattern CONDITIONAL_KEY =
+            Pattern.compile("\"((?:vance|spring|server|management)\\.[A-Za-z0-9_.\\-]+)\"");
+
+    /** How far past the annotation to look for its property names. */
+    private static final int CONDITIONAL_WINDOW = 400;
+
+    /**
      * A scan that finds nothing would report perfect compliance. The floor is
      * deliberately far below the real count (~1500 files): it guards against a
      * broken path or a moved module, not against someone deleting a class.
@@ -72,7 +95,7 @@ class ConfigPlaceholderNamingTest {
     private static final int MINIMUM_PLACEHOLDERS_FOUND = 50;
 
     @Test
-    void noPlaceholderInTheTreeCarriesAnUpperCaseLetter() {
+    void noPropertyNameInTheTreeCarriesAnUpperCaseLetter() {
         Scan scan = scanTree();
 
         assertThat(scan.filesScanned)
@@ -107,13 +130,25 @@ class ConfigPlaceholderNamingTest {
                 for (Path file : walk.filter(p -> p.toString().endsWith(".java")).toList()) {
                     files++;
                     String text = read(file);
+                    String where = module.getFileName() + "/" + file.getFileName();
                     Matcher matcher = OURS.matcher(text);
                     while (matcher.find()) {
                         placeholders++;
                         String key = matcher.group(1);
                         if (!key.equals(key.toLowerCase())) {
-                            offenders.add(module.getFileName() + "/" + file.getFileName()
-                                    + ": ${" + key + "}");
+                            offenders.add(where + ": ${" + key + "}");
+                        }
+                    }
+                    Matcher conditional = CONDITIONAL_BLOCK.matcher(text);
+                    while (conditional.find()) {
+                        int end = Math.min(text.length(), conditional.end() + CONDITIONAL_WINDOW);
+                        Matcher key = CONDITIONAL_KEY.matcher(text.substring(conditional.end(), end));
+                        while (key.find()) {
+                            placeholders++;
+                            String name = key.group(1);
+                            if (!name.equals(name.toLowerCase())) {
+                                offenders.add(where + ": @ConditionalOnProperty " + name);
+                            }
                         }
                     }
                 }

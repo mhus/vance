@@ -59,8 +59,8 @@ vance:
     # thread, no on-exit drain wait, every command's audit trail is
     # flushed before the next prompt.
     mode: sync
-    queueSize: 10000
-    drainTimeoutMs: 5000
+    queue-size: 10000
+    drain-timeout-ms: 5000
     consumers:
       log:
         enabled: false

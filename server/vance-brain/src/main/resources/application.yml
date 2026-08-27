@@ -71,7 +71,7 @@ vance:
       # cloud-metadata. Set true ONLY in a local/dev profile to point tools at
       # localhost / a LAN service while testing — it re-opens SSRF and logs a
       # startup warning. Operator config only; never an LLM-controllable flag.
-      allowPrivate: false
+      allow-private: false
   settings:
     # Setting keys an agent may never write — through a kit install or a tool
     # template, the two LLM-reachable setting-write paths. Applies regardless of
@@ -101,7 +101,7 @@ vance:
     # _vance/config/mounts/, so the guard for it moved to the document layer
     # (KitRecordStore.isReservedPath for kits, the reserved _vance/ prefix rule
     # for agents). Nothing to deny here any more.
-    agentWriteDenyKeys: "ai.provider.*,vault.*,store.*,kit.*"
+    agent-write-deny-keys: "ai.provider.*,vault.*,store.*,kit.*"
     # Keys no {{secret:…}} reference may resolve — the read-side counterpart of
     # agentWriteDenyKeys, deliberately a separate list because "may not write"
     # and "may not resolve" are different questions.
@@ -111,7 +111,7 @@ vance:
     # it at a fixed name through SettingService), while a provisioning document
     # resolves kit.token.<host> through exactly such a reference. Folding the
     # two lists together would break provisioning to close a store leak.
-    secretReferenceDenyKeys: "ai.provider.*,vault.*,store.token.*"
+    secret-reference-deny-keys: "ai.provider.*,vault.*,store.token.*"
   kits:
     # Setting keys a kit may not write into a project. Third list of this
     # shape, third question: not an agent and not a reference, but a bundle of
@@ -122,7 +122,7 @@ vance:
     # licence gate compares the signed licensedTo against. Mounts are documents
     # now and are refused by KitRecordStore.isReservedPath instead. Shorten this
     # in a deployment where kits are trusted to configure providers.
-    settingDenyKeys: "ai.provider.*,vault.*,store.*,kit.*"
+    setting-deny-keys: "ai.provider.*,vault.*,store.*,kit.*"
   jaglan:
     local:
       # Base directories a `protocol: local` mount may point its rootDir at.
@@ -194,9 +194,9 @@ vance:
   # welcome message silently fell back to the Java defaults. serverVersion now
   # tracks the build version, so connecting clients see the real release.
   ws:
-    serverVersion: ${vance.build.version}
-    protocolVersion: 1
-    pingIntervalSeconds: 30
+    server-version: ${vance.build.version}
+    protocol-version: 1
+    ping-interval-seconds: 30
     capabilities: []
   encryption:
     # No insecure default — a missing VANCE_ENCRYPTION_PASSWORD must fail
@@ -207,7 +207,7 @@ vance:
     # Dev default = Vite dev server (proxies /brain/* to this Spring app).
     # In prod, override with the reverse-proxy hostname:
     #   VANCE_WEB_PUBLICBASEURL=https://vance.example.com
-    publicBaseUrl: ${VANCE_WEB_PUBLICBASEURL:http://localhost:9900}
+    public-base-url: ${VANCE_WEB_PUBLICBASEURL:http://localhost:9900}
     cookies:
       # Default 'false' so the local http://localhost:9900 dev flow works
       # in browsers that strictly honour the Secure flag (Safari rejects
@@ -287,15 +287,15 @@ vance:
       # is layered on top (engine-level granularity); set this flag
       # to false for an operator-level kill switch.
       enabled: true
-  autoSummary:
+  auto-summary:
     # Per-pod scheduler that runs Jeltz over dirty documents — see
     # planning/auto-summary.md. Feature default is on; opt-out is the
     # per-project `autoSummary.enabled` cascade setting.
-    intervalMs: 300000          # 5 min between ticks
-    initialDelayMs: 60000       # 1 min after pod start before first tick
-    batchSize: 10               # max documents claimed per project per tick
-    claimTtlMinutes: 10         # stale-claim recovery window
-    maxContentBytes: 200000     # prompt-content cap (head + tail truncation)
+    interval-ms: 300000          # 5 min between ticks
+    initial-delay-ms: 60000       # 1 min after pod start before first tick
+    batch-size: 10               # max documents claimed per project per tick
+    claim-ttl-minutes: 10         # stale-claim recovery window
+    max-content-bytes: 200000     # prompt-content cap (head + tail truncation)
   documents:
     archive:
       # Document versioning — DocumentService archives the previous
@@ -308,15 +308,15 @@ vance:
       # previous version — keeps edit-bursts from producing dozens of
       # near-identical archives. Per-project override via the cascade
       # setting `documents.archive.minVersionIntervalSeconds`.
-      minVersionIntervalSeconds: 600   # 10 min
+      min-version-interval-seconds: 600   # 10 min
   audit:
     # Delivery mode after @PostConstruct. Before @PostConstruct the
     # service is always SYNC so events emitted during Spring wiring
     # are not lost. `async` decouples producers from consumer cost via
     # a bounded queue; `sync` dispatches inline on the caller thread.
     mode: async
-    queueSize: 10000        # bounded — drops + counter when full
-    drainTimeoutMs: 5000    # @PreDestroy waits this long for the worker
+    queue-size: 10000        # bounded — drops + counter when full
+    drain-timeout-ms: 5000    # @PreDestroy waits this long for the worker
     consumers:
       log:
         # Activates LogAuditConsumer (every event as SLF4J INFO).
@@ -362,7 +362,7 @@ vance:
     # before the bind is considered dead. Also drives tryBind's
     # stale-takeover. Default = 4× WS ping (30s), tolerant of one
     # missed ping + jitter.
-    bindStaleAfter: PT2M
+    bind-stale-after: PT2M
     stale-bind-sweep:
       # Cluster-master-only periodic sweep that releases boundConnectionId
       # on every session whose lastActivityAt is older than bindStaleAfter.
@@ -372,12 +372,12 @@ vance:
       initial-delay: PT2M
   prak:
     # Side-channel an: Compaction → Prak-Analyzer → Sanitizer → Strength → Promotion → Audit
-    sideChannelEnabled: true
+    side-channel-enabled: true
     # Strength-Tags beim LLM-Replay anwenden (dropt STRENGTH:weak Messages)
-    contextFilterEnabled: true
+    context-filter-enabled: true
     # Schwelle: WEAK=alles behalten, NORMAL=WEAK dropen (default),
     # STRONG=alles unter STRONG dropen
-    contextFilterMinStrength: NORMAL
+    context-filter-min-strength: NORMAL
 
 management:
   endpoint:

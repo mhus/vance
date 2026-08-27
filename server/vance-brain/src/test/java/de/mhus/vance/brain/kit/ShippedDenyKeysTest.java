@@ -16,7 +16,7 @@ import org.yaml.snakeyaml.Yaml;
  * <p>Exists because the failure it catches is invisible in the code: each list
  * has a default spelled out in a {@code @Value} placeholder <em>and</em> a
  * value in {@code application.yml}, and the file wins. {@code kit.*} was in the
- * Java default of {@code agentWriteDenyKeys} and missing from the shipped
+ * Java default of {@code agent-write-deny-keys} and missing from the shipped
  * configuration, so the running product was the weaker of the two and every
  * unit test that constructed the policy by hand passed.
  *
@@ -45,13 +45,13 @@ class ShippedDenyKeysTest {
 
     @Test
     void agentWriteDenyKeys_shipsEveryPatternTheDefaultPromises() {
-        assertThat(patterns("settings", "agentWriteDenyKeys"))
+        assertThat(patterns("settings", "agent-write-deny-keys"))
                 .containsAll(AGENT_WRITE);
     }
 
     @Test
     void secretReferenceDenyKeys_shipsStoreTokenButNotKitToken() {
-        List<String> shipped = patterns("settings", "secretReferenceDenyKeys");
+        List<String> shipped = patterns("settings", "secret-reference-deny-keys");
         assertThat(shipped).containsAll(SECRET_REFERENCE);
         // Deliberate asymmetry, and the reason the two lists are separate: a
         // provisioning document resolves kit.token.<host> through exactly such
@@ -62,7 +62,7 @@ class ShippedDenyKeysTest {
 
     @Test
     void kitSettingDenyKeys_shipsEveryPatternTheDefaultPromises() {
-        assertThat(patterns("kits", "settingDenyKeys")).containsAll(KIT_WRITE);
+        assertThat(patterns("kits", "setting-deny-keys")).containsAll(KIT_WRITE);
     }
 
     @SuppressWarnings("unchecked")

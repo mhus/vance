@@ -52,8 +52,13 @@ import org.springframework.stereotype.Component;
  * </ul>
  */
 @Component
+// The key is dashed for the same reason the placeholders below are:
+// @ConditionalOnProperty resolves through Environment.getProperty, so a
+// camel-cased name is invisible to a word-separated environment variable.
+// With matchIfMissing = true that was the worse half of the defect — the
+// watchdog is on by default and could not be switched off from a deployment.
 @ConditionalOnProperty(
-        name = "vance.thinkengine.deadlockWatchdog.enabled",
+        name = "vance.thinkengine.deadlock-watchdog.enabled",
         havingValue = "true",
         matchIfMissing = true)
 @Slf4j

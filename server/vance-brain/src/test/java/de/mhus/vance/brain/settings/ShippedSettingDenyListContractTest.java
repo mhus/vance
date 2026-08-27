@@ -75,7 +75,7 @@ class ShippedSettingDenyListContractTest {
     @Test
     void agentWriteDenyList_coversEveryFamilyThatDecidesWhereThisInstallationGetsThingsFrom() {
         AgentSettingKeyPolicy policy =
-                new AgentSettingKeyPolicy(shippedValue("vance.settings.agentWriteDenyKeys"));
+                new AgentSettingKeyPolicy(shippedValue("vance.settings.agent-write-deny-keys"));
 
         // Each of these lets an agent redirect an infrastructure decision:
         // which model answers, which vault holds the secrets, which store
@@ -97,7 +97,7 @@ class ShippedSettingDenyListContractTest {
     @Test
     void agentWriteDenyList_leavesOrdinarySettingsAlone() {
         AgentSettingKeyPolicy policy =
-                new AgentSettingKeyPolicy(shippedValue("vance.settings.agentWriteDenyKeys"));
+                new AgentSettingKeyPolicy(shippedValue("vance.settings.agent-write-deny-keys"));
 
         // A deny-list that grew until it covered everything would stop kits and
         // tool templates from doing their job — the counter-assertion matters as
@@ -112,7 +112,7 @@ class ShippedSettingDenyListContractTest {
     @Test
     void referenceDenyList_coversTheKeysCompiledCodeReadsAtAFixedName() {
         SecretReferenceKeyPolicy policy = new SecretReferenceKeyPolicy(
-                shippedValue("vance.settings.secretReferenceDenyKeys"));
+                shippedValue("vance.settings.secret-reference-deny-keys"));
 
         // Connectors resolve PASSWORD by design, so the type no longer keeps a
         // reference away from these — a tool document names its target URL next
@@ -128,7 +128,7 @@ class ShippedSettingDenyListContractTest {
     @Test
     void referenceDenyList_stillLetsProvisioningResolveItsOwnToken() {
         SecretReferenceKeyPolicy policy = new SecretReferenceKeyPolicy(
-                shippedValue("vance.settings.secretReferenceDenyKeys"));
+                shippedValue("vance.settings.secret-reference-deny-keys"));
 
         // The documented asymmetry between the two lists, pinned: a provisioning
         // document resolves {{secret:project:kit.token.<id>}}, so folding the
@@ -136,14 +136,14 @@ class ShippedSettingDenyListContractTest {
         // to close a store leak. If this ever goes red, the lists were merged.
         assertThat(policy.isDenied("kit.token.acme")).isFalse();
         assertThat(new AgentSettingKeyPolicy(
-                shippedValue("vance.settings.agentWriteDenyKeys"))
+                shippedValue("vance.settings.agent-write-deny-keys"))
                 .isDenied("kit.token.acme")).isTrue();
     }
 
     @Test
     void referenceDenyList_leavesOrdinaryConnectorCredentialsResolvable() {
         SecretReferenceKeyPolicy policy = new SecretReferenceKeyPolicy(
-                shippedValue("vance.settings.secretReferenceDenyKeys"));
+                shippedValue("vance.settings.secret-reference-deny-keys"));
 
         for (String key : List.of("smtp.password", "crm.apiToken", "deploy-token")) {
             assertThat(policy.isDenied(key)).as("reference to '%s'", key).isFalse();
@@ -155,7 +155,7 @@ class ShippedSettingDenyListContractTest {
     @Test
     void kitDenyList_coversTheSameFamiliesAsTheAgentWriteList() {
         KitSettingKeyPolicy policy =
-                new KitSettingKeyPolicy(shippedValue("vance.kits.settingDenyKeys"));
+                new KitSettingKeyPolicy(shippedValue("vance.kits.setting-deny-keys"));
 
         // A kit installs unattended, so anything an agent may not write it may
         // not write either — including store.account.*, which is the value its

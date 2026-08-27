@@ -115,7 +115,7 @@
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-embeddings-e5-small-v2</artifactId>
-            <version>1.18.1-beta28</version>
+            <version>1.19.0-beta29</version>
         </dependency>
         <dependency>
             <groupId>org.bsc.langgraph4j</groupId>
@@ -151,7 +151,7 @@
         <dependency>
             <groupId>io.milton</groupId>
             <artifactId>milton-server-ce</artifactId>
-            <version>4.1.1.2676</version>
+            <version>4.2.0.2712</version>
         </dependency>
 
         <!-- OpenAPI / Swagger spec parsing for REST-API tool packs. -->
@@ -251,7 +251,7 @@
         <dependency>
             <groupId>io.github.openhtmltopdf</groupId>
             <artifactId>openhtmltopdf-pdfbox</artifactId>
-            <version>1.1.69</version>
+            <version>1.1.74</version>
         </dependency>
         <dependency>
             <groupId>org.apache.poi</groupId>

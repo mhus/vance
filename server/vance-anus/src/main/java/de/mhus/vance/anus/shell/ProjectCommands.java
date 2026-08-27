@@ -187,18 +187,30 @@ public class ProjectCommands {
                             + " is no terminal to ask on (--sudo).")
             @Nullable String confirm,
             @Option(longName = "force",
-                    description = "Proceed even though a pod still holds the project's lease."
-                            + " Only when the holder is known to be gone.",
+                    description = "Proceed even though the project could not be drained off its"
+                            + " pod. Only when the holder is known to be gone.",
                     defaultValue = "false")
-            boolean force) {
+            boolean force,
+            @Option(longName = "no-drain",
+                    description = "Do not hand the project off its pod first. Leaves engines"
+                            + " running against data that is about to disappear.",
+                    defaultValue = "false")
+            boolean noDrain) {
         String problem = confirmed(name, confirm, "delete");
         if (problem != null) {
             return problem;
         }
+        // Drain before the confirmation would be a side effect for a command the
+        // operator may still abort; drain after it is the first thing that
+        // happens.
+        DrainStep drained = drainBefore(tenant, name, "delete", noDrain, force);
+        if (drained.abort()) {
+            return drained.log();
+        }
         try {
-            return render(maintenanceService.delete(tenant, name, force));
+            return drained.log() + render(maintenanceService.delete(tenant, name, force));
         } catch (RuntimeException e) {
-            return "Delete FAILED — " + e.getMessage();
+            return drained.log() + "Delete FAILED — " + e.getMessage();
         }
     }
 
@@ -214,23 +226,111 @@ public class ProjectCommands {
                             + " there is no terminal to ask on (--sudo).")
             @Nullable String confirm,
             @Option(longName = "force",
-                    description = "Proceed even though a pod still holds the project's lease.",
+                    description = "Proceed even though the project could not be drained off its"
+                            + " pod.",
                     defaultValue = "false")
-            boolean force) {
+            boolean force,
+            @Option(longName = "no-drain",
+                    description = "Do not hand the project off its pod first, and do not place it"
+                            + " again afterwards. The holding pod then keeps serving the old name.",
+                    defaultValue = "false")
+            boolean noDrain) {
         String problem = confirmed(name, confirm, "rename");
         if (problem != null) {
             return problem;
         }
-        try {
-            return render(maintenanceService.rename(tenant, name, to, force))
-                    + "\n\nReferences inside document content (vance: URIs, recipes, prompts)"
-                    + "\nare NOT rewritten — search for '" + name + "' if the project was linked to.";
-        } catch (ProjectMaintenanceService.RenameBlockedException e) {
-            return "Rename FAILED — nothing was written:\n  "
-                    + String.join("\n  ", e.blockers());
-        } catch (RuntimeException e) {
-            return "Rename FAILED — " + e.getMessage();
+        DrainStep drained = drainBefore(tenant, name, "rename", noDrain, force);
+        if (drained.abort()) {
+            return drained.log();
         }
+        String result;
+        try {
+            result = render(maintenanceService.rename(tenant, name, to, force));
+        } catch (ProjectMaintenanceService.RenameBlockedException e) {
+            return drained.log() + "Rename FAILED — nothing was written:\n  "
+                    + String.join("\n  ", e.blockers())
+                    + replaceHint(tenant, name, drained);
+        } catch (RuntimeException e) {
+            return drained.log() + "Rename FAILED — " + e.getMessage()
+                    + replaceHint(tenant, name, drained);
+        }
+        // Put it back where it was, under the new name. Only when it was
+        // actually placed: a project that nobody held has no state to restore,
+        // and placing it here would start something the rename did not ask for.
+        String replaced = drained.wasPlaced()
+                ? "\n\nPlacing '" + to + "' again:\n" + claim(tenant, to)
+                : "";
+        return drained.log() + result
+                + "\n\nReferences inside document content (vance: URIs, recipes, prompts)"
+                + "\nare NOT rewritten — search for '" + name + "' if the project was linked to."
+                + replaced;
+    }
+
+    /**
+     * A drain that ran (or did not) ahead of a maintenance operation.
+     *
+     * @param abort whether the operation must not proceed
+     * @param wasPlaced whether a pod held the project — the question that
+     *     decides if a rename places it again afterwards
+     * @param log lines to prefix the operation's own output with
+     */
+    private record DrainStep(boolean abort, boolean wasPlaced, String log) {}
+
+    /**
+     * Hands the project off its pod before a delete or rename.
+     *
+     * <p><b>Why this is the default and not an option.</b> A project on a pod is
+     * being worked on: engines running, workspace mounted on that machine,
+     * sessions open. Deleting or renaming underneath it does not fail loudly, it
+     * leaves a process operating on data that no longer exists. Draining first
+     * turns that into an orderly shutdown — and it does two more things worth
+     * having:
+     *
+     * <ul>
+     *   <li>The lease is gone afterwards, so the maintenance service's own guard
+     *       passes without {@code --force}. Forcing becomes what it should be:
+     *       the exception, for a holder that cannot be reached.</li>
+     *   <li>The workspace is snapshotted into Mongo <em>by the pod that has
+     *       it</em>. That is the only way a rename can carry a work area that
+     *       lives on another machine's disk — the snapshot rows travel with the
+     *       project, and the next placement recovers the folder under the new
+     *       name.</li>
+     * </ul>
+     *
+     * <p>A failed drain stops the operation unless {@code --force}: not knowing
+     * whether a pod is still working on the project is exactly the situation
+     * where proceeding is unsafe.
+     */
+    private DrainStep drainBefore(
+            String tenant, String name, String operation, boolean noDrain, boolean force) {
+        if (noDrain) {
+            return new DrainStep(false, false,
+                    "(--no-drain: the project was not handed off its pod)\n\n");
+        }
+        DrainOutcome outcome = drainOnce(tenant, name);
+        if (outcome.released()) {
+            return new DrainStep(false, outcome.placement() == Placement.PLACED,
+                    outcome.message() + "\n\n");
+        }
+        if (force) {
+            return new DrainStep(false, false,
+                    "Drain failed, continuing because --force was given:\n  "
+                            + outcome.message() + "\n\n");
+        }
+        return new DrainStep(true, false,
+                "Refusing to " + operation + " — the project could not be handed off its pod:\n  "
+                        + outcome.message()
+                        + "\n\nFix the pod, or pass --force if the holder is known to be gone,"
+                        + "\nor --no-drain to skip the hand-off entirely.");
+    }
+
+    /** Told after a failed rename, because the drain already happened. */
+    private String replaceHint(String tenant, String name, DrainStep drained) {
+        if (!drained.wasPlaced()) {
+            return "";
+        }
+        return "\n\nThe project was drained off its pod and is still called '" + name
+                + "' — run 'project claim -T " + tenant + " -n " + name + "' to place it again.";
     }
 
     /**
@@ -408,17 +508,62 @@ public class ProjectCommands {
                             + "once this pod has been made ineligible — see the note below.",
                     defaultValue = "false")
             boolean place) {
-        // Two steps, and the first one is not ours: the release has to reach the
-        // holding pod, because it tears down in-memory state that exists only
-        // there. Asking the brain where that is beats teaching this CLI the
-        // lease TTL it cannot see.
+        DrainOutcome outcome = drainOnce(tenant, name);
+        if (!outcome.released()) {
+            return outcome.message();
+        }
+        if (outcome.placement() == Placement.NOT_PLACED) {
+            return outcome.message();
+        }
+        if (!place) {
+            // Said every time, because it is the part that surprises: this pod is
+            // still eligible and often the least loaded, so the next placement
+            // may well hand the project straight back.
+            return outcome.message() + "\n(this pod is still eligible — make it ineligible first "
+                    + "(cluster pod exclusive / label-set) or it may take the project back)";
+        }
+        return outcome.message() + "\n" + claim(tenant, name);
+    }
+
+    /** Whether the project was on a pod when we looked. */
+    private enum Placement {
+        /** Nobody held it — there was nothing to hand off. */
+        NOT_PLACED,
+        /** A pod held it and we reached that pod. */
+        PLACED,
+        /** We could not find out — unreachable brain, or the lease moved. */
+        UNKNOWN
+    }
+
+    /**
+     * One drain attempt, as facts rather than as a message.
+     *
+     * @param released whether the project is now owned by nobody, as far as this
+     *     attempt can tell. {@code false} means the hand-off did not happen —
+     *     the caller decides whether that stops it.
+     */
+    private record DrainOutcome(Placement placement, boolean released, String message) {}
+
+    /**
+     * Hands the project off its pod: stop engines, snapshot the workspace, drop
+     * the lease. Shared by {@code project drain} and by delete/rename, which
+     * need the same hand-off but a different reaction to it.
+     *
+     * <p>Two steps, and the first one is not ours: the release has to reach the
+     * holding pod, because it tears down in-memory state that exists only
+     * there. Asking the brain where that is beats teaching this CLI the lease
+     * TTL it cannot see.
+     */
+    private DrainOutcome drainOnce(String tenant, String name) {
         Response home = brainClient.internal(homePath(tenant, name), "GET", null);
         if (home.statusCode() == 404) {
-            return "nothing to drain — " + home.body();
+            return new DrainOutcome(Placement.NOT_PLACED, true,
+                    "nothing to drain — " + home.body());
         }
         if (!home.isSuccess()) {
-            return "(cannot resolve the home pod: HTTP " + home.statusCode()
-                    + " " + home.body() + ")";
+            return new DrainOutcome(Placement.UNKNOWN, false,
+                    "(cannot resolve the home pod: HTTP " + home.statusCode()
+                            + " " + home.body() + ")");
         }
         String endpoint;
         String nodeName;
@@ -427,7 +572,8 @@ public class ProjectCommands {
             endpoint = parsed.get("endpoint").asString();
             nodeName = parsed.has("nodeName") ? parsed.get("nodeName").asString() : endpoint;
         } catch (RuntimeException e) {
-            return "(unreadable home-pod response: " + home.body() + ")";
+            return new DrainOutcome(Placement.UNKNOWN, false,
+                    "(unreadable home-pod response: " + home.body() + ")");
         }
 
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -437,21 +583,21 @@ public class ProjectCommands {
         Response released = brainClient.internalAt(
                 normaliseBase(endpoint), "/internal/cluster/release", "POST", body);
         if (released.statusCode() == 409) {
-            return "pod '" + nodeName + "' does not hold it (any more) — nothing drained";
+            // The lease moved or expired between the lookup and here. Not a
+            // clean hand-off and not a safe "nobody owns it": another pod may
+            // have taken it. Reported as unknown so a caller that needs the
+            // project quiet stops rather than guessing.
+            return new DrainOutcome(Placement.UNKNOWN, false,
+                    "pod '" + nodeName + "' does not hold it (any more) — nothing drained,"
+                            + " retry to reach the current holder");
         }
         if (!released.isSuccess()) {
-            return "(drain failed on '" + nodeName + "': HTTP " + released.statusCode()
-                    + " " + released.body() + ")";
+            return new DrainOutcome(Placement.PLACED, false,
+                    "(drain failed on '" + nodeName + "': HTTP " + released.statusCode()
+                            + " " + released.body() + ")");
         }
-        String out = "drained from '" + nodeName + "' — status unchanged, nobody owns it now";
-        if (!place) {
-            // Said every time, because it is the part that surprises: this pod is
-            // still eligible and often the least loaded, so the next placement
-            // may well hand the project straight back.
-            return out + "\n(this pod is still eligible — make it ineligible first "
-                    + "(cluster pod exclusive / label-set) or it may take the project back)";
-        }
-        return out + "\n" + claim(tenant, name);
+        return new DrainOutcome(Placement.PLACED, true,
+                "drained from '" + nodeName + "' — status unchanged, nobody owns it now");
     }
 
     private static String homePath(String tenant, String name) {

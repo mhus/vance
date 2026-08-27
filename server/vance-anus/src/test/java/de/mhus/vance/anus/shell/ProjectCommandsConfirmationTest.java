@@ -30,6 +30,13 @@ class ProjectCommandsConfirmationTest {
     @SuppressWarnings("unchecked")
     private final ObjectProvider<LineReader> lineReader = mock(ObjectProvider.class);
 
+    /**
+     * These tests are about the confirmation gate, not about the pod hand-off —
+     * skipping the drain keeps the brain client out of it. The drain wiring has
+     * its own tests below.
+     */
+    private static final boolean NO_DRAIN = true;
+
     private final ProjectCommands commands = new ProjectCommands(
             projectService, mock(AnusBrainClient.class), maintenanceService, lineReader);
 
@@ -37,7 +44,7 @@ class ProjectCommandsConfirmationTest {
     void delete_refuses_whenThereIsNoTerminalAndNoConfirmFlag() {
         when(lineReader.getIfAvailable()).thenReturn(null);
 
-        String out = commands.delete("acme", "p1", null, false);
+        String out = commands.delete("acme", "p1", null, false, NO_DRAIN);
 
         assertThat(out).contains("--confirm p1");
         verify(maintenanceService, never()).delete("acme", "p1", false);
@@ -45,7 +52,7 @@ class ProjectCommandsConfirmationTest {
 
     @Test
     void delete_refuses_whenTheTypedNameDoesNotMatch() {
-        String out = commands.delete("acme", "p1", "p2", false);
+        String out = commands.delete("acme", "p1", "p2", false, NO_DRAIN);
 
         assertThat(out).contains("did not match");
         verify(maintenanceService, never()).delete("acme", "p1", false);
@@ -55,7 +62,7 @@ class ProjectCommandsConfirmationTest {
     void delete_proceeds_whenTheConfirmFlagCarriesTheName() {
         when(maintenanceService.delete("acme", "p1", false)).thenReturn(report("p1"));
 
-        String out = commands.delete("acme", "p1", "p1", false);
+        String out = commands.delete("acme", "p1", "p1", false, NO_DRAIN);
 
         verify(maintenanceService).delete("acme", "p1", false);
         assertThat(out).contains("Deleted project 'p1'");
@@ -69,7 +76,7 @@ class ProjectCommandsConfirmationTest {
         when(reader.readLine(org.mockito.ArgumentMatchers.anyString())).thenReturn("p1 ");
         when(maintenanceService.delete("acme", "p1", false)).thenReturn(report("p1"));
 
-        commands.delete("acme", "p1", null, false);
+        commands.delete("acme", "p1", null, false, NO_DRAIN);
 
         verify(maintenanceService).delete("acme", "p1", false);
     }
@@ -80,7 +87,7 @@ class ProjectCommandsConfirmationTest {
                 .thenThrow(new ProjectMaintenanceService.RenameBlockedException(
                         List.of("workspace: folder already exists")));
 
-        String out = commands.rename("acme", "p1", "p2", "p1", false);
+        String out = commands.rename("acme", "p1", "p2", "p1", false, NO_DRAIN);
 
         assertThat(out).contains("nothing was written")
                 .contains("folder already exists");

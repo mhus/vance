@@ -46,6 +46,19 @@ import org.jspecify.annotations.Nullable;
  * <p><b>Idempotent, always.</b> A delete that half-ran is re-run by the
  * operator; neither operation may fail because the work was already done.
  *
+ * <p><b>Who collects these.</b> Only the admin shell: the collector
+ * ({@code UserMaintenanceService}, {@code vance-anus}) is the sole
+ * injection point for {@code List<UserDataHandler>}. A brain instantiates
+ * every handler bean — {@code vance-shared} is on its component-scan path —
+ * and never calls one. That is on purpose, not an oversight: the operations
+ * these handlers serve have no REST surface and no LLM tool, because their
+ * gates (a typed confirmation, a pod drain) only exist at a terminal.
+ *
+ * <p>The handler still lives here rather than in the shell, and the reason is
+ * change locality: when a field is renamed or a scope re-interpreted, the
+ * handler that has to follow is in the same directory. The drift tests catch a
+ * <em>missing</em> handler; nothing catches a stale one but proximity.
+ *
  * <p>Spec: {@code specification/public/user-maintenance.md}.
  */
 public interface UserDataHandler {

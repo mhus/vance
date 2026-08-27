@@ -18,6 +18,7 @@ import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 /**
  * Behavioural tests for {@link DelegationDeadlockWatchdog}. Mongo / lane
@@ -37,7 +38,8 @@ class DelegationDeadlockWatchdogTest {
     void setUp() {
         master = mock(ClusterMasterService.class);
         thinkProcessService = mock(ThinkProcessService.class);
-        watchdog = new DelegationDeadlockWatchdog(master, thinkProcessService, STALE_AFTER);
+        watchdog = new DelegationDeadlockWatchdog(
+                masterProvider(master), thinkProcessService, STALE_AFTER);
     }
 
     @Test
@@ -105,5 +107,25 @@ class DelegationDeadlockWatchdogTest {
                 .parentProcessId(parentId)
                 .status(ThinkProcessStatus.BLOCKED)
                 .build();
+    }
+    @SuppressWarnings("unchecked")
+    private static ObjectProvider<ClusterMasterService> masterProvider(
+            @org.jspecify.annotations.Nullable ClusterMasterService service) {
+        ObjectProvider<ClusterMasterService> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(service);
+        return provider;
+    }
+
+    @Test
+    void tick_runsWhenTheClusterMasterFeatureIsOff() {
+        // Nobody can take over, and the sweep is internal and idempotent — so
+        // the pod that is alone does it. Opposite call to FookUpstreamService.
+        DelegationDeadlockWatchdog alone = new DelegationDeadlockWatchdog(
+                masterProvider(null), thinkProcessService, STALE_AFTER);
+        when(thinkProcessService.findStalledDelegatedWorkers(any())).thenReturn(java.util.List.of());
+
+        alone.tick();
+
+        verify(thinkProcessService).findStalledDelegatedWorkers(any());
     }
 }

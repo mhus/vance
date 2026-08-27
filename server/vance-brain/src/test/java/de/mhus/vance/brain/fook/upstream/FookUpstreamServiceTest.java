@@ -24,6 +24,7 @@ import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import org.mockito.ArgumentCaptor;
 
 /**
@@ -71,7 +72,7 @@ class FookUpstreamServiceTest {
 
         service = new FookUpstreamService(
                 ticketService, anonymizer, inboxItemService, settingService,
-                masterService, List.of(provider));
+                masterProvider(masterService), List.of(provider));
     }
 
     // ─── multi-pod guard ────────────────────────────────────────────
@@ -413,5 +414,28 @@ class FookUpstreamServiceTest {
                         .relatedTo(List.of())
                         .build())
                 .build();
+    }
+    @SuppressWarnings("unchecked")
+    private static ObjectProvider<ClusterMasterService> masterProvider(
+            @org.jspecify.annotations.Nullable ClusterMasterService service) {
+        ObjectProvider<ClusterMasterService> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(service);
+        return provider;
+    }
+
+    @Test
+    void send_tick_skips_when_the_cluster_master_feature_is_off() {
+        // No coordinator means nobody may write to the foreign tracker: a
+        // duplicate issue there cannot be taken back. Opposite call to
+        // MagratheaWatchdogScanner, which sweeps internally and idempotently.
+        FookUpstreamService withoutMaster = new FookUpstreamService(
+                ticketService, anonymizer, inboxItemService, settingService,
+                masterProvider(null), List.of(provider));
+
+        withoutMaster.sendTick();
+        withoutMaster.pollTick();
+
+        verifyNoInteractions(ticketService);
+        verifyNoInteractions(provider);
     }
 }

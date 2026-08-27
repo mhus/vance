@@ -10,6 +10,7 @@ import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -58,15 +59,19 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class DelegationDeadlockWatchdog {
 
-    private final ClusterMasterService masterService;
+    /**
+     * Absent when the cluster-master feature is off — a hard dependency on a
+     * conditional bean failed the whole boot in that configuration.
+     */
+    private final ObjectProvider<ClusterMasterService> masterServiceProvider;
     private final ThinkProcessService thinkProcessService;
     private final Duration staleAfter;
 
     public DelegationDeadlockWatchdog(
-            ClusterMasterService masterService,
+            ObjectProvider<ClusterMasterService> masterServiceProvider,
             ThinkProcessService thinkProcessService,
             @Value("${vance.thinkengine.deadlockWatchdog.staleAfter:PT10M}") Duration staleAfter) {
-        this.masterService = masterService;
+        this.masterServiceProvider = masterServiceProvider;
         this.thinkProcessService = thinkProcessService;
         this.staleAfter = staleAfter;
     }
@@ -75,7 +80,7 @@ public class DelegationDeadlockWatchdog {
             fixedDelayString = "${vance.thinkengine.deadlockWatchdog.interval:PT60S}",
             initialDelayString = "${vance.thinkengine.deadlockWatchdog.initialDelay:PT2M}")
     public void tick() {
-        if (!masterService.isLocalPodMaster()) {
+        if (!isResponsiblePod()) {
             return;
         }
         try {
@@ -114,5 +119,18 @@ public class DelegationDeadlockWatchdog {
         log.info("DelegationDeadlockWatchdog swept {} stalled worker(s) (cutoff={})",
                 closed, cutoff);
         return closed;
+    }
+    /**
+     * Whether this pod runs the sweep. With no {@code ClusterMasterService} the
+     * answer is <b>yes</b>: the sweep is internal and idempotent (closing an
+     * already-closed worker changes nothing), so the cost of two pods doing it
+     * is nil while the cost of nobody doing it is stalled workers that never
+     * get closed. Same reasoning as {@code MagratheaWatchdogScanner}, and the
+     * opposite of {@code FookUpstreamService}, which writes to a foreign
+     * tracker where a duplicate cannot be taken back.
+     */
+    private boolean isResponsiblePod() {
+        ClusterMasterService masterService = masterServiceProvider.getIfAvailable();
+        return masterService == null || masterService.isLocalPodMaster();
     }
 }

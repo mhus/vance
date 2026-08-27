@@ -19,6 +19,7 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -72,7 +73,14 @@ public class FookUpstreamService {
     private final FookTicketAnonymizer anonymizer;
     private final MaximegalonService inboxItemService;
     private final SettingService settingService;
-    private final ClusterMasterService masterService;
+    /**
+     * Absent when the cluster-master feature is off ({@code
+     * vance.cluster.master.enabled=false}) — injected through a provider
+     * because a hard dependency on a conditional bean failed the whole boot
+     * in that configuration, which the spec describes as supported
+     * ({@code specification/cluster-project-management.md} §8).
+     */
+    private final ObjectProvider<ClusterMasterService> masterServiceProvider;
     private final List<TicketProvider> providers;
 
     /** Mirrors {@code vance.fook.enabled} (default {@code true}). Part
@@ -97,7 +105,7 @@ public class FookUpstreamService {
         // pods run the same Scheduler but skip — otherwise every pod
         // would push the same pending ticket to GitHub and we'd get
         // N duplicates per tick.
-        if (!masterService.isLocalPodMaster()) return;
+        if (!isSendingPod()) return;
         if (MODE_NEVER.equals(currentMode())) return;
         TicketProvider provider = currentProvider();
         if (provider == null) return;
@@ -233,7 +241,7 @@ public class FookUpstreamService {
         // Same multi-pod guard as sendTick — keeps the GH API rate-limit
         // budget unified and prevents N inbox-items per ticket-status-
         // change.
-        if (!masterService.isLocalPodMaster()) return;
+        if (!isSendingPod()) return;
         if (MODE_NEVER.equals(currentMode())) return;
         if (!pollEnabled()) return;
         TicketProvider provider = currentProvider();
@@ -477,4 +485,21 @@ public class FookUpstreamService {
             boolean anonymize,
             List<String> scrubPatterns,
             List<String> extraLabels) {}
+    /**
+     * Whether this pod is the one allowed to talk to the upstream tracker.
+     *
+     * <p>With no {@code ClusterMasterService} the answer is <b>no</b>, and that
+     * is the opposite of what {@code MagratheaWatchdogScanner} decides in the
+     * same situation. The difference is the direction of the write: Magratheas
+     * sweep is internal and idempotent, so refusing it would disable a safety
+     * net exactly where nobody can take over. This one creates issues and
+     * comments in a <em>foreign</em> tracker, where a duplicate cannot be taken
+     * back — so without a coordinator, not sending is the safe answer, and the
+     * consequence is documented alongside the other things that stop when
+     * mastering is off.
+     */
+    private boolean isSendingPod() {
+        ClusterMasterService masterService = masterServiceProvider.getIfAvailable();
+        return masterService != null && masterService.isLocalPodMaster();
+    }
 }

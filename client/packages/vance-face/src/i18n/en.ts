@@ -1753,6 +1753,10 @@ export default {
       claimedLabel: 'Claimed',
       createdLabel: 'Created',
       placementPendingLabel: 'Waiting since',
+      lifecycleLabel: 'Lifecycle',
+      lifecyclePermanentNote: 'kept on a pod for good; set by the operator',
+      lifecycleEphemeralNote:
+        'does not start on its own — this project\'s scheduler and hooks do not run',
       placementPendingBadge: 'waiting for a pod',
       placementPendingNote:
         'This project has been created but no brain process matches it yet — its placement '

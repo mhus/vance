@@ -223,6 +223,22 @@ const selectedProject = computed<ProjectDto | null>(() => {
   return projectsState.projects.value.find(p => p.name === sel.name) ?? null;
 });
 
+/**
+ * The one sentence that explains a non-default lifecycle. AUTO needs none — it
+ * is the default and defers to the derived ownerRequired, which the tenant has
+ * no lever on either.
+ */
+const lifecycleNote = computed(() => {
+  switch (selectedProject.value?.lifecycleType) {
+    case 'PERMANENT':
+      return t('scopes.project.lifecyclePermanentNote')
+    case 'EPHEMERAL':
+      return t('scopes.project.lifecycleEphemeralNote')
+    default:
+      return ''
+  }
+})
+
 const groupSelectOptions = computed(() => [
   { value: '', label: t('scopes.common.noGroup') },
   ...groupsState.groups.value.map(g => ({ value: g.name, label: g.title || g.name })),
@@ -1245,6 +1261,17 @@ const combinedError = computed<string | null>(() =>
             <dd>{{ selectedProject.homeNode ?? $t('scopes.common.none') }}</dd>
             <dt class="opacity-60">{{ $t('scopes.project.claimedLabel') }}</dt>
             <dd>{{ selectedProject.claimedAt ?? $t('scopes.common.none') }}</dd>
+            <!-- Read-only, and that is the decision, not a gap: what this
+                 changes is capacity in the cluster, not content in the project,
+                 so it is written with the operator's token (anus
+                 `project lifecycle-type`). Shown because the two non-default
+                 values are facts a tenant has to be able to explain — above
+                 all EPHEMERAL, which silently stops the project's scheduler. -->
+            <dt class="opacity-60">{{ $t('scopes.project.lifecycleLabel') }}</dt>
+            <dd :class="{ 'text-warning': selectedProject.lifecycleType === 'EPHEMERAL' }">
+              {{ selectedProject.lifecycleType ?? $t('scopes.common.none') }}
+              <span v-if="lifecycleNote" class="opacity-70">— {{ lifecycleNote }}</span>
+            </dd>
             <template v-if="selectedProject.placementPendingSince">
               <dt class="opacity-60">{{ $t('scopes.project.placementPendingLabel') }}</dt>
               <dd class="text-warning">{{ selectedProject.placementPendingSince }}</dd>

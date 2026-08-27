@@ -363,6 +363,34 @@ public class ProjectClusterService {
         return new SelectorWrite(response.isSuccess(), response.statusCode(), response.body());
     }
 
+    // ─── lifecycle override ─────────────────────────────────────────────────
+
+    public record LifecycleWrite(boolean success, int statusCode, String detail) {}
+
+    /**
+     * Sets the lifecycle override — {@code AUTO}, {@code EPHEMERAL} or
+     * {@code PERMANENT}.
+     *
+     * <p>The value is passed through as text and validated by the brain, not
+     * here: the set of modes is its enum, and a second copy of the list in the
+     * shell would be a second thing to forget when it grows. What the shell
+     * does check is the <em>option grammar</em> — that a value was given at all.
+     *
+     * <p>This is an operator knob and lives at {@code /internal/**} for that
+     * reason; see the endpoint's own javadoc for why it is not a tenant's
+     * decision.
+     */
+    public LifecycleWrite writeLifecycleType(String tenant, String name, String lifecycleType) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("tenantId", tenant);
+        payload.put("projectName", name);
+        payload.put("lifecycleType", lifecycleType);
+        Response response = brainClient.internal(
+                "/internal/cluster/projects/lifecycle-type", "POST",
+                objectMapper.writeValueAsString(payload));
+        return new LifecycleWrite(response.isSuccess(), response.statusCode(), response.body());
+    }
+
     /** The selector as a map, never {@code null} — the one place that decides. */
     public static Map<String, String> selectorOf(ProjectDocument project) {
         Map<String, String> selector = project.getPlacementSelector();

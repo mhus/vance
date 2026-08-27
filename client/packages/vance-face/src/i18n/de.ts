@@ -1763,6 +1763,11 @@ export default {
       claimedLabel: 'Beansprucht',
       createdLabel: 'Erstellt',
       placementPendingLabel: 'Wartet seit',
+      lifecycleLabel: 'Lifecycle',
+      lifecyclePermanentNote:
+        'dauerhaft auf einem Pod gehalten; wird vom Betreiber gesetzt',
+      lifecycleEphemeralNote:
+        'startet nicht von selbst — Scheduler und Hooks dieses Projekts laufen nicht',
       placementPendingBadge: 'wartet auf einen Pod',
       placementPendingNote:
         'Dieses Projekt ist angelegt, aber noch passt kein Brain-Prozess dazu — sein '

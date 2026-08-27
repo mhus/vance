@@ -416,6 +416,32 @@ public class ProjectCommands {
         return outcome.message() + "\n" + claim(tenant, name);
     }
 
+    @Command(name = {"project", "lifecycle-type"},
+            description = "Set whether a project is kept on a pod: AUTO (the derived "
+                    + "ownerRequired decides), EPHEMERAL (never auto-start) or PERMANENT "
+                    + "(always keep placed).")
+    public String lifecycleType(
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name,
+            @Option(longName = "value", shortName = 'v', required = true,
+                    description = "AUTO | EPHEMERAL | PERMANENT. HOMELESS is a property of "
+                            + "SYSTEM projects and is refused.")
+            String value) {
+        // Returned, not thrown — Spring Shell would wrap a throw into a
+        // CommandExecutionException whose --sudo output names no reason.
+        if (StringUtils.isBlank(value)) {
+            return "(--value is required: AUTO, EPHEMERAL or PERMANENT)";
+        }
+        var written = clusterService.writeLifecycleType(tenant, name, value);
+        if (!written.success()) {
+            return "(failed: HTTP " + written.statusCode() + " " + written.detail() + ")";
+        }
+        // The brain echoes ownerRequired alongside the override, which is the
+        // value AUTO defers to — printing it verbatim is how an operator sees
+        // that setting AUTO just switched a project off.
+        return written.detail();
+    }
+
     // ─── Placement selector ─────────────────────────────────────────
     //
     // Over REST like lifecycle-type, not straight to ProjectService: the brain

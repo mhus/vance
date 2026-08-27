@@ -268,6 +268,37 @@ class ProjectClusterServiceTest {
         assertThat(ProjectClusterService.selectorOf(project)).isEmpty();
     }
 
+    // ─── lifecycle override ─────────────────────────────────────────────────
+
+    @Test
+    void writeLifecycleType_passesTheValueThroughForTheBrainToValidate() {
+        // Not validated here on purpose: the set of modes is the brain's enum,
+        // and a second copy of the list in the shell is a second thing to
+        // forget when it grows.
+        when(client.internal(any(), any(), any())).thenReturn(new Response(200, "ok"));
+
+        service.writeLifecycleType("acme", "p1", "permanent");
+
+        ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
+        verify(client).internal(eq("/internal/cluster/projects/lifecycle-type"), eq("POST"),
+                body.capture());
+        assertThat(body.getValue()).contains("\"lifecycleType\":\"permanent\"");
+    }
+
+    @Test
+    void writeLifecycleType_reportsTheRefusalRatherThanSwallowingIt() {
+        // 409 is a SYSTEM project: HOMELESS is a property of the entity, not a
+        // setting on it.
+        when(client.internal(any(), any(), any()))
+                .thenReturn(new Response(409, "system project protected"));
+
+        var written = service.writeLifecycleType("acme", "_vance", "PERMANENT");
+
+        assertThat(written.success()).isFalse();
+        assertThat(written.statusCode()).isEqualTo(409);
+        assertThat(written.detail()).contains("system project");
+    }
+
     // ─── transport failures ─────────────────────────────────────────────────
 
     @Test

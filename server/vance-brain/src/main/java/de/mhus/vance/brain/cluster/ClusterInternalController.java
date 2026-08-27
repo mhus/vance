@@ -10,6 +10,7 @@ import de.mhus.vance.brain.cluster.placement.ClusterFullException;
 import de.mhus.vance.brain.cluster.placement.PlacementDecision;
 import de.mhus.vance.brain.cluster.placement.PlacementTrigger;
 import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
+import de.mhus.vance.shared.project.LifecycleType;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectOwnership;
 import de.mhus.vance.shared.project.ProjectService;
@@ -342,6 +343,74 @@ public class ClusterInternalController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
+    /**
+     * Sets the lifecycle override: {@code AUTO} (the derived
+     * {@code ownerRequired} decides whether the project is kept on a live pod),
+     * {@code EPHEMERAL} (never auto-start) or {@code PERMANENT} (always keep
+     * placed). {@code HOMELESS} is reserved for SYSTEM projects and rejected.
+     *
+     * <p><b>Here and not under {@code /admin/}, and that is the point of the
+     * endpoint.</b> It used to sit next to {@code suspend}/{@code resume} behind
+     * {@code Project ADMIN}, which a tenant administrator inherits — so the
+     * authorization said "tenant" while the specification said "operator", and
+     * only one of the two can be right. It is the operator: what this knob
+     * changes is not content in the project but <em>capacity in the cluster</em>.
+     * {@code PERMANENT} pins a project to a pod for good, and a tenant cannot
+     * see the pods, does not know {@code maxScore} and knows nothing of the
+     * other tenants — "pin all of mine" is a reasonable wish per tenant and a
+     * cluster problem in sum, with {@code maxScore} as the only counter-pressure.
+     * {@code EPHEMERAL} is worse: it switches auto-bring off, so the project's
+     * scheduler simply stops running, and nobody sees why.
+     *
+     * <p>So it lives where the other operator knobs live — the same token that
+     * labels the pods and writes {@code placementSelector}. The old
+     * {@code /admin/} route is gone rather than deprecated: leaving it would
+     * keep offering an authorization this decision withdrew, one curl away.
+     */
+    @PostMapping("/projects/lifecycle-type")
+    public ResponseEntity<?> setLifecycleType(@RequestBody ProjectLifecycleTypeRequest req) {
+        if (req == null || req.tenantId() == null || req.projectName() == null
+                || req.lifecycleType() == null) {
+            return ResponseEntity.badRequest().body(
+                    "tenantId, projectName and lifecycleType are required");
+        }
+        LifecycleType value;
+        try {
+            value = LifecycleType.valueOf(req.lifecycleType().trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(
+                    "Unknown lifecycleType '" + req.lifecycleType()
+                            + "' — expected AUTO, EPHEMERAL or PERMANENT");
+        }
+        try {
+            ProjectDocument saved =
+                    projectService.setLifecycleType(req.tenantId(), req.projectName(), value);
+            log.info("Project '{}/{}' lifecycleType set to {}",
+                    req.tenantId(), req.projectName(), saved.getLifecycleType());
+            return ResponseEntity.ok(new ProjectLifecycleTypeResponse(
+                    saved.getTenantId(), saved.getName(),
+                    String.valueOf(saved.getLifecycleType()), saved.isOwnerRequired()));
+        } catch (ProjectService.ProjectNotFoundException e) {
+            return ResponseEntity.status(404).body(e.getMessage());
+        } catch (ProjectService.SystemProjectProtectedException e) {
+            // HOMELESS is a property of a SYSTEM project, not a setting on it.
+            return ResponseEntity.status(409).body(e.getMessage());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    public record ProjectLifecycleTypeRequest(
+            String tenantId, String projectName, String lifecycleType) {}
+
+    /**
+     * Echoes {@code ownerRequired} alongside the override, because that is the
+     * value {@code AUTO} defers to — without it a caller cannot tell whether
+     * setting AUTO just switched the project off.
+     */
+    public record ProjectLifecycleTypeResponse(
+            String tenantId, String projectName, String lifecycleType, boolean ownerRequired) {}
 
     /** {@code null} on selector or score means "leave unchanged". */
     public record ProjectPlacementRequest(

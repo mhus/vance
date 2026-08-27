@@ -24,6 +24,7 @@ import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class ClusterServiceTest {
@@ -37,6 +38,7 @@ class ClusterServiceTest {
     private LocationService locationService;
     private ClusterNodeNameGenerator nameGenerator;
     private ClusterProperties properties;
+    private ApplicationEventPublisher eventPublisher;
     private ClusterService service;
 
     @BeforeEach
@@ -45,6 +47,7 @@ class ClusterServiceTest {
         projectService = mock(ProjectService.class);
         locationService = mock(LocationService.class);
         nameGenerator = mock(ClusterNodeNameGenerator.class);
+        eventPublisher = mock(ApplicationEventPublisher.class);
 
         properties = new ClusterProperties();
         properties.setId(CLUSTER);
@@ -59,7 +62,7 @@ class ClusterServiceTest {
 
         service = new ClusterService(
                 brainPodService, projectService, locationService, nameGenerator, properties,
-                new ClusterTimeWindows(properties));
+                new ClusterTimeWindows(properties), eventPublisher);
         ReflectionTestUtils.setField(service, "buildVersion", "1.0.0-test");
     }
 
@@ -112,6 +115,25 @@ class ClusterServiceTest {
         verify(brainPodService, never())
                 .heartbeat(any(), any(), eq(PodStatus.RUNNING), anyString(), anyList(),
                         anyInt(), anyInt(), anyInt());
+    }
+
+    @Test
+    void onApplicationReady_announcesTheNewCandidateForPlacement() {
+        service.onApplicationReady();
+
+        verify(eventPublisher).publishEvent(any(PlacementInputChangedEvent.class));
+    }
+
+    @Test
+    void failedRegistration_announcesNothing() {
+        // A pod that is not in the registry cannot be selected, so a round
+        // triggered by it would spend itself and change nothing.
+        when(brainPodService.register(any(BrainPodDocument.class)))
+                .thenThrow(new IllegalStateException("mongo down"));
+
+        service.onApplicationReady();
+
+        verify(eventPublisher, never()).publishEvent(any(PlacementInputChangedEvent.class));
     }
 
     @Test

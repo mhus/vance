@@ -298,6 +298,17 @@ public class ClusterProperties {
 
         /** Hard cap on permanent-orphans the distributor places per tick. */
         private int maxPerTick = 50;
+
+        /**
+         * Floor between two rounds triggered by {@link PlacementInputChangedEvent}
+         * — see {@code PlacementAccelerator}. Guards the externally reachable
+         * {@code PATCH .../pods/{podId}/placement} against a caller writing
+         * labels in a loop; it does not throttle {@link #distributorInterval},
+         * which is the floor underneath.
+         *
+         * <p>{@link Duration#ZERO} runs a round for every event.
+         */
+        private Duration accelerateMinInterval = Duration.ofSeconds(5);
     }
 
     @Data

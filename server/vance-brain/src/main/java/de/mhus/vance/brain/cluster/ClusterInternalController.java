@@ -19,6 +19,7 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -47,6 +48,7 @@ public class ClusterInternalController {
     private final ProjectService projectService;
     private final ClusterService clusterService;
     private final ProjectPlacementService placementService;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * Where a project currently lives, or {@code 404} when nobody holds a live
@@ -235,6 +237,14 @@ public class ClusterInternalController {
                                         + "maxScore={} override={}",
                                 pod.getNodeName(), pod.getLabels(), pod.isExclusive(),
                                 pod.getResourcesMaxScore(), pod.getResourcesMaxScoreOverride());
+                        // What was just written is what PodSelector and
+                        // BrainPodCapacity read, so something unschedulable may
+                        // have become schedulable. Published unconditionally
+                        // rather than only for label changes: a raised cap
+                        // answers NO_CAPACITY, and an operator who raises one
+                        // usually has something waiting.
+                        eventPublisher.publishEvent(new PlacementInputChangedEvent(
+                                "placement patched: " + pod.getNodeName()));
                         return ResponseEntity.ok(PodPlacementResponse.of(pod));
                     })
                     .orElseGet(() -> ResponseEntity.status(404).build());
@@ -313,6 +323,13 @@ public class ClusterInternalController {
             log.info("Project '{}/{}' placement updated: selector={} score={}",
                     req.tenantId(), req.projectName(),
                     project.getPlacementSelector(), project.getHomeResourceScore());
+            // Fixing a selector is the other remedy for an unschedulable
+            // project — the cheap one — so it accelerates like providing a pod
+            // does. Note this does not move a *running* project (§2.4); the
+            // round only looks at projects nobody owns, which is exactly the
+            // set a widened selector can help.
+            eventPublisher.publishEvent(new PlacementInputChangedEvent(
+                    "project selector patched: " + req.tenantId() + "/" + req.projectName()));
             return ResponseEntity.ok(new ProjectPlacementResponse(
                     project.getTenantId(), project.getName(),
                     project.getPlacementSelector(), project.getHomeResourceScore(),

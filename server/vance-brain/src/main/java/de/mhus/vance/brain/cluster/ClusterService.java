@@ -20,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -64,6 +65,12 @@ public class ClusterService {
     private final ClusterNodeNameGenerator nameGenerator;
     private final ClusterProperties properties;
     private final ClusterTimeWindows timeWindows;
+    /**
+     * Publishing rather than calling {@code PlacementAccelerator} directly:
+     * the distributor already depends on this service, so the reverse edge
+     * would be a constructor cycle.
+     */
+    private final ApplicationEventPublisher eventPublisher;
 
     @Value("${vance.build.version:dev}")
     private String buildVersion;
@@ -141,6 +148,12 @@ public class ClusterService {
             registered = true;
             log.info("ClusterService registered: cluster='{}' nodeName='{}' podId='{}' endpoint='{}'",
                     properties.getId(), nodeName, podId, doc.getEndpoint());
+            // A candidate appeared. Published after `registered = true` and
+            // after the row is RUNNING, because the round this triggers reads
+            // the registry — announcing a pod that is not yet selectable would
+            // spend the round and change nothing.
+            eventPublisher.publishEvent(new PlacementInputChangedEvent(
+                    "pod registered: " + nodeName));
         } catch (RuntimeException e) {
             log.error("ClusterService registration failed; will retry on next heartbeat: {}",
                     e.toString());

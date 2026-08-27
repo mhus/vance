@@ -170,6 +170,23 @@ public class GtdAppController {
         return toContentView(doc);
     }
 
+    @PostMapping("/brain/{tenant}/addon/gtd/project")
+    public GtdActionContentView moveToProject(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("folder") String folder,
+            @RequestParam("path") String path,
+            @RequestBody(required = false) @Nullable GtdProjectMoveRequest request,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
+        String normalised = GtdFolderReader.normaliseFolder(folder);
+        GtdConfig config = configOf(tenant, projectId, normalised);
+        DocumentDocument doc = gtdService.assignProject(tenant, projectId, normalised, config,
+                path, request != null ? request.project() : null, currentUser(httpRequest));
+        return toContentView(doc);
+    }
+
     @DeleteMapping("/brain/{tenant}/addon/gtd/action")
     public ResponseEntity<Void> deleteAction(
             @PathVariable("tenant") String tenant,

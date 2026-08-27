@@ -24,6 +24,7 @@ import {
   captureGtd,
   patchGtdAction,
   moveGtdAction,
+  moveGtdActionToProject,
   deleteGtdAction,
   searchGtd,
   rebuildGtd,
@@ -71,7 +72,12 @@ const detailLoading = ref(false);
 const titleDraft = ref('');
 const deadlineDraft = ref('');
 const contextsDraft = ref('');
+const projectDraft = ref('');
 const currentBody = ref('');
+
+// Sentinel for the "new project" option. Project names are folder slugs
+// (`a-z0-9_-`), so a value with a colon in it can never collide with a real one.
+const NEW_PROJECT = 'new:';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 const saveStatus = ref<SaveStatus>('idle');
@@ -183,6 +189,7 @@ function applyDetail(c: GtdActionContentView): void {
   titleDraft.value = c.title;
   deadlineDraft.value = c.deadline ?? '';
   contextsDraft.value = (c.contexts ?? []).join(', ');
+  projectDraft.value = c.project ?? '';
   currentBody.value = c.body ?? '';
 }
 function parseCtx(raw: string): string[] {
@@ -227,13 +234,16 @@ async function toggleDone(a: GtdActionView): Promise<void> {
   }
 }
 
-/** Move the current action to a bucket — sets `when` (relocates for Inbox). */
-async function moveTo(bucket: BucketId): Promise<void> {
-  const path = selectedPath.value;
-  if (!path) return;
+/**
+ * Move an action to a bucket — sets `when` (relocates for Inbox). Reached from
+ * the detail panel's picker and from a drop on a bucket in the sidebar, so it
+ * takes a path: the dragged action is usually not the selected one, and the
+ * detail panel must only follow along when it actually is.
+ */
+async function moveActionTo(path: string, bucket: BucketId, datePrefill = ''): Promise<void> {
   let date: string | undefined;
   if (bucket === 'upcoming') {
-    const input = window.prompt('Upcoming date (yyyy-MM-dd):', deadlineDraft.value || '');
+    const input = window.prompt('Upcoming date (yyyy-MM-dd):', datePrefill);
     if (!input) return;
     date = input.trim();
   }
@@ -242,14 +252,82 @@ async function moveTo(bucket: BucketId): Promise<void> {
   try {
     const c = await moveGtdAction(projectId.value, folder.value, path, { bucket, date });
     markSelfWrite(c.path);
-    applyDetail(c);
+    if (selectedPath.value === path) applyDetail(c);
     saveStatus.value = 'saved';
     await loadScan();
-    if (bucket !== 'inbox') selectBucket(bucket);
   } catch (e) {
     saveStatus.value = 'error';
     error.value = e instanceof Error ? e.message : 'Move failed.';
   }
+}
+
+/** Detail-panel bucket picker — moves the selected action and follows it. */
+async function moveTo(bucket: BucketId): Promise<void> {
+  const path = selectedPath.value;
+  if (!path) return;
+  await moveActionTo(path, bucket, deadlineDraft.value || '');
+  if (bucket !== 'inbox') selectBucket(bucket);
+}
+
+/**
+ * Re-file an action into `projects/<name>/`; `null` files it back out into
+ * `actions/`. Relocation only — the bucket is derived from `when` and stays put.
+ */
+async function refileAction(path: string, project: string | null): Promise<void> {
+  saveStatus.value = 'saving';
+  markSelfWrite(path);
+  try {
+    const c = await moveGtdActionToProject(projectId.value, folder.value, path, {
+      project: project ?? '',
+    });
+    markSelfWrite(c.path);
+    if (selectedPath.value === path) applyDetail(c);
+    saveStatus.value = 'saved';
+    await loadScan();
+  } catch (e) {
+    saveStatus.value = 'error';
+    error.value = e instanceof Error ? e.message : 'Re-file failed.';
+  }
+}
+
+/** Add one context to an action, keeping the ones it already has. */
+async function addContext(action: GtdActionView, context: string): Promise<void> {
+  if (action.contexts.includes(context)) return;
+  saveStatus.value = 'saving';
+  markSelfWrite(action.path);
+  try {
+    const c = await patchGtdAction(projectId.value, action.path, {
+      contexts: [...action.contexts, context],
+    });
+    markSelfWrite(c.path);
+    if (selectedPath.value === action.path) applyDetail(c);
+    saveStatus.value = 'saved';
+    await loadScan();
+  } catch (e) {
+    saveStatus.value = 'error';
+    error.value = e instanceof Error ? e.message : 'Update failed.';
+  }
+}
+
+/** Project options for the detail select — the scanned ones plus the current one. */
+const projectOptions = computed<string[]>(() => {
+  const names = new Set((view.value?.projects ?? []).map((p) => p.name));
+  if (detail.value?.project) names.add(detail.value.project);
+  return [...names].sort();
+});
+
+async function onProjectChange(): Promise<void> {
+  const path = selectedPath.value;
+  if (!path) return;
+  const current = detail.value?.project ?? '';
+  let target = projectDraft.value;
+  if (target === NEW_PROJECT) {
+    const name = window.prompt('New project name:', '');
+    if (name == null || !name.trim()) { projectDraft.value = current; return; }
+    target = name.trim();
+  }
+  if (target === current) return;
+  await refileAction(path, target === '' ? null : target);
 }
 
 async function removeAction(): Promise<void> {
@@ -263,6 +341,89 @@ async function removeAction(): Promise<void> {
     await loadScan();
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Delete failed.';
+  }
+}
+
+// ── Drag & drop onto the sidebar ─────────────────────────────────────
+// The sidebar holds the three things an action can be filed under, and each
+// one is a different operation: a bucket sets `when`, a project relocates the
+// file, a context adds a tag. Dropping runs exactly the operation the detail
+// panel runs — the drag only skips having to select the action first.
+
+type DropTarget =
+  | { kind: 'bucket'; id: BucketId }
+  | { kind: 'project'; name: string }
+  | { kind: 'context'; name: string };
+
+const dragging = ref<GtdActionView | null>(null);
+const dropHover = ref<string | null>(null);
+
+function bucketTarget(id: BucketId): DropTarget { return { kind: 'bucket', id }; }
+function projectTarget(name: string): DropTarget { return { kind: 'project', name }; }
+function contextTarget(name: string): DropTarget { return { kind: 'context', name }; }
+
+function targetKey(t: DropTarget): string {
+  return t.kind === 'bucket' ? `bucket:${t.id}` : `${t.kind}:${t.name}`;
+}
+
+/** Whether dropping the dragged action here would change anything. */
+function acceptsDrop(t: DropTarget): boolean {
+  const a = dragging.value;
+  if (!a) return false;
+  switch (t.kind) {
+    case 'bucket': return a.bucket !== t.id;
+    case 'project': return (a.project ?? '') !== t.name;
+    case 'context': return !a.contexts.includes(t.name);
+  }
+}
+
+function isDropHover(t: DropTarget): boolean {
+  return dropHover.value === targetKey(t);
+}
+
+/** An ISO `when` is a sensible default for the Upcoming prompt; `today` is not. */
+function datePrefill(a: GtdActionView): string {
+  if (a.when && /^\d{4}-\d{2}-\d{2}$/.test(a.when)) return a.when;
+  return a.deadline ?? '';
+}
+
+function onActionDragStart(a: GtdActionView, ev: DragEvent): void {
+  dragging.value = a;
+  if (ev.dataTransfer) {
+    ev.dataTransfer.effectAllowed = 'move';
+    ev.dataTransfer.setData('application/x-vance-gtd-action', a.path);
+  }
+}
+
+function onActionDragEnd(): void {
+  dragging.value = null;
+  dropHover.value = null;
+}
+
+function onTargetDragOver(t: DropTarget, ev: DragEvent): void {
+  // No preventDefault on a target that would be a no-op — the browser then
+  // shows "not allowed" instead of promising a move that does nothing.
+  if (!acceptsDrop(t)) return;
+  ev.preventDefault();
+  if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
+  dropHover.value = targetKey(t);
+}
+
+function onTargetDragLeave(t: DropTarget): void {
+  if (isDropHover(t)) dropHover.value = null;
+}
+
+async function onTargetDrop(t: DropTarget, ev: DragEvent): Promise<void> {
+  ev.preventDefault();
+  const a = dragging.value;
+  const accepted = acceptsDrop(t);
+  dragging.value = null;
+  dropHover.value = null;
+  if (!a || !accepted) return;
+  switch (t.kind) {
+    case 'bucket': await moveActionTo(a.path, t.id, datePrefill(a)); break;
+    case 'project': await refileAction(a.path, t.name); break;
+    case 'context': await addContext(a, t.name); break;
   }
 }
 
@@ -452,8 +613,14 @@ function isCurrentBucket(b: BucketId): boolean {
             v-for="b in BUCKETS"
             :key="b"
             class="gtd__nav-item"
-            :class="{ 'gtd__nav-item--active': !selectedProject && selectedBucket === b }"
+            :class="{
+              'gtd__nav-item--active': !selectedProject && selectedBucket === b,
+              'gtd__nav-item--drop': isDropHover(bucketTarget(b)),
+            }"
             @click="selectBucket(b)"
+            @dragover="onTargetDragOver(bucketTarget(b), $event)"
+            @dragleave="onTargetDragLeave(bucketTarget(b))"
+            @drop="onTargetDrop(bucketTarget(b), $event)"
           >
             <span>{{ BUCKET_LABEL[b] }}</span>
             <span class="gtd__badge">{{ bucketCount(b) }}</span>
@@ -466,8 +633,14 @@ function isCurrentBucket(b: BucketId): boolean {
             v-for="p in view.projects"
             :key="p.name"
             class="gtd__nav-item"
-            :class="{ 'gtd__nav-item--active': selectedProject === p.name }"
+            :class="{
+              'gtd__nav-item--active': selectedProject === p.name,
+              'gtd__nav-item--drop': isDropHover(projectTarget(p.name)),
+            }"
             @click="selectProject(p.name)"
+            @dragover="onTargetDragOver(projectTarget(p.name), $event)"
+            @dragleave="onTargetDragLeave(projectTarget(p.name))"
+            @drop="onTargetDrop(projectTarget(p.name), $event)"
           >
             <span>{{ p.name }}</span>
             <span class="gtd__badge">{{ p.openCount }}</span>
@@ -481,8 +654,14 @@ function isCurrentBucket(b: BucketId): boolean {
               v-for="c in view.contexts"
               :key="c"
               class="gtd__chip"
-              :class="{ 'gtd__chip--active': selectedContext === c }"
+              :class="{
+                'gtd__chip--active': selectedContext === c,
+                'gtd__chip--drop': isDropHover(contextTarget(c)),
+              }"
               @click="toggleContext(c)"
+              @dragover="onTargetDragOver(contextTarget(c), $event)"
+              @dragleave="onTargetDragLeave(contextTarget(c))"
+              @drop="onTargetDrop(contextTarget(c), $event)"
             >{{ c }}</button>
           </div>
         </div>
@@ -505,8 +684,15 @@ function isCurrentBucket(b: BucketId): boolean {
             v-for="a in displayedActions"
             :key="a.id"
             class="gtd__action"
-            :class="{ 'gtd__action--sel': a.path === selectedPath, 'gtd__action--overdue': a.overdue }"
+            :class="{
+              'gtd__action--sel': a.path === selectedPath,
+              'gtd__action--overdue': a.overdue,
+              'gtd__action--dragging': dragging?.path === a.path,
+            }"
+            draggable="true"
             @click="selectAction(a.path)"
+            @dragstart="onActionDragStart(a, $event)"
+            @dragend="onActionDragEnd"
           >
             <input
               type="checkbox"
@@ -541,6 +727,15 @@ function isCurrentBucket(b: BucketId): boolean {
               >{{ BUCKET_LABEL[b] }}</button>
             </div>
             <div class="gtd__when-hint">when: <code>{{ currentWhen || '(anytime)' }}</code></div>
+          </div>
+
+          <div class="gtd__field">
+            <label class="gtd__label">Project</label>
+            <select v-model="projectDraft" class="gtd__input" @change="onProjectChange">
+              <option value="">(no project)</option>
+              <option v-for="p in projectOptions" :key="p" :value="p">{{ p }}</option>
+              <option :value="NEW_PROJECT">＋ New project…</option>
+            </select>
           </div>
 
           <div class="gtd__field">
@@ -650,6 +845,11 @@ function isCurrentBucket(b: BucketId): boolean {
 }
 .gtd__nav-item:hover { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
 .gtd__nav-item--active { background: color-mix(in oklab, var(--color-primary) 16%, transparent); font-weight: 600; }
+.gtd__nav-item--drop, .gtd__chip--drop {
+  outline: 2px dashed color-mix(in oklab, var(--color-primary) 65%, transparent);
+  outline-offset: -2px;
+  background: color-mix(in oklab, var(--color-primary) 10%, transparent);
+}
 .gtd__badge { font-size: 0.68rem; opacity: 0.6; }
 .gtd__chips { display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0 0.4rem; }
 .gtd__chip {
@@ -666,6 +866,7 @@ function isCurrentBucket(b: BucketId): boolean {
 }
 .gtd__action:hover { background: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
 .gtd__action--sel { background: color-mix(in oklab, var(--color-primary) 12%, transparent); }
+.gtd__action--dragging { opacity: 0.45; }
 .gtd__action--overdue .gtd__action-title { color: #d33; }
 .gtd__action-title { flex: 1; font-size: 0.88rem; }
 .gtd__when, .gtd__deadline, .gtd__ctx {

@@ -172,6 +172,58 @@ public class GtdService {
         return updated;
     }
 
+    // ── Re-file (project = folder; relocation only) ───────────────
+
+    /**
+     * Re-file an action into {@code projects/<slug>/}, or back into
+     * {@code actions/} when {@code project} is blank. The one operation that
+     * <b>only</b> relocates: no field of the action changes, so its derived
+     * bucket stays the same — except that leaving {@code inbox/} makes it
+     * processed, exactly as a bucket move out of the Inbox does. A no-op when
+     * the action already sits in the target folder.
+     */
+    public DocumentDocument assignProject(String tenantId, String projectId, String folder,
+                                          GtdConfig config, String path,
+                                          @Nullable String project, @Nullable String userId) {
+        String normFolder = normalise(folder);
+        DocumentDocument doc = documentService.findByPath(tenantId, projectId, path)
+                .orElseThrow(() -> new ToolException("No action at '" + path + "'"));
+        String targetDir = projectDir(config, project);
+        if (targetDir.equals(currentDir(normFolder, path))) return doc;
+        String leaf = path.substring(path.lastIndexOf('/') + 1);
+        String newPath = uniquePath(tenantId, projectId,
+                stripExt(normFolder + "/" + targetDir + "/" + leaf));
+        DocumentDocument updated = documentService.update(
+                doc.getId(), null, null, null, newPath,
+                contextFactory.writeActor(tenantId, userId, doc.getPath()));
+        log.info("GtdService.assignProject path='{}' project='{}' newPath='{}'",
+                path, project, newPath);
+        return updated;
+    }
+
+    /** Folder (relative to the GTD root) an action belongs in for {@code project}. */
+    static String projectDir(GtdConfig config, @Nullable String project) {
+        if (project == null || project.isBlank()) return config.actionsDir();
+        String slug = GtdFolderReader.slugify(project);
+        if (slug.isEmpty()) {
+            throw new ToolException(
+                    "Project '" + project + "' has no usable folder name");
+        }
+        return config.projectsDir() + "/" + slug;
+    }
+
+    /** The action's folder relative to the GTD root ({@code ""} directly at the root). */
+    static String currentDir(String normFolder, String path) {
+        String prefix = normFolder + "/";
+        if (!path.startsWith(prefix)) {
+            throw new ToolException(
+                    "Action '" + path + "' is not inside '" + normFolder + "'");
+        }
+        String rel = path.substring(prefix.length());
+        int slash = rel.lastIndexOf('/');
+        return slash < 0 ? "" : rel.substring(0, slash);
+    }
+
     /** When leaving the Inbox, relocate into {@code actions/}; else stay in place. */
     private @Nullable String outOfInbox(String tenantId, String projectId, String normFolder,
                                         GtdConfig config, boolean inInbox, String leaf) {

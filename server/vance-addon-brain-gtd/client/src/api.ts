@@ -4,6 +4,7 @@ import type { GtdActionContentView } from './generated/gtd/GtdActionContentView'
 import type { GtdActionRequest } from './generated/gtd/GtdActionRequest';
 import type { GtdCaptureRequest } from './generated/gtd/GtdCaptureRequest';
 import type { GtdMoveRequest } from './generated/gtd/GtdMoveRequest';
+import type { GtdProjectMoveRequest } from './generated/gtd/GtdProjectMoveRequest';
 import type { GtdSearchResponse } from './generated/gtd/GtdSearchResponse';
 import type { GtdRebuildResponse } from './generated/gtd/GtdRebuildResponse';
 
@@ -72,6 +73,20 @@ export async function moveGtdAction(
   return brainFetch<GtdActionContentView>(
     'POST',
     `addon/gtd/move?${qs({ projectId, folder, path })}`,
+    { body: request },
+  );
+}
+
+/** Re-file an action into `projects/<name>/` — a blank project moves it to `actions/`. */
+export async function moveGtdActionToProject(
+  projectId: string,
+  folder: string,
+  path: string,
+  request: GtdProjectMoveRequest,
+): Promise<GtdActionContentView> {
+  return brainFetch<GtdActionContentView>(
+    'POST',
+    `addon/gtd/project?${qs({ projectId, folder, path })}`,
     { body: request },
   );
 }

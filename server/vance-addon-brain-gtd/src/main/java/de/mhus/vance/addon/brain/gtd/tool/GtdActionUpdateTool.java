@@ -1,5 +1,6 @@
 package de.mhus.vance.addon.brain.gtd.tool;
 
+import de.mhus.vance.addon.brain.gtd.GtdConfig;
 import de.mhus.vance.addon.brain.gtd.GtdService;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.document.DocumentDocument;
@@ -19,7 +20,9 @@ import org.springframework.stereotype.Component;
 /**
  * Patch a GTD action in place. Set `when` to change its bucket (the core GTD
  * move — Today/Anytime/Someday/Upcoming all live in the `when` attribute),
- * toggle `done`, or edit contexts/deadline/title/body.
+ * toggle `done`, or edit contexts/deadline/title/body. Setting `project`
+ * additionally re-files the action between {@code projects/<name>/} and
+ * {@code actions/} — the one field here that moves the file.
  */
 @Component
 @Slf4j
@@ -37,6 +40,9 @@ public class GtdActionUpdateTool implements Tool {
                 put("done", Map.of("type", "boolean"));
                 put("title", Map.of("type", "string"));
                 put("body", Map.of("type", "string"));
+                put("project", Map.of("type", "string",
+                        "description", "Re-file into projects/<name>/. Pass \"\" to file it "
+                                + "back out into actions/. Omit to leave the folder alone."));
                 put("projectId", Map.of("type", "string"));
             }},
             "required", List.of("folder", "path"));
@@ -55,7 +61,9 @@ public class GtdActionUpdateTool implements Tool {
     public String description() {
         return "Update a GTD action in place. Change its bucket by setting `when` "
                 + "('' = Anytime, today, someday, or an ISO date). Mark it complete with "
-                + "done=true. Also edits contexts, deadline, title, body. Run app_rebuild "
+                + "done=true. Also edits contexts, deadline, title, body. Set `project` to "
+                + "re-file it into projects/<name>/ (\"\" moves it back out into actions/) — "
+                + "that relocates the file and leaves the bucket alone. Run app_rebuild "
                 + "afterwards to refresh the views.";
     }
 
@@ -72,6 +80,17 @@ public class GtdActionUpdateTool implements Tool {
                 paramString(params, "when"), paramString(params, "deadline"),
                 paramStringList(params, "contexts"), paramBoolean(params, "done"),
                 paramString(params, "title"), paramString(params, "body"));
+        // Re-filing is a relocation, not a field patch — and here absent has to
+        // mean something different from empty: omitting `project` leaves the
+        // action's folder alone, "" files it back out into actions/.
+        if (params != null && params.containsKey("project")) {
+            String folder = paramString(params, "folder");
+            if (folder == null) throw new ToolException("folder is required");
+            Object raw = params.get("project");
+            GtdConfig config = gtdService.scan(ctx.tenantId(), project.getName(), folder).config();
+            doc = gtdService.assignProject(ctx.tenantId(), project.getName(), folder, config,
+                    doc.getPath(), raw == null ? "" : raw.toString().trim(), ctx.userId());
+        }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("path", doc.getPath());
         result.put("id", doc.getId());

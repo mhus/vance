@@ -33,8 +33,11 @@ There are **no bucket folders**. To move an action between buckets you **set its
 - `gtd_app_create(folder, title?, description?)` — bootstrap.
 - `gtd_capture(folder, title, note?)` — fast capture → Inbox.
 - `gtd_action_create(folder, title, when?, deadline?, contexts?, project?, body?)`.
-- `gtd_action_update(folder, path, when?, deadline?, contexts?, done?, title?, body?)`
-  — change the bucket by setting `when`; complete with `done=true`.
+- `gtd_action_update(folder, path, when?, deadline?, contexts?, done?, title?, body?, project?)`
+  — change the bucket by setting `when`; complete with `done=true`. `project`
+  re-files the action into `projects/<name>/` and is the **only** field here that
+  moves the file: pass `""` to file it back out into `actions/`, omit it to leave
+  the folder alone. The path changes, so use the returned `path` afterwards.
 - `gtd_query(folder, bucket?, context?, project?)` — list by derived bucket.
 - `gtd_search(folder, query, context?)` — free-text (title/summary/contexts).
 - `app_rebuild('folder')` — regenerate `_today.md` / `_upcoming.md` / `_stats.yaml`.

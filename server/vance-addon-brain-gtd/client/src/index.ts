@@ -9,6 +9,7 @@ export {
   createGtdAction,
   patchGtdAction,
   moveGtdAction,
+  moveGtdActionToProject,
   deleteGtdAction,
   searchGtd,
   rebuildGtd,

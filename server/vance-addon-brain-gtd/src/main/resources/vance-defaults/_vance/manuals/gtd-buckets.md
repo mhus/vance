@@ -22,7 +22,11 @@ Consequences the model must respect:
 
 - **Moving buckets = setting `when`.** Today → `when: today`; Anytime → clear
   `when`; Someday → `when: someday`; Upcoming → `when: <future ISO date>`.
-  Moving to/from Inbox is the only case that relocates the file.
+  Moving to/from Inbox is the only *bucket* change that relocates the file.
+- **Re-filing into a project is the other move** — `gtd_action_update(project:)`
+  relocates the file between `actions/` and `projects/<name>/` and leaves `when`
+  (and therefore the bucket) alone. These two are independent: an action can be
+  in Today *and* in a project.
 - A `when`-dated action in the future **automatically** appears in Today on its
   date — you do not need to touch it.
 - `done: true` drops an action out of every bucket (it's completed).

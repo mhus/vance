@@ -29,7 +29,7 @@ import org.jspecify.annotations.Nullable;
  * is the catch-all). See {@code planning/tool-schema-deferral.md} §14.
  *
  * <p>{@code manuals} from the spec is intentionally not parsed yet — the
- * doc/manual consolidation is still open ({@code instructions/_todo.md}).
+ * doc/manual consolidation is still open ({@code instructions/_todo-0.3.0.md}).
  * When manuals are wired, the field is added here without breaking the
  * recipe schema.
  */

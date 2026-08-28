@@ -38,7 +38,7 @@ import org.jspecify.annotations.Nullable;
  *   <li>{@code engine} — engine name backing the recipe.</li>
  *   <li>{@code lang} — chat language code, e.g. {@code "de"},
  *       {@code "en"}. Empty until the language-settings work lands
- *       (see {@code instructions/_todo.md}).</li>
+ *       (see {@code instructions/_todo-0.3.0.md}).</li>
  *   <li>{@code params} — the merged recipe params map (read-only),
  *       so templates can read e.g. {@code {{ params.maxIterations }}}.</li>
  *   <li>{@code has_<type>_rootdir} — one boolean per workspace RootDir

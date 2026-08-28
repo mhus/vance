@@ -346,6 +346,17 @@ function onResizeEnd(e: { params: { x: number; y: number; width: number; height:
     Math.round(e.params.y),
   );
 }
+
+// ── Copy link to clipboard ────────────────────────────────────
+const copied = ref(false);
+function copyLink(): void {
+  const href = node.value.href ?? '';
+  if (!href || typeof navigator === 'undefined' || !navigator.clipboard) return;
+  void navigator.clipboard.writeText(href).then(() => {
+    copied.value = true;
+    setTimeout(() => { copied.value = false; }, 1500);
+  });
+}
 </script>
 
 <template>
@@ -406,6 +417,11 @@ function onResizeEnd(e: { params: { x: number; y: number; width: number; height:
             title="Ziel ändern"
             @click="props.data.onEditLink?.(node.id)"
           >🔗</button>
+          <button
+            class="cv-btn"
+            :title="copied ? 'Kopiert!' : 'Link kopieren'"
+            @click="copyLink"
+          >{{ copied ? '✓' : '📋' }}</button>
         </template>
 
         <span class="cv-sep"></span>
@@ -487,37 +503,41 @@ function onResizeEnd(e: { params: { x: number; y: number; width: number; height:
     </template>
 
     <template v-else-if="kind === 'link'">
-      <input
-        v-if="editing"
-        v-model="draft"
-        class="canvas-link-title-input nodrag"
-        placeholder="Titel"
-        @keydown.enter.prevent="commit"
-        @keydown.esc.prevent="cancel"
-        @blur="commit"
-        @dblclick.stop
-      />
-      <!-- Three cases on purpose: an external target is a real anchor (middle
-           click, copy link address), an internal one needs the host resolution,
-           and an unsafe or empty target renders as plain text rather than a
-           link that goes nowhere. -->
-      <a
-        v-else-if="linkHref"
-        class="canvas-card-title canvas-card-link"
-        :href="linkHref"
-        :target="linkNewTab ? '_blank' : undefined"
-        rel="noopener noreferrer"
-        @mousedown.stop
-        @click.stop="onExternalClick"
-      >🔗 {{ node.title || linkSubtitle }}</a>
-      <button
-        v-else-if="isVanceLink"
-        class="canvas-card-title canvas-card-link"
-        type="button"
-        @mousedown.stop
-        @click.stop="openLinkTarget"
-      >🔗 {{ node.title || linkSubtitle }}</button>
-      <div v-else class="canvas-card-title">🔗 {{ node.title || linkSubtitle || '—' }}</div>
+      <div class="canvas-card-header">
+        <input
+          v-if="editing"
+          v-model="draft"
+          class="canvas-link-title-input nodrag"
+          placeholder="Titel"
+          @keydown.enter.prevent="commit"
+          @keydown.esc.prevent="cancel"
+          @blur="commit"
+          @dblclick.stop
+        />
+        <a
+          v-else-if="linkHref"
+          class="canvas-card-title canvas-card-link"
+          :href="linkHref"
+          :target="linkNewTab ? '_blank' : undefined"
+          rel="noopener noreferrer"
+          @mousedown.stop
+          @click.stop="onExternalClick"
+        >🔗 {{ node.title || linkSubtitle }}</a>
+        <button
+          v-else-if="isVanceLink"
+          class="canvas-card-title canvas-card-link"
+          type="button"
+          @mousedown.stop
+          @click.stop="openLinkTarget"
+        >🔗 {{ node.title || linkSubtitle }}</button>
+        <div v-else class="canvas-card-title">🔗 {{ node.title || linkSubtitle || '—' }}</div>
+        <button
+          class="canvas-card-copy-btn nodrag"
+          :title="copied ? 'Kopiert!' : 'Link kopieren'"
+          @mousedown.stop
+          @click.stop="copyLink"
+        >{{ copied ? '✓' : '⧉' }}</button>
+      </div>
       <div v-if="node.title && !editing" class="canvas-card-sub">{{ linkSubtitle }}</div>
       <div v-if="docError" class="canvas-card-sub canvas-card-error">{{ docError }}</div>
     </template>
@@ -638,6 +658,38 @@ function onResizeEnd(e: { params: { x: number; y: number; width: number; height:
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.canvas-card-header {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+.canvas-card-header .canvas-card-title,
+.canvas-card-header .canvas-link-title-input {
+  flex: 1;
+  min-width: 0;
+}
+.canvas-card-copy-btn {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  color: #6b7280;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.canvas-node--link:hover .canvas-card-copy-btn {
+  opacity: 1;
+}
+.canvas-card-copy-btn:hover {
+  background: #f1f5f9;
+  color: #1f2937;
 }
 .canvas-card-sub {
   margin-top: 2px;

@@ -14,6 +14,9 @@ import org.junit.jupiter.api.Test;
 class CssScopePrefixerTest {
 
     private static final String SCOPE = CssScopePrefixer.SCOPE;
+    /** The doubled form the prefixer emits, so specificity matches a
+     *  Vue scoped style (one class + one attribute = 0,2,0). */
+    private static final String EXPECTED = SCOPE + SCOPE;
 
     @Test
     void scope_null_returnsEmpty() {
@@ -28,37 +31,37 @@ class CssScopePrefixerTest {
     @Test
     void scope_plainElement_prefixed() {
         assertThat(CssScopePrefixer.scope("h1 { color: red; }"))
-            .isEqualTo(SCOPE + " h1 { color: red; }");
+            .isEqualTo(EXPECTED + " h1 { color: red; }");
     }
 
     @Test
     void scope_class_prefixed() {
         assertThat(CssScopePrefixer.scope(".note { color: red; }"))
-            .isEqualTo(SCOPE + " .note { color: red; }");
+            .isEqualTo(EXPECTED + " .note { color: red; }");
     }
 
     @Test
     void scope_id_prefixed() {
         assertThat(CssScopePrefixer.scope("#title { color: red; }"))
-            .isEqualTo(SCOPE + " #title { color: red; }");
+            .isEqualTo(EXPECTED + " #title { color: red; }");
     }
 
     @Test
     void scope_commaList_eachPrefixed() {
         assertThat(CssScopePrefixer.scope("h1, h2, h3 { color: red; }"))
-            .isEqualTo(SCOPE + " h1, " + SCOPE + " h2, " + SCOPE + " h3 { color: red; }");
+            .isEqualTo(EXPECTED + " h1, " + EXPECTED + " h2, " + EXPECTED + " h3 { color: red; }");
     }
 
     @Test
     void scope_descendantCombinator_prefixed() {
         assertThat(CssScopePrefixer.scope("div p { color: red; }"))
-            .isEqualTo(SCOPE + " div p { color: red; }");
+            .isEqualTo(EXPECTED + " div p { color: red; }");
     }
 
     @Test
     void scope_childCombinator_prefixed() {
         assertThat(CssScopePrefixer.scope("ul > li { color: red; }"))
-            .isEqualTo(SCOPE + " ul > li { color: red; }");
+            .isEqualTo(EXPECTED + " ul > li { color: red; }");
     }
 
     @Test
@@ -66,13 +69,13 @@ class CssScopePrefixerTest {
         // "> .note" means "direct child of the scope root" — the scope
         // class goes on the left of the combinator.
         assertThat(CssScopePrefixer.scope("> .note { color: red; }"))
-            .isEqualTo(SCOPE + " > .note { color: red; }");
+            .isEqualTo(EXPECTED + " > .note { color: red; }");
     }
 
     @Test
     void scope_pseudoClass_prefixed() {
         assertThat(CssScopePrefixer.scope("a:hover { color: red; }"))
-            .isEqualTo(SCOPE + " a:hover { color: red; }");
+            .isEqualTo(EXPECTED + " a:hover { color: red; }");
     }
 
     @Test
@@ -80,13 +83,13 @@ class CssScopePrefixerTest {
         // The comma in nth-child(2n+1, 3) is parenthesised — it must not
         // be treated as a selector-list separator.
         assertThat(CssScopePrefixer.scope("li:nth-child(2n+1, 3) { color: red; }"))
-            .isEqualTo(SCOPE + " li:nth-child(2n+1, 3) { color: red; }");
+            .isEqualTo(EXPECTED + " li:nth-child(2n+1, 3) { color: red; }");
     }
 
     @Test
     void scope_isPseudoFunctionWithComma_notSplit() {
         assertThat(CssScopePrefixer.scope(":is(h1, h2, h3) { color: red; }"))
-            .isEqualTo(SCOPE + " :is(h1, h2, h3) { color: red; }");
+            .isEqualTo(EXPECTED + " :is(h1, h2, h3) { color: red; }");
     }
 
     @Test
@@ -95,8 +98,8 @@ class CssScopePrefixerTest {
         String result = CssScopePrefixer.scope(css);
         assertThat(result)
             .contains("@media screen")
-            .contains(SCOPE + " h1 { color: red; }")
-            .contains(SCOPE + " .note { color: blue; }");
+            .contains(EXPECTED + " h1 { color: red; }")
+            .contains(EXPECTED + " .note { color: blue; }");
     }
 
     @Test
@@ -105,7 +108,7 @@ class CssScopePrefixerTest {
         String result = CssScopePrefixer.scope(css);
         assertThat(result)
             .contains("@media screen and (min-width: 600px)")
-            .contains(SCOPE + " h1 { color: red; }");
+            .contains(EXPECTED + " h1 { color: red; }");
     }
 
     @Test
@@ -114,7 +117,7 @@ class CssScopePrefixerTest {
         String result = CssScopePrefixer.scope(css);
         assertThat(result)
             .contains("@supports (display: grid)")
-            .contains(SCOPE + " .grid { display: grid; }");
+            .contains(EXPECTED + " .grid { display: grid; }");
     }
 
     @Test
@@ -143,10 +146,10 @@ class CssScopePrefixerTest {
             + ".note { color: blue; }";
         String result = CssScopePrefixer.scope(css);
         assertThat(result)
-            .contains(SCOPE + " h1 { color: red; }")
-            .contains("@media print { " + SCOPE + " h2 { color: black; } }")
+            .contains(EXPECTED + " h1 { color: red; }")
+            .contains("@media print { " + EXPECTED + " h2 { color: black; } }")
             .contains("@page { margin: 10mm; }")
-            .contains(SCOPE + " .note { color: blue; }");
+            .contains(EXPECTED + " .note { color: blue; }");
     }
 
     @Test
@@ -164,8 +167,31 @@ class CssScopePrefixerTest {
         String css = "h1 { color: red; } h2 { color: blue; } p { margin: 0; }";
         String result = CssScopePrefixer.scope(css);
         assertThat(result)
-            .contains(SCOPE + " h1 { color: red; }")
-            .contains(SCOPE + " h2 { color: blue; }")
-            .contains(SCOPE + " p { margin: 0; }");
+            .contains(EXPECTED + " h1 { color: red; }")
+            .contains(EXPECTED + " h2 { color: blue; }")
+            .contains(EXPECTED + " p { margin: 0; }");
+    }
+
+    @Test
+    void scope_commentBeforeSelector_strippedAndPrefixed() {
+        // A comment before a selector would land between the scope
+        // prefix and the element if not stripped — ".scope /* x */ h1"
+        // breaks the cascade. The comment is metadata, not part of the
+        // selector, so we drop it before prefixing.
+        String css = "/* Warm accent */\nh1, h2 { color: #8a6d1a; }";
+        String result = CssScopePrefixer.scope(css);
+        assertThat(result)
+            .contains(EXPECTED + " h1, " + EXPECTED + " h2 { color: #8a6d1a; }")
+            .doesNotContain("/* Warm accent */");
+    }
+
+    @Test
+    void scope_commentInsideCommaList_stripped() {
+        String css = "h1 /* heading */ , h2 { color: red; }";
+        String result = CssScopePrefixer.scope(css);
+        assertThat(result)
+            .contains(EXPECTED + " h1")
+            .contains(EXPECTED + " h2")
+            .doesNotContain("/* heading */");
     }
 }

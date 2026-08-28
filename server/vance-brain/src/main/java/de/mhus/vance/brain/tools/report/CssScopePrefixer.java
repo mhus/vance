@@ -229,32 +229,73 @@ public final class CssScopePrefixer {
         if (firstNonWs > 0) leading = selectors.substring(0, firstNonWs);
         String trimmed = selectors.substring(firstNonWs).trim();
         if (trimmed.isEmpty()) return selectors;
+        // Strip CSS comments before prefixing. A comment before a
+        // selector (e.g. "/* note */ h1 { … }") would otherwise land
+        // between the scope prefix and the element (".scope /* note */
+        // h1"), which breaks the cascade — the prefix no longer applies
+        // to h1. Comments inside declarations are left untouched (they
+        // are in the body, not the head). Only comments in the selector
+        // list itself are stripped here.
+        String noComments = stripCssComments(trimmed);
         // Split on top-level commas only (commas inside :is(), :where(),
         // nth-child(...) are parenthesised and should not split).
         StringBuilder result = new StringBuilder();
         int depth = 0;
         int start = 0;
-        for (int i = 0; i < trimmed.length(); i++) {
-            char c = trimmed.charAt(i);
+        for (int i = 0; i < noComments.length(); i++) {
+            char c = noComments.charAt(i);
             if (c == '(') depth++;
             else if (c == ')') depth = Math.max(0, depth - 1);
             else if (c == ',' && depth == 0) {
-                result.append(prefixOne(trimmed.substring(start, i).trim()));
+                result.append(prefixOne(noComments.substring(start, i).trim()));
                 result.append(", ");
                 start = i + 1;
             }
         }
-        result.append(prefixOne(trimmed.substring(start).trim()));
+        result.append(prefixOne(noComments.substring(start).trim()));
         return leading + result;
+    }
+
+    /** Strips {@code /* … *​/} comments from a CSS fragment. Used on the
+     * selector-list head of a rule so a leading comment does not land
+     * between the scope prefix and the first element. */
+    private static String stripCssComments(String css) {
+        StringBuilder out = new StringBuilder(css.length());
+        int i = 0;
+        while (i < css.length()) {
+            if (i + 1 < css.length() && css.charAt(i) == '/' && css.charAt(i + 1) == '*') {
+                int end = css.indexOf("*/", i + 2);
+                if (end < 0) break; // unterminated — drop the rest
+                i = end + 2;
+                // Collapse a comment to a single space so "/*x*/h1" does
+                // not become "h1" (which would be a different selector if
+                // it had been ".x h1" before). A space between the
+                // (now removed) comment and the selector is harmless.
+                out.append(' ');
+            } else {
+                out.append(css.charAt(i));
+                i++;
+            }
+        }
+        return out.toString();
     }
 
     private static String prefixOne(String selector) {
         if (selector.isEmpty()) return selector;
+        // The scope class is doubled (.markdown-document-preview twice)
+        // so the rule's specificity matches a Vue scoped style like
+        // `.markdown-view[data-v-xxx] a` (one class + one attribute = 0,2,0).
+        // A single .markdown-document-preview would lose the cascade
+        // to MarkdownView's scoped styles and the theme would not apply
+        // to links, code backgrounds, etc. Doubling gives 0,2,0 too, and
+        // source order then decides — the theme <style> comes after the
+        // scoped styles in the DOM, so the theme wins ties.
+        String scope = SCOPE + SCOPE;
         // A leading combinator (>, +, ~) means "direct child / sibling
         // of the scope root" — the scope class goes on the left.
         if (selector.startsWith(">") || selector.startsWith("+") || selector.startsWith("~")) {
-            return SCOPE + " " + selector;
+            return scope + " " + selector;
         }
-        return SCOPE + " " + selector;
+        return scope + " " + selector;
     }
 }

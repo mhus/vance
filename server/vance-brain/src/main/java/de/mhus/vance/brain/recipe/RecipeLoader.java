@@ -56,7 +56,17 @@ public class RecipeLoader {
 
     /**
      * Resolve {@code name} in the project/_vance/classpath cascade.
-     * Returns empty if no tier carries the recipe.
+     * Returns empty if no tier carries the recipe, or if the one that
+     * does is not for {@code tenantId}.
+     *
+     * <p><b>This is where a recipe's {@code tenants:} is enforced, and
+     * that placement is the point.</b> Every use goes through here —
+     * {@code RecipeResolver}, all four spawn paths, the light-LLM
+     * service — so a recipe refused here cannot be reached at all.
+     * Filtering at a listing endpoint instead would make "not shown"
+     * mean something different from "not usable", and a
+     * {@code process_create(recipe: …)} from another tenant would walk
+     * straight past it.
      *
      * @throws RecipeParseException when the YAML at the matched layer
      *         is malformed, missing required fields, or carries a
@@ -75,7 +85,22 @@ public class RecipeLoader {
         }
         LookupResult result = hit.get();
         try {
-            return Optional.of(parse(canonicalName(name), result, templateRenderer));
+            ResolvedRecipe recipe = parse(canonicalName(name), result, templateRenderer);
+            if (!recipe.appliesTo(tenantId)) {
+                // Empty, not an exception, and deliberately indistinguishable
+                // from "no such recipe": a refusal with its own wording would
+                // tell a caller which recipes other tenants have.
+                //
+                // The cascade is NOT re-entered to look for an outer layer.
+                // The selector says "this one does not apply here", not "take
+                // another" — and a tenant with a recipe of its own under the
+                // same name already got that one, because the cascade starts
+                // with it.
+                log.debug("RecipeLoader: recipe '{}' is not for tenant '{}' (tenants={})",
+                        name, tenantId, recipe.tenants());
+                return Optional.empty();
+            }
+            return Optional.of(recipe);
         } catch (RuntimeException e) {
             throw new RecipeParseException(
                     "Failed to parse recipe '" + name + "' from "
@@ -118,7 +143,11 @@ public class RecipeLoader {
             String name = nameFromPath(path);
             if (name == null) continue;
             try {
-                out.add(parse(name, e.getValue(), templateRenderer));
+                ResolvedRecipe recipe = parse(name, e.getValue(), templateRenderer);
+                // Same gate as load(). Listing one that cannot be loaded would
+                // offer a name that answers "no such recipe" when used.
+                if (!recipe.appliesTo(tenantId)) continue;
+                out.add(recipe);
             } catch (RuntimeException ex) {
                 log.warn("RecipeLoader: skipping malformed recipe path='{}' source={}: {}",
                         path, e.getValue().source(), ex.getMessage());
@@ -218,6 +247,7 @@ public class RecipeLoader {
         boolean web = spec.get("web") instanceof Boolean wb && wb;
         String title = stringOrNull(spec.get("title"));
         List<String> tags = stringList(spec.get("tags"), "tags");
+        List<String> tenants = stringList(spec.get("tenants"), "tenants");
         List<GuardConfig> guards = parseGuards(spec.get("guard"));
 
         // Every field has been read by now, so the recorded key set is
@@ -233,7 +263,7 @@ public class RecipeLoader {
                 defaultActiveSkills, allowedSkills,
                 triggerKeywords,
                 locked, internal, listed, web, title, tags,
-                guards,
+                guards, tenants,
                 mapSource(hit.source()));
     }
 

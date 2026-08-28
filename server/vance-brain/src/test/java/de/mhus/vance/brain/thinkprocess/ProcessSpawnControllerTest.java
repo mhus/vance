@@ -65,7 +65,8 @@ class ProcessSpawnControllerTest {
                 null, PromptMode.APPEND, null,
                 List.of(), List.of(), List.of(), List.of(), List.of(),
                 Map.of(), Map.of(), List.of(), null, List.of(),
-                false, internal, false, web, null, List.of(), List.of(), RecipeSource.RESOURCE);
+                false, internal, false, web, null, List.of(), List.of(),
+                /*tenants*/ List.of(), RecipeSource.RESOURCE);
     }
 
     private static ProcessSpawnController.SpawnRequestDto body(String recipe, String session) {

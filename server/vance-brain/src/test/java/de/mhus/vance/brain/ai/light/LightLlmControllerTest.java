@@ -59,7 +59,7 @@ class LightLlmControllerTest {
                 List.of(), List.of(), List.of(), List.of(), List.of(),
                 Map.of(), Map.of(), List.of(), null, List.of(),
                 /*locked*/ false, /*internal*/ true, /*listed*/ false, /*web*/ web,
-                null, List.of(), List.of(), RecipeSource.RESOURCE);
+                null, List.of(), List.of(), /*tenants*/ List.of(), RecipeSource.RESOURCE);
     }
 
     private static LightLlmController.LightLlmCallRequestDto body(String recipe, String prompt) {

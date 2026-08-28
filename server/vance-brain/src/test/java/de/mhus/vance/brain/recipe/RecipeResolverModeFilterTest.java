@@ -393,7 +393,7 @@ class RecipeResolverModeFilterTest {
                                 /*dropFirst*/ List.of())),
                         null, Map.of(), null)),
                 List.of(), null, List.of(), false, false, false, false, null, List.of(),
-                List.of(), RecipeSource.RESOURCE);
+                List.of(), /*tenants*/ List.of(), RecipeSource.RESOURCE);
         when(loader.load(any(), any(), eq("arthur"))).thenReturn(Optional.of(r));
 
         RecipeResolver.ToolFilter f = resolver.toolFilterFor(
@@ -415,7 +415,7 @@ class RecipeResolverModeFilterTest {
                 baseKeep, baseDropFirst,
                 /*modes*/ Map.of(), profiles,
                 List.of(), null, List.of(), false, false, false, false, null, List.of(),
-                List.of(), RecipeSource.RESOURCE);
+                List.of(), /*tenants*/ List.of(), RecipeSource.RESOURCE);
     }
 
     private static ResolvedRecipe recipe(

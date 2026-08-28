@@ -148,6 +148,97 @@ class RecipeLoaderTest {
 
     // ── helpers ──────────────────────────────────────────────────
 
+    // ─── tenants: the load-time gate ────────────────────────────────
+
+    @Test
+    void load_withoutTenants_appliesEverywhere() {
+        stubRecipe("""
+                description: Analyse a topic
+                engine: eddie
+                """);
+
+        // The default that keeps every recipe written before the field alive.
+        assertThat(loader.load("acme", "p-1", "analyze")).isPresent();
+        assertThat(loader.load("_vance", "p-1", "analyze")).isPresent();
+    }
+
+    @Test
+    void load_forAnotherTenant_returnsEmptyRatherThanTheRecipe() {
+        stubRecipe("""
+                description: Funkwill
+                engine: trillian-user
+                tenants: [_vance]
+                """);
+
+        // Empty, not a refusal with its own wording: a caller must not be
+        // able to tell "exists but not for you" from "does not exist", or
+        // the endpoint becomes an oracle over other tenants' recipes.
+        assertThat(loader.load("acme", "p-1", "analyze")).isEmpty();
+    }
+
+    @Test
+    void load_forItsOwnTenant_isResolved() {
+        stubRecipe("""
+                description: Funkwill
+                engine: trillian-user
+                tenants: [_vance]
+                """);
+
+        ResolvedRecipe recipe = loader.load("_vance", "p-1", "analyze").orElseThrow();
+
+        assertThat(recipe.tenants()).containsExactly("_vance");
+    }
+
+    @Test
+    void load_tenantsMatchIgnoresCaseAndSurroundingSpace() {
+        // The configured side is hand-written YAML; the asked-for id comes
+        // from the system and is taken as it is.
+        stubRecipe("""
+                description: Funkwill
+                engine: trillian-user
+                tenants: [ "  _Vance  " ]
+                """);
+
+        assertThat(loader.load("_vance", "p-1", "analyze")).isPresent();
+    }
+
+    @Test
+    void load_severalTenants_anyOfThemPasses() {
+        stubRecipe("""
+                description: Funkwill
+                engine: trillian-user
+                tenants: [_vance, acme]
+                """);
+
+        assertThat(loader.load("acme", "p-1", "analyze")).isPresent();
+        assertThat(loader.load("other", "p-1", "analyze")).isEmpty();
+    }
+
+    @Test
+    void appliesTo_emptyTenantsIsEveryone_evenWithoutATenantId() {
+        stubRecipe("""
+                description: Analyse a topic
+                engine: eddie
+                """);
+        ResolvedRecipe open = loader.load("acme", "p-1", "analyze").orElseThrow();
+
+        assertThat(open.appliesTo(null)).isTrue();
+    }
+
+    @Test
+    void appliesTo_restrictedRecipeRefusesAnAbsentTenant() {
+        stubRecipe("""
+                description: Funkwill
+                engine: trillian-user
+                tenants: [_vance]
+                """);
+        ResolvedRecipe restricted = loader.load("_vance", "p-1", "analyze").orElseThrow();
+
+        // "I do not know which tenant" is not a reason to hand out a recipe
+        // that named one.
+        assertThat(restricted.appliesTo(null)).isFalse();
+    }
+
     private void stubRecipe(String yaml) {
         LookupResult hit = new LookupResult(
                 RecipeLoader.RECIPE_PATH_PREFIX + "analyze" + RecipeLoader.RECIPE_PATH_SUFFIX,

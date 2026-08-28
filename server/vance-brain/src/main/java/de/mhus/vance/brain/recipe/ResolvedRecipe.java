@@ -136,12 +136,48 @@ public record ResolvedRecipe(
          * {@code planning/completion-guard.md}.
          */
         List<GuardConfig> guards,
+        /**
+         * Which tenants this recipe is for. Empty means every tenant —
+         * which is what every recipe written before this field existed
+         * says, and the only default that keeps them alive.
+         *
+         * <p>Exists because a bundled recipe lives on the classpath, and
+         * the classpath layer of the lookup cascade is tenant-agnostic:
+         * whatever an addon ships is found by <em>every</em> tenant. For a
+         * recipe that starts an agent with credentials of its own, that is
+         * the wrong reach.
+         *
+         * <p><b>Enforced in {@code RecipeLoader.load}, not at a display
+         * site</b> — see there for why that distinction is the whole
+         * point.
+         */
+        List<String> tenants,
         RecipeSource source) {
+
+    /**
+     * Whether this recipe may be used by {@code tenantId}.
+     *
+     * <p>Case- and whitespace-tolerant on the configured side, because the
+     * value is hand-written YAML; the asked-for id comes from the system
+     * and is taken as it is.
+     */
+    public boolean appliesTo(@Nullable String tenantId) {
+        if (tenants == null || tenants.isEmpty()) return true;
+        if (tenantId == null) return false;
+        for (String allowed : tenants) {
+            if (allowed != null && allowed.trim().equalsIgnoreCase(tenantId)) return true;
+        }
+        return false;
+    }
 
     /**
      * Backward-compatible constructor for call sites that predate the
      * tool-surface budget — no {@code allowedToolsKeep} /
      * {@code allowedToolsDropFirst}.
+     *
+     * <p>Also predates {@code tenants}, and passes the empty list: a call
+     * site that does not know about the field means a recipe without one,
+     * and that is "every tenant".
      */
     public ResolvedRecipe(
             String name,
@@ -171,6 +207,6 @@ public record ResolvedRecipe(
                 allowedToolsDefer, List.of(), List.of(), modes, profiles,
                 defaultActiveSkills, allowedSkills,
                 triggerKeywords, locked, internal, listed, false, title, tags,
-                guards, source);
+                guards, List.of(), source);
     }
 }

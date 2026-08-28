@@ -182,13 +182,23 @@ public class ReportFromMarkdownTool implements Tool {
             }
         }
 
+        // Pull theme:/css: out of the front matter and strip the fence
+        // from the body — commonmark would otherwise render it as a
+        // setext H2. The keys feed the PDF theme resolver; DOCX/ODT
+        // ignore them (no CSS path). Inline `markdown` (no documentRef)
+        // may still carry a front-matter block, so we parse in both
+        // branches.
+        ReportFrontMatter fm = ReportFrontMatter.parse(source);
+        source = fm.body();
+
         emit(process, StatusTag.INFO,
                 "Rendering " + format.toUpperCase(Locale.ROOT)
                         + " report ("
                         + (source.length() / 1024) + " KB markdown)…");
 
         MarkdownReportContext rctx = new MarkdownReportContext(
-                source, title, null, ctx.tenantId(), projectName);
+                source, title, null, ctx.tenantId(), projectName,
+                fm.theme(), fm.css());
 
         MarkdownReportService.RenderedReport rendered;
         long started = System.currentTimeMillis();

@@ -1,0 +1,25 @@
+/* acme — example report theme: rounded code blocks + warm accent.
+ *
+ * Load order: this file loads AFTER the default theme, so any rule
+ * here wins the CSS cascade against the default. Openhtmltopdf is an
+ * XHTML renderer, not a browser — keep these rules in the subset it
+ * supports and AVOID angle brackets in CSS comments (they break the
+ * XML parser). Plain text only inside slash-star blocks.
+ */
+
+/* Rounded corners on code blocks — openhtmltopdf supports border-radius. */
+pre {
+    border: 1px solid #c9a227;
+    border-radius: 8px;
+    background: #fffaf0;
+}
+
+/* Warm accent for headings. */
+h1, h2, h3 {
+    color: #8a6d1a;
+}
+
+/* Subtle warm link color. */
+a {
+    color: #a06a1a;
+}

@@ -29,6 +29,9 @@ import de.mhus.vance.api.documents.DocumentSummary;
 import de.mhus.vance.api.documents.DocumentSummaryRequest;
 import de.mhus.vance.api.documents.DocumentUpdateRequest;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.tools.report.MarkdownReportContext;
+import de.mhus.vance.brain.tools.report.MarkdownReportService;
+import de.mhus.vance.brain.tools.report.ReportFrontMatter;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentArchiveDocument;
 import de.mhus.vance.shared.document.DocumentDocument;
@@ -98,6 +101,7 @@ public class DocumentController {
 
     private final DocumentService documentService;
     private final RequestAuthority authority;
+    private final MarkdownReportService markdownReportService;
 
     @GetMapping("/brain/{tenant}/documents")
     public DocumentListResponse list(
@@ -538,6 +542,21 @@ public class DocumentController {
         return "\"" + version + "\"";
     }
 
+    /**
+     * Replace the last path extension with {@code newExtension} (without
+     * the leading dot). A path without an extension gets {@code .newExtension}
+     * appended. Used by the PDF export to derive the target path from the
+     * source ({@code notes/analysis.md} → {@code notes/analysis.pdf}).
+     */
+    private static String withExtension(String path, String newExtension) {
+        int slash = path.lastIndexOf('/');
+        int dot = path.lastIndexOf('.');
+        if (dot > slash) {
+            return path.substring(0, dot) + '.' + newExtension;
+        }
+        return path + '.' + newExtension;
+    }
+
     private static boolean etagsMatch(String ifNoneMatch, String etag) {
         String header = ifNoneMatch.trim();
         if ("*".equals(header)) return true;
@@ -633,6 +652,113 @@ public class DocumentController {
         ResponseEntity.BodyBuilder ok = ResponseEntity.ok();
         if (!DocumentService.isMounted(updated.getPath())) ok.eTag(contentEtag(updated));
         return ok.body(toDto(updated));
+    }
+
+    /**
+     * Export a text document as PDF — same render pipeline as the
+     * {@code report_from_markdown} agent tool ({@link MarkdownReportService}),
+     * exposed here for the Cortex "File → Export PDF" menu entry.
+     *
+     * <p>The source document's content is fed to the commonmark-java →
+     * openhtmltopdf renderer. Non-Markdown text (YAML, JSON, …) is accepted:
+     * commonmark renders it as plain paragraphs, so the PDF is readable but
+     * not syntax-highlighted. Binary sources (images, existing PDFs, office
+     * binaries) are refused with 400 — the renderer is text-only.
+     *
+     * <p>The result is written to a sibling document whose path is the source
+     * path with its extension replaced by {@code .pdf} (e.g.
+     * {@code notes/analysis.md} → {@code notes/analysis.pdf}). When that target
+     * already exists its content is overwritten in place — document
+     * versioning preserves prior versions, by design outside this endpoint's
+     * scope. The created/replaced document is returned so the client can
+     * open it directly.
+     */
+    @PostMapping("/brain/{tenant}/documents/{id}/export-pdf")
+    public ResponseEntity<DocumentDto> exportPdf(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
+            HttpServletRequest httpRequest) throws IOException {
+
+        DocumentDocument source = documentService.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (!tenant.equals(source.getTenantId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        // READ on the source — we are reading its body to render it.
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, source.getProjectId(), source.getPath()),
+                Action.READ);
+
+        if (!DocumentService.isTextual(source.getMimeType())
+                || DocumentService.isMounted(source.getPath())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Only text documents can be exported as PDF.");
+        }
+
+        String rawMarkdown = documentService.readContent(source);
+        if (rawMarkdown == null) {
+            try (java.io.InputStream in = documentService.loadContent(source)) {
+                rawMarkdown = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            }
+        }
+
+        // Strip theme:/css: front matter from the body so commonmark does
+        // not render the fence as a setext H2, and hand the keys to the
+        // PDF theme resolver. Non-markdown text (YAML/JSON) has no Vance
+        // front matter, so ReportFrontMatter returns it untouched.
+        de.mhus.vance.brain.tools.report.ReportFrontMatter fm =
+                ReportFrontMatter.parse(rawMarkdown);
+        String markdown = fm.body();
+
+        MarkdownReportContext rctx = new MarkdownReportContext(
+                markdown, source.getTitle(), null, tenant, source.getProjectId(),
+                fm.theme(), fm.css());
+        MarkdownReportService.RenderedReport rendered;
+        try {
+            rendered = markdownReportService.render("pdf", rctx);
+        } catch (de.mhus.vance.toolpack.ToolException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "PDF rendering failed: " + e.getMessage(), e);
+        }
+
+        String targetPath = withExtension(source.getPath(), "pdf");
+        String username = (String) httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
+
+        java.util.Optional<DocumentDocument> existing =
+                documentService.findByPath(tenant, source.getProjectId(), targetPath);
+        DocumentDocument result;
+        if (existing.isPresent()) {
+            try (java.io.InputStream in =
+                         new java.io.ByteArrayInputStream(rendered.bytes())) {
+                result = documentService.replaceContent(
+                        existing.get().getId(),
+                        in,
+                        rendered.mimeType(),
+                        writerIdentity(httpRequest, editorId),
+                        actor(httpRequest));
+            }
+        } else {
+            try (java.io.InputStream in =
+                         new java.io.ByteArrayInputStream(rendered.bytes())) {
+                result = documentService.create(
+                        tenant,
+                        source.getProjectId(),
+                        targetPath,
+                        source.getTitle(),
+                        java.util.List.of("report", "pdf"),
+                        rendered.mimeType(),
+                        in,
+                        username,
+                        actor(httpRequest));
+            } catch (DocumentService.DocumentAlreadyExistsException e) {
+                // Race: another export created the sibling PDF between our
+                // findByPath and create. Surface as 409 so the client can
+                // retry — the retry then takes the replaceContent branch.
+                throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
+            }
+        }
+        return ResponseEntity.ok(toDto(result));
     }
 
     @PutMapping("/brain/{tenant}/documents/{id}")

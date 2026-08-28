@@ -8,7 +8,16 @@ import org.jspecify.annotations.Nullable;
  * surface in headers / cover-pages and the scope info that vance:-
  * link resolution needs.
  *
- * @param markdown      report source, CommonMark + GFM-tables
+ * @param markdown      report source, CommonMark + GFM-tables. The
+ *                      caller is expected to have stripped any
+ *                      front matter before passing it here — the
+ *                      PDF renderer feeds this string verbatim to
+ *                      commonmark, and a surviving
+ *                      {@code ---\ntheme: …\n---} block would render
+ *                      as a setext H2. {@link ReportThemeResolver}
+ *                      is the one place front matter is parsed, and
+ *                      it consumes {@code theme:}/{@code css:} from
+ *                      the original source before this record is built.
  * @param title         display title (used in PDF metadata, DOCX
  *                      core properties, header). Falls back to the
  *                      first H1 in {@code markdown} or to a default
@@ -19,11 +28,38 @@ import org.jspecify.annotations.Nullable;
  *                      resolution against the project scope
  * @param projectName   caller's active project name (the
  *                      {@link de.mhus.vance.shared.project.ProjectDocument#getName()})
+ * @param theme         optional report-theme name (matches
+ *                      {@code _vance/report-themes/<name>.css} via the
+ *                      document cascade). PDF-only; DOCX/ODT renderers
+ *                      ignore it. Null/blank = default theme.
+ * @param css           optional {@code vance:} document reference (or
+ *                      bare path) to an additional CSS stylesheet in
+ *                      the caller's project. PDF-only; DOCX/ODT
+ *                      renderers ignore it. Null/blank = no css layer.
+ *                      Loaded after {@code theme} so its rules win
+ *                      the CSS cascade.
  */
 public record MarkdownReportContext(
         String markdown,
         @Nullable String title,
         @Nullable String author,
         String tenantId,
-        String projectName) {
+        String projectName,
+        @Nullable String theme,
+        @Nullable String css) {
+
+    /**
+     * Convenience constructor for callers that don't use the
+     * {@code theme}/{@code css} front-matter fields — keeps the
+     * original five-argument call sites working. Equivalent to
+     * passing {@code null} for both.
+     */
+    public MarkdownReportContext(
+            String markdown,
+            @Nullable String title,
+            @Nullable String author,
+            String tenantId,
+            String projectName) {
+        this(markdown, title, author, tenantId, projectName, null, null);
+    }
 }

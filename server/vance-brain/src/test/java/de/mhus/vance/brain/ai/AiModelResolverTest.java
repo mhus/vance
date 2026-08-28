@@ -8,6 +8,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.shared.settings.SettingService;
+import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -26,13 +28,15 @@ class AiModelResolverTest {
 
     private AiModelService aiModelService;
     private SettingService settingService;
+    private ModelCatalog modelCatalog;
     private AiModelResolver resolver;
 
     @BeforeEach
     void setUp() {
         aiModelService = mock(AiModelService.class);
         settingService = mock(SettingService.class);
-        resolver = new AiModelResolver(aiModelService, settingService);
+        modelCatalog = mock(ModelCatalog.class);
+        resolver = new AiModelResolver(aiModelService, settingService, modelCatalog);
 
         // Set up known providers — the resolver short-circuits on these.
         when(aiModelService.hasProvider("anthropic")).thenReturn(true);
@@ -241,6 +245,75 @@ class AiModelResolverTest {
         assertThat(r.provider()).isEqualTo("openai");
         assertThat(r.providerInstance()).isEqualTo("deepseek-direct");
         assertThat(r.modelName()).isEqualTo("deepseek-v4-flash");
+    }
+
+    // ──── Instance declared by the provider sidecar (_provider.yaml) ─────
+
+    @Test
+    void resolve_namedInstance_resolvesViaProviderSidecarWireType() {
+        // No `ai.provider.cortecs.type` setting anywhere — the protocol is
+        // declared once by the catalog, which is the fact an operator
+        // already stated when adding the model directory.
+        when(modelCatalog.lookupProvider("acme", "proj", "cortecs"))
+                .thenReturn(Optional.of(Map.of("wireType", "openai")));
+
+        AiModelResolver.Resolved r = resolver.resolve(
+                "cortecs:llama-3.3-70b", "acme", "proj", null);
+
+        assertThat(r.provider()).isEqualTo("openai");
+        assertThat(r.providerInstance()).isEqualTo("cortecs");
+        assertThat(r.modelName()).isEqualTo("llama-3.3-70b");
+    }
+
+    @Test
+    void resolve_instanceTypeSetting_winsOverProviderSidecar() {
+        // The setting is the per-tenant override; the sidecar is the shipped
+        // default. A tenant that repoints an instance must not be silently
+        // pulled back by a document.
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.provider.cortecs.type")))
+                .thenReturn("openai-experimental");
+        when(aiModelService.hasProvider("openai-experimental")).thenReturn(true);
+        when(modelCatalog.lookupProvider(any(), any(), eq("cortecs")))
+                .thenReturn(Optional.of(Map.of("wireType", "openai")));
+
+        AiModelResolver.Resolved r = resolver.resolve(
+                "cortecs:llama-3.3-70b", "acme", "proj", null);
+
+        assertThat(r.provider()).isEqualTo("openai-experimental");
+        assertThat(r.providerInstance()).isEqualTo("cortecs");
+    }
+
+    @Test
+    void resolve_providerSidecarWithUnknownWireType_throwsNamingTheDocument() {
+        // Falling through to the alias branch would report "alias not
+        // configured" and name neither the bad value nor the file it is in.
+        when(modelCatalog.lookupProvider(any(), any(), eq("cortecs")))
+                .thenReturn(Optional.of(Map.of("wireType", "not-a-real-provider")));
+
+        assertThatThrownBy(() -> resolver.resolve(
+                "cortecs:llama-3.3-70b", "acme", null, null))
+                .isInstanceOf(AiModelResolver.UnknownModelException.class)
+                .hasMessageContaining("not-a-real-provider")
+                .hasMessageContaining("_vance/model/cortecs/_provider.yaml");
+    }
+
+    @Test
+    void resolve_providerSidecarWithoutWireType_fallsThroughToAlias() {
+        // A sidecar may exist only to state an endpoint fact such as
+        // maxTools. That must not turn the prefix into a provider instance,
+        // and must not become a resolution error either.
+        when(modelCatalog.lookupProvider(any(), any(), eq("cheap")))
+                .thenReturn(Optional.of(Map.of("maxTools", 128)));
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.cheap.lookup")))
+                .thenReturn("gemini:gemini-2.5-flash");
+
+        AiModelResolver.Resolved r = resolver.resolve("cheap:lookup", "acme", null, null);
+
+        assertThat(r.provider()).isEqualTo("gemini");
+        assertThat(r.providerInstance()).isEqualTo("gemini");
+        assertThat(r.modelName()).isEqualTo("gemini-2.5-flash");
     }
 
     @Test

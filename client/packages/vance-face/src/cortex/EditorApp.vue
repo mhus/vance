@@ -30,7 +30,7 @@ import {
   ShareModal,
 } from '@/components';
 import { brainFetch } from '@vance/shared';
-import type { SessionSummaryRichDto, ShareSubjectDto } from '@vance/generated';
+import type { DocumentDto, SessionSummaryRichDto, ShareSubjectDto } from '@vance/generated';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import DocumentPresenceStrip from '@/ws/DocumentPresenceStrip.vue';
 import { brainFetchText } from '@vance/shared';
@@ -46,7 +46,7 @@ import VanceFormView from '@/components/VanceFormView.vue';
 import ComposeOutput from '@/cortex/components/ComposeOutput.vue';
 import { useDocumentRefStore } from '@/kindViews/documentRefStore';
 import { useStarredStore } from '@/starred/starredStore';
-import { isBinaryMime } from './stores/cortexStore';
+import { isBinaryDoc, isBinaryMime } from './stores/cortexStore';
 import { useCortexStore } from './stores/cortexStore';
 import {
   readCortexView,
@@ -339,6 +339,8 @@ const { projects: tenantProjects, reload: loadTenantProjects } = useTenantProjec
 const bootError = ref<string | null>(null);
 const saving = ref(false);
 const saveError = ref<string | null>(null);
+const exportingPdf = ref(false);
+const exportPdfError = ref<string | null>(null);
 
 const showCreate = ref(false);
 const createPrefill = ref<{ path: string } | null>(null);
@@ -1037,6 +1039,12 @@ const chatBoundDocumentPath = computed<string | null>(() => {
 
 const hasDirtyTabs = computed<boolean>(() => store.openTabs.some((t) => t.dirty));
 
+/** Whether the File → Export PDF entry is actionable. Requires an active
+ *  text document — binary files (images, existing PDFs, office binaries)
+ *  have no text body to feed the renderer. */
+const canExportPdf = computed<boolean>(() =>
+  activeTab.value !== null && !isBinaryDoc(activeTab.value));
+
 const isActiveTabBound = computed<boolean>(() =>
   activeTab.value !== null && chatBoundDocumentId.value === activeTab.value.id,
 );
@@ -1301,6 +1309,41 @@ async function onSaveAll(): Promise<void> {
     saveError.value = e instanceof Error ? e.message : 'Save failed';
   } finally {
     saving.value = false;
+  }
+}
+
+/**
+ * Export the active text document as PDF via the same render pipeline
+ * the {@code report_from_markdown} agent tool uses (commonmark-java →
+ * openhtmltopdf). The server writes the PDF to a sibling path (extension
+ * swapped to {@code .pdf}), creating or overwriting it, and returns the
+ * resulting {@link DocumentDto}. We refresh the file tree and open the
+ * PDF tab — reloading first if it was already open from a prior export.
+ *
+ * <p>Binary documents (images, existing PDFs, office binaries) are
+ * refused: the menu item is disabled for them, and the handler guards
+ * again as defense in depth.
+ */
+async function onExportPdf(): Promise<void> {
+  const tab = activeTab.value;
+  if (!tab || !projectId.value) return;
+  if (isBinaryDoc(tab)) return;
+  exportingPdf.value = true;
+  exportPdfError.value = null;
+  try {
+    const dto = await brainFetch<DocumentDto>(
+      'POST',
+      `documents/${encodeURIComponent(tab.id)}/export-pdf`,
+    );
+    await store.loadList(projectId.value);
+    // reloadTab is a no-op when the tab isn't open yet; openFile then
+    // either focuses the existing (now-refreshed) tab or opens a fresh one.
+    await store.reloadTab(dto.id);
+    await store.openFile(dto.id);
+  } catch (e) {
+    exportPdfError.value = e instanceof Error ? e.message : 'PDF export failed';
+  } finally {
+    exportingPdf.value = false;
   }
 }
 
@@ -1729,6 +1772,12 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
                 <span class="flex-1">Save all</span>
               </a>
             </li>
+            <li :class="{ disabled: !canExportPdf || exportingPdf }">
+              <a @click="closeMenus(); onExportPdf()">
+                <span class="flex-1">Export PDF…</span>
+                <span v-if="exportingPdf" class="loading loading-spinner loading-xs" />
+              </a>
+            </li>
             <li><div class="divider my-0" /></li>
             <li :class="{ disabled: !activeTab }">
               <a @click="closeMenus(); onCloseActiveTab()">
@@ -1848,6 +1897,7 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
       />
 
       <VAlert v-if="saveError" variant="error" class="m-2">{{ saveError }}</VAlert>
+      <VAlert v-if="exportPdfError" variant="error" class="m-2">{{ exportPdfError }}</VAlert>
 
       <div v-if="!activeTab" class="flex-1 flex items-center justify-center">
         <VEmptyState

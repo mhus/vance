@@ -2,7 +2,10 @@ package de.mhus.vance.brain.tools.report;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.Mockito.mock;
 
+import de.mhus.vance.shared.document.DocumentRefResolver;
+import de.mhus.vance.shared.document.DocumentService;
 import java.io.ByteArrayInputStream;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
@@ -14,7 +17,11 @@ import org.junit.jupiter.api.Test;
  * Smoke tests for {@link PdfReportRenderer}: render a small
  * markdown document and verify the bytes are a valid PDF whose
  * text-layer round-trips the input. No Spring context needed —
- * the renderer is constructible standalone.
+ * the renderer is constructible with a {@link ReportThemeResolver}
+ * that reads the bundled default theme from the test classpath
+ * (see {@link ReportThemeResolverTestFactory}); the cascade and
+ * css-ref layers back onto mocks and stay untouched by the
+ * theme-less fixtures below.
  */
 class PdfReportRendererTest {
 
@@ -37,6 +44,12 @@ class PdfReportRendererTest {
             ```
             """;
 
+    private static PdfReportRenderer newRenderer() {
+        return new PdfReportRenderer(ReportThemeResolverTestFactory.withDefaultClasspath(
+                mock(DocumentService.class),
+                mock(DocumentRefResolver.class)));
+    }
+
     @Test
     void resolveResourceUri_blocksFileAndPrivate_allowsDataAndPublic() {
         // Security regression (code-review-2 S2): untrusted ![alt](url) images
@@ -56,12 +69,12 @@ class PdfReportRendererTest {
     void render_withFileImage_skipsIt_andStillProducesPdf() {
         MarkdownReportContext ctx = new MarkdownReportContext(
                 "![x](file:///etc/passwd)\n\nBody text.", "Title", null, "acme", "proj");
-        assertThatCode(() -> new PdfReportRenderer().render(ctx)).doesNotThrowAnyException();
+        assertThatCode(() -> newRenderer().render(ctx)).doesNotThrowAnyException();
     }
 
     @Test
     void render_producesValidPdfBytes() throws Exception {
-        PdfReportRenderer r = new PdfReportRenderer();
+        PdfReportRenderer r = newRenderer();
         MarkdownReportContext ctx = new MarkdownReportContext(
                 SAMPLE_MD, "Test Report", "Tester", "tenant", "project");
 
@@ -74,7 +87,7 @@ class PdfReportRendererTest {
 
     @Test
     void render_textLayerContainsExpectedStrings() throws Exception {
-        PdfReportRenderer r = new PdfReportRenderer();
+        PdfReportRenderer r = newRenderer();
         MarkdownReportContext ctx = new MarkdownReportContext(
                 SAMPLE_MD, "Test Report", null, "tenant", "project");
 
@@ -95,7 +108,7 @@ class PdfReportRendererTest {
 
     @Test
     void render_emptyMarkdownStillProducesValidPdf() {
-        PdfReportRenderer r = new PdfReportRenderer();
+        PdfReportRenderer r = newRenderer();
         MarkdownReportContext ctx = new MarkdownReportContext(
                 "", null, null, "tenant", "project");
 
@@ -106,7 +119,8 @@ class PdfReportRendererTest {
 
     @Test
     void buildHtmlDocument_escapesTitle() {
-        String html = PdfReportRenderer.buildHtmlDocument(
+        PdfReportRenderer r = newRenderer();
+        String html = r.buildHtmlDocument(
                 new MarkdownReportContext("body", "Tom & <Jerry>", null, "t", "p"),
                 "<p>body</p>");
         assertThat(html).contains("Tom &amp; &lt;Jerry&gt;");
@@ -115,7 +129,7 @@ class PdfReportRendererTest {
 
     @Test
     void format_andMimeType_areCorrect() {
-        PdfReportRenderer r = new PdfReportRenderer();
+        PdfReportRenderer r = newRenderer();
         assertThat(r.format()).isEqualTo("pdf");
         assertThat(r.mimeType()).isEqualTo("application/pdf");
         assertThat(r.fileExtension()).isEqualTo("pdf");

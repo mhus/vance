@@ -12,6 +12,7 @@ import de.mhus.vance.api.documents.DocumentCopyChunkRequest;
 import de.mhus.vance.api.documents.DocumentCopyChunkResponse;
 import de.mhus.vance.api.documents.WriterRole;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.tools.report.MarkdownReportService;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -48,6 +49,7 @@ class DocumentControllerCopyChunkTest {
 
     @Mock private DocumentService documentService;
     @Mock private RequestAuthority authority;
+    @Mock private MarkdownReportService markdownReportService;
     @Mock private HttpServletRequest httpRequest;
 
     private DocumentController controller;
@@ -59,7 +61,7 @@ class DocumentControllerCopyChunkTest {
 
     @BeforeEach
     void setUp() {
-        controller = new DocumentController(documentService, authority);
+        controller = new DocumentController(documentService, authority, markdownReportService);
         // Simulate an authenticated request — writerIdentity() and actor()
         // both call authority.contextOf(request).
         when(httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME))

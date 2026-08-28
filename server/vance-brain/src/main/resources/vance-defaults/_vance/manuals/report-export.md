@@ -121,8 +121,80 @@ report_from_markdown(format="pdf", title="Sales Q3", markdown="""
 - Subtle code blocks with light grey background
 - Tables with grid borders and header shading
 
-Templates (Thesis / Letter / Compact) are planned for a later
-iteration; for now there's one well-tuned default.
+The default theme lives at
+`_vance/report-themes/default.css` (bundled, overridable via the
+document cascade). It is always loaded first; a `theme:` or `css:`
+front-matter key adds layers on top — see Report Themes below.
+
+## Report Themes (PDF only)
+
+A markdown report can carry two optional front-matter keys that
+select additional stylesheets — **PDF only**, DOCX/ODT ignore them
+(they render via a programmatic AST visitor, no CSS path). See the
+[`report-themes` manual](report-themes.md) for the operator guide
+(how to author and place a theme) and the
+[report-themes spec](../../../../../../../../../../specification/public/report-themes.md)
+for the architecture contract. Summary below.
+
+```markdown
+---
+theme: acme
+---
+# My Report
+```
+
+```markdown
+---
+css: vance:/styles/round-borders.css
+---
+# My Report
+```
+
+Both keys may appear together. Load order (last rule wins the CSS
+cascade):
+
+1. `default.css` — always.
+2. `_vance/report-themes/<theme>.css` — when `theme:` is set. Resolved
+   through the document cascade (project → `_vance` → classpath).
+3. The document referenced by `css:` — when set. A `vance:` document ref
+   or a bare path, resolved via `DocumentRefResolver` against the
+   project root; cross-project via `//authority/`.
+
+### `theme:` — named stylesheet
+
+- Name matches `[a-z0-9-]+` (no slashes, no dots — no path traversal).
+- File lives at `_vance/report-themes/<name>.css`.
+- Cascade: project overrides `_vance` overrides bundled. A missing theme
+  logs a warning and falls back to the default (render never aborts).
+
+### `css:` — per-document override
+
+- A `vance:` document reference (`vance:/styles/round.css`) or a bare
+  path (`styles/round.css`) pointing at a CSS document in the caller's
+  project (or, with `//authority/`, another project).
+- Loads AFTER the theme, so a per-document override beats a per-project
+  theme beats the bundled default.
+- A missing/unresolvable reference logs a warning and falls back.
+
+### Theme authoring — the one trap
+
+openhtmltopdf parses the HTML document as **XHTML**, including the
+`<style>` block. **Do not put angle brackets in CSS comments** —
+`/* <name> must … */` breaks the XML parser with a cryptic
+"element type name must be terminated" error. Use plain prose in
+comments. The bundled `default.css` is the canonical example.
+
+### Front matter is stripped from the body
+
+The renderer strips the `---`-fenced front matter before feeding the
+body to commonmark — without this, `theme: acme` would render as a
+setext H2 ("theme: acme" as heading text) in the PDF. The `$meta:`
+block Vance documents use is stripped by the same pass.
+
+### Bundled examples
+
+- `default.css` — the base theme (always loaded).
+- `acme.css` — example override: rounded code blocks + warm accent.
 
 ## Anti-patterns
 
@@ -167,3 +239,8 @@ iteration; for now there's one well-tuned default.
 - Bibliography / citation handling (BibTeX → CSL).
 - Web-office editor embedding (ONLYOFFICE / Collabora) for direct
   in-Vance editing.
+- **Web-UI theme preview** — `MarkdownView.vue` strips `<style>` via
+  DOMPurify (intentional: untrusted chat/web-fetch content). A live
+  theme preview needs a controlled CSS injection point separate from
+  the sanitizer, not a sanitizer relaxation. Planned as a separate
+  phase. PDF themes work today; the web preview is a future iteration.

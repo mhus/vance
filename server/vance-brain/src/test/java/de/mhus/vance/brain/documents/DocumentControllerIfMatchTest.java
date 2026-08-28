@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.tools.report.MarkdownReportService;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -49,13 +50,14 @@ class DocumentControllerIfMatchTest {
 
     @Mock private DocumentService documentService;
     @Mock private RequestAuthority authority;
+    @Mock private MarkdownReportService markdownReportService;
     @Mock private HttpServletRequest httpRequest;
 
     private DocumentController controller;
 
     @BeforeEach
     void setUp() throws IOException {
-        controller = new DocumentController(documentService, authority);
+        controller = new DocumentController(documentService, authority, markdownReportService);
         when(httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME)).thenReturn("alice");
         when(authority.contextOf(httpRequest))
                 .thenReturn(SecurityContext.user("alice", TENANT, List.of()));

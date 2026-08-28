@@ -3961,7 +3961,7 @@ public class DocumentService {
         return "text/markdown".equals(mt) || "text/plain".equals(mt);
     }
 
-    private static boolean isTextual(@Nullable String mimeType) {
+    public static boolean isTextual(@Nullable String mimeType) {
         if (mimeType == null) return false;
         String mt = mimeType.toLowerCase().trim();
         // Strip any "; charset=…" suffix browsers / clients sometimes

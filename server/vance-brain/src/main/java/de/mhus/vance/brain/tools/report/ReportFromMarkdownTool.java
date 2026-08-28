@@ -196,9 +196,15 @@ public class ReportFromMarkdownTool implements Tool {
                         + " report ("
                         + (source.length() / 1024) + " KB markdown)…");
 
+        // The subject travels with the context because `css:` may name a
+        // document in another project — the theme resolver checks READ on
+        // whatever the reference lands on, and cannot do that without a
+        // caller. A headless worker yields SYSTEM, which is the same reach
+        // it has everywhere else.
         MarkdownReportContext rctx = new MarkdownReportContext(
                 source, title, null, ctx.tenantId(), projectName,
-                fm.theme(), fm.css());
+                fm.theme(), fm.css(),
+                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
 
         MarkdownReportService.RenderedReport rendered;
         long started = System.currentTimeMillis();

@@ -673,6 +673,12 @@ public class DocumentController {
      * versioning preserves prior versions, by design outside this endpoint's
      * scope. The created/replaced document is returned so the client can
      * open it directly.
+     *
+     * <p><b>Two checks, not one:</b> READ on the source because its body is
+     * read, and CREATE/WRITE on the target because a document is written.
+     * Only the first is obvious from the endpoint's name, which is why the
+     * second is the one that goes missing — a reader would otherwise be able
+     * to drop a PDF into, or over, somebody else's file.
      */
     @PostMapping("/brain/{tenant}/documents/{id}/export-pdf")
     public ResponseEntity<DocumentDto> exportPdf(
@@ -697,6 +703,19 @@ public class DocumentController {
                     "Only text documents can be exported as PDF.");
         }
 
+        // The export writes a document, so the write is authorised before
+        // anything is rendered — READ on the source says what may be looked
+        // at, never what may be produced from it. WRITE when the sibling PDF
+        // is already there (its content is replaced), CREATE when it is not;
+        // the same split the copy path uses. Checked up front rather than at
+        // the write itself so a reader is refused before the renderer runs.
+        String targetPath = withExtension(source.getPath(), "pdf");
+        java.util.Optional<DocumentDocument> existing =
+                documentService.findByPath(tenant, source.getProjectId(), targetPath);
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, source.getProjectId(), targetPath),
+                existing.isPresent() ? Action.WRITE : Action.CREATE);
+
         String rawMarkdown = documentService.readContent(source);
         if (rawMarkdown == null) {
             try (java.io.InputStream in = documentService.loadContent(source)) {
@@ -714,7 +733,7 @@ public class DocumentController {
 
         MarkdownReportContext rctx = new MarkdownReportContext(
                 markdown, source.getTitle(), null, tenant, source.getProjectId(),
-                fm.theme(), fm.css());
+                fm.theme(), fm.css(), authority.contextOf(httpRequest));
         MarkdownReportService.RenderedReport rendered;
         try {
             rendered = markdownReportService.render("pdf", rctx);
@@ -723,11 +742,8 @@ public class DocumentController {
                     "PDF rendering failed: " + e.getMessage(), e);
         }
 
-        String targetPath = withExtension(source.getPath(), "pdf");
         String username = (String) httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
 
-        java.util.Optional<DocumentDocument> existing =
-                documentService.findByPath(tenant, source.getProjectId(), targetPath);
         DocumentDocument result;
         if (existing.isPresent()) {
             try (java.io.InputStream in =
@@ -801,7 +817,7 @@ public class DocumentController {
         if (!"text/markdown".equalsIgnoreCase(source.getMimeType())) {
             return ResponseEntity.ok()
                     .contentType(MediaType.valueOf("text/css;charset=utf-8"))
-                    .cacheControl(CacheControl.maxAge(java.time.Duration.ofSeconds(60)).cachePublic())
+                    .cacheControl(CacheControl.maxAge(java.time.Duration.ofSeconds(60)).cachePrivate())
                     .body("");
         }
 
@@ -823,13 +839,14 @@ public class DocumentController {
                 de.mhus.vance.brain.tools.report.ReportFrontMatter.parse(rawMarkdown);
 
         String assembled = reportThemeResolver.resolveStylesheet(
-                tenant, source.getProjectId(), fm.theme(), fm.css());
+                tenant, source.getProjectId(), fm.theme(), fm.css(),
+                authority.contextOf(httpRequest));
         String filtered = de.mhus.vance.brain.tools.report.CssSanitizer.sanitize(assembled);
         String scoped = de.mhus.vance.brain.tools.report.CssScopePrefixer.scope(filtered);
 
         return ResponseEntity.ok()
                 .contentType(MediaType.valueOf("text/css;charset=utf-8"))
-                .cacheControl(CacheControl.maxAge(java.time.Duration.ofSeconds(60)).cachePublic())
+                .cacheControl(CacheControl.maxAge(java.time.Duration.ofSeconds(60)).cachePrivate())
                 .body(scoped);
     }
 

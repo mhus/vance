@@ -6,6 +6,9 @@ import de.mhus.vance.shared.document.DocumentRefContext;
 import de.mhus.vance.shared.document.DocumentRefResolver;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.PermissionService;
+import de.mhus.vance.shared.permission.SecurityContext;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -47,7 +50,11 @@ import org.springframework.stereotype.Service;
  *       {@code css: vance:/styles/round-borders.css} in the front matter.
  *       Resolved by {@link DocumentRefResolver} so the same grammar that
  *       governs skill/guard references governs report stylesheets, then
- *       read through {@link DocumentService#findByPath}.</li>
+ *       read through {@link DocumentService#findByPath} — <b>after</b> a
+ *       READ check on the resolved document against the caller's subject.
+ *       The resolver computes and does not authorise, and the grammar it
+ *       implements reaches other projects, so this layer is the one place
+ *       in the three that has an access question at all.</li>
  * </ol>
  *
  * <p>Failure policy is <b>fail-open on the optional layers</b>: a missing
@@ -89,6 +96,7 @@ public class ReportThemeResolver {
     private final DocumentService documentService;
     private final DocumentRefResolver documentRefResolver;
     private final ResourcePatternResolver resourcePatternResolver;
+    private final PermissionService permissionService;
 
     /**
      * Assemble the full CSS body for a render: default, then theme (if
@@ -109,6 +117,8 @@ public class ReportThemeResolver {
      * @param cssRef     optional {@code vance:} document reference or bare
      *                   path to a CSS document; missing/blank &rarr; skipped,
      *                   unresolvable/dangling &rarr; skipped with WARN.
+     * @param subject    who is asking. Required for the {@code cssRef} layer —
+     *                   {@code null} drops it. See {@link #loadCssRef}.
      * @return the concatenated CSS, never {@code null}; at minimum the
      *         bundled default (which may itself be empty on an internal
      *         misconfiguration, with a WARN logged).
@@ -117,7 +127,8 @@ public class ReportThemeResolver {
             String tenantId,
             String projectName,
             @Nullable String themeName,
-            @Nullable String cssRef) {
+            @Nullable String cssRef,
+            @Nullable SecurityContext subject) {
 
         StringBuilder css = new StringBuilder();
         css.append(loadDefault());
@@ -127,7 +138,7 @@ public class ReportThemeResolver {
             css.append('\n').append(themeCss);
         }
 
-        String refCss = loadCssRef(tenantId, projectName, cssRef);
+        String refCss = loadCssRef(tenantId, projectName, cssRef, subject);
         if (refCss != null) {
             css.append('\n').append(refCss);
         }
@@ -172,9 +183,21 @@ public class ReportThemeResolver {
     // ──────────────────── css-ref layer (document, optional) ───────────────
 
     private @Nullable String loadCssRef(
-            String tenantId, String projectName, @Nullable String cssRef) {
+            String tenantId,
+            String projectName,
+            @Nullable String cssRef,
+            @Nullable SecurityContext subject) {
         if (cssRef == null || cssRef.isBlank()) return null;
         String ref = cssRef.trim();
+
+        // Before anything is resolved: no subject, no read. Fail closed
+        // rather than fall through to a permissive default — a caller that
+        // does not name who is asking is a caller that forgot to.
+        if (subject == null) {
+            log.warn("Report css reference '{}' was given without a subject "
+                    + "— css layer skipped (nobody to read it on behalf of).", ref);
+            return null;
+        }
 
         DocumentRefContext ctx = DocumentRefContext.root(projectName);
         DocumentRef resolved;
@@ -183,6 +206,27 @@ public class ReportThemeResolver {
         } catch (de.mhus.vance.shared.document.DocumentRefException e) {
             log.warn("Report css reference '{}' could not be resolved: {} "
                     + "— css layer skipped.", ref, e.getMessage());
+            return null;
+        }
+
+        // The resolver is pure computation: `vance://other/x.css` resolves
+        // just as happily as a path in the caller's own project, and a
+        // cross-project reference implies no access whatsoever. Without this
+        // check the endpoint reads any document of the tenant on request —
+        // the scope prefixer passes text without braces through unchanged, so
+        // whatever is in the file comes back nearly verbatim.
+        //
+        // Checked rather than enforced: a refused stylesheet is a styling
+        // problem and drops its layer, exactly like a dangling ref. Turning
+        // it into a 403 would fail a render that is otherwise fine.
+        if (!permissionService.check(
+                subject,
+                new de.mhus.vance.shared.permission.Resource.Document(
+                        tenantId, resolved.projectId(), resolved.path()),
+                Action.READ)) {
+            log.warn("Report css reference '{}' resolved to '{}/{}', which '{}' may not "
+                            + "read — css layer skipped.",
+                    ref, resolved.projectId(), resolved.path(), subject.subjectId());
             return null;
         }
 

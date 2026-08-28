@@ -141,7 +141,8 @@ public class PdfReportRenderer implements MarkdownReportRenderer {
                 context.tenantId(),
                 context.projectName(),
                 context.theme(),
-                context.css());
+                context.css(),
+                context.subject());
         StringBuilder html = new StringBuilder();
         html.append("<!DOCTYPE html>\n");
         html.append("<html><head>\n");

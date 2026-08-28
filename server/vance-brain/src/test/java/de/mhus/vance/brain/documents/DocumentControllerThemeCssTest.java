@@ -100,7 +100,7 @@ class DocumentControllerThemeCssTest {
             .isEqualTo(MediaType.valueOf("text/css;charset=utf-8"));
         // Non-markdown short-circuits before content is read.
         verify(documentService, never()).readContent(any());
-        verify(reportThemeResolver, never()).resolveStylesheet(any(), any(), any(), any());
+        verify(reportThemeResolver, never()).resolveStylesheet(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -109,7 +109,7 @@ class DocumentControllerThemeCssTest {
         when(documentService.findById("doc-1")).thenReturn(Optional.of(doc));
         when(documentService.readContent(doc)).thenReturn("# Hello\n");
         // Resolver returns the default layer (always loaded).
-        when(reportThemeResolver.resolveStylesheet(eq(TENANT), eq(PROJECT), any(), any()))
+        when(reportThemeResolver.resolveStylesheet(eq(TENANT), eq(PROJECT), any(), any(), any()))
             .thenReturn("body { font-family: serif; }\nh1 { color: black; }");
 
         ResponseEntity<String> resp = controller.themeCss(TENANT, "doc-1", httpRequest);
@@ -122,6 +122,11 @@ class DocumentControllerThemeCssTest {
         assertThat(resp.getHeaders().getContentType())
             .isEqualTo(MediaType.valueOf("text/css;charset=utf-8"));
         assertThat(resp.getHeaders().getCacheControl()).contains("max-age=60");
+        // `private`, not `public`: the body depends on a per-document READ
+        // check, so a shared cache in front would hand one reader's answer
+        // to the next caller.
+        assertThat(resp.getHeaders().getCacheControl()).contains("private");
+        assertThat(resp.getHeaders().getCacheControl()).doesNotContain("public");
     }
 
     @Test
@@ -130,7 +135,7 @@ class DocumentControllerThemeCssTest {
         when(documentService.findById("doc-1")).thenReturn(Optional.of(doc));
         when(documentService.readContent(doc))
             .thenReturn("---\ntheme: acme\n---\n# Hello\n");
-        when(reportThemeResolver.resolveStylesheet(eq(TENANT), eq(PROJECT), eq("acme"), any()))
+        when(reportThemeResolver.resolveStylesheet(eq(TENANT), eq(PROJECT), eq("acme"), any(), any()))
             .thenReturn("h1 { color: #8a6d1a; }");
 
         ResponseEntity<String> resp = controller.themeCss(TENANT, "doc-1", httpRequest);
@@ -138,7 +143,7 @@ class DocumentControllerThemeCssTest {
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(resp.getBody())
             .contains(CssScopePrefixer.SCOPE + " h1 { color: #8a6d1a; }");
-        verify(reportThemeResolver).resolveStylesheet(TENANT, PROJECT, "acme", null);
+        verify(reportThemeResolver).resolveStylesheet(eq(TENANT), eq(PROJECT), eq("acme"), eq(null), any());
     }
 
     @Test
@@ -147,7 +152,7 @@ class DocumentControllerThemeCssTest {
         when(documentService.findById("doc-1")).thenReturn(Optional.of(doc));
         when(documentService.readContent(doc))
             .thenReturn("---\ntheme: acme\ncss: vance:/styles/x.css\n---\n# Hello\n");
-        when(reportThemeResolver.resolveStylesheet(eq(TENANT), eq(PROJECT), eq("acme"), eq("vance:/styles/x.css")))
+        when(reportThemeResolver.resolveStylesheet(eq(TENANT), eq(PROJECT), eq("acme"), eq("vance:/styles/x.css"), any()))
             .thenReturn("h1 { color: red; }");
 
         ResponseEntity<String> resp = controller.themeCss(TENANT, "doc-1", httpRequest);
@@ -163,7 +168,7 @@ class DocumentControllerThemeCssTest {
         when(documentService.findById("doc-1")).thenReturn(Optional.of(doc));
         when(documentService.readContent(doc)).thenReturn("# Hello\n");
         // Resolver returns CSS with a dangerous external url() inside a real rule.
-        when(reportThemeResolver.resolveStylesheet(any(), any(), any(), any()))
+        when(reportThemeResolver.resolveStylesheet(any(), any(), any(), any(), any()))
             .thenReturn(".note { background: url('https://evil/x.png') red; }\nh1 { color: red; }");
 
         ResponseEntity<String> resp = controller.themeCss(TENANT, "doc-1", httpRequest);
@@ -179,7 +184,7 @@ class DocumentControllerThemeCssTest {
         DocumentDocument doc = doc("doc-1", "notes/x.md", "text/markdown");
         when(documentService.findById("doc-1")).thenReturn(Optional.of(doc));
         when(documentService.readContent(doc)).thenReturn("# Hello\n");
-        when(reportThemeResolver.resolveStylesheet(any(), any(), any(), any()))
+        when(reportThemeResolver.resolveStylesheet(any(), any(), any(), any(), any()))
             .thenReturn("@import 'https://evil/x.css';\nh1 { color: red; }");
 
         ResponseEntity<String> resp = controller.themeCss(TENANT, "doc-1", httpRequest);
@@ -194,7 +199,7 @@ class DocumentControllerThemeCssTest {
         DocumentDocument doc = doc("doc-1", "notes/x.md", "text/markdown");
         when(documentService.findById("doc-1")).thenReturn(Optional.of(doc));
         when(documentService.readContent(doc)).thenReturn("# Hello\n");
-        when(reportThemeResolver.resolveStylesheet(any(), any(), any(), any()))
+        when(reportThemeResolver.resolveStylesheet(any(), any(), any(), any(), any()))
             .thenReturn("h1 { color: red; }");
 
         controller.themeCss(TENANT, "doc-1", httpRequest);

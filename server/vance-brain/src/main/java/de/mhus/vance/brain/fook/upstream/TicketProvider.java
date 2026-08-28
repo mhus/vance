@@ -40,6 +40,27 @@ public interface TicketProvider {
         return true;
     }
 
+    /**
+     * How many tracked tickets one poll pass may ask about.
+     *
+     * <p>Declared by the adapter because it is a property of the wire: a
+     * provider with a {@code ?since=} listing answers for all of them in one
+     * request and has no reason to cap, while one that has to ask per ticket
+     * pays a round trip each.
+     *
+     * <p><b>Which</b> tickets go into the batch is not the adapter's
+     * business — {@code FookUpstreamService.pollTick} orders them by how
+     * long ago each was last asked about and stamps every one it handed
+     * over, so a cap rotates instead of pinning the same head of the list.
+     * An adapter that slices the list itself would break that, because it
+     * cannot see the timestamps.
+     *
+     * @return the maximum batch size; {@link Integer#MAX_VALUE} for "no cap"
+     */
+    default int pollBatchSize() {
+        return Integer.MAX_VALUE;
+    }
+
     /** Create an external ticket from the anonymized draft. */
     ProviderTicketRef create(ProviderTicketDraft draft) throws ProviderException;
 

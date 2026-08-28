@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.report;
 
+import de.mhus.vance.shared.permission.SecurityContext;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -38,6 +39,16 @@ import org.jspecify.annotations.Nullable;
  *                      renderers ignore it. Null/blank = no css layer.
  *                      Loaded after {@code theme} so its rules win
  *                      the CSS cascade.
+ * @param subject       who is asking. A {@code css:} reference may name
+ *                      another project ({@code vance://other/x.css}) and
+ *                      the resolver is pure computation, so the
+ *                      authorization has to travel with the request —
+ *                      {@link ReportThemeResolver} checks READ on the
+ *                      resolved document against this. {@code null} means
+ *                      "no subject known" and drops the css layer rather
+ *                      than reading on nobody's behalf; there is
+ *                      deliberately no convenience constructor that takes
+ *                      a {@code css} without one.
  */
 public record MarkdownReportContext(
         String markdown,
@@ -46,13 +57,14 @@ public record MarkdownReportContext(
         String tenantId,
         String projectName,
         @Nullable String theme,
-        @Nullable String css) {
+        @Nullable String css,
+        @Nullable SecurityContext subject) {
 
     /**
      * Convenience constructor for callers that don't use the
      * {@code theme}/{@code css} front-matter fields — keeps the
      * original five-argument call sites working. Equivalent to
-     * passing {@code null} for both.
+     * passing {@code null} for all three.
      */
     public MarkdownReportContext(
             String markdown,
@@ -60,6 +72,6 @@ public record MarkdownReportContext(
             @Nullable String author,
             String tenantId,
             String projectName) {
-        this(markdown, title, author, tenantId, projectName, null, null);
+        this(markdown, title, author, tenantId, projectName, null, null, null);
     }
 }

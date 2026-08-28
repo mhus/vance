@@ -176,4 +176,83 @@ class CssSanitizerTest {
             .doesNotContain("evil")
             .contains("url()");
     }
+
+    // ──── The three ways past a naive token scan ─────────────────────────
+
+    /**
+     * {@code image-set()} takes a bare URL string, so it fetches with no
+     * {@code url()} token anywhere for the scan to find.
+     */
+    @Test
+    void sanitize_imageSetWithBareUrlString_removed() {
+        String css = "body { background-image: image-set(\"https://evil/x.png\" 1x); }";
+        assertThat(CssSanitizer.sanitize(css))
+            .doesNotContain("evil")
+            .doesNotContain("image-set")
+            .contains("none");
+    }
+
+    @Test
+    void sanitize_imageSetWrappingUrl_removedWhole_noStrayParenthesis() {
+        String css = "body { background: -webkit-image-set(url(\"https://a/x.png\") 1x,"
+            + " url(\"https://b/y.png\") 2x); }";
+        String result = CssSanitizer.sanitize(css);
+        assertThat(result).doesNotContain("https://");
+        assertThat(result).doesNotContain("image-set");
+        // The whole function went, not just its head — a leftover ')' would
+        // break the declaration that follows it.
+        assertThat(result).isEqualTo("body { background: none; }");
+    }
+
+    /**
+     * A comment may sit between an at-keyword and its argument. Valid CSS,
+     * and invisible to a pattern anchored on {@code @import\s}.
+     */
+    @Test
+    void sanitize_importHiddenBehindAComment_stillRemoved() {
+        String css = "@import/* hi */url(\"https://evil/x.css\");\nh1 { color: red; }";
+        assertThat(CssSanitizer.sanitize(css))
+            .doesNotContain("@import")
+            .doesNotContain("evil")
+            .contains("h1 { color: red; }");
+    }
+
+    /**
+     * CSS lets an identifier be written with escapes: {@code \75 rl(} is
+     * {@code url(} and {@code @\69 mport} is {@code @import}. Both parse to
+     * the real thing and neither matches the literal word.
+     */
+    @Test
+    void sanitize_escapedUrlFunction_stillNeutered() {
+        String css = "body { background: \\75 rl(\"https://evil/x.png\"); }";
+        String result = CssSanitizer.sanitize(css);
+
+        // The URL text survives, and that is not the point — what matters is
+        // that nothing left will fetch it. Dropping the backslash turns
+        // `\75 rl(` into `75 rl(`, which is not the url() function and not
+        // any other known one, so a browser throws the whole declaration
+        // away. Asserting "contains no 'evil'" would be asserting the wrong
+        // thing: inert text is a fine outcome.
+        assertThat(result).doesNotContain("\\75");
+        assertThat(result).doesNotContain("url(");
+    }
+
+    @Test
+    void sanitize_escapedImportAtRule_stillRemoved() {
+        String css = "@\\69 mport url(\"https://evil/x.css\");\nh1 { color: red; }";
+        assertThat(CssSanitizer.sanitize(css))
+            .doesNotContain("evil")
+            .contains("h1 { color: red; }");
+    }
+
+    /**
+     * The other side of the escape rule: inside a string an escape is
+     * ordinary and has to survive, or {@code content: "\201C"} loses its
+     * quotation mark.
+     */
+    @Test
+    void sanitize_escapeInsideAString_preserved() {
+        String css = "blockquote::before { content: \"\\201C\"; }";
+        assertThat(CssSanitizer.sanitize(css)).contains("\"\\201C\"");
+    }
 }

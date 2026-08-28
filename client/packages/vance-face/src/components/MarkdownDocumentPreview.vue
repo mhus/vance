@@ -38,6 +38,35 @@ import { brainFetchText } from '@vance/shared';
 
 const THEME_CSS_CACHE = new Map<string, string>();
 
+/** Cap on the in-memory cache. Insertion-ordered, so the oldest key goes. */
+const THEME_CSS_CACHE_MAX = 50;
+
+/**
+ * The part of the source that decides the answer: the leading front-matter
+ * fence, where `theme:` and `css:` live.
+ *
+ * The cache key has to carry this, not just the document id. Keyed on the id
+ * alone, editing `theme:` and re-rendering shows the previous theme for as
+ * long as the tab lives — the request that would have told us otherwise is
+ * exactly the one the cache skips. Everything below the fence is body text
+ * and cannot change the stylesheet, so it stays out of the key.
+ */
+function frontMatterOf(source: string | null): string {
+  if (!source) return '';
+  if (!source.startsWith('---')) return '';
+  const end = source.indexOf('\n---', 3);
+  return end < 0 ? source : source.slice(0, end + 4);
+}
+
+function rememberThemeCss(key: string, css: string): void {
+  THEME_CSS_CACHE.set(key, css);
+  while (THEME_CSS_CACHE.size > THEME_CSS_CACHE_MAX) {
+    const oldest = THEME_CSS_CACHE.keys().next().value;
+    if (oldest === undefined) break;
+    THEME_CSS_CACHE.delete(oldest);
+  }
+}
+
 export default {
   name: 'MarkdownDocumentPreview',
   components: { MarkdownView },
@@ -56,32 +85,31 @@ export default {
   },
   setup(props) {
     const themeCss = ref<string>('');
-    const loadError = ref<string | null>(null);
 
     async function loadThemeCss(documentId: string): Promise<void> {
-      // Per-tab cache (small, in-memory). A theme changes rarely, and a
-      // re-fetch on every tab switch would fire a request per view. The
-      // server already sets Cache-Control: max-age=60, so the browser
+      // Per-tab cache (small, in-memory, bounded). A theme changes rarely,
+      // and a re-fetch on every tab switch would fire a request per view.
+      // The server sets Cache-Control: private, max-age=60, so the browser
       // cache covers the cross-tab case; this cache covers same-tab
-      // re-mounts.
-      const cached = THEME_CSS_CACHE.get(documentId);
+      // re-mounts. Keyed on the front matter as well as the id, so an edit
+      // to `theme:` is a different question and gets asked.
+      const key = `${documentId}\n${frontMatterOf(props.source)}`;
+      const cached = THEME_CSS_CACHE.get(key);
       if (cached !== undefined) {
         themeCss.value = cached;
-        loadError.value = null;
         return;
       }
       try {
         const css = await brainFetchText(`documents/${documentId}/theme-css`);
         const body = css ?? '';
-        THEME_CSS_CACHE.set(documentId, body);
+        rememberThemeCss(key, body);
         themeCss.value = body;
-        loadError.value = null;
       } catch (e) {
         // Fail-open: log and render with no theme. The default styles
         // still apply through MarkdownView's scoped CSS, so the document
         // stays readable. We do NOT surface an error banner — a theme
-        // problem is a styling problem, not a content problem.
-        loadError.value = e instanceof Error ? e.message : String(e);
+        // problem is a styling problem, not a content problem. Not cached
+        // either: a failed fetch is a moment, not an answer.
         themeCss.value = '';
         // eslint-disable-next-line no-console
         console.warn(
@@ -95,9 +123,11 @@ export default {
       if (props.documentId) void loadThemeCss(props.documentId);
     });
 
+    // Both inputs matter: a different document obviously, and a changed
+    // front matter on the same document — that is where `theme:` is edited.
     watch(
-      () => props.documentId,
-      (newId) => {
+      () => [props.documentId, frontMatterOf(props.source)] as const,
+      ([newId]) => {
         if (newId) void loadThemeCss(newId);
         else themeCss.value = '';
       },

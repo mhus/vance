@@ -297,10 +297,30 @@ public class FookUpstreamService {
         // Match the provider — a ticket sent by GitHub once, but
         // configured to GitLab later, must not be polled by GitLab.
         List<TicketDocument> mine = new ArrayList<>();
-        List<ProviderTicketRef> refs = new ArrayList<>();
         for (TicketDocument t : transferred) {
-            if (!provider.name().equals(t.getUpstreamProvider())) continue;
-            mine.add(t);
+            if (provider.name().equals(t.getUpstreamProvider())) mine.add(t);
+        }
+        if (mine.isEmpty()) return;
+
+        // Least-recently-asked first, never-asked before all of them. An
+        // adapter that has to spend a request per ticket caps the batch
+        // (pollBatchSize), and a cap on an unordered list is not a cap but a
+        // permanent blind spot: the same head gets polled every tick and
+        // everything past it is never asked about again. The order lives
+        // here because only this side can see the timestamps.
+        mine.sort(java.util.Comparator.comparing(
+                TicketDocument::getUpstreamLastSyncedAt,
+                java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())));
+        int batchSize = Math.max(1, provider.pollBatchSize());
+        if (mine.size() > batchSize) {
+            log.info("Fook upstream: polling {} of {} tracked ticket(s) this pass — "
+                            + "the least recently checked first; the rest follow next tick",
+                    batchSize, mine.size());
+            mine = new ArrayList<>(mine.subList(0, batchSize));
+        }
+
+        List<ProviderTicketRef> refs = new ArrayList<>();
+        for (TicketDocument t : mine) {
             refs.add(ProviderTicketRef.builder()
                     .provider(t.getUpstreamProvider())
                     .externalId(t.getUpstreamExternalId())
@@ -313,7 +333,6 @@ public class FookUpstreamService {
                     .url(t.getUpstreamUrl())
                     .build());
         }
-        if (mine.isEmpty()) return;
 
         Instant since = mine.stream()
                 .map(TicketDocument::getUpstreamLastSyncedAt)
@@ -343,10 +362,22 @@ public class FookUpstreamService {
             byExternalId.put(t.getUpstreamExternalId(), t);
         }
 
+        java.util.Set<String> answered = new java.util.HashSet<>();
         for (ProviderTicketUpdate update : updates) {
             TicketDocument local = byExternalId.get(update.getRef().getExternalId());
             if (local == null) continue;
             applyUpdate(local, update);
+            answered.add(local.getUpstreamExternalId());
+        }
+
+        // Every ticket in the batch was asked about, whether or not it had
+        // anything to say — and the ones that stayed quiet are exactly the
+        // ones the staleness order would otherwise hand over again next
+        // tick, for ever. applyUpdate already stamps the ones that answered.
+        for (TicketDocument t : mine) {
+            if (!answered.contains(t.getUpstreamExternalId())) {
+                ticketService.markUpstreamSynced(t.getId());
+            }
         }
     }
 

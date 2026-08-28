@@ -771,9 +771,10 @@ public class SetupWizard {
         // A named instance is only a namespace until something binds it to a
         // protocol. The bundled `_provider.yaml` sidecars do that for the
         // instances we ship (see AiModelResolver), but an operator-chosen name
-        // has none — so state the wire type explicitly. Written for the fixed
-        // presets too when the name was operator-chosen: cheap, and it removes
-        // the "why does cortecs work but openrouter not" class of question.
+        // has none — so state the wire type explicitly. Only for those: a
+        // fixed preset writes under its own id, which always has a sidecar,
+        // and pinning the type there would turn a shipped default into a
+        // per-tenant setting nobody asked for.
         if (preset.requiresInstanceName()) {
             setString(tenantId, "ai.provider." + instance + ".type",
                     ProviderPreset.CUSTOM_WIRE_TYPE,

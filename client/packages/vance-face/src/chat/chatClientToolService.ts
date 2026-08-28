@@ -106,6 +106,23 @@ type ToolHandler = (
 const PERMISSION_WAIT_MS = 5000;
 
 /**
+ * How long the browser itself may take before it gives up on a fix.
+ *
+ * Deliberately *not* `PERMISSION_WAIT_MS`: with the two equal, the geolocation
+ * TIMEOUT and the local race fire at the same instant and which one wins is a
+ * coin toss — so a reader who is still reading the permission dialog gets a
+ * terminal `UNAVAILABLE` ("do not retry") about half the time, instead of the
+ * `PENDING` that is the whole point of the split. Long enough that the request
+ * outlives several PENDING answers, which is what makes the tool's promise
+ * ("call again; it will read the answer, not re-ask") true: a retry inside this
+ * window joins the in-flight request rather than starting a second prompt.
+ *
+ * Below the brain's 30s client-tool timeout matters only for the *race*, which
+ * answers at 5s regardless; this one may outlive a single invocation.
+ */
+const POSITION_TIMEOUT_MS = 25000;
+
+/**
  * A location tool that the web chat page exposes to the agent.
  *
  * <p>Session-scoped like {@link InboxClientToolService}: attached to the
@@ -134,9 +151,16 @@ export class ChatClientToolService {
 
   /**
    * Push the tool registration and start listening for invocations.
-   * Idempotent against a fresh socket — call from each WS open.
+   * Idempotent — call from each WS open, including a re-open on the *same*
+   * socket. That case is the reason for the `detach()` below: a session
+   * unbind takes the host out of `live` and the rebind puts it back without
+   * the socket ever changing, so `attach` runs twice on one socket. Without
+   * dropping the previous listener the second registration leaves the first
+   * one subscribed, both answer every invocation, and the brain receives two
+   * `client-tool-result` frames for one call.
    */
   async attach(ws: BrainWsApi): Promise<void> {
+    this.detach();
     const specs: ToolSpec[] = this.toolSpecs();
     await ws.send('client-tool-register', { tools: specs });
     this.invokeUnsub = ws.on<ClientToolInvokeRequest>(
@@ -301,19 +325,37 @@ export class ChatClientToolService {
           });
         },
         (err) => {
-          // err.code 1 is PERMISSION_DENIED; anything else (13/2/…) is the
-          // reader being unreachable, a dead signal, or a timeout — all map to
-          // the terminal UNAVAILABLE, not a retryable state.
-          const declined = err.code === 1;
-          settle(declined
-            ? { status: 'DECLINED', message: 'The reader declined to share their location.' }
-            : this.unavailable(
-                triggersPrompt
-                  ? 'Location could not be obtained (no signal or unsupported).'
-                  : 'Location could not be obtained (no signal or unsupported).',
-              ));
+          // Three codes, three answers — and the middle one is why
+          // `triggersPrompt` is passed in at all.
+          //
+          //   1 PERMISSION_DENIED    — the reader said no. Terminal.
+          //   3 TIMEOUT              — nobody answered in POSITION_TIMEOUT_MS.
+          //     What that means depends on what we were waiting for: with the
+          //     permission already granted it is a dead signal (terminal),
+          //     while a prompt that is still on screen is precisely PENDING —
+          //     calling it UNAVAILABLE would tell the agent not to retry a
+          //     decision the reader is still making.
+          //   2 POSITION_UNAVAILABLE — no fix to be had. Terminal.
+          if (err.code === 1) {
+            settle({
+              status: 'DECLINED',
+              message: 'The reader declined to share their location.',
+            });
+            return;
+          }
+          if (err.code === 3 && triggersPrompt) {
+            settle({
+              status: 'PENDING',
+              message: 'The reader was asked to share their location and has not '
+                + 'responded. You may call location_get again later; otherwise '
+                + 'continue without it.',
+            });
+            return;
+          }
+          settle(this.unavailable(
+            'Location could not be obtained (no signal or unsupported).'));
         },
-        { enableHighAccuracy: false, timeout: PERMISSION_WAIT_MS, maximumAge: 0 },
+        { enableHighAccuracy: false, timeout: POSITION_TIMEOUT_MS, maximumAge: 0 },
       );
     });
   }

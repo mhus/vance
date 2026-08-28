@@ -14,6 +14,8 @@ import de.mhus.vance.shared.document.DocumentRefContext;
 import de.mhus.vance.shared.document.DocumentRefResolver;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
+import de.mhus.vance.shared.permission.PermissionService;
+import de.mhus.vance.shared.permission.SecurityContext;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -29,9 +31,24 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
  */
 class ReportThemeResolverTest {
 
+    /** The subject every fixture below uses; permissions are mocked permissive. */
+    private static final SecurityContext SUBJECT =
+            SecurityContext.user("mhus", "t", java.util.List.of());
+
     private static ReportThemeResolver resolverWith(DocumentService ds, DocumentRefResolver drr) {
+        return resolverWith(ds, drr, permissiveMock());
+    }
+
+    private static ReportThemeResolver resolverWith(
+            DocumentService ds, DocumentRefResolver drr, PermissionService permissions) {
         return new ReportThemeResolver(ds, drr,
-                new PathMatchingResourcePatternResolver());
+                new PathMatchingResourcePatternResolver(), permissions);
+    }
+
+    private static PermissionService permissiveMock() {
+        PermissionService permissions = mock(PermissionService.class);
+        when(permissions.check(any(), any(), any())).thenReturn(true);
+        return permissions;
     }
 
     private static DocumentService docServiceMock() {
@@ -45,7 +62,7 @@ class ReportThemeResolverTest {
     @Test
     void resolve_noThemeNoCss_returnsDefaultOnly() {
         String css = resolverWith(docServiceMock(), refResolverMock())
-                .resolveStylesheet("t", "p", null, null);
+                .resolveStylesheet("t", "p", null, null, SUBJECT);
 
         // The default carries the @page rule and the body font — a stable
         // fingerprint that also proves the bundled file loaded at all.
@@ -60,7 +77,7 @@ class ReportThemeResolverTest {
     void resolve_invalidThemeName_skipsTheme_logsAndFallsBack() {
         DocumentService ds = docServiceMock();
         String css = resolverWith(ds, refResolverMock())
-                .resolveStylesheet("t", "p", "../traversal", null);
+                .resolveStylesheet("t", "p", "../traversal", null, SUBJECT);
 
         // An invalid name must NOT reach the cascade — otherwise a crafted
         // name could probe arbitrary paths. The default still comes through.
@@ -79,7 +96,7 @@ class ReportThemeResolverTest {
                         null)));
 
         String css = resolverWith(ds, refResolverMock())
-                .resolveStylesheet("t", "p", "acme", null);
+                .resolveStylesheet("t", "p", "acme", null, SUBJECT);
 
         // Default first, theme after — so the theme's h1 rule wins the cascade.
         int defaultIdx = css.indexOf("Times New Roman");
@@ -95,7 +112,7 @@ class ReportThemeResolverTest {
                 .thenReturn(Optional.empty());
 
         String css = resolverWith(ds, refResolverMock())
-                .resolveStylesheet("t", "p", "missing", null);
+                .resolveStylesheet("t", "p", "missing", null, SUBJECT);
 
         // Missing theme is fail-open: default only, no throw.
         assertThat(css).contains("@page");
@@ -115,12 +132,52 @@ class ReportThemeResolverTest {
         when(ds.readContent(doc)).thenReturn("pre { border-radius: 8px; }");
 
         String css = resolverWith(ds, drr)
-                .resolveStylesheet("t", "p", null, "vance:/styles/round.css");
+                .resolveStylesheet("t", "p", null, "vance:/styles/round.css", SUBJECT);
 
         int defaultIdx = css.indexOf("Times New Roman");
         int refIdx = css.indexOf("border-radius");
         assertThat(defaultIdx).isLessThan(refIdx);
         assertThat(css).contains("border-radius: 8px");
+    }
+
+    /**
+     * The finding this check exists for: {@code css:} carries the full
+     * {@code vance:} grammar, so it reaches other projects, and the resolver
+     * is pure computation — without a READ check the endpoint reads any
+     * document of the tenant on request and hands it back nearly verbatim
+     * (the scope prefixer passes text without braces through unchanged).
+     */
+    @Test
+    void resolve_cssRefTheSubjectMayNotRead_isSkipped_andNeverLoaded() {
+        DocumentService ds = docServiceMock();
+        DocumentRefResolver drr = refResolverMock();
+        DocumentRef ref = DocumentRef.of("other-project", "secrets.md");
+        when(drr.resolve(anyString(), any(DocumentRefContext.class))).thenReturn(ref);
+        PermissionService permissions = mock(PermissionService.class);
+        when(permissions.check(any(), any(), any())).thenReturn(false);
+
+        String css = resolverWith(ds, drr, permissions)
+                .resolveStylesheet("t", "p", null, "vance://other-project/secrets.md", SUBJECT);
+
+        assertThat(css).contains("@page");
+        // Refused before the read, not after: the document is never fetched,
+        // so nothing of it can leak through a log line or a later change.
+        verify(ds, never()).findByPath(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void resolve_cssRefWithoutSubject_isSkipped() {
+        DocumentService ds = docServiceMock();
+        DocumentRefResolver drr = refResolverMock();
+
+        String css = resolverWith(ds, drr)
+                .resolveStylesheet("t", "p", null, "vance:/styles/round.css", null);
+
+        // No subject means nobody to read on behalf of — fail closed, and do
+        // not fall through to a permissive default.
+        assertThat(css).contains("@page");
+        verify(drr, never()).resolve(anyString(), any(DocumentRefContext.class));
+        verify(ds, never()).findByPath(anyString(), anyString(), anyString());
     }
 
     @Test
@@ -130,7 +187,7 @@ class ReportThemeResolverTest {
                 .thenThrow(new de.mhus.vance.shared.document.DocumentRefException("bad ref"));
 
         String css = resolverWith(docServiceMock(), drr)
-                .resolveStylesheet("t", "p", null, "vance:/nope.css");
+                .resolveStylesheet("t", "p", null, "vance:/nope.css", SUBJECT);
 
         // Fail-open: bad ref does not abort the render.
         assertThat(css).contains("@page");
@@ -145,7 +202,7 @@ class ReportThemeResolverTest {
         when(ds.findByPath(anyString(), anyString(), anyString())).thenReturn(Optional.empty());
 
         String css = resolverWith(ds, drr)
-                .resolveStylesheet("t", "p", null, "styles/missing.css");
+                .resolveStylesheet("t", "p", null, "styles/missing.css", SUBJECT);
 
         assertThat(css).contains("@page");
         // The dangling ref must not inject anything.
@@ -169,7 +226,7 @@ class ReportThemeResolverTest {
         when(ds.readContent(doc)).thenReturn("pre { border-radius: 8px; }");
 
         String css = resolverWith(ds, drr)
-                .resolveStylesheet("t", "p", "acme", "vance:/styles/round.css");
+                .resolveStylesheet("t", "p", "acme", "vance:/styles/round.css", SUBJECT);
 
         // Order: default < theme < css-ref — last wins the cascade.
         int defaultIdx = css.indexOf("Times New Roman");
@@ -183,7 +240,7 @@ class ReportThemeResolverTest {
     void resolve_blankThemeAndCss_areTreatedAsAbsent() {
         DocumentService ds = docServiceMock();
         String css = resolverWith(ds, refResolverMock())
-                .resolveStylesheet("t", "p", "   ", "   ");
+                .resolveStylesheet("t", "p", "   ", "   ", SUBJECT);
 
         // Blank values must not trigger cascade/ref lookups.
         verify(ds, never()).lookupCascade(anyString(), anyString(), anyString());

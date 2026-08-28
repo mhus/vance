@@ -73,9 +73,11 @@ public class VancetopeTicketProvider implements TicketProvider {
     /**
      * How many tickets one poll pass may ask about. Each is a round trip;
      * the rest wait for the next tick, which is hourly and therefore
-     * catches up long before anybody notices.
+     * catches up long before anybody notices — the caller hands over the
+     * least-recently-asked ones first, so "the rest" is a queue and not a
+     * tail nobody reaches.
      */
-    private static final int POLL_BATCH = 25;
+    static final int POLL_BATCH = 25;
 
     private final SettingService settingService;
 
@@ -94,6 +96,11 @@ public class VancetopeTicketProvider implements TicketProvider {
     @Override
     public boolean supportsPolling() {
         return true;
+    }
+
+    @Override
+    public int pollBatchSize() {
+        return POLL_BATCH;
     }
 
     // ─── create ─────────────────────────────────────────────────────
@@ -164,17 +171,11 @@ public class VancetopeTicketProvider implements TicketProvider {
         if (tracked.isEmpty()) return List.of();
         Config cfg = loadConfig();
 
-        List<ProviderTicketRef> batch = tracked.size() <= POLL_BATCH
-                ? tracked
-                : tracked.subList(0, POLL_BATCH);
-        if (batch.size() < tracked.size()) {
-            log.info("Fook upstream: polling {} of {} tracked tickets this pass "
-                            + "(one request each); the rest follow next tick",
-                    batch.size(), tracked.size());
-        }
-
+        // No slicing here: the caller has already cut the batch to
+        // pollBatchSize(), and it is the only side that can order it — see
+        // TicketProvider.pollBatchSize.
         List<ProviderTicketUpdate> out = new ArrayList<>();
-        for (ProviderTicketRef ref : batch) {
+        for (ProviderTicketRef ref : tracked) {
             HttpResponse<String> resp = send(
                     "GET", cfg.endpoint + "/api/report/tickets/" + ref.getExternalId(),
                     null, cfg);

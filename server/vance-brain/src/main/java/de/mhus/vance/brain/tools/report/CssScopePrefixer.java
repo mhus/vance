@@ -291,11 +291,9 @@ public final class CssScopePrefixer {
         // source order then decides — the theme <style> comes after the
         // scoped styles in the DOM, so the theme wins ties.
         String scope = SCOPE + SCOPE;
-        // A leading combinator (>, +, ~) means "direct child / sibling
-        // of the scope root" — the scope class goes on the left.
-        if (selector.startsWith(">") || selector.startsWith("+") || selector.startsWith("~")) {
-            return scope + " " + selector;
-        }
+        // One form covers both cases: a leading combinator (`> h1`) reads as
+        // "direct child of the scope root" once the class is on its left,
+        // which is exactly the same concatenation a plain selector needs.
         return scope + " " + selector;
     }
 }

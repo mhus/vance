@@ -55,6 +55,10 @@ class FookUpstreamServiceTest {
         // answers false. Real beans get `true` from TicketProvider itself, so
         // without this every poll test would exercise the "cannot poll" exit.
         when(provider.supportsPolling()).thenReturn(true);
+        // Same reason: an unstubbed int-returning default method answers 0,
+        // which the service clamps to a batch of one. Uncapped unless a test
+        // says otherwise.
+        when(provider.pollBatchSize()).thenReturn(Integer.MAX_VALUE);
 
         // Sensible defaults — individual tests override.
         when(settingService.getStringValueCascade(any(), any(), any(),
@@ -259,6 +263,56 @@ class FookUpstreamServiceTest {
         // throughput.
         verify(provider, times(1)).create(any());
         verify(ticketService, never()).markTransferFailed(any(), any());
+    }
+
+    // ─── poll tick: batching rotates ────────────────────────────────
+
+    /**
+     * The finding: an adapter that pays a request per ticket caps the batch,
+     * and a cap on an unordered list is a permanent blind spot — the same
+     * head is polled every tick and everything behind it is never asked
+     * about again. Nothing in the old code moved the window.
+     */
+    @Test
+    void poll_tick_polls_the_least_recently_checked_first() {
+        when(provider.pollBatchSize()).thenReturn(2);
+        Instant now = Instant.now();
+        when(ticketService.listTransferredForPolling()).thenReturn(List.of(
+                transferredTicket("fresh", "github", "1", "open", now),
+                transferredTicket("stale", "github", "2", "open", now.minusSeconds(7200)),
+                transferredTicket("never", "github", "3", "open", null),
+                transferredTicket("middle", "github", "4", "open", now.minusSeconds(600))));
+        when(provider.pollUpdates(any(), any())).thenReturn(List.of());
+
+        service.pollTick();
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ProviderTicketRef>> refs =
+                ArgumentCaptor.forClass(List.class);
+        verify(provider).pollUpdates(refs.capture(), any());
+        // Never-asked first, then the oldest timestamp — and only two, which
+        // is what the adapter said it could afford.
+        assertThat(refs.getValue()).hasSize(2);
+        assertThat(refs.getValue().get(0).getExternalId()).isEqualTo("3");
+        assertThat(refs.getValue().get(1).getExternalId()).isEqualTo("2");
+    }
+
+    /**
+     * The half that makes the order actually rotate: a ticket with nothing
+     * new never reports a change, so if only the ones that answered were
+     * stamped it would stay the stalest ticket for ever and the window would
+     * never advance past it.
+     */
+    @Test
+    void poll_tick_stamps_even_the_tickets_that_had_nothing_to_say() {
+        when(provider.pollBatchSize()).thenReturn(1);
+        when(ticketService.listTransferredForPolling()).thenReturn(List.of(
+                transferredTicket("quiet", "github", "9", "open", null)));
+        when(provider.pollUpdates(any(), any())).thenReturn(List.of());
+
+        service.pollTick();
+
+        verify(ticketService).markUpstreamSynced("quiet");
     }
 
     @Test

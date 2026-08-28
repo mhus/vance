@@ -327,6 +327,20 @@ public class FookTicketService {
         });
     }
 
+    /**
+     * "I asked about this one and it had nothing new."
+     *
+     * <p>Separate from {@link #markUpstreamState} because the poll tick
+     * orders its batch by this timestamp: a ticket that is simply quiet
+     * never reports a change, so without a way to stamp it for having been
+     * asked it stays the stalest ticket for ever and the batch never moves
+     * past it. That is the difference between a cap and a rotation.
+     */
+    public void markUpstreamSynced(String uuid) {
+        patchMeta(uuid, meta ->
+                meta.put("upstreamLastSyncedAt", Instant.now().toString()));
+    }
+
     /** Write the back-pointer from the ticket to its tracker inbox-item. */
     public void setInboxItemId(String uuid, String inboxItemId) {
         patchMeta(uuid, meta -> meta.put("inboxItemId", inboxItemId));

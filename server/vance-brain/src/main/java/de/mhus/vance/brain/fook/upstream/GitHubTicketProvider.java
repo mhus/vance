@@ -109,6 +109,9 @@ public class GitHubTicketProvider implements TicketProvider {
         return ProviderTicketRef.builder()
                 .provider(NAME)
                 .externalId(number)
+                // GitHub has one id and it is public — the issue number is
+                // in the URL. Both fields carry it; nothing is hidden here.
+                .displayId(number)
                 .url(url)
                 .build();
     }
@@ -371,7 +374,26 @@ public class GitHubTicketProvider implements TicketProvider {
         // malformed payload. 429 + 5xx are transient — backoff next tick.
         boolean retryable = sc == 429 || sc >= 500;
         String msg = op + " failed: HTTP " + sc + " — " + snippet(resp.body());
+        if (sc == 429) {
+            // Surface the wait so the sender-tick ends its pass instead of
+            // running the remaining tickets into the same limit.
+            return ProviderException.rateLimited(msg, retryAfterOf(resp));
+        }
         return new ProviderException(msg, retryable);
+    }
+
+    /**
+     * {@code Retry-After} in seconds, which is what GitHub sends with a
+     * secondary rate limit. Falls back to a minute: the header is optional,
+     * and "we were limited but do not know for how long" still has to stop
+     * the pass — a null there would let it run on.
+     */
+    private Duration retryAfterOf(HttpResponse<String> resp) {
+        return resp.headers().firstValue("Retry-After")
+                .map(String::trim)
+                .filter(v -> v.matches("\\d+"))
+                .map(v -> Duration.ofSeconds(Long.parseLong(v)))
+                .orElse(Duration.ofMinutes(1));
     }
 
     private static String snippet(String body) {

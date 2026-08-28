@@ -277,16 +277,23 @@ public class FookTicketService {
             String uuid,
             String provider,
             String externalId,
-            String url) {
+            String displayId,
+            @Nullable String url) {
         patchMeta(uuid, meta -> {
             meta.put("status", STATUS_TRANSFERRED);
             meta.put("transferredAt", Instant.now().toString());
             meta.put("upstreamProvider", provider);
             meta.put("upstreamExternalId", externalId);
-            meta.put("upstreamUrl", url);
+            meta.put("upstreamDisplayId", displayId);
+            // Only when there is one: a provider without a browsable page
+            // would otherwise persist `upstreamUrl: null`, which reads on
+            // inspection as a link that failed to be captured.
+            if (url != null) meta.put("upstreamUrl", url);
         });
-        log.info("Fook: ticket id='{}' transferred to {} as {} ({})",
-                uuid, provider, externalId, url);
+        // displayId, never externalId — for the collector that is a
+        // capability handle, and this line goes to the log aggregation.
+        log.info("Fook: ticket id='{}' transferred to {} as {}",
+                uuid, provider, displayId);
     }
 
     /**
@@ -555,6 +562,7 @@ public class FookTicketService {
         p.transferredAt = parseInstant(meta.get("transferredAt"));
         p.upstreamProvider = stringOrNull(meta.get("upstreamProvider"));
         p.upstreamExternalId = stringOrNull(meta.get("upstreamExternalId"));
+        p.upstreamDisplayId = stringOrNull(meta.get("upstreamDisplayId"));
         p.upstreamUrl = stringOrNull(meta.get("upstreamUrl"));
         p.upstreamState = stringOrNull(meta.get("upstreamState"));
         p.upstreamLastSyncedAt = parseInstant(meta.get("upstreamLastSyncedAt"));
@@ -600,6 +608,7 @@ public class FookTicketService {
                 .transferredAt(p.transferredAt)
                 .upstreamProvider(p.upstreamProvider)
                 .upstreamExternalId(p.upstreamExternalId)
+                .upstreamDisplayId(p.upstreamDisplayId)
                 .upstreamUrl(p.upstreamUrl)
                 .upstreamState(p.upstreamState)
                 .upstreamLastSyncedAt(p.upstreamLastSyncedAt)
@@ -763,6 +772,7 @@ public class FookTicketService {
         @Nullable Instant transferredAt;
         @Nullable String upstreamProvider;
         @Nullable String upstreamExternalId;
+        @Nullable String upstreamDisplayId;
         @Nullable String upstreamUrl;
         @Nullable String upstreamState;
         @Nullable Instant upstreamLastSyncedAt;

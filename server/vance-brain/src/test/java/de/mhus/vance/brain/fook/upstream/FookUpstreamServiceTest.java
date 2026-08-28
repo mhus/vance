@@ -51,6 +51,10 @@ class FookUpstreamServiceTest {
         when(masterService.isLocalPodMaster()).thenReturn(true);
         provider = mock(TicketProvider.class);
         when(provider.name()).thenReturn("github");
+        // A Mockito mock does not inherit an interface's default method — it
+        // answers false. Real beans get `true` from TicketProvider itself, so
+        // without this every poll test would exercise the "cannot poll" exit.
+        when(provider.supportsPolling()).thenReturn(true);
 
         // Sensible defaults — individual tests override.
         when(settingService.getStringValueCascade(any(), any(), any(),
@@ -129,13 +133,14 @@ class FookUpstreamServiceTest {
         when(provider.create(any())).thenReturn(ProviderTicketRef.builder()
                 .provider("github")
                 .externalId("4287")
+                .displayId("4287")
                 .url("https://github.com/mhus/vance/issues/4287")
                 .build());
 
         service.sendTick();
 
         verify(provider).create(any(ProviderTicketDraft.class));
-        verify(ticketService).markTransferred("uuid-1", "github", "4287",
+        verify(ticketService).markTransferred("uuid-1", "github", "4287", "4287",
                 "https://github.com/mhus/vance/issues/4287");
 
         ArgumentCaptor<String> inboxIdCap = ArgumentCaptor.forClass(String.class);
@@ -149,7 +154,7 @@ class FookUpstreamServiceTest {
         TicketDocument ticket = ticket("uuid-1", "inbox-99");
         when(ticketService.listPendingTransport()).thenReturn(List.of(ticket));
         when(provider.create(any())).thenReturn(ProviderTicketRef.builder()
-                .provider("github").externalId("1").url("u").build());
+                .provider("github").externalId("1").displayId("1").url("u").build());
 
         service.sendTick();
 
@@ -175,7 +180,7 @@ class FookUpstreamServiceTest {
 
         service.sendTick();
 
-        verify(ticketService, never()).markTransferred(any(), any(), any(), any());
+        verify(ticketService, never()).markTransferred(any(), any(), any(), any(), any());
         verify(ticketService, never()).markTransferFailed(any(), any());
         verifyNoInteractions(inboxItemService);
     }
@@ -202,11 +207,11 @@ class FookUpstreamServiceTest {
         TicketDocument ticket = ticket("uuid-1", /* no inbox id */ null);
         when(ticketService.listPendingTransport()).thenReturn(List.of(ticket));
         when(provider.create(any())).thenReturn(ProviderTicketRef.builder()
-                .provider("github").externalId("1").url("u").build());
+                .provider("github").externalId("1").displayId("1").url("u").build());
 
         service.sendTick();
 
-        verify(ticketService).markTransferred(any(), any(), any(), any());
+        verify(ticketService).markTransferred(any(), any(), any(), any(), any());
         verify(inboxItemService, never()).updateContent(any(), any(), any(), any(), any(), any());
     }
 
@@ -230,6 +235,33 @@ class FookUpstreamServiceTest {
     }
 
     @Test
+    void poll_tick_short_circuits_when_provider_cannot_poll() {
+        when(provider.supportsPolling()).thenReturn(false);
+        service.pollTick();
+        // Not even the ticket listing: the adapter said it has no way to
+        // ask, so there is nothing to walk.
+        verifyNoInteractions(ticketService);
+        verify(provider, never()).pollUpdates(any(), any());
+    }
+
+    @Test
+    void send_tick_stops_pass_when_provider_reports_rate_limit() {
+        TicketDocument first = ticket("uuid-1", "inbox-1");
+        TicketDocument second = ticket("uuid-2", "inbox-2");
+        when(ticketService.listPendingTransport()).thenReturn(List.of(first, second));
+        when(provider.create(any())).thenThrow(
+                ProviderException.rateLimited("HTTP 429", java.time.Duration.ofMinutes(1)));
+
+        service.sendTick();
+
+        // One attempt, not two: the second ticket would hit the same limit,
+        // and against a one-per-minute cap the wasted refusals also cost
+        // throughput.
+        verify(provider, times(1)).create(any());
+        verify(ticketService, never()).markTransferFailed(any(), any());
+    }
+
+    @Test
     void poll_tick_mirrors_state_change_and_posts_status_inbox() {
         TicketDocument transferred = transferredTicket("uuid-1",
                 "github", "4287", "open", null);
@@ -239,6 +271,7 @@ class FookUpstreamServiceTest {
                         .ref(ProviderTicketRef.builder()
                                 .provider("github")
                                 .externalId("4287")
+                                .displayId("4287")
                                 .url("https://github.com/mhus/vance/issues/4287")
                                 .build())
                         .state("closed")
@@ -268,6 +301,7 @@ class FookUpstreamServiceTest {
                         .ref(ProviderTicketRef.builder()
                                 .provider("github")
                                 .externalId("4287")
+                                .displayId("4287")
                                 .url("u")
                                 .build())
                         .state("open")
@@ -317,7 +351,7 @@ class FookUpstreamServiceTest {
         when(provider.pollUpdates(any(), any())).thenReturn(List.of(
                 ProviderTicketUpdate.builder()
                         .ref(ProviderTicketRef.builder()
-                                .provider("github").externalId("4287").url("u").build())
+                                .provider("github").externalId("4287").displayId("4287").url("u").build())
                         .state("open")
                         .newComments(List.of(
                                 ProviderTicketUpdate.ProviderComment.builder()

@@ -56,8 +56,20 @@ public class TicketDocument {
     /** Provider key, e.g. {@code "github"}. */
     @Nullable String upstreamProvider;
 
-    /** External id assigned by the provider (e.g. GitHub issue number). */
+    /**
+     * External id assigned by the provider (e.g. GitHub issue number).
+     * May be a secret — see {@code ProviderTicketRef}. Use
+     * {@link #upstreamDisplayId} for anything a person or a log sees.
+     */
     @Nullable String upstreamExternalId;
+
+    /**
+     * The showable half of the provider's identity. Null on tickets
+     * transferred before this field existed; callers fall back to
+     * {@link #upstreamExternalId}, which for the only provider that
+     * existed then (GitHub) is the same value.
+     */
+    @Nullable String upstreamDisplayId;
 
     /** Full URL for the user to follow. */
     @Nullable String upstreamUrl;

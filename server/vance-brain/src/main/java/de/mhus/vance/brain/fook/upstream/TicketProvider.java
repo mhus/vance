@@ -24,6 +24,22 @@ public interface TicketProvider {
     /** Identifier matched against {@code fook.upstream.providerType}. */
     String name();
 
+    /**
+     * Whether {@link #pollUpdates} is meaningful for this provider.
+     *
+     * <p>Declared rather than inferred, because an empty result from
+     * {@code pollUpdates} cannot distinguish "nothing changed" from
+     * "I have no way to ask". {@code FookUpstreamService.pollTick}
+     * exits on this, not on an empty list.
+     *
+     * <p>Not to be confused with the {@code fook.upstream.statusPoll.enabled}
+     * setting: that is the operator saying "I do not want this", this is
+     * the adapter saying "I cannot do this". Two questions, two answers.
+     */
+    default boolean supportsPolling() {
+        return true;
+    }
+
     /** Create an external ticket from the anonymized draft. */
     ProviderTicketRef create(ProviderTicketDraft draft) throws ProviderException;
 

@@ -121,6 +121,18 @@ public class FookUpstreamService {
             try {
                 transferOne(ticket, provider, cfg);
             } catch (ProviderException e) {
+                if (e.getRetryAfter() != null) {
+                    // The provider named a wait. Every remaining ticket in
+                    // this pass would hit the same limit, so stop rather than
+                    // collect N-1 identical refusals. Against a one-per-minute
+                    // cap, continuing here would also cost four fifths of the
+                    // allowed throughput: one ticket per tick instead of one
+                    // per minute.
+                    log.info("Fook upstream: provider '{}' rate-limited (retry after {}) — "
+                                    + "ending this pass with {} ticket(s) still pending",
+                            provider.name(), e.getRetryAfter(), pending.size());
+                    return;
+                }
                 if (e.isRetryable()) {
                     log.info("Fook upstream: transient transfer failure for {} " +
                                     "({}), will retry on next tick",
@@ -165,14 +177,18 @@ public class FookUpstreamService {
         // logged so an operator can reconcile the already-created upstream issue.
         try {
             ticketService.markTransferred(
-                    ticket.getId(), provider.name(), ref.getExternalId(), ref.getUrl());
+                    ticket.getId(), provider.name(),
+                    ref.getExternalId(), ref.getDisplayId(), ref.getUrl());
         } catch (RuntimeException e) {
-            log.error("Fook upstream: issue {} ({}) was created for ticket {} but "
+            // displayId, not externalId: this line reaches the log
+            // aggregation, and for the collector the externalId is a
+            // capability handle.
+            log.error("Fook upstream: issue {} was created for ticket {} but "
                             + "markTransferred failed — marking ticket failed to prevent a "
                             + "duplicate re-send (reconcile the upstream issue manually): {}",
-                    ref.getExternalId(), ref.getUrl(), ticket.getId(), e.toString(), e);
+                    ref.getDisplayId(), ticket.getId(), e.toString(), e);
             ticketService.markTransferFailed(ticket.getId(),
-                    "upstream issue " + ref.getExternalId() + " was created but transfer "
+                    "upstream issue " + ref.getDisplayId() + " was created but transfer "
                             + "bookkeeping failed: " + e.getMessage());
             return;
         }
@@ -182,15 +198,24 @@ public class FookUpstreamService {
 
     private void updateInboxOnTransfer(TicketDocument ticket, ProviderTicketRef ref) {
         if (ticket.getInboxItemId() == null) return;
-        String body = "Your submission was transferred to the upstream "
-                + "ticket system. Track it at " + ref.getUrl();
+        // Two wordings, because a provider may have no browsable page. The
+        // one with a link also says what the link is worth: it carries the
+        // access, so passing it on passes on the access.
+        String body = ref.getUrl() != null
+                ? "Your submission was transferred to the upstream ticket system. "
+                        + "Track it at " + ref.getUrl() + " — anyone with that link "
+                        + "can read and answer the ticket, so share it accordingly."
+                : "Your submission was transferred to the upstream ticket system "
+                        + "as " + ref.getDisplayId() + ". Status updates arrive here.";
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("decision", "new_ticket");
         payload.put("ticketId", ticket.getId());
         payload.put("status", "transferred");
         payload.put("upstreamProvider", ref.getProvider());
-        payload.put("upstreamExternalId", ref.getExternalId());
-        payload.put("upstreamUrl", ref.getUrl());
+        // The showable half only. The externalId may be a capability handle,
+        // and an inbox item is a thing that gets delegated and shared.
+        payload.put("upstreamDisplayId", ref.getDisplayId());
+        if (ref.getUrl() != null) payload.put("upstreamUrl", ref.getUrl());
         try {
             inboxItemService.updateContent(
                     inboxTenantId(ticket),
@@ -246,6 +271,11 @@ public class FookUpstreamService {
         if (!pollEnabled()) return;
         TicketProvider provider = currentProvider();
         if (provider == null) return;
+        // The adapter's own answer, distinct from the operator's
+        // statusPoll.enabled above: "I cannot ask" versus "I do not want
+        // this". Exiting here rather than on an empty result, because an
+        // empty result cannot say which of the two happened.
+        if (!provider.supportsPolling()) return;
 
         List<TicketDocument> transferred = ticketService.listTransferredForPolling();
         if (transferred.isEmpty()) return;
@@ -260,6 +290,12 @@ public class FookUpstreamService {
             refs.add(ProviderTicketRef.builder()
                     .provider(t.getUpstreamProvider())
                     .externalId(t.getUpstreamExternalId())
+                    // Tickets transferred before upstreamDisplayId existed
+                    // have none; for GitHub — the only provider back then —
+                    // the two ids are the same value.
+                    .displayId(t.getUpstreamDisplayId() != null
+                            ? t.getUpstreamDisplayId()
+                            : t.getUpstreamExternalId())
                     .url(t.getUpstreamUrl())
                     .build());
         }
@@ -346,16 +382,50 @@ public class FookUpstreamService {
                 .criticality(Criticality.LOW)
                 .tags(List.of(INBOX_TAG, INBOX_TAG_STATUS))
                 .title("Ticket status: " + update.getState())
-                .body("Your ticket at " + local.getUpstreamUrl()
+                .body("Your ticket " + reference(local)
                         + " is now `" + update.getState() + "`.")
-                .payload(Map.of(
-                        "ticketId", local.getId(),
-                        "upstreamProvider", local.getUpstreamProvider(),
-                        "upstreamUrl", local.getUpstreamUrl(),
-                        "state", update.getState()))
+                .payload(upstreamPayload(local, Map.of("state", update.getState())))
                 .requiresAction(false)
                 .build();
         inboxItemService.create(item);
+    }
+
+    /**
+     * How to name the ticket to its reporter: the link where there is
+     * one, the showable id otherwise.
+     */
+    private String reference(TicketDocument local) {
+        if (local.getUpstreamUrl() != null) return "at " + local.getUpstreamUrl();
+        String id = local.getUpstreamDisplayId() != null
+                ? local.getUpstreamDisplayId()
+                : local.getUpstreamExternalId();
+        return id == null ? "" : "(" + id + ")";
+    }
+
+    /**
+     * The upstream identity for an inbox payload. Built entry by entry
+     * rather than with {@code Map.of}, which throws on a null value —
+     * and both the url and the display id are legitimately absent
+     * (no browsable page; tickets transferred before the field existed).
+     * Carries the display id only: an inbox item can be delegated and
+     * shared, and the externalId may be a capability handle.
+     */
+    private Map<String, Object> upstreamPayload(
+            TicketDocument local, Map<String, Object> extra) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("ticketId", local.getId());
+        if (local.getUpstreamProvider() != null) {
+            payload.put("upstreamProvider", local.getUpstreamProvider());
+        }
+        String displayId = local.getUpstreamDisplayId() != null
+                ? local.getUpstreamDisplayId()
+                : local.getUpstreamExternalId();
+        if (displayId != null) payload.put("upstreamDisplayId", displayId);
+        if (local.getUpstreamUrl() != null) {
+            payload.put("upstreamUrl", local.getUpstreamUrl());
+        }
+        payload.putAll(extra);
+        return payload;
     }
 
     private void postCommentInbox(
@@ -363,12 +433,10 @@ public class FookUpstreamService {
         if (local.getReporter() == null
                 || local.getReporter().getUserId() == null
                 || local.getReporter().getTenantId() == null) return;
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("ticketId", local.getId());
-        payload.put("upstreamProvider", local.getUpstreamProvider());
-        payload.put("upstreamUrl", local.getUpstreamUrl());
-        payload.put("commentExternalId", c.getExternalId());
-        payload.put("author", c.getAuthor());
+        Map<String, Object> extra = new LinkedHashMap<>();
+        if (c.getExternalId() != null) extra.put("commentExternalId", c.getExternalId());
+        if (c.getAuthor() != null) extra.put("author", c.getAuthor());
+        Map<String, Object> payload = upstreamPayload(local, extra);
 
         MaximegalonDocument item = MaximegalonDocument.builder()
                 .tenantId(local.getReporter().getTenantId())

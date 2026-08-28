@@ -674,22 +674,19 @@ function copyLink(): void {
   flex-shrink: 0;
   width: 20px;
   height: 20px;
-  border: none;
+  border: 1px solid transparent;
   border-radius: 4px;
   background: transparent;
   cursor: pointer;
   font-size: 12px;
   line-height: 1;
   color: #6b7280;
-  opacity: 0;
-  transition: opacity 0.15s ease, background 0.15s ease;
-}
-.canvas-node--link:hover .canvas-card-copy-btn {
-  opacity: 1;
+  transition: background 0.15s ease;
 }
 .canvas-card-copy-btn:hover {
   background: #f1f5f9;
   color: #1f2937;
+  border-color: #cbd5e1;
 }
 .canvas-card-sub {
   margin-top: 2px;

@@ -132,4 +132,17 @@ export default {
   line-height: 1.55;
   word-break: break-word;
 }
+
+/* Hide the YAML front-matter strip that MarkdownView renders above the
+ * body. In the preview surface the front matter is configuration
+ * metadata (theme:/css: keys), not report content — showing it above
+ * the rendered document reads as clutter. MarkdownView keeps it for
+ * chat / inbox / search hits where the metadata is contextual; here it
+ * is suppressed via :deep() (the strip lives inside the MarkdownView
+ * child's scoped boundary). The body itself is unaffected — the
+ * front matter was already stripped from the rendered markdown by
+ * MarkdownView's extractFrontmatter, this only hides the chip strip. */
+.markdown-document-preview :deep(.markdown-view__frontmatter) {
+  display: none;
+}
 </style>

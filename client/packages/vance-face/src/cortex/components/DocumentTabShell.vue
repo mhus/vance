@@ -1017,6 +1017,7 @@ function fmtDuration(ms: number | null): string {
       <component
         :is="codePreviewKind.codePreview"
         :source="document.inlineText"
+        :document-id="codePreviewKind.id === 'markdown' ? document.id : null"
       />
     </div>
     <div

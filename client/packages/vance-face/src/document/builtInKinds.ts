@@ -41,7 +41,7 @@ export function registerBuiltInKinds(): void {
       return k === '' || k === 'markdown' || k === 'text';
     },
     codePreview: defineAsyncComponent(
-      () => import('@/components/MarkdownView.vue'),
+      () => import('@/components/MarkdownDocumentPreview.vue'),
     ),
   });
 

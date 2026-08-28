@@ -369,11 +369,28 @@ public class SetupWizard {
         String providerId = settingService.getStringValue(
                 tenantId, SettingService.SCOPE_PROJECT,
                 HomeBootstrapService.TENANT_PROJECT_NAME, "ai.default.provider");
-        ProviderPreset preset = providerId == null ? null
-                : ProviderPreset.fromSettingsId(providerId);
-        if (preset == null) {
-            // Existing tenant without a recognised provider: leave unconfigured.
+        if (providerId == null) {
             return;
+        }
+        ProviderPreset preset = ProviderPreset.fromSettingsId(providerId);
+        // An id that matches no fixed preset is an operator-named instance
+        // (`cortecs`, `openrouter`, …) — read it back as CUSTOM carrying that
+        // name. Treating it as "unconfigured" instead would make a re-run of
+        // the wizard offer to set up AI from scratch on a tenant that already
+        // has a working gateway, and the first save would leave two instances
+        // behind.
+        @Nullable String instance;
+        if (preset != null) {
+            instance = preset.settingsId();
+        } else {
+            instance = ProviderPreset.normaliseInstanceName(providerId);
+            if (instance == null) {
+                // Not a preset and not a legal instance name — nothing this
+                // wizard can safely edit. Leave it alone.
+                return;
+            }
+            preset = ProviderPreset.CUSTOM;
+            state.setInstanceName(instance);
         }
         state.setProvider(preset);
         String model = settingService.getStringValue(
@@ -383,7 +400,7 @@ public class SetupWizard {
         String baseUrl = settingService.getStringValue(
                 tenantId, SettingService.SCOPE_PROJECT,
                 HomeBootstrapService.TENANT_PROJECT_NAME,
-                "ai.provider." + preset.settingsId() + ".baseUrl");
+                "ai.provider." + instance + ".baseUrl");
         if (StringUtils.isNotBlank(baseUrl)) {
             state.setBaseUrl(baseUrl);
         }
@@ -410,7 +427,7 @@ public class SetupWizard {
             out.printf("  5) User email:           %s%n",
                     StringUtils.defaultIfBlank(state.getUserEmail(), "—"));
             out.printf("  6) AI provider:          %s%n",
-                    p == null ? "(not configured)" : p.displayName());
+                    p == null ? "(not configured)" : providerLabel(p, state));
             out.printf("  7) AI model:             %s%n",
                     p == null ? "—" : StringUtils.defaultIfBlank(state.getAiModel(), "—"));
             if (p != null && p.requiresBaseUrl()) {
@@ -525,6 +542,21 @@ public class SetupWizard {
         }
     }
 
+    /**
+     * Menu label for a picked provider. For an operator-named instance the
+     * name <em>is</em> the configuration — showing only "OpenAI-compatible
+     * gateway" would hide which namespace the save writes to, which is the
+     * one thing that used to go wrong unnoticed.
+     */
+    private static String providerLabel(ProviderPreset p, SetupState state) {
+        if (!p.requiresInstanceName()) {
+            return p.displayName();
+        }
+        String instance = state.effectiveInstance();
+        return p.displayName() + "  ["
+                + (instance == null ? "instance not named" : instance) + "]";
+    }
+
     private void editProvider(PrintWriter out, LineReader reader, SetupState state) {
         out.println("AI providers:");
         ProviderPreset[] values = ProviderPreset.values();
@@ -544,6 +576,7 @@ public class SetupWizard {
         }
         if (pick == none) {
             state.setProvider(null);
+            state.setInstanceName(null);
             state.setAiModel("");
             state.setAiApiKey(null);
             state.setEmbeddingApiKey(null);
@@ -560,10 +593,54 @@ public class SetupWizard {
             state.setAiApiKey(null);
             state.setEmbeddingApiKey(null);
             state.setBaseUrl(null);
+            state.setInstanceName(null);
+        }
+        if (chosen.requiresInstanceName()) {
+            askInstanceName(out, reader, state);
         }
         if (chosen.requiresBaseUrl()) {
             out.println("OpenAI-compatible gateway selected — set the base URL (entry 8)"
                     + " and a model id (entry 7).");
+            out.flush();
+        }
+    }
+
+    /**
+     * Asks for the provider-instance name. Asked right after picking the
+     * preset rather than as its own menu entry: without a name the preset
+     * cannot write anything, so it is part of choosing it, not an option on
+     * top. Re-asks on an illegal name instead of falling back to a default —
+     * a silently chosen namespace is exactly the failure being fixed here.
+     */
+    private void askInstanceName(PrintWriter out, LineReader reader, SetupState state) {
+        out.println();
+        out.println("Name this provider instance. It becomes the settings namespace");
+        out.println("(ai.provider.<name>.apiKey), the ai.default.provider value and the");
+        out.println("left half of every model spec (<name>:<model>). Use the gateway's");
+        out.println("name — e.g. cortecs, openrouter, vllm-local. Lower-case letters,");
+        out.println("digits, '.', '_' and '-'.");
+        out.println();
+        out.println("Naming it after a built-in provider (openai, anthropic, gemini)");
+        out.println("replaces that provider's own endpoint for this tenant.");
+        out.flush();
+        while (true) {
+            String raw = readLine(reader, "Instance name"
+                    + (state.getInstanceName() == null
+                            ? "" : " [" + state.getInstanceName() + "]")
+                    + ": ");
+            if (raw == null) {
+                return;
+            }
+            if (raw.isBlank() && state.getInstanceName() != null) {
+                return;  // keep what is already there
+            }
+            String normalised = ProviderPreset.normaliseInstanceName(raw);
+            if (normalised != null) {
+                state.setInstanceName(normalised);
+                return;
+            }
+            out.println("Not a usable instance name — lower-case letters, digits, "
+                    + "'.', '_' and '-' only.");
             out.flush();
         }
     }
@@ -577,6 +654,11 @@ public class SetupWizard {
      */
     private boolean confirmSave(PrintWriter out, LineReader reader, SetupState state) {
         ProviderPreset p = state.getProvider();
+        if (p != null && p.requiresInstanceName() && state.effectiveInstance() == null) {
+            out.println("The gateway needs an instance name — re-pick the provider (entry 6).");
+            out.flush();
+            return false;
+        }
         if (p != null && p.requiresBaseUrl() && StringUtils.isBlank(state.getBaseUrl())) {
             out.println("The OpenAI-compatible provider needs a base URL (entry 8).");
             out.flush();
@@ -671,22 +753,44 @@ public class SetupWizard {
             return;
         }
         String tenantId = state.getTenantId();
-        setString(tenantId, "ai.default.provider", preset.settingsId(),
+        // Every settings key below hangs off this one name. For the fixed
+        // presets it is the preset's own id; for a gateway it is what the
+        // operator typed. Writing the literal `openai` for a gateway — which
+        // is what this method used to do — overwrote the real OpenAI key and
+        // redirected the `openai` instance in one step, with nothing on
+        // screen to say so.
+        @Nullable String instance = state.effectiveInstance();
+        if (instance == null) {
+            out.println("  ! AI provider has no instance name — settings skipped");
+            return;
+        }
+        setString(tenantId, "ai.default.provider", instance,
                 "Default AI provider for new sessions.");
         setString(tenantId, "ai.default.model", state.getAiModel(),
                 "Default model id for the configured provider.");
+        // A named instance is only a namespace until something binds it to a
+        // protocol. The bundled `_provider.yaml` sidecars do that for the
+        // instances we ship (see AiModelResolver), but an operator-chosen name
+        // has none — so state the wire type explicitly. Written for the fixed
+        // presets too when the name was operator-chosen: cheap, and it removes
+        // the "why does cortecs work but openrouter not" class of question.
+        if (preset.requiresInstanceName()) {
+            setString(tenantId, "ai.provider." + instance + ".type",
+                    ProviderPreset.CUSTOM_WIRE_TYPE,
+                    "Wire protocol this provider instance speaks.");
+        }
         // Custom OpenAI-compatible gateway (Cortecs, local proxy, …): the
         // endpoint override lives next to the api key on the same instance.
         String baseUrl = state.getBaseUrl();
         if (StringUtils.isNotBlank(baseUrl)) {
-            setString(tenantId, "ai.provider." + preset.settingsId() + ".baseUrl",
+            setString(tenantId, "ai.provider." + instance + ".baseUrl",
                     baseUrl.trim(), "OpenAI-compatible endpoint base URL.");
             out.println("  + base URL written (" + baseUrl.trim() + ")");
         }
         // Aliases all point at the chat model — operator can split later
         // through the Web-UI / settings if they want fast vs. analyze vs.
         // deep tiers on different models.
-        String fqModel = preset.settingsId() + ":" + state.getAiModel();
+        String fqModel = instance + ":" + state.getAiModel();
         for (String alias : List.of("fast", "analyze", "deep", "web", "code")) {
             setString(tenantId, "ai.alias.default." + alias, fqModel, null);
         }
@@ -694,12 +798,12 @@ public class SetupWizard {
             settingService.setEncryptedPassword(
                     tenantId, SettingService.SCOPE_PROJECT,
                     HomeBootstrapService.TENANT_PROJECT_NAME,
-                    "ai.provider." + preset.settingsId() + ".apiKey",
+                    "ai.provider." + instance + ".apiKey",
                     state.getAiApiKey());
-            out.println("  + " + preset.displayName() + " API key written");
+            out.println("  + API key written for instance '" + instance + "'");
         }
         if (preset.supportsEmbedding()) {
-            setString(tenantId, "ai.embedding.provider", preset.settingsId(),
+            setString(tenantId, "ai.embedding.provider", instance,
                     "Embedding provider for RAG indexing.");
             String embedKey = StringUtils.isBlank(state.getEmbeddingApiKey())
                     ? state.getAiApiKey()
@@ -716,7 +820,8 @@ public class SetupWizard {
             setString(tenantId, "ai.embedding.provider", "embedded",
                     "Embedding provider for RAG indexing (in-process E5).");
         }
-        out.println("  ~ AI defaults written (" + preset.displayName() + " / " + state.getAiModel() + ")");
+        out.println("  ~ AI defaults written (instance '" + instance + "' / "
+                + state.getAiModel() + ")");
     }
 
     /**

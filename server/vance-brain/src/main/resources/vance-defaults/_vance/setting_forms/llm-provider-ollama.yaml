@@ -1,0 +1,31 @@
+# Endpoint for the provider instance `ollama`.
+#
+# Keyless: ProviderType.OLLAMA declares requiresApiKey=false, so
+# ChatBehaviorBuilder skips the key lookup entirely and hands the adapter
+# a placeholder. A key field here would be a field nothing reads.
+# (Hosted Ollama Turbo is a different wire type, `ollama-cloud`, and does
+# need a key — that is its own instance.)
+
+title:
+  de: "LLM-Provider: Ollama"
+  en: "LLM provider: Ollama"
+description:
+  de: "Endpunkt der Provider-Instanz `ollama`. Kein API-Key nötig — der Adapter authentifiziert nicht."
+  en: "Endpoint for the `ollama` provider instance. No API key — the adapter does not authenticate."
+icon: key
+category: llm
+defaultScope: project
+availableIn: [ "!_user_*" ]
+
+fields:
+
+  - name: baseUrl
+    type: string
+    label:
+      de: "Base-URL"
+      en: "Base-URL"
+    help:
+      de: "Leer = http://localhost:11434. Z.B. http://gpu-host:11434 für einen geteilten Inferenz-Host."
+      en: "Empty = http://localhost:11434. E.g. http://gpu-host:11434 for a shared inference host."
+    bindsTo:
+      key: "ai.provider.ollama.baseUrl"

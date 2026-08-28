@@ -38,6 +38,13 @@ import org.springframework.stereotype.Service;
  *       multiple instances with different credentials / base URLs
  *       (e.g. a {@code deepseek-direct} instance on top of the
  *       OpenAI wire). Unknown {@code type} fails fast.</li>
+ *   <li>Otherwise if the provider sidecar
+ *       {@code _vance/model/<prefix>/_provider.yaml} declares
+ *       {@code wireType}, use that — same binding, declared by the
+ *       catalog instead of by a setting. Adding a model directory is
+ *       already a statement about which protocol the endpoint speaks;
+ *       the setting stays the per-tenant override for the cases where
+ *       the two must differ. Unknown {@code wireType} fails fast.</li>
  *   <li>Otherwise look up
  *       {@code ai.alias.<prefix>.<rest>} in the tenant's settings
  *       and recurse with that value.</li>
@@ -96,6 +103,7 @@ public class AiModelResolver {
 
     private final AiModelService aiModelService;
     private final SettingService settingService;
+    private final ModelCatalog modelCatalog;
 
     /**
      * Materialised endpoint of the resolution.
@@ -266,6 +274,28 @@ public class AiModelResolver {
             return new Resolved(typeWireName, prefix, rest);
         }
 
+        // Same binding, declared by the catalog instead of a setting: the
+        // provider sidecar `_vance/model/<prefix>/_provider.yaml` states
+        // `wireType:`. An operator who added a model directory has already
+        // said which protocol it speaks — requiring the same fact a second
+        // time as a setting is the step everybody forgets, and the failure
+        // ("alias not configured") names neither the missing key nor the
+        // directory. The setting still wins where both exist: it is the
+        // per-tenant override, the document is the shipped default.
+        @Nullable String declaredType = declaredWireType(tenantId, projectId, prefix);
+        if (declaredType != null) {
+            if (!aiModelService.hasProvider(declaredType)) {
+                throw new UnknownModelException(
+                        "Provider instance '" + prefix + "' declares unknown wireType '"
+                                + declaredType + "' (document '"
+                                + ModelCatalog.MODEL_PATH_PREFIX + prefix + "/_provider.yaml')"
+                                + ". Known providers: " + aiModelService.listProviders());
+            }
+            log.debug("AiModelResolver: instance '{}' → type '{}' (from _provider.yaml)",
+                    prefix, declaredType);
+            return new Resolved(declaredType, prefix, rest);
+        }
+
         // Alias lookup — project cascade. Alias target may itself be a
         // comma-cascade, so route through resolveCascade rather than
         // resolveElement directly.
@@ -294,6 +324,29 @@ public class AiModelResolver {
                         + "provider nor a configured alias. Known providers: "
                         + aiModelService.listProviders()
                         + "; expected setting: '" + settingKey + "'");
+    }
+
+    /**
+     * Reads {@code wireType} off the provider sidecar for {@code instance},
+     * or {@code null} when there is no sidecar / no such field. Blank is
+     * treated as absent: a sidecar that only carries {@code maxTools} must
+     * not turn into a resolution error.
+     *
+     * <p>Reads the catalog <em>snapshot</em>, so a sidecar written at
+     * runtime becomes visible on the next refresh (30 min, or
+     * {@code POST /brain/{tenant}/admin/ai-models/refresh}) — same latency
+     * as for a newly added model document. A setting takes effect at once,
+     * which is the second reason it stays the override.
+     */
+    private @Nullable String declaredWireType(
+            String tenantId, @Nullable String projectId, String instance) {
+        Object raw = modelCatalog.lookupProvider(tenantId, projectId, instance)
+                .map(spec -> spec.get("wireType"))
+                .orElse(null);
+        if (!(raw instanceof String s) || s.isBlank()) {
+            return null;
+        }
+        return s.trim();
     }
 
     /**

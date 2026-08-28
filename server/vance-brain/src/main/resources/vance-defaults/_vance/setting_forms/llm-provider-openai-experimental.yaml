@@ -1,0 +1,43 @@
+# Credentials for the provider instance `openai-experimental` — the
+# OpenAI Responses API (`/v1/responses`), a separate wire type from
+# `openai` and therefore a separate instance with its own key.
+#
+# Reasoning-native models (gpt-5.6-sol and siblings) reject
+# `reasoning_effort` together with function tools on /chat/completions,
+# so they are only usable through this instance. See
+# `readme/openai-experimental-provider.md`.
+
+title:
+  de: "LLM-Provider: OpenAI (Responses API)"
+  en: "LLM provider: OpenAI (Responses API)"
+description:
+  de: "Zugangsdaten der Provider-Instanz `openai-experimental`. Eigener Key — die Instanz ist nicht `openai`, auch wenn beide dasselbe Konto nutzen können."
+  en: "Credentials for the `openai-experimental` provider instance. Its own key — it is not the `openai` instance, even when both bill the same account."
+icon: key
+category: llm
+defaultScope: project
+availableIn: [ "!_user_*" ]
+
+fields:
+
+  - name: apiKey
+    type: password
+    label:
+      de: "API Key"
+      en: "API Key"
+    help:
+      de: "Derselbe OpenAI-Key wie für die Instanz `openai` funktioniert — er muss hier trotzdem gesetzt werden, weil Keys pro Instanz gelesen werden."
+      en: "The same OpenAI key as the `openai` instance works — it still has to be set here, because keys are read per instance."
+    bindsTo:
+      key: "ai.provider.openai-experimental.apiKey"
+
+  - name: baseUrl
+    type: string
+    label:
+      de: "Base-URL"
+      en: "Base-URL"
+    help:
+      de: "Leer = api.openai.com. Nur setzen für ein Gateway, das die Responses-API spricht."
+      en: "Empty = api.openai.com. Set only for a gateway that speaks the Responses API."
+    bindsTo:
+      key: "ai.provider.openai-experimental.baseUrl"

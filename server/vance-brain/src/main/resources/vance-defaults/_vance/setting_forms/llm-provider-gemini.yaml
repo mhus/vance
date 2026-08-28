@@ -1,0 +1,32 @@
+# Credentials for the provider instance `gemini`.
+#
+# No base-URL field, same reason as the Anthropic form: GeminiProvider
+# honours a base URL for model listing only, not for chat.
+#
+# Note this is the *chat* credential. RAG embeddings read their own
+# `ai.embedding.*` namespace (see the "LLM Settings" form) so a tenant
+# can chat on one provider and vectorise on another.
+
+title:
+  de: "LLM-Provider: Google Gemini"
+  en: "LLM provider: Google Gemini"
+description:
+  de: "Zugangsdaten der Provider-Instanz `gemini`. Modell-Zuordnung steuert das Formular „LLM-Einstellungen\"."
+  en: "Credentials for the `gemini` provider instance. Which model answers when is configured in the \"LLM Settings\" form."
+icon: key
+category: llm
+defaultScope: project
+availableIn: [ "!_user_*" ]
+
+fields:
+
+  - name: apiKey
+    type: password
+    label:
+      de: "Gemini API Key"
+      en: "Gemini API Key"
+    help:
+      de: "Leer lassen um einen bereits gesetzten Key unverändert zu lassen."
+      en: "Leave empty to keep an already-set key unchanged."
+    bindsTo:
+      key: "ai.provider.gemini.apiKey"

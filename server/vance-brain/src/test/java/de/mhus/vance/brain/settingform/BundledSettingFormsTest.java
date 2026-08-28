@@ -43,10 +43,19 @@ class BundledSettingFormsTest {
                         "aliasAnalyze", "aliasFast", "aliasDeep", "aliasWeb", "aliasCode",
                         "aliasImage", "aliasImageHigh",
                         "provider",
-                        "anthropicKey", "openaiKey", "geminiKey",
-                        "openaiBaseUrl", "ollamaBaseUrl",
                         "embeddingProvider", "embeddingModel", "embeddingKey", "embeddingBaseUrl",
                         "tracing");
+
+        // Chat credentials moved out to one form per provider instance. A
+        // single form cannot carry them: `bindsTo.key` is a fixed string, so
+        // `ai.provider.openai.apiKey` and `ai.provider.cortecs.apiKey` need
+        // two forms, and the shared one used to make the second endpoint
+        // unconfigurable. Guard against them creeping back in.
+        assertThat(f.fields())
+                .filteredOn(field -> field.getBindsTo() != null
+                        && field.getBindsTo().getKey().startsWith("ai.provider."))
+                .as("chat credentials belong in llm-provider-<instance>, not in llm-setup")
+                .isEmpty();
 
         // Embedding fields bind to the standalone ai.embedding.* namespace
         // (separate from the chat-side ai.provider.*.apiKey credentials).
@@ -92,6 +101,56 @@ class BundledSettingFormsTest {
         assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "research-2026")).isTrue();
         assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "_tenant")).isTrue();
         assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "_user_wile.coyote")).isFalse();
+    }
+
+    /**
+     * Every bundled credential form binds to its <em>own</em> provider
+     * instance and to nothing else. This is the assertion that keeps the
+     * split meaningful: a copy-paste that leaves an `openai` key in the
+     * Cortecs form re-creates exactly the collision the split removed —
+     * two endpoints sharing one credential — and it would do so silently,
+     * because the form still renders and still saves.
+     */
+    @Test
+    void llm_provider_forms_bindOnlyToTheirOwnInstance() throws IOException {
+        for (String instance : new String[]{
+                "anthropic", "openai", "openai-experimental", "gemini",
+                "ollama", "lmstudio", "cortecs"}) {
+            ResolvedSettingForm f = loadBundled("llm-provider-" + instance);
+            assertThat(f.fields())
+                    .as("form llm-provider-%s has no fields", instance)
+                    .isNotEmpty();
+            assertThat(f.fields())
+                    .allSatisfy(field -> {
+                        assertThat(field.getBindsTo())
+                                .as("field '%s' in llm-provider-%s must bind to a setting",
+                                        field.getName(), instance)
+                                .isNotNull();
+                        assertThat(field.getBindsTo().getKey())
+                                .as("field '%s' in llm-provider-%s binds to a foreign instance",
+                                        field.getName(), instance)
+                                .startsWith("ai.provider." + instance + ".");
+                    });
+        }
+    }
+
+    /**
+     * A required password field cannot be saved without re-typing the
+     * secret — blank means "keep the existing value", and FormValidator
+     * reports blank+required as an error. A required key field would make
+     * every unrelated edit (changing a base URL) fail with 422.
+     */
+    @Test
+    void llm_provider_forms_neverMarkCredentialsRequired() throws IOException {
+        for (String instance : new String[]{
+                "anthropic", "openai", "openai-experimental", "gemini", "cortecs"}) {
+            ResolvedSettingForm f = loadBundled("llm-provider-" + instance);
+            assertThat(f.fields())
+                    .filteredOn(field -> "password".equals(field.getType()))
+                    .as("llm-provider-%s", instance)
+                    .isNotEmpty()
+                    .allSatisfy(field -> assertThat(field.isRequired()).isFalse());
+        }
     }
 
     @Test

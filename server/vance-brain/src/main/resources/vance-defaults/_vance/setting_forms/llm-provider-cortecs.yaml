@@ -1,0 +1,49 @@
+# Credentials for the provider instance `cortecs` — an OpenAI-wire
+# gateway that is *not* OpenAI. Its protocol is declared once in
+# `_vance/model/cortecs/_provider.yaml` (`wireType: openai`), so no
+# `ai.provider.cortecs.type` setting is needed here.
+#
+# Point of the separate instance: the key and the endpoint belong
+# together and belong to Cortecs. Configuring it as an `openai` base-URL
+# override — which is what the single shared LLM form used to force —
+# hands the Cortecs key to every `openai:<model>` spec and loses the real
+# OpenAI endpoint in the same move.
+
+title:
+  de: "LLM-Provider: Cortecs"
+  en: "LLM provider: Cortecs"
+description:
+  de: "Zugangsdaten der Provider-Instanz `cortecs` (OpenAI-kompatibles Gateway). Unabhängig von `openai` — eigener Key, eigener Endpunkt."
+  en: "Credentials for the `cortecs` provider instance (OpenAI-compatible gateway). Independent from `openai` — its own key, its own endpoint."
+icon: key
+category: llm
+defaultScope: project
+availableIn: [ "!_user_*" ]
+
+fields:
+
+  - name: apiKey
+    type: password
+    label:
+      de: "Cortecs API Key"
+      en: "Cortecs API Key"
+    help:
+      de: "Leer lassen um einen bereits gesetzten Key unverändert zu lassen."
+      en: "Leave empty to keep an already-set key unchanged."
+    bindsTo:
+      key: "ai.provider.cortecs.apiKey"
+
+  # Required, and deliberately so: an empty base URL does not mean "use a
+  # sensible default" here — it means the Cortecs key gets sent to
+  # api.openai.com. There is no default worth falling back to.
+  - name: baseUrl
+    type: string
+    required: true
+    label:
+      de: "Base-URL"
+      en: "Base-URL"
+    help:
+      de: "Pflichtfeld — z.B. https://api.cortecs.ai/v1. Ohne Wert liefe die Instanz gegen api.openai.com."
+      en: "Required — e.g. https://api.cortecs.ai/v1. Left empty, the instance would talk to api.openai.com."
+    bindsTo:
+      key: "ai.provider.cortecs.baseUrl"

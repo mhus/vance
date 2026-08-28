@@ -1,0 +1,50 @@
+# Credentials for the provider instance `openai`.
+#
+# One form per instance, not one form for all providers: `openai` and a
+# gateway like `cortecs` are separate instances of the same wire protocol
+# with separate keys and separate endpoints. A `bindsTo.key` is a fixed
+# string, so a single shared form can only ever address one of them —
+# which is exactly why a second OpenAI-wire endpoint used to be
+# unconfigurable through the UI.
+#
+# Adding your own gateway: copy this file to
+# `_vance/setting_forms/llm-provider-<name>.yaml`, rewrite both keys to
+# `ai.provider.<name>.*`, and declare the protocol once in
+# `_vance/model/<name>/_provider.yaml` (`wireType: openai`). Without that
+# sidecar the instance has credentials but no protocol, and every model
+# spec `<name>:<model>` fails to resolve.
+
+title:
+  de: "LLM-Provider: OpenAI"
+  en: "LLM provider: OpenAI"
+description:
+  de: "Zugangsdaten der Provider-Instanz `openai`. Modell-Zuordnung steuert das Formular „LLM-Einstellungen\"."
+  en: "Credentials for the `openai` provider instance. Which model answers when is configured in the \"LLM Settings\" form."
+icon: key
+category: llm
+defaultScope: project
+availableIn: [ "!_user_*" ]
+
+fields:
+
+  - name: apiKey
+    type: password
+    label:
+      de: "OpenAI API Key"
+      en: "OpenAI API Key"
+    help:
+      de: "Leer lassen um einen bereits gesetzten Key unverändert zu lassen."
+      en: "Leave empty to keep an already-set key unchanged."
+    bindsTo:
+      key: "ai.provider.openai.apiKey"
+
+  - name: baseUrl
+    type: string
+    label:
+      de: "Base-URL"
+      en: "Base-URL"
+    help:
+      de: "Leer = api.openai.com. Ein Wert hier lenkt die Instanz `openai` selbst um — für einen zweiten Endpunkt neben OpenAI stattdessen eine eigene Instanz anlegen, sonst teilen sich beide einen Key."
+      en: "Empty = api.openai.com. A value here redirects the `openai` instance itself — for a second endpoint alongside OpenAI create its own instance instead, otherwise both share one key."
+    bindsTo:
+      key: "ai.provider.openai.baseUrl"

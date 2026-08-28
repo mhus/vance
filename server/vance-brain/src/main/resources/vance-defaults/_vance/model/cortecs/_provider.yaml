@@ -1,0 +1,20 @@
+displayName: Cortecs (OpenAI-wire gateway)
+wireType: openai
+authType: api-key
+
+# This sidecar is what makes `cortecs` a usable provider instance: it
+# declares the protocol once, so `cortecs:<model>` resolves without an
+# `ai.provider.cortecs.type` setting next to the key. AiModelResolver
+# reads `wireType` after checking that setting, so a tenant that needs a
+# different protocol on this name can still override it.
+#
+# There are deliberately no model documents in this directory. Cortecs
+# serves a changing catalogue that we do not curate; run "Discover AI
+# Models" (Profile → Actions) after setting the key and the models land
+# under `_vance/model-auto/cortecs/`. Pricing and `kind` never come from
+# discovery — add those by hand here when a model needs them.
+#
+# No `maxTools:` either. The value belongs to the endpoint, and we have
+# not measured what this gateway enforces; an invented cap would silently
+# shrink the tool surface, an absent one lets ObservedToolLimitRegistry
+# learn the real limit from the first rejection.

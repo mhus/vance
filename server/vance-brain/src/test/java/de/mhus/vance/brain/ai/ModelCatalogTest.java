@@ -81,6 +81,41 @@ class ModelCatalogTest {
         assertThat(catalog.lookup("nonexistent", "ghost-1")).isEmpty();
     }
 
+    /**
+     * Every bundled provider directory declares its wire protocol. This is
+     * no longer decorative metadata: {@code AiModelResolver} binds a
+     * free-form instance name to a {@code ProviderType} through this field
+     * when no {@code ai.provider.<instance>.type} setting exists. A sidecar
+     * that loses its {@code wireType} makes its instance unresolvable, and
+     * the failure surfaces as "alias not configured" at chat time.
+     */
+    @Test
+    void bundled_providerSidecars_declareTheirWireType() {
+        for (String instance : new String[]{
+                "anthropic", "openai", "openai-experimental", "gemini",
+                "ollama", "lmstudio", "cortecs"}) {
+            assertThat(catalog.lookupProvider(null, null, instance))
+                    .as("bundled _provider.yaml for instance '%s'", instance)
+                    .hasValueSatisfying(spec -> assertThat(spec.get("wireType"))
+                            .isInstanceOf(String.class));
+        }
+    }
+
+    /**
+     * `cortecs` ships as a sidecar only — no model documents. It is the
+     * bundled example of "gateway on a foreign wire": a separate instance
+     * of the openai protocol, so its key and endpoint stay separate from
+     * the real OpenAI ones.
+     */
+    @Test
+    void bundled_cortecs_isAnOpenAiWireInstanceWithoutModels() {
+        assertThat(catalog.lookupProvider(null, null, "cortecs"))
+                .hasValueSatisfying(spec -> assertThat(spec.get("wireType")).isEqualTo("openai"));
+        assertThat(catalog.listAll(null, null))
+                .as("cortecs serves a catalogue we do not curate — models come from discovery")
+                .noneMatch(m -> "cortecs".equals(m.provider()));
+    }
+
     @Test
     void null_provider_or_model_returns_empty() {
         assertThat(catalog.lookup(null, null, null, "claude-sonnet-4-5")).isEmpty();

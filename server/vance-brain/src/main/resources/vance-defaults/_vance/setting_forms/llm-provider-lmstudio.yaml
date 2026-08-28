@@ -1,0 +1,28 @@
+# Endpoint for the provider instance `lmstudio`.
+#
+# Keyless like Ollama (ProviderType.LM_STUDIO declares
+# requiresApiKey=false), so there is no key field.
+
+title:
+  de: "LLM-Provider: LM Studio"
+  en: "LLM provider: LM Studio"
+description:
+  de: "Endpunkt der Provider-Instanz `lmstudio` (lokaler MLX-Server). Kein API-Key nötig."
+  en: "Endpoint for the `lmstudio` provider instance (local MLX server). No API key needed."
+icon: key
+category: llm
+defaultScope: project
+availableIn: [ "!_user_*" ]
+
+fields:
+
+  - name: baseUrl
+    type: string
+    label:
+      de: "Base-URL"
+      en: "Base-URL"
+    help:
+      de: "Leer = http://localhost:1234/v1. Auf einen anderen Host zeigen, wenn LM Studio nicht lokal läuft."
+      en: "Empty = http://localhost:1234/v1. Point at another host when LM Studio does not run locally."
+    bindsTo:
+      key: "ai.provider.lmstudio.baseUrl"

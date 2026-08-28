@@ -151,11 +151,25 @@ public class ModelDiscoveryService {
         for (Map.Entry<String, Map<String, SettingDocument>> e : byInstance.entrySet()) {
             String instance = e.getKey();
             Map<String, SettingDocument> fields = e.getValue();
-            // Determine the protocol type. Default: instance == wireName.
+            // Determine the protocol type — same precedence as
+            // AiModelResolver: `type` setting, then the `wireType` declared
+            // by the instance's `_provider.yaml`, then instance == wireName.
+            // Discovery has to agree with the resolver here: an instance the
+            // resolver can chat with but discovery skips is an instance whose
+            // "Discover AI Models" button silently does nothing.
             String typeWire = instance;
             SettingDocument typeDoc = fields.get("type");
             if (typeDoc != null && typeDoc.getValue() != null && !typeDoc.getValue().isBlank()) {
                 typeWire = typeDoc.getValue().trim();
+            } else {
+                String declared = modelCatalog.lookupProvider(tenantId, projectId, instance)
+                        .map(spec -> spec.get("wireType"))
+                        .filter(v -> v instanceof String s && !s.isBlank())
+                        .map(v -> ((String) v).trim())
+                        .orElse(null);
+                if (declared != null) {
+                    typeWire = declared;
+                }
             }
             ProviderType type = ProviderType.fromWireName(typeWire).orElse(null);
             if (type == null) {

@@ -76,6 +76,52 @@ class ModelDiscoveryServiceAutoDocTest {
     }
 
     /**
+     * An instance whose protocol is declared only by its
+     * {@code _provider.yaml} must be discoverable, not skipped.
+     *
+     * <p>Discovery derives the protocol from the instance name when no
+     * {@code .type} setting exists, so {@code cortecs} used to resolve to
+     * no {@link ProviderType} and drop out with a debug line. The resolver
+     * reads the sidecar and would happily chat with the same instance —
+     * meaning "Discover AI Models" silently did nothing for exactly the
+     * gateway the operator had just configured.
+     */
+    @Test
+    void instanceWithProtocolOnlyInTheSidecar_isDiscovered() {
+        when(tenantService.findByName(TENANT))
+                .thenReturn(Optional.of(new TenantDocument()));
+        ProjectDocument project = new ProjectDocument();
+        project.setName(PROJECT);
+        when(projectService.all(TENANT)).thenReturn(List.of(project));
+
+        SettingDocument apiKey = new SettingDocument();
+        apiKey.setKey("ai.provider.cortecs.apiKey");
+        apiKey.setType(SettingType.PASSWORD);
+        when(settingService.findAll(TENANT, SettingService.SCOPE_PROJECT, PROJECT))
+                .thenReturn(List.of(apiKey));
+        when(settingService.getDecryptedPassword(
+                TENANT, SettingService.SCOPE_PROJECT, PROJECT, "ai.provider.cortecs.apiKey"))
+                .thenReturn("test-key");
+        when(modelCatalog.lookupProvider(TENANT, PROJECT, "cortecs"))
+                .thenReturn(Optional.of(java.util.Map.of("wireType", "openai")));
+
+        AiModelProvider provider = mock(AiModelProvider.class);
+        when(provider.listAvailableModels(any()))
+                .thenReturn(List.of(DiscoveredModelInfo.of("llama-3.3-70b")));
+        when(aiModelService.findProvider(ProviderType.OPENAI)).thenReturn(Optional.of(provider));
+
+        ModelDiscoveryService.DiscoveryResult result = service.discoverForTenant(TENANT);
+
+        assertThat(result.modelsWritten()).isEqualTo(1);
+        verify(documentService).upsertText(
+                eq(TENANT), eq(PROJECT),
+                // written under the *instance* name, not the wire type —
+                // the auto layer has to line up with the manual one.
+                eq(ModelDiscoveryService.AUTO_PATH_PREFIX + "cortecs/llama-3.3-70b.yaml"),
+                any(), any(), any(), any(), eq(WriteActor.SYSTEM));
+    }
+
+    /**
      * Drives a one-project, one-instance, one-model discovery pass and
      * returns the YAML body handed to {@link DocumentService#upsertText}.
      */

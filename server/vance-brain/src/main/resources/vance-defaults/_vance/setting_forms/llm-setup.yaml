@@ -2,8 +2,8 @@ title:
   de: "LLM-Einstellungen"
   en: "LLM Settings"
 description:
-  de: "Modell-Aliase pro Aufgaben-Typ, Default-Fallback, Provider-API-Keys, Gateway-URLs und RAG-Embedding-Konfiguration."
-  en: "Model aliases per task type, default fallback, provider API keys, gateway URLs and RAG embedding configuration."
+  de: "Modell-Aliase pro Aufgaben-Typ, Default-Fallback und RAG-Embedding-Konfiguration. Zugangsdaten stehen pro Provider-Instanz in einem eigenen Formular (`LLM-Provider: …`)."
+  en: "Model aliases per task type, default fallback and RAG embedding configuration. Credentials live in one form per provider instance (`LLM provider: …`)."
 icon: cpu-chip
 category: llm
 defaultScope: project
@@ -122,68 +122,18 @@ fields:
       - { value: "gemini",    label: { de: "Google Gemini", en: "Google Gemini" } }
       - { value: "ollama",    label: { de: "Ollama (lokal)", en: "Ollama (local)" } }
 
-  # ─── Provider API keys ─────────────────────────────────────────────
-  # All providers may be relevant simultaneously: e.g. analyze=anthropic,
-  # fast=gemini → both keys need to be set. We therefore don't hide the
-  # key fields based on provider choice.
-
-  - name: anthropicKey
-    type: password
-    label:
-      de: "Anthropic API Key"
-      en: "Anthropic API Key"
-    help:
-      de: "Leer lassen um einen bereits gesetzten Key unverändert zu lassen."
-      en: "Leave empty to keep an already-set key unchanged."
-    bindsTo:
-      key: "ai.provider.anthropic.apiKey"
-
-  - name: openaiKey
-    type: password
-    label:
-      de: "OpenAI API Key"
-      en: "OpenAI API Key"
-    help:
-      de: "Auch für cortecs.ai / OpenRouter / vLLM — siehe Base-URL unten."
-      en: "Also for cortecs.ai / OpenRouter / vLLM — see Base-URL below."
-    bindsTo:
-      key: "ai.provider.openai.apiKey"
-
-  - name: geminiKey
-    type: password
-    label:
-      de: "Gemini API Key"
-      en: "Gemini API Key"
-    bindsTo:
-      key: "ai.provider.gemini.apiKey"
-
-  # ─── Provider gateway / base URLs ──────────────────────────────────
-  # Per-tenant / per-project overrides for the OpenAI / Ollama / LM Studio
-  # adapters. Leave empty to use the Spring boot-time default
-  # (`vance.ai.<provider>.base-url`) — in a project that also switches off
-  # an inherited tenant gateway (setting-forms.md §6.4).
-
-  - name: openaiBaseUrl
-    type: string
-    label:
-      de: "OpenAI Base-URL"
-      en: "OpenAI Base-URL"
-    help:
-      de: "Leer = api.openai.com — im Projekt auch dann, wenn der Mandant ein Gateway gesetzt hat. Beispiele: https://api.cortecs.ai/v1, https://openrouter.ai/api/v1, eigene vLLM-Instanz."
-      en: "Empty = api.openai.com — in a project that also overrides a gateway set on the tenant. Examples: https://api.cortecs.ai/v1, https://openrouter.ai/api/v1, your own vLLM instance."
-    bindsTo:
-      key: "ai.provider.openai.baseUrl"
-
-  - name: ollamaBaseUrl
-    type: string
-    label:
-      de: "Ollama Base-URL"
-      en: "Ollama Base-URL"
-    help:
-      de: "Leer = http://localhost:11434. Z.B. http://gpu-host:11434 für einen geteilten Inferenz-Host."
-      en: "Empty = http://localhost:11434. E.g. http://gpu-host:11434 for a shared inference host."
-    bindsTo:
-      key: "ai.provider.ollama.baseUrl"
+  # ─── Provider credentials live elsewhere ───────────────────────────
+  # They used to sit right here — three hard-coded API-key fields plus two
+  # base URLs — and that shape is what made a second OpenAI-wire endpoint
+  # impossible to configure: `cortecs` and `openai` are separate provider
+  # *instances* with separate keys, but one form with one fixed
+  # `bindsTo.key` per provider can only ever describe one of them.
+  #
+  # Credentials are therefore one form per instance
+  # (`llm-provider-<instance>.yaml`), and adding an instance means adding a
+  # file — here and under `_vance/model/<instance>/_provider.yaml`. What
+  # stays in *this* form is what is genuinely global: which model answers
+  # for which task, and how RAG vectorises.
 
   # ─── RAG / embeddings ──────────────────────────────────────────────
   # Embeddings live on their own credential namespace so a tenant on

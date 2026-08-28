@@ -1,0 +1,31 @@
+# Credentials for the provider instance `anthropic`.
+#
+# No base-URL field on purpose: AnthropicProvider reads a base URL only
+# for the model-*listing* call, never for chat — a field here would
+# advertise a redirect that chat traffic ignores. An operator who really
+# needs an Anthropic-wire gateway sets `ai.provider.<name>.baseUrl` on
+# their own instance and takes that asymmetry knowingly.
+
+title:
+  de: "LLM-Provider: Anthropic"
+  en: "LLM provider: Anthropic"
+description:
+  de: "Zugangsdaten der Provider-Instanz `anthropic`. Modell-Zuordnung steuert das Formular „LLM-Einstellungen\"."
+  en: "Credentials for the `anthropic` provider instance. Which model answers when is configured in the \"LLM Settings\" form."
+icon: key
+category: llm
+defaultScope: project
+availableIn: [ "!_user_*" ]
+
+fields:
+
+  - name: apiKey
+    type: password
+    label:
+      de: "Anthropic API Key"
+      en: "Anthropic API Key"
+    help:
+      de: "Leer lassen um einen bereits gesetzten Key unverändert zu lassen."
+      en: "Leave empty to keep an already-set key unchanged."
+    bindsTo:
+      key: "ai.provider.anthropic.apiKey"

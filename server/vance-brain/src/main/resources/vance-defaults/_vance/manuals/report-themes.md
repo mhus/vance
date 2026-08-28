@@ -1,6 +1,6 @@
 ---
-triggers: theme, report theme, report styling, pdf theme, css theme, customer theme, theme anlegen, theme erstellen, theme bauen, how to theme, pdf styling, customer styling, report style, theme override, css override
-summary: How to author and install a report theme — a named CSS file that styles PDF exports per customer, project, or document. Two front-matter keys (theme: and css:) select stylesheets; this manual shows how to create, place, and override them.
+triggers: theme, report theme, report styling, pdf theme, css theme, customer theme, theme anlegen, theme erstellen, theme bauen, how to theme, pdf styling, customer styling, report style, theme override, css override, web preview, cortex preview, markdown preview, theme preview, theme not showing in preview, theme in browser
+summary: How to author and install a report theme — a named CSS file that styles PDF exports and the Cortex markdown preview per customer, project, or document. Two front-matter keys (theme: and css:) select stylesheets; this manual shows how to create, place, override, and preview them.
 ---
 
 # Manual — Report Themes
@@ -32,9 +32,9 @@ theme: acme
 # My Report
 ```
 
-…renders the PDF with the `acme` theme instead of the default. That is
-the whole user-facing surface. Everything below is about how to make
-`acme.css` exist and look right.
+…renders the PDF **and the Cortex View-mode preview** with the `acme`
+theme instead of the default. That is the whole user-facing surface.
+Everything below is about how to make `acme.css` exist and look right.
 
 ## Where themes live
 
@@ -208,17 +208,42 @@ render does not fail.
 
 ## What the theme does NOT affect
 
-- **The Web-UI preview.** `MarkdownView.vue` strips `<style>` via
-  DOMPurify (intentional — chat and web-fetched content is untrusted).
-  The theme shows up in the **PDF**, not in the rendered markdown view.
-  A live web preview is a planned, separate feature.
 - **DOCX / ODT exports.** Those formats render through a programmatic
   AST visitor (Apache POI / ODF Toolkit), not CSS. `theme:` and `css:`
   are silently ignored on the DOCX/ODT path.
 - **The document content.** A theme is pure styling — it does not add,
   remove, or rearrange content. The markdown body that goes to
   commonmark is the front-matter-stripped source; the theme only
-  changes how the resulting HTML is styled in the PDF.
+  changes how the resulting HTML is styled.
+- **Chat / Inbox / Search.** These surfaces use `MarkdownView` without
+  theme injection (untrusted content, no `<style>` surface). The
+  theme only applies to the PDF export and the **Cortex View-Mode
+  preview** (see below) — not to chat messages or search snippets.
+
+## Web preview in the Cortex (View mode)
+
+When you open a markdown document in the Cortex and switch to **View**
+(rendered), the theme **also applies live** — not just in the PDF. The
+server assembles the same three-layer cascade (default → theme → css),
+filters it for the browser, and scopes every selector to
+`.markdown-document-preview` so the theme cannot leak into the rest of
+the page. Open the document, switch to View, and you see the themed
+rendering immediately. The PDF export uses the same cascade without the
+browser filtering.
+
+The web preview is a **separate trust surface** from the PDF: the
+browser is a real resource loader (a `url('https://evil')` would fire
+an actual request), so the server strips `@import`, external `url()`
+(keeps `data:` only), `javascript:` URIs, and IE relics before sending
+the CSS. A theme that loads a remote font in `@import` works in the PDF
+(openhtmltopdf skips it against a null base URI) but is silently
+dropped in the web preview. This is intentional — the PDF path is a
+closed box, the browser is not.
+
+The front-matter chip strip (`theme: acme` etc. that `MarkdownView`
+shows above the body) is **hidden in the preview** — it is
+configuration metadata, not report content. The body itself is
+unaffected; only the chip strip is suppressed.
 
 ## The front matter is stripped from the body
 
@@ -257,6 +282,22 @@ either.
 6. **Wrong mime.** `theme:`/`css:` are parsed **only** for
    `text/markdown`. A YAML or JSON file exported to PDF gets the
    default theme; that is by design.
+7. **Theme works in PDF but not in the Cortex preview.** The web
+   preview strips `@import` and external `url()` (the PDF path skips
+   them silently against a null base URI). If your theme loads a
+   remote font or stylesheet via `@import`/`url('https://…')`, it
+   shows in the PDF but is dropped in the browser preview. Use
+   `data:` URIs for assets you want in both. Also: the preview
+   re-fetches the theme on doc reload (60s server cache) — if you
+   just edited the theme, reload the document.
+8. **Theme color doesn't win in the preview.** The preview scopes every
+   selector to `.markdown-document-preview` (doubled, to match the
+   specificity of MarkdownView's scoped styles). If your theme works in
+   the PDF but a specific property (link color, code background) does
+   not show in the preview, you likely wrote a **nested** selector
+   (`& .foo`) or used CSS nesting — the prefixer handles only flat
+   selectors. Rewrite the rule as a flat selector (`a`, `pre a`,
+   `.note a`).
 
 The brain log (WARN level) is your friend — every skip path logs a
 line that says exactly which layer failed and why.
@@ -276,8 +317,12 @@ line that says exactly which layer failed and why.
 - **Don't try to `@import` external CSS.** openhtmltopdf resolves
   `url()` against a `null` base URI and skips it — and a theme pulling
   remote CSS would be a security hole, not a feature.
-- **Don't expect the theme to show in the web preview.** That is a
-  separate, planned feature; today the theme is PDF-only.
+- **Don't expect `@import` or remote `url()` in the web preview.**
+  The PDF path skips `url()` against a null base URI (closed box); the
+  web preview strips `@import` and external `url()` entirely (browser
+  is a real resource loader). A theme that loads a remote font works
+  in the PDF but is silently dropped in the Cortex preview. Use
+  `data:` URIs for embedded assets if you want them in both.
 - **Don't create a theme per document.** If you find yourself writing
   `theme: report-2026-08-15`, you want `css: vance:/reports/2026-08-15.css`
   instead — a per-document override, not a named theme.

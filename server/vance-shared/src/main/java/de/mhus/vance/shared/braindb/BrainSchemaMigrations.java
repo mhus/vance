@@ -110,7 +110,14 @@ public class BrainSchemaMigrations implements SchemaMigrationSource {
             // genuinely new database it costs one query.
             new Registered("2026-08-24_003",
                     Migrator_2026_08_24_003_ThreadDocumentRef.class,
-                    /*runOnBaseline*/ true));
+                    /*runOnBaseline*/ true),
+            // Not runOnBaseline: a database new enough to be baselined has no
+            // Fook configuration that predates the default provider change,
+            // which is the only thing this protects. It ships in the same
+            // release as that change — separating them is what would make an
+            // installation forward its reports somewhere else without failing.
+            new Registered("2026-08-28_001",
+                    Migrator_2026_08_28_001_FookProviderTypeExplicit.class));
 
     @Override
     public List<Registered> migrations() {

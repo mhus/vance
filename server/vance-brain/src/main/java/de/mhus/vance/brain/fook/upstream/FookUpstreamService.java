@@ -62,7 +62,21 @@ public class FookUpstreamService {
     static final String SETTING_EXTRA_LABELS = "fook.upstream.github.extraLabels";
 
     static final String MODE_NEVER = "never";
-    static final String DEFAULT_PROVIDER = "github";
+
+    /**
+     * The provider used when nobody named one.
+     *
+     * <p>Was {@code github}, which required an operator to own a repository
+     * and mint a token. The collector needs none of that, which is what
+     * makes it defaultable at all.
+     *
+     * <p>This constant moved together with
+     * {@code Migrator_2026_08_28_001_FookProviderTypeExplicit}, which pins
+     * {@code github} wherever an installation was already sending without
+     * having said so. Changing it alone would silently redirect exactly
+     * those installations.
+     */
+    static final String DEFAULT_PROVIDER = VancetopeTicketProvider.NAME;
 
     static final String INBOX_TAG = "fook";
     static final String INBOX_TAG_STATUS = "fook-status";

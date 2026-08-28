@@ -3,13 +3,15 @@ title:
   en: "Fook — Ticket Upstream"
 description:
   de: "Konfiguriert, ob (und wie) lokal triagierte Fook-Tickets an ein
-       externes Ticket-System (Standard: GitHub Issues) weitergeleitet
-       werden. Day-1-Default ist `never` — nichts wird gesendet, bis
-       diese Einstellungen explizit gesetzt sind."
+       externes Ticket-System weitergeleitet werden. Day-1-Default ist
+       `never` — nichts wird gesendet, bis dieser Schalter bewusst
+       umgelegt wird. Das gilt auch für die Vancetope-Sammelstelle: sie
+       braucht keine Konfiguration, aber sie braucht eine Zustimmung."
   en: "Controls whether (and how) locally triaged Fook tickets are
-       forwarded to an external ticket tracker (default: GitHub Issues).
-       Day-1 default is `never` — nothing leaves the brain until these
-       settings are filled in explicitly."
+       forwarded to an external ticket tracker. Day-1 default is `never` —
+       nothing leaves the brain until this switch is thrown on purpose.
+       That includes the Vancetope collector: it needs no configuration,
+       but it does need consent."
 icon: paper-airplane
 category: integrations
 defaultScope: tenant
@@ -50,22 +52,46 @@ fields:
   - name: providerType
     type: select
     required: true
-    defaultValue: "github"
+    defaultValue: "vancetope"
     label:
       de: "Ziel-System"
       en: "Target system"
     help:
-      de: "Welches Ticket-System Fook anschreibt. v1 unterstützt nur
-           GitHub Issues; weitere Adapter (GitLab, Gitea, …) kommen
-           später."
-      en: "Which ticket system Fook talks to. v1 supports GitHub
-           Issues only; more adapters (GitLab, Gitea, …) follow."
+      de: "Welches Ticket-System Fook anschreibt. Die Vancetope-Sammelstelle
+           braucht keine Zugangsdaten — sie meldet an die Vancetope-
+           Entwicklung. GitHub Issues ist der Weg, wenn die Meldungen ins
+           eigene Repository sollen."
+      en: "Which ticket system Fook talks to. The Vancetope collector needs
+           no credentials — it reports to Vancetope's own developers. Choose
+           GitHub Issues to have reports land in a repository of your own."
     showIf: "mode != 'never'"
     bindsTo:
       key: "fook.upstream.providerType"
     choices:
+      - value: "vancetope"
+        label: { de: "Vancetope-Sammelstelle", en: "Vancetope collector" }
       - value: "github"
         label: { de: "GitHub Issues", en: "GitHub Issues" }
+
+  # ─── Vancetope collector ─────────────────────────────────────────
+
+  - name: vancetopeEndpoint
+    type: string
+    defaultValue: "https://issues.vancetope.com"
+    label:
+      de: "Sammelstelle"
+      en: "Collector"
+    help:
+      de: "Nur ändern, wenn eine eigene Sammelstelle betrieben wird.
+           Der Ticket-Link, den der Melder bekommt, kommt von dort und
+           wird nicht hier zusammengebaut."
+      en: "Change only when running a collector of your own. The ticket
+           link the reporter receives comes from there; it is not
+           assembled here."
+    showIf:  "mode != 'never' and providerType == 'vancetope'"
+    writeIf: "mode != 'never' and providerType == 'vancetope'"
+    bindsTo:
+      key: "fook.upstream.vancetope.endpoint"
 
   # ─── GitHub: connection ──────────────────────────────────────────
 

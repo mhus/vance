@@ -44,6 +44,7 @@ import {
   useFollowUpSuggestion,
   type FollowUpConversationContext,
 } from '@composables/useFollowUpSuggestion';
+import { ChatClientToolService } from './chatClientToolService';
 
 const { t } = useI18n();
 
@@ -295,6 +296,38 @@ const focusZone = ref<FocusZone>('main');
 const chatViewRef = ref<InstanceType<typeof ChatView> | null>(null);
 const composerRef = ref<InstanceType<typeof ChatComposer> | null>(null);
 const rightPanelRef = ref<InstanceType<typeof ChatRightPanel> | null>(null);
+
+// ──────────────── Client-tool attachment (chat-scoped) ────────────────
+//
+// The chat session is the one place a client tool is "always available":
+// Cortex and the inbox register their tools only while their page is open,
+// but the conversation is always alive and the reader always in front of it.
+// One instance for the page lifetime, outliving session switches; attached to
+// the WS only once the session is server-bound (registering on a bare socket
+// earns a 403 "requires a bound session" — the same gate ChatSidePanel uses).
+const clientToolService = new ChatClientToolService();
+let attachedToolSocket: typeof socket.value = null;
+watch(
+  [socket, () => mode.value === 'live'],
+  ([next, live]) => {
+    if (!live) {
+      if (attachedToolSocket) attachedToolSocket = null;
+      return;
+    }
+    if (!next) {
+      if (attachedToolSocket) attachedToolSocket = null;
+      return;
+    }
+    if (next === attachedToolSocket) return;
+    const target = next;
+    attachedToolSocket = target;
+    clientToolService.attach(target).catch((regError) => {
+      if (attachedToolSocket === target) attachedToolSocket = null;
+      console.warn('[chat] Failed to register client tools', regError);
+    });
+  },
+  { immediate: true },
+);
 
 // ──────────────── Cross-component event routing ────────────────
 
@@ -823,6 +856,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('popstate', onPopstate);
   switchToUnsubscribe?.();
   progressUnsubscribe?.();
+  clientToolService.detach();
   // Don't close the singleton socket — the store owns it and may share
   // it across HMR / future-SPA navigations. Just let the session go.
   void unbindNow();

@@ -9,6 +9,8 @@ breaking changes; a patch bump (`0.1.0` → `0.1.1`) is fixes only.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-28
+
 ### Added
 
 - **Bistromath** — application runtime where a view is a document

@@ -6,7 +6,7 @@
 
     <groupId>de.mhus.vance</groupId>
     <artifactId>plugins</artifactId>
-    <version>0.3.0-SNAPSHOT</version>
+    <version>0.3.0</version>
     <name>plugins</name>
     <description>
         Aggregator for build-time Maven plugins used by the Vance reactor.

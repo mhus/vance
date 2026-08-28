@@ -47,7 +47,26 @@ public record SelfCheckFinding(
          * <em>must</em> have an effect, because an unread thread that stays
          * unread would produce the same finding on every round forever.
          */
-        INBOX_UNREAD
+        INBOX_UNREAD,
+
+        /**
+         * Something outside Vancetope is waiting to be worked — a report in
+         * a collector, a run in a foreign pipeline.
+         *
+         * <p>Deliberately unspecific, unlike the kinds above: those carry a
+         * rule the model must not re-derive ("continued three times means
+         * looping"). This one carries no rule at all, because what the item
+         * means is the Nature's business and the detail line says it. A kind
+         * per outside system would put every Nature's vocabulary into the
+         * engine's enum.
+         *
+         * <p>Same delivery obligation as {@link #INBOX_UNREAD}: whatever
+         * makes the item stop being pending has to happen, or the finding
+         * repeats for ever. It happens in the turn — never in
+         * {@code selfCheckFindings}, which runs on ticks that end in no
+         * wakeup at all.
+         */
+        EXTERNAL_PENDING
     }
 
     /**

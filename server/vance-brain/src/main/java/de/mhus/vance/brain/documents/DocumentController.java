@@ -102,6 +102,7 @@ public class DocumentController {
     private final DocumentService documentService;
     private final RequestAuthority authority;
     private final MarkdownReportService markdownReportService;
+    private final de.mhus.vance.brain.tools.report.ReportThemeResolver reportThemeResolver;
 
     @GetMapping("/brain/{tenant}/documents")
     public DocumentListResponse list(
@@ -759,6 +760,77 @@ public class DocumentController {
             }
         }
         return ResponseEntity.ok(toDto(result));
+    }
+
+    /**
+     * Returns the theme CSS for a markdown document, filtered and scoped
+     * for safe injection into the web-UI preview. The endpoint reads the
+     * document, parses its {@code theme:}/{@code css:} front matter, and
+     * assembles the three-layer stylesheet (default → theme → css-ref) the
+     * same way the PDF path does — then strips dangerous constructs
+     * ({@code @import}, external {@code url()}, IE relics) and prefixes
+     * every selector with {@code .markdown-document-preview} so the CSS
+     * cannot leak onto the Cortex shell.
+     *
+     * <p>Non-markdown documents return an empty body (200, no error) — a
+     * binary or YAML file has no theme, and the client should not show
+     * an error state. The {@code text/markdown} gate mirrors
+     * {@link #exportPdf}.
+     *
+     * <p>Spec: {@code specification/public/report-themes.md} §9.
+     */
+    @GetMapping("/brain/{tenant}/documents/{id}/theme-css")
+    public ResponseEntity<String> themeCss(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            HttpServletRequest httpRequest) {
+
+        DocumentDocument source = documentService.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (!tenant.equals(source.getTenantId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        // READ on the source — we are reading its body to parse the
+        // theme / css front matter.
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, source.getProjectId(), source.getPath()),
+                Action.READ);
+
+        // Non-markdown documents have no theme — return empty CSS so the
+        // client's <style> element is a no-op rather than an error state.
+        if (!"text/markdown".equalsIgnoreCase(source.getMimeType())) {
+            return ResponseEntity.ok()
+                    .contentType(MediaType.valueOf("text/css;charset=utf-8"))
+                    .cacheControl(CacheControl.maxAge(java.time.Duration.ofSeconds(60)).cachePublic())
+                    .body("");
+        }
+
+        String rawMarkdown = documentService.readContent(source);
+        if (rawMarkdown == null) {
+            try (java.io.InputStream in = documentService.loadContent(source)) {
+                rawMarkdown = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            } catch (java.io.IOException e) {
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Could not read document content: " + e.getMessage(), e);
+            }
+        }
+
+        // Parse the theme:/css: front matter. Non-markdown text that
+        // happens to be served as text/markdown still has no front matter,
+        // so ReportFrontMatter returns null for both — the default theme
+        // applies, which is the intended fallback.
+        de.mhus.vance.brain.tools.report.ReportFrontMatter fm =
+                de.mhus.vance.brain.tools.report.ReportFrontMatter.parse(rawMarkdown);
+
+        String assembled = reportThemeResolver.resolveStylesheet(
+                tenant, source.getProjectId(), fm.theme(), fm.css());
+        String filtered = de.mhus.vance.brain.tools.report.CssSanitizer.sanitize(assembled);
+        String scoped = de.mhus.vance.brain.tools.report.CssScopePrefixer.scope(filtered);
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.valueOf("text/css;charset=utf-8"))
+                .cacheControl(CacheControl.maxAge(java.time.Duration.ofSeconds(60)).cachePublic())
+                .body(scoped);
     }
 
     @PutMapping("/brain/{tenant}/documents/{id}")

@@ -113,7 +113,7 @@ public class ReportThemeResolver {
      *         bundled default (which may itself be empty on an internal
      *         misconfiguration, with a WARN logged).
      */
-    String resolveStylesheet(
+    public String resolveStylesheet(
             String tenantId,
             String projectName,
             @Nullable String themeName,

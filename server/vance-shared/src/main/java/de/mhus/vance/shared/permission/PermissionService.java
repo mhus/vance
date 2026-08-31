@@ -53,6 +53,19 @@ public class PermissionService {
      */
     public boolean check(
             SecurityContext subject, Resource resource, Action action, WriteReason reason) {
+        // Credential attenuation — evaluated FIRST, ahead of the system-trust
+        // boundary below. A confined credential (an INTEGRATION token pinned to
+        // one project) must not reach outside its project even along a path
+        // where server code vouches for the write with WriteReason.SYSTEM: that
+        // reason says "this write is legitimate policy-wise", not "this caller
+        // may touch another project". Scope and policy are different questions
+        // and the scope one is answered first.
+        if (!withinCredentialScope(subject, resource)) {
+            log.debug("permission DENY (out of credential scope): subject={} restrictedTo={} "
+                            + "action={} resource={}",
+                    subject.subjectId(), subject.restrictedToProject(), action, resource);
+            return false;
+        }
         // Framework trust boundary — enforced here, before the provider, so the
         // provider only ever evaluates genuine user policy and no provider can
         // accidentally break internal server operations. A SYSTEM subject (the
@@ -88,5 +101,39 @@ public class PermissionService {
         if (!check(subject, resource, action, reason)) {
             throw new PermissionDeniedException(subject, resource, action);
         }
+    }
+
+    /**
+     * Whether {@code resource} lies inside the project a confined credential is
+     * pinned to. Always true for the normal, unconfined context.
+     *
+     * <p><b>Fail-closed on anything without a project.</b> A resource that names
+     * no project — the tenant itself, a user, a team, a tenant-scoped setting,
+     * an inbox item — is not "outside the restriction by accident", it is
+     * exactly the kind of reach a project-confined credential must not have. The
+     * alternative (allow what we cannot classify) would mean every new
+     * {@link Resource} kind silently widens every token already in the field.
+     *
+     * <p>The switch is exhaustive over the sealed {@link Resource} on purpose:
+     * adding a kind stops compiling here, which is the moment to decide whether
+     * it carries a project.
+     */
+    private static boolean withinCredentialScope(SecurityContext subject, Resource resource) {
+        String confinedTo = subject.restrictedToProject();
+        if (confinedTo == null) {
+            return true;
+        }
+        return switch (resource) {
+            case Resource.Project r -> confinedTo.equals(r.projectName());
+            case Resource.Document r -> confinedTo.equals(r.projectName());
+            case Resource.Session r -> confinedTo.equals(r.projectName());
+            case Resource.ThinkProcess r -> confinedTo.equals(r.projectName());
+            case Resource.Setting r ->
+                    "project".equals(r.referenceType()) && confinedTo.equals(r.referenceId());
+            case Resource.Tenant ignored -> false;
+            case Resource.Team ignored -> false;
+            case Resource.User ignored -> false;
+            case Resource.InboxItem ignored -> false;
+        };
     }
 }

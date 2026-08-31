@@ -62,7 +62,7 @@ class OAuthControllerTest {
         authority = mock(RequestAuthority.class);
         events = mock(org.springframework.context.ApplicationEventPublisher.class);
         when(authority.contextOf(any(HttpServletRequest.class)))
-                .thenReturn(new SecurityContext(SubjectType.USER, USERNAME, TENANT, List.of()));
+                .thenReturn(new SecurityContext(SubjectType.USER, USERNAME, TENANT, List.of(), null));
         controller = new OAuthController(
                 configRegistry, stateService, settingService, authority, events, PUBLIC_BASE);
         request = mock(HttpServletRequest.class);

@@ -2,6 +2,8 @@ package de.mhus.vance.brain.permission;
 
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.shared.access.AccessFilterBase;
+import de.mhus.vance.shared.jwt.TokenType;
+import de.mhus.vance.shared.jwt.VanceJwtClaims;
 import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
@@ -44,9 +46,41 @@ public class SecurityContextFactory {
             throw new IllegalStateException(
                     "No authenticated user on request — BrainAccessFilter must run first");
         }
-        SecurityContext ctx = SecurityContext.user(username, tenantId, resolveTeams(tenantId, username));
+        List<String> teams = resolveTeams(tenantId, username);
+        String confinedTo = credentialProjectConfinement(request);
+        SecurityContext ctx = confinedTo == null
+                ? SecurityContext.user(username, tenantId, teams)
+                : SecurityContext.restrictedUser(username, tenantId, teams, confinedTo);
         request.setAttribute(REQ_ATTR_CONTEXT, ctx);
         return ctx;
+    }
+
+    /**
+     * The project an attenuated credential confines this request to, or
+     * {@code null} for a normal one.
+     *
+     * <p>Reading it here rather than at each call site is deliberate: this is
+     * the one funnel every HTTP-borne {@link SecurityContext} passes through, so
+     * a confinement cannot be forgotten by a controller — and a controller has
+     * no way to opt out of it either.
+     *
+     * <p>{@code SCRIPT_RUN} is confined the same way. It was already
+     * loopback-bound and registry-gated, so this is not what makes it safe, but
+     * it does close the gap where a script token reached a project other than
+     * the run's — the claim said which one and nobody downstream compared it.
+     */
+    private static @org.jspecify.annotations.Nullable String credentialProjectConfinement(
+            HttpServletRequest request) {
+        if (!(request.getAttribute(AccessFilterBase.ATTR_CLAIMS) instanceof VanceJwtClaims claims)) {
+            return null;
+        }
+        boolean confined = claims.tokenType() == TokenType.INTEGRATION
+                || claims.tokenType() == TokenType.SCRIPT_RUN;
+        if (!confined) {
+            return null;
+        }
+        String projectId = claims.projectId();
+        return projectId == null || projectId.isBlank() ? null : projectId;
     }
 
     public SecurityContext fromConnection(ConnectionContext connection) {

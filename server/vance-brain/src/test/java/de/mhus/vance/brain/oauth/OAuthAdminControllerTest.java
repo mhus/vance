@@ -62,7 +62,7 @@ class OAuthAdminControllerTest {
         settingService = mock(SettingService.class);
         authority = mock(RequestAuthority.class);
         when(authority.contextOf(any(HttpServletRequest.class)))
-                .thenReturn(new SecurityContext(SubjectType.USER, ADMIN_USER, TENANT, List.of()));
+                .thenReturn(new SecurityContext(SubjectType.USER, ADMIN_USER, TENANT, List.of(), null));
         controller = new OAuthAdminController(
                 loader, configRegistry, documentService, settingService, authority);
         request = mock(HttpServletRequest.class);

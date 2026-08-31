@@ -200,6 +200,38 @@ public class AuditService {
                 .build());
     }
 
+    /**
+     * A long-lived integration credential was handed out. WARN rather than
+     * INFO: unlike a login this produces something that keeps working while
+     * nobody is watching, and the audit trail is where "who gave out what, and
+     * for which project" has to be answerable afterwards.
+     */
+    public void authIntegrationTokenIssued(
+            String tenantId, String username, String scopeProfile,
+            @Nullable String projectId, String tokenId) {
+        record(AuditEventDto.builder()
+                .action("auth.integration-token.issue")
+                .severity(AuditSeverity.WARN)
+                .outcome("success")
+                .tenantId(tenantId)
+                .actor(username)
+                .target("integration-token:" + tokenId)
+                .message("profile=" + scopeProfile
+                        + " project=" + (projectId == null ? "-" : projectId))
+                .build());
+    }
+
+    public void authIntegrationTokenRevoked(String tenantId, String username, String tokenId) {
+        record(AuditEventDto.builder()
+                .action("auth.integration-token.revoke")
+                .severity(AuditSeverity.INFO)
+                .outcome("success")
+                .tenantId(tenantId)
+                .actor(username)
+                .target("integration-token:" + tokenId)
+                .build());
+    }
+
     public void authLogout(String tenantId, @Nullable String username) {
         record(AuditEventDto.builder()
                 .action("auth.logout")

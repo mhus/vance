@@ -24,6 +24,23 @@ package de.mhus.vance.shared.jwt;
  *       only a safety net — termination of the run revokes the token
  *       immediately via the registry-status check.
  *   </li>
+ *   <li>{@link #INTEGRATION} — long-lived credential for an external
+ *       integration (browser extension, script, webhook consumer). Two
+ *       claims narrow it: {@code scp} names a scope profile — the set of
+ *       REST surfaces it may touch — and {@code pid} pins it to one
+ *       project. Both are <em>restrictions</em>: the token can never do
+ *       more than the account behind it, only less.
+ *
+ *       <p>The profile is carried as a <em>name</em>, not as a path list,
+ *       precisely because these tokens outlive URL shapes. A path list
+ *       baked into a year-old token is a permission decision frozen at
+ *       mint time; a name is resolved against the running code on every
+ *       request, so renaming an endpoint moves its profile with it.
+ *
+ *       <p>Like {@link #SCRIPT_RUN} the TTL is only a safety net —
+ *       revocation is the {@code jti} registry row, checked per request.
+ *       That check is what makes a long-lived token acceptable at all.
+ *   </li>
  * </ul>
  *
  * <p>The discriminator is carried in the {@code tt} claim. Tokens that
@@ -34,7 +51,8 @@ package de.mhus.vance.shared.jwt;
 public enum TokenType {
     ACCESS,
     REFRESH,
-    SCRIPT_RUN;
+    SCRIPT_RUN,
+    INTEGRATION;
 
     /** JSON value for the {@code tt} claim — lower-case enum name. */
     public String wireValue() {

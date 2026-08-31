@@ -111,6 +111,40 @@ public class JwtService {
         return builder.signWith(privateKey).compact();
     }
 
+    /**
+     * Mints a {@link TokenType#INTEGRATION} token for an external caller.
+     *
+     * <p>{@code tokenId} is the {@code jti} the per-request revocation check
+     * looks up — a token minted without a matching registry row authenticates
+     * nobody, by design: absence of the row is treated as revoked, so a
+     * half-finished mint fails closed.
+     *
+     * <p>{@code expiresAt} may be far out; it is a safety net, not the
+     * revocation channel.
+     */
+    public String createIntegrationToken(
+            String tenantId, String username,
+            String tokenId, String scopeProfile,
+            @Nullable String projectId,
+            @Nullable Instant expiresAt) {
+        PrivateKey privateKey = signingKey(tenantId);
+
+        var builder = Jwts.builder()
+                .subject(username)
+                .claim(VanceJwtClaims.CLAIM_TENANT_ID, tenantId)
+                .claim(VanceJwtClaims.CLAIM_TOKEN_TYPE, TokenType.INTEGRATION.wireValue())
+                .claim(VanceJwtClaims.CLAIM_TOKEN_ID, tokenId)
+                .claim(VanceJwtClaims.CLAIM_SCOPE_PROFILE, scopeProfile)
+                .issuedAt(Date.from(Instant.now()));
+        if (projectId != null) {
+            builder.claim(VanceJwtClaims.CLAIM_PROJECT_ID, projectId);
+        }
+        if (expiresAt != null) {
+            builder.expiration(Date.from(expiresAt));
+        }
+        return builder.signWith(privateKey).compact();
+    }
+
     private PrivateKey signingKey(String tenantId) {
         PrivateKey privateKey = keyService.getLatestPrivateKey(tenantId, KeyPurpose.JWT_SIGNING)
                 .orElseThrow(() -> new IllegalStateException(
@@ -183,6 +217,8 @@ public class JwtService {
         String runId = claims.get(VanceJwtClaims.CLAIM_RUN_ID, String.class);
         String projectId = claims.get(VanceJwtClaims.CLAIM_PROJECT_ID, String.class);
         String sessionId = claims.get(VanceJwtClaims.CLAIM_SESSION_ID, String.class);
+        String scopeProfile = claims.get(VanceJwtClaims.CLAIM_SCOPE_PROFILE, String.class);
+        String tokenId = claims.getId();
         return new VanceJwtClaims(
                 username,
                 tenantId,
@@ -191,6 +227,8 @@ public class JwtService {
                 TokenType.fromWire(tt),
                 runId,
                 projectId,
-                sessionId);
+                sessionId,
+                scopeProfile,
+                tokenId);
     }
 }

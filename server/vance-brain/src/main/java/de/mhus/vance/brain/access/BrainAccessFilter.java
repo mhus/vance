@@ -100,10 +100,14 @@ public class BrainAccessFilter extends AccessFilterBase {
             Pattern.compile("^/brain/[^/]+/webdav(?:/.*)?$");
 
     private final ScriptRunAuthService scriptRunAuthService;
+    private final IntegrationTokenAuthService integrationTokenAuthService;
 
-    public BrainAccessFilter(JwtService jwtService, ScriptRunAuthService scriptRunAuthService) {
+    public BrainAccessFilter(JwtService jwtService,
+                             ScriptRunAuthService scriptRunAuthService,
+                             IntegrationTokenAuthService integrationTokenAuthService) {
         super(jwtService);
         this.scriptRunAuthService = scriptRunAuthService;
+        this.integrationTokenAuthService = integrationTokenAuthService;
     }
 
     @Override
@@ -165,7 +169,11 @@ public class BrainAccessFilter extends AccessFilterBase {
     protected boolean isTokenTypeAcceptable(TokenType type) {
         // SCRIPT_RUN tokens are loopback-bound and registry-gated —
         // ScriptRunAuthService does the extra checks in isClaimsAcceptable.
-        return type == TokenType.ACCESS || type == TokenType.SCRIPT_RUN;
+        // INTEGRATION tokens are profile- and registry-gated the same way,
+        // via IntegrationTokenAuthService.
+        return type == TokenType.ACCESS
+                || type == TokenType.SCRIPT_RUN
+                || type == TokenType.INTEGRATION;
     }
 
     @Override
@@ -183,6 +191,9 @@ public class BrainAccessFilter extends AccessFilterBase {
         }
         if (claims.tokenType() == TokenType.SCRIPT_RUN) {
             return scriptRunAuthService.isAcceptable(claims, request);
+        }
+        if (claims.tokenType() == TokenType.INTEGRATION) {
+            return integrationTokenAuthService.isAcceptable(claims, request);
         }
         return true;
     }

@@ -34,7 +34,8 @@ class BrainAccessFilterTest {
     void setUp() {
         JwtService jwtService = mock(JwtService.class);
         scriptRunAuthService = mock(ScriptRunAuthService.class);
-        filter = new BrainAccessFilter(jwtService, scriptRunAuthService);
+        filter = new BrainAccessFilter(jwtService, scriptRunAuthService,
+                mock(IntegrationTokenAuthService.class));
     }
 
     // ──────────────── shouldRequireAuthentication: bypass allowlist ────────────────

@@ -13,6 +13,12 @@ import org.jspecify.annotations.Nullable;
  * {@link #sessionId}) are populated only for {@link TokenType#SCRIPT_RUN}
  * tokens and stay {@code null} for {@link TokenType#ACCESS} /
  * {@link TokenType#REFRESH}.
+ *
+ * <p>The integration fields ({@link #scopeProfile}, {@link #tokenId}) are
+ * populated only for {@link TokenType#INTEGRATION}. {@link #projectId} is
+ * shared with the script-run shape — both mean the same thing there, "this
+ * token is pinned to that project", so a second claim for it would be two
+ * spellings of one fact.
  */
 public record VanceJwtClaims(
         String username,
@@ -22,7 +28,9 @@ public record VanceJwtClaims(
         TokenType tokenType,
         @Nullable String runId,
         @Nullable String projectId,
-        @Nullable String sessionId) {
+        @Nullable String sessionId,
+        @Nullable String scopeProfile,
+        @Nullable String tokenId) {
 
     /** JWT claim name for the Vance tenant id. */
     public static final String CLAIM_TENANT_ID = "tid";
@@ -42,6 +50,18 @@ public record VanceJwtClaims(
      *  {@link TokenType#SCRIPT_RUN} token (optional). */
     public static final String CLAIM_SESSION_ID = "sid";
 
+    /** JWT claim name for the scope-profile id of an
+     *  {@link TokenType#INTEGRATION} token. */
+    public static final String CLAIM_SCOPE_PROFILE = "scp";
+
+    /**
+     * JWT claim name for the token id of an {@link TokenType#INTEGRATION}
+     * token — the registry key that makes revocation possible. Standard
+     * {@code jti} rather than a Vance-specific name: it is the registered
+     * claim for exactly this, and nothing here needs it to mean more.
+     */
+    public static final String CLAIM_TOKEN_ID = "jti";
+
     /**
      * Standard user-token shape — no script-run scope fields. Matches
      * the historical 5-arg construction call-sites.
@@ -51,7 +71,7 @@ public record VanceJwtClaims(
             @Nullable Instant issuedAt, @Nullable Instant expiresAt,
             TokenType tokenType) {
         return new VanceJwtClaims(username, tenantId, issuedAt, expiresAt,
-                tokenType, null, null, null);
+                tokenType, null, null, null, null, null);
     }
 
     /**
@@ -63,6 +83,23 @@ public record VanceJwtClaims(
             @Nullable Instant issuedAt, @Nullable Instant expiresAt,
             String runId, String projectId, @Nullable String sessionId) {
         return new VanceJwtClaims(username, tenantId, issuedAt, expiresAt,
-                TokenType.SCRIPT_RUN, runId, projectId, sessionId);
+                TokenType.SCRIPT_RUN, runId, projectId, sessionId, null, null);
+    }
+
+    /**
+     * Integration shape — a long-lived credential narrowed by a scope
+     * profile and (optionally) pinned to one project. Type is always
+     * {@link TokenType#INTEGRATION}.
+     *
+     * <p>{@code tokenId} is mandatory: it is the registry key, and a token
+     * without one cannot be revoked. There is deliberately no overload that
+     * omits it.
+     */
+    public static VanceJwtClaims integration(
+            String username, String tenantId,
+            @Nullable Instant issuedAt, @Nullable Instant expiresAt,
+            String tokenId, String scopeProfile, @Nullable String projectId) {
+        return new VanceJwtClaims(username, tenantId, issuedAt, expiresAt,
+                TokenType.INTEGRATION, null, projectId, null, scopeProfile, tokenId);
     }
 }

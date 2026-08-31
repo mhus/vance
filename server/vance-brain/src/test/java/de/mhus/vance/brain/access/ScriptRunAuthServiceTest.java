@@ -114,7 +114,7 @@ class ScriptRunAuthServiceTest {
                 new VanceJwtClaims("alice", "acme", Instant.now(),
                         Instant.now().plusSeconds(60),
                         TokenType.SCRIPT_RUN,
-                        "run-1", null, null),
+                        "run-1", null, null, null, null),
                 request("127.0.0.1"));
 
         assertThat(ok).isFalse();

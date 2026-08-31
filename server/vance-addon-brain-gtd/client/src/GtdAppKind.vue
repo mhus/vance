@@ -2,6 +2,7 @@
 import {
   computed,
   inject,
+  nextTick,
   onBeforeUnmount,
   onMounted,
   ref,
@@ -517,6 +518,22 @@ async function applyRowReorder(
 // ── Capture ─────────────────────────────────────────────────────────
 const captureText = ref('');
 const capturing = ref(false);
+// Auto-focus the capture field on mount and after a successful capture, so the
+// user can immediately type the next item — the page's purpose is fast entry.
+// Skipped while a body edit is in flight (the editor owns focus then).
+const captureRef = ref<HTMLFormElement | null>(null);
+const captureInputRef = ref<HTMLInputElement | null>(null);
+function focusCapture(): void {
+  // The WorkPageEditor in the right pane can hold the caret during a body
+  // edit — don't snatch focus from it. Only refocus when focus is empty or
+  // already inside our capture form.
+  const active = document.activeElement;
+  if (active && active !== document.body && !captureRef.value?.contains(active)) {
+    return;
+  }
+  captureInputRef.value?.focus();
+}
+
 async function submitCapture(): Promise<void> {
   const t = captureText.value.trim();
   if (!t) return;
@@ -530,6 +547,8 @@ async function submitCapture(): Promise<void> {
     error.value = e instanceof Error ? e.message : 'Capture failed.';
   } finally {
     capturing.value = false;
+    await nextTick();
+    focusCapture();
   }
 }
 
@@ -631,7 +650,11 @@ watch(folder, () => {
   void loadScan();
 });
 
-onMounted(() => { void loadScan(); });
+onMounted(async () => {
+  await loadScan();
+  await nextTick();
+  focusCapture();
+});
 onBeforeUnmount(() => { editorRef.value?.flush(); });
 
 const saveStatusLabel = computed<string | null>(() => {
@@ -756,8 +779,9 @@ function isCurrentBucket(b: BucketId): boolean {
 
       <!-- Middle: action list -->
       <main class="gtd__list">
-        <form class="gtd__capture" @submit.prevent="submitCapture">
+        <form ref="captureRef" class="gtd__capture" @submit.prevent="submitCapture">
           <input
+            ref="captureInputRef"
             v-model="captureText"
             type="text"
             class="gtd__input gtd__capture-input"

@@ -6,10 +6,15 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 /**
@@ -46,6 +51,7 @@ public class IntegrationTokenService {
     private static final int TOKEN_ID_BYTES = 16;
 
     private final IntegrationTokenRepository repository;
+    private final MongoTemplate mongoTemplate;
     private final Duration cacheTtl;
     private final SecureRandom random = new SecureRandom();
 
@@ -60,9 +66,16 @@ public class IntegrationTokenService {
 
     public IntegrationTokenService(
             IntegrationTokenRepository repository,
+            MongoTemplate mongoTemplate,
             @Value("${vance.integration-token.cache-ttl-seconds:30}") long cacheTtlSeconds) {
         this.repository = repository;
+        this.mongoTemplate = mongoTemplate;
         this.cacheTtl = Duration.ofSeconds(Math.max(0, cacheTtlSeconds));
+    }
+
+    /** Address one row. Tenant is never part of it — {@code tokenId} is unique. */
+    private static Query byTokenId(String tokenId) {
+        return new Query(Criteria.where("tokenId").is(tokenId));
     }
 
     /**
@@ -107,17 +120,19 @@ public class IntegrationTokenService {
      * minted as <em>this</em> row. Without it a token whose row was later
      * re-created for another user would keep the old claims alive.
      */
-    public boolean isActive(String tokenId, String tenantId, String userId) {
+    public boolean isActive(
+            String tokenId, String tenantId, String userId, @Nullable String projectId) {
         Decision cached = cache.get(tokenId);
         if (cached != null && fresh(cached)) {
             return cached.active();
         }
-        boolean active = loadAndCheck(tokenId, tenantId, userId);
+        boolean active = loadAndCheck(tokenId, tenantId, userId, projectId);
         cache.put(tokenId, new Decision(active, Instant.now()));
         return active;
     }
 
-    private boolean loadAndCheck(String tokenId, String tenantId, String userId) {
+    private boolean loadAndCheck(
+            String tokenId, String tenantId, String userId, @Nullable String projectId) {
         IntegrationTokenDocument doc = repository.findByTokenId(tokenId).orElse(null);
         if (doc == null) {
             log.debug("Integration token '{}' rejected: no registry row", tokenId);
@@ -133,6 +148,20 @@ public class IntegrationTokenService {
                     tokenId, tenantId, userId, doc.getTenantId(), doc.getUserId());
             return false;
         }
+        // The project pin, cross-checked the same way and for the same reason:
+        // the signature proves the claims were minted by us, this proves they
+        // were minted as *this* row. It is what makes a project rename stop the
+        // token instead of quietly re-aiming it — the claim cannot follow a
+        // rename (it is signed), so a row that has moved no longer describes
+        // the token that names it. Without this a token minted for a project
+        // later renamed away would confine to whatever *new* project inherits
+        // that name.
+        if (!Objects.equals(projectId, doc.getProjectId())) {
+            log.debug("Integration token '{}' rejected: project pin '{}' no longer matches "
+                            + "the row's '{}' — the project was probably renamed",
+                    tokenId, projectId, doc.getProjectId());
+            return false;
+        }
         // The signature check already refuses an expired token; this is the row
         // saying the same thing, and it is the one that still answers after a
         // token was minted without an expiry at all.
@@ -140,8 +169,15 @@ public class IntegrationTokenService {
             log.debug("Integration token '{}' rejected: expired at {}", tokenId, doc.getExpiresAt());
             return false;
         }
-        doc.setLastUsedAt(Instant.now());
-        repository.save(doc);
+        // An atomic $set, never a save() of the row we just read. A full-document
+        // write here would be a lost update on the one field that must never
+        // lose: request loads the row, the owner revokes, the request writes its
+        // stale copy back — and revokedAt is silently null again, permanently.
+        // The row *is* the revocation channel, so its writes touch one field
+        // each and never carry a snapshot of the others.
+        mongoTemplate.updateFirst(byTokenId(tokenId),
+                new Update().set("lastUsedAt", Instant.now()),
+                IntegrationTokenDocument.class);
         return true;
     }
 
@@ -172,9 +208,14 @@ public class IntegrationTokenService {
         if (doc == null || !tenantId.equals(doc.getTenantId())) {
             return false;
         }
-        if (doc.getRevokedAt() == null) {
-            doc.setRevokedAt(Instant.now());
-            repository.save(doc);
+        // Conditional on revokedAt still being unset, which is what keeps the
+        // original timestamp on a second call — no read-then-write, so two
+        // concurrent revokes cannot each believe they were the first.
+        long revoked = mongoTemplate.updateFirst(
+                byTokenId(tokenId).addCriteria(Criteria.where("revokedAt").is(null)),
+                new Update().set("revokedAt", Instant.now()),
+                IntegrationTokenDocument.class).getModifiedCount();
+        if (revoked > 0) {
             log.info("IntegrationTokenService.revoke tenant='{}' user='{}' tokenId='{}'",
                     tenantId, doc.getUserId(), tokenId);
         }

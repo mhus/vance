@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.access;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -42,7 +43,7 @@ class IntegrationTokenAuthServiceTest {
     @BeforeEach
     void setUp() {
         tokenService = mock(IntegrationTokenService.class);
-        when(tokenService.isActive(anyString(), anyString(), anyString())).thenReturn(true);
+        when(tokenService.isActive(anyString(), anyString(), anyString(), any())).thenReturn(true);
         service = new IntegrationTokenAuthService(tokenService,
                 new IntegrationScopeRegistry(List.of(new CaptureProfile(true))));
     }
@@ -126,7 +127,7 @@ class IntegrationTokenAuthServiceTest {
 
     @Test
     void rejects_aRevokedToken() {
-        when(tokenService.isActive(anyString(), anyString(), anyString())).thenReturn(false);
+        when(tokenService.isActive(anyString(), anyString(), anyString(), any())).thenReturn(false);
 
         assertThat(service.isAcceptable(
                 claims("links-capture", "links-proj", "tok-1"),
@@ -182,6 +183,6 @@ class IntegrationTokenAuthServiceTest {
         service.isAcceptable(claims("links-capture", "links-proj", "tok-1"),
                 request("DELETE", "/brain/acme/addon/links/entry"));
 
-        verify(tokenService, never()).isActive(anyString(), anyString(), anyString());
+        verify(tokenService, never()).isActive(anyString(), anyString(), anyString(), any());
     }
 }

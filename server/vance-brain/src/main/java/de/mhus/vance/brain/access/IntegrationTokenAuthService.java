@@ -107,7 +107,8 @@ public class IntegrationTokenAuthService {
 
         // Liveness last: it is the only check that touches the database, so the
         // cheap structural rejections happen first.
-        if (!tokenService.isActive(tokenId, claims.tenantId(), claims.username())) {
+        if (!tokenService.isActive(
+                tokenId, claims.tenantId(), claims.username(), claims.projectId())) {
             return false;
         }
         return true;

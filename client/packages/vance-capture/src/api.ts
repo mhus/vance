@@ -20,11 +20,6 @@ export class CaptureError extends Error {
     super(message);
     this.name = 'CaptureError';
   }
-
-  /** Whether the credential itself is the problem, rather than the request. */
-  get isCredential(): boolean {
-    return this.status === 401 || this.status === 403;
-  }
 }
 
 export interface GroupsView {

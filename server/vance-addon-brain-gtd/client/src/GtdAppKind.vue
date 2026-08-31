@@ -543,7 +543,11 @@ function focusCapture(): void {
       || active.isContentEditable;
     if (editing) return;
   }
-  captureInputRef.value?.focus();
+  // Defer one frame: a click on a sidebar button leaves it focused for the
+  // rest of the current event turn, and `activeElement` would still point at
+  // the button at call time — `nextTick` is a microtask, not a focus-flush. A
+  // rAF waits for the browser to settle the focus transition.
+  requestAnimationFrame(() => captureInputRef.value?.focus());
 }
 
 async function submitCapture(): Promise<void> {

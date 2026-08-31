@@ -5,6 +5,9 @@ export * from './common/AccentColor';
 
 export * from './access/AccessTokenRequest';
 export * from './access/AccessTokenResponse';
+export * from './access/IntegrationScopeProfileDto';
+export * from './access/IntegrationTokenCreateRequest';
+export * from './access/IntegrationTokenDto';
 export * from './access/RefreshTokenResponse';
 export * from './access/WebUiSessionData';
 

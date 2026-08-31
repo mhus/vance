@@ -65,7 +65,9 @@ public class LinksListTool implements Tool {
     @Override
     public String description() {
         return "Read the entries of a link list: url, title, group, tags, own teaser and "
-                + "note. Optionally filtered by group or a substring. Shows what is stored — "
+                + "note, plus 'viewedAt' when the reader has marked it seen — an entry "
+                + "without that field is still on the pile. Optionally filtered by group or "
+                + "a substring. Shows what is stored — "
                 + "use web_fetch on a URL to read the page itself.";
     }
 
@@ -127,6 +129,10 @@ public class LinksListTool implements Tool {
         if (e.note() != null) m.put("note", e.note());
         if (!e.tags().isEmpty()) m.put("tags", e.tags());
         if (e.addedAt() != null) m.put("addedAt", e.addedAt().toString());
+        // Carried even though nothing here filters on it: without it an agent
+        // asked "what is still on my reading list" would answer with the whole
+        // list — truthfully, and wrong.
+        if (e.viewedAt() != null) m.put("viewedAt", e.viewedAt().toString());
         return m;
     }
 

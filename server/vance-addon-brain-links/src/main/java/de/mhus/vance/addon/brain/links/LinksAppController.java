@@ -55,6 +55,69 @@ public class LinksAppController {
         return view(tenant, projectId, folder);
     }
 
+    // ── the capture surface ───────────────────────────────────────
+    //
+    // Three small routes that together are what an outside tool — a browser
+    // extension, a share sheet, a shell alias — needs: the group names for a
+    // dropdown, one URL looked up for a badge, and a save. They exist next to
+    // the app routes rather than instead of them because the two callers want
+    // opposite things: the app wants the whole view after every mutation
+    // because a mutation can reorder it; a capture tool wants a few hundred
+    // bytes per click and has no list to reorder.
+    //
+    // They are also what makes the `links-capture` integration profile narrow:
+    // a token holding these cannot read the list, reorder it, or delete from
+    // it.
+
+    /** The group headings for a "file it under…" dropdown, without the links. */
+    @GetMapping("/brain/{tenant}/addon/links/groups")
+    public LinkGroupsView listGroups(@PathVariable String tenant,
+                                     @RequestParam String projectId,
+                                     @RequestParam String folder,
+                                     HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
+        LinksStore.Loaded loaded = store.load(tenant, projectId, folder);
+        return new LinkGroupsView(loaded.folder(), loaded.manifestDoc().title(),
+                loaded.config().orderedGroups());
+    }
+
+    /** Whether one page is already in this list, and what the list says about it. */
+    @GetMapping("/brain/{tenant}/addon/links/entry/lookup")
+    public LinkLookupView lookupEntry(@PathVariable String tenant,
+                                      @RequestParam String projectId,
+                                      @RequestParam String folder,
+                                      @RequestParam String url,
+                                      HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
+        LinkEntry entry = manifestOps.lookup(tenant, projectId, folder, url);
+        return entry == null
+                ? LinkLookupView.notFound(LinkUrls.identity(url))
+                : LinkLookupView.of(entry);
+    }
+
+    /**
+     * Save one link and answer in a few hundred bytes.
+     *
+     * <p>Idempotent on the URL, like {@code POST /entry} — the difference is
+     * that this one <em>reports</em> which of the two happened instead of
+     * dropping the fact on the floor. Saving the same page twice is the normal
+     * case for a capture tool, not an error, so it stays a {@code 200}.
+     */
+    @PostMapping("/brain/{tenant}/addon/links/capture")
+    public LinkCaptureView capture(@PathVariable String tenant,
+                                   @RequestParam String projectId,
+                                   @RequestParam String folder,
+                                   @RequestBody CaptureLinkRequest req,
+                                   HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
+        return LinkCaptureView.of(manifestOps.capture(tenant, projectId, folder, req.url(),
+                new LinksManifestOps.LinkFields(req.title(), null, null,
+                        req.group(), req.tags(), req.note()),
+                currentUser(request)));
+    }
+
+    // ── the app surface ───────────────────────────────────────────
+
     @PostMapping("/brain/{tenant}/addon/links/entry")
     public LinksView addEntry(@PathVariable String tenant,
                               @RequestParam String projectId,
@@ -79,6 +142,26 @@ public class LinksAppController {
         manifestOps.updateEntry(tenant, projectId, folder, req.url(),
                 new LinksManifestOps.LinkFields(req.title(), req.teaser(), req.image(),
                         req.group(), req.tags(), req.note()),
+                currentUser(request));
+        return view(tenant, projectId, folder);
+    }
+
+    /**
+     * Mark an entry seen, or put it back on the pile.
+     *
+     * <p>Its own route rather than a field on the {@code PATCH}: the reading
+     * view calls this repeatedly and should not be holding an endpoint that can
+     * rewrite a teaser. It is also the one surface an integration profile could
+     * reasonably be given beyond capture.
+     */
+    @PostMapping("/brain/{tenant}/addon/links/entry/viewed")
+    public LinksView setViewed(@PathVariable String tenant,
+                               @RequestParam String projectId,
+                               @RequestParam String folder,
+                               @RequestBody SetViewedRequest req,
+                               HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
+        manifestOps.setViewed(tenant, projectId, folder, req.url(), req.viewed(),
                 currentUser(request));
         return view(tenant, projectId, folder);
     }

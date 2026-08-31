@@ -27,12 +27,14 @@ public record LinkEntryView(
         List<String> tags,
         @Nullable String note,
         @Nullable String addedAt,
+        @Nullable String viewedAt,
         String host) {
 
     public static LinkEntryView of(LinkEntry entry) {
         return new LinkEntryView(entry.url(), entry.title(), entry.teaser(), entry.image(),
                 entry.group(), entry.tags(), entry.note(),
                 entry.addedAt() == null ? null : entry.addedAt().toString(),
+                entry.viewedAt() == null ? null : entry.viewedAt().toString(),
                 LinkUrls.hostLabel(entry.url()));
     }
 }

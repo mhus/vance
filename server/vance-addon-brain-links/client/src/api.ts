@@ -61,6 +61,23 @@ export async function removeLink(
   return brainFetch<LinksView>('DELETE', `addon/links/entry?${qs({ projectId, folder, url })}`);
 }
 
+/**
+ * Mark an entry seen, or put it back on the pile.
+ *
+ * `viewed` is stated, never toggled: a retried click — the one a flaky
+ * connection produces — must land in the same place as the first.
+ */
+export async function setLinkViewed(
+  projectId: string,
+  folder: string,
+  url: string,
+  viewed: boolean,
+): Promise<LinksView> {
+  return brainFetch<LinksView>('POST', `addon/links/entry/viewed?${qs({ projectId, folder })}`, {
+    body: { url, viewed },
+  });
+}
+
 export async function reorderLinks(
   projectId: string,
   folder: string,

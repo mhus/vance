@@ -12,5 +12,6 @@ export interface LinkEntryView {
   tags: string[];
   note?: string;
   addedAt?: string;
+  viewedAt?: string;
   host: string;
 }

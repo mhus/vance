@@ -222,16 +222,27 @@ public class LinksValidationService {
                         "`image` is not an http(s) URL, so nothing is shown. "
                                 + "Leave it out to use the page's own preview picture."));
             }
-            Object addedAt = map.get("addedAt");
-            if (addedAt instanceof String stamp && !stamp.isBlank()) {
-                try {
-                    java.time.Instant.parse(stamp.trim());
-                } catch (RuntimeException e) {
-                    out.add(Finding.warning(loc + ".addedAt", "addedAt-unreadable",
-                            "Not an ISO-8601 instant (e.g. 2026-08-21T08:00:00Z); "
-                                    + "the sort key is lost."));
-                }
-            }
+            checkInstant(map.get("addedAt"), loc, "addedAt",
+                    "the sort key is lost", out);
+            // Worse than a lost sort key: the reader drops an unreadable stamp,
+            // and a dropped viewedAt is indistinguishable from never having read
+            // it — the entry quietly comes back onto the pile.
+            checkInstant(map.get("viewedAt"), loc, "viewedAt",
+                    "the entry reads as unseen again", out);
+        }
+    }
+
+    private static void checkInstant(@Nullable Object raw, String loc, String field,
+                                     String consequence, List<Finding> out) {
+        if (!(raw instanceof String stamp) || stamp.isBlank()) {
+            return;
+        }
+        try {
+            java.time.Instant.parse(stamp.trim());
+        } catch (RuntimeException e) {
+            out.add(Finding.warning(loc + "." + field, field + "-unreadable",
+                    "Not an ISO-8601 instant (e.g. 2026-08-21T08:00:00Z); "
+                            + consequence + "."));
         }
     }
 

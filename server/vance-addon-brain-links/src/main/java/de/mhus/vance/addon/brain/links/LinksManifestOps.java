@@ -97,6 +97,16 @@ public class LinksManifestOps {
     }
 
     /**
+     * Outcome of an add.
+     *
+     * <p>{@code entry} is the row that is now in the list — the freshly added
+     * one, or the one that was already there. Both matter to a caller that has
+     * to tell somebody what happened: "saved" and "already in *Rust*" are
+     * different answers, and the second needs the existing row to say where.
+     */
+    public record CaptureResult(boolean added, LinkEntry entry) {}
+
+    /**
      * Add a link at the end of its group. Idempotent on the URL: adding one
      * that is already in the list changes nothing (and says so in the log)
      * rather than producing a second card for the same page.
@@ -109,18 +119,31 @@ public class LinksManifestOps {
      */
     public boolean addEntry(String tenantId, String projectId, String folder,
                             String url, LinkFields fields, @Nullable String userId) {
+        return capture(tenantId, projectId, folder, url, fields, userId).added();
+    }
+
+    /**
+     * {@link #addEntry} with the resulting row reported back.
+     *
+     * <p>Same code path — the boolean overload delegates here — because two
+     * add implementations would be two idempotency rules, and this one is
+     * load-bearing for every caller that saves the same page twice.
+     */
+    public CaptureResult capture(String tenantId, String projectId, String folder,
+                                 String url, LinkFields fields, @Nullable String userId) {
         return mutate(tenantId, projectId, folder,
                 () -> addEntryLocked(tenantId, projectId, folder, url, fields, userId));
     }
 
-    private boolean addEntryLocked(String tenantId, String projectId, String folder,
-                                   String url, LinkFields fields, @Nullable String userId) {
+    private CaptureResult addEntryLocked(String tenantId, String projectId, String folder,
+                                         String url, LinkFields fields, @Nullable String userId) {
         LinksStore.Loaded loaded = store.load(tenantId, projectId, folder);
         String id = LinkUrls.identity(url);
-        if (find(loaded.config().entries(), id) != null) {
+        LinkEntry existing = find(loaded.config().entries(), id);
+        if (existing != null) {
             log.debug("LinksManifestOps.addEntry folder='{}' url='{}' already present",
                     folder, id);
-            return false;
+            return new CaptureResult(false, existing);
         }
         String group = blankToNull(fields.group());
         String title = blankToNull(fields.title());
@@ -130,13 +153,26 @@ public class LinksManifestOps {
         LinkEntry entry = new LinkEntry(id, title,
                 blankToNull(fields.teaser()), blankToNull(checkedImage(fields.image())), group,
                 fields.tags() == null ? List.of() : cleanTags(fields.tags()),
-                blankToNull(fields.note()), Instant.now());
+                blankToNull(fields.note()), Instant.now(), null);
 
         List<LinkEntry> entries = insertGrouped(loaded.config().entries(), entry);
         store.saveConfig(loaded, withEntries(loaded.config(), entries, group), userId);
         log.info("LinksManifestOps.addEntry tenant='{}' folder='{}' url='{}' group='{}'",
                 tenantId, folder, id, group == null ? "" : group);
-        return true;
+        return new CaptureResult(true, entry);
+    }
+
+    /**
+     * The row for this URL, or {@code null}.
+     *
+     * <p>A read rather than a mutation, so it takes no lock: a stale answer
+     * here costs a badge that is one save behind, and holding the write lock
+     * for a lookup that an extension fires on every page load would not.
+     */
+    public @Nullable LinkEntry lookup(String tenantId, String projectId, String folder,
+                                      String url) {
+        return find(store.load(tenantId, projectId, folder).config().entries(),
+                LinkUrls.identity(url));
     }
 
     /** Remove the entry with this URL. Unknown URL is an error, not a no-op. */
@@ -189,7 +225,10 @@ public class LinksManifestOps {
                 patch(current.group(), fields.group()),
                 fields.tags() == null ? current.tags() : cleanTags(fields.tags()),
                 patch(current.note(), fields.note()),
-                current.addedAt());
+                current.addedAt(),
+                // Editing a link says nothing about whether it was read. The
+                // one mutation that touches this is setViewed.
+                current.viewedAt());
 
         boolean groupChanged = !equalGroup(current.group(), next.group());
         List<LinkEntry> entries = new ArrayList<>();
@@ -208,6 +247,58 @@ public class LinksManifestOps {
         store.saveConfig(loaded, withEntries(loaded.config(), entries, next.group()), userId);
         log.info("LinksManifestOps.updateEntry tenant='{}' folder='{}' url='{}'",
                 tenantId, folder, id);
+    }
+
+    /**
+     * Mark an entry seen or put it back on the pile.
+     *
+     * <p>Its own mutation rather than a field of {@link #updateEntry}, because
+     * the two are different acts with different callers: editing is the person
+     * curating the list, marking seen is the person working through it — and
+     * the second happens with one click, over and over, from a view that has no
+     * business being able to change a teaser by accident.
+     *
+     * <p>Marking an already-seen entry seen again <b>keeps the original
+     * timestamp</b>. "When did I read this" is the interesting fact; a second
+     * click on a card that already carries the tick is a slip, not a re-read.
+     * Putting it back on the pile and marking it again is the way to say
+     * otherwise.
+     *
+     * <p>The entry does not move. A reading order that reshuffled under the
+     * click that acknowledged it would lose the reader's place — the view
+     * decides where a seen entry is shown, the manifest keeps its order.
+     */
+    public void setViewed(String tenantId, String projectId, String folder,
+                          String url, boolean viewed, @Nullable String userId) {
+        mutateVoid(tenantId, projectId, folder,
+                () -> setViewedLocked(tenantId, projectId, folder, url, viewed, userId));
+    }
+
+    private void setViewedLocked(String tenantId, String projectId, String folder,
+                                 String url, boolean viewed, @Nullable String userId) {
+        LinksStore.Loaded loaded = store.load(tenantId, projectId, folder);
+        String id = LinkUrls.identity(url);
+        LinkEntry current = find(loaded.config().entries(), id);
+        if (current == null) throw new ToolException("No link entry for '" + id + "'.");
+
+        Instant next = viewed ? (current.viewedAt() == null ? Instant.now() : current.viewedAt())
+                : null;
+        if (Objects.equals(next, current.viewedAt())) {
+            // Nothing to write. A click that changes nothing must not cost a
+            // document version, and the views are full of repeat clicks.
+            return;
+        }
+
+        List<LinkEntry> entries = new ArrayList<>();
+        for (LinkEntry e : loaded.config().entries()) {
+            entries.add(e.url().equals(id)
+                    ? new LinkEntry(e.url(), e.title(), e.teaser(), e.image(), e.group(),
+                            e.tags(), e.note(), e.addedAt(), next)
+                    : e);
+        }
+        store.saveConfig(loaded, withEntries(loaded.config(), entries, null), userId);
+        log.info("LinksManifestOps.setViewed tenant='{}' folder='{}' url='{}' viewed={}",
+                tenantId, folder, id, viewed);
     }
 
     /**
@@ -297,7 +388,7 @@ public class LinksManifestOps {
         for (LinkEntry e : loaded.config().entries()) {
             if (source.equals(e.group())) {
                 relabelled.add(new LinkEntry(e.url(), e.title(), e.teaser(), e.image(),
-                        target, e.tags(), e.note(), e.addedAt()));
+                        target, e.tags(), e.note(), e.addedAt(), e.viewedAt()));
                 touched = true;
             } else {
                 relabelled.add(e);

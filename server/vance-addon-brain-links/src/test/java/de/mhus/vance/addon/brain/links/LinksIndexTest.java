@@ -43,7 +43,7 @@ class LinksIndexTest {
     void aMultilineTeaserBecomesOneLineSoTheListStaysAList() {
         LinksConfig config = new LinksConfig(List.of(), List.of(
                 new LinkEntry("https://a.example/", "T", "first\n\nsecond", null, null,
-                        List.of(), null, null)),
+                        List.of(), null, null, null)),
                 LinksConfig.DEFAULT_INDEX);
 
         String md = LinksApplication.renderIndex(config, "Reading");
@@ -57,7 +57,7 @@ class LinksIndexTest {
         // one artefact that travels (chat, embed, export) must carry it.
         LinksConfig config = new LinksConfig(List.of(), List.of(
                 new LinkEntry("https://a.example/", "T", null, null, null,
-                        List.of(), "send to the team", null)),
+                        List.of(), "send to the team", null, null)),
                 LinksConfig.DEFAULT_INDEX);
 
         assertThat(LinksApplication.renderIndex(config, "Reading"))
@@ -68,7 +68,7 @@ class LinksIndexTest {
     void teaserAndNoteAppearInThatOrderAndStayDistinguishable() {
         LinksConfig config = new LinksConfig(List.of(), List.of(
                 new LinkEntry("https://a.example/", "T", "what the page says", null, null,
-                        List.of(), "why I kept it", null)),
+                        List.of(), "why I kept it", null, null)),
                 LinksConfig.DEFAULT_INDEX);
 
         assertThat(LinksApplication.renderIndex(config, "Reading"))
@@ -81,7 +81,7 @@ class LinksIndexTest {
         // close the emphasis and run it over everything after.
         LinksConfig config = new LinksConfig(List.of(), List.of(
                 new LinkEntry("https://a.example/", "T", null, null, null,
-                        List.of(), "read *this* first", null)),
+                        List.of(), "read *this* first", null, null)),
                 LinksConfig.DEFAULT_INDEX);
 
         assertThat(LinksApplication.renderIndex(config, "Reading"))
@@ -147,6 +147,6 @@ class LinksIndexTest {
     }
 
     private static LinkEntry entry(String url, String title, String group) {
-        return new LinkEntry(url, title, null, null, group, List.of(), null, null);
+        return new LinkEntry(url, title, null, null, group, List.of(), null, null, null);
     }
 }

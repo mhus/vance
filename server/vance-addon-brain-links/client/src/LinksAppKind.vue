@@ -6,6 +6,7 @@ import {
 import { safeUrl } from '@vance/shared';
 import LinkPicture from './LinkPicture.vue';
 import LinkEditDialog from './LinkEditDialog.vue';
+import CaptureTokenDialog from './CaptureTokenDialog.vue';
 import {
   addLink,
   rebuildLinks,
@@ -14,6 +15,7 @@ import {
   reorderLinks,
   scanLinks,
   setGroups,
+  setLinkViewed,
   updateLink,
   type LinkFields,
 } from './api';
@@ -52,11 +54,50 @@ const activeGroup = ref<string | null>(null);   // null = every group
 const draft = ref('');
 const draftGroup = ref('');
 const editing = ref<LinkEntryView | null>(null);
+const settingsOpen = ref(false);
 const openMenu = ref<string | null>(null);
 const dragged = ref<string | null>(null);
 const selectedUrl = ref<string | null>(null);
 
 type Section = { group: string; items: LinkEntryView[] };
+
+/**
+ * Two ways of looking at the same manifest.
+ *
+ * **List** is the curated shape: groups in their declared order, entries in the
+ * order somebody dragged them into. **Stack** is the reading pile: flat, by
+ * date, seen ones out of the way.
+ *
+ * Two modes rather than a sort dropdown on the grouped list, because the pile
+ * has to cross the groups — a "newest first" that only reorders inside each
+ * heading answers a question nobody asked, and the group order itself would
+ * still be manual and therefore meaningless as a reading order.
+ */
+type Mode = 'list' | 'stack';
+const mode = ref<Mode>('list');
+const stackMode = computed(() => mode.value === 'stack');
+
+/** Oldest-first clears a backlog, newest-first reads what just came in. */
+const stackOrder = ref<'newest' | 'oldest'>('newest');
+const showSeen = ref(false);
+
+/**
+ * URLs marked in this session, kept visible until the view is left or the
+ * filter changes.
+ *
+ * Without it the pile has no undo: the click that marks an entry seen also
+ * removes it from the only place the tick could be clicked again, so a slip
+ * costs a trip through "Show seen". Holding them for the rest of the visit is
+ * five lines and makes the ✓ safe to use quickly, which is the whole point of
+ * the mode.
+ */
+const justMarked = ref<Set<string>>(new Set());
+
+watch([filter, activeGroup, mode, showSeen], () => justMarked.value = new Set());
+
+function viewed(entry: LinkEntryView): boolean {
+  return !!entry.viewedAt;
+}
 
 /**
  * What the reader has picked out, for the chat beside the app.
@@ -154,6 +195,8 @@ const filtered = computed<LinkEntryView[]>(() => {
  * filled and must stay visible as a drop target.
  */
 const sections = computed<Section[]>(() => {
+  if (stackMode.value) return [{ group: '', items: stackItems.value }];
+
   const searching = filter.value.trim().length > 0;
   const out: Section[] = [];
   const lead = filtered.value.filter((e) => !e.group);
@@ -165,6 +208,56 @@ const sections = computed<Section[]>(() => {
     out.push({ group: g, items });
   }
   return out;
+});
+
+/** How many are still waiting — the number the pile is actually about. */
+const unseenCount = computed(() => entries.value.filter((e) => !viewed(e)).length);
+
+/**
+ * An empty pile means two different things and they must not read alike:
+ * a filter that matched nothing is a dead end, an empty pile is finishing.
+ */
+const stackEmpty = computed(() => {
+  if (showSeen.value || filter.value.trim()) {
+    return {
+      headline: 'Nothing matches',
+      body: 'No link in this list matches the filter.',
+    };
+  }
+  return {
+    headline: 'Nothing left to read',
+    body: 'Every link here is marked seen. Turn on “Show seen” to look back through them, '
+      + 'or switch to the list to curate.',
+  };
+});
+
+/**
+ * The pile: unseen first, each half by date.
+ *
+ * Unseen-first rather than one date-sorted run, because with "Show seen" on the
+ * two kinds interleaved would bury the three links left to read among fifty
+ * that are done. Within a half the date decides, in the direction the reader
+ * picked.
+ *
+ * An entry with no `addedAt` — a row somebody wrote into the YAML by hand —
+ * sinks to the bottom of its half in manifest order. Guessing a date for it
+ * would put it somewhere it does not belong and look deliberate.
+ */
+const stackItems = computed<LinkEntryView[]>(() => {
+  const pool = filtered.value.filter(
+    (e) => !viewed(e) || showSeen.value || justMarked.value.has(e.url),
+  );
+  const sign = stackOrder.value === 'newest' ? -1 : 1;
+
+  const rank = (e: LinkEntryView) => (viewed(e) && !justMarked.value.has(e.url) ? 1 : 0);
+  const withDate = (e: LinkEntryView) => (e.addedAt ? 0 : 1);
+
+  return [...pool].sort((a, b) => {
+    if (rank(a) !== rank(b)) return rank(a) - rank(b);
+    if (withDate(a) !== withDate(b)) return withDate(a) - withDate(b);
+    if (!a.addedAt || !b.addedAt) return 0;   // both undated: keep manifest order
+    return sign * a.addedAt.localeCompare(b.addedAt);
+  });
 });
 
 const counts = computed<Record<string, number>>(() => {
@@ -258,6 +351,20 @@ async function onSaveEdit(fields: LinkFields): Promise<void> {
   editing.value = null;
 }
 
+/**
+ * Mark seen, or put back on the pile.
+ *
+ * The wire value is stated rather than toggled, so a retried request lands in
+ * the same state; the toggling happens here, where the current one is known.
+ * The URL is remembered so the card does not vanish from under the click that
+ * marked it — see {@link justMarked}.
+ */
+async function onToggleViewed(entry: LinkEntryView): Promise<void> {
+  const next = !viewed(entry);
+  if (next) justMarked.value = new Set(justMarked.value).add(entry.url);
+  await run(() => setLinkViewed(props.document.projectId, folder.value, entry.url, next));
+}
+
 /** Ask the page again — the server-side preview cache holds a week. */
 function onRefreshPreview(entry: LinkEntryView): void {
   forgetPreview(entry.url);
@@ -293,6 +400,11 @@ async function onRebuild(): Promise<void> {
 }
 
 // ── drag & drop: reorder within a group, move between groups ────────
+//
+// List mode only. In the pile the order is the date, so a drop there would
+// either be ignored — a control that does nothing — or write an order the view
+// does not show. Both handlers refuse rather than the template hiding them,
+// because a drag can also arrive from outside this list.
 
 function onDragStart(entry: LinkEntryView): void {
   dragged.value = entry.url;
@@ -301,14 +413,14 @@ function onDragStart(entry: LinkEntryView): void {
 async function onDropOnEntry(target: LinkEntryView): Promise<void> {
   const url = dragged.value;
   dragged.value = null;
-  if (!url || url === target.url) return;
+  if (stackMode.value || !url || url === target.url) return;
   await moveTo(url, target.url, target.group ?? '');
 }
 
 async function onDropOnSection(group: string): Promise<void> {
   const url = dragged.value;
   dragged.value = null;
-  if (!url) return;
+  if (stackMode.value || !url) return;
   await moveTo(url, null, group);
 }
 
@@ -383,6 +495,7 @@ function metaLine(entry: LinkEntryView): string {
   const site = previewFor(entry.url)?.siteName;
   if (site && site.toLowerCase() !== entry.host.toLowerCase()) bits.push(site);
   if (entry.addedAt) bits.push(entry.addedAt.slice(0, 10));
+  if (entry.viewedAt) bits.push(`seen ${entry.viewedAt.slice(0, 10)}`);
   return bits.join(' · ');
 }
 
@@ -431,12 +544,50 @@ function message(e: unknown): string {
       >
         ↻
       </VButton>
+      <!-- Capture access. Its own control rather than an item in a card's ⋯
+           menu: it is about the list as a whole, not about any one link. -->
+      <VButton
+        variant="ghost"
+        title="Capture access — tokens for browser extensions and scripts"
+        @click="settingsOpen = true"
+      >
+        ⚙
+      </VButton>
     </div>
 
     <VAlert v-if="error" variant="error" class="whitespace-pre-line">{{ error }}</VAlert>
 
-    <!-- Filter + group chips -->
+    <!-- Mode, filter, group chips -->
     <div class="flex flex-wrap items-center gap-2">
+      <!-- The pile leads with what is left to read, because that is the
+           number the reader came for. -->
+      <VButton
+        size="sm"
+        :variant="stackMode ? 'primary' : 'ghost'"
+        :title="stackMode ? 'Back to the curated list' : 'Read through what is left, by date'"
+        @click="mode = stackMode ? 'list' : 'stack'"
+      >
+        {{ stackMode ? '☰ List' : `▤ Stack ${unseenCount}` }}
+      </VButton>
+
+      <template v-if="stackMode">
+        <VButton
+          size="sm"
+          variant="ghost"
+          :title="stackOrder === 'newest' ? 'Newest first' : 'Oldest first'"
+          @click="stackOrder = stackOrder === 'newest' ? 'oldest' : 'newest'"
+        >
+          {{ stackOrder === 'newest' ? '↓ Newest' : '↑ Oldest' }}
+        </VButton>
+        <VButton
+          size="sm"
+          :variant="showSeen ? 'primary' : 'ghost'"
+          @click="showSeen = !showSeen"
+        >
+          Show seen
+        </VButton>
+      </template>
+
       <div class="w-64 flex-none">
         <VInput v-model="filter" size="sm" placeholder="Filter…" />
       </div>
@@ -476,14 +627,19 @@ function message(e: unknown): string {
                 are read from it live, so a link is complete the moment you add it."
         />
         <VEmptyState
-          v-else-if="filtered.length === 0"
+          v-else-if="stackMode && stackItems.length === 0"
+          :headline="stackEmpty.headline"
+          :body="stackEmpty.body"
+        />
+        <VEmptyState
+          v-else-if="!stackMode && filtered.length === 0"
           headline="Nothing matches"
           body="No link in this list matches the filter."
         />
 
         <template v-for="section in sections" :key="section.group || '__lead__'">
           <div
-            v-if="section.group"
+            v-if="section.group && !stackMode"
             class="group/heading flex items-center gap-2 px-1 pt-3 pb-1"
             @dragover.prevent
             @drop="onDropOnSection(section.group)"
@@ -503,7 +659,7 @@ function message(e: unknown): string {
             </VButton>
           </div>
           <div
-            v-else
+            v-else-if="!stackMode"
             class="px-1 pt-1"
             @dragover.prevent
             @drop="onDropOnSection('')"
@@ -525,8 +681,11 @@ function message(e: unknown): string {
             :class="[
               'group/card cursor-pointer transition-all',
               isSelected(entry) ? 'ring-2 ring-primary' : 'hover:ring-1 hover:ring-base-300',
+              // Dimmed rather than hidden or struck through: a seen link is
+              // still a link somebody kept, and it stays clickable.
+              viewed(entry) ? 'opacity-55 hover:opacity-100' : '',
             ]"
-            draggable="true"
+            :draggable="!stackMode"
             @click="toggleSelect(entry)"
             @dragstart="onDragStart(entry)"
             @dragover.prevent
@@ -577,6 +736,18 @@ function message(e: unknown): string {
               </div>
 
               <div class="flex flex-none flex-col items-end gap-1">
+                <!-- The tick is the one control that stays visible always: in
+                     the pile it is the whole interaction, and hunting for it on
+                     hover would make working through a list tiring. -->
+                <VButton
+                  size="xs"
+                  :variant="viewed(entry) ? 'primary' : 'ghost'"
+                  :disabled="busy"
+                  :title="viewed(entry) ? 'Put back on the pile' : 'Mark as seen'"
+                  @click.stop="onToggleViewed(entry)"
+                >
+                  ✓
+                </VButton>
                 <!-- Revealed on hover like the ⋯ menu, and kept visible while
                      the entry is the selected one. -->
                 <VShareButton
@@ -610,6 +781,13 @@ function message(e: unknown): string {
         </template>
       </div>
     </div>
+
+    <CaptureTokenDialog
+      v-if="settingsOpen"
+      :project-id="props.document.projectId"
+      :folder="folder"
+      @close="settingsOpen = false"
+    />
 
     <LinkEditDialog
       v-if="editing"

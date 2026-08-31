@@ -36,7 +36,16 @@ import org.jspecify.annotations.Nullable;
  * @param note    the reader's own remark. Deliberately separate from
  *                {@code teaser}: a teaser describes the page, a note
  *                describes why <em>this</em> list has it.
- * @param addedAt when it was added, for "newest first" reading.
+ * @param addedAt  when it was added, for "newest first" reading.
+ * @param viewedAt when the reader last marked it seen, {@code null} while it
+ *                 is still on the pile.
+ *
+ *                 <p>A timestamp rather than a {@code viewed: true} flag, and
+ *                 the difference is not cosmetic: the boolean is derivable
+ *                 from the timestamp ({@code viewedAt != null}) and the
+ *                 timestamp is not derivable from the boolean. It costs the
+ *                 same byte in the YAML and buys "seen last week" and a sort
+ *                 order that a flag could never give back.
  */
 public record LinkEntry(
         String url,
@@ -46,7 +55,8 @@ public record LinkEntry(
         @Nullable String group,
         List<String> tags,
         @Nullable String note,
-        @Nullable Instant addedAt) {
+        @Nullable Instant addedAt,
+        @Nullable Instant viewedAt) {
 
     public LinkEntry {
         if (tags == null) tags = List.of();
@@ -76,7 +86,8 @@ public record LinkEntry(
                 asString(map.get("group")),
                 tags(map.get("tags")),
                 asString(map.get("note")),
-                instant(map.get("addedAt")));
+                instant(map.get("addedAt")),
+                instant(map.get("viewedAt")));
     }
 
     /** Serialise back to the manifest form — only fields that carry a value. */
@@ -90,7 +101,13 @@ public record LinkEntry(
         if (!tags.isEmpty()) m.put("tags", List.copyOf(tags));
         putIfSet(m, "note", note);
         if (addedAt != null) m.put("addedAt", addedAt.toString());
+        if (viewedAt != null) m.put("viewedAt", viewedAt.toString());
         return m;
+    }
+
+    /** Whether the reader has marked this one seen. */
+    public boolean viewed() {
+        return viewedAt != null;
     }
 
     /** The label a card shows when no title was ever stored. */

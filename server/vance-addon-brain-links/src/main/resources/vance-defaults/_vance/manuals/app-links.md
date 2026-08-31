@@ -23,6 +23,7 @@ a project document has a path and a kind, and an external page has neither.
 | `teaser` | **only when somebody typed one**; otherwise resolved live |
 | `image` | **only when somebody typed one**; otherwise resolved live |
 | `group`, `tags`, `note`, `addedAt` | yes |
+| `viewedAt` | yes — set when the reader marks the link seen |
 
 Teaser and picture come from the brain's link-preview proxy, which already
 caches every page's OpenGraph data per URL for the whole tenant. A second copy
@@ -34,6 +35,16 @@ says today*. **Do not write a teaser unless the user dictated one.**
 
 `note` is separate from `teaser` on purpose: a teaser describes the page, a note
 describes why *this* list has it.
+
+## Read vs. unread
+
+An entry **without** `viewedAt` is still on the pile; one with it has been read.
+Asked what is left on a reading list, filter on that yourself — `links_list`
+returns everything, so answering from the raw list is truthful and wrong.
+
+Marking read is the reader's own act, done with one click in the app. There is
+**no tool for it**, and that is deliberate: nothing an agent knows tells it that
+a human has read a page.
 
 ## Manifest
 

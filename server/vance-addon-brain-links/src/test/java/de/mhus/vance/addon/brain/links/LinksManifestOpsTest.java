@@ -15,6 +15,7 @@ import de.mhus.vance.brain.tools.web.LinkPreviewService;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.ApplicationDocument;
 import de.mhus.vance.toolpack.ToolException;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -149,7 +150,7 @@ class LinksManifestOpsTest {
     void updateEntry_movingGroupsKeepsTheTeaserSomebodyWrote() {
         loaded(config(List.of("A", "B"), List.of(
                 new LinkEntry("https://a.example/", "T", "my teaser", null, "A",
-                        List.of("tag"), "my note", null))));
+                        List.of("tag"), "my note", null, null))));
 
         ops.updateEntry(TENANT, PROJECT, FOLDER, "https://a.example/",
                 new LinksManifestOps.LinkFields(null, null, null, "B", null, null), "u1");
@@ -166,7 +167,7 @@ class LinksManifestOpsTest {
     void updateEntry_blankTeaserDropsTheOverrideSoThePageSpeaksAgain() {
         loaded(config(List.of(), List.of(
                 new LinkEntry("https://a.example/", "T", "stale", null, null,
-                        List.of(), null, null))));
+                        List.of(), null, null, null))));
 
         ops.updateEntry(TENANT, PROJECT, FOLDER, "https://a.example/",
                 new LinksManifestOps.LinkFields(null, "", null, null, null, null), "u1");
@@ -394,6 +395,163 @@ class LinksManifestOpsTest {
         return map;
     }
 
+    // ── capture ────────────────────────────────────────────────────
+
+    @Test
+    void capture_reportsTheRowItAdded() {
+        loaded(config(List.of(), List.of()));
+
+        LinksManifestOps.CaptureResult result = ops.capture(TENANT, PROJECT, FOLDER,
+                "example.com/a",
+                new LinksManifestOps.LinkFields("Typed", null, null, "Rust", null, null), "u1");
+
+        assertThat(result.added()).isTrue();
+        assertThat(result.entry().url()).isEqualTo("https://example.com/a");
+        assertThat(result.entry().title()).isEqualTo("Typed");
+        assertThat(result.entry().group()).isEqualTo("Rust");
+    }
+
+    /**
+     * The answer a capture tool needs when the same page is saved twice: not
+     * "no", but "it is already there, in Rust, and you have read it".
+     */
+    @Test
+    void capture_reportsTheExistingRowWhenTheUrlIsAlreadyThere() {
+        loaded(config(List.of("Rust"), List.of(
+                new LinkEntry("https://example.com/a", "Kept", null, null, "Rust",
+                        List.of(), null, null, Instant.parse("2026-08-20T00:00:00Z")))));
+
+        LinksManifestOps.CaptureResult result = ops.capture(TENANT, PROJECT, FOLDER,
+                "EXAMPLE.com/a", LinksManifestOps.LinkFields.none(), "u1");
+
+        assertThat(result.added()).isFalse();
+        assertThat(result.entry().title()).isEqualTo("Kept");
+        assertThat(result.entry().group()).isEqualTo("Rust");
+        assertThat(result.entry().viewed()).isTrue();
+        verify(store, never()).saveConfig(any(), any(), any());
+    }
+
+    // ── lookup ─────────────────────────────────────────────────────
+
+    @Test
+    void lookup_findsTheRowHoweverTheUrlWasWritten() {
+        loaded(config(List.of(), List.of(entry("https://example.com/a", "Kept"))));
+
+        assertThat(ops.lookup(TENANT, PROJECT, FOLDER, "EXAMPLE.com/a")).isNotNull();
+    }
+
+    /** Most pages are not in the list — that is an answer, not an error. */
+    @Test
+    void lookup_returnsNullForAPageThatIsNotInTheList() {
+        loaded(config(List.of(), List.of()));
+
+        assertThat(ops.lookup(TENANT, PROJECT, FOLDER, "https://example.com/a")).isNull();
+    }
+
+    // ── setViewed ──────────────────────────────────────────────────
+
+    @Test
+    void setViewed_stampsTheEntry() {
+        loaded(config(List.of(), List.of(entry("https://a.example/", "T"))));
+
+        ops.setViewed(TENANT, PROJECT, FOLDER, "https://a.example/", true, "u1");
+
+        assertThat(saved().entries().getFirst().viewedAt()).isNotNull();
+    }
+
+    @Test
+    void setViewed_falsePutsItBackOnThePile() {
+        loaded(config(List.of(), List.of(
+                new LinkEntry("https://a.example/", "T", null, null, null, List.of(), null,
+                        Instant.parse("2026-08-01T00:00:00Z"),
+                        Instant.parse("2026-08-20T00:00:00Z")))));
+
+        ops.setViewed(TENANT, PROJECT, FOLDER, "https://a.example/", false, "u1");
+
+        assertThat(saved().entries().getFirst().viewedAt()).isNull();
+    }
+
+    /**
+     * "When did I read this" is the interesting fact, and a second click on a
+     * card that already carries the tick is a slip, not a re-read.
+     */
+    @Test
+    void setViewed_keepsTheOriginalStampWhenMarkedAgain() {
+        Instant original = Instant.parse("2026-08-20T00:00:00Z");
+        loaded(config(List.of(), List.of(
+                new LinkEntry("https://a.example/", "T", null, null, null, List.of(), null,
+                        null, original))));
+
+        ops.setViewed(TENANT, PROJECT, FOLDER, "https://a.example/", true, "u1");
+
+        verify(store, never()).saveConfig(any(), any(), any());
+    }
+
+    /** A click that changes nothing must not cost a document version. */
+    @Test
+    void setViewed_writesNothingWhenAlreadyUnseen() {
+        loaded(config(List.of(), List.of(entry("https://a.example/", "T"))));
+
+        ops.setViewed(TENANT, PROJECT, FOLDER, "https://a.example/", false, "u1");
+
+        verify(store, never()).saveConfig(any(), any(), any());
+    }
+
+    /**
+     * The reading view must not reshuffle under the click that acknowledged an
+     * entry — the reader would lose their place.
+     */
+    @Test
+    void setViewed_leavesTheOrderAndTheOtherFieldsAlone() {
+        loaded(config(List.of("A"), List.of(
+                new LinkEntry("https://a.example/", "T", "my teaser", null, "A",
+                        List.of("tag"), "my note", null, null),
+                entry("https://b.example/", "U"))));
+
+        ops.setViewed(TENANT, PROJECT, FOLDER, "https://a.example/", true, "u1");
+
+        List<LinkEntry> entries = saved().entries();
+        assertThat(entries).extracting(LinkEntry::url)
+                .containsExactly("https://a.example/", "https://b.example/");
+        LinkEntry first = entries.getFirst();
+        assertThat(first.teaser()).isEqualTo("my teaser");
+        assertThat(first.note()).isEqualTo("my note");
+        assertThat(first.group()).isEqualTo("A");
+        assertThat(first.tags()).containsExactly("tag");
+    }
+
+    @Test
+    void setViewed_resolvesTheUrlTheWayTheCardShowsIt() {
+        loaded(config(List.of(), List.of(entry("https://a.example/", "T"))));
+
+        ops.setViewed(TENANT, PROJECT, FOLDER, "a.example", true, "u1");
+
+        assertThat(saved().entries().getFirst().viewed()).isTrue();
+    }
+
+    @Test
+    void setViewed_rejectsAnUnknownUrl() {
+        loaded(config(List.of(), List.of()));
+
+        assertThatThrownBy(() ->
+                ops.setViewed(TENANT, PROJECT, FOLDER, "https://a.example/", true, "u1"))
+                .isInstanceOf(ToolException.class);
+    }
+
+    /** Editing a link says nothing about whether it was read. */
+    @Test
+    void updateEntry_doesNotTouchTheViewedStamp() {
+        Instant seen = Instant.parse("2026-08-20T00:00:00Z");
+        loaded(config(List.of(), List.of(
+                new LinkEntry("https://a.example/", "T", null, null, null, List.of(), null,
+                        null, seen))));
+
+        ops.updateEntry(TENANT, PROJECT, FOLDER, "https://a.example/",
+                new LinksManifestOps.LinkFields(null, "fresh", null, null, null, null), "u1");
+
+        assertThat(saved().entries().getFirst().viewedAt()).isEqualTo(seen);
+    }
+
     /** The config that was written back. */
     private LinksConfig saved() {
         ArgumentCaptor<LinksConfig> captor = ArgumentCaptor.forClass(LinksConfig.class);
@@ -410,6 +568,6 @@ class LinksManifestOpsTest {
     }
 
     private static LinkEntry entry(String url, String title, @Nullable String group) {
-        return new LinkEntry(url, title, null, null, group, List.of(), null, null);
+        return new LinkEntry(url, title, null, null, group, List.of(), null, null, null);
     }
 }

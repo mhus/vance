@@ -161,15 +161,15 @@ async function loadScan(): Promise<void> {
 function selectBucket(b: BucketId): void {
   selectedBucket.value = b;
   selectedProject.value = null;
-  void nextTick().then(focusCapture);
+  setTimeout(focusCapture, 0);
 }
 function selectProject(p: string): void {
   selectedProject.value = p;
-  void nextTick().then(focusCapture);
+  setTimeout(focusCapture, 0);
 }
 function toggleContext(c: string): void {
   selectedContext.value = selectedContext.value === c ? null : c;
-  void nextTick().then(focusCapture);
+  setTimeout(focusCapture, 0);
 }
 
 // ── Action detail ───────────────────────────────────────────────────
@@ -435,7 +435,7 @@ async function onTargetDrop(t: DropTarget, ev: DragEvent): Promise<void> {
   // user now sees is the updated one, and the capture field is where fast
   // follow-up entry lives. Not done for the reorder drop below (sorting is
   // not capturing).
-  void nextTick().then(focusCapture);
+  void setTimeout(focusCapture, 0);
 }
 
 // ── Drag & drop within the action list (reorder, §8b) ────────────────
@@ -543,11 +543,7 @@ function focusCapture(): void {
       || active.isContentEditable;
     if (editing) return;
   }
-  // Defer one frame: a click on a sidebar button leaves it focused for the
-  // rest of the current event turn, and `activeElement` would still point at
-  // the button at call time — `nextTick` is a microtask, not a focus-flush. A
-  // rAF waits for the browser to settle the focus transition.
-  requestAnimationFrame(() => captureInputRef.value?.focus());
+  captureInputRef.value?.focus();
 }
 
 async function submitCapture(): Promise<void> {
@@ -744,6 +740,7 @@ function isCurrentBucket(b: BucketId): boolean {
               'gtd__nav-item--drop': isDropHover(bucketTarget(b)),
             }"
             @click="selectBucket(b)"
+            @mousedown.prevent
             @dragover="onTargetDragOver(bucketTarget(b), $event)"
             @dragleave="onTargetDragLeave(bucketTarget(b))"
             @drop="onTargetDrop(bucketTarget(b), $event)"
@@ -764,6 +761,7 @@ function isCurrentBucket(b: BucketId): boolean {
               'gtd__nav-item--drop': isDropHover(projectTarget(p.name)),
             }"
             @click="selectProject(p.name)"
+            @mousedown.prevent
             @dragover="onTargetDragOver(projectTarget(p.name), $event)"
             @dragleave="onTargetDragLeave(projectTarget(p.name))"
             @drop="onTargetDrop(projectTarget(p.name), $event)"
@@ -785,6 +783,7 @@ function isCurrentBucket(b: BucketId): boolean {
                 'gtd__chip--drop': isDropHover(contextTarget(c)),
               }"
               @click="toggleContext(c)"
+              @mousedown.prevent
               @dragover="onTargetDragOver(contextTarget(c), $event)"
               @dragleave="onTargetDragLeave(contextTarget(c))"
               @drop="onTargetDrop(contextTarget(c), $event)"

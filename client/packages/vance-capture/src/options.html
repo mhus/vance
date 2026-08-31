@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Vancetope Capture — settings</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body class="options">
+    <h1>Vancetope Capture</h1>
+
+    <div id="status" class="note hidden"></div>
+
+    <section id="current" class="hidden">
+      <h2>Connected</h2>
+      <dl>
+        <dt>Brain</dt><dd id="cur-brain"></dd>
+        <dt>Tenant</dt><dd id="cur-tenant"></dd>
+        <dt>Project</dt><dd id="cur-project"></dd>
+        <dt>Link list</dt><dd id="cur-folder"></dd>
+        <dt>Expires</dt><dd id="cur-expires"></dd>
+      </dl>
+      <p class="muted" style="margin-top: 10px">
+        The token is pinned to the project, not to that one list — a changed
+        folder reaches another link list in the same project. Revoking is done
+        in Vancetope, under the ⚙ of the link list.
+      </p>
+      <div class="row" style="margin-top: 10px">
+        <button id="test">Test connection</button>
+        <button id="forget">Forget</button>
+      </div>
+    </section>
+
+    <h2>Connection string</h2>
+    <p class="muted">
+      In Vancetope, open the link list, press ⚙, create a capture token and copy
+      the string it shows once.
+    </p>
+    <label>
+      <textarea id="blob" rows="5" placeholder="vancetope1.…"></textarea>
+    </label>
+    <div class="row">
+      <button id="save" class="primary">Save and grant access</button>
+    </div>
+  </body>
+  <script type="module" src="./options.ts"></script>
+</html>

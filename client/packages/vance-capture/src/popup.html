@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Save to Vancetope</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body class="popup">
+    <div id="status" class="note hidden"></div>
+
+    <!-- No connection yet -->
+    <section id="unconfigured" class="hidden">
+      <p class="muted">
+        This extension is not connected to a link list yet. Open a links app in
+        Vancetope, press ⚙, create a capture token and paste the connection
+        string here.
+      </p>
+      <button id="open-options" class="primary">Open settings</button>
+    </section>
+
+    <!-- The page cannot be saved (chrome://, a file, the new-tab page) -->
+    <section id="unsupported" class="hidden">
+      <p class="muted">There is no web page to save on this tab.</p>
+    </section>
+
+    <!-- The form -->
+    <section id="form" class="hidden">
+      <label>
+        <span>Title</span>
+        <input id="title" type="text" />
+      </label>
+      <label>
+        <span>Group</span>
+        <select id="group"></select>
+      </label>
+      <label>
+        <span>Note (optional)</span>
+        <input id="note" type="text" placeholder="Why you kept it" />
+      </label>
+      <div class="row">
+        <button id="save" class="primary grow">Save</button>
+      </div>
+      <p id="url" class="muted truncate" style="margin-top: 8px"></p>
+    </section>
+  </body>
+  <script type="module" src="./popup.ts"></script>
+</html>

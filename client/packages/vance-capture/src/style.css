@@ -1,0 +1,98 @@
+/*
+ * Hand-written CSS, not Tailwind.
+ *
+ * The DaisyUI/Tailwind rule in the web UI exists so a dozen editors stay
+ * visually one application. This is a 300-pixel popup in someone else's
+ * browser chrome — it shares no surface with those editors, and pulling the
+ * toolchain in would cost more than the file it saves.
+ */
+
+:root {
+  --fg: #1a1a1a;
+  --muted: #6b7280;
+  --line: #d4d4d8;
+  --bg: #ffffff;
+  --accent: #2563eb;
+  --danger: #b91c1c;
+  --ok: #15803d;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e5e7eb;
+    --muted: #9ca3af;
+    --line: #3f3f46;
+    --bg: #18181b;
+    --accent: #60a5fa;
+    --danger: #f87171;
+    --ok: #4ade80;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 12px;
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+body.popup { width: 340px; }
+
+body.options {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+h1 { font-size: 15px; margin: 0 0 12px; }
+h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 20px 0 8px; }
+
+label { display: block; margin-bottom: 10px; }
+label > span { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+
+input, select, textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+textarea { resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+
+button {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+button:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.row { display: flex; gap: 8px; align-items: center; }
+.grow { flex: 1; min-width: 0; }
+.muted { color: var(--muted); font-size: 11px; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.note {
+  padding: 8px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  margin-bottom: 12px;
+}
+.note.error { border-color: var(--danger); color: var(--danger); }
+.note.ok { border-color: var(--ok); color: var(--ok); }
+
+.hidden { display: none; }
+
+dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; font-size: 12px; }
+dt { color: var(--muted); }
+dd { margin: 0; overflow-wrap: anywhere; }

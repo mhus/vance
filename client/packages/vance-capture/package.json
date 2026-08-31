@@ -1,0 +1,20 @@
+{
+  "name": "@vance/vance-capture",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Vancetope Capture — browser extension that saves the current page into a Vancetope link list. Chrome (MV3); Firefox and Safari are follow-ups.",
+  "license": "SEE LICENSE IN ../../LICENSE.txt",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b && vite build",
+    "clean": "rm -rf dist dist-types *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@vance/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "typescript": "^5.9.2",
+    "vite": "^8.2.1"
+  }
+}

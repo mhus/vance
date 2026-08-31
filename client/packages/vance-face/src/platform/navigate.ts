@@ -82,22 +82,28 @@ export function navigateTo(href: string, options?: { replace?: boolean }): void 
  *
  * <p>Outside the shell it degrades to a raw write that *preserves*
  * `history.state` instead of nulling it.
+ *
+ * <p><b>Returns a promise, and that matters.</b> `history.replaceState` updated
+ * the address bar synchronously; a router navigation does not — it runs its
+ * guard queue and only then writes the history entry, several microtasks
+ * later. Every editor here reads its state back out of
+ * `window.location.search` (the router's own `route.query` goes stale, see
+ * router.ts), so a caller that writes a URL and then reads one in the same
+ * turn read the *previous* address and acted on it. Awaiting is what closes
+ * that window. Callers who only write and never read back can keep ignoring
+ * the result.
  */
-export function replaceUrl(url: string): void {
-  if (router) {
-    void router.replace(toRouterTarget(url));
-    return;
-  }
+export function replaceUrl(url: string): Promise<void> {
+  if (router) return router.replace(toRouterTarget(url)).then(() => undefined);
   window.history.replaceState(window.history.state, '', url);
+  return Promise.resolve();
 }
 
 /** {@link replaceUrl}, but leaving a Back step behind. */
-export function pushUrl(url: string): void {
-  if (router) {
-    void router.push(toRouterTarget(url));
-    return;
-  }
+export function pushUrl(url: string): Promise<void> {
+  if (router) return router.push(toRouterTarget(url)).then(() => undefined);
   window.history.pushState(window.history.state, '', url);
+  return Promise.resolve();
 }
 
 /**

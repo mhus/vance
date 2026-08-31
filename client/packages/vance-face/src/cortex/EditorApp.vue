@@ -458,6 +458,14 @@ let lastActiveDoc: string | null = null;
  * through the normal open/doc contract instead of needing a second opening path.
  * A path that does not resolve is a dead end for the whole navigation, so it
  * surfaces as a boot error rather than an empty editor.
+ *
+ * The write is *awaited*, and the whole handoff hangs on it: the rewrite goes
+ * through the router now, which updates the address bar a few microtasks after
+ * the call returns. Without the await, {@link restoreView} read the address as
+ * it was *before* this — a URL with `path=` and no `open=` — opened nothing,
+ * and then normalised that empty view back onto the URL, cancelling the
+ * in-flight write. The tile flashed the right address and landed on an empty
+ * Cortex.
  */
 async function openPathHandoff(pid: string, rawPath: string): Promise<void> {
   // A `?` inside the handoff separates the document from the read
@@ -492,7 +500,7 @@ async function openPathHandoff(pid: string, rawPath: string): Promise<void> {
   const open = view.open.includes(id) ? view.open : [...view.open, id];
   const queries = viewQuery ? { ...view.queries, [id]: viewQuery } : view.queries;
   const qs = writeCortexView(known, { ...view, open, doc: id, queries });
-  replaceUrl(`/cortex${qs ? `?${qs}` : ''}`);
+  await replaceUrl(`/cortex${qs ? `?${qs}` : ''}`);
 }
 
 /** Snapshot the current view from the store + preference refs. */
@@ -1598,9 +1606,12 @@ function leaveSessionInPlace(): void {
 async function switchToSessionInPlace(sid: string): Promise<void> {
   sessionId.value = sid;
   rightPanelOpen.value = true;
-  // Update the URL so a refresh / bookmark lands on the session.
+  // Update the URL so a refresh / bookmark lands on the session. Awaited for
+  // the same reason as in openPathHandoff: resolveSession ends in
+  // restoreView, which reads the address back — and the router writes it a
+  // few microtasks after this call returns.
   const qs = writeCortexView(`sessionId=${sid}&project=${projectId.value ?? ''}`, currentView());
-  pushUrl(`/cortex?${qs}`);
+  await pushUrl(`/cortex?${qs}`);
   await resolveSession(sid);
 }
 </script>

@@ -161,12 +161,15 @@ async function loadScan(): Promise<void> {
 function selectBucket(b: BucketId): void {
   selectedBucket.value = b;
   selectedProject.value = null;
+  void nextTick().then(focusCapture);
 }
 function selectProject(p: string): void {
   selectedProject.value = p;
+  void nextTick().then(focusCapture);
 }
 function toggleContext(c: string): void {
   selectedContext.value = selectedContext.value === c ? null : c;
+  void nextTick().then(focusCapture);
 }
 
 // ── Action detail ───────────────────────────────────────────────────
@@ -428,6 +431,11 @@ async function onTargetDrop(t: DropTarget, ev: DragEvent): Promise<void> {
     case 'project': await refileAction(a.path, t.name); break;
     case 'context': await addContext(a, t.name); break;
   }
+  // The action has landed in a new bucket/project/context — the list the
+  // user now sees is the updated one, and the capture field is where fast
+  // follow-up entry lives. Not done for the reorder drop below (sorting is
+  // not capturing).
+  void nextTick().then(focusCapture);
 }
 
 // ── Drag & drop within the action list (reorder, §8b) ────────────────

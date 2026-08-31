@@ -28,6 +28,7 @@ import {
   deleteGtdAction,
   searchGtd,
   rebuildGtd,
+  reorderGtdActions,
 } from './api';
 import type { GtdView } from './generated/gtd/GtdView';
 import type { GtdActionView } from './generated/gtd/GtdActionView';
@@ -398,6 +399,7 @@ function onActionDragStart(a: GtdActionView, ev: DragEvent): void {
 function onActionDragEnd(): void {
   dragging.value = null;
   dropHover.value = null;
+  rowDropTarget.value = null;
 }
 
 function onTargetDragOver(t: DropTarget, ev: DragEvent): void {
@@ -424,6 +426,91 @@ async function onTargetDrop(t: DropTarget, ev: DragEvent): Promise<void> {
     case 'bucket': await moveActionTo(a.path, t.id, datePrefill(a)); break;
     case 'project': await refileAction(a.path, t.name); break;
     case 'context': await addContext(a, t.name); break;
+  }
+}
+
+// ── Drag & drop within the action list (reorder, §8b) ────────────────
+// Independent of the cross-cutting sidebar drag above: dropping onto a list
+// row changes the order, never the bucket.
+//
+// Reordering is *within one bucket*, and only rows of that bucket are drop
+// targets. The middle list is not always one bucket — the project view lists
+// every bucket at once — and a drag across that boundary has no meaning: the
+// order lives per bucket, so it could not be honoured. Refusing the drop
+// (no insertion bar, no write) is the honest answer; accepting it would look
+// like it worked and change nothing on screen.
+//
+// A project or context filter narrows the list, so what we send is regularly
+// a *subset* of the bucket. The server splices it into the recorded order
+// instead of replacing it, which leaves the hidden Actions where they were —
+// see GtdService.resyncBucketOrder.
+type RowDropPosition = 'before' | 'after';
+const rowDropTarget = ref<{ actionId: string; position: RowDropPosition } | null>(null);
+
+function canDropOnRow(a: GtdActionView): boolean {
+  const dragged = dragging.value;
+  return !!dragged && dragged.id !== a.id && dragged.bucket === a.bucket;
+}
+
+function onRowDragOver(a: GtdActionView, ev: DragEvent): void {
+  if (!canDropOnRow(a)) return;
+  ev.preventDefault();
+  if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
+  const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+  const half = rect.top + rect.height / 2;
+  rowDropTarget.value = {
+    actionId: a.id,
+    position: ev.clientY < half ? 'before' : 'after',
+  };
+}
+
+function onRowDragLeave(ev: DragEvent): void {
+  // dragleave also fires when the pointer crosses into a child of the row
+  // (checkbox, title, badges) — clearing on those makes the bar flicker.
+  const row = ev.currentTarget as HTMLElement;
+  const to = ev.relatedTarget as Node | null;
+  if (to && row.contains(to)) return;
+  rowDropTarget.value = null;
+}
+
+async function onRowDrop(a: GtdActionView, ev: DragEvent): Promise<void> {
+  const target = rowDropTarget.value;
+  rowDropTarget.value = null;
+  if (!canDropOnRow(a) || !target) return;
+  ev.preventDefault();
+  await applyRowReorder(dragging.value!, target.actionId, target.position);
+}
+
+async function applyRowReorder(
+  source: GtdActionView,
+  anchorId: string,
+  position: RowDropPosition,
+): Promise<void> {
+  const bucket = source.bucket;
+  if (!bucket) return;
+  // Only the source bucket's visible rows: in the project view the list holds
+  // several buckets, and ids of the others are not this bucket's order.
+  const list = displayedActions.value.filter((x) => x.bucket === bucket);
+  const sourceIdx = list.findIndex((x) => x.id === source.id);
+  if (sourceIdx < 0) return;
+  list.splice(sourceIdx, 1);
+  let insertAt = list.length; // default: append
+  const anchorIdx = list.findIndex((x) => x.id === anchorId);
+  if (anchorIdx >= 0) insertAt = position === 'before' ? anchorIdx : anchorIdx + 1;
+  list.splice(insertAt, 0, source);
+
+  saveStatus.value = 'saving';
+  try {
+    // The answer is the whole view — the order it carries is the resynced one,
+    // which is not necessarily the order we just sent.
+    view.value = await reorderGtdActions(projectId.value, folder.value, {
+      bucket,
+      orderedIds: list.map((x) => x.id),
+    });
+    saveStatus.value = 'saved';
+  } catch (e) {
+    saveStatus.value = 'error';
+    error.value = e instanceof Error ? e.message : 'Reorder failed.';
   }
 }
 
@@ -688,11 +775,16 @@ function isCurrentBucket(b: BucketId): boolean {
               'gtd__action--sel': a.path === selectedPath,
               'gtd__action--overdue': a.overdue,
               'gtd__action--dragging': dragging?.path === a.path,
+              'gtd__action--drop-before': rowDropTarget && rowDropTarget.actionId === a.id && rowDropTarget.position === 'before',
+              'gtd__action--drop-after': rowDropTarget && rowDropTarget.actionId === a.id && rowDropTarget.position === 'after',
             }"
             draggable="true"
             @click="selectAction(a.path)"
             @dragstart="onActionDragStart(a, $event)"
             @dragend="onActionDragEnd"
+            @dragover="onRowDragOver(a, $event)"
+            @dragleave="onRowDragLeave($event)"
+            @drop="onRowDrop(a, $event)"
           >
             <input
               type="checkbox"
@@ -863,11 +955,25 @@ function isCurrentBucket(b: BucketId): boolean {
 .gtd__actions { list-style: none; margin: 0; padding: 0.25rem; }
 .gtd__action {
   display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.5rem; border-radius: 6px; cursor: pointer;
+  position: relative;
 }
 .gtd__action:hover { background: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
 .gtd__action--sel { background: color-mix(in oklab, var(--color-primary) 12%, transparent); }
 .gtd__action--dragging { opacity: 0.45; }
 .gtd__action--overdue .gtd__action-title { color: #d33; }
+/* Drop-insertion indicator for intra-list reorder (§8b) — same shape as the
+   workbook page-row indicator: a 2px primary bar above/below the row. */
+.gtd__action--drop-before::before,
+.gtd__action--drop-after::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: var(--color-primary);
+  pointer-events: none;
+}
+.gtd__action--drop-before::before { top: -1px; }
+.gtd__action--drop-after::after { bottom: -1px; }
 .gtd__action-title { flex: 1; font-size: 0.88rem; }
 .gtd__when, .gtd__deadline, .gtd__ctx {
   font-size: 0.7rem; opacity: 0.7; padding: 0.05rem 0.35rem; border-radius: 4px; background: color-mix(in oklab, var(--color-base-content) 8%, transparent);

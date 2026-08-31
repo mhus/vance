@@ -7,12 +7,18 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.text.Collator;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -250,6 +256,108 @@ public class GtdService {
             map.get(bucket).add(a);
         }
         return map;
+    }
+
+    // ── Manual order within a bucket (§8b) ────────────────────────
+
+    /** Convenience overload: take the order hint for {@code bucket} from the manifest. */
+    public List<GtdAction> applyBucketOrder(
+            GtdBucket bucket, GtdConfig config, List<GtdAction> bucketed) {
+        return applyBucketOrder(bucket, bucketed,
+                config.bucketOrder().getOrDefault(bucket, List.of()));
+    }
+
+    /**
+     * Apply the manifest's per-bucket order hint to an already bucketed list
+     * (§8b). Actions named in {@code order} come first in that order (only
+     * those actually in the bucket — dead ids are dropped); the rest follow in
+     * {@link #defaultOrder} . Returns a new list; the input is not mutated.
+     *
+     * <p>Every reader of a bucket goes through here — the interactive list, the
+     * generated {@code _today.md}, and {@code gtd_query}. A reader that skipped
+     * it would show the person a different sequence than the one they dragged
+     * into place, which is the whole point of the feature.
+     */
+    public List<GtdAction> applyBucketOrder(
+            GtdBucket bucket, List<GtdAction> bucketed, List<String> order) {
+        if (order.isEmpty()) return defaultOrder(bucket, bucketed);
+        Map<String, GtdAction> byId = new LinkedHashMap<>();
+        for (GtdAction a : bucketed) byId.put(a.doc().getId(), a);
+        List<GtdAction> out = new ArrayList<>(bucketed.size());
+        Set<String> seen = new HashSet<>();
+        for (String id : order) {
+            GtdAction a = byId.get(id);
+            if (a != null && seen.add(id)) out.add(a);
+        }
+        for (GtdAction a : defaultOrder(bucket, bucketed)) {
+            if (!seen.contains(a.doc().getId())) out.add(a);
+        }
+        return out;
+    }
+
+    /**
+     * Splice a caller's ordering of <b>part</b> of a bucket into the order the
+     * manifest already records.
+     *
+     * <p>The subset matters: the middle list can be narrowed by a project or
+     * context filter, so {@code requestedOrder} is regularly not the whole
+     * bucket. Replacing the recorded list with it would drop every hidden
+     * Action to the back — one drag under a filter would silently reshuffle the
+     * bucket for everything the person could not see. Instead the named ids are
+     * permuted <b>among the slots they already occupy</b>: unnamed Actions keep
+     * their exact position, and an unfiltered reorder (every id named) still
+     * reduces to "the list the caller sent".
+     *
+     * <p>Dead ids — deleted, done, or moved to another bucket — are dropped and
+     * Actions the manifest does not mention yet are folded in at their
+     * {@link #defaultOrder} position, so every reorder is also a small garbage
+     * collection of the affected list.
+     */
+    public List<String> resyncBucketOrder(GtdBucket bucket, List<GtdAction> bucketed,
+                                          List<String> existingOrder,
+                                          List<String> requestedOrder) {
+        Set<String> alive = new LinkedHashSet<>();
+        for (GtdAction a : defaultOrder(bucket, bucketed)) alive.add(a.doc().getId());
+
+        // The order as it stands right now: what the manifest records (minus the
+        // dead), then everything it does not mention.
+        List<String> base = new ArrayList<>();
+        Set<String> inBase = new HashSet<>();
+        for (String id : existingOrder) if (alive.contains(id) && inBase.add(id)) base.add(id);
+        for (String id : alive) if (inBase.add(id)) base.add(id);
+
+        List<String> named = new ArrayList<>();
+        Set<String> isNamed = new HashSet<>();
+        for (String id : requestedOrder) if (alive.contains(id) && isNamed.add(id)) named.add(id);
+        if (named.isEmpty()) return base;
+
+        List<String> out = new ArrayList<>(base.size());
+        int next = 0;
+        for (String id : base) out.add(isNamed.contains(id) ? named.get(next++) : id);
+        return out;
+    }
+
+    /**
+     * The sequence a bucket has before anybody drags anything — and the
+     * position an Action falls back to when the manifest does not name it.
+     *
+     * <p>Alphabetical by title, except Upcoming, which is chronological: its
+     * whole meaning is "later, in this order", and {@code _upcoming.md} groups
+     * by date regardless — an alphabetical list beside it would be two answers
+     * to one question. Comparison runs through a {@link Collator} rather than
+     * {@code toLowerCase}, so "Ärger" sorts next to "Arbeit" and not behind
+     * "Zettel". Ties break on the id so the order never depends on scan order.
+     */
+    private static List<GtdAction> defaultOrder(GtdBucket bucket, List<GtdAction> bucketed) {
+        Collator collator = Collator.getInstance(Locale.ROOT);
+        collator.setStrength(Collator.SECONDARY);
+        Comparator<GtdAction> byTitle = Comparator.comparing(GtdAction::title, collator);
+        Comparator<GtdAction> comparator = bucket == GtdBucket.UPCOMING
+                ? Comparator.comparing(GtdAction::when).thenComparing(byTitle)
+                : byTitle;
+        List<GtdAction> out = new ArrayList<>(bucketed);
+        out.sort(comparator.thenComparing(a -> a.doc().getId()));
+        return out;
     }
 
     public List<GtdAction> overdue(GtdFolderReader.Scan scan, LocalDate today) {

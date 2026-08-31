@@ -77,7 +77,10 @@ public class GtdQueryTool implements Tool {
         List<Map<String, Object>> out = new ArrayList<>();
         for (Map.Entry<GtdBucket, List<GtdAction>> e : grouped.entrySet()) {
             if (wanted != null && e.getKey() != wanted) continue;
-            for (GtdAction a : e.getValue()) {
+            // Same manual order (§8b) the person sees in the app — a list that
+            // disagreed with theirs would make "the top three" mean two things.
+            for (GtdAction a : gtdService.applyBucketOrder(
+                    e.getKey(), scan.config(), e.getValue())) {
                 if (context != null && !a.contexts().contains(context)) continue;
                 if (project != null && !project.equals(a.project())) continue;
                 Map<String, Object> row = new LinkedHashMap<>();

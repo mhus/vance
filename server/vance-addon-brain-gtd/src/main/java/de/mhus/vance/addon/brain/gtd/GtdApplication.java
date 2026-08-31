@@ -102,6 +102,7 @@ public class GtdApplication implements VanceApplication {
         mb.append("  actionsDir: ").append(GtdConfig.DEFAULT_ACTIONS_DIR).append('\n');
         mb.append("  projectsDir: ").append(GtdConfig.DEFAULT_PROJECTS_DIR).append('\n');
         mb.append("  contexts: [\"@calls\", \"@errands\", \"@home\", \"@office\", \"@computer\"]\n");
+        appendKeptOrder(mb, existing);
         String manifestBody = mb.toString();
 
         DocumentDocument stored;
@@ -195,11 +196,17 @@ public class GtdApplication implements VanceApplication {
         List<GtdAction> overdue = gtdService.overdue(scan, today);
         GtdStatsBuilder.Stats stats = statsBuilder.build(scan, today);
 
+        // The generated day view is the same list the interactive one shows, so
+        // it follows the same manual order (§8b). _upcoming.md is exempt: the
+        // renderer groups it by date, which is that bucket's own order anyway.
+        List<GtdAction> todayActions = gtdService.applyBucketOrder(
+                GtdBucket.TODAY, scan.config(), buckets.get(GtdBucket.TODAY));
+
         List<ArtefactResult> artefacts = new ArrayList<>();
         artefacts.add(writeArtefact(ctx, folder + "/" + TODAY_FILE,
-                renderer.renderToday(buckets.get(GtdBucket.TODAY), overdue, title),
+                renderer.renderToday(todayActions, overdue, title),
                 "Today — " + title, MD_MIME, List.of("gtd", "generated", "today"),
-                Map.of("today", buckets.get(GtdBucket.TODAY).size(), "overdue", overdue.size())));
+                Map.of("today", todayActions.size(), "overdue", overdue.size())));
         artefacts.add(writeArtefact(ctx, folder + "/" + UPCOMING_FILE,
                 renderer.renderUpcoming(buckets.get(GtdBucket.UPCOMING), title),
                 "Upcoming — " + title, MD_MIME, List.of("gtd", "generated", "upcoming"),
@@ -237,6 +244,38 @@ public class GtdApplication implements VanceApplication {
         String name = outputPath.substring(outputPath.lastIndexOf('/') + 1).replaceAll("^_|\\.\\w+$", "");
         return new ArtefactResult(name, stored.getPath(),
                 linkBuilder.linkFor(stored, ctx.projectName()), new LinkedHashMap<>(statsMap));
+    }
+
+    /**
+     * Carry the manual bucket orders (§8b) over into a rewritten manifest.
+     *
+     * <p>{@code overwrite=true} means "replace this manifest", and every field
+     * it writes is one the caller supplied or a documented default. The order
+     * lists are neither: they point at Actions that are still there, and
+     * nothing can reconstruct the sequence somebody dragged into place. Dropping
+     * them would be a silent loss the caller did not ask for — and a stale id
+     * costs nothing, the next reorder collects it.
+     */
+    private void appendKeptOrder(StringBuilder mb, Optional<DocumentDocument> existing) {
+        if (existing.isEmpty()) return;
+        Map<GtdBucket, List<String>> kept;
+        try {
+            kept = GtdConfig.parse(documentService.readContent(existing.get())).bucketOrder();
+        } catch (RuntimeException e) {
+            // An unreadable manifest is exactly what overwrite=true is for.
+            log.warn("GtdApplication.create could not read '{}' to keep bucket orders: {}",
+                    existing.get().getPath(), e.getMessage());
+            return;
+        }
+        for (Map.Entry<GtdBucket, List<String>> e : kept.entrySet()) {
+            if (e.getValue().isEmpty()) continue;
+            mb.append("  ").append(GtdManifestOps.orderKey(e.getKey())).append(": [");
+            for (int i = 0; i < e.getValue().size(); i++) {
+                if (i > 0) mb.append(", ");
+                mb.append('"').append(escape(e.getValue().get(i))).append('"');
+            }
+            mb.append("]\n");
+        }
     }
 
     private static String leafFolderName(String folder) {

@@ -5,6 +5,7 @@ import type { GtdActionRequest } from './generated/gtd/GtdActionRequest';
 import type { GtdCaptureRequest } from './generated/gtd/GtdCaptureRequest';
 import type { GtdMoveRequest } from './generated/gtd/GtdMoveRequest';
 import type { GtdProjectMoveRequest } from './generated/gtd/GtdProjectMoveRequest';
+import type { GtdReorderRequest } from './generated/gtd/GtdReorderRequest';
 import type { GtdSearchResponse } from './generated/gtd/GtdSearchResponse';
 import type { GtdRebuildResponse } from './generated/gtd/GtdRebuildResponse';
 
@@ -115,4 +116,25 @@ export async function rebuildGtd(
   folder: string,
 ): Promise<GtdRebuildResponse> {
   return brainFetch<GtdRebuildResponse>('POST', `addon/gtd/rebuild?${qs({ projectId, folder })}`);
+}
+
+/**
+ * Persist a new manual order for one bucket (§8b) and get the fresh view back.
+ *
+ * `orderedIds` may be a subset of the bucket — a project or context filter
+ * narrows the list. The server splices it into the order the manifest already
+ * records rather than replacing it, drops ids that left the bucket, and writes
+ * `_app.yaml` once. The returned view therefore carries the resynced order,
+ * which need not be the one that was sent.
+ */
+export async function reorderGtdActions(
+  projectId: string,
+  folder: string,
+  request: GtdReorderRequest,
+): Promise<GtdView> {
+  return brainFetch<GtdView>(
+    'POST',
+    `addon/gtd/reorder?${qs({ projectId, folder })}`,
+    { body: request },
+  );
 }

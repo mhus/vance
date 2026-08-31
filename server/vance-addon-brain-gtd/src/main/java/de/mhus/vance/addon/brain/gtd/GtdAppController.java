@@ -42,6 +42,7 @@ public class GtdAppController {
     private final GtdApplication application;
     private final GtdFolderReader folderReader;
     private final GtdService gtdService;
+    private final GtdManifestOps manifestOps;
     private final GtdStatsBuilder statsBuilder;
     private final DocumentService documentService;
     private final RequestAuthority authority;
@@ -55,28 +56,8 @@ public class GtdAppController {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
         String normalised = GtdFolderReader.normaliseFolder(folder);
-        GtdFolderReader.Scan scan = folderReader.scan(tenant, projectId, normalised);
         LocalDate today = LocalDate.now();
-
-        Map<GtdBucket, List<GtdAction>> grouped = gtdService.computeBuckets(scan, today);
-        List<GtdBucketView> buckets = new ArrayList<>();
-        for (GtdBucket b : statsBuilder.orderedBuckets()) {
-            List<GtdActionView> views = new ArrayList<>();
-            for (GtdAction a : grouped.get(b)) views.add(toActionView(a, b, today));
-            buckets.add(new GtdBucketView(b.wireName(), bucketTitle(b), views));
-        }
-
-        GtdStatsBuilder.Stats stats = statsBuilder.build(scan, today);
-        List<GtdProjectView> projects = new ArrayList<>();
-        for (Map.Entry<String, Integer> e : stats.projectCounts().entrySet()) {
-            projects.add(new GtdProjectView(e.getKey(), e.getValue()));
-        }
-        Set<String> contexts = new LinkedHashSet<>(scan.config().suggestedContexts());
-        contexts.addAll(stats.contextCounts().keySet());
-
-        String title = firstNonBlank(scan.config().title(), scan.manifest().getTitle());
-        return new GtdView(normalised, title, scan.config().description(),
-                new ArrayList<>(contexts), buckets, projects, toStatsView(stats));
+        return toView(normalised, folderReader.scan(tenant, projectId, normalised), today);
     }
 
     @PostMapping("/brain/{tenant}/addon/gtd/capture")
@@ -220,6 +201,35 @@ public class GtdAppController {
         return new GtdSearchResponse(items, listing.total());
     }
 
+    /**
+     * Record a manual order for one bucket (§8b) and answer with the whole
+     * view: the caller changed what it is looking at, so it would refetch
+     * anyway — and the order it gets back is the resynced one, which is not
+     * necessarily the one it sent.
+     */
+    @PostMapping("/brain/{tenant}/addon/gtd/reorder")
+    public GtdView reorder(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("folder") String folder,
+            @RequestBody GtdReorderRequest request,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
+        if (request == null || request.orderedIds() == null) {
+            throw new ToolException("orderedIds is required");
+        }
+        GtdBucket bucket = GtdBucket.fromWire(request.bucket());
+        if (bucket == null) {
+            throw new ToolException("Unknown bucket '" + request.bucket() + "'");
+        }
+        String normalised = GtdFolderReader.normaliseFolder(folder);
+        LocalDate today = LocalDate.now();
+        GtdFolderReader.Scan scan = manifestOps.reorderBucket(tenant, projectId, normalised,
+                bucket, request.orderedIds(), today, currentUser(httpRequest));
+        return toView(normalised, scan, today);
+    }
+
     @PostMapping("/brain/{tenant}/addon/gtd/rebuild")
     public GtdRebuildResponse rebuild(
             @PathVariable("tenant") String tenant,
@@ -242,6 +252,31 @@ public class GtdAppController {
     }
 
     // ── Helpers ───────────────────────────────────────────────────
+
+    /** Shape a scan into the wire view — the one place buckets get their order. */
+    private GtdView toView(String folder, GtdFolderReader.Scan scan, LocalDate today) {
+        Map<GtdBucket, List<GtdAction>> grouped = gtdService.computeBuckets(scan, today);
+        List<GtdBucketView> buckets = new ArrayList<>();
+        for (GtdBucket b : statsBuilder.orderedBuckets()) {
+            List<GtdActionView> views = new ArrayList<>();
+            for (GtdAction a : gtdService.applyBucketOrder(b, scan.config(), grouped.get(b))) {
+                views.add(toActionView(a, b, today));
+            }
+            buckets.add(new GtdBucketView(b.wireName(), bucketTitle(b), views));
+        }
+
+        GtdStatsBuilder.Stats stats = statsBuilder.build(scan, today);
+        List<GtdProjectView> projects = new ArrayList<>();
+        for (Map.Entry<String, Integer> e : stats.projectCounts().entrySet()) {
+            projects.add(new GtdProjectView(e.getKey(), e.getValue()));
+        }
+        Set<String> contexts = new LinkedHashSet<>(scan.config().suggestedContexts());
+        contexts.addAll(stats.contextCounts().keySet());
+
+        String title = firstNonBlank(scan.config().title(), scan.manifest().getTitle());
+        return new GtdView(folder, title, scan.config().description(),
+                new ArrayList<>(contexts), buckets, projects, toStatsView(stats));
+    }
 
     private GtdConfig configOf(String tenant, String projectId, String folder) {
         return folderReader.scan(tenant, projectId, folder).config();

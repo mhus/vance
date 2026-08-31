@@ -533,11 +533,15 @@ const captureRef = ref<HTMLFormElement | null>(null);
 const captureInputRef = ref<HTMLInputElement | null>(null);
 function focusCapture(): void {
   // The WorkPageEditor in the right pane can hold the caret during a body
-  // edit — don't snatch focus from it. Only refocus when focus is empty or
-  // already inside our capture form.
-  const active = document.activeElement;
+  // edit — don't snatch focus from it. A button click in the sidebar (bucket /
+  // project / context) is not an edit, so it yields focus. Only a real edit
+  // element outside the capture form blocks the refocus.
+  const active = document.activeElement as HTMLElement | null;
   if (active && active !== document.body && !captureRef.value?.contains(active)) {
-    return;
+    const tag = active.tagName.toLowerCase();
+    const editing = tag === 'input' || tag === 'textarea' || tag === 'select'
+      || active.isContentEditable;
+    if (editing) return;
   }
   captureInputRef.value?.focus();
 }

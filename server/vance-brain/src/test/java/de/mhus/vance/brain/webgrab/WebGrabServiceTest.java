@@ -108,8 +108,9 @@ class WebGrabServiceTest {
     }
 
     /**
-     * The title is the page's own text. A colon or a newline in it would end
-     * the flat header early and spill the rest into the body.
+     * The title is the page's own text. A newline in it would end the flat
+     * header early and spill the rest of the page into the body; the first
+     * colon has already decided the key, so one inside the value is harmless.
      */
     @Test
     void neutersATitleThatWouldBreakTheHeader() {
@@ -117,7 +118,20 @@ class WebGrabServiceTest {
                 "Line one\nkind: evil", "https://x.example/", "body");
 
         assertThat(body.indexOf("---", 3)).isGreaterThan(body.indexOf("grabbedAt"));
-        assertThat(body).contains("title: \"Line one kind: evil\"");
+        assertThat(body).contains("title: Line one kind: evil");
+    }
+
+    /**
+     * Values are unquoted, like {@code FrontMatter.render} writes them. The
+     * parser splits on the first colon and never unquotes, so quoting the title
+     * put the quotes <em>into</em> the value every reader gets back.
+     */
+    @Test
+    void writesFrontMatterValuesTheWayTheParserReadsThem() {
+        String body = WebGrabService.withFrontMatter("My Page", "https://x.example/", "b");
+
+        assertThat(body).contains("title: My Page\n");
+        assertThat(body).doesNotContain("title: \"");
     }
 
     // ── naming and collisions ─────────────────────────────────────
@@ -154,6 +168,50 @@ class WebGrabServiceTest {
 
         assertThat(grabbed.title()).isEqualTo("My Own Name");
         assertThat(grabbed.path()).isEqualTo("web/my-own-name.md");
+    }
+
+    /**
+     * When the page offers no name, the <em>file</em> is named from the URL's
+     * path — not from the URL as a whole. The title may fall back to the full
+     * URL, because a URL is a usable label; a file called
+     * {@code https-example-com-blog-post.md} is not, and passing the fallback
+     * title into the slug made {@code GrabNaming}'s URL handling unreachable.
+     */
+    @Test
+    void namesTheFileFromTheUrlPathWhenThePageOffersNoTitle() {
+        WebGrabService.Grabbed grabbed = service.grab(TENANT, PROJECT, "web",
+                "https://example.com/blog/my-post.html", "application/pdf",
+                new byte[] {1}, null, "alice", actor);
+
+        assertThat(grabbed.path()).isEqualTo("web/my-post.pdf");
+        assertThat(grabbed.title()).isEqualTo("https://example.com/blog/my-post.html");
+    }
+
+    // ── decoding ──────────────────────────────────────────────────
+
+    /**
+     * The extension always sends UTF-8 — it hands over a DOM snapshot. The
+     * shell client this endpoint also documents may not, and decoding its page
+     * as UTF-8 anyway turned every umlaut into U+FFFD, irreversibly.
+     */
+    @Test
+    void decodesHtmlWithTheDeclaredCharset() {
+        byte[] latin1 = "<p>Übergröße</p>".getBytes(java.nio.charset.Charset.forName("ISO-8859-1"));
+
+        service.grab(TENANT, PROJECT, "web", "https://example.com/p",
+                "text/html; charset=ISO-8859-1", latin1, "T", "alice", actor);
+
+        assertThat(writtenBody()).contains("Übergröße");
+    }
+
+    /** An unusable charset name reads approximately rather than refusing. */
+    @Test
+    void fallsBackToUtf8ForAnUnusableCharsetName() {
+        service.grab(TENANT, PROJECT, "web", "https://example.com/p",
+                "text/html; charset=not-a-charset",
+                "<p>Übergröße</p>".getBytes(StandardCharsets.UTF_8), "T", "alice", actor);
+
+        assertThat(writtenBody()).contains("Übergröße");
     }
 
     // ── the folder ────────────────────────────────────────────────

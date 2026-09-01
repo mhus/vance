@@ -158,7 +158,7 @@ public final class HtmlToMarkdown {
                 String text = inline(el).trim();
                 if (!text.isEmpty()) {
                     block(out);
-                    out.append(text);
+                    out.append(blockSafe(text));
                     block(out);
                 }
             }
@@ -183,18 +183,23 @@ public final class HtmlToMarkdown {
             }
             case "pre" -> {
                 block(out);
-                out.append("```").append(language(el)).append('\n');
                 String body = el.wholeText();
+                // The fence has to outrun the longest backtick run inside the
+                // body, or the block ends where the page happened to show a
+                // fence — and every page that documents Markdown does. Same
+                // rule the inline `code` branch applies in miniature.
+                String fence = "`".repeat(Math.max(3, longestBacktickRun(body) + 1));
+                out.append(fence).append(infoString(el)).append('\n');
                 out.append(body);
                 if (!body.endsWith("\n")) out.append('\n');
-                out.append("```");
+                out.append(fence);
                 block(out);
             }
             case "a" -> {
                 String text = inline(el).trim();
                 String href = absolute(el, "href");
                 if (text.isEmpty()) return;
-                if (href.isEmpty() || href.startsWith("#") || href.startsWith("javascript:")) {
+                if (href.isEmpty() || href.startsWith("#") || isScript(href)) {
                     // An anchor with nowhere to go is text: no href, a script
                     // handler, or a bare fragment we could not resolve.
                     //
@@ -206,14 +211,18 @@ public final class HtmlToMarkdown {
                     // decides.
                     out.append(text);
                 } else {
-                    out.append('[').append(text).append("](").append(href).append(')');
+                    out.append('[').append(text).append("](")
+                            .append(destination(href)).append(')');
                 }
             }
             case "img" -> {
                 String src = absolute(el, "src");
-                if (!src.isEmpty()) {
+                // Same script filter as the anchor above. It was missing here,
+                // which is the kind of asymmetry nobody intends: one of the two
+                // places that turn a page's URL into a document link.
+                if (!src.isEmpty() && !isScript(src)) {
                     out.append("![").append(escape(el.attr("alt"))).append("](")
-                            .append(src).append(')');
+                            .append(destination(src)).append(')');
                 }
             }
             case "ul", "ol" -> {
@@ -378,12 +387,108 @@ public final class HtmlToMarkdown {
     }
 
     /**
+     * A link or image destination, safe to put between {@code (} and {@code )}.
+     *
+     * <p>CommonMark ends a bare destination at the first space and at an
+     * unbalanced {@code )}. Neither is exotic: {@code absUrl} does not
+     * percent-encode, so {@code <img src="my pic.png">} produced
+     * {@code ![alt](https://host/my pic.png)} and the rest of the URL leaked
+     * into the paragraph as text. The pointy-bracket form is the spec's own
+     * answer for exactly this, and inside it only {@code <} and {@code >} need
+     * escaping.
+     *
+     * <p>Only used where it is needed, so an ordinary URL stays readable in the
+     * source.
+     */
+    static String destination(String url) {
+        boolean plain = url.chars().noneMatch(
+                c -> c == ' ' || c == '\t' || c == '(' || c == ')' || c == '<' || c == '>');
+        if (plain) return url;
+        return "<" + url.replace("<", "%3C").replace(">", "%3E") + ">";
+    }
+
+    /**
+     * A {@code javascript:} destination, however it is spelled.
+     *
+     * <p>Case-insensitive because the scheme is: {@code JavaScript:alert(1)} is
+     * the same URL to a browser and was not the same string to a
+     * {@code startsWith}.
+     */
+    private static boolean isScript(String url) {
+        return url.regionMatches(true, 0, "javascript:", 0, "javascript:".length());
+    }
+
+    /** The longest run of consecutive backticks in {@code text}. */
+    private static int longestBacktickRun(String text) {
+        int longest = 0;
+        int run = 0;
+        for (int i = 0; i < text.length(); i++) {
+            run = text.charAt(i) == '`' ? run + 1 : 0;
+            if (run > longest) longest = run;
+        }
+        return longest;
+    }
+
+    /**
+     * The fence info string for a {@code <pre>}: its language, if the page said.
+     *
+     * <p>Reduced to what a language token can be. It ends up on the fence line,
+     * where a backtick from a stray class name would break the block it is
+     * supposed to open.
+     */
+    private static String infoString(Element pre) {
+        String language = language(pre);
+        StringBuilder out = new StringBuilder(language.length());
+        for (int i = 0; i < language.length(); i++) {
+            char c = language.charAt(i);
+            if (Character.isLetterOrDigit(c) || c == '-' || c == '+' || c == '#' || c == '.') {
+                out.append(c);
+            }
+        }
+        return out.toString();
+    }
+
+    /**
+     * Neutralise a leading character that would turn a paragraph into a block.
+     *
+     * <p>Separate from {@link #escape} on purpose. {@code #}, {@code >} and
+     * {@code -} are only structural at the start of a line, and escaping every
+     * hyphen in the running text would leave {@code well\-known} littered
+     * through the document — a cure worse than the disease. Here the position
+     * is known: the caller is about to emit this as a block of its own.
+     *
+     * <p>What this catches, all of it ordinary body copy: {@code # 1 in sales}
+     * becoming a heading, {@code - 30% off} becoming a list item,
+     * {@code > see below} becoming a quote, {@code 1. First} becoming an
+     * ordered list.
+     */
+    static String blockSafe(String text) {
+        if (text.isEmpty()) return text;
+        char first = text.charAt(0);
+        if (first == '#' || first == '>' || first == '-' || first == '+' || first == '=') {
+            return "\\" + text;
+        }
+        // "1." / "1)" — only the digits-then-delimiter shape starts a list, so
+        // a year like "1969 was" is left alone.
+        int i = 0;
+        while (i < text.length() && Character.isDigit(text.charAt(i))) i++;
+        if (i > 0 && i < text.length() && (text.charAt(i) == '.' || text.charAt(i) == ')')) {
+            return text.substring(0, i) + "\\" + text.substring(i);
+        }
+        return text;
+    }
+
+    /**
      * Escape what would otherwise become structure.
      *
      * <p>Not paranoid escaping: the goal is that a sentence from the page
-     * cannot accidentally *become* a heading, a list or a link. Raw HTML is
+     * cannot accidentally *become* emphasis, code or a link. Raw HTML is
      * neutered by escaping {@code <} — anything the page had inline stays
      * visible as text rather than being handed to a renderer.
+     *
+     * <p>The characters that are structural <em>only at the start of a line</em>
+     * are deliberately not here; {@link #blockSafe} handles those where the
+     * position is known.
      */
     static String escape(String text) {
         if (text.isEmpty()) return text;

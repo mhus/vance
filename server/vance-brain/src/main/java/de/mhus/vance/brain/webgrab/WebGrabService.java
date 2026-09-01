@@ -5,11 +5,13 @@ import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.permission.WriteActor;
 import java.io.ByteArrayInputStream;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
@@ -63,23 +65,31 @@ public class WebGrabService {
         String targetFolder = normaliseFolder(folder);
         boolean html = isHtml(mimeType);
 
-        String documentTitle;
+        // Kept separate from the document title on purpose. The title falls back
+        // to the source URL because a URL is a usable label; the *file name*
+        // must not, because GrabNaming has a better answer for a URL than
+        // slugifying the whole of it — passing the fallback title in here made
+        // that answer unreachable and produced
+        // `https-example-com-blog-post.md` where `post.md` was meant.
+        String pageTitle;
         String extension;
         byte[] bytes;
         if (html) {
             HtmlToMarkdown.Result converted = HtmlToMarkdown.convert(
-                    new String(content, StandardCharsets.UTF_8), sourceUrl);
-            documentTitle = pickTitle(title, converted.title(), sourceUrl);
+                    decodeText(content, mimeType), sourceUrl);
+            pageTitle = firstUsable(title, converted.title());
             extension = "md";
-            bytes = withFrontMatter(documentTitle, sourceUrl, converted.markdown())
+            bytes = withFrontMatter(titleOrUrl(pageTitle, sourceUrl), sourceUrl,
+                    converted.markdown())
                     .getBytes(StandardCharsets.UTF_8);
         } else {
-            documentTitle = pickTitle(title, null, sourceUrl);
+            pageTitle = firstUsable(title, null);
             extension = GrabNaming.extensionFor(mimeType);
             bytes = content;
         }
+        String documentTitle = titleOrUrl(pageTitle, sourceUrl);
 
-        String stem = GrabNaming.slug(documentTitle, sourceUrl);
+        String stem = GrabNaming.slug(pageTitle, sourceUrl);
         DocumentDocument created = createAtFreePath(
                 tenantId, projectId, targetFolder, stem, extension,
                 documentTitle, html ? "text/markdown" : mimeType, bytes, userId, actor);
@@ -140,14 +150,16 @@ public class WebGrabService {
      * one field worth machine-readable: it answers "where is this from" and
      * "have I got this already" without a text search.
      *
-     * <p>The title is quoted and stripped of anything that would break the
-     * flat parser — it is the page's own text, and a colon or a newline in it
-     * would end the header early and spill the rest into the body.
+     * <p><b>Values are unquoted</b>, matching {@code FrontMatter.render} — the
+     * canonical writer for this format. The parser splits on the first colon
+     * and never unquotes, so a quoted title comes back out <em>with</em> its
+     * quotes as part of the value. What the title does need is
+     * {@code collapseWhitespace}: a newline in it would end the header early
+     * and spill the rest of the page into the body.
      */
     static String withFrontMatter(String title, String sourceUrl, String markdown) {
-        String safeTitle = UntrustedContent.collapseWhitespace(title).replace("\"", "'");
         return "---\n"
-                + "title: \"" + safeTitle + "\"\n"
+                + "title: " + UntrustedContent.collapseWhitespace(title) + "\n"
                 + "source: " + sourceUrl.replaceAll("\\s", "") + "\n"
                 + "grabbedAt: " + Instant.now() + "\n"
                 + "---\n\n"
@@ -156,18 +168,61 @@ public class WebGrabService {
     }
 
     /**
-     * What to call it: what the caller typed, else what the page calls itself,
-     * else the URL. The caller wins because the only reason a grab carries a
-     * title is that somebody edited it in the popup.
+     * The name the page offers for itself: what the caller typed, else what the
+     * page calls itself. {@code null} when it offers none.
+     *
+     * <p>The caller wins because the only reason a grab carries a title is that
+     * somebody edited it in the popup. Deliberately <b>no URL fallback</b> —
+     * see {@link #titleOrUrl} for why the two answers differ.
      */
-    private static String pickTitle(@Nullable String given, @Nullable String fromPage,
-                                    String sourceUrl) {
-        for (String candidate : new String[] {given, fromPage, sourceUrl}) {
+    private static @Nullable String firstUsable(@Nullable String given,
+                                                @Nullable String fromPage) {
+        for (String candidate : new String[] {given, fromPage}) {
             if (candidate != null && !candidate.isBlank()) {
                 return UntrustedContent.collapseWhitespace(candidate.trim());
             }
         }
-        return GrabNaming.FALLBACK;
+        return null;
+    }
+
+    /** A display title, falling back to the source URL and then to a constant. */
+    private static String titleOrUrl(@Nullable String pageTitle, String sourceUrl) {
+        if (pageTitle != null) return pageTitle;
+        String url = UntrustedContent.collapseWhitespace(sourceUrl).trim();
+        return url.isEmpty() ? GrabNaming.FALLBACK : url;
+    }
+
+    /**
+     * Decode grabbed markup using the charset the caller declared.
+     *
+     * <p>UTF-8 is the right default and what every browser extension sends — it
+     * hands over a DOM snapshot, which is a string. But the endpoint documents
+     * a shell client as a caller too, and one posting an ISO-8859-1 page with
+     * the matching {@code charset=} would otherwise have every umlaut stored as
+     * U+FFFD: silent, and not recoverable from the stored document.
+     *
+     * <p>An unusable charset name falls back rather than failing: a page we can
+     * read approximately beats a grab that refuses.
+     */
+    private static String decodeText(byte[] content, @Nullable String mimeType) {
+        return new String(content, charsetOf(mimeType));
+    }
+
+    private static Charset charsetOf(@Nullable String mimeType) {
+        if (mimeType == null) return StandardCharsets.UTF_8;
+        for (String part : mimeType.split(";")) {
+            String token = part.trim();
+            if (!StringUtils.startsWithIgnoreCase(token, "charset=")) continue;
+            String name = token.substring("charset=".length()).trim()
+                    .replaceAll("^[\"']|[\"']$", "");
+            try {
+                return Charset.forName(name);
+            } catch (IllegalArgumentException e) {
+                log.debug("Grab declared an unusable charset '{}' — reading as UTF-8", name);
+                return StandardCharsets.UTF_8;
+            }
+        }
+        return StandardCharsets.UTF_8;
     }
 
     private static boolean isHtml(@Nullable String mimeType) {

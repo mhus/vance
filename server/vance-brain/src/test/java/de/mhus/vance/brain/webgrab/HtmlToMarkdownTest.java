@@ -49,6 +49,27 @@ class HtmlToMarkdownTest {
         assertThat(out).contains("int a = b[0] * 2;");
     }
 
+    /**
+     * The failure every page that documents Markdown would have caused: a
+     * three-backtick fence closes at the first ``` inside the block, and
+     * everything after it flips in and out of code formatting.
+     */
+    @Test
+    void outrunsABacktickFenceInsideThePre() {
+        String out = md("<pre><code>```\nnested\n```</code></pre>");
+
+        assertThat(out).startsWith("````\n");
+        assertThat(out).endsWith("\n````");
+        assertThat(out).contains("```\nnested\n```");
+    }
+
+    /** A stray class name must not end up breaking the fence it opens. */
+    @Test
+    void keepsTheFenceInfoStringToALanguageToken() {
+        assertThat(md("<pre><code class=\"language-j`s\">x</code></pre>"))
+                .startsWith("```js\n");
+    }
+
     @Test
     void keepsBlockquotes() {
         assertThat(md("<blockquote><p>said</p></blockquote>")).isEqualTo("> said");
@@ -82,6 +103,38 @@ class HtmlToMarkdownTest {
         assertThat(md("<p><a>Bare</a></p>")).isEqualTo("Bare");
     }
 
+    /** The scheme is case-insensitive; a {@code startsWith} was not. */
+    @Test
+    void recognisesAScriptUrlWhateverItsCase() {
+        assertThat(md("<p><a href=\"JavaScript:x()\">Go</a></p>")).isEqualTo("Go");
+    }
+
+    /** Same filter as the anchor. It was missing here — an intended symmetry. */
+    @Test
+    void dropsAnImageWithAScriptSource() {
+        assertThat(md("<p><img src=\"javascript:x()\" alt=\"Pic\"></p>")).isEmpty();
+    }
+
+    /**
+     * CommonMark ends a bare destination at the first space, so the rest of the
+     * URL used to leak into the paragraph as literal text. The pointy-bracket
+     * form is the spec's own answer.
+     */
+    @Test
+    void bracketsADestinationThatWouldOtherwiseEndEarly() {
+        assertThat(md("<p><img src=\"my pic.png\" alt=\"Pic\"></p>"))
+                .isEqualTo("![Pic](<https://example.com/blog/my pic.png>)");
+        assertThat(md("<p><a href=\"/a(b)c\">L</a></p>"))
+                .isEqualTo("[L](<https://example.com/a(b)c>)");
+    }
+
+    /** An ordinary URL stays readable — the brackets appear only where needed. */
+    @Test
+    void leavesAnOrdinaryDestinationBare() {
+        assertThat(md("<p><a href=\"/about\">A</a></p>"))
+                .isEqualTo("[A](https://example.com/about)");
+    }
+
     /**
      * A fragment is followable once there is a source URL to resolve it
      * against — in a saved copy, a footnote link that reaches the original
@@ -106,6 +159,30 @@ class HtmlToMarkdownTest {
     void escapesTextThatWouldOtherwiseBecomeMarkdown() {
         assertThat(md("<p>a * b _ c [d] `e`</p>"))
                 .isEqualTo("a \\* b \\_ c \\[d\\] \\`e\\`");
+    }
+
+    /**
+     * All four are ordinary body copy, and all four used to change the
+     * document's structure: a marketing line became an H1, a discount a list
+     * item.
+     */
+    @Test
+    void doesNotLetABlocksFirstCharacterMakeItABlock() {
+        assertThat(md("<p># 1 in sales</p>")).isEqualTo("\\# 1 in sales");
+        assertThat(md("<p>- 30% off</p>")).isEqualTo("\\- 30% off");
+        assertThat(md("<p>&gt; see below</p>")).isEqualTo("\\> see below");
+        assertThat(md("<p>1. First</p>")).isEqualTo("1\\. First");
+    }
+
+    /**
+     * The counterpart. Escaping every hyphen and every digit-dot would litter
+     * the running text, so the guard is positional — and a year is not a list.
+     */
+    @Test
+    void leavesTheSameCharactersAloneInsideALine() {
+        assertThat(md("<p>a well-known no. 1 result</p>"))
+                .isEqualTo("a well-known no. 1 result");
+        assertThat(md("<p>1969 was the year</p>")).isEqualTo("1969 was the year");
     }
 
     @Test

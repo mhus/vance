@@ -59,8 +59,29 @@ function clearStatus(): void {
   statusAction.classList.add('hidden');
 }
 
+/**
+ * Open the settings page.
+ *
+ * <p>Not just `openOptionsPage()`. Safari does not support the manifest's
+ * `options_ui.open_in_tab` — the converter says so out loud — and what it does
+ * with the call instead is version-dependent. The settings page is where the
+ * connection string is pasted, so "the button did nothing" would mean the
+ * extension cannot be set up at all on that browser.
+ *
+ * <p>The fallback opens the same page as an ordinary tab by its extension URL,
+ * which every engine supports because it is just a URL.
+ */
 function openSettings(): void {
-  api.runtime.openOptionsPage();
+  try {
+    if (typeof api.runtime.openOptionsPage === 'function') {
+      api.runtime.openOptionsPage();
+      return;
+    }
+  } catch {
+    // Fall through — a throwing openOptionsPage is the same problem as a
+    // missing one.
+  }
+  void api.tabs.create({ url: api.runtime.getURL('options.html') });
 }
 
 /** Whether the failure is one the settings page can fix. */

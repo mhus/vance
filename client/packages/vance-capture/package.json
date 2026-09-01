@@ -8,7 +8,8 @@
   "scripts": {
     "build": "tsc -b && vite build",
     "icons": "bash scripts/icons.sh",
-    "clean": "rm -rf dist dist-types *.tsbuildinfo"
+    "safari": "bash scripts/safari.sh",
+    "clean": "rm -rf dist dist-types safari *.tsbuildinfo"
   },
   "dependencies": {
     "@vance/shared": "workspace:*"

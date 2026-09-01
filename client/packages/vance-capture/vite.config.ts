@@ -19,7 +19,7 @@ const here = dirname(fileURLToPath(import.meta.url));
  * is an artefact of Vite wanting a single output directory, not a statement
  * about which browser matters.
  */
-type Target = 'chrome' | 'firefox';
+type Target = 'chrome' | 'firefox' | 'safari';
 
 const PRIMARY: Target = 'chrome';
 
@@ -33,6 +33,18 @@ const PRIMARY: Target = 'chrome';
  */
 const PATCHES: Record<Target, Record<string, unknown>> = {
   chrome: {},
+  // Safari reads browser_specific_settings too, and declaring the floor keeps
+  // the extension from appearing in a Safari that predates MV3 — where it
+  // would install and then quietly do nothing. Otherwise identical to Chrome:
+  // Safari's difference is not in the manifest, it is that the whole thing has
+  // to be wrapped in a native app (see scripts/safari.sh).
+  safari: {
+    browser_specific_settings: {
+      safari: {
+        strict_min_version: '16.4',
+      },
+    },
+  },
   firefox: {
     // Mandatory: Firefox refuses to load an MV3 extension without an id, and
     // the failure is a flat "could not be installed" with nothing pointing at

@@ -300,9 +300,14 @@ onMounted(async () => {
   // first entry of the dropdown — one click away, which is the test for
   // whether a remembered default may replace a built-in one.
   await tenantProjects.reload();
-  filterProjectId.value = recallProject(tenantProjects.projects.value.map((p) => p.name));
+  const recalled = recallProject(tenantProjects.projects.value.map((p) => p.name));
+  // Seeding the filter fires the watcher below, which loads by itself. Only
+  // load here when it will not — otherwise the common case after this change
+  // (a project was remembered) issues the same session query twice.
+  const watcherWillLoad = recalled !== filterProjectId.value;
+  filterProjectId.value = recalled;
   await Promise.all([
-    reloadSessions(),
+    watcherWillLoad ? Promise.resolve() : reloadSessions(),
     help.load('insights-overview.md'),
   ]);
 });

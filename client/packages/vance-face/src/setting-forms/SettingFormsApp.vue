@@ -101,9 +101,13 @@ onMounted(async () => {
   // Open on the project this tab last worked in. Unlike the server-tools
   // page, "tenant-wide" is a permanent entry in this dropdown, so defaulting
   // elsewhere keeps it one click away rather than out of reach.
-  selectedProject.value =
-    recallProject(projectOptions.value.map((o) => o.value)) ?? TENANT_PROJECT;
-  await refreshListing();
+  const recalled = recallProject(projectOptions.value.map((o) => o.value)) ?? TENANT_PROJECT;
+  // Assigning fires the watcher below, which refreshes by itself. Only refresh
+  // here when it will not — otherwise every mount with a remembered project
+  // issues the listing request twice.
+  const watcherWillLoad = recalled !== selectedProject.value;
+  selectedProject.value = recalled;
+  if (!watcherWillLoad) await refreshListing();
 });
 
 watch(selectedProject, (pid) => {

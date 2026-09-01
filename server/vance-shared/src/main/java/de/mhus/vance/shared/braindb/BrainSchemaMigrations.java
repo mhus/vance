@@ -117,7 +117,14 @@ public class BrainSchemaMigrations implements SchemaMigrationSource {
             // release as that change — separating them is what would make an
             // installation forward its reports somewhere else without failing.
             new Registered("2026-08-28_001",
-                    Migrator_2026_08_28_001_FookProviderTypeExplicit.class));
+                    Migrator_2026_08_28_001_FookProviderTypeExplicit.class),
+            // Not runOnBaseline: integration tokens are newer than the anchor,
+            // so a database old enough to be baselined has none. What this
+            // protects is narrow but sharp — a token whose row still carries
+            // the old single `scopeProfile` keeps authenticating but drops out
+            // of the only list with a Revoke button on it.
+            new Registered("2026-09-01_001",
+                    Migrator_2026_09_01_001_IntegrationTokenProfiles.class));
 
     @Override
     public List<Registered> migrations() {

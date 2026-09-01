@@ -20,6 +20,16 @@ export class CaptureError extends Error {
     super(message);
     this.name = 'CaptureError';
   }
+
+  /**
+   * Whether the credential itself is the problem, rather than the request.
+   *
+   * <p>Read by the popup to decide whether an error is one the person can act
+   * on — a rejected token needs a trip to the settings, a 404 does not.
+   */
+  get isCredential(): boolean {
+    return this.status === 401 || this.status === 403;
+  }
 }
 
 export interface GroupsView {
@@ -96,8 +106,13 @@ async function call<T>(
 
 async function describe(response: Response): Promise<string> {
   if (response.status === 401) {
-    return 'The token was rejected — it may have been revoked or expired. '
-      + 'Create a new one in the link list and paste it again.';
+    // The access filter answers a bare 401 for every reason it has — revoked,
+    // expired, or a route the token's capabilities do not cover. Naming one of
+    // them here would be a guess, and the guess sends people to look in the
+    // wrong place. The capability case is caught before the call instead, in
+    // the popup, where the connection string says which ones the token holds.
+    return 'The token was rejected. Create a new one in the link list — tick the '
+      + 'capabilities you need — and paste it again.';
   }
   if (response.status === 403) {
     return 'The account behind this token is not allowed to write to that project.';

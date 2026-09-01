@@ -91,6 +91,24 @@ export async function requestHostAccess(blob: ConnectionBlob): Promise<boolean> 
   return api.permissions.request({ origins: [origin] });
 }
 
+/**
+ * Whether the stored token is known *not* to carry a capability.
+ *
+ * <p>Advisory, and only ever used to produce a better message: the server
+ * re-reads the profiles from the signed claim and is the authority. What this
+ * buys is that "your token cannot do this" is said before a tab is read and
+ * uploaded for a guaranteed rejection — and said precisely, instead of as the
+ * filter's bare 401.
+ *
+ * <p>Returns false when the blob names no profiles at all. That is a string
+ * minted before capabilities became a list, and refusing on the strength of a
+ * field that predates the question would be worse than trying.
+ */
+export function knownToLack(blob: ConnectionBlob, profile: string): boolean {
+  const profiles = blob.profiles ?? [];
+  return profiles.length > 0 && !profiles.includes(profile);
+}
+
 /** Days until the token expires, or `null` when it carries no expiry. */
 export function daysLeft(blob: ConnectionBlob): number | null {
   if (!blob.expiresAt) return null;

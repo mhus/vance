@@ -5,6 +5,7 @@ import {
   type ConnectionBlob,
   daysLeft,
   hasHostAccess,
+  knownToLack,
   loadConnection,
   loadGrabFolder,
 } from './connection';
@@ -23,6 +24,8 @@ import { readTab } from './page';
 const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const status = el<HTMLDivElement>('status');
+const statusText = el<HTMLSpanElement>('status-text');
+const statusAction = el<HTMLButtonElement>('status-action');
 const titleInput = el<HTMLInputElement>('title');
 const groupSelect = el<HTMLSelectElement>('group');
 const noteInput = el<HTMLInputElement>('note');
@@ -38,19 +41,39 @@ function show(id: string): void {
   el(id).classList.remove('hidden');
 }
 
-function say(text: string, kind: 'plain' | 'error' | 'ok' = 'plain'): void {
-  status.textContent = text;
+/**
+ * @param actionable true when the way out is the settings page — a rejected or
+ *                   expired token. The message alone would name the fix
+ *                   ("create a new one and paste it again") without offering a
+ *                   route to it, which is the shape of advice nobody follows.
+ */
+function say(text: string, kind: 'plain' | 'error' | 'ok' = 'plain',
+             actionable = false): void {
+  statusText.textContent = text;
   status.className = `note${kind === 'plain' ? '' : ` ${kind}`}`;
+  statusAction.classList.toggle('hidden', !actionable);
 }
 
 function clearStatus(): void {
   status.className = 'note hidden';
+  statusAction.classList.add('hidden');
+}
+
+function openSettings(): void {
+  api.runtime.openOptionsPage();
+}
+
+/** Whether the failure is one the settings page can fix. */
+function fixable(e: unknown): boolean {
+  return e instanceof CaptureError && e.isCredential;
 }
 
 void main();
 
 async function main(): Promise<void> {
-  el('open-options').addEventListener('click', () => api.runtime.openOptionsPage());
+  el('open-options').addEventListener('click', openSettings);
+  el('settings').addEventListener('click', openSettings);
+  statusAction.addEventListener('click', openSettings);
   saveButton.addEventListener('click', () => void onSave());
   grabButton.addEventListener('click', () => void onGrab());
   // A note is the last thing typed; Enter there should mean "done".
@@ -83,7 +106,8 @@ async function main(): Promise<void> {
   if (left !== null && left <= 14) {
     say(left <= 0
       ? 'This token has expired — create a new one in the link list.'
-      : `This token expires in ${left} day${left === 1 ? '' : 's'}.`, 'error');
+      : `This token expires in ${left} day${left === 1 ? '' : 's'}.`,
+      'error', left <= 0);
   }
 
   show('form');
@@ -113,7 +137,7 @@ async function fillGroups(conn: ConnectionBlob): Promise<void> {
   } catch (e) {
     // A missing dropdown is not a reason to block saving — the entry just
     // lands ungrouped, and that is recoverable in the app.
-    say(describe(e), 'error');
+    say(describe(e), 'error', fixable(e));
   }
 }
 
@@ -129,7 +153,7 @@ async function checkExisting(conn: ConnectionBlob): Promise<void> {
     saveButton.textContent = 'Save anyway';
     if (found.group) groupSelect.value = found.group;
   } catch (e) {
-    say(describe(e), 'error');
+    say(describe(e), 'error', fixable(e));
   }
 }
 
@@ -154,7 +178,7 @@ async function onSave(): Promise<void> {
     // Long enough to read the line, short enough not to be in the way.
     setTimeout(() => window.close(), 1200);
   } catch (e) {
-    say(describe(e), 'error');
+    say(describe(e), 'error', fixable(e));
     saveButton.disabled = false;
   }
 }
@@ -169,6 +193,15 @@ async function onSave(): Promise<void> {
  */
 async function onGrab(): Promise<void> {
   if (!connection || !pageUrl || pageTabId === null) return;
+  // Said here rather than left to the server's 401: a token minted before this
+  // capability existed cannot grow one — the claims are signed — so the answer
+  // is "create a new one", not "try again".
+  if (knownToLack(connection, 'web-grab')) {
+    say('This token cannot save pages — it was created without that capability. '
+      + 'Create a new one in the link list and tick “Save pages as documents”.',
+      'error', true);
+    return;
+  }
   grabButton.disabled = true;
   saveButton.disabled = true;
   say('Reading the page…');
@@ -186,7 +219,7 @@ async function onGrab(): Promise<void> {
       ? `Saved as Markdown — ${result.path}`
       : `Saved as ${result.mimeType ?? 'a file'} — ${result.path}`, 'ok');
   } catch (e) {
-    say(describe(e), 'error');
+    say(describe(e), 'error', fixable(e));
   } finally {
     grabButton.disabled = false;
     saveButton.disabled = false;

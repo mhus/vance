@@ -17,6 +17,7 @@ import {
   type SessionGroupDto,
   type SessionSummaryRichDto,
 } from '@vance/generated';
+import { recallProject } from '@/platform/lastProject';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import { useSessionGroups } from '@composables/useSessionGroups';
 import { useSessionGroupCollapse } from '@composables/useSessionGroupCollapse';
@@ -619,6 +620,14 @@ onMounted(async () => {
   // first render flush so ChatApp's sidebar-slot target div is in DOM.
   teleportReady.value = true;
   await loadProjects();
+  // Nothing in the URL said which project: open the one this tab last
+  // worked in. Done here rather than in ChatApp because the check against
+  // the project list needs the list, and this is where it lives — a
+  // remembered project can have been deleted since. The write flows up
+  // through the v-model, and the session watcher below picks it up.
+  if (!selectedProjectName.value) {
+    selectedProjectName.value = recallProject(projects.value.map((p) => p.name));
+  }
   // Title resolution can only happen once {@link projects} has loaded.
   // Emit resolution for whatever selection arrived via the URL-driven
   // v-model so ChatApp can populate the breadcrumb on first paint.

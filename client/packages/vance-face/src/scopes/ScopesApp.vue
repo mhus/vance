@@ -21,6 +21,7 @@ import { listSettingForms, RestError, isEncryptedSettingType } from '@vance/shar
 import { useAdminTenant } from '@/composables/useAdminTenant';
 import { useAdminProjectGroups } from '@/composables/useAdminProjectGroups';
 import { useAdminProjects } from '@/composables/useAdminProjects';
+import { recallProject, rememberProject } from '@/platform/lastProject';
 import { useProjectKitsCatalog } from '@/composables/useProjectKitsCatalog';
 import { useKitSourceProjects } from '@/composables/useKitSourceProjects';
 import { useScopeSettings } from '@/composables/useScopeSettings';
@@ -275,6 +276,14 @@ onMounted(async () => {
     // after mount, so this lands well before it's needed.
     projectKitsCatalog.load(),
   ]);
+  // Open on the project this tab last worked in, when it still exists. The
+  // tenant node stays the first row of the tree, so the built-in default is
+  // one click away rather than replaced.
+  const remembered = recallProject(projectsState.projects.value.map((p) => p.name));
+  if (remembered) {
+    selection.value = { kind: 'project', name: remembered };
+    return; // the selection watcher loads
+  }
   // Selection defaults to tenant — populate the form once tenant is loaded.
   applySelectionToForm();
   loadSettingsForSelection();
@@ -282,7 +291,8 @@ onMounted(async () => {
   loadSessionGroupsForSelection();
 });
 
-watch(selection, () => {
+watch(selection, (sel) => {
+  if (sel.kind === 'project') rememberProject(sel.name);
   applySelectionToForm();
   loadSettingsForSelection();
   loadKitForSelection();

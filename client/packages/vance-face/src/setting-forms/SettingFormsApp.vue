@@ -10,6 +10,7 @@ import {
   VSelect,
 } from '@/components';
 import { useTenantProjects } from '@/composables/useTenantProjects';
+import { recallProject, rememberProject } from '@/platform/lastProject';
 import { listSettingForms, RestError } from '@vance/shared';
 import type { SettingFormSummaryDto } from '@vance/generated';
 
@@ -97,10 +98,18 @@ function onApplied(): void {
 
 onMounted(async () => {
   await tenantProjects.reload();
+  // Open on the project this tab last worked in. Unlike the server-tools
+  // page, "tenant-wide" is a permanent entry in this dropdown, so defaulting
+  // elsewhere keeps it one click away rather than out of reach.
+  selectedProject.value =
+    recallProject(projectOptions.value.map((o) => o.value)) ?? TENANT_PROJECT;
   await refreshListing();
 });
 
-watch(selectedProject, () => {
+watch(selectedProject, (pid) => {
+  // The sentinel is a settings layer, not a project — remembering it would
+  // evict the real one from this tab's memory.
+  if (pid !== TENANT_PROJECT) rememberProject(pid);
   selectedForm.value = null;
   void refreshListing();
 });

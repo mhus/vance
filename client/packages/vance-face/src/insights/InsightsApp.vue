@@ -14,6 +14,7 @@ import {
   type Crumb,
 } from '@/components';
 import { useTenantProjects } from '@/composables/useTenantProjects';
+import { recallProject, rememberProject } from '@/platform/lastProject';
 import {
   downloadSessionExport,
   useInsightsSessions,
@@ -293,14 +294,21 @@ const processesBySession = ref<Record<string, ThinkProcessInsightsDto[]>>({});
 // ─── Lifecycle ──────────────────────────────────────────────────────────
 
 onMounted(async () => {
+  // The project filter is seeded from the tab's project memory before the
+  // first session load, so arriving from another editor lands on the same
+  // project instead of every project in the tenant. "All projects" stays the
+  // first entry of the dropdown — one click away, which is the test for
+  // whether a remembered default may replace a built-in one.
+  await tenantProjects.reload();
+  filterProjectId.value = recallProject(tenantProjects.projects.value.map((p) => p.name));
   await Promise.all([
-    tenantProjects.reload(),
     reloadSessions(),
     help.load('insights-overview.md'),
   ]);
 });
 
 watch([filterProjectId, filterUserId, filterStatus], () => {
+  rememberProject(filterProjectId.value);
   void reloadSessions();
 });
 

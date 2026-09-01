@@ -8,10 +8,11 @@
  * which one a row came from; the source is a filter and a label, and the
  * only source-specific rendering is the extra block on the detail.
  *
- * <p>Reachable by deep link only (from the Cortex flow view, from
- * Insights). It is deliberately absent from the landing page: a list of
- * instances is where you go when you are looking for one, not somewhere
- * you browse.
+ * <p>Usually reached by deep link (from the Cortex flow view, from
+ * Insights) — a list of instances is where you go when you are looking
+ * for one, not somewhere you browse. It also has a landing tile in the
+ * expert tier, so the way here does not hang off another editor alone;
+ * without `?project=` it opens on its own project sidebar.
  *
  * <p>Design: {@code planning/runs-view.md}.
  */
@@ -19,6 +20,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { EditorShell, ProjectListSidebar, VAlert, VButton, VEmptyState, VSelect } from '@/components';
 import { useTenantProjects } from '@/composables/useTenantProjects';
+import { recallProject, rememberProject } from '@/platform';
 import { useRuns } from './useRuns';
 import RunStatusBadge from './RunStatusBadge.vue';
 import RunDetailPanel from './RunDetailPanel.vue';
@@ -73,7 +75,8 @@ async function refresh(): Promise<void> {
   if (selectedRunId.value) await loadDetail(projectId.value, selectedRunId.value);
 }
 
-watch(projectId, async () => {
+watch(projectId, async (next) => {
+  rememberProject(next);
   selectedRunId.value = '';
   clearDetail();
   syncUrl();
@@ -88,9 +91,13 @@ async function onProjectListDataChanged(): Promise<void> {
 onMounted(async () => {
   await tenantProjects.reload();
   if (!projectId.value && tenantProjects.projects.value.length > 0) {
-    projectId.value = tenantProjects.projects.value[0].name;
+    // The tab's last project before the alphabetically first one: arriving
+    // here from another editor should stay where the reader was.
+    projectId.value = recallProject(tenantProjects.projects.value.map((p) => p.name))
+      ?? tenantProjects.projects.value[0].name;
     return; // the watcher loads
   }
+  rememberProject(projectId.value);
   await refresh();
 });
 </script>

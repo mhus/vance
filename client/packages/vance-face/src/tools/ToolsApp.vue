@@ -18,6 +18,7 @@ import {
 } from '@/components';
 import { useTenantProjects } from '@/composables/useTenantProjects';
 import { useAdminServerTools } from '@/composables/useAdminServerTools';
+import { rememberProject } from '@/platform/lastProject';
 import type {
   ServerToolDto,
   ServerToolWriteRequest,
@@ -125,6 +126,12 @@ onMounted(async () => {
 });
 
 watch(selectedProject, async (pid) => {
+  // Contribute to the tab's project memory, but do not open on it: this page
+  // starts on {@code _tenant} and the sidebar has no row for it, so a recalled
+  // project would put the tenant-wide tool defaults out of reach entirely.
+  // The sentinel is not remembered either — it is the defaults layer, not a
+  // project anyone works in, and storing it would evict the real one.
+  if (pid && pid !== TENANT_PROJECT) rememberProject(pid);
   selectedName.value = null;
   resetForm();
   if (pid) await toolsState.loadProject(pid);

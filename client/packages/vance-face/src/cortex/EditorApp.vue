@@ -69,6 +69,7 @@ import CreateDocumentModal, {
 } from './components/CreateDocumentModal.vue';
 import NewFolderModal from './components/NewFolderModal.vue';
 import { navigateTo, pushUrl, replaceUrl } from '@/platform/navigate';
+import { recallProject, rememberProject } from '@/platform/lastProject';
 
 // How the chat binds to a Cortex document for per-turn LLM context.
 //  - 'auto'   (default): the bound doc follows the active tab, and the
@@ -376,7 +377,18 @@ onMounted(async () => {
     // Open the tabs the URL declares (create/path are dropped in the process).
     await restoreView();
   } else {
-    navigateTo('/documents', { replace: true });
+    // Bare /cortex: fall back to the project this tab last worked in rather
+    // than bouncing to the explorer. Checked against the project list first —
+    // a remembered name can be stale, and resolveProject would turn that into
+    // a boot error where the redirect below is the honest answer.
+    await loadTenantProjects();
+    const remembered = recallProject(tenantProjects.value.map((p) => p.name));
+    if (remembered) {
+      await resolveProject(remembered);
+      await restoreView();
+    } else {
+      navigateTo('/documents', { replace: true });
+    }
   }
 });
 
@@ -395,6 +407,7 @@ async function resolveSession(id: string): Promise<void> {
       return;
     }
     projectId.value = match.projectId;
+    rememberProject(match.projectId);
     sessionTitle.value = match.title ?? null;
     // See resolveProject() — seed the documentRefStore so embed
     // NodeViews can resolve `vance:` URIs without an explicit project
@@ -416,6 +429,7 @@ async function resolveSession(id: string): Promise<void> {
 async function resolveProject(pid: string): Promise<void> {
   try {
     projectId.value = pid;
+    rememberProject(pid);
     // Seed the documentRefStore so any embedded `vance:` URI inside
     // a doc (workspace embed-block, chat history loaded later, …) can
     // resolve without an explicit authority. Without this, the embed

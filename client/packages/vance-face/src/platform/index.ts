@@ -9,5 +9,6 @@ export * from './loginWeb';
 export * from './refreshWeb';
 export * from './ensureAuthenticatedWeb';
 export * from './documentDraft';
+export * from './lastProject';
 export * from './storageWeb';
 export * from './speechSettings';

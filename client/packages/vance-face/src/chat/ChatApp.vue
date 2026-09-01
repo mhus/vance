@@ -40,6 +40,7 @@ import ChatView from './ChatView.vue';
 import ChatComposer from './ChatComposer.vue';
 import ChatRightPanel from './ChatRightPanel.vue';
 import { navigateTo, pushUrl, replaceUrl } from '@/platform/navigate';
+import { rememberProject } from '@/platform/lastProject';
 import {
   useFollowUpSuggestion,
   type FollowUpConversationContext,
@@ -175,6 +176,14 @@ function pushProjectToUrl(name: string | null, mode: 'push' | 'replace' = 'push'
     replaceUrl(url.toString());
   }
 }
+
+// Both project refs feed the tab's project memory, so whichever way the
+// reader got here — picked in the list, deep-linked, or bound to a session
+// that carries its own project — the next editor opens where they are.
+// Blank is ignored by rememberProject: leaving picker mode nulls the picker
+// selection, and that is not the reader leaving the project.
+watch(pickerProjectName, (name) => rememberProject(name));
+watch(chatProjectId, (name) => rememberProject(name));
 
 function onPickerProjectPick(payload: { name: string; title: string }): void {
   pickerProjectName.value = payload.name;

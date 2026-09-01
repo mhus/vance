@@ -36,6 +36,7 @@ import type { DocumentFoldersResponse, DocumentSummary, MountDto } from '@vance/
 import { MountSearchOutcome } from '@vance/generated';
 import DocumentIcon from './DocumentIcon.vue';
 import { navigateTo, pushUrl } from '@/platform/navigate';
+import { recallProject, rememberProject } from '@/platform/lastProject';
 
 const { t } = useI18n();
 const projectsState = useTenantProjects();
@@ -61,8 +62,12 @@ onMounted(async () => {
   if (queryProject && projectsState.projects.value.some((p) => p.name === queryProject)) {
     selectedProjectId.value = queryProject;
   } else if (projectsState.projects.value.length > 0) {
-    selectedProjectId.value = projectsState.projects.value[0].name;
+    // No project in the URL: the one this tab last worked in, and only
+    // then the alphabetically first — which is a project nobody chose.
+    selectedProjectId.value = recallProject(projectsState.projects.value.map((p) => p.name))
+      ?? projectsState.projects.value[0].name;
   }
+  rememberProject(selectedProjectId.value);
   // When the Inbox handed off a draft and the URL pre-selected a
   // project, forward the user straight to Notepad. Otherwise we
   // wait for the user to pick a project from the sidebar.
@@ -123,6 +128,7 @@ function onPopstate(): void {
 
 watch(selectedProjectId, async (next, prev) => {
   if (!next) return;
+  rememberProject(next);
   // Inbox draft handoff: as soon as the user picks a project, jump
   // to Notepad with create=1 — the modal there consumes the draft.
   if (pendingDraft.value) {

@@ -5,6 +5,7 @@ import com.mongodb.client.model.Updates;
 import de.mhus.vance.shared.integration.IntegrationTokenDocument;
 import de.mhus.vance.shared.schema.SchemaMigration;
 import de.mhus.vance.shared.schema.SchemaMigrationContext;
+import java.util.ArrayList;
 import java.util.List;
 import org.bson.Document;
 
@@ -33,6 +34,14 @@ import org.bson.Document;
  *
  * <p>Idempotent through a self-emptying filter: the second run finds no row
  * with the old field.
+ *
+ * <p><b>The cursor is drained before anything is written.</b> Updating inside
+ * the loop would {@code $unset} the very field the cursor selects on, and
+ * MongoDB makes no promise that an unindexed scan will not skip a document
+ * changed mid-iteration. Skipping is not self-healing here — the migration is
+ * stamped {@code APPLIED} and never runs again, so the row would keep the old
+ * shape forever and sit in exactly the unrevocable state described above.
+ * There are a handful of these rows; reading them first costs nothing.
  */
 public final class Migrator_2026_09_01_001_IntegrationTokenProfiles implements SchemaMigration {
 
@@ -45,7 +54,10 @@ public final class Migrator_2026_09_01_001_IntegrationTokenProfiles implements S
                 .getCollectionName(IntegrationTokenDocument.class);
         var rows = context.mongoTemplate().getCollection(collection);
 
-        for (Document row : rows.find(Filters.exists(OLD_FIELD))) {
+        List<Document> legacyRows = rows.find(Filters.exists(OLD_FIELD))
+                .into(new ArrayList<>());
+
+        for (Document row : legacyRows) {
             Object legacy = row.get(OLD_FIELD);
             // A blank or non-string value is not worth carrying over — the
             // token it belongs to opens nothing either way, and inventing a

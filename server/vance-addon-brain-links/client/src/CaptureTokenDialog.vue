@@ -65,17 +65,23 @@ const freshBlob = ref<string | null>(null);
 const copied = ref(false);
 
 /**
- * This list's tokens: same profile, same project.
+ * The tokens of this project — every capability, not just this addon's.
  *
- * Filtered here rather than server-side — a person has a handful of these, and
- * a query parameter would be a filter surface built for one caller. The
+ * <p>Filtered here rather than server-side: a person has a handful of these,
+ * and a query parameter would be a filter surface built for one caller. The
  * project is as narrow as the filter can honestly be, because it is as narrow
  * as the token is.
+ *
+ * <p><b>Deliberately not filtered on {@link PROFILE}.</b> It was, and that was
+ * a hole: the capability checkboxes below let a person untick link capture, so
+ * a token minted with only "save pages as documents" never appeared here — and
+ * this dialog is the only Revoke button in the product. A live credential
+ * nobody can withdraw is the one failure the whole token subsystem exists to
+ * prevent, so the list shows everything pinned to this project. It says so in
+ * its heading, and each row names what its token carries.
  */
 const mine = computed(() =>
-  tokens.value.filter(
-    (t) => (t.scopeProfiles ?? []).includes(PROFILE) && t.projectId === props.projectId,
-  ),
+  tokens.value.filter((t) => t.projectId === props.projectId),
 );
 
 const live = computed(() => mine.value.filter(integrationTokenIsLive));
@@ -247,6 +253,12 @@ function message(e: unknown): string {
           <div class="flex min-w-0 flex-1 flex-col">
             <span class="truncate font-medium" :class="integrationTokenIsLive(t) ? '' : 'line-through opacity-50'">
               {{ t.label }}
+            </span>
+            <!-- What it carries. The list is every token of the project, not
+                 just this addon's, so the capability is the only thing that
+                 tells two rows apart — and the reason to revoke one. -->
+            <span class="truncate text-xs opacity-70">
+              {{ (t.scopeProfileLabels ?? []).join(' · ') || 'no capability' }}
             </span>
             <!-- Last used is the only thing that ever reveals a token nobody
                  remembers handing out. -->

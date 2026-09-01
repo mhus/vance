@@ -41,8 +41,13 @@ export interface ConnectionBlob {
    * Scope profile ids, carried for diagnostics — the server re-reads them
    * anyway. A list because one tool routinely carries more than one
    * capability and is still set up once.
+   *
+   * Optional because a string minted before capabilities became a list has no
+   * such field, and `decodeConnectionBlob` accepts it — it validates only what
+   * a call actually needs. Readers must treat "absent" as "unknown", never as
+   * "none": the difference decides whether a tool refuses before trying.
    */
-  profiles: string[];
+  profiles?: string[];
   /** The signed JWT. */
   token: string;
   /** Unix millis, so a tool can warn before it stops working. */

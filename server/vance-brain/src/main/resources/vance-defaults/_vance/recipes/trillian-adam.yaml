@@ -23,9 +23,9 @@ description: |
 
 engine: trillian-control
 
-# Unlike trillian-void, which is reachable through the `trillian` alias,
-# adam is a distinct choice a human makes deliberately — so it appears
-# in the recipe picker itself.
+# Both Natures are listed: which one to start is a deliberate choice,
+# and since the `trillian` alias was dropped there is no entry that
+# would make it for the human.
 listed: true
 title: Trillian adam (persistent)
 

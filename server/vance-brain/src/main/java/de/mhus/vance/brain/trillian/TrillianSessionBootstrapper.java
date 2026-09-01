@@ -115,14 +115,21 @@ public class TrillianSessionBootstrapper {
     public static final String USER_PROCESS_NAME = "trillian-user-loop";
 
     /**
-     * Recipe name used by the Arthur-bridge tools
-     * ({@code trillian_session_create}) to spawn a fresh Trillian
-     * session at the current default Nature. Equivalent to the
-     * {@code --recipe trillian} foot invocation. Resolves through
-     * the standard cascade — the bundled {@code trillian.yaml}
-     * mirrors the current default Nature recipe.
+     * Recipe the Arthur-bridge tool {@code trillian_session_create} spawns
+     * when the caller names no recipe. Resolves through the standard
+     * cascade, so a tenant can override the document.
+     *
+     * <p><b>It names a Nature, and that is the point.</b> This used to be
+     * the {@code trillian} alias, which mirrored "whatever Nature is
+     * current" — a reasonable idea while {@code void} was the only one.
+     * With {@code adam} shipped the Natures differ in what they *are*
+     * (adam's attributes outlive a restart), so a caller that got the
+     * "current" one would silently get a different agent on the next
+     * upgrade. Baseline is the honest default for a tool that was not
+     * asked which Nature it wants; anything else is a choice, and a choice
+     * belongs to whoever makes it.
      */
-    public static final String DEFAULT_CONTROL_RECIPE = "trillian";
+    public static final String DEFAULT_CONTROL_RECIPE = "trillian-void";
 
     public static final String PARAM_PEER_PROCESS_ID = "peerProcessId";
     public static final String PARAM_PEER_SESSION_ID = "peerSessionId";

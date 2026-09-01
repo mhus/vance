@@ -1,8 +1,16 @@
 # Trillian Control — Nature void
 #
 # The session's primary chat process when foot connects with
-# --recipe trillian-control. Pairs with a Trillian-User worker that
+# --recipe trillian-void. Pairs with a Trillian-User worker that
 # TrillianSessionBootstrapper spawns alongside.
+#
+# There used to be a `trillian` recipe next to this one that mirrored
+# "whatever Nature is current". It is gone: with adam shipped, picking a
+# Trillian means picking a Nature — void and adam behave differently
+# enough (adam's attributes survive a restart, void's do not) that
+# "current" was a question nobody was actually asking. A recipe that
+# silently becomes a different agent on upgrade is the opposite of what
+# the pinned names exist for.
 #
 # Uses the dedicated TrillianControlEngine — a reply-style chat host
 # without Arthur's structured-action schema. The engine carries the
@@ -16,6 +24,12 @@ description: |
   with the human and enqueues them into a paired Trillian UserProcess.
 
 engine: trillian-control
+
+# In the recipe picker alongside trillian-adam: the two Natures are the
+# choice a human makes, and there is no third entry standing in for one
+# of them any more.
+listed: true
+title: Trillian void (baseline)
 
 params:
   # Trillian-Nature this recipe pins. Engines may branch internal

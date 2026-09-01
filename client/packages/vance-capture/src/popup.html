@@ -13,6 +13,12 @@
       <button id="status-action" class="hidden" style="margin-top: 6px">
         Open settings
       </button>
+      <!-- Shown after a grab: the document it produced. A link rather than an
+           automatic tab, so saving three pages in a row does not open three
+           tabs behind you. -->
+      <button id="status-open" class="hidden" style="margin-top: 6px">
+        Open document
+      </button>
     </div>
 
     <!-- No connection yet -->
@@ -53,6 +59,10 @@
         <!-- The only way to reach the settings from a configured popup. Without
              it the grab folder and a re-paste are reachable solely through the
              browser's own context menu, which is not somewhere people look. -->
+        <!-- Opening the list is a plain link into the web UI, not an API
+             call: it rides the person's own session. -->
+        <button id="open-list" class="muted" style="border: 0; padding: 0"
+                title="Open this link list in Vancetope">↗</button>
         <button id="settings" class="muted" style="border: 0; padding: 0">⚙</button>
       </div>
     </section>

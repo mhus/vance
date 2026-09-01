@@ -136,6 +136,34 @@ export function knownToLack(blob: ConnectionBlob, profile: string): boolean {
   return profiles.length > 0 && !profiles.includes(profile);
 }
 
+/**
+ * A web-UI URL that opens one document by path.
+ *
+ * <p><b>The token has nothing to do with this.</b> Opening a URL uses the
+ * person's own browser session and their login cookies — the extension's
+ * credential covers only what the extension fetches itself. So this needs no
+ * capability, no profile and no permission; it is a link.
+ *
+ * <p>`path` is Cortex's one-shot handoff parameter: it resolves a path to a
+ * document id and opens that tab. Exactly right for a caller that has a path
+ * and no ids, which is every outside tool.
+ *
+ * <p>The one thing it does assume is that the person is logged into the web UI
+ * in this browser. If they are not, they land on the login page — which is the
+ * correct outcome, just worth knowing before calling it a bug.
+ */
+export function cortexUrlFor(blob: ConnectionBlob, path: string): string {
+  const query = new URLSearchParams({ project: blob.projectId, path });
+  return `${blob.brainUrl}/cortex?${query}`;
+}
+
+/** The links app's own manifest — the document that *is* the app. */
+export function linksAppUrl(blob: ConnectionBlob): string | null {
+  const folder = (blob.target ?? '').replace(/^\/+|\/+$/g, '');
+  if (!folder) return null;
+  return cortexUrlFor(blob, `${folder}/_app.yaml`);
+}
+
 /** Days until the token expires, or `null` when it carries no expiry. */
 export function daysLeft(blob: ConnectionBlob): number | null {
   if (!blob.expiresAt) return null;

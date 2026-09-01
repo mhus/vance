@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { originOf } from './connection';
+import { cortexUrlFor, linksAppUrl, originOf } from './connection';
 import type { ConnectionBlob } from '@vance/shared/integration-connection';
 
 /**
@@ -15,6 +15,36 @@ const blob = (brainUrl: string): ConnectionBlob => ({
   projectId: 'reading',
   profiles: ['links-capture'],
   token: 'x',
+});
+
+describe('cortexUrlFor', () => {
+  it('addresses a document by path, not by an id it cannot know', () => {
+    expect(cortexUrlFor(blob('https://eddie.example'), 'web/post.md'))
+      .toBe('https://eddie.example/cortex?project=reading&path=web%2Fpost.md');
+  });
+
+  it('encodes what the query would otherwise swallow', () => {
+    expect(cortexUrlFor(blob('https://eddie.example'), 'web/a b&c.md'))
+      .toContain('path=web%2Fa+b%26c.md');
+  });
+});
+
+describe('linksAppUrl', () => {
+  it('points at the manifest that IS the app', () => {
+    expect(linksAppUrl({ ...blob('https://eddie.example'), target: 'links' }))
+      .toBe('https://eddie.example/cortex?project=reading&path=links%2F_app.yaml');
+  });
+
+  it('tolerates slashes around the folder', () => {
+    expect(linksAppUrl({ ...blob('https://eddie.example'), target: '/links/' }))
+      .toContain('path=links%2F_app.yaml');
+  });
+
+  /** No folder, no list — and a button that cannot go anywhere is worse than none. */
+  it('is null without a target folder', () => {
+    expect(linksAppUrl(blob('https://eddie.example'))).toBeNull();
+    expect(linksAppUrl({ ...blob('https://eddie.example'), target: '/' })).toBeNull();
+  });
 });
 
 describe('originOf', () => {

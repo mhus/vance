@@ -3,9 +3,11 @@ import { api } from './browserApi';
 import { CaptureError, capture, grab, listGroups, lookup } from './api';
 import {
   type ConnectionBlob,
+  cortexUrlFor,
   daysLeft,
   hasHostAccess,
   knownToLack,
+  linksAppUrl,
   loadConnection,
   loadGrabFolder,
 } from './connection';
@@ -26,6 +28,7 @@ const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as
 const status = el<HTMLDivElement>('status');
 const statusText = el<HTMLSpanElement>('status-text');
 const statusAction = el<HTMLButtonElement>('status-action');
+const statusOpen = el<HTMLButtonElement>('status-open');
 const titleInput = el<HTMLInputElement>('title');
 const groupSelect = el<HTMLSelectElement>('group');
 const noteInput = el<HTMLInputElement>('note');
@@ -52,11 +55,20 @@ function say(text: string, kind: 'plain' | 'error' | 'ok' = 'plain',
   statusText.textContent = text;
   status.className = `note${kind === 'plain' ? '' : ` ${kind}`}`;
   statusAction.classList.toggle('hidden', !actionable);
+  // Any new message replaces whatever the last one offered.
+  statusOpen.classList.add('hidden');
 }
 
 function clearStatus(): void {
   status.className = 'note hidden';
   statusAction.classList.add('hidden');
+  statusOpen.classList.add('hidden');
+}
+
+/** Open a web-UI URL in a new tab and step out of the way. */
+function openInVance(url: string): void {
+  void api.tabs.create({ url });
+  window.close();
 }
 
 /**
@@ -104,6 +116,14 @@ async function main(): Promise<void> {
   if (!connection) {
     show('unconfigured');
     return;
+  }
+  const listUrl = linksAppUrl(connection);
+  if (listUrl) {
+    el('open-list').addEventListener('click', () => openInVance(listUrl));
+  } else {
+    // A connection without a folder points at no list; a button that cannot
+    // go anywhere is worse than none.
+    el('open-list').classList.add('hidden');
   }
   if (!(await hasHostAccess(connection))) {
     say('The browser has not granted access to this brain. Re-save the connection '
@@ -239,6 +259,11 @@ async function onGrab(): Promise<void> {
     say(result.converted
       ? `Saved as Markdown — ${result.path}`
       : `Saved as ${result.mimeType ?? 'a file'} — ${result.path}`, 'ok');
+    // Offered, not opened. Saving three pages in a row should not leave three
+    // tabs open behind you; whoever wants to look now says so.
+    const docUrl = cortexUrlFor(connection, result.path);
+    statusOpen.onclick = () => openInVance(docUrl);
+    statusOpen.classList.remove('hidden');
   } catch (e) {
     say(describe(e), 'error', fixable(e));
   } finally {

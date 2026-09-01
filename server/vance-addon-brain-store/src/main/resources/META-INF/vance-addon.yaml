@@ -6,13 +6,20 @@ host: brain
 tile:
   label: Store
   description: Browse the kit library, sign in and install what you own.
-  minLevel: admin
+  # Expert, not admin: buying and installing a kit is not tenant
+  # administration -- but it is nothing an everyday account needs on its
+  # landing page either. Server-side authorization is unchanged; this is
+  # the clutter filter.
+  minLevel: expert
 profile:
   # Where a person's store belonging lives: which stores, which account,
   # which roles. The store area shows kits and nothing about connections.
   label: Store
   expose: ./profile
   sortIndex: 50
+  # Same bar as the landing tile -- the tab and the tile are two doors
+  # to one addon, and gating one alone leaves the other pointless.
+  minLevel: expert
 
 # Contributes no document kinds -- this addon ships no ./register
 # expose. Declared explicitly (empty, not absent) so the Web-UI skips

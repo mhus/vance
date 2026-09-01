@@ -65,6 +65,7 @@ public class AddonManifestRegistry {
                                     .label(tabLabel)
                                     .expose(str(profile.get("expose")))
                                     .sortIndex(intOrNull(profile.get("sortIndex")))
+                                    .minLevel(str(profile.get("minLevel")))
                                     .build());
                         }
                     }

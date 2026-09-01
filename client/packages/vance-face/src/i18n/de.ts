@@ -277,6 +277,11 @@ export default {
       description:
         'Sessions, Think-Processes, Chat-Verlauf, Memory und Marvin-Bäume inspizieren. Nur-Lesen-Diagnoseansicht.',
     },
+    runs: {
+      title: 'Läufe',
+      description:
+        'Laufende und beendete Instanzen aller Laufzeiten eines Projekts: Magrathea-Workflows, plan-förmige Think-Processes, Compose-Läufe.',
+    },
     users: {
       title: 'Benutzer & Teams',
       description:

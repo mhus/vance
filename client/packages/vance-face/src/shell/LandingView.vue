@@ -15,7 +15,7 @@
  */
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { getActiveUiLevel, loadAddonManifest, rankOf, type WebUiLevel } from '@/platform';
+import { asUiLevel, getActiveUiLevel, loadAddonManifest, rankOf, type WebUiLevel } from '@/platform';
 import { EditorShell, StarredTile } from '@/components';
 import { useStarredStore } from '@/starred/starredStore';
 import { editorHref } from '@/platform/editorHref';
@@ -25,7 +25,7 @@ const { t } = useI18n();
 // Active UI level for tile filtering, read straight from the data cookie.
 //
 //   * standard — chat / documents / inbox  (everyday)
-//   * expert   — + scopes / tools / insights  (power user)
+//   * expert   — + scopes / tools / insights / runs  (power user)
 //   * admin    — + users  (tenant admin)
 //
 // Server-side authorization remains the authoritative gate; this just keeps
@@ -50,10 +50,6 @@ const addonTiles = ref<AddonTileEntry[]>([]);
 const visibleAddonTiles = computed(() =>
   addonTiles.value.filter((tile) => rankOf(uiLevel.value) >= rankOf(tile.minLevel)),
 );
-
-function normLevel(v: string | undefined): WebUiLevel {
-  return v === 'expert' || v === 'admin' ? v : 'standard';
-}
 
 // Starred documents — the user's own tiles, above the fixed editor rows. Not
 // gated by UI level: this is their curation, not a power-user surface.
@@ -103,7 +99,7 @@ onMounted(async () => {
       name: e.name,
       label: e.tile!.label as string,
       description: e.tile!.description,
-      minLevel: normLevel(e.tile!.minLevel),
+      minLevel: asUiLevel(e.tile!.minLevel),
     }));
   await starred.load(/* all */ false, /* force */ true);
 });
@@ -182,6 +178,14 @@ onMounted(async () => {
             <a class="tile-row" :href="editorHref('insights')">
                 <div class="font-semibold">{{ $t('index.insights.title') }}</div>
                 <div class="text-sm opacity-70">{{ $t('index.insights.description') }}</div>
+            </a>
+          </li>
+          <!-- Without a project in the query the run view opens on its own
+               project sidebar, so the tile needs no parameter. -->
+          <li v-if="showExpertTiles">
+            <a class="tile-row" :href="editorHref('runs')">
+                <div class="font-semibold">{{ $t('index.runs.title') }}</div>
+                <div class="text-sm opacity-70">{{ $t('index.runs.description') }}</div>
             </a>
           </li>
           <!-- Admin tier — tenant-management surfaces. The brain still

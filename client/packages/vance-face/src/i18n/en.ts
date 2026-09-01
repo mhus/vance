@@ -282,6 +282,11 @@ export default {
       description:
         'Inspect sessions, think-processes, chat history, memory and Marvin trees. Read-only diagnostic view.',
     },
+    runs: {
+      title: 'Runs',
+      description:
+        'Running and finished instances of every runtime in a project: Magrathea workflows, plan-shaped think-processes, compose runs.',
+    },
     users: {
       title: 'Users & Teams',
       description:

@@ -31,6 +31,8 @@ export interface AddonProfile {
   label?: string;
   expose?: string;
   sortIndex?: number;
+  /** Same meaning as `AddonTile.minLevel`; unset means every level. */
+  minLevel?: string;
 }
 
 /** One installed addon, as `/face/addons` reports it. */

@@ -7,4 +7,5 @@ export interface AddonProfileTabDto {
   label: string;
   expose?: string;
   sortIndex?: number;
+  minLevel?: string;
 }

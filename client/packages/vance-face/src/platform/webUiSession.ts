@@ -140,6 +140,19 @@ export function rankOf(level: WebUiLevel): number {
 }
 
 /**
+ * Read an arbitrary string as a {@link WebUiLevel}, falling back to
+ * {@code 'standard'}.
+ *
+ * <p>The callers are the level gates on declared metadata — an addon's
+ * `tile.minLevel` and `profile.minLevel` are free-form strings from a
+ * YAML file. A typo there must not raise the bar it was meant to set, so
+ * an unreadable value means "no restriction", not "admin only".
+ */
+export function asUiLevel(value: string | null | undefined): WebUiLevel {
+  return isWebUiLevel(value) ? value : 'standard';
+}
+
+/**
  * The active web-UI language from the data cookie. Returns `null`
  * when the user has not picked a language and the server has no
  * default — callers should then defer to the browser's

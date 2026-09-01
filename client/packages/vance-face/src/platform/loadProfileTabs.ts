@@ -9,7 +9,14 @@
  *   label: Store
  *   expose: ./profile     # optional, defaults to ./profile
  *   sortIndex: 50         # optional
+ *   minLevel: expert      # optional, defaults to every level
  * ```
+ *
+ * **`minLevel`** is the same knob as the landing tile's, for the same
+ * reason: the tab and the tile are two doors to one addon, and gating
+ * only one of them leaves the addon's name on a screen the reader has no
+ * way into. Server-side authorization is untouched — this is a clutter
+ * filter.
  *
  * **Why the manifest and not the remote.** The strip is built from
  * `/face/addons` alone, so the host knows the tabs before loading any
@@ -25,6 +32,7 @@
 import { registerRemotes, loadRemote } from '@module-federation/runtime';
 import { markRaw, type Component } from 'vue';
 import { addonRemoteEntry, addonRemoteName, loadAddonManifest } from './addonManifest';
+import { asUiLevel, getActiveUiLevel, rankOf } from './webUiSession';
 
 /** One addon-contributed tab, ready to render. */
 export interface ProfileTab {
@@ -45,7 +53,12 @@ const DEFAULT_EXPOSE = './profile';
  * person needs to be able to open when something else is broken.
  */
 export async function loadProfileTabs(): Promise<ProfileTab[]> {
-  const contributors = (await loadAddonManifest()).filter((a) => a.profile?.label);
+  // Filtered before the remotes are registered, not after: a tab the reader
+  // may not see must not cost the fetch that would render it.
+  const level = rankOf(getActiveUiLevel());
+  const contributors = (await loadAddonManifest()).filter(
+    (a) => a.profile?.label && level >= rankOf(asUiLevel(a.profile.minLevel)),
+  );
   if (contributors.length === 0) return [];
 
   try {

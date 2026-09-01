@@ -17,6 +17,17 @@ import { type ConnectionBlob, decodeConnectionBlob } from '@vance/shared/integra
  */
 const KEY = 'connection';
 
+/**
+ * Where grabs land inside the project.
+ *
+ * <p>The extension's own setting rather than part of the connection string,
+ * because the string carries what the *server* handed out — the token and what
+ * it is pinned to. Which folder a person wants their saved pages in is a local
+ * preference, and baking it into a credential would mean re-minting to change
+ * it. Empty means "let the server decide", which it does.
+ */
+const GRAB_FOLDER_KEY = 'grabFolder';
+
 export type { ConnectionBlob };
 
 export async function loadConnection(): Promise<ConnectionBlob | null> {
@@ -31,6 +42,16 @@ export async function saveConnection(blob: ConnectionBlob): Promise<void> {
 
 export async function clearConnection(): Promise<void> {
   await api.storage.local.remove(KEY);
+}
+
+export async function loadGrabFolder(): Promise<string> {
+  const stored = await api.storage.local.get(GRAB_FOLDER_KEY);
+  const value = stored[GRAB_FOLDER_KEY];
+  return typeof value === 'string' ? value : '';
+}
+
+export async function saveGrabFolder(folder: string): Promise<void> {
+  await api.storage.local.set({ [GRAB_FOLDER_KEY]: folder.trim() });
 }
 
 /** Parse a pasted string. `null` for anything that is not a usable one. */

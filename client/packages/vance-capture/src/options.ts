@@ -4,9 +4,11 @@ import {
   clearConnection,
   hasHostAccess,
   loadConnection,
+  loadGrabFolder,
   parseConnection,
   requestHostAccess,
   saveConnection,
+  saveGrabFolder,
 } from './connection';
 
 /**
@@ -36,6 +38,8 @@ async function main(): Promise<void> {
   el('save').addEventListener('click', () => void onSave());
   el('test').addEventListener('click', () => void onTest());
   el('forget').addEventListener('click', () => void onForget());
+  el('save-folder').addEventListener('click', () => void onSaveFolder());
+  el<HTMLInputElement>('grab-folder').value = await loadGrabFolder();
   await renderCurrent();
 }
 
@@ -94,6 +98,14 @@ async function onSave(): Promise<void> {
     // keeping, and keeping it would hide the failure behind a popup later.
     say(message(e), 'error');
   }
+}
+
+async function onSaveFolder(): Promise<void> {
+  await saveGrabFolder(el<HTMLInputElement>('grab-folder').value);
+  // No round trip to confirm it: the folder is not checked until something is
+  // saved into it, and the server creates it on the way. Claiming it was
+  // "verified" would be a claim we did not make.
+  say('Folder saved.', 'ok');
 }
 
 async function onTest(): Promise<void> {

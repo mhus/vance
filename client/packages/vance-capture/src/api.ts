@@ -39,6 +39,15 @@ export interface LookupView {
   viewedAt?: string | null;
 }
 
+export interface GrabView {
+  path: string;
+  title: string;
+  mimeType?: string | null;
+  /** True when the page was turned into Markdown, false when stored verbatim. */
+  converted: boolean;
+  sourceBytes: number;
+}
+
 export interface CaptureView {
   added: boolean;
   url: string;
@@ -96,6 +105,9 @@ async function describe(response: Response): Promise<string> {
   if (response.status === 404) {
     return 'No link list at that folder — check the connection string.';
   }
+  if (response.status === 413) {
+    return 'That page is too large to save.';
+  }
   const text = await response.text().catch(() => '');
   return text || `${response.status} ${response.statusText}`;
 }
@@ -108,6 +120,45 @@ export async function listGroups(conn: ConnectionBlob): Promise<GroupsView> {
 /** Whether this one page is already in the list. */
 export async function lookup(conn: ConnectionBlob, url: string): Promise<LookupView> {
   return call<LookupView>(conn, 'GET', endpoint(conn, 'entry/lookup', { url }));
+}
+
+/**
+ * Save the page itself as a document.
+ *
+ * <p>Multipart, not JSON: a grabbed PDF is bytes, and base64 in a JSON body
+ * would inflate it by a third for nothing. The conversion happens on the
+ * server — that keeps the format decision in one place instead of in every
+ * client that will ever want to grab.
+ */
+export async function grab(
+  conn: ConnectionBlob,
+  page: { url: string; content: Blob; folder?: string; title?: string },
+): Promise<GrabView> {
+  const query = new URLSearchParams({ projectId: conn.projectId, url: page.url });
+  if (page.folder) query.set('folder', page.folder);
+  if (page.title) query.set('title', page.title);
+
+  const form = new FormData();
+  form.append('content', page.content, 'page');
+
+  const url = `${conn.brainUrl}/brain/${encodeURIComponent(conn.tenant)}/grab?${query}`;
+  let response: Response;
+  try {
+    // No Content-Type header: the browser sets it with the multipart boundary,
+    // and setting it by hand is the classic way to produce a body the server
+    // cannot split.
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${conn.token}` },
+      body: form,
+    });
+  } catch (e) {
+    throw new CaptureError(0, `Could not reach ${conn.brainUrl} (${(e as Error).message})`);
+  }
+  if (!response.ok) {
+    throw new CaptureError(response.status, await describe(response));
+  }
+  return response.json() as Promise<GrabView>;
 }
 
 /** Save. Idempotent on the URL — `added: false` means it was already there. */

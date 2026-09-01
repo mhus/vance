@@ -1,7 +1,14 @@
 import './style.css';
 import { api } from './browserApi';
-import { CaptureError, capture, listGroups, lookup } from './api';
-import { type ConnectionBlob, daysLeft, hasHostAccess, loadConnection } from './connection';
+import { CaptureError, capture, grab, listGroups, lookup } from './api';
+import {
+  type ConnectionBlob,
+  daysLeft,
+  hasHostAccess,
+  loadConnection,
+  loadGrabFolder,
+} from './connection';
+import { readTab } from './page';
 
 /**
  * The popup: what page am I on, is it already saved, save it.
@@ -20,10 +27,12 @@ const titleInput = el<HTMLInputElement>('title');
 const groupSelect = el<HTMLSelectElement>('group');
 const noteInput = el<HTMLInputElement>('note');
 const saveButton = el<HTMLButtonElement>('save');
+const grabButton = el<HTMLButtonElement>('grab');
 const urlLine = el<HTMLParagraphElement>('url');
 
 let connection: ConnectionBlob | null = null;
 let pageUrl = '';
+let pageTabId: number | null = null;
 
 function show(id: string): void {
   el(id).classList.remove('hidden');
@@ -43,6 +52,7 @@ void main();
 async function main(): Promise<void> {
   el('open-options').addEventListener('click', () => api.runtime.openOptionsPage());
   saveButton.addEventListener('click', () => void onSave());
+  grabButton.addEventListener('click', () => void onGrab());
   // A note is the last thing typed; Enter there should mean "done".
   noteInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') void onSave(); });
 
@@ -64,6 +74,7 @@ async function main(): Promise<void> {
     return;
   }
   pageUrl = tab.url;
+  pageTabId = tab.id ?? null;
   titleInput.value = tab.title ?? '';
   urlLine.textContent = pageUrl;
   urlLine.title = pageUrl;
@@ -144,6 +155,40 @@ async function onSave(): Promise<void> {
     setTimeout(() => window.close(), 1200);
   } catch (e) {
     say(describe(e), 'error');
+    saveButton.disabled = false;
+  }
+}
+
+/**
+ * Import the page itself.
+ *
+ * <p>Deliberately a second action rather than a side effect of Save: keeping a
+ * reference and keeping a copy are different decisions, and a link list that
+ * silently filled a project with documents would be a surprise nobody asked
+ * for. The two share nothing but this popup.
+ */
+async function onGrab(): Promise<void> {
+  if (!connection || !pageUrl || pageTabId === null) return;
+  grabButton.disabled = true;
+  saveButton.disabled = true;
+  say('Reading the page…');
+  try {
+    const page = await readTab(pageTabId, pageUrl);
+    const result = await grab(connection, {
+      url: pageUrl,
+      content: page.blob,
+      folder: (await loadGrabFolder()) || undefined,
+      title: titleInput.value.trim() || undefined,
+    });
+    // Which of the two happened is worth saying: "we turned your page into
+    // Markdown" and "we stored your PDF" are different outcomes.
+    say(result.converted
+      ? `Saved as Markdown — ${result.path}`
+      : `Saved as ${result.mimeType ?? 'a file'} — ${result.path}`, 'ok');
+  } catch (e) {
+    say(describe(e), 'error');
+  } finally {
+    grabButton.disabled = false;
     saveButton.disabled = false;
   }
 }

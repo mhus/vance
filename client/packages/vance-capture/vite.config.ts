@@ -63,6 +63,32 @@ const PATCHES: Record<Target, Record<string, unknown>> = {
 };
 
 /**
+ * Strip the `crossorigin` attribute Vite puts on its own script and style tags.
+ *
+ * <p><b>Safari does not load the extension's JavaScript with it.</b> Vite adds
+ * the attribute unconditionally, which is harmless on
+ * `chrome-extension://` — that scheme is exempt from the CORS check. The
+ * `safari-web-extension://` scheme is not: the request is made in CORS mode,
+ * nothing answers with the headers, and the module never runs. The page then
+ * looks *almost* right, which is the worst part — the stylesheet loads (Safari
+ * is lenient there), so buttons are styled and the cursor turns into a hand,
+ * and every one of them does nothing.
+ *
+ * <p>Removing it costs nothing anywhere: every asset here is same-origin, so
+ * the attribute was only ever redundant.
+ */
+function stripCrossorigin(): Plugin {
+  return {
+    name: 'vance-capture-strip-crossorigin',
+    apply: 'build',
+    enforce: 'post',
+    transformIndexHtml(html) {
+      return html.replace(/(<(?:script|link)\b[^>]*?)\s+crossorigin(?=[\s>])/g, '$1');
+    },
+  };
+}
+
+/**
  * Write each target's manifest, and copy the bundle for every target that is
  * not the one Vite built into.
  */
@@ -102,7 +128,7 @@ export default defineConfig({
   // bundle. Built from the package root they would come out under
   // `dist/chrome/src/`, and the manifest names them without a folder.
   root: resolve(here, 'src'),
-  plugins: [emitTargets()],
+  plugins: [stripCrossorigin(), emitTargets()],
   build: {
     outDir: resolve(here, `dist/${PRIMARY}`),
     emptyOutDir: true,

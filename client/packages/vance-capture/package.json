@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build",
     "icons": "bash scripts/icons.sh",
     "safari": "bash scripts/safari.sh",
-    "clean": "rm -rf dist dist-types safari *.tsbuildinfo"
+    "clean": "rm -rf dist dist-types safari *.tsbuildinfo",
+    "test": "vitest run"
   },
   "dependencies": {
     "@vance/shared": "workspace:*"
@@ -17,6 +18,7 @@
   "devDependencies": {
     "@types/chrome": "^0.0.287",
     "typescript": "^5.9.2",
-    "vite": "^8.2.1"
+    "vite": "^8.2.1",
+    "vitest": "^4.1.10"
   }
 }

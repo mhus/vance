@@ -80,9 +80,19 @@ async function onSave(): Promise<void> {
 
   // Must run in this click's gesture: Chrome refuses a permission request that
   // is not user-initiated, and awaiting anything first can lose the gesture.
-  if (!(await requestHostAccess(conn))) {
-    say(`Access to ${conn.brainUrl} was not granted — without it the extension `
-      + 'cannot reach the brain.', 'error');
+  //
+  // Wrapped, because this can throw as well as answer false — and an exception
+  // escaping a click handler is invisible: no message, no state change, a
+  // button that looks broken. That is exactly how a malformed match pattern
+  // presented itself.
+  try {
+    if (!(await requestHostAccess(conn))) {
+      say(`Access to ${conn.brainUrl} was not granted — without it the extension `
+        + 'cannot reach the brain.', 'error');
+      return;
+    }
+  } catch (e) {
+    say(message(e), 'error');
     return;
   }
 

@@ -12,10 +12,22 @@
  * promises on both engines. 20 kB of shim to replace one line would be the
  * larger of the two liabilities.
  *
- * <p>`typeof browser === 'undefined'` rather than a truthiness check: in Chrome
- * the identifier does not exist at all, and only `typeof` may be applied to an
- * undeclared name without throwing.
+ * <p><b>Both are `typeof`-guarded</b>, and that is not symmetry for its own
+ * sake: naming an undeclared identifier throws, and a throw here happens at
+ * module-load time — it takes down the whole page before a single line of the
+ * importing module runs. The symptom is a page that renders and does nothing,
+ * which is expensive to diagnose from the outside.
+ *
+ * <p>Outside an extension neither exists and `api` is undefined. Left that way
+ * on purpose: the failure then lands at the call that needed it, which is a
+ * place with a stack trace, instead of at an import.
  */
 declare const browser: typeof chrome | undefined;
 
-export const api: typeof chrome = typeof browser === 'undefined' ? chrome : browser;
+const resolved = typeof browser !== 'undefined'
+  ? browser
+  : typeof chrome !== 'undefined'
+    ? chrome
+    : undefined;
+
+export const api: typeof chrome = resolved as typeof chrome;

@@ -4,9 +4,22 @@
     "composite": true,
     "outDir": "./dist-types",
     "rootDir": ".",
-    "types": ["vite/client", "chrome"],
+    "types": [
+      "vite/client",
+      "chrome"
+    ],
     "noEmit": false
   },
-  "include": ["src/**/*.ts", "vite.config.ts"],
-  "references": [{ "path": "../shared" }]
+  "include": [
+    "src/**/*.ts",
+    "vite.config.ts"
+  ],
+  "references": [
+    {
+      "path": "../shared"
+    }
+  ],
+  "exclude": [
+    "src/**/*.test.ts"
+  ]
 }

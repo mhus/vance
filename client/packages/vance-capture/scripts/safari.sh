@@ -23,6 +23,14 @@ project="$here/safari"
 xcrun --find safari-web-extension-converter >/dev/null 2>&1 \
   || { echo "safari-web-extension-converter not found — install Xcode." >&2; exit 1; }
 
+# Destructive, and worth saying so: this discards anything set in Xcode on the
+# generated project — a signing team most of all. Only run it when the manifest
+# or the set of files changed. A plain code change needs `pnpm build` plus a
+# rebuild in Xcode, because the project references dist/safari rather than
+# copying it.
+if [ -d "$project" ]; then
+  echo "Replacing the existing project at $project (Xcode settings there are lost)."
+fi
 rm -rf "$project"
 mkdir -p "$project"
 

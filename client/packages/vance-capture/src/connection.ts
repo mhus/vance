@@ -60,25 +60,44 @@ export function parseConnection(text: string): ConnectionBlob | null {
 }
 
 /**
- * The origin the extension has to be allowed to reach.
+ * The match pattern the extension has to be allowed to reach.
  *
- * <p>Extracted from the URL rather than stored separately: the two would
- * eventually disagree, and the one that decides whether a request goes out is
- * this one.
+ * <p><b>Deliberately not the origin.</b> A match pattern is
+ * `<scheme>://<host>/<path>` and <b>cannot express a port</b> — while
+ * `URL.origin` includes one. Passing `http://localhost:9901/*` makes the
+ * pattern invalid, and Safari does not answer "no": it <em>throws</em>, which
+ * in a click handler surfaces as an unhandled rejection and a button that
+ * appears dead.
+ *
+ * <p>Consequence, and it is honest to name it: host access is granted per
+ * <em>host</em>, not per origin. Allowing `localhost` allows it on every port.
+ * The pattern language has no way to say otherwise, so the alternative to this
+ * is not a narrower grant — it is no grant at all.
  */
 export function originOf(blob: ConnectionBlob): string | null {
   try {
-    return `${new URL(blob.brainUrl).origin}/*`;
+    const url = new URL(blob.brainUrl);
+    return `${url.protocol}//${url.hostname}/*`;
   } catch {
     return null;
   }
 }
 
-/** Whether the browser has already been told this extension may reach the brain. */
+/**
+ * Whether the browser has already been told this extension may reach the brain.
+ *
+ * <p>Never throws. The permissions API rejects a malformed pattern by throwing,
+ * and this is called from page setup where an exception means the rest of the
+ * page never renders — a far worse outcome than answering "not granted".
+ */
 export async function hasHostAccess(blob: ConnectionBlob): Promise<boolean> {
   const origin = originOf(blob);
   if (!origin) return false;
-  return api.permissions.contains({ origins: [origin] });
+  try {
+    return await api.permissions.contains({ origins: [origin] });
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -88,7 +107,15 @@ export async function hasHostAccess(blob: ConnectionBlob): Promise<boolean> {
 export async function requestHostAccess(blob: ConnectionBlob): Promise<boolean> {
   const origin = originOf(blob);
   if (!origin) return false;
-  return api.permissions.request({ origins: [origin] });
+  try {
+    return await api.permissions.request({ origins: [origin] });
+  } catch (e) {
+    // A rejected pattern throws here rather than returning false. Turning it
+    // into a value is what lets the caller say something instead of dying
+    // silently inside a click handler.
+    throw new Error(`The browser refused the access request for ${origin}: `
+      + `${(e as Error).message}`);
+  }
 }
 
 /**

@@ -237,6 +237,42 @@ async function toggleMark(item: FeedItemView): Promise<void> {
 }
 
 /**
+ * The one `extras` key this reader knows by name.
+ *
+ * <p>A conventional slot, not a source's vocabulary — which is the difference
+ * that makes it allowed here. `originPlace` means something at a news archive
+ * and nothing at a Mastodon instance, so hardcoding it failed the second
+ * source; `context` has no domain meaning at all. Every source fills it with
+ * whatever its own domain makes of "one short line worth reading above the
+ * headline" — the archive puts where the publisher sits, an instance could put
+ * the instance — and a source with nothing to say leaves it out. Same rule as
+ * everything else here: empty means „do not offer it", not „guess".
+ *
+ * <p>Deliberately not part of the contract. `extras` is already free and passes
+ * through every hop unfiltered, so this costs no released version on either
+ * side; the price is that a misspelled key gets silence rather than an error.
+ */
+const CONTEXT_KEY = 'context';
+
+/** Room for a line that shares a row with source, date and language. */
+const CONTEXT_MAX = 80;
+
+/**
+ * The source's own one-liner for the header, or null.
+ *
+ * <p>Truncated here and not at the source: how much room this row has is the
+ * reader's business, and a source cannot know it. Arrays are joined rather than
+ * refused — a source that put a list here meant all of it.
+ */
+function contextLine(item: FeedItemView): string | null {
+  const raw = (shown(item).extras ?? {})[CONTEXT_KEY];
+  if (raw === undefined || raw === null || raw === '') return null;
+  const text = (Array.isArray(raw) ? raw.join(', ') : String(raw)).trim();
+  if (!text) return null;
+  return text.length > CONTEXT_MAX ? `${text.slice(0, CONTEXT_MAX - 1)}…` : text;
+}
+
+/**
  * The extras worth putting in front of a person — declared by the source that
  * wrote them, in the order it named them.
  *
@@ -252,6 +288,10 @@ function extraRows(item: FeedItemView): { label: string; value: string }[] {
   const extras = shown(item).extras ?? {};
   const out: { label: string; value: string }[] = [];
   for (const field of declared) {
+    // Skipped even when declared: it is already in the header, and a source
+    // that declares it too would have it twice — once unlabelled above, once
+    // labelled below.
+    if (field.key === CONTEXT_KEY) continue;
     const raw = extras[field.key];
     if (raw === undefined || raw === null || raw === '') continue;
     out.push({ label: field.label, value: Array.isArray(raw) ? raw.join(', ') : String(raw) });
@@ -1092,10 +1132,16 @@ function slug(title: string): string {
                 <span v-if="item.selector">· {{ item.selector }}</span>
                 <span>· {{ when(item.publishedAt) }}</span>
                 <span v-if="item.language">· {{ item.language }}</span>
-                <!-- No hardcoded extras key here: `extraFields` is the channel
-                     (see extraRows). A source that declares originPlace would
-                     otherwise render it twice, once without its own label. -->
                 <span v-if="item.author">· {{ item.author }}</span>
+                <!-- One key by name, and only this one: `context` is a
+                     conventional slot every source fills in its own terms, not
+                     a source's field (see CONTEXT_KEY). Anything domain-specific
+                     goes through `extraFields` into the detail block instead —
+                     hardcoding originPlace here is what failed the second
+                     source. extraRows skips this key so it cannot appear twice. -->
+                <span v-if="contextLine(item)" class="min-w-0 truncate font-medium"
+                  >· {{ contextLine(item) }}</span
+                >
               </div>
               <!-- Through link(): `url` is written by the feed source, and a
                    `javascript:` value would run on this origin the moment the

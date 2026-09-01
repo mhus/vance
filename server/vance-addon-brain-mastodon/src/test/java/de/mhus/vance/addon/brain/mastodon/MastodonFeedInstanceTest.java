@@ -277,6 +277,72 @@ class MastodonFeedInstanceTest {
     }
 
     @Test
+    void fetch_contextCarriesTheDisplayNameWhenItDiffersFromTheHandle() {
+        http.replyAny(200, PAGE);
+
+        List<FeedItem> items = instance().fetch(
+                fetch("public:all", null, FeedDirection.OLDER, 40)).items();
+
+        // The handle is already the `author` line; the `context` slot carries
+        // the human half, which is the one thing a glance at the header wants
+        // and `extraRows` would only show on a marked card.
+        assertThat(items.get(0).extras())
+                .containsEntry(MastodonFeedInstance.EXTRA_CONTEXT, "paka");
+        // "Android Authority" is the display name; "Androidauth@flipboard.com"
+        // is the handle, and the two being different is exactly when the slot
+        // earns its row.
+        assertThat(items.get(1).extras())
+                .containsEntry(MastodonFeedInstance.EXTRA_CONTEXT, "Android Authority");
+    }
+
+    @Test
+    void fetch_contextIsOmittedWhenTheDisplayNameOnlyEchoesTheHandle() {
+        // A status whose author never set a display name: Mastodon echoes the
+        // raw acct there, and putting it next to the `author` handle would read
+        // as the same name twice in one row. No real fixture status happens to
+        // be one, so this is a constructed echo.
+        String page = """
+                [{"id":"117144208605002329","created_at":"2026-08-23T09:52:48.000Z",
+                 "language":"en","spoiler_text":"","sensitive":false,"reblog":null,
+                 "url":"https://mstdn.social/@jane/117144208605002329",
+                 "uri":"https://mstdn.social/users/jane/statuses/117144208605002329",
+                 "content":"<p>a post</p>",
+                 "account":{"acct":"jane","display_name":"jane","bot":false},
+                 "media_attachments":[],"tags":[],
+                 "replies_count":0,"reblogs_count":0,"favourites_count":0,"edited_at":null}]
+                """;
+        http.replyAny(200, page);
+
+        FeedItem item = instance().fetch(
+                fetch("public:all", null, FeedDirection.OLDER, 40)).items().get(0);
+
+        assertThat(item.author()).isEqualTo("@jane");
+        assertThat(item.extras()).doesNotContainKey(MastodonFeedInstance.EXTRA_CONTEXT);
+    }
+
+    @Test
+    void fetch_contextIsOmittedWhenTheDisplayNameIsBlank() {
+        // A fresh account has no display name at all, and `@acct` is the only
+        // identity — there is nothing for the slot to add.
+        String page = """
+                [{"id":"117144208605002329","created_at":"2026-08-23T09:52:48.000Z",
+                 "language":"en","spoiler_text":"","sensitive":false,"reblog":null,
+                 "url":"https://mstdn.social/@jane/117144208605002329",
+                 "uri":"https://mstdn.social/users/jane/statuses/117144208605002329",
+                 "content":"<p>a post</p>",
+                 "account":{"acct":"jane","display_name":"","bot":false},
+                 "media_attachments":[],"tags":[],
+                 "replies_count":0,"reblogs_count":0,"favourites_count":0,"edited_at":null}]
+                """;
+        http.replyAny(200, page);
+
+        FeedItem item = instance().fetch(
+                fetch("public:all", null, FeedDirection.OLDER, 40)).items().get(0);
+
+        assertThat(item.extras()).doesNotContainKey(MastodonFeedInstance.EXTRA_CONTEXT);
+    }
+
+    @Test
     void fetch_titleIsTheOpeningOfTheTextCutAtAWord() {
         http.replyAny(200, PAGE);
 

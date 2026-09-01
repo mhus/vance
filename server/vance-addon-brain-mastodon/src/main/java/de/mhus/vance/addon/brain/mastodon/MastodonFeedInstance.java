@@ -65,6 +65,16 @@ class MastodonFeedInstance implements FeedSourceInstance {
     static final String EXTRA_AUTHORED_AT = "authoredAt";
 
     /**
+     * Extras key for the conventional {@code context} slot the Feeds app shows
+     * in the card header — see {@code FeedsAppKind.vue} {@code CONTEXT_KEY}.
+     * Mastodon fills it with the author's display name, which is the human half
+     * of {@code author} (the {@code @acct} handle) and otherwise unreachable
+     * from the header: {@code extraRows} shows it only when the card is marked,
+     * and a toot's author is the thing most worth seeing at a glance.
+     */
+    static final String EXTRA_CONTEXT = "context";
+
+    /**
      * Below this, {@code created_at} and the ingest time are the same event and
      * carrying both would only add a duplicate line to every card.
      */
@@ -274,6 +284,17 @@ class MastodonFeedInstance implements FeedSourceInstance {
         String acct = status.path("account").path("acct").asString("");
         if (!acct.isBlank()) {
             extras.put("account", "@" + acct);
+        }
+        // The display name is the human half of the handle: `author` already
+        // carries `@acct`, and the `context` slot is the one place the header
+        // reserves for a free one-liner. Skipped when blank (a fresh account has
+        // none — the handle is the only identity) and when it merely repeats
+        // the handle verbatim, which Mastodon does for accounts that never set a
+        // display name: the two would read as the same name twice in one row.
+        String displayName = StatusHtml.collapse(
+                status.path("account").path("display_name").asString(""));
+        if (!displayName.isBlank() && !displayName.equals(acct) && !displayName.equals("@" + acct)) {
+            extras.put(EXTRA_CONTEXT, displayName);
         }
 
         return new FeedItem(

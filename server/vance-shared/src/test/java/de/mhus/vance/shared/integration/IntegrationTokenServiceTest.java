@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -33,7 +34,7 @@ class IntegrationTokenServiceTest {
                 .tokenId("tok-1")
                 .tenantId("acme")
                 .userId("alice")
-                .scopeProfile("links-capture")
+                .scopeProfiles(List.of("links-capture"))
                 .projectId("links-proj")
                 .label("browser")
                 .createdAt(Instant.now())
@@ -218,9 +219,9 @@ class IntegrationTokenServiceTest {
                 .thenAnswer(inv -> inv.getArgument(0));
 
         IntegrationTokenDocument a = service.create(
-                "acme", "alice", "links-capture", "p", "one", "alice", null);
+                "acme", "alice", List.of("links-capture"), "p", "one", "alice", null);
         IntegrationTokenDocument b = service.create(
-                "acme", "alice", "links-capture", "p", "two", "alice", null);
+                "acme", "alice", List.of("links-capture"), "p", "two", "alice", null);
 
         assertThat(a.getTokenId()).isNotBlank().isNotEqualTo(b.getTokenId());
     }

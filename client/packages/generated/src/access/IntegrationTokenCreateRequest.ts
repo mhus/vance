@@ -4,7 +4,7 @@
 */
 
 export interface IntegrationTokenCreateRequest {
-  scopeProfile: string;
+  scopeProfiles: string[];
   projectId?: string;
   label: string;
   expiresInDays: number;

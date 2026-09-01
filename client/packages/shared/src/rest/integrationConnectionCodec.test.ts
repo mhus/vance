@@ -11,7 +11,7 @@ const blob: ConnectionBlob = {
   tenant: 'acme',
   projectId: 'reading',
   target: 'links',
-  profile: 'links-capture',
+  profiles: ['links-capture'],
   token: 'eyJhbGciOiJFUzI1NiJ9.payload.signature',
   expiresAt: 1_800_000_000_000,
 };

@@ -6,9 +6,10 @@ import {
   createIntegrationToken,
   integrationTokenIsLive,
   listIntegrationTokens,
+  listScopeProfiles,
   revokeIntegrationToken,
 } from '@vance/shared';
-import type { IntegrationTokenDto } from '@vance/generated';
+import type { IntegrationScopeProfileDto, IntegrationTokenDto } from '@vance/generated';
 
 /**
  * Manage the capture credentials for this link list.
@@ -34,8 +35,22 @@ const props = defineProps<{
 
 const emit = defineEmits<{ (e: 'close'): void }>();
 
-/** The profile the links addon declares. */
+/** The profile the links addon declares — this dialog's anchor. */
 const PROFILE = 'links-capture';
+
+/**
+ * Which capabilities the minted token carries.
+ *
+ * <p>A token may hold several profiles, and this is where that becomes a
+ * person's choice rather than something baked in. The reason it is offered
+ * *here*, in a links dialog, is the whole point of the design: one browser
+ * extension does more than one thing and must still be set up once. What each
+ * profile opens is the server's answer — the list is fetched, not written out
+ * in this file, so an addon that adds a capability appears without a UI
+ * release.
+ */
+const profiles = ref<IntegrationScopeProfileDto[]>([]);
+const chosen = ref<string[]>([PROFILE]);
 
 const open = ref(true);
 const busy = ref(false);
@@ -58,7 +73,9 @@ const copied = ref(false);
  * as the token is.
  */
 const mine = computed(() =>
-  tokens.value.filter((t) => t.scopeProfile === PROFILE && t.projectId === props.projectId),
+  tokens.value.filter(
+    (t) => (t.scopeProfiles ?? []).includes(PROFILE) && t.projectId === props.projectId,
+  ),
 );
 
 const live = computed(() => mine.value.filter(integrationTokenIsLive));
@@ -69,7 +86,12 @@ async function load(): Promise<void> {
   busy.value = true;
   error.value = null;
   try {
-    tokens.value = await listIntegrationTokens();
+    const [available, existing] = await Promise.all([
+      listScopeProfiles(),
+      listIntegrationTokens(),
+    ]);
+    profiles.value = available;
+    tokens.value = existing;
   } catch (e) {
     error.value = message(e);
   } finally {
@@ -83,11 +105,16 @@ async function onCreate(): Promise<void> {
     error.value = 'Lifetime must be a number of days.';
     return;
   }
+  if (chosen.value.length === 0) {
+    // A token that opens nothing would authenticate and then fail every call.
+    error.value = 'Pick at least one capability.';
+    return;
+  }
   busy.value = true;
   error.value = null;
   try {
     const minted = await createIntegrationToken({
-      scopeProfile: PROFILE,
+      scopeProfiles: chosen.value,
       projectId: props.projectId,
       label: label.value.trim() || 'Browser extension',
       expiresInDays: parsed,
@@ -96,7 +123,7 @@ async function onCreate(): Promise<void> {
     freshBlob.value = connectionBlobFor({
       projectId: props.projectId,
       target: props.folder,
-      profile: PROFILE,
+      profiles: chosen.value,
       token: minted.token ?? '',
       expiresAt: minted.expiresAtTimestamp ?? undefined,
     });
@@ -187,9 +214,11 @@ function message(e: unknown): string {
   >
     <div class="flex flex-col gap-4">
       <p class="text-sm opacity-70">
-        A capture token lets an outside tool — a browser extension, a shell alias — add
-        links without a login. It can look up one URL, read the group names, and save.
-        It cannot read this list, change an entry, or delete one.
+        A capture token lets an outside tool — a browser extension, a shell alias —
+        work without a login. Pick what it may do; each capability opens exactly the
+        routes shown beside it and nothing else. Link capture, for instance, can look
+        up one URL, read the group names and save — it cannot read this list, change
+        an entry, or delete one.
       </p>
 
       <!-- The honest scope. Stated up front, not in a footnote: somebody
@@ -247,6 +276,24 @@ function message(e: unknown): string {
         <span class="text-xs font-semibold uppercase tracking-wide opacity-50">
           New token
         </span>
+        <!-- What the token will be able to do. Each line is a profile the
+             server offers, with the routes it opens spelled out — somebody
+             handing this to a tool has to be able to see what they are giving
+             away. -->
+        <div class="flex flex-col gap-1">
+          <label
+            v-for="p in profiles"
+            :key="p.id"
+            class="flex items-start gap-2 text-sm"
+          >
+            <input v-model="chosen" type="checkbox" :value="p.id" :disabled="busy" class="mt-1" />
+            <span class="flex min-w-0 flex-col">
+              <span>{{ p.label }}</span>
+              <span class="font-mono text-xs opacity-50">{{ p.surfaces.join(' · ') }}</span>
+            </span>
+          </label>
+        </div>
+
         <div class="flex items-end gap-2">
           <div class="min-w-0 flex-1">
             <VInput v-model="label" label="Label" placeholder="Browser extension" :disabled="busy" />

@@ -207,7 +207,7 @@ public class AuditService {
      * for which project" has to be answerable afterwards.
      */
     public void authIntegrationTokenIssued(
-            String tenantId, String username, String scopeProfile,
+            String tenantId, String username, java.util.List<String> scopeProfiles,
             @Nullable String projectId, String tokenId) {
         record(AuditEventDto.builder()
                 .action("auth.integration-token.issue")
@@ -216,7 +216,7 @@ public class AuditService {
                 .tenantId(tenantId)
                 .actor(username)
                 .target("integration-token:" + tokenId)
-                .message("profile=" + scopeProfile
+                .message("profiles=" + scopeProfiles
                         + " project=" + (projectId == null ? "-" : projectId))
                 .build());
     }

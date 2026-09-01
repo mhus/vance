@@ -6,8 +6,8 @@
 export interface IntegrationTokenDto {
   tokenId: string;
   token?: string;
-  scopeProfile: string;
-  scopeProfileLabel?: string;
+  scopeProfiles: string[];
+  scopeProfileLabels: string[];
   projectId?: string;
   label: string;
   createdAtTimestamp?: number;

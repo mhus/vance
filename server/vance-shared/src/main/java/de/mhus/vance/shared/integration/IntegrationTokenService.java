@@ -89,14 +89,14 @@ public class IntegrationTokenService {
      * but relying on that ordering as well costs nothing).
      */
     public IntegrationTokenDocument create(
-            String tenantId, String userId, String scopeProfile,
+            String tenantId, String userId, List<String> scopeProfiles,
             @Nullable String projectId, String label,
             @Nullable String createdBy, @Nullable Instant expiresAt) {
         IntegrationTokenDocument doc = IntegrationTokenDocument.builder()
                 .tokenId(newTokenId())
                 .tenantId(tenantId)
                 .userId(userId)
-                .scopeProfile(scopeProfile)
+                .scopeProfiles(List.copyOf(scopeProfiles))
                 .projectId(projectId)
                 .label(label)
                 .createdAt(Instant.now())
@@ -104,9 +104,9 @@ public class IntegrationTokenService {
                 .expiresAt(expiresAt)
                 .build();
         IntegrationTokenDocument saved = repository.save(doc);
-        log.info("IntegrationTokenService.create tenant='{}' user='{}' profile='{}' "
+        log.info("IntegrationTokenService.create tenant='{}' user='{}' profiles={} "
                         + "project='{}' label='{}' expiresAt={}",
-                tenantId, userId, scopeProfile, projectId == null ? "" : projectId,
+                tenantId, userId, scopeProfiles, projectId == null ? "" : projectId,
                 label, expiresAt);
         return saved;
     }

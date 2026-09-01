@@ -23,7 +23,7 @@ import { encodeConnectionBlob } from './integrationConnectionCodec';
 export function connectionBlobFor(args: {
   projectId: string;
   target?: string;
-  profile: string;
+  profiles: string[];
   token: string;
   expiresAt?: number;
 }): string {
@@ -33,7 +33,7 @@ export function connectionBlobFor(args: {
     tenant: getTenantId() ?? '',
     projectId: args.projectId,
     target: args.target,
-    profile: args.profile,
+    profiles: args.profiles,
     token: args.token,
     expiresAt: args.expiresAt,
   });

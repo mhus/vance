@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.jwt;
 
 import java.time.Instant;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -14,8 +15,13 @@ import org.jspecify.annotations.Nullable;
  * tokens and stay {@code null} for {@link TokenType#ACCESS} /
  * {@link TokenType#REFRESH}.
  *
- * <p>The integration fields ({@link #scopeProfile}, {@link #tokenId}) are
- * populated only for {@link TokenType#INTEGRATION}. {@link #projectId} is
+ * <p>The integration fields ({@link #scopeProfiles}, {@link #tokenId}) are
+ * populated only for {@link TokenType#INTEGRATION}. {@code scopeProfiles} is a
+ * <em>list</em> because one outside tool routinely does more than one thing —
+ * a browser extension that both saves links and grabs pages needs two
+ * capabilities but must be set up once. Keeping it a list rather than merging
+ * the surfaces into one profile is what lets each module keep declaring its
+ * own: a profile describes an integration's capability, not an app. {@link #projectId} is
  * shared with the script-run shape — both mean the same thing there, "this
  * token is pinned to that project", so a second claim for it would be two
  * spellings of one fact.
@@ -29,8 +35,12 @@ public record VanceJwtClaims(
         @Nullable String runId,
         @Nullable String projectId,
         @Nullable String sessionId,
-        @Nullable String scopeProfile,
+        List<String> scopeProfiles,
         @Nullable String tokenId) {
+
+    public VanceJwtClaims {
+        scopeProfiles = scopeProfiles == null ? List.of() : List.copyOf(scopeProfiles);
+    }
 
     /** JWT claim name for the Vance tenant id. */
     public static final String CLAIM_TENANT_ID = "tid";
@@ -50,9 +60,9 @@ public record VanceJwtClaims(
      *  {@link TokenType#SCRIPT_RUN} token (optional). */
     public static final String CLAIM_SESSION_ID = "sid";
 
-    /** JWT claim name for the scope-profile id of an
-     *  {@link TokenType#INTEGRATION} token. */
-    public static final String CLAIM_SCOPE_PROFILE = "scp";
+    /** JWT claim name for the scope-profile ids of an
+     *  {@link TokenType#INTEGRATION} token. Always a list on the wire. */
+    public static final String CLAIM_SCOPE_PROFILES = "scp";
 
     /**
      * JWT claim name for the token id of an {@link TokenType#INTEGRATION}
@@ -71,7 +81,7 @@ public record VanceJwtClaims(
             @Nullable Instant issuedAt, @Nullable Instant expiresAt,
             TokenType tokenType) {
         return new VanceJwtClaims(username, tenantId, issuedAt, expiresAt,
-                tokenType, null, null, null, null, null);
+                tokenType, null, null, null, List.of(), null);
     }
 
     /**
@@ -83,7 +93,7 @@ public record VanceJwtClaims(
             @Nullable Instant issuedAt, @Nullable Instant expiresAt,
             String runId, String projectId, @Nullable String sessionId) {
         return new VanceJwtClaims(username, tenantId, issuedAt, expiresAt,
-                TokenType.SCRIPT_RUN, runId, projectId, sessionId, null, null);
+                TokenType.SCRIPT_RUN, runId, projectId, sessionId, List.of(), null);
     }
 
     /**
@@ -98,8 +108,8 @@ public record VanceJwtClaims(
     public static VanceJwtClaims integration(
             String username, String tenantId,
             @Nullable Instant issuedAt, @Nullable Instant expiresAt,
-            String tokenId, String scopeProfile, @Nullable String projectId) {
+            String tokenId, List<String> scopeProfiles, @Nullable String projectId) {
         return new VanceJwtClaims(username, tenantId, issuedAt, expiresAt,
-                TokenType.INTEGRATION, null, projectId, null, scopeProfile, tokenId);
+                TokenType.INTEGRATION, null, projectId, null, scopeProfiles, tokenId);
     }
 }

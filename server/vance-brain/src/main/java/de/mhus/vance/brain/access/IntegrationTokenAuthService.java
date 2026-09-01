@@ -3,6 +3,8 @@ package de.mhus.vance.brain.access;
 import de.mhus.vance.shared.integration.IntegrationTokenService;
 import de.mhus.vance.shared.jwt.VanceJwtClaims;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
@@ -67,22 +69,33 @@ public class IntegrationTokenAuthService {
             log.debug("INTEGRATION token rejected: missing jti claim (user='{}')", claims.username());
             return false;
         }
-        String profileId = claims.scopeProfile();
-        if (profileId == null || profileId.isBlank()) {
+        if (claims.scopeProfiles().isEmpty()) {
             log.debug("INTEGRATION token rejected: missing scp claim (jti='{}')", tokenId);
             return false;
         }
 
-        IntegrationScopeProfile profile = profiles.find(profileId).orElse(null);
-        if (profile == null) {
-            log.debug("INTEGRATION token rejected: unknown scope profile '{}' (jti='{}')",
-                    profileId, tokenId);
-            return false;
+        // Every named profile must resolve. An unknown one is not skipped: the
+        // token was minted to carry a capability that this brain no longer
+        // has, and silently serving the remaining ones would answer a
+        // different question than the one the credential was issued for.
+        List<IntegrationScopeProfile> granted = new ArrayList<>();
+        for (String profileId : claims.scopeProfiles()) {
+            IntegrationScopeProfile profile = profiles.find(profileId).orElse(null);
+            if (profile == null) {
+                log.debug("INTEGRATION token rejected: unknown scope profile '{}' (jti='{}')",
+                        profileId, tokenId);
+                return false;
+            }
+            granted.add(profile);
         }
-        if (profile.requiresProject()
+        // If *any* carried profile wants a project, the token needs one. The
+        // conservative reading on purpose: the alternative is deciding the pin
+        // per matched surface, which would make "is this token pinned" depend
+        // on which route it happens to be calling.
+        if (granted.stream().anyMatch(IntegrationScopeProfile::requiresProject)
                 && (claims.projectId() == null || claims.projectId().isBlank())) {
-            log.debug("INTEGRATION token rejected: profile '{}' requires a project pin (jti='{}')",
-                    profileId, tokenId);
+            log.debug("INTEGRATION token rejected: a carried profile requires a project pin "
+                    + "(jti='{}')", tokenId);
             return false;
         }
 
@@ -99,9 +112,9 @@ public class IntegrationTokenAuthService {
                     + "credential confinement (jti='{}')", tokenId);
             return false;
         }
-        if (!covers(profile, request.getMethod(), tenantPath)) {
-            log.debug("INTEGRATION token rejected: profile '{}' does not cover {} {} (jti='{}')",
-                    profileId, request.getMethod(), tenantPath, tokenId);
+        if (granted.stream().noneMatch(p -> covers(p, request.getMethod(), tenantPath))) {
+            log.debug("INTEGRATION token rejected: {} does not cover {} {} (jti='{}')",
+                    claims.scopeProfiles(), request.getMethod(), tenantPath, tokenId);
             return false;
         }
 

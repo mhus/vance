@@ -1,6 +1,8 @@
 package de.mhus.vance.shared.integration;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -55,8 +57,12 @@ public class IntegrationTokenDocument {
     /** The account the token acts as. Its grants remain the ceiling. */
     private String userId = "";
 
-    /** Id of the {@code IntegrationScopeProfile} this token is limited to. */
-    private String scopeProfile = "";
+    /**
+     * Ids of the {@code IntegrationScopeProfile}s this token is limited to.
+     * A list because one outside tool routinely does more than one thing and
+     * must still be set up once.
+     */
+    private List<String> scopeProfiles = new ArrayList<>();
 
     /** Project the token is pinned to, or {@code null} for an unpinned one. */
     private @Nullable String projectId;

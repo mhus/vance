@@ -9,7 +9,9 @@ import io.jsonwebtoken.Jwts;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.Date;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -124,7 +126,7 @@ public class JwtService {
      */
     public String createIntegrationToken(
             String tenantId, String username,
-            String tokenId, String scopeProfile,
+            String tokenId, List<String> scopeProfiles,
             @Nullable String projectId,
             @Nullable Instant expiresAt) {
         PrivateKey privateKey = signingKey(tenantId);
@@ -134,7 +136,7 @@ public class JwtService {
                 .claim(VanceJwtClaims.CLAIM_TENANT_ID, tenantId)
                 .claim(VanceJwtClaims.CLAIM_TOKEN_TYPE, TokenType.INTEGRATION.wireValue())
                 .claim(VanceJwtClaims.CLAIM_TOKEN_ID, tokenId)
-                .claim(VanceJwtClaims.CLAIM_SCOPE_PROFILE, scopeProfile)
+                .claim(VanceJwtClaims.CLAIM_SCOPE_PROFILES, List.copyOf(scopeProfiles))
                 .issuedAt(Date.from(Instant.now()));
         if (projectId != null) {
             builder.claim(VanceJwtClaims.CLAIM_PROJECT_ID, projectId);
@@ -208,6 +210,26 @@ public class JwtService {
         }
     }
 
+    /**
+     * The {@code scp} claim, tolerant of the shape it finds. A token minted
+     * before the claim became a list carries a bare string; reading it as one
+     * entry costs nothing and beats rejecting a credential over a JSON shape.
+     */
+    private static List<String> scopeProfiles(Claims claims) {
+        Object raw = claims.get(VanceJwtClaims.CLAIM_SCOPE_PROFILES);
+        if (raw instanceof String single) {
+            return single.isBlank() ? List.of() : List.of(single);
+        }
+        if (!(raw instanceof List<?> list)) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (Object o : list) {
+            if (o instanceof String s && !s.isBlank()) out.add(s);
+        }
+        return List.copyOf(out);
+    }
+
     private VanceJwtClaims toClaims(Claims claims) {
         String username = claims.getSubject();
         String tenantId = claims.get(VanceJwtClaims.CLAIM_TENANT_ID, String.class);
@@ -217,7 +239,7 @@ public class JwtService {
         String runId = claims.get(VanceJwtClaims.CLAIM_RUN_ID, String.class);
         String projectId = claims.get(VanceJwtClaims.CLAIM_PROJECT_ID, String.class);
         String sessionId = claims.get(VanceJwtClaims.CLAIM_SESSION_ID, String.class);
-        String scopeProfile = claims.get(VanceJwtClaims.CLAIM_SCOPE_PROFILE, String.class);
+        List<String> scopeProfiles = scopeProfiles(claims);
         String tokenId = claims.getId();
         return new VanceJwtClaims(
                 username,
@@ -228,7 +250,7 @@ public class JwtService {
                 runId,
                 projectId,
                 sessionId,
-                scopeProfile,
+                scopeProfiles,
                 tokenId);
     }
 }

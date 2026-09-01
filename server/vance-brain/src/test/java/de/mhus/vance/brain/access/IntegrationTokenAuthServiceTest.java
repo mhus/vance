@@ -49,8 +49,13 @@ class IntegrationTokenAuthServiceTest {
     }
 
     private static VanceJwtClaims claims(String profile, String projectId, String jti) {
+        return claims(List.of(profile), projectId, jti);
+    }
+
+    private static VanceJwtClaims claims(
+            List<String> profiles, String projectId, String jti) {
         return VanceJwtClaims.integration("alice", "acme", Instant.now(),
-                Instant.now().plusSeconds(3600), jti, profile, projectId);
+                Instant.now().plusSeconds(3600), jti, profiles, projectId);
     }
 
     private static HttpServletRequest request(String method, String uri) {
@@ -165,6 +170,35 @@ class IntegrationTokenAuthServiceTest {
         public List<IntegrationSurface> surfaces() {
             return List.of(IntegrationSurface.of("GET", "/ws"));
         }
+    }
+
+    /**
+     * One tool, several capabilities, one setup. The surfaces of the carried
+     * profiles are the union — still bounded by the account's grants and the
+     * project pin, so this widens the token's ceiling without widening what
+     * the account may do.
+     */
+    @Test
+    void accepts_aSurfaceFromEitherOfTwoCarriedProfiles() {
+        IntegrationTokenAuthService both = new IntegrationTokenAuthService(tokenService,
+                new IntegrationScopeRegistry(List.of(new CaptureProfile(true), new WsProfile())));
+
+        assertThat(both.isAcceptable(
+                claims(List.of("links-capture", "ws-profile"), "links-proj", "tok-1"),
+                request("POST", "/brain/acme/addon/links/entry"))).isTrue();
+    }
+
+    /**
+     * A profile this brain no longer has kills the token rather than being
+     * skipped: it was minted to carry a capability that is gone, and serving
+     * the remainder answers a different question than the one it was issued
+     * for.
+     */
+    @Test
+    void rejects_whenOneOfSeveralProfilesIsUnknown() {
+        assertThat(service.isAcceptable(
+                claims(List.of("links-capture", "gone-away"), "links-proj", "tok-1"),
+                request("POST", "/brain/acme/addon/links/entry"))).isFalse();
     }
 
     @Test

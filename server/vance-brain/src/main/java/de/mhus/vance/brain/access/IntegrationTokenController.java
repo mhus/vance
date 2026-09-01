@@ -112,14 +112,21 @@ public class IntegrationTokenController {
         String username = requireUser(request);
         requireAccessToken(request);
 
-        IntegrationScopeProfile profile = profiles.find(req.getScopeProfile())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Unknown scope profile '" + req.getScopeProfile() + "'"));
+        // Resolve every requested profile before doing anything: a mint that
+        // half-succeeded would hand out a credential narrower than the person
+        // asked for, and they would find out at the first call.
+        List<IntegrationScopeProfile> granted = new ArrayList<>();
+        for (String id : req.getScopeProfiles()) {
+            granted.add(profiles.find(id).orElseThrow(() ->
+                    new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Unknown scope profile '" + id + "'")));
+        }
 
         String projectId = blankToNull(req.getProjectId());
-        if (profile.requiresProject() && projectId == null) {
+        if (granted.stream().anyMatch(IntegrationScopeProfile::requiresProject)
+                && projectId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Scope profile '" + profile.id() + "' requires a projectId");
+                    "One of the requested scope profiles requires a projectId");
         }
         if (projectId != null) {
             authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
@@ -133,17 +140,18 @@ public class IntegrationTokenController {
         Instant expiresAt = Instant.now().plus(Duration.ofDays(days));
 
         // Row first, token second — see IntegrationTokenService.create.
+        List<String> profileIds = granted.stream().map(IntegrationScopeProfile::id).toList();
         IntegrationTokenDocument doc = tokenService.create(
-                tenant, username, profile.id(), projectId,
+                tenant, username, profileIds, projectId,
                 req.getLabel().trim(), username, expiresAt);
         String token = jwtService.createIntegrationToken(
-                tenant, username, doc.getTokenId(), profile.id(), projectId, expiresAt);
+                tenant, username, doc.getTokenId(), profileIds, projectId, expiresAt);
 
         auditService.authIntegrationTokenIssued(
-                tenant, username, profile.id(), projectId, doc.getTokenId());
-        log.info("Minted integration token tenant='{}' user='{}' profile='{}' project='{}' "
+                tenant, username, profileIds, projectId, doc.getTokenId());
+        log.info("Minted integration token tenant='{}' user='{}' profiles={} project='{}' "
                         + "label='{}' jti='{}'",
-                tenant, username, profile.id(), projectId == null ? "" : projectId,
+                tenant, username, profileIds, projectId == null ? "" : projectId,
                 doc.getLabel(), doc.getTokenId());
         return ResponseEntity.ok(toDto(doc, token));
     }
@@ -171,10 +179,14 @@ public class IntegrationTokenController {
         return IntegrationTokenDto.builder()
                 .tokenId(doc.getTokenId())
                 .token(token)
-                .scopeProfile(doc.getScopeProfile())
-                .scopeProfileLabel(profiles.find(doc.getScopeProfile())
-                        .map(IntegrationScopeProfile::label)
-                        .orElse(null))
+                .scopeProfiles(doc.getScopeProfiles())
+                .scopeProfileLabels(doc.getScopeProfiles().stream()
+                        // A profile the brain no longer has still shows up, by
+                        // its id: the owner needs to see that the token carries
+                        // something dead, not a gap in the list.
+                        .map(id -> profiles.find(id)
+                                .map(IntegrationScopeProfile::label).orElse(id))
+                        .toList())
                 .projectId(doc.getProjectId())
                 .label(doc.getLabel())
                 .createdAtTimestamp(millis(doc.getCreatedAt()))

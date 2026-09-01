@@ -2,6 +2,7 @@ package de.mhus.vance.api.access;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -31,10 +32,10 @@ public class IntegrationTokenDto {
     /** The signed JWT. Present exactly once, in the mint response. */
     private @Nullable String token;
 
-    private String scopeProfile;
+    private List<String> scopeProfiles;
 
-    /** Human label of the profile, so a list needs no second lookup. */
-    private @Nullable String scopeProfileLabel;
+    /** Human labels of the profiles, so a list needs no second lookup. */
+    private List<String> scopeProfileLabels;
 
     private @Nullable String projectId;
 

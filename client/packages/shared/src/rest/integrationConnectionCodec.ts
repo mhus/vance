@@ -37,8 +37,12 @@ export interface ConnectionBlob {
    * destination, not a fence, and any UI that shows it should say so.
    */
   target?: string;
-  /** Scope profile id, carried for diagnostics — the server re-reads it anyway. */
-  profile: string;
+  /**
+   * Scope profile ids, carried for diagnostics — the server re-reads them
+   * anyway. A list because one tool routinely carries more than one
+   * capability and is still set up once.
+   */
+  profiles: string[];
   /** The signed JWT. */
   token: string;
   /** Unix millis, so a tool can warn before it stops working. */

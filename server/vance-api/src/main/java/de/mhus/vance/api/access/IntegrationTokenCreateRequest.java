@@ -2,6 +2,8 @@ package de.mhus.vance.api.access;
 
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -23,9 +25,13 @@ import org.jspecify.annotations.Nullable;
 @GenerateTypeScript("access")
 public class IntegrationTokenCreateRequest {
 
-    /** Id of an {@code IntegrationScopeProfile}, e.g. {@code links-capture}. */
-    @NotBlank
-    private String scopeProfile;
+    /**
+     * Ids of the {@code IntegrationScopeProfile}s to grant, e.g.
+     * {@code ["links-capture", "web-grab"]}. One outside tool routinely does
+     * more than one thing and must still be set up once.
+     */
+    @NotEmpty
+    private List<String> scopeProfiles;
 
     /** Project the token is confined to. Required by most profiles. */
     private @Nullable String projectId;

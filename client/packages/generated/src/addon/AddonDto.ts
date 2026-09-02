@@ -4,6 +4,7 @@
 */
 
 import { AddonProfileTabDto } from './AddonProfileTabDto';
+import { AddonMenuItemDto } from './AddonMenuItemDto';
 import { AddonTileDto } from './AddonTileDto';
 
 export interface AddonDto {
@@ -12,6 +13,7 @@ export interface AddonDto {
   checksum?: string;
   tile?: AddonTileDto;
   profile?: AddonProfileTabDto;
+  menu?: AddonMenuItemDto[];
   kinds?: string[];
   eager?: boolean;
 }

@@ -109,7 +109,8 @@ function vanceAddonDevServe(): Plugin {
         if (pathname === '/face/addons') {
           const addonsRoot = resolve(workspaceRoot, 'server');
           let entries: {
-            name: string; path: string; tile?: unknown; profile?: unknown; kinds?: unknown; eager?: unknown;
+            name: string; path: string; tile?: unknown; profile?: unknown; menu?: unknown;
+            kinds?: unknown; eager?: unknown;
           }[] = [];
           try {
             entries = readdirSync(addonsRoot, { withFileTypes: true })
@@ -120,7 +121,8 @@ function vanceAddonDevServe(): Plugin {
               )
               .map((id) => {
                 const entry: {
-                  name: string; path: string; tile?: unknown; profile?: unknown; kinds?: unknown; eager?: unknown;
+                  name: string; path: string; tile?: unknown; profile?: unknown;
+                  menu?: unknown; kinds?: unknown; eager?: unknown;
                 } = {
                   name: id,
                   path: `bundled:${id}`,
@@ -143,12 +145,21 @@ function vanceAddonDevServe(): Plugin {
                       ),
                       'utf8',
                     ),
-                  ) as { tile?: unknown; profile?: unknown; kinds?: unknown; eager?: unknown } | null;
+                  ) as {
+                    tile?: unknown; profile?: unknown; menu?: unknown;
+                    kinds?: unknown; eager?: unknown;
+                  } | null;
                   if (manifest?.tile) entry.tile = manifest.tile;
                   // The profile tab an addon contributes — same single
                   // source as the landing tile, so the profile screen can
                   // build its strip without loading a remote first.
                   if (manifest?.profile) entry.profile = manifest.profile;
+                  // The Cortex menu entries an addon contributes. Declarative
+                  // for a sharper reason than the tile: a menu entry has no
+                  // document kind to trigger a lazy load on, so reading it
+                  // here is what keeps the bundle out of every page load.
+                  // See platform/loadCortexMenu.ts.
+                  if (Array.isArray(manifest?.menu)) entry.menu = manifest.menu;
                   // The document kinds an addon contributes. Same single
                   // source again, and the reason the host no longer loads
                   // every remote at boot: it can defer the fetch until a

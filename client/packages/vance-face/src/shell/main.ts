@@ -3,6 +3,7 @@ import { createApp, h } from 'vue';
 import { createPinia } from 'pinia';
 import { ensureAuthenticated } from '@/platform/ensureAuthenticatedWeb';
 import { initAddonRemotes } from '@/platform/addonRegistry';
+import { loadCortexMenuContributions } from '@/platform/loadCortexMenu';
 import { registerBuiltInKinds } from '@/document/builtInKinds';
 import { router } from './router';
 import { bindRouter, navigateTo } from '@/platform/navigate';
@@ -26,6 +27,10 @@ import '@/style/app.css';
 await ensureAuthenticated();
 registerBuiltInKinds();
 await initAddonRemotes();
+// Reads the same (already fetched) manifest and registers the Cortex menu
+// entries addons declare. No remote is loaded — an entry's bundle is fetched
+// when it is clicked. See platform/loadCortexMenu.ts.
+await loadCortexMenuContributions();
 
 // Tell the shared navigation helper that a router exists, so the editors reach
 // each other without a page load. Components that also run on the standalone

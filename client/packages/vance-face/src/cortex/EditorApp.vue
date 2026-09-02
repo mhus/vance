@@ -17,6 +17,7 @@
  * a stupid show/hide switch on top of the slot.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type Ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   type Crumb,
   EditorShell,
@@ -68,6 +69,15 @@ import CreateDocumentModal, {
   type CreateModalResult,
 } from './components/CreateDocumentModal.vue';
 import NewFolderModal from './components/NewFolderModal.vue';
+import TranslateDialog from './components/TranslateDialog.vue';
+import {
+  cortexMenuItemLabel,
+  cortexMenuItemsFor,
+  isCortexMenuItemEnabled,
+  type CortexMenuContext,
+  type CortexMenuItem,
+} from '@/platform/cortexMenu';
+import { registerTranslateMenuItems } from './translateMenu';
 import { navigateTo, pushUrl, replaceUrl } from '@/platform/navigate';
 import { recallProject, rememberProject } from '@/platform/lastProject';
 
@@ -783,6 +793,139 @@ function openShare(subject: ShareSubjectDto): void {
 // importing vance-face.
 provide('vance:share', openShare);
 
+// ──────────────── Menu contributions ────────────────
+// View, Actions and Extras each carry a slot at the bottom, fed by
+// `platform/cortexMenu`. Two sources land in it: this file's own translate
+// entries and whatever the installed addons declare in their manifest. See
+// platform/cortexMenu.ts for why the hard-wired entries above stay where
+// they are.
+//
+// `t` is bound as `msg` because `t` is taken half a dozen times in this file
+// as the name of a tab in a callback.
+const { t: msg } = useI18n();
+
+/** Errors and warnings from a menu entry. One line, dismissed by the next. */
+const menuNotice = ref<{ text: string; variant: 'error' | 'warning' } | null>(null);
+
+const menuContext = computed<CortexMenuContext | null>(() => {
+  if (!projectId.value) return null;
+  const tab = activeTab.value;
+  const sel = store.currentSelection;
+  return {
+    projectId: projectId.value,
+    document: tab
+      ? {
+          id: tab.id,
+          path: tab.path,
+          name: tab.name,
+          mimeType: tab.mimeType ?? null,
+          kind: tab.kind ?? null,
+          // The editor's text, not the stored one: it is what the reader sees.
+          text: tab.inlineText,
+          dirty: tab.dirty,
+        }
+      : null,
+    selection: sel
+      ? { docPath: sel.docPath, from: sel.from, to: sel.to, text: sel.text }
+      : null,
+    openDocument: async (id: string) => {
+      await store.openFile(id);
+    },
+    revealPath: async (path: string) => {
+      await store.expandTo(path);
+    },
+  };
+});
+
+function contributedItems(slot: 'view' | 'actions' | 'extras'): CortexMenuItem[] {
+  const ctx = menuContext.value;
+  if (!ctx) return [];
+  return cortexMenuItemsFor(slot, ctx);
+}
+
+const viewMenuItems = computed(() => contributedItems('view'));
+const actionsMenuItems = computed(() => contributedItems('actions'));
+const extrasMenuItems = computed(() => contributedItems('extras'));
+
+function menuItemEnabled(item: CortexMenuItem): boolean {
+  const ctx = menuContext.value;
+  return ctx !== null && isCortexMenuItemEnabled(item, ctx);
+}
+
+function menuItemLabel(item: CortexMenuItem): string {
+  return cortexMenuItemLabel(item);
+}
+
+/**
+ * Run a contributed entry. An addon's handler is loaded on click, so this is
+ * also where "the bundle is not deployed" surfaces — as a named line rather
+ * than as nothing happening.
+ */
+async function runMenuItem(item: CortexMenuItem): Promise<void> {
+  const ctx = menuContext.value;
+  if (!ctx || !isCortexMenuItemEnabled(item, ctx)) return;
+  menuNotice.value = null;
+  try {
+    await item.run(ctx);
+  } catch (e) {
+    menuNotice.value = {
+      text: `${menuItemLabel(item)}: ${e instanceof Error ? e.message : 'failed'}`,
+      variant: 'error',
+    };
+  }
+}
+
+// ──────────────── Translate ────────────────
+const showTranslate = ref(false);
+const translateMode = ref<'document' | 'selection'>('document');
+
+/** The text the dialog works on — the whole body, or the marked passage. */
+const translateSource = computed<string>(() => {
+  if (translateMode.value === 'selection') return store.currentSelection?.text ?? '';
+  return activeTab.value?.inlineText ?? '';
+});
+
+function openTranslate(mode: 'document' | 'selection'): void {
+  if (!activeTab.value) return;
+  translateMode.value = mode;
+  showTranslate.value = true;
+}
+
+/**
+ * Write the finished translation next to its source and open it.
+ *
+ * Same folder, the name the reader confirmed, the source's MIME type — a
+ * translated Markdown file is still Markdown. A name that is already taken
+ * comes back from the server as a conflict; it is reported rather than
+ * resolved, because picking `manual.de.2.md` on somebody's behalf hides that
+ * a translation already exists.
+ */
+async function onTranslated(
+  payload: { text: string; name: string; truncated: boolean },
+): Promise<void> {
+  const source = activeTab.value;
+  if (!source) return;
+  const slash = source.path.lastIndexOf('/');
+  const folder = slash >= 0 ? source.path.slice(0, slash) : '';
+  const path = folder ? `${folder}/${payload.name}` : payload.name;
+  try {
+    await store.createFile({
+      path,
+      mimeType: source.mimeType ?? null,
+      inlineText: payload.text,
+    });
+    await store.expandTo(path);
+    menuNotice.value = payload.truncated
+      ? { text: msg('cortex.translate.maybeTruncated'), variant: 'warning' }
+      : null;
+  } catch (e) {
+    menuNotice.value = {
+      text: `${msg('cortex.translate.failed')} ${e instanceof Error ? e.message : ''}`.trim(),
+      variant: 'error',
+    };
+  }
+}
+
 // ──────────────── Starred (★) ────────────────
 // One star cannot serve three states, so there are two controls: the star
 // toggles *registration* (the service knows this document), the checkbox
@@ -1488,6 +1631,9 @@ onMounted(() => {
   window.addEventListener('beforeunload', onBeforeUnload);
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('popstate', onPopState);
+  // Idempotent by id — the workspace router mounts and unmounts the Cortex,
+  // and a registry that grew per mount would show translate three times.
+  registerTranslateMenuItems({ t: msg, open: openTranslate });
 });
 
 onBeforeUnmount(() => {
@@ -1837,6 +1983,20 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
                 <span class="flex-1">Auto — suggest completions on idle</span>
               </a>
             </li>
+            <!-- Contribution slot. Below a separator and below the host's own
+                 entries, so an addon can add but never reorder. -->
+            <template v-if="viewMenuItems.length">
+              <li><div class="divider my-0" /></li>
+              <li
+                v-for="item in viewMenuItems"
+                :key="item.id"
+                :class="{ disabled: !menuItemEnabled(item) }"
+              >
+                <a @click="closeMenus(); runMenuItem(item)">
+                  <span class="flex-1">{{ menuItemLabel(item) }}</span>
+                </a>
+              </li>
+            </template>
         </VDropdown>
 
         <VDropdown v-if="projectId" menu-class="mt-1 w-64">
@@ -1860,6 +2020,34 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
               <a @click="closeMenus(); toggleOnStartPage()">
                 <span class="w-4 text-center">{{ activeOnStartPage ? '✓' : '' }}</span>
                 <span class="flex-1">{{ $t('starred.menuOnStartPage') }}</span>
+              </a>
+            </li>
+            <template v-if="actionsMenuItems.length">
+              <li><div class="divider my-0" /></li>
+              <li
+                v-for="item in actionsMenuItems"
+                :key="item.id"
+                :class="{ disabled: !menuItemEnabled(item) }"
+              >
+                <a @click="closeMenus(); runMenuItem(item)">
+                  <span class="flex-1">{{ menuItemLabel(item) }}</span>
+                </a>
+              </li>
+            </template>
+        </VDropdown>
+
+        <!-- Extras. Purely a contribution slot — it has no entries of its own
+             and is not rendered when nothing contributes any, because an empty
+             menu is a promise the bar cannot keep. -->
+        <VDropdown v-if="extrasMenuItems.length" menu-class="mt-1 w-64">
+          <template #trigger>Extras</template>
+            <li
+              v-for="item in extrasMenuItems"
+              :key="item.id"
+              :class="{ disabled: !menuItemEnabled(item) }"
+            >
+              <a @click="closeMenus(); runMenuItem(item)">
+                <span class="flex-1">{{ menuItemLabel(item) }}</span>
               </a>
             </li>
         </VDropdown>
@@ -1907,6 +2095,18 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
           </span>
         </template>
       </div>
+
+      <!-- Outcome of a menu entry: a failed handler, or a translation that
+           came back suspiciously short. Directly under the bar it belongs to,
+           and dismissed by clicking it. -->
+      <VAlert
+        v-if="menuNotice"
+        :variant="menuNotice.variant"
+        class="m-2 cursor-pointer"
+        @click="menuNotice = null"
+      >
+        <span>{{ menuNotice.text }}</span>
+      </VAlert>
 
       <!-- Tab strip. Hidden in App view-mode — an _app.yaml manifest
            is folder-bound; the user's mental model is "I'm in this app",
@@ -1982,6 +2182,16 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
     v-model="showShare"
     :project-id="projectId"
     :subject="shareSubject"
+  />
+
+  <TranslateDialog
+    v-if="projectId && activeTab"
+    v-model="showTranslate"
+    :mode="translateMode"
+    :project-id="projectId"
+    :source-name="activeTab.name"
+    :source-text="translateSource"
+    @translated="onTranslated"
   />
 </template>
 

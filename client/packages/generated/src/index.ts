@@ -18,6 +18,7 @@ export * from './applications/ApplicationTargetsResponse';
 
 export * from './addon/AddonDto';
 export * from './addon/AddonInsightDto';
+export * from './addon/AddonMenuItemDto';
 export * from './addon/AddonProfileTabDto';
 export * from './addon/ChecksumStatus';
 

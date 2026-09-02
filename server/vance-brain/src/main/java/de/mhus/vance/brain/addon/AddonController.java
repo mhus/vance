@@ -40,6 +40,7 @@ public class AddonController {
                 .checksum(doc.getChecksum())
                 .tile(manifestRegistry.tileFor(doc.getName()))
                 .profile(manifestRegistry.profileTabFor(doc.getName()))
+                .menu(manifestRegistry.menuFor(doc.getName()))
                 .kinds(manifestRegistry.kindsFor(doc.getName()))
                 .eager(manifestRegistry.eagerFor(doc.getName()))
                 .build();

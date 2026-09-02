@@ -54,6 +54,19 @@ public class AddonDto {
     private @Nullable AddonProfileTabDto profile;
 
     /**
+     * Entries this addon contributes to the Cortex menus, or null when it
+     * contributes none.
+     *
+     * <p>Declarative for the same reason as {@link #getTile()} and
+     * {@link #getProfile()}: the host renders them without loading a single
+     * remote and fetches the addon's bundle only when one is clicked. A menu
+     * entry has no document kind to trigger a lazy load on, so the alternative
+     * would have been {@link #getEager()} on every contributing addon — one
+     * remote fetch per addon on every page load.
+     */
+    private @Nullable List<AddonMenuItemDto> menu;
+
+    /**
      * Document-kind ids this addon's {@code ./register} expose contributes,
      * or null when it contributes none.
      *

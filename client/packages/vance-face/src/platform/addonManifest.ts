@@ -35,6 +35,36 @@ export interface AddonProfile {
   minLevel?: string;
 }
 
+/**
+ * One Cortex menu entry an addon declares in `vance-addon.yaml` `menu:`.
+ *
+ * Declarative for the same reason as the tile and the profile tab, and here
+ * the reason is sharper: a menu entry has no document kind to trigger a lazy
+ * load on, so asking the addons what they contribute would mean loading every
+ * remote on every page. The bundle is fetched when the entry is *clicked*.
+ *
+ * The price is that visibility must be decidable without the addon's code —
+ * hence `kinds`/`mimes` as data rather than a predicate.
+ */
+export interface AddonMenuItem {
+  /** Unique within the addon; the host namespaces it with the addon name. */
+  id: string;
+  /** `view` | `actions` | `extras`. The brain drops anything else. */
+  slot: string;
+  label: string;
+  /** Federation expose carrying the handler. Default `./menu`. */
+  expose?: string;
+  /** Exported function name on that module. Default `run`. */
+  handler?: string;
+  /** Document kinds the entry applies to; absent means "does not depend". */
+  kinds?: string[];
+  /** MIME prefixes the entry applies to; absent means "does not depend". */
+  mimes?: string[];
+  /** Same knob as `AddonTile.minLevel`; unset means every level. */
+  minLevel?: string;
+  sortIndex?: number;
+}
+
 /** One installed addon, as `/face/addons` reports it. */
 export interface AddonManifestEntry {
   /** Addon id — the `<id>` in `vance-addon-brain-<id>`. */
@@ -42,6 +72,8 @@ export interface AddonManifestEntry {
   path: string;
   tile?: AddonTile;
   profile?: AddonProfile;
+  /** Cortex menu entries, from `vance-addon.yaml` `menu:`. */
+  menu?: AddonMenuItem[];
   /**
    * Document-kind ids this addon's `./register` expose contributes, from
    * `vance-addon.yaml` `kinds:`. Absent for addons that contribute none.

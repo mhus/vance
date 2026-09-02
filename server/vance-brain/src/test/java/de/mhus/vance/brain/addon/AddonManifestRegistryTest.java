@@ -151,6 +151,90 @@ class AddonManifestRegistryTest {
     }
 
     @Test
+    void menu_declaredEntries_areReadWithTheirDefaultsLeftOpen() throws IOException {
+        AddonManifestRegistry registry = registryOf("""
+                id: tex
+                menu:
+                  - id: compile
+                    slot: extras
+                    label: "Compile to PDF…"
+                    mimes: ["text/x-tex"]
+                    sortIndex: 10
+                """);
+
+        assertThat(registry.menuFor("tex")).singleElement().satisfies((item) -> {
+            assertThat(item.getId()).isEqualTo("compile");
+            assertThat(item.getSlot()).isEqualTo("extras");
+            assertThat(item.getLabel()).isEqualTo("Compile to PDF…");
+            assertThat(item.getMimes()).containsExactly("text/x-tex");
+            assertThat(item.getSortIndex()).isEqualTo(10);
+            // Left null on the wire so the host applies its own defaults
+            // (./menu, run) rather than the manifest repeating them.
+            assertThat(item.getExpose()).isNull();
+            assertThat(item.getHandler()).isNull();
+            assertThat(item.getKinds()).isNull();
+        });
+    }
+
+    @Test
+    void menu_unknownSlot_dropsTheEntryRatherThanPlacingItSomewhere() throws IOException {
+        // A default would put the entry in a menu its author never named, and
+        // "it isn't there" reads as a broken bundle rather than a typo.
+        AddonManifestRegistry registry = registryOf("""
+                id: kanban
+                menu:
+                  - id: sweep
+                    slot: tools
+                    label: Sweep
+                  - id: archive
+                    slot: actions
+                    label: Archive
+                """);
+
+        assertThat(registry.menuFor("kanban")).singleElement()
+                .satisfies((item) -> assertThat(item.getId()).isEqualTo("archive"));
+    }
+
+    @Test
+    void menu_entryWithoutLabel_isDroppedWithoutFailingTheBoot() throws IOException {
+        AddonManifestRegistry registry = registryOf("""
+                id: wiki
+                menu:
+                  - id: reindex
+                    slot: extras
+                  - slot: extras
+                    label: Orphans
+                """);
+
+        assertThat(registry.menuFor("wiki")).isNull();
+    }
+
+    @Test
+    void menu_absent_staysOffTheWire() throws IOException {
+        AddonManifestRegistry registry = registryOf("id: calendar\nkinds: [\"calendar\"]\n");
+
+        assertThat(registry.menuFor("calendar")).isNull();
+    }
+
+    @Test
+    void menu_coexistsWithKindsOnTheSameManifest() throws IOException {
+        // The menu block is parsed before the tile block's `continue`, same
+        // trap the kinds block documents.
+        AddonManifestRegistry registry = registryOf("""
+                id: canvas
+                menu:
+                  - id: export
+                    slot: actions
+                    label: Export board
+                kinds:
+                  - "canvas"
+                """);
+
+        assertThat(registry.menuFor("canvas")).hasSize(1);
+        assertThat(registry.kindsFor("canvas")).containsExactly("canvas");
+    }
+
+    @Test
     void manifests_thatAreNotMaps_areSkippedRatherThanFatal() throws IOException {
         AddonManifestRegistry registry = registryOf(
                 "just a string",

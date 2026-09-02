@@ -20,6 +20,7 @@ import { safeHref } from './safeHref';
 import { parseDocument } from './markdown/parser';
 import { serialize, serializeDocument, documentHeader, serializeWithBlockRanges } from './markdown/serializer';
 import { blocksToContent, contentToBlocks } from './markdown/proseMirror';
+import type { JSONContent } from '@tiptap/core';
 import {
   VanceToggle,
   VanceLink,
@@ -243,10 +244,26 @@ function cancelAutoSave() {
   }
 }
 
+/**
+ * Block list for a ProseMirror `doc`, never empty.
+ *
+ * <p>An empty source parses to zero blocks, and a document without blocks
+ * has nothing to hover: no drag-handle (the extension looks for a block
+ * element under the cursor), hence no block menu and no drag-and-drop —
+ * plus no placeholder and no `/` slash-menu. A host that mounts the editor
+ * on a fresh, still-empty body (journal's day entry, a new kanban card)
+ * would come up in exactly that state. Seed one empty paragraph so an
+ * empty page behaves like a page with content.
+ */
+function docBlocks(blocks: ReturnType<typeof parseDocument>['blocks']): JSONContent[] {
+  const content = blocksToContent(blocks);
+  return content.length > 0 ? content : [{ type: 'paragraph' }];
+}
+
 const initial = computed(() => {
   const md = props.source ?? props.document.inlineText ?? '';
   const doc = parseDocument(md);
-  return { doc, content: { type: 'doc', content: blocksToContent(doc.blocks) } };
+  return { doc, content: { type: 'doc', content: docBlocks(doc.blocks) } };
 });
 
 interface WorkPageHeader {
@@ -574,14 +591,31 @@ watch(
   (v) => editor.value?.setEditable(v !== false),
 );
 
+/**
+ * Markdown this editor last handed to the host via {@code @save}.
+ *
+ * <p>Several hosts mirror that payload straight back into the {@code source}
+ * prop (journal's day body, a GTD action, an issue) — and a host that keeps
+ * one ref for "what the editor has" and "what to persist" can hardly do
+ * otherwise. Rebuilding the document from our own text is never a content
+ * change but always a caret reset: mid-typing, the auto-save round-trip
+ * dropped the caret to the document end and swallowed everything typed
+ * between the save and the echo. Skip the rebuild when the incoming source
+ * is exactly what we emitted; a genuinely different source still applies.
+ */
+let lastEmitted: string | null = null;
+
 watch(
   () => props.source,
   (next, prev) => {
-    if (next === prev || !editor.value) return;
+    if (next === prev || next === lastEmitted || !editor.value) return;
+    // A real external change supersedes what we emitted — keep the guard
+    // from muting a later push that happens to carry that older text.
+    lastEmitted = null;
     cancelAutoSave();
     const parsed = parseDocument(next ?? '');
     editor.value.commands.setContent(
-      { type: 'doc', content: blocksToContent(parsed.blocks) },
+      { type: 'doc', content: docBlocks(parsed.blocks) },
       { emitUpdate: false },
     );
     currentHeader.value = {
@@ -609,6 +643,7 @@ function save() {
         cover: currentHeader.value.cover,
         blocks,
       });
+  lastEmitted = md;
   emit('save', md);
   dirty.value = false;
   emit('dirty', false);
@@ -675,6 +710,28 @@ function flush(): boolean {
 }
 
 // ── Inline mark helpers (bubble-menu) ─────────────────────────────
+
+/**
+ * Whether the Bold/Italic/Code/Link bar may show.
+ *
+ * <p>A custom {@code shouldShow} REPLACES Tiptap's default predicate, and
+ * the default is what carried the "something is actually selected" test.
+ * Reporting only "the editor is editable" therefore parked the bar over the
+ * text from the first click onwards and never took it away — sitting on the
+ * line above the caret, which is exactly where the previous block's
+ * drag-handle lives. Marks apply to a range, so the bar belongs to a
+ * non-empty text selection: an image gets its own bar below, and a
+ * whitespace-only range has nothing to format. The focus test is the
+ * default's too: a selection left behind in an editor the user has since
+ * clicked away from must not keep a toolbar on screen.
+ */
+function shouldShowInlineBubble(): boolean {
+  const ed = editor.value;
+  if (!ed || !ed.isEditable || !ed.isFocused || props.suppressFloating) return false;
+  const { selection, doc } = ed.state;
+  if (selection.empty || isImageSelected()) return false;
+  return doc.textBetween(selection.from, selection.to, ' ', ' ').trim().length > 0;
+}
 
 // ── Image-width toolbar ───────────────────────────────────────────
 type ImageWidthPreset = 'small' | 'medium' | 'large' | 'full';
@@ -991,10 +1048,72 @@ function onDocKeydown(e: KeyboardEvent) {
  */
 let contentDom: HTMLElement | null = null;
 
+/**
+ * Re-host the drag-handle on the enclosing {@code <dialog>} and keep its
+ * hit area on the block it points at.
+ *
+ * <p>The handle is a {@code position: fixed} element that the extension
+ * appends next to the ProseMirror root and positions by writing VIEWPORT
+ * coordinates into its {@code left}/{@code top}. Those only land where
+ * they belong while no ancestor is a containing block for fixed
+ * positioning — and a DaisyUI modal is one: {@code .modal-box} carries
+ * {@code scale: 1}, visually a no-op but enough to re-root fixed
+ * descendants. Measured in the kanban card dialog: the handle appeared
+ * 144/147px off, the box's own offset, nowhere near a block and unusable.
+ * The enclosing {@code <dialog>} is viewport-sized and carries no such
+ * property (a fixed probe in it lands at 0/0), so hosting the handle there
+ * restores the frame — the same move {@link menuTarget} already makes for
+ * the block menu, and for the same reason.
+ *
+ * <p>The extension's own {@code mouseout} bookkeeping survives the move:
+ * it listens on the editor's parent and explicitly exempts a
+ * {@code relatedTarget} carrying {@code .drag-handle}.
+ *
+ * <p>Done on pointer moves over the editor rather than at mount: at mount
+ * neither the handle nor the surrounding {@code <dialog>} is reliably in
+ * place yet (Tiptap relocates the ProseMirror DOM into
+ * {@code EditorContent}, and the extension appends the handle relative to
+ * whatever parent it had at view-construction time) — a mount-time attempt
+ * measurably found no dialog and left the handle where it was. The handle
+ * carries the extension's {@code hide} class until that very first move,
+ * so there is no earlier moment at which its placement is visible. Being
+ * idempotent, it also heals a re-created editor view (new handle element).
+ *
+ * <p>Second job, same event: keep the handle REACHABLE. The extension
+ * anchors it to the first line of the block, 20px tall — while the block it
+ * belongs to may be several lines high. Moving the pointer out of the text
+ * then passes below the handle, the extension reads that as "left the
+ * editor" and hides it, and since the pointer is now outside ProseMirror no
+ * further mousemove brings it back: the handle vanishes on the way to it.
+ * Stretch its (invisible) hit area down to the block's bottom edge, so the
+ * whole gutter beside a block leads to that block's handle.
+ */
+function trackDragHandle(dom: HTMLElement, e: MouseEvent): void {
+  const handle =
+    dom.parentElement?.querySelector<HTMLElement>(':scope > [data-drag-handle]')
+    ?? dom.closest('dialog')?.querySelector<HTMLElement>(':scope > [data-drag-handle]')
+    ?? null;
+  if (!handle) return; // extension has not created it yet — retry next move
+  const dialog = dom.closest('dialog');
+  if (dialog && handle.parentElement !== dialog) dialog.appendChild(handle);
+
+  if (handle.classList.contains('hide')) return;
+  const block = (document.elementsFromPoint(e.clientX, e.clientY) as HTMLElement[])
+    .find((el) => el.parentElement === dom);
+  const extend = block
+    ? block.getBoundingClientRect().bottom - handle.getBoundingClientRect().bottom
+    : 0;
+  handle.style.setProperty('--vance-handle-extend', `${Math.max(0, Math.round(extend))}px`);
+}
+
+let onEditorMouseMove: ((e: MouseEvent) => void) | null = null;
+
 onMounted(() => {
   const dom = editor.value?.view.dom as HTMLElement | undefined;
   if (!dom) return;
   contentDom = dom;
+  onEditorMouseMove = (e: MouseEvent) => trackDragHandle(dom, e);
+  dom.addEventListener('mousemove', onEditorMouseMove);
   dom.addEventListener('dragover', onCaptureDragOver, { capture: true });
   dom.addEventListener('drop', onCaptureDrop, { capture: true });
   dom.addEventListener('click', onLinkClickCapture, { capture: true });
@@ -1022,6 +1141,10 @@ onBeforeUnmount(() => {
     dom.removeEventListener('vance:open-embed-picker', onEmbedPickerEvent);
     dom.removeEventListener('vance:open-form-picker', onFormPickerEvent);
     dom.removeEventListener('vance:open-input-picker', onOpenInputPicker);
+    if (onEditorMouseMove) {
+      dom.removeEventListener('mousemove', onEditorMouseMove);
+      onEditorMouseMove = null;
+    }
     contentDom = null;
   }
   document.removeEventListener('dragstart', onGlobalDragStart, true);
@@ -1145,7 +1268,7 @@ defineExpose({
       v-if="editor"
       :editor="editor"
       :options="{ placement: 'top' }"
-      :should-show="() => editor?.isEditable === true && !suppressFloating"
+      :should-show="shouldShowInlineBubble"
       class="canvas-editor__bubble-menu"
     >
       <button
@@ -1433,12 +1556,17 @@ defineExpose({
   background: rgba(255, 255, 255, 0.25);
 }
 
-/* Global drag handle — small grey ⠿ icon left of the hovered block. */
+/* Global drag handle — small grey ⠿ icon left of the hovered block.
+   Width MUST match the extension's `dragHandleWidth` (20px): it positions
+   the handle at `blockLeft - dragHandleWidth`, so anything narrower leaves
+   a dead band between text edge and handle — and a pointer landing in that
+   band counts as "left the editor" and hides the handle before it can be
+   grabbed (measured: 4px at 1rem). The icon stays 1rem via background-size. */
 .drag-handle {
   position: fixed;
   opacity: 0;
   transition: opacity 0.15s ease;
-  width: 1rem;
+  width: 1.25rem;
   height: 1.25rem;
   z-index: 50;
   cursor: grab;
@@ -1448,8 +1576,25 @@ defineExpose({
   background-size: contain;
 }
 .drag-handle.hide { display: none; }
-.canvas-editor:hover .drag-handle:not(.hide) { opacity: 1; }
+/* Visibility rides on the extension's own `hide` class, NOT on an
+   ancestor `:hover` — inside a modal the handle is re-hosted on the
+   enclosing <dialog> (see rehostDragHandle) and would never match
+   `.canvas-editor:hover` again. The extension hides the handle when the
+   pointer leaves the editor, which is the same signal. */
+.drag-handle:not(.hide) { opacity: 1; }
 .drag-handle:active { cursor: grabbing; }
+/* Invisible downward extension of the hit area, sized per block by
+   trackDragHandle(). A pseudo-element hit-tests as its host, so the
+   extension's `relatedTarget` check still recognises the handle and keeps
+   it visible while the pointer travels the gutter towards it. */
+.drag-handle::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: var(--vance-handle-extend, 0px);
+}
 
 .block-handle-menu {
   position: fixed;

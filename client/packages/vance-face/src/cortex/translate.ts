@@ -8,6 +8,13 @@
  * carries the parts a prompt cannot decide: which documents may be offered,
  * what the result file is called, and when the answer is not to be trusted.
  *
+ * <p><b>Two gates, not one</b>, because the two modes risk different things.
+ * Translating a whole document *writes a file*, so it is offered for prose
+ * only ({@link isTranslatableDocument}). Translating a selection writes
+ * nothing — the result lands in a dialog — so it is offered wherever text can
+ * be marked at all ({@link canTranslateSelection}), including YAML, JSON and
+ * source code.
+ *
  * <p><b>The limit worth knowing about.</b> One call translates as much as the
  * model is willing to emit, and a model that stops early stops silently — the
  * reply simply ends, and a document written from it looks complete. Two
@@ -18,6 +25,7 @@
  */
 
 import { brainFetch } from '@vance/shared';
+import { isBinaryDoc } from './stores/cortexStore';
 
 /**
  * Longest source text accepted for one call, in characters.
@@ -69,13 +77,14 @@ export const TRANSLATE_LANGUAGES: readonly string[] = [
 ];
 
 /**
- * Whether the "Translate…" entries may be offered for a document.
+ * Whether the **whole document** may be translated into a new one.
  *
- * Narrow on purpose. The gate is prose-or-not, not text-or-binary: a `.yaml`
- * config and a `list` document are both text and neither survives being
- * rewritten in another language.
+ * Narrow on purpose, and narrower than "is this text": a `.yaml` config, a
+ * `.py` script and a `list` document are all text, and none of them survives
+ * being rewritten in another language — the result would be a file its own
+ * parser, interpreter or codec can no longer read.
  */
-export function isTranslatableDoc(doc: {
+export function isTranslatableDocument(doc: {
   mimeType?: string | null;
   path: string;
   kind?: string | null;
@@ -86,6 +95,28 @@ export function isTranslatableDoc(doc: {
   if (mime) return PROSE_MIMES.some((m) => mime === m || mime.startsWith(`${m};`));
   const path = doc.path.toLowerCase();
   return PROSE_EXTS.some((ext) => path.endsWith(ext));
+}
+
+/**
+ * Whether a **selection** inside this document may be translated.
+ *
+ * Wider, and for a reason that is not laxness: translating a selection writes
+ * nothing. The result goes into a dialog with a copy button, so the question
+ * is only whether there is text to mark — a comment in a `.py` file, a
+ * `description:` in a YAML config, a string literal in JSON. The narrow rule
+ * above exists to protect a *file* being rewritten; there is no file here to
+ * protect.
+ *
+ * <p>The gate is therefore the same one that decides whether the code editor
+ * shows the document at all: anything not binary. A document with no text
+ * surface (a rendered table, a canvas) simply never produces a selection, so
+ * the entry stays disabled without needing to be excluded by name.
+ */
+export function canTranslateSelection(doc: {
+  mimeType?: string | null;
+  path: string;
+}): boolean {
+  return !isBinaryDoc(doc);
 }
 
 /**

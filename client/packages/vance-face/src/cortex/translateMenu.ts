@@ -2,6 +2,11 @@
  * The Cortex's own contributions to the Extras menu: translate a document,
  * translate the marked passage.
  *
+ * <p>The two have deliberately different reach. "Translate…" writes a new
+ * file and is therefore offered for prose only; "Translate selection…" writes
+ * nothing — the result goes to a dialog and a clipboard — so it is offered for
+ * every document with text in it, source code and configs included.
+ *
  * <p>These go through {@link registerCortexMenuItem} like an addon's would,
  * rather than into the template beside Save and Share. That is deliberate: an
  * extension point whose only users are external is one nobody has run, and
@@ -15,7 +20,7 @@
  */
 
 import { registerCortexMenuItem, type CortexMenuContext } from '@/platform/cortexMenu';
-import { isTranslatableDoc } from './translate';
+import { canTranslateSelection, isTranslatableDocument } from './translate';
 
 /** What the Cortex hands the entries so they can reach its dialog. */
 export interface TranslateMenuHost {
@@ -40,10 +45,10 @@ export function registerTranslateMenuItems(host: TranslateMenuHost): void {
     slot: 'extras',
     sortIndex: 10,
     label: () => host.t('cortex.translate.menuDocument'),
-    // Hidden rather than disabled for a spreadsheet or a canvas: those are not
-    // documents somebody would expect to translate, so an entry greyed out on
-    // every second file is noise.
-    visible: (ctx) => ctx.document !== null && isTranslatableDoc(ctx.document),
+    // Hidden rather than disabled for a config, a script or a spreadsheet:
+    // this entry writes a file, and a translated YAML is a broken YAML. An
+    // entry greyed out on every second document would be noise.
+    visible: (ctx) => ctx.document !== null && isTranslatableDocument(ctx.document),
     run: () => host.open('document'),
   });
 
@@ -52,9 +57,11 @@ export function registerTranslateMenuItems(host: TranslateMenuHost): void {
     slot: 'extras',
     sortIndex: 11,
     label: () => host.t('cortex.translate.menuSelection'),
-    // Visible without a selection, only disabled: the entry is how a reader
-    // learns that marking a passage first is what it wants.
-    visible: (ctx) => ctx.document !== null && isTranslatableDoc(ctx.document),
+    // Wider than the entry above: nothing is written, so a comment in a
+    // script or a `description:` in a config is fair game. Visible without a
+    // selection and only disabled — the entry is how a reader learns that
+    // marking a passage first is what it wants.
+    visible: (ctx) => ctx.document !== null && canTranslateSelection(ctx.document),
     enabled: hasUsableSelection,
     run: () => host.open('selection'),
   });

@@ -26,7 +26,7 @@ class GtdBucketOrderTest {
         DocumentDocument doc = new DocumentDocument();
         doc.setId(id);
         doc.setPath("gtd/life/actions/" + id + ".md");
-        return new GtdAction(doc, "actions/" + id + ".md", false, null,
+        return new GtdAction(doc, "actions/" + id + ".md", false, false, null,
                 title, when, null, List.of(), false);
     }
 

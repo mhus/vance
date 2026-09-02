@@ -29,7 +29,7 @@ class GtdServiceRefileTest {
 
     @Test
     void projectDir_honoursConfiguredDirectoryNames() {
-        GtdConfig config = new GtdConfig(null, null, "in", "next", "areas", java.util.List.of(), new java.util.EnumMap<>(GtdBucket.class));
+        GtdConfig config = new GtdConfig(null, null, "in", "next", "areas", "bin", java.util.List.of(), new java.util.EnumMap<>(GtdBucket.class));
         assertThat(GtdService.projectDir(config, "Q3")).isEqualTo("areas/q3");
         assertThat(GtdService.projectDir(config, "")).isEqualTo("next");
     }

@@ -13,12 +13,14 @@ import org.jspecify.annotations.Nullable;
  * @param doc          the backing {@code kind: action} document
  * @param relativePath path relative to the suite root
  * @param inInbox      the action sits under {@code inbox/} (unprocessed)
+ * @param inTrash      the action sits under {@code trash/} (put away)
  * @param project      project name when under {@code projects/<name>/}, else null
  */
 public record GtdAction(
         DocumentDocument doc,
         String relativePath,
         boolean inInbox,
+        boolean inTrash,
         @Nullable String project,
         String title,
         String when,

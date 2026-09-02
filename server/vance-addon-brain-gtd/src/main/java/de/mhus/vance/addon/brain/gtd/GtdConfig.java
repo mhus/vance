@@ -24,6 +24,7 @@ public record GtdConfig(
         String inboxDir,
         String actionsDir,
         String projectsDir,
+        String trashDir,
         List<String> suggestedContexts,
         Map<GtdBucket, List<String>> bucketOrder) {
 
@@ -31,6 +32,7 @@ public record GtdConfig(
     public static final String DEFAULT_INBOX_DIR = "inbox";
     public static final String DEFAULT_ACTIONS_DIR = "actions";
     public static final String DEFAULT_PROJECTS_DIR = "projects";
+    public static final String DEFAULT_TRASH_DIR = "trash";
 
     public static GtdConfig parse(String manifestBody) {
         String yamlPart = manifestBody;
@@ -46,8 +48,8 @@ public record GtdConfig(
         Object gtdRaw = root.get("gtd");
         if (!(gtdRaw instanceof Map<?, ?> gm)) {
             return new GtdConfig(topTitle, topDesc, DEFAULT_INBOX_DIR,
-                    DEFAULT_ACTIONS_DIR, DEFAULT_PROJECTS_DIR, new ArrayList<>(),
-                    new EnumMap<>(GtdBucket.class));
+                    DEFAULT_ACTIONS_DIR, DEFAULT_PROJECTS_DIR, DEFAULT_TRASH_DIR,
+                    new ArrayList<>(), new EnumMap<>(GtdBucket.class));
         }
         @SuppressWarnings("unchecked") Map<String, Object> gmM = (Map<String, Object>) gm;
         return new GtdConfig(
@@ -55,14 +57,15 @@ public record GtdConfig(
                 strOr(gmM, "inboxDir", DEFAULT_INBOX_DIR),
                 strOr(gmM, "actionsDir", DEFAULT_ACTIONS_DIR),
                 strOr(gmM, "projectsDir", DEFAULT_PROJECTS_DIR),
+                strOr(gmM, "trashDir", DEFAULT_TRASH_DIR),
                 strList(gmM.get("contexts")),
                 readBucketOrder(gmM));
     }
 
     public static GtdConfig defaults() {
         return new GtdConfig(null, null, DEFAULT_INBOX_DIR,
-                DEFAULT_ACTIONS_DIR, DEFAULT_PROJECTS_DIR, new ArrayList<>(),
-                new EnumMap<>(GtdBucket.class));
+                DEFAULT_ACTIONS_DIR, DEFAULT_PROJECTS_DIR, DEFAULT_TRASH_DIR,
+                new ArrayList<>(), new EnumMap<>(GtdBucket.class));
     }
 
     private static @Nullable String str(Map<String, Object> m, String key) {

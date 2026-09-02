@@ -127,13 +127,31 @@ public class GtdService {
         return writeExisting(doc, merged);
     }
 
-    // ── Move (bucket = set when; Inbox transition relocates) ──────
+    // ── Move (bucket = set when; Inbox/Trash transitions relocate) ─
+
+    /**
+     * Front-matter key remembering the folder an action was in before it was
+     * put in the trash, so restoring it puts it back where it came from —
+     * including a {@code projects/<slug>/} membership, which the trash folder
+     * would otherwise silently drop.
+     *
+     * <p>Set on every move <i>into</i> the trash and removed on every move out
+     * of it, so it can never be read stale. An action trashed straight out of
+     * the inbox gets no key: restoring it means processing it, and a processed
+     * action belongs in {@code actions/} — the same thing a bucket move out of
+     * the inbox does.
+     */
+    public static final String TRASHED_FROM = "trashedFrom";
 
     /**
      * Move an action to {@code bucket}. Sets the {@code when} attribute
-     * (Today/Anytime/Someday/Upcoming); the Inbox transition also relocates
-     * the file between {@code inbox/} and {@code actions/}. {@code date} is
-     * required for {@link GtdBucket#UPCOMING}.
+     * (Today/Anytime/Someday/Upcoming); the Inbox and Trash transitions also
+     * relocate the file between {@code inbox/} / {@code trash/} and the
+     * working folders. {@code date} is required for {@link GtdBucket#UPCOMING}.
+     *
+     * <p>{@link GtdBucket#TRASH} is the one target that leaves {@code when}
+     * alone: putting something away must not also rewrite when it was due, or
+     * dragging it back out would land it somewhere it never was.
      */
     public DocumentDocument move(String tenantId, String projectId, String folder,
                                  GtdConfig config, String path, GtdBucket bucket,
@@ -143,31 +161,43 @@ public class GtdService {
                 .orElseThrow(() -> new ToolException("No action at '" + path + "'"));
         GtdActionDocument base = readAction(doc);
         boolean inInbox = path.startsWith(normFolder + "/" + config.inboxDir() + "/");
+        boolean inTrash = path.startsWith(normFolder + "/" + config.trashDir() + "/");
         String leaf = path.substring(path.lastIndexOf('/') + 1);
+        Map<String, Object> extra = new LinkedHashMap<>(base.extra());
 
         String newWhen = base.when();
         String newPath = null;
         switch (bucket) {
+            case TRASH -> {
+                if (!inTrash) {
+                    String from = currentDir(normFolder, path);
+                    if (from.isBlank() || from.equals(config.inboxDir())) extra.remove(TRASHED_FROM);
+                    else extra.put(TRASHED_FROM, from);
+                    newPath = uniquePath(tenantId, projectId,
+                            stripExt(normFolder + "/" + config.trashDir() + "/" + leaf));
+                }
+            }
             case INBOX -> {
                 if (!inInbox) {
+                    extra.remove(TRASHED_FROM);
                     newPath = uniquePath(tenantId, projectId,
                             stripExt(normFolder + "/" + config.inboxDir() + "/" + leaf));
                 }
             }
-            case TODAY -> { newWhen = GtdBucketResolver.WHEN_TODAY; newPath = outOfInbox(tenantId, projectId, normFolder, config, inInbox, leaf); }
-            case ANYTIME -> { newWhen = ""; newPath = outOfInbox(tenantId, projectId, normFolder, config, inInbox, leaf); }
-            case SOMEDAY -> { newWhen = GtdBucketResolver.WHEN_SOMEDAY; newPath = outOfInbox(tenantId, projectId, normFolder, config, inInbox, leaf); }
+            case TODAY -> { newWhen = GtdBucketResolver.WHEN_TODAY; newPath = outOfHolding(tenantId, projectId, normFolder, config, inInbox, inTrash, extra, leaf); }
+            case ANYTIME -> { newWhen = ""; newPath = outOfHolding(tenantId, projectId, normFolder, config, inInbox, inTrash, extra, leaf); }
+            case SOMEDAY -> { newWhen = GtdBucketResolver.WHEN_SOMEDAY; newPath = outOfHolding(tenantId, projectId, normFolder, config, inInbox, inTrash, extra, leaf); }
             case UPCOMING -> {
                 if (date == null || date.isBlank()) {
                     throw new ToolException("Upcoming requires a date (yyyy-MM-dd)");
                 }
                 newWhen = date.trim();
-                newPath = outOfInbox(tenantId, projectId, normFolder, config, inInbox, leaf);
+                newPath = outOfHolding(tenantId, projectId, normFolder, config, inInbox, inTrash, extra, leaf);
             }
         }
         GtdActionDocument merged = new GtdActionDocument(
                 GtdActionDocument.KIND, base.title(), newWhen, base.deadline(),
-                base.contexts(), base.done(), base.body(), base.extra());
+                base.contexts(), base.done(), base.body(), extra);
         String serialized = GtdActionCodec.serialize(merged, MD_MIME);
         DocumentDocument updated = documentService.update(
                 doc.getId(), base.title(), nativeTags(merged),
@@ -230,29 +260,119 @@ public class GtdService {
         return slash < 0 ? "" : rel.substring(0, slash);
     }
 
-    /** When leaving the Inbox, relocate into {@code actions/}; else stay in place. */
-    private @Nullable String outOfInbox(String tenantId, String projectId, String normFolder,
-                                        GtdConfig config, boolean inInbox, String leaf) {
-        if (!inInbox) return null;
+    /**
+     * Leaving one of the two holding folders — {@code inbox/} (unprocessed) or
+     * {@code trash/} (put away) — relocates the file into a working folder;
+     * an action already in one stays where it is.
+     *
+     * <p>Out of the inbox that folder is {@code actions/}. Out of the trash it
+     * is whatever {@link #TRASHED_FROM} remembers, which is how a project
+     * membership survives a round trip through the bin. The remembered value
+     * is checked before it is used: it is written by us, but it lives in a
+     * hand-editable front matter, and "restore" must not be a way to write
+     * outside the GTD folder.
+     */
+    private @Nullable String outOfHolding(String tenantId, String projectId, String normFolder,
+                                          GtdConfig config, boolean inInbox, boolean inTrash,
+                                          Map<String, Object> extra, String leaf) {
+        if (!inInbox && !inTrash) return null;
+        String dir = config.actionsDir();
+        if (inTrash) {
+            Object from = extra.remove(TRASHED_FROM);
+            String candidate = from == null ? "" : from.toString().trim();
+            if (isSafeRelativeDir(candidate)) dir = candidate;
+        }
         return uniquePath(tenantId, projectId,
-                stripExt(normFolder + "/" + config.actionsDir() + "/" + leaf));
+                stripExt(normFolder + "/" + dir + "/" + leaf));
     }
 
-    public void trash(String tenantId, String projectId, String path, @Nullable String userId) {
-        documentService.findByPath(tenantId, projectId, path)
-                .ifPresent(d -> documentService.trash(d.getId(),
-                        contextFactory.writeActor(tenantId, userId, d.getPath())));
+    /** A folder we are willing to restore into: relative, inside the root, no traversal. */
+    private static boolean isSafeRelativeDir(String dir) {
+        if (dir.isBlank() || dir.startsWith("/")) return false;
+        for (String segment : dir.split("/")) {
+            if (segment.isBlank() || segment.equals(".") || segment.equals("..")) return false;
+        }
+        return true;
+    }
+
+    /** What {@link #deleteAction} did — the caller reports it, it does not decide it. */
+    public enum DeleteOutcome { TRASHED, PURGED, MISSING }
+
+    /**
+     * The delete key, and it means two different things depending on where the
+     * action is. Outside the trash it <b>moves the action into it</b>: the
+     * whole point of having a visible bin is that the destructive step is the
+     * second one, taken deliberately, in a place the person can look at first.
+     * Inside the trash it hands the document to the project-wide soft delete —
+     * gone from the app, recoverable only with the document tools.
+     */
+    public DeleteOutcome deleteAction(String tenantId, String projectId, String folder,
+                                      GtdConfig config, String path, @Nullable String userId) {
+        String normFolder = normalise(folder);
+        Optional<DocumentDocument> found = documentService.findByPath(tenantId, projectId, path);
+        if (found.isEmpty()) return DeleteOutcome.MISSING;
+        DocumentDocument doc = found.get();
+        if (path.startsWith(normFolder + "/" + config.trashDir() + "/")) {
+            documentService.trash(doc.getId(),
+                    contextFactory.writeActor(tenantId, userId, doc.getPath()));
+            log.info("GtdService.deleteAction purged path='{}'", path);
+            return DeleteOutcome.PURGED;
+        }
+        move(tenantId, projectId, normFolder, config, path, GtdBucket.TRASH, null, userId);
+        return DeleteOutcome.TRASHED;
+    }
+
+    /**
+     * Sweep every completed action that is not already in the bin into
+     * {@code trash/} — the tidy-up step, run from {@code refresh()}.
+     *
+     * <p>Ticking a box does not move anything (that would make a line vanish
+     * from under the cursor); the list is cleared in one deliberate act
+     * instead, and the result is reviewable rather than gone. A single failing
+     * action does not abort the sweep: a rebuild that stops halfway is worse
+     * than one that leaves one item behind and says so.
+     *
+     * @return how many actions were moved.
+     */
+    public int sweepDoneToTrash(String tenantId, String projectId, String folder,
+                                GtdConfig config, GtdFolderReader.Scan scan,
+                                @Nullable String userId) {
+        int moved = 0;
+        for (GtdAction a : scan.actions()) {
+            if (!a.done() || a.inTrash()) continue;
+            try {
+                move(tenantId, projectId, folder, config, a.doc().getPath(),
+                        GtdBucket.TRASH, null, userId);
+                moved++;
+            } catch (RuntimeException e) {
+                log.warn("GtdService.sweepDoneToTrash could not move '{}': {}",
+                        a.doc().getPath(), e.getMessage());
+            }
+        }
+        if (moved > 0) {
+            log.info("GtdService.sweepDoneToTrash tenant='{}' folder='{}' moved={}",
+                    tenantId, folder, moved);
+        }
+        return moved;
     }
 
     // ── Bucket computation ────────────────────────────────────────
 
-    /** Group non-done actions into their derived buckets for {@code today}. */
+    /**
+     * Group actions into their derived buckets for {@code today}.
+     *
+     * <p>Completed actions are <b>included</b>, in the bucket they were
+     * completed in. Dropping them here is what made ticking a box look like a
+     * delete: the line disappeared, and nothing on screen said where it went.
+     * They leave the work list at {@code refresh()}, which sweeps them into
+     * {@link GtdBucket#TRASH} in one visible step.
+     */
     public Map<GtdBucket, List<GtdAction>> computeBuckets(GtdFolderReader.Scan scan, LocalDate today) {
         Map<GtdBucket, List<GtdAction>> map = new LinkedHashMap<>();
         for (GtdBucket b : GtdBucket.values()) map.put(b, new ArrayList<>());
         for (GtdAction a : scan.actions()) {
-            if (a.done()) continue;
-            GtdBucket bucket = bucketResolver.bucketOf(a.inInbox(), a.when(), a.deadline(), today);
+            GtdBucket bucket = bucketResolver.bucketOf(
+                    a.inInbox(), a.inTrash(), a.when(), a.deadline(), today);
             map.get(bucket).add(a);
         }
         return map;
@@ -363,7 +483,7 @@ public class GtdService {
     public List<GtdAction> overdue(GtdFolderReader.Scan scan, LocalDate today) {
         List<GtdAction> out = new ArrayList<>();
         for (GtdAction a : scan.actions()) {
-            if (a.done() || a.inInbox()) continue;
+            if (a.done() || a.inInbox() || a.inTrash()) continue;
             if (bucketResolver.isOverdue(a.when(), a.deadline(), today)) out.add(a);
         }
         return out;

@@ -77,9 +77,9 @@ class GtdManifestOpsTest {
     private void givenScan(String body) {
         DocumentDocument manifest = manifestDoc(body);
         List<GtdAction> actions = List.of(
-                new GtdAction(action("a", "Ask boss", false), "next/a.md", false, null,
+                new GtdAction(action("a", "Ask boss", false), "next/a.md", false, false, null,
                         "Ask boss", "today", null, List.of(), false),
-                new GtdAction(action("b", "Buy milk", false), "next/b.md", false, null,
+                new GtdAction(action("b", "Buy milk", false), "next/b.md", false, false, null,
                         "Buy milk", "today", null, List.of(), false));
         when(folderReader.scan("acme", "proj", "gtd/life"))
                 .thenReturn(new GtdFolderReader.Scan(

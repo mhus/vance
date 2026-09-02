@@ -92,11 +92,18 @@ export async function moveGtdActionToProject(
   );
 }
 
+/**
+ * Delete an action — which the server reads as "move it to the trash bucket"
+ * everywhere except inside the trash, where it is the project-wide soft delete.
+ * The client does not choose: it says which action, the folder decides which
+ * of the two happens.
+ */
 export async function deleteGtdAction(
   projectId: string,
+  folder: string,
   path: string,
 ): Promise<void> {
-  await brainFetch<unknown>('DELETE', `addon/gtd/action?${qs({ projectId, path })}`);
+  await brainFetch<unknown>('DELETE', `addon/gtd/action?${qs({ projectId, folder, path })}`);
 }
 
 export async function searchGtd(

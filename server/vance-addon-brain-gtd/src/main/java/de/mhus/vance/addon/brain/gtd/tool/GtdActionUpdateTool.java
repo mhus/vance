@@ -1,5 +1,6 @@
 package de.mhus.vance.addon.brain.gtd.tool;
 
+import de.mhus.vance.addon.brain.gtd.GtdBucket;
 import de.mhus.vance.addon.brain.gtd.GtdConfig;
 import de.mhus.vance.addon.brain.gtd.GtdService;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
@@ -35,6 +36,13 @@ public class GtdActionUpdateTool implements Tool {
                 put("path", Map.of("type", "string", "description", "Full document path of the action."));
                 put("when", Map.of("type", "string",
                         "description", "'' (Anytime) | today | someday | ISO date. Sets the bucket."));
+                put("bucket", Map.of("type", "string",
+                        "description", "inbox | trash | today | anytime | someday. The only way "
+                                + "to reach the two folder buckets: inbox (unprocessed) and "
+                                + "trash (put away). Mutually exclusive with `when` — pass one "
+                                + "or the other; for Upcoming pass when=<yyyy-MM-dd>. `trash` "
+                                + "leaves `when` alone and remembers the folder, so moving the "
+                                + "action back out restores it there."));
                 put("deadline", Map.of("type", "string"));
                 put("contexts", Map.of("type", "array", "items", Map.of("type", "string")));
                 put("done", Map.of("type", "boolean"));
@@ -61,10 +69,13 @@ public class GtdActionUpdateTool implements Tool {
     public String description() {
         return "Update a GTD action in place. Change its bucket by setting `when` "
                 + "('' = Anytime, today, someday, or an ISO date). Mark it complete with "
-                + "done=true. Also edits contexts, deadline, title, body. Set `project` to "
-                + "re-file it into projects/<name>/ (\"\" moves it back out into actions/) — "
-                + "that relocates the file and leaves the bucket alone. Run app_rebuild "
-                + "afterwards to refresh the views.";
+                + "done=true — that only sets the flag: the action stays in its bucket until "
+                + "app_rebuild sweeps every completed action into the trash. Use `bucket` for "
+                + "the two buckets that are folders (inbox, trash); moving an action out of "
+                + "the trash restores the folder it came from. Also edits contexts, deadline, "
+                + "title, body. Set `project` to re-file it into projects/<name>/ (\"\" moves it "
+                + "back out into actions/) — that relocates the file and leaves the bucket "
+                + "alone. Run app_rebuild afterwards to refresh the views.";
     }
 
     @Override public boolean primary() { return false; }
@@ -75,11 +86,29 @@ public class GtdActionUpdateTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String path = paramString(params, "path");
         if (path == null) throw new ToolException("path is required");
+        String bucketName = paramString(params, "bucket");
+        if (bucketName != null && paramString(params, "when") != null) {
+            throw new ToolException("Pass either `when` or `bucket`, not both — "
+                    + "both decide the bucket, and there is no rule for which wins.");
+        }
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
         DocumentDocument doc = gtdService.updateAction(ctx.tenantId(), project.getName(), path,
                 paramString(params, "when"), paramString(params, "deadline"),
                 paramStringList(params, "contexts"), paramBoolean(params, "done"),
                 paramString(params, "title"), paramString(params, "body"));
+        if (bucketName != null) {
+            GtdBucket bucket = GtdBucket.fromWire(bucketName);
+            if (bucket == null || bucket == GtdBucket.UPCOMING) {
+                throw new ToolException("Unknown bucket '" + bucketName
+                        + "' — use inbox | trash | today | anytime | someday, "
+                        + "or when=<yyyy-MM-dd> for Upcoming.");
+            }
+            String folder = paramString(params, "folder");
+            if (folder == null) throw new ToolException("folder is required");
+            GtdConfig config = gtdService.scan(ctx.tenantId(), project.getName(), folder).config();
+            doc = gtdService.move(ctx.tenantId(), project.getName(), folder, config,
+                    doc.getPath(), bucket, null, ctx.userId());
+        }
         // Re-filing is a relocation, not a field patch — and here absent has to
         // mean something different from empty: omitting `project` leaves the
         // action's folder alone, "" files it back out into actions/.

@@ -56,10 +56,11 @@ const error = ref<string | null>(null);
 const loading = ref(false);
 const rebuilding = ref(false);
 
-const BUCKETS = ['inbox', 'today', 'upcoming', 'anytime', 'someday'] as const;
+const BUCKETS = ['inbox', 'today', 'upcoming', 'anytime', 'someday', 'trash'] as const;
 type BucketId = (typeof BUCKETS)[number];
 const BUCKET_LABEL: Record<BucketId, string> = {
-  inbox: 'Inbox', today: 'Today', upcoming: 'Upcoming', anytime: 'Anytime', someday: 'Someday',
+  inbox: 'Inbox', today: 'Today', upcoming: 'Upcoming', anytime: 'Anytime',
+  someday: 'Someday', trash: 'Trash',
 };
 
 const selectedBucket = ref<BucketId>('today');
@@ -131,7 +132,12 @@ const allActions = computed<GtdActionView[]>(() =>
 const displayedActions = computed<GtdActionView[]>(() => {
   let list: GtdActionView[];
   if (selectedProject.value) {
-    list = allActions.value.filter((a) => a.project === selectedProject.value);
+    // Across all buckets — except the bin. A project view answers "what is
+    // left on this project"; what somebody threw away is reachable under
+    // Trash, and only there.
+    list = allActions.value.filter(
+      (a) => a.project === selectedProject.value && a.bucket !== 'trash',
+    );
   } else {
     list = bucketActions(selectedBucket.value);
   }
@@ -225,6 +231,12 @@ function onContextsChange(): void { void patchField({ contexts: parseCtx(context
 function onBodySave(body: string): void { currentBody.value = body; void patchField({ body }); }
 function onBodyDirty(dirty: boolean): void { if (dirty) saveStatus.value = 'saving'; }
 
+/**
+ * Tick the box — and nothing else. The action keeps its bucket and its place
+ * in the list, struck through; the list is cleared by Rebuild, which sweeps
+ * every completed action into Trash. Making the row disappear here is what
+ * made completing look like deleting.
+ */
 async function toggleDone(a: GtdActionView): Promise<void> {
   markSelfWrite(a.path);
   try {
@@ -236,6 +248,12 @@ async function toggleDone(a: GtdActionView): Promise<void> {
     await loadScan();
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Update failed.';
+  } finally {
+    // Back to the capture field — ticking a box is the end of a thought, and
+    // the next one is usually typed. Also in the failure case: the focus does
+    // not belong on a checkbox either way.
+    await nextTick();
+    focusCapture();
   }
 }
 
@@ -271,7 +289,10 @@ async function moveTo(bucket: BucketId): Promise<void> {
   const path = selectedPath.value;
   if (!path) return;
   await moveActionTo(path, bucket, deadlineDraft.value || '');
-  if (bucket !== 'inbox') selectBucket(bucket);
+  // Following the action into its new bucket is the point — except for the two
+  // "put it away" targets, where the person is filing something out of the way
+  // and does not want the list to follow it there.
+  if (bucket !== 'inbox' && bucket !== 'trash') selectBucket(bucket);
 }
 
 /**
@@ -335,12 +356,23 @@ async function onProjectChange(): Promise<void> {
   await refileAction(path, target === '' ? null : target);
 }
 
+/**
+ * Delete key, two meanings — and the one that applies is the one the person
+ * can see: outside the bin it files the action into Trash, inside it the
+ * action goes for good. Only the second asks, because only the second cannot
+ * be undone by dragging the row back out.
+ */
+const selectedIsInTrash = computed(() => currentBucketOf() === 'trash');
+
 async function removeAction(): Promise<void> {
   const path = selectedPath.value;
   if (!path) return;
-  if (!window.confirm('Delete this action?')) return;
+  if (selectedIsInTrash.value
+      && !window.confirm('Delete this action for good? This cannot be undone here.')) {
+    return;
+  }
   try {
-    await deleteGtdAction(projectId.value, path);
+    await deleteGtdAction(projectId.value, folder.value, path);
     detail.value = null;
     selectedPath.value = null;
     await loadScan();
@@ -538,12 +570,27 @@ function focusCapture(): void {
   // element outside the capture form blocks the refocus.
   const active = document.activeElement as HTMLElement | null;
   if (active && active !== document.body && !captureRef.value?.contains(active)) {
-    const tag = active.tagName.toLowerCase();
-    const editing = tag === 'input' || tag === 'textarea' || tag === 'select'
-      || active.isContentEditable;
-    if (editing) return;
+    if (holdsACaret(active)) return;
   }
   captureInputRef.value?.focus();
+}
+
+/**
+ * Whether an element is somewhere text is being written — the only thing this
+ * view refuses to take focus away from.
+ *
+ * <p>A checkbox is an `<input>` and holds no caret: the done-tick in a row is
+ * the clearest case, and treating every `<input>` as an edit would leave the
+ * focus sitting on the box the person just clicked.
+ */
+function holdsACaret(el: HTMLElement): boolean {
+  if (el.isContentEditable) return true;
+  const tag = el.tagName.toLowerCase();
+  if (tag === 'textarea' || tag === 'select') return true;
+  if (tag !== 'input') return false;
+  const type = (el as HTMLInputElement).type;
+  return type !== 'checkbox' && type !== 'radio' && type !== 'button'
+    && type !== 'submit' && type !== 'reset';
 }
 
 async function submitCapture(): Promise<void> {
@@ -720,7 +767,12 @@ function isCurrentBucket(b: BucketId): boolean {
       </div>
       <span class="gtd__spacer" />
       <span v-if="saveStatusLabel" class="gtd__save" :class="`gtd__save--${saveStatus}`">{{ saveStatusLabel }}</span>
-      <button class="gtd__btn" :disabled="rebuilding" title="Rebuild views" @click="rebuild">
+      <button
+        class="gtd__btn"
+        :disabled="rebuilding"
+        title="Rebuild views — moves completed actions to Trash"
+        @click="rebuild"
+      >
         {{ rebuilding ? '…' : '↻' }}
       </button>
     </header>
@@ -812,7 +864,8 @@ function isCurrentBucket(b: BucketId): boolean {
             class="gtd__action"
             :class="{
               'gtd__action--sel': a.path === selectedPath,
-              'gtd__action--overdue': a.overdue,
+              'gtd__action--done': a.done,
+              'gtd__action--overdue': a.overdue && !a.done,
               'gtd__action--dragging': dragging?.path === a.path,
               'gtd__action--drop-before': rowDropTarget && rowDropTarget.actionId === a.id && rowDropTarget.position === 'before',
               'gtd__action--drop-after': rowDropTarget && rowDropTarget.actionId === a.id && rowDropTarget.position === 'after',
@@ -884,7 +937,9 @@ function isCurrentBucket(b: BucketId): boolean {
               <input type="checkbox" :checked="detail.done" @change="patchField({ done: !detail.done })" />
               Done
             </label>
-            <button class="gtd__btn gtd__btn--danger" @click="removeAction">🗑 Delete</button>
+            <button class="gtd__btn gtd__btn--danger" @click="removeAction">
+              {{ selectedIsInTrash ? '🗑 Delete for good' : '🗑 Move to Trash' }}
+            </button>
           </div>
 
           <div class="gtd__field gtd__field--grow">
@@ -1000,6 +1055,9 @@ function isCurrentBucket(b: BucketId): boolean {
 .gtd__action--sel { background: color-mix(in oklab, var(--color-primary) 12%, transparent); }
 .gtd__action--dragging { opacity: 0.45; }
 .gtd__action--overdue .gtd__action-title { color: #d33; }
+/* Completed stays on the list until Rebuild sweeps it into Trash — visibly
+   handled, not visibly gone. */
+.gtd__action--done .gtd__action-title { text-decoration: line-through; opacity: 0.5; }
 /* Drop-insertion indicator for intra-list reorder (§8b) — same shape as the
    workbook page-row indicator: a 2px primary bar above/below the row. */
 .gtd__action--drop-before::before,

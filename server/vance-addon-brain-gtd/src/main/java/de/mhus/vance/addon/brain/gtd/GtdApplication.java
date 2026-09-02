@@ -65,14 +65,19 @@ public class GtdApplication implements VanceApplication {
     @Override
     public String promptInject(PromptInjectContext ctx) {
         return "You are in a GTD workspace at `" + ctx.folder() + "` (Things-style). "
-                + "Actions are `kind: action` files. Their bucket — Inbox / Today / Upcoming / "
-                + "Anytime / Someday — is DERIVED from the `when` attribute (+ optional `deadline`) "
+                + "Actions are `kind: action` files. Their bucket — Today / Upcoming / Anytime / "
+                + "Someday — is DERIVED from the `when` attribute (+ optional `deadline`) "
                 + "and today's date, NOT from a folder. `when` is `` (Anytime), `today`, `someday`, "
-                + "or an ISO date (future=Upcoming, slides into Today on the day). "
+                + "or an ISO date (future=Upcoming, slides into Today on the day). The two "
+                + "exceptions are folders: `inbox/` (unprocessed) and `trash/` (put away). "
+                + "Completing an action (done=true) does NOT move or hide it — it stays in its "
+                + "bucket, struck through, until `app_rebuild` sweeps every completed action into "
+                + "`trash/`. Nothing in this app deletes an action outright. "
                 + "Capture quickly with `gtd_capture(folder=\"" + ctx.folder() + "\", title=...)` (→ Inbox); "
                 + "create a processed action with `gtd_action_create(...)`; change a bucket with "
                 + "`gtd_action_update(...)` setting `when` (do NOT try to move files between bucket "
-                + "folders — there are none). Search with `gtd_search`, list with `gtd_query`, and "
+                + "folders — there are none), or `bucket=\"trash\"` / `bucket=\"inbox\"` for the two "
+                + "that are folders. Search with `gtd_search`, list with `gtd_query`, and "
                 + "`app_rebuild('" + ctx.folder() + "')` regenerates _today/_upcoming/_stats. "
                 + "Read `manual_read('app-gtd')` and `manual_read('gtd-buckets')` for the model.";
     }
@@ -101,6 +106,7 @@ public class GtdApplication implements VanceApplication {
         mb.append("  inboxDir: ").append(GtdConfig.DEFAULT_INBOX_DIR).append('\n');
         mb.append("  actionsDir: ").append(GtdConfig.DEFAULT_ACTIONS_DIR).append('\n');
         mb.append("  projectsDir: ").append(GtdConfig.DEFAULT_PROJECTS_DIR).append('\n');
+        mb.append("  trashDir: ").append(GtdConfig.DEFAULT_TRASH_DIR).append('\n');
         mb.append("  contexts: [\"@calls\", \"@errands\", \"@home\", \"@office\", \"@computer\"]\n");
         appendKeptOrder(mb, existing);
         String manifestBody = mb.toString();
@@ -184,10 +190,25 @@ public class GtdApplication implements VanceApplication {
         return leafFolderName(folder);
     }
 
+    /**
+     * Regenerate the three artefacts — and, first, <b>tidy up</b>: every
+     * completed action that is not already in the bin moves into
+     * {@code trash/}.
+     *
+     * <p>That is the deliberate half of a two-step completion. Ticking a box
+     * only writes {@code done: true} and leaves the line where it is (see
+     * {@link GtdService#computeBuckets}); the list is cleared here, at a moment
+     * the person chose, and what was cleared is still there to look at. The
+     * scan is taken again afterwards so the artefacts describe the folder as it
+     * is now, not as it was before the sweep.
+     */
     @Override
     public RefreshResult refresh(RefreshContext ctx) {
         String folder = GtdFolderReader.normaliseFolder(ctx.folder());
         GtdFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), ctx.projectName(), folder);
+        int swept = gtdService.sweepDoneToTrash(ctx.tenantId(), ctx.projectName(), folder,
+                scan.config(), scan, ctx.userId());
+        if (swept > 0) scan = folderReader.scan(ctx.tenantId(), ctx.projectName(), folder);
         String title = scan.config().title();
         if (title == null || title.isBlank()) title = leafFolderName(folder);
 
@@ -216,8 +237,8 @@ public class GtdApplication implements VanceApplication {
                 "Stats — " + title, YAML_MIME, List.of("gtd", "generated", "stats"),
                 Map.of("totalOpen", stats.totalOpen(), "inbox", stats.bucketCounts().getOrDefault("inbox", 0))));
 
-        log.info("GtdApplication.refresh tenant='{}' folder='{}' open={} inbox={}",
-                ctx.tenantId(), folder, stats.totalOpen(), stats.bucketCounts().get("inbox"));
+        log.info("GtdApplication.refresh tenant='{}' folder='{}' open={} inbox={} swept={}",
+                ctx.tenantId(), folder, stats.totalOpen(), stats.bucketCounts().get("inbox"), swept);
         return new RefreshResult(APP_NAME, folder, artefacts);
     }
 

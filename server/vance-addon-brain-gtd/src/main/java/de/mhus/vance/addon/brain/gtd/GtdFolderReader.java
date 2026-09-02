@@ -51,6 +51,7 @@ public class GtdFolderReader {
 
         String prefix = normalized + "/";
         String inboxPrefix = prefix + config.inboxDir() + "/";
+        String trashPrefix = prefix + config.trashDir() + "/";
         String projectsPrefix = prefix + config.projectsDir() + "/";
 
         List<DocumentDocument> all = documentService.listByKind(
@@ -64,6 +65,7 @@ public class GtdFolderReader {
             String rel = path.substring(prefix.length());
 
             boolean inInbox = path.startsWith(inboxPrefix);
+            boolean inTrash = path.startsWith(trashPrefix);
             String project = null;
             if (path.startsWith(projectsPrefix)) {
                 String afterProjects = path.substring(projectsPrefix.length());
@@ -78,7 +80,7 @@ public class GtdFolderReader {
             String title = doc.getTitle() != null && !doc.getTitle().isBlank()
                     ? doc.getTitle() : humanise(stem(leaf));
 
-            actions.add(new GtdAction(doc, rel, inInbox, project, title,
+            actions.add(new GtdAction(doc, rel, inInbox, inTrash, project, title,
                     when == null ? "" : when, deadline, contexts, done));
         }
 

@@ -113,7 +113,7 @@ class GtdApplicationShareTest {
         manifest.setTitle(documentTitle);
         GtdConfig config = new GtdConfig(
                 yamlTitle, null, GtdConfig.DEFAULT_INBOX_DIR, GtdConfig.DEFAULT_ACTIONS_DIR,
-                GtdConfig.DEFAULT_PROJECTS_DIR, new ArrayList<>(), new java.util.EnumMap<>(GtdBucket.class));
+                GtdConfig.DEFAULT_PROJECTS_DIR, GtdConfig.DEFAULT_TRASH_DIR, new ArrayList<>(), new java.util.EnumMap<>(GtdBucket.class));
         when(folderReader.scan("acme", "proj", "fehler"))
                 .thenReturn(new GtdFolderReader.Scan("fehler", manifest, config, List.of()));
     }

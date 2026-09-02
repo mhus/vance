@@ -21,12 +21,18 @@ public class GtdStatsBuilder {
     }
 
     /**
-     * @param bucketCounts  bucket wireName → open count
+     * @param bucketCounts  bucket wireName → count. For the five work buckets
+     *                      that is the <b>open</b> count: the number is what is
+     *                      left to do, so ticking a box lets it fall even
+     *                      though the line stays on screen. {@code trash} is
+     *                      the exception and counts everything in it — a bin is
+     *                      not a work list, and "how much is in here" is the
+     *                      only question it answers.
      * @param overdue       open actions past their when/deadline
      * @param contextCounts context → open count
      * @param projectCounts project → open count
-     * @param totalOpen     open (not done) actions
-     * @param done          completed actions
+     * @param totalOpen     open (not done) actions, trash excluded
+     * @param done          completed actions, wherever they sit
      */
     public record Stats(
             Map<String, Integer> bucketCounts,
@@ -46,9 +52,15 @@ public class GtdStatsBuilder {
         int done = 0;
 
         for (GtdAction a : scan.actions()) {
-            if (a.done()) { done++; continue; }
+            if (a.done()) done++;
+            if (a.inTrash()) {
+                buckets.merge(GtdBucket.TRASH.wireName(), 1, Integer::sum);
+                continue;
+            }
+            if (a.done()) continue;
             open++;
-            GtdBucket bucket = bucketResolver.bucketOf(a.inInbox(), a.when(), a.deadline(), today);
+            GtdBucket bucket = bucketResolver.bucketOf(
+                    a.inInbox(), false, a.when(), a.deadline(), today);
             buckets.merge(bucket.wireName(), 1, Integer::sum);
             if (!a.inInbox() && bucketResolver.isOverdue(a.when(), a.deadline(), today)) overdue++;
             for (String c : a.contexts()) contexts.merge(c, 1, Integer::sum);
@@ -60,6 +72,6 @@ public class GtdStatsBuilder {
     /** Convenience for tests / callers that already grouped the buckets. */
     public List<GtdBucket> orderedBuckets() {
         return List.of(GtdBucket.INBOX, GtdBucket.TODAY, GtdBucket.UPCOMING,
-                GtdBucket.ANYTIME, GtdBucket.SOMEDAY);
+                GtdBucket.ANYTIME, GtdBucket.SOMEDAY, GtdBucket.TRASH);
     }
 }

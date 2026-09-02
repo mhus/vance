@@ -168,15 +168,27 @@ public class GtdAppController {
         return toContentView(doc);
     }
 
+    /**
+     * Delete an action — which means "put it in the bin" everywhere except in
+     * the bin, where it means the project-wide soft delete. The folder decides,
+     * not the caller: a client that could ask for the destructive variant
+     * directly would sooner or later ask for it from the wrong screen.
+     */
     @DeleteMapping("/brain/{tenant}/addon/gtd/action")
     public ResponseEntity<Void> deleteAction(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,
+            @RequestParam("folder") String folder,
             @RequestParam("path") String path,
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.DELETE);
-        gtdService.trash(tenant, projectId, path, currentUser(httpRequest));
+        String normalised = GtdFolderReader.normaliseFolder(folder);
+        GtdConfig config = configOf(tenant, projectId, normalised);
+        GtdService.DeleteOutcome outcome = gtdService.deleteAction(
+                tenant, projectId, normalised, config, path, currentUser(httpRequest));
+        log.info("GtdAppController.deleteAction tenant='{}' path='{}' outcome={}",
+                tenant, path, outcome);
         return ResponseEntity.noContent().build();
     }
 
@@ -317,6 +329,7 @@ public class GtdAppController {
             case UPCOMING -> "Upcoming";
             case ANYTIME -> "Anytime";
             case SOMEDAY -> "Someday";
+            case TRASH -> "Trash";
         };
     }
 

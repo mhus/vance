@@ -12,6 +12,8 @@ import org.springframework.stereotype.Component;
  *
  * <p>Rules (first match wins):
  * <ol>
+ *   <li>the action sits in {@code trash/} → {@link GtdBucket#TRASH} (put away,
+ *       regardless of everything else — it is not on any work list);</li>
  *   <li>the action sits in {@code inbox/} → {@link GtdBucket#INBOX} (unprocessed,
  *       regardless of {@code when});</li>
  *   <li>a {@code deadline} on or before today → {@link GtdBucket#TODAY}
@@ -22,6 +24,11 @@ import org.springframework.stereotype.Component;
  *       (today or overdue) → {@link GtdBucket#TODAY};</li>
  *   <li>no {@code when} (or unparseable non-keyword) → {@link GtdBucket#ANYTIME}.</li>
  * </ol>
+ *
+ * <p>{@code done} is deliberately <b>not</b> a rule: a completed action keeps
+ * the bucket it was completed in until somebody sweeps it away (rebuild) or
+ * puts it away by hand. Ticking a box must not make the line vanish from under
+ * the cursor.
  */
 @Component
 public class GtdBucketResolver {
@@ -30,8 +37,9 @@ public class GtdBucketResolver {
     public static final String WHEN_SOMEDAY = "someday";
     private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_LOCAL_DATE;
 
-    public GtdBucket bucketOf(boolean inInbox, @Nullable String when,
+    public GtdBucket bucketOf(boolean inInbox, boolean inTrash, @Nullable String when,
                               @Nullable String deadline, LocalDate today) {
+        if (inTrash) return GtdBucket.TRASH;
         if (inInbox) return GtdBucket.INBOX;
 
         LocalDate dl = tryParse(deadline);

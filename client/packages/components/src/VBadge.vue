@@ -12,12 +12,17 @@ interface Props {
   variant?: Variant;
   size?: 'xs' | 'sm' | 'md';
   outline?: boolean;
+  // Tinted instead of filled: the variant colour mixed a few percent into the
+  // page background, which stays light in the light theme and dark in the dark
+  // one. Additive, default off — no existing consumer changes.
+  soft?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   variant: 'neutral',
   size: 'md',
   outline: false,
+  soft: false,
 });
 
 const variantClass = computed<string>(() =>
@@ -33,5 +38,7 @@ const sizeClass = computed<string>(() => {
 </script>
 
 <template>
-  <span :class="['badge', variantClass, sizeClass, { 'badge-outline': outline }]"><slot /></span>
+  <span
+    :class="['badge', variantClass, sizeClass, { 'badge-outline': outline, 'badge-soft': soft }]"
+  ><slot /></span>
 </template>

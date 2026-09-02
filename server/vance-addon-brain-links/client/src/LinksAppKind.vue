@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
-  VAlert, VButton, VCard, VEmptyState, VInput, VShareButton, vanceRef,
+  VAlert, VBadge, VButton, VCard, VEmptyState, VInput, VShareButton, vanceRef,
 } from '@vance/components';
 import { safeUrl } from '@vance/shared';
 import LinkPicture from './LinkPicture.vue';
@@ -761,14 +761,22 @@ function message(e: unknown): string {
                   {{ entry.note }}
                 </p>
 
+                <!-- Pills, not #hashtags: a tag here is a thing somebody
+                     attached to this link, and a pill reads as attached. One
+                     hue (`info`, a blue) throughout — tinted normally, filled
+                     when it carries the current filter, so on and off are the
+                     same colour at two weights and not two colours. Clicking a
+                     filled pill clears the filter: one that looks switched on
+                     has to be switchable off, or it reads as broken. -->
                 <div v-if="(entry.tags ?? []).length > 0" class="flex flex-wrap gap-1">
                   <button
                     v-for="tag in entry.tags"
                     :key="tag"
-                    class="text-xs opacity-50 hover:opacity-100"
-                    @click.stop="filter = tag"
+                    class="hover:opacity-80"
+                    :title="filter === tag ? 'Clear the filter' : `Filter by ${tag}`"
+                    @click.stop="filter = filter === tag ? '' : tag"
                   >
-                    #{{ tag }}
+                    <VBadge size="sm" variant="info" :soft="filter !== tag">{{ tag }}</VBadge>
                   </button>
                 </div>
               </div>

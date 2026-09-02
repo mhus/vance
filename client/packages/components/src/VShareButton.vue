@@ -38,7 +38,12 @@ const props = withDefaults(defineProps<{
   /** Tooltip and accessible name. Pass a translated string when you have one. */
   label?: string;
   size?: 'xs' | 'sm';
-}>(), { label: 'Share', size: 'sm' });
+  /**
+   * Show the label next to the icon — for a text menu, where a lone glyph
+   * between worded rows reads as a different kind of thing than it is.
+   */
+  showLabel?: boolean;
+}>(), { label: 'Share', size: 'sm', showLabel: false });
 
 const share = inject<((subject: ShareSubjectInput) => void) | null>('vance:share', null);
 
@@ -58,5 +63,5 @@ function onClick(): void {
     :title="label"
     :aria-label="label"
     @click.stop="onClick"
-  >📤</button>
+  >📤<span v-if="showLabel" class="ml-1">{{ label }}</span></button>
 </template>

@@ -144,7 +144,10 @@ watch(selectedEntry, (entry) => {
 
 // Leaving the tab must retract the selection — a stale one would answer
 // "this link" with a link nobody is looking at any more.
-onBeforeUnmount(() => reportAppSelection?.(null));
+onBeforeUnmount(() => {
+  reportAppSelection?.(null);
+  clearTimeout(copiedTimer);
+});
 
 function toggleSelect(entry: LinkEntryView): void {
   selectedUrl.value = selectedUrl.value === entry.url ? null : entry.url;
@@ -363,6 +366,41 @@ async function onToggleViewed(entry: LinkEntryView): Promise<void> {
   const next = !viewed(entry);
   if (next) justMarked.value = new Set(justMarked.value).add(entry.url);
   await run(() => setLinkViewed(props.document.projectId, folder.value, entry.url, next));
+}
+
+/**
+ * Copy the entry's URL.
+ *
+ * The one errand a link list is constantly asked for that has nothing to do
+ * with this app: the address, in the clipboard, to paste somewhere else. It
+ * gets the always-reachable icon slot and sharing moves into the ⋯ menu — a
+ * copy is one click and over, while sharing opens a dialog and asks questions,
+ * which is what the rest of that menu does too.
+ *
+ * The confirmation is held per URL rather than as a flag, so two cards cannot
+ * both claim to be the one that was copied. It shows as the button turning
+ * primary and not as a ✓, because the tick right above it already means
+ * something else on this card.
+ */
+const copiedUrl = ref<string | null>(null);
+let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+
+async function onCopy(entry: LinkEntryView): Promise<void> {
+  if (typeof navigator === 'undefined' || !navigator.clipboard) {
+    // Says why instead of doing nothing: the clipboard is unavailable on
+    // insecure origins, and a button that silently fails reads as a bug.
+    error.value = 'The clipboard is not available in this browser context.';
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(entry.url);
+    error.value = null;
+    copiedUrl.value = entry.url;
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => { copiedUrl.value = null; }, 1500);
+  } catch (e) {
+    error.value = message(e);
+  }
 }
 
 /** Ask the page again — the server-side preview cache holds a week. */
@@ -748,13 +786,19 @@ function message(e: unknown): string {
                 >
                   ✓
                 </VButton>
-                <!-- Revealed on hover like the ⋯ menu, and kept visible while
-                     the entry is the selected one. -->
-                <VShareButton
-                  :subject="shareSubject(entry)"
+                <!-- Copy the address. Revealed on hover like the ⋯ menu, and
+                     kept visible while the entry is the selected one. Copied
+                     shows as the button turning primary rather than as a ✓ —
+                     the tick above it is already spoken for. -->
+                <VButton
                   size="xs"
+                  :variant="copiedUrl === entry.url ? 'primary' : 'ghost'"
                   :class="isSelected(entry) ? '' : 'opacity-0 group-hover/card:opacity-100'"
-                />
+                  :title="copiedUrl === entry.url ? 'Copied' : 'Copy the link'"
+                  @click.stop="onCopy(entry)"
+                >
+                  ⧉
+                </VButton>
                 <VButton
                   size="xs"
                   variant="ghost"
@@ -765,6 +809,15 @@ function message(e: unknown): string {
                   ⋯
                 </VButton>
                 <div v-if="openMenu === entry.url" class="flex flex-col items-end gap-1">
+                  <!-- Renders nothing when the host offers no sharing — the
+                       menu then simply has one row fewer. -->
+                  <VShareButton
+                    :subject="shareSubject(entry)"
+                    size="xs"
+                    label="Share…"
+                    show-label
+                    @click.stop="openMenu = null"
+                  />
                   <VButton size="xs" variant="ghost" @click.stop="editing = entry; openMenu = null">
                     Edit…
                   </VButton>

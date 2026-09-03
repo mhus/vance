@@ -1,22 +1,32 @@
 ext {
-    // 23 (not Capacitor's default 22): androidx.biometric 1.1.0 and the
+    // 23 (Capacitor 8's default is 24): androidx.biometric 1.1.0 and the
     // WebView Profile API used by @vance/facelift-account-webview require
-    // API 23+ (manifest merger fails below that).
+    // API 23+ (manifest merger fails below that). Staying at 23 keeps
+    // Android 6.0 supported — a deliberate deviation, so do not let a
+    // `cap sync` or a template refresh raise it to 24.
     minSdkVersion = 23
-    compileSdkVersion = 34
-    targetSdkVersion = 34
-    androidxActivityVersion = '1.8.0'
-    androidxAppCompatVersion = '1.6.1'
-    androidxCoordinatorLayoutVersion = '1.2.0'
-    androidxCoreVersion = '1.12.0'
-    androidxFragmentVersion = '1.6.2'
-    coreSplashScreenVersion = '1.0.1'
-    // 1.12.1 (not Capacitor's default 1.9.0): matures the WebView Profile
-    // API (per-account cookie/storage isolation) the account-webview
-    // plugin relies on. Inherited by the plugin module via rootProject.ext.
-    androidxWebkitVersion = '1.12.1'
+    compileSdkVersion = 36
+    targetSdkVersion = 36
+    androidxActivityVersion = '1.11.0'
+    androidxAppCompatVersion = '1.7.1'
+    androidxCoordinatorLayoutVersion = '1.3.0'
+    androidxCoreVersion = '1.17.0'
+    androidxFragmentVersion = '1.8.9'
+    coreSplashScreenVersion = '1.2.0'
+    // The account-webview plugin needs a webkit release with the matured
+    // WebView Profile API (per-account cookie/storage isolation). This
+    // used to be a pin above Capacitor's default; the 8.x default is well
+    // past it, so the template value now covers the requirement.
+    androidxWebkitVersion = '1.14.0'
     junitVersion = '4.13.2'
-    androidxJunitVersion = '1.1.5'
-    androidxEspressoCoreVersion = '3.5.1'
-    cordovaAndroidVersion = '10.1.1'
+    androidxJunitVersion = '1.3.0'
+    androidxEspressoCoreVersion = '3.7.0'
+    // 11.0.0 (Capacitor 8's template ships 14.0.1): cordova-android
+    // declares minSdkVersion 24 from 12.0.0 on, which the manifest merger
+    // refuses against our minSdk 23. 11.0.0 is the last release declaring
+    // 22. This is inert weight either way — no Cordova plugin is installed,
+    // so capacitor-cordova-android-plugins has zero sources and the
+    // framework AAR only has to survive the merge. Raising minSdk to 24
+    // is what would let this follow the template again.
+    cordovaAndroidVersion = '11.0.0'
 }

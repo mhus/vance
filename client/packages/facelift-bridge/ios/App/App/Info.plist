@@ -41,6 +41,8 @@
 	<string>Vancetope uses the microphone for voice input (speech-to-text) in the chat editor.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Vancetope uses your photo library so you can attach pictures to documents and chat messages.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Vancetope uses speech recognition to turn your voice input into text in the chat editor.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

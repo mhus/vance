@@ -33,24 +33,36 @@ plutil -insert CFBundleURLTypes \
 
 # Camera + Photo Library usage descriptions (iOS rejects access
 # without these strings).
+#
+# Every string here is read aloud by iOS in a system prompt, so it says
+# "Vancetope" — the product name. "Vance" is the internal code name and
+# has no business in a dialog a user sees. These must stay in step with
+# ios/App/App/Info.plist; that file is committed, so a drift only shows
+# up after someone runs this script over it.
 plutil -replace NSCameraUsageDescription \
-  -string "Vance uses the camera so you can attach photos to documents and chat messages." \
+  -string "Vancetope uses the camera so you can attach photos to documents and chat messages." \
   ios/App/App/Info.plist
 plutil -replace NSPhotoLibraryUsageDescription \
-  -string "Vance uses your photo library so you can attach pictures to documents and chat messages." \
+  -string "Vancetope uses your photo library so you can attach pictures to documents and chat messages." \
   ios/App/App/Info.plist
 
 # Face-ID — iOS aborts the biometric call without this description.
 plutil -replace NSFaceIDUsageDescription \
-  -string "Vance uses Face ID to unlock the app." \
+  -string "Vancetope uses Face ID to unlock the app." \
   ios/App/App/Info.plist
 
-# Microphone — required for the website's web-based speech-to-text
-# (the chat editor uses the SpeechRecognition API). The WKUIDelegate
-# in the Swift plugin grants the actual per-call permission; this
-# string is shown by iOS in the system permission prompt.
+# Microphone + Speech Recognition — both required for the website's
+# web-based speech-to-text (the chat editor uses the SpeechRecognition
+# API). WebKit checks the *embedding* app's Info.plist for the speech
+# string, not Safari's, so a WKWebView host that omits it gets a
+# recognizer that refuses to start. The WKUIDelegate in the Swift plugin
+# grants the actual per-call permission; these strings are what iOS shows
+# in the system prompts.
 plutil -replace NSMicrophoneUsageDescription \
-  -string "Vance uses the microphone for voice input (speech-to-text) in the chat editor." \
+  -string "Vancetope uses the microphone for voice input (speech-to-text) in the chat editor." \
+  ios/App/App/Info.plist
+plutil -replace NSSpeechRecognitionUsageDescription \
+  -string "Vancetope uses speech recognition to turn your voice input into text in the chat editor." \
   ios/App/App/Info.plist
 
 # ── App-Group entitlement ─────────────────────────────────────────

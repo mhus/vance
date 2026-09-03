@@ -33,7 +33,7 @@ class ShareViewController: SLComposeServiceViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Vance"
+        title = "Vancetope"
         placeholder = "Add a note (optional)"
         loadAccounts()
         extractSharedContent()

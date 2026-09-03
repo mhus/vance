@@ -10,39 +10,53 @@
 
     <div id="status" class="note hidden"></div>
 
-    <section id="current" class="hidden">
-      <h2>Connected</h2>
-      <dl>
-        <dt>Brain</dt><dd id="cur-brain"></dd>
-        <dt>Tenant</dt><dd id="cur-tenant"></dd>
-        <dt>Project</dt><dd id="cur-project"></dd>
-        <dt>Link list</dt><dd id="cur-folder"></dd>
-        <dt>Expires</dt><dd id="cur-expires"></dd>
-      </dl>
-      <p class="muted" style="margin-top: 10px">
-        The token is pinned to the project, not to that one list — a changed
-        folder reaches another link list in the same project. Revoking is done
-        in Vancetope, under the ⚙ of the link list.
-      </p>
-      <div class="row" style="margin-top: 10px">
-        <button id="test">Test connection</button>
-        <button id="forget">Forget</button>
-      </div>
-    </section>
-
-    <h2>Saved pages</h2>
-    <p class="muted">
-      Which folder inside the project “Save page” writes to. Empty uses the
-      server's default.
+    <h2>Connections</h2>
+    <p id="none" class="muted hidden">
+      Nothing connected yet. Paste a connection string below.
     </p>
-    <label>
-      <input id="grab-folder" type="text" placeholder="web" />
-    </label>
-    <div class="row" style="margin-bottom: 4px">
-      <button id="save-folder">Save folder</button>
-    </div>
+    <div id="list"></div>
 
-    <h2>Connection string</h2>
+    <!--
+      One destination. Cloned per record rather than assembled in TypeScript:
+      the markup stays in the file that holds the rest of the markup, and the
+      row keeps the same primitives as the page around it.
+    -->
+    <template id="conn-row">
+      <article class="conn">
+        <div class="row">
+          <input class="label grow" type="text" placeholder="Name for this list" />
+          <!-- Exactly one of these two is shown. A "Use" button on the row that
+               is already in use invites a click that does nothing. -->
+          <button class="use">Use</button>
+          <span class="badge hidden">in use</span>
+        </div>
+        <dl>
+          <dt>Brain</dt><dd class="brain"></dd>
+          <dt>Tenant</dt><dd class="tenant"></dd>
+          <dt>Project</dt><dd class="project"></dd>
+          <dt>Link list</dt><dd class="folder"></dd>
+          <dt>Expires</dt><dd class="expires"></dd>
+        </dl>
+        <!-- Shown only when the browser has not been asked yet, or was told no.
+             The button is the point: granting needs a user gesture, and before
+             this the only route to one was pasting the whole string again. -->
+        <div class="note error grant hidden">
+          <span class="grant-text"></span>
+          <button class="grant-button">Grant access</button>
+        </div>
+        <label>
+          <span>Saved pages go to this folder — empty uses the server's default</span>
+          <div class="row">
+            <input class="grab-folder grow" type="text" placeholder="web" />
+            <button class="apply">Save</button>
+            <button class="test">Test</button>
+            <button class="forget">Forget</button>
+          </div>
+        </label>
+      </article>
+    </template>
+
+    <h2>Add a connection</h2>
     <p class="muted">
       In Vancetope, open the link list, press ⚙, create a capture token and copy
       the string it shows once.
@@ -53,6 +67,12 @@
     <div class="row">
       <button id="save" class="primary">Save and grant access</button>
     </div>
+    <p class="muted" style="margin-top: 10px">
+      A string for a destination that is already listed renews it in place — the
+      name and the folder above are kept. The token is pinned to the project,
+      not to one list: a changed folder reaches another link list in the same
+      project. Revoking is done in Vancetope, under the ⚙ of the link list.
+    </p>
   </body>
   <script type="module" src="./options.ts"></script>
 </html>

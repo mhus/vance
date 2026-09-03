@@ -90,9 +90,40 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 }
 .note.error { border-color: var(--danger); color: var(--danger); }
 .note.ok { border-color: var(--ok); color: var(--ok); }
+/* A note's own button gets its own line. Left inline it lands wherever the
+   sentence happens to break, which reads as part of the sentence.
+ *
+ * `:not(.hidden)` is load-bearing, not defensive: a class-plus-type selector
+ * outranks the single class of `.hidden`, so without it this rule un-hides
+ * every status button the pages keep hidden until they have something to
+ * offer. */
+.note > button:not(.hidden) { display: block; margin-top: 6px; }
 
 .hidden { display: none; }
 
 dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; font-size: 12px; }
 dt { color: var(--muted); }
 dd { margin: 0; overflow-wrap: anywhere; }
+
+/* One connection in the settings list. The border is what makes several of
+   them read as separate destinations rather than one long form. */
+.conn {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.conn > dl { margin: 8px 0; }
+.conn label { margin-bottom: 0; }
+/* The one the popup writes to. Marked, not moved to the top: a list that
+   reorders itself when you press "Use" loses the row you were reading. */
+.conn.active { border-color: var(--accent); }
+
+.badge {
+  font-size: 11px;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}

@@ -10,13 +10,13 @@
       <span id="status-text"></span>
       <!-- Revealed only for errors the person can actually fix here. A button
            that is always there would train people to ignore it. -->
-      <button id="status-action" class="hidden" style="margin-top: 6px">
+      <button id="status-action" class="hidden">
         Open settings
       </button>
       <!-- Shown after a grab: the document it produced. A link rather than an
            automatic tab, so saving three pages in a row does not open three
            tabs behind you. -->
-      <button id="status-open" class="hidden" style="margin-top: 6px">
+      <button id="status-open" class="hidden">
         Open document
       </button>
     </div>
@@ -38,6 +38,18 @@
 
     <!-- The form -->
     <section id="form" class="hidden">
+      <!-- Which destination this save goes to. Hidden with one connection
+           configured: a picker with a single choice is furniture.
+
+           A select rather than a tab strip. Tabs imply loaded contents, and
+           each destination's contents are a lookup against a different brain —
+           so a strip would either ask every configured brain what page you are
+           on each time the popup opens, or be a picker that costs more width.
+           At 340px it also stops working past four entries. -->
+      <label id="target-row" class="hidden">
+        <span>Save to</span>
+        <select id="target"></select>
+      </label>
       <label>
         <span>Title</span>
         <input id="title" type="text" />

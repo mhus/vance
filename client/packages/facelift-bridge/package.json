@@ -19,15 +19,11 @@
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",
-    "@capacitor/camera": "^8.2.3",
     "@capacitor/core": "^8.5.0",
-    "@capacitor/filesystem": "^8.1.3",
     "@capacitor/ios": "^8.5.0",
     "@capacitor/preferences": "^8.0.1",
-    "@capacitor/share": "^8.0.1",
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.3",
-    "@capawesome/capacitor-file-picker": "^8.0.4",
     "@vance/facelift-account-webview": "workspace:*",
     "pinia": "^4.0.2",
     "vue": "^3.5.41",
@@ -36,12 +32,12 @@
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.4.2",
+    "@tailwindcss/postcss": "^4.3.3",
     "@vitejs/plugin-vue": "^6.0.8",
     "postcss": "^8.5.26",
     "sharp": "^0.35.3",
     "tailwindcss": "^4.3.3",
     "vite": "^8.2.1",
-    "vue-tsc": "^3.3.9",
-    "@tailwindcss/postcss": "^4.3.3"
+    "vue-tsc": "^3.3.9"
   }
 }

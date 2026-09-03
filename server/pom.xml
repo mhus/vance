@@ -57,22 +57,22 @@
         <lombok.version>1.18.46</lombok.version>
         <spring.boot.version>4.1.1</spring.boot.version>
         <langchain4j.version>1.19.0</langchain4j.version>
-        <langgraph4j.version>1.8.24</langgraph4j.version>
+        <langgraph4j.version>1.8.25</langgraph4j.version>
         <picocli.version>4.7.7</picocli.version>
         <jspecify.version>1.0.1</jspecify.version>
         <jjwt.version>0.13.0</jjwt.version>
         <console-master.version>1.0.0-SNAPSHOT</console-master.version>
-        <jline.version>4.3.1</jline.version>
+        <jline.version>4.4.0</jline.version>
         <lanterna.version>3.1.5</lanterna.version>
-        <graaljs.version>25.2.4</graaljs.version>
+        <graaljs.version>25.3.4.1</graaljs.version>
         <jgit.version>7.7.1.202607240634-r</jgit.version>
-        <anthropic.sdk.version>2.57.0</anthropic.sdk.version>
+        <anthropic.sdk.version>2.59.0</anthropic.sdk.version>
         <!-- swagger-parser 2.x supports both OpenAPI 3.x and Swagger 2.x. Used by
              RestApiToolPackFactory to materialise REST-API packs into Vance Tools. -->
         <swagger.parser.version>2.1.47</swagger.parser.version>
         <!-- HTML → text extraction for WebFetchTool's 'text' flag. Robust against
              broken markup, drops script/style content, decodes entities. -->
-        <jsoup.version>1.23.1</jsoup.version>
+        <jsoup.version>1.23.2</jsoup.version>
         <!-- PDFBox: PDF→text fallback for providers/models without
              native PDF vision (OpenAI lc4j adapter, Ollama, LM Studio).
              Streamed: AttachmentResolver passes an InputStream straight
@@ -84,7 +84,7 @@
              planning/prompt-template-migration.md. -->
         <pebble.version>4.1.2</pebble.version>
         <angus.mail.version>2.0.5</angus.mail.version>
-        <greenmail.version>2.1.12</greenmail.version>
+        <greenmail.version>2.1.13</greenmail.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <!-- Build stamp injected into application.yml via the resource filtering

@@ -29,6 +29,8 @@ export default {
       index: 'Index',
       sectionDefault: 'Seiten',
       moreActions: 'Weitere Aktionen',
+      showPages: 'Seiten anzeigen',
+      hidePages: 'Seiten ausblenden',
       landingPage: 'Startseite',
       emptyPages: 'Noch keine Seiten.',
       loadingWorkbook: 'Lädt Workbook…',

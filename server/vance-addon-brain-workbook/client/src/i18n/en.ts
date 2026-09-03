@@ -40,6 +40,8 @@ export default {
       index: 'Index',
       sectionDefault: 'Pages',
       moreActions: 'More actions',
+      showPages: 'Show pages',
+      hidePages: 'Hide pages',
       landingPage: 'Landing page',
       emptyPages: 'No pages yet.',
       loadingWorkbook: 'Loading workbook…',

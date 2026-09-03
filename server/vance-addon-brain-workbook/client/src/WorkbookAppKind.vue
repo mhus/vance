@@ -638,6 +638,9 @@ async function selectPage(
   page: WorkbookPageView | null,
   history: 'push' | 'replace' | 'none' = 'push',
 ) {
+  // Picking a page on a phone means "show it to me" — the drawer covering
+  // it has to close, including when that page is already the active one.
+  sidebarOpen.value = false;
   if (id === activePageId.value) return;
   // Flush pending edits on the current page before switching.
   if (editorRef.value?.flush()) {
@@ -1452,10 +1455,37 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', bumpLayout, true);
   window.removeEventListener('resize', bumpLayout);
 });
+
+// A phone cannot afford a permanent page list beside the page: 260px of a
+// 411px viewport left the document column at ~150px, wrapping text
+// mid-word. Below the breakpoint the list becomes an overlay drawer that
+// is closed by default, so the page gets the whole width.
+const narrow = ref(false);
+const sidebarOpen = ref(false);
+let narrowMedia: MediaQueryList | null = null;
+function applyNarrow(matches: boolean) {
+  narrow.value = matches;
+  // Leaving narrow makes the sidebar permanent again — a left-over "open"
+  // would otherwise re-open it as a drawer on the next shrink.
+  if (!matches) sidebarOpen.value = false;
+}
+function onNarrowChange(e: MediaQueryListEvent) {
+  applyNarrow(e.matches);
+}
+onMounted(() => {
+  narrowMedia = window.matchMedia('(max-width: 700px)');
+  applyNarrow(narrowMedia.matches);
+  narrowMedia.addEventListener('change', onNarrowChange);
+});
+onBeforeUnmount(() => narrowMedia?.removeEventListener('change', onNarrowChange));
 </script>
 
 <template>
-  <div ref="workbookRootRef" class="workbook-app">
+  <div
+    ref="workbookRootRef"
+    class="workbook-app"
+    :data-sidebar-open="sidebarOpen ? '' : undefined"
+  >
     <aside class="workbook-app__sidebar">
       <header class="workbook-app__title">
         <div class="workbook-app__title-text">{{ title }}</div>
@@ -1636,11 +1666,25 @@ onBeforeUnmount(() => {
       </div>
     </aside>
 
+    <!-- Tapping the page closes the drawer that covers it. Only present
+         while the drawer is open, so it never swallows editor clicks. -->
+    <div
+      v-if="narrow && sidebarOpen"
+      class="workbook-app__scrim"
+      @click="sidebarOpen = false"
+    />
+
     <main
       ref="mainRef"
       class="workbook-app__main"
       @pointermove="reportPointer"
     >
+      <button
+        v-if="narrow"
+        class="workbook-app__drawer-btn"
+        :title="sidebarOpen ? t('workbook.app.hidePages') : t('workbook.app.showPages')"
+        @click="sidebarOpen = !sidebarOpen"
+      >{{ sidebarOpen ? '‹' : '›' }}</button>
       <!-- Remote live awareness. Mouse pointer = content-space x/y resolved
            against the local editor layout; active-node highlight = logical
            block position resolved via blockRectAtPos (reflow/width/scroll
@@ -2284,6 +2328,66 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+/* Wide layout: the page list is a permanent column, so neither the drawer
+   handle nor the scrim exists. */
+.workbook-app__drawer-btn,
+.workbook-app__scrim {
+  display: none;
+}
+
+/* Phone width: 260px of a ~411px viewport left the document column at
+   ~150px and text wrapped mid-word. Below the breakpoint the page list
+   stops being a column and becomes an overlay drawer, closed by default. */
+@media (max-width: 700px) {
+  .workbook-app {
+    grid-template-columns: 1fr;
+    position: relative;
+  }
+  .workbook-app__sidebar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 30;
+    width: min(17rem, 80%);
+    transform: translateX(-101%);
+    transition: transform 0.15s ease;
+  }
+  .workbook-app[data-sidebar-open] .workbook-app__sidebar {
+    transform: none;
+    box-shadow: 0 0 1.5rem rgb(0 0 0 / 35%);
+  }
+  .workbook-app__scrim {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    background: rgb(0 0 0 / 30%);
+  }
+  /* Sticky rather than absolute: main is the scroll container, and the
+     handle has to stay reachable further down a long page. As a flex item
+     it takes its own row, so it never covers the page content. */
+  .workbook-app__drawer-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: sticky;
+    top: 0.5rem;
+    z-index: 15;
+    align-self: flex-start;
+    margin: 0.5rem 0 0 0.5rem;
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
+    border-radius: 0.375rem;
+    background: var(--color-base-200);
+    color: var(--color-base-content);
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+  }
 }
 
 /* Live-cursor overlay — fixed to the scroll viewport (direct child of the

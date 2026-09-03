@@ -2,6 +2,9 @@
 # Package the built extension for the Chrome Web Store and addons.mozilla.org,
 # plus the source archive AMO requires.
 #
+# Run as `pnpm run stores`. Not named `pack`: that is a pnpm builtin and would
+# shadow the script silently, producing an npm tarball instead.
+#
 # Why a source archive at all: the uploaded package is bundled and minified by
 # Vite, and AMO asks for reproducible source whenever it is. The archive is
 # `git archive` of the whole repository rather than a trimmed copy of this

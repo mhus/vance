@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc -b && vite build",
     "icons": "bash scripts/icons.sh",
-    "pack": "bash scripts/pack.sh",
+    "stores": "bash scripts/stores.sh",
     "safari": "bash scripts/safari.sh",
     "clean": "rm -rf dist dist-types safari *.tsbuildinfo",
     "test": "vitest run"
